@@ -24,7 +24,19 @@
       "Bash(pip install:*)",
       "Bash(pytest:*)",
       "Bash(git stash:*)",
-      "mcp__serena__read_memory"
+      "mcp__serena__read_memory",
+      "Bash(find:*)",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol",
+      "mcp__serena__activate_project",
+      "Bash(poetry run pytest:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv pip install:*)",
+      "mcp__morphllm-fast-apply__edit_file",
+      "Bash(ANTHROPIC_API_KEY=\"test-key\" uv run pytest:*)",
+      "Bash(ANTHROPIC_API_KEY=\"test-key\" pytest:*)",
+      "Bash(export ANTHROPIC_API_KEY=\"test-key\")",
+      "mcp__serena__list_memories"
     ],
     "deny": [],
     "ask": []

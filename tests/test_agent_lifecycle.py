@@ -25,6 +25,7 @@ import os
 from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
 from fastapi.testclient import TestClient
 from pathlib import Path
+from importlib import reload
 
 from codeframe.ui.server import app, manager
 from codeframe.persistence.database import Database
@@ -49,21 +50,30 @@ def temp_db_for_lifecycle(tmp_path):
 
 
 @pytest.fixture
-def test_client_lifecycle(temp_db_for_lifecycle):
-    """Create test client with lifecycle database."""
-    # Ensure app state is clean
-    if hasattr(app.state, 'running_agents'):
-        app.state.running_agents.clear()
-
-    with TestClient(app) as client:
-        # App lifespan will initialize database
+def test_client_with_db(temp_db_path):
+    """Create test client with properly initialized database.
+    
+    Follows the pattern from test_project_creation_api.py:
+    1. Set DATABASE_PATH environment variable
+    2. Reload server module to pick up new env var
+    3. Use TestClient which triggers lifespan initialization
+    """
+    # Set environment variable
+    os.environ["DATABASE_PATH"] = str(temp_db_path)
+    
+    # Reload server to pick up new DATABASE_PATH
+    from codeframe.ui import server
+    reload(server)
+    
+    # TestClient will trigger lifespan which initializes app.state.db
+    with TestClient(server.app) as client:
         yield client
 
 
 @pytest.fixture
-def sample_project_for_lifecycle(test_client_lifecycle):
+def sample_project(test_client_with_db):
     """Create a sample project for lifecycle tests."""
-    response = test_client_lifecycle.post(
+    response = test_client_with_db.post(
         "/api/projects",
         json={"project_name": "Lifecycle Test Project"}
     )
@@ -76,19 +86,19 @@ class TestStartAgentEndpoint:
     """Test POST /api/projects/{id}/start endpoint (cf-10.2)."""
 
     def test_start_agent_endpoint_returns_202_accepted(
-        self, test_client_lifecycle, sample_project_for_lifecycle
+        self, test_client_with_db, sample_project
     ):
         """Test that start endpoint returns 202 Accepted immediately (non-blocking).
 
         Requirement: cf-10.2 - Return 202 Accepted immediately (non-blocking)
         """
         # ARRANGE
-        project_id = sample_project_for_lifecycle["id"]
+        project_id = sample_project["id"]
 
         # ACT
         with patch('codeframe.ui.server.start_agent') as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
-            response = test_client_lifecycle.post(f"/api/projects/{project_id}/start")
+            response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
         assert response.status_code == 202
@@ -96,7 +106,7 @@ class TestStartAgentEndpoint:
         assert "starting" in response.json()["message"].lower()
 
     def test_start_agent_endpoint_handles_nonexistent_project(
-        self, test_client_lifecycle
+        self, test_client_with_db
     ):
         """Test that start endpoint returns 404 for nonexistent project.
 
@@ -106,44 +116,45 @@ class TestStartAgentEndpoint:
         nonexistent_id = 99999
 
         # ACT
-        response = test_client_lifecycle.post(f"/api/projects/{nonexistent_id}/start")
+        response = test_client_with_db.post(f"/api/projects/{nonexistent_id}/start")
 
         # ASSERT
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
     def test_start_agent_endpoint_handles_already_running(
-        self, test_client_lifecycle, sample_project_for_lifecycle
+        self, test_client_with_db, sample_project
     ):
         """Test that start endpoint is idempotent for already running projects.
 
         Requirement: cf-10.2 - Idempotent behavior for already running agents
         """
         # ARRANGE
-        project_id = sample_project_for_lifecycle["id"]
+        project_id = sample_project["id"]
 
-        # Update project status to RUNNING
-        db = app.state.db
+        # Update project status to RUNNING - get db from reloaded server
+        from codeframe.ui import server
+        db = server.app.state.db
         db.update_project(project_id, {"status": ProjectStatus.RUNNING})
 
         # ACT
         with patch('codeframe.ui.server.start_agent') as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
-            response = test_client_lifecycle.post(f"/api/projects/{project_id}/start")
+            response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
         assert response.status_code == 200  # Already running
         assert "already" in response.json()["message"].lower() or "running" in response.json()["message"].lower()
 
     def test_start_agent_endpoint_triggers_background_task(
-        self, test_client_lifecycle, sample_project_for_lifecycle
+        self, test_client_with_db, sample_project
     ):
         """Test that start endpoint triggers background task execution.
 
         Requirement: cf-10.2 - Call start_agent in background task
         """
         # ARRANGE
-        project_id = sample_project_for_lifecycle["id"]
+        project_id = sample_project["id"]
 
         # ACT
         with patch('codeframe.ui.server.BackgroundTasks') as mock_bg_tasks:
@@ -151,7 +162,7 @@ class TestStartAgentEndpoint:
             mock_bg_tasks.return_value = mock_bg_instance
 
             with patch('codeframe.ui.server.start_agent') as mock_start_agent:
-                response = test_client_lifecycle.post(f"/api/projects/{project_id}/start")
+                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
         assert response.status_code == 202
@@ -342,7 +353,7 @@ class TestAgentLifecycleIntegration:
     """Integration test for complete agent lifecycle workflow."""
 
     def test_complete_start_workflow_end_to_end(
-        self, test_client_lifecycle, sample_project_for_lifecycle
+        self, test_client_with_db, sample_project
     ):
         """Test complete workflow from start request to agent running.
 
@@ -356,8 +367,10 @@ class TestAgentLifecycleIntegration:
         Requirements: cf-10.1, cf-10.2, cf-10.3, cf-10.4
         """
         # ARRANGE
-        project_id = sample_project_for_lifecycle["id"]
-        db = app.state.db
+        project_id = sample_project["id"]
+        # Get db from reloaded server
+        from codeframe.ui import server
+        db = server.app.state.db
 
         # Verify initial state
         project = db.get_project(project_id)
@@ -374,7 +387,7 @@ class TestAgentLifecycleIntegration:
                 mock_lead_agent_class.return_value = mock_agent
 
                 # Send start request
-                response = test_client_lifecycle.post(f"/api/projects/{project_id}/start")
+                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
                 # Give background task time to execute
                 import time
@@ -464,7 +477,7 @@ class TestAgentLifecycleErrorHandling:
     """Test error handling in agent lifecycle."""
 
     def test_start_agent_handles_database_error_gracefully(
-        self, test_client_lifecycle
+        self, test_client_with_db
     ):
         """Test that start_agent handles database errors gracefully."""
         # ARRANGE
@@ -472,7 +485,7 @@ class TestAgentLifecycleErrorHandling:
 
         # ACT - Mock get_project to return None (simulating not found)
         with patch('codeframe.ui.server.app.state.db.get_project', return_value=None):
-            response = test_client_lifecycle.post(f"/api/projects/{project_id}/start")
+            response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT - Should return 404 when project not found
         assert response.status_code == 404
