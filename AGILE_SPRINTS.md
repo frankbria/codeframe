@@ -45,36 +45,414 @@ codeframe start
 ```
 
 **Implementation Tasks**:
-- [ ] **cf-8**: Connect Status Server to actual Database (P0)
-  - Load real project from SQLite
-  - Return actual project status (not mock)
-  - Demo: Dashboard shows real project from DB
 
-- [ ] **cf-9**: Implement basic Lead Agent with Anthropic SDK (P0)
-  - Initialize Claude conversation
-  - Basic chat functionality (no Socratic yet)
-  - Store conversation state in DB
-  - Demo: Chat interface works with real Claude responses
+### 🗄️ cf-8: Connect Status Server to Database (P0)
+**Owner**: Backend/Infrastructure
+**Dependencies**: None
+**Estimated Effort**: 4-6 hours
 
-- [ ] **cf-10**: Connect Project.start() to Lead Agent (P0)
-  - `codeframe start` launches Lead Agent
-  - Agent sends initial greeting
-  - Status updates reflect agent state
-  - Demo: CLI start → Dashboard shows "Active" → Chat works
+**Detailed Subtasks**:
+- [ ] **cf-8.1**: Implement database CRUD methods
+  - `create_project(name, config) -> Project`
+  - `get_project(id) -> Project | None`
+  - `update_project(id, updates) -> Project`
+  - `list_projects() -> List[Project]`
+  - `create_agent(project_id, type, provider) -> Agent`
+  - `update_agent(id, updates) -> Agent`
+  - `create_memory(project_id, content, type) -> Memory`
+  - `get_conversation(project_id) -> List[Memory]`
 
-- [ ] **cf-11**: Add project creation to Status Server API (P1)
-  - POST /api/projects endpoint
-  - Create project from web UI (bonus)
-  - Demo: Can create project via API or CLI
+- [ ] **cf-8.2**: Database initialization on server startup
+  - Initialize SQLite connection in `server.py` startup event
+  - Create tables if not exist
+  - Handle connection pooling/lifecycle
+
+- [ ] **cf-8.3**: Wire Status Server endpoints to database
+  - `GET /api/projects` → `database.list_projects()`
+  - `GET /api/projects/{id}/status` → `database.get_project(id)`
+  - `GET /api/projects/{id}/agents` → query agents table
+  - Remove all mock data from endpoints
+
+- [ ] **cf-8.4**: Basic unit tests
+  - Test: Create project and retrieve it
+  - Test: Update project status
+  - Test: Create and retrieve conversation messages
+  - Test: Error handling for missing projects
 
 **Definition of Done**:
+- ✅ Database CRUD methods implemented and tested
+- ✅ Status Server loads real data from SQLite
+- ✅ Dashboard shows actual projects (not mocks)
+- ✅ Unit tests pass with >80% coverage
+
+**Demo Script**:
+```bash
+# Create project via CLI
+codeframe init test-project
+
+# Check database directly
+sqlite3 .codeframe/state.db "SELECT * FROM projects;"
+
+# Check API returns real data
+curl http://localhost:8080/api/projects
+
+# Browser: Dashboard shows "test-project"
+```
+
+---
+
+### 🤖 cf-9: Lead Agent with Anthropic SDK (P0)
+**Owner**: AI/Agent Logic
+**Dependencies**: cf-8 (needs database for conversation storage)
+**Estimated Effort**: 6-8 hours
+
+**Detailed Subtasks**:
+- [ ] **cf-9.1**: Environment configuration
+  - Add `ANTHROPIC_API_KEY` to `.env` file support
+  - Load environment variables in `config.py`
+  - Validation: Fail fast if API key missing with helpful error
+  - Document setup in README
+
+- [ ] **cf-9.2**: Anthropic SDK integration
+  - Install `anthropic` package (already in pyproject.toml)
+  - Create `AnthropicProvider` class in `codeframe/providers/anthropic.py`
+  - Implement `send_message(conversation_history) -> response`
+  - Handle API errors (rate limits, timeouts, invalid keys)
+
+- [ ] **cf-9.3**: Lead Agent message handling
+  - Implement `LeadAgent.chat(user_message) -> ai_response`
+  - Load conversation history from database
+  - Append user message to history
+  - Send to Claude via AnthropicProvider
+  - Save AI response to database
+  - Return response
+
+- [ ] **cf-9.4**: Conversation state persistence
+  - Store messages in `memory` table with role (user/assistant)
+  - Implement conversation retrieval by project_id
+  - Handle long conversations (truncation strategy TBD in Sprint 6)
+
+- [ ] **cf-9.5**: Basic observability
+  - Log token usage per request
+  - Log API latency
+  - Log errors with context
+  - (Defer cost tracking to Sprint 7)
+
+**Definition of Done**:
+- ✅ Can initialize Lead Agent with API key
+- ✅ Can send message and get Claude response
+- ✅ Conversation persists across restarts
+- ✅ Error handling works (shows helpful messages)
+- ✅ Basic logging in place
+
+**Demo Script**:
+```python
+# Python REPL test
+from codeframe.core.project import Project
+from codeframe.agents.lead_agent import LeadAgent
+
+project = Project.load("hello-world")
+agent = LeadAgent(project.id)
+response = agent.chat("Hello! What can you help me with?")
+print(response)  # Should get actual Claude response
+
+# Check database
+# Conversation should be saved in memory table
+```
+
+---
+
+### 🔌 cf-10: Project Start & Agent Lifecycle (P0)
+**Owner**: Integration
+**Dependencies**: cf-9 (needs Lead Agent), cf-8 (needs database)
+**Estimated Effort**: 6-8 hours
+
+**Detailed Subtasks**:
+- [ ] **cf-10.1**: Status Server agent management
+  - Add `running_agents: Dict[int, LeadAgent]` in server.py
+  - Implement `start_agent(project_id)` async function
+  - Store agent reference in dictionary
+  - Update project status to "running"
+
+- [ ] **cf-10.2**: POST /api/projects/{id}/start endpoint
+  - Accept project ID
+  - Call `start_agent(project_id)` in background task
+  - Return 202 Accepted immediately (non-blocking)
+  - Broadcast status change via WebSocket
+
+- [ ] **cf-10.3**: Lead Agent greeting on start
+  - When agent starts, send initial greeting message
+  - Greeting: "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
+  - Save greeting to conversation history
+  - Broadcast greeting via WebSocket to dashboard
+
+- [ ] **cf-10.4**: WebSocket message protocol
+  - Define message types: `status_update`, `chat_message`, `agent_started`
+  - Implement broadcast helper: `broadcast_message(type, data)`
+  - Dashboard subscribes to messages and updates UI
+
+- [ ] **cf-10.5**: CLI integration
+  - Implement `codeframe start` command
+  - Send POST request to Status Server
+  - Handle case where server isn't running (helpful error)
+  - Show success message with dashboard link
+
+**Definition of Done**:
+- ✅ `codeframe start` successfully starts Lead Agent
+- ✅ Dashboard shows project status changes to "Running"
+- ✅ Greeting message appears in dashboard chat
+- ✅ WebSocket updates work in real-time
+- ✅ Agent runs in background (CLI returns immediately)
+
+**Demo Script**:
+```bash
+# Start everything
+python -m codeframe.ui.server  # Terminal 1
+cd web-ui && npm run dev       # Terminal 2
+
+# Create and start project
+codeframe init my-app          # Terminal 3
+codeframe start
+
+# Browser: http://localhost:3000
+# See: Status changes "pending" → "running"
+# See: Chat shows greeting message
+# Type: "Hello!" → Get Claude response
+```
+
+---
+
+### 📝 cf-11: Project Creation API (P1)
+**Owner**: Backend/API
+**Dependencies**: cf-8 (needs database)
+**Estimated Effort**: 3-4 hours
+
+**Detailed Subtasks**:
+- [ ] **cf-11.1**: Request/Response models
+  - Create `ProjectCreateRequest` Pydantic model
+  - Fields: `project_name: str`, `project_type: str = "python"`
+  - Validation: name required, type from enum
+  - Create `ProjectResponse` model
+
+- [ ] **cf-11.2**: POST /api/projects endpoint
+  - Accept `ProjectCreateRequest`
+  - Validate input (name not empty, valid type)
+  - Call `Project.create(name, type)` (already exists)
+  - Return created project as `ProjectResponse`
+  - Handle duplicate project names gracefully
+
+- [ ] **cf-11.3**: Error handling
+  - 400 Bad Request for invalid input
+  - 409 Conflict for duplicate names
+  - 500 Internal Server Error with details
+
+- [ ] **cf-11.4**: (Bonus) Web UI project creation form
+  - Add "New Project" button in dashboard
+  - Modal with form: project name, type selector
+  - Call POST /api/projects on submit
+  - Refresh project list on success
+
+**Definition of Done**:
+- ✅ POST /api/projects works via curl/Postman
+- ✅ Request validation rejects invalid input
+- ✅ Created projects appear in dashboard
+- ✅ (Bonus) Can create project from web UI
+
+**Demo Script**:
+```bash
+# Via API
+curl -X POST http://localhost:8080/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{"project_name": "api-test", "project_type": "python"}'
+
+# Via Web UI (bonus)
+# Click "New Project" → Enter "ui-test" → Click Create
+# Project appears in dashboard list
+```
+
+---
+
+### 🧪 cf-12: Environment & Configuration (P0) - NEW
+**Owner**: Infrastructure
+**Dependencies**: None
+**Estimated Effort**: 2-3 hours
+
+**Detailed Subtasks**:
+- [ ] **cf-12.1**: Environment file template
+  - Create `.env.example` with required variables
+  - Document: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DATABASE_PATH`
+  - Add to README setup instructions
+
+- [ ] **cf-12.2**: Configuration validation
+  - Check API key exists on server startup
+  - Print helpful error if missing: "Missing ANTHROPIC_API_KEY. See .env.example"
+  - Validate database path is writable
+
+- [ ] **cf-12.3**: Configuration loading
+  - Use `python-dotenv` to load `.env` file
+  - Make config accessible via `codeframe.core.config`
+  - Support environment variable override
+
+**Definition of Done**:
+- ✅ `.env.example` exists with documentation
+- ✅ Server fails fast with helpful error if API key missing
+- ✅ Configuration loads correctly
+
+---
+
+### ✅ cf-13: Manual Testing Checklist (P1) - NEW
+**Owner**: QA
+**Dependencies**: All other tasks
+**Estimated Effort**: 1-2 hours
+
+**Detailed Subtasks**:
+- [ ] **cf-13.1**: Create testing checklist
+  - Document in `TESTING.md`
+  - Cover all Definition of Done items
+  - Include setup steps
+
+- [ ] **cf-13.2**: Execute manual tests
+  - Follow checklist step by step
+  - Document any failures
+  - Fix critical issues before sprint review
+
+**Checklist**:
+```markdown
+## Sprint 1 Manual Test Checklist
+
+### Setup
+- [ ] Clone repository
+- [ ] Install Python dependencies: `pip install -e .`
+- [ ] Install Node dependencies: `cd web-ui && npm install`
+- [ ] Create `.env` file with ANTHROPIC_API_KEY
+- [ ] Start Status Server: `python -m codeframe.ui.server`
+- [ ] Start Web UI: `cd web-ui && npm run dev`
+
+### Test: Project Creation (cf-8, cf-11)
+- [ ] Run `codeframe init test-project`
+- [ ] Verify: Project directory created at `./test-project`
+- [ ] Verify: `.codeframe/` directory exists
+- [ ] Verify: Database file exists at `.codeframe/state.db`
+- [ ] Check API: `curl http://localhost:8080/api/projects`
+- [ ] Verify: Dashboard shows "test-project"
+
+### Test: Lead Agent Chat (cf-9, cf-10)
+- [ ] Run `codeframe start` in project directory
+- [ ] Verify: CLI shows "Project started. View at http://localhost:3000"
+- [ ] Browser: Open http://localhost:3000
+- [ ] Verify: Project status shows "Running"
+- [ ] Verify: Chat interface shows greeting message
+- [ ] Type message: "Hello! What can you build?"
+- [ ] Verify: Get response from Claude within 5 seconds
+- [ ] Type message: "What's 2+2?"
+- [ ] Verify: Response shows "4" or similar
+- [ ] Refresh browser
+- [ ] Verify: Conversation history persists
+
+### Test: Real-time Updates (cf-10)
+- [ ] Open dashboard in two browser windows
+- [ ] In terminal: `codeframe start`
+- [ ] Verify: Both windows show status change simultaneously
+- [ ] In one window: Send chat message
+- [ ] Verify: Message appears in both windows
+
+### Test: Error Handling
+- [ ] Remove ANTHROPIC_API_KEY from .env
+- [ ] Restart Status Server
+- [ ] Verify: Server shows error "Missing ANTHROPIC_API_KEY"
+- [ ] Try to start project
+- [ ] Verify: Helpful error message shown
+```
+
+**Definition of Done**:
+- ✅ All checklist items pass
+- ✅ Documentation exists for manual testing
+
+---
+
+### 📊 Sprint 1 Implementation Roadmap
+
+**Recommended Execution Order**:
+
+**Day 1-2: Foundation**
+1. cf-12 (Environment & Config) - *Must do first*
+2. cf-8.1, cf-8.2 (Database CRUD + initialization)
+3. cf-8.4 (Unit tests for database)
+
+**Day 3-4: Agent Integration**
+4. cf-9.1, cf-9.2 (Environment + Anthropic SDK)
+5. cf-9.3, cf-9.4 (Message handling + persistence)
+6. cf-8.3 (Wire endpoints to database)
+
+**Day 5-6: End-to-End Integration**
+7. cf-10.1, cf-10.2 (Agent lifecycle + start endpoint)
+8. cf-10.3, cf-10.4 (Greeting + WebSocket)
+9. cf-10.5 (CLI integration)
+10. cf-11 (Project creation API)
+
+**Day 7: Testing & Polish**
+11. cf-9.5 (Observability/logging)
+12. cf-13 (Manual testing checklist)
+13. Sprint demo rehearsal
+14. Bug fixes and polish
+
+**Total Effort Estimate**: 25-35 hours (1 week with buffer)
+
+**Critical Path**: cf-12 → cf-8 → cf-9 → cf-10
+**Parallel Work**: cf-11 can be done anytime after cf-8
+
+---
+
+### 🎯 Sprint 1 Success Metrics
+
+**Technical**:
+- ✅ Zero mock data in production code
+- ✅ Database operations tested at >80% coverage
+- ✅ API response time <500ms (p95)
+- ✅ WebSocket reconnect works automatically
+
+**Functional**:
 - ✅ Can run `codeframe init` and see it in dashboard
 - ✅ Can run `codeframe start` and chat with Lead Agent
 - ✅ Responses come from real Claude API
 - ✅ Dashboard updates when project state changes
 - ✅ All data persists in SQLite
+- ✅ Conversation history persists across restarts
+
+**User Experience**:
+- ✅ Setup takes <5 minutes (README to working demo)
+- ✅ Error messages are helpful (no cryptic stack traces)
+- ✅ Demo is impressive ("Wow, this actually works!")
 
 **Sprint Review**: Working system - you can start a project and talk to an AI agent!
+
+---
+
+### 🔍 Sprint 1 Scope Boundaries
+
+**IN SCOPE** (Must have for demo):
+- Basic chat with Lead Agent
+- Real Claude API integration
+- Data persistence in SQLite
+- Real-time dashboard updates
+- Project creation and startup
+
+**OUT OF SCOPE** (Defer to later sprints):
+- ❌ Socratic questioning (Sprint 2)
+- ❌ Task generation (Sprint 2)
+- ❌ Multi-agent coordination (Sprint 4)
+- ❌ Blocker system (Sprint 5)
+- ❌ Context tiering (Sprint 6)
+- ❌ Agent maturity (Sprint 7)
+- ❌ Pause/resume (Sprint 8)
+- ❌ Cost budgeting (Future)
+- ❌ Rollback functionality (Future)
+
+**NICE TO HAVE** (If time permits):
+- Web UI project creation form (cf-11.4)
+- Streaming responses from Claude
+- Token usage display in dashboard
+- Dark mode for dashboard 😎
 
 ---
 
