@@ -637,6 +637,22 @@ For comprehensive technical documentation, see:
 
 ---
 
+## Documentation
+
+### Core Documentation
+- [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md) - Complete technical specification
+- [AGILE_SPRINTS.md](AGILE_SPRINTS.md) - Sprint plan and progress tracking
+- [TESTING.md](TESTING.md) - Manual testing guide and checklist
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
+- [CONCEPTS_INTEGRATION.md](CONCEPTS_INTEGRATION.md) - General concepts integration analysis
+
+### Additional Resources
+- [docs/](docs/) - Archived documentation and reference materials
+  - [docs/archive/sprint1/](docs/archive/sprint1/) - Sprint 1 implementation results
+  - [docs/process/](docs/process/) - Development process guides (TDD workflow, Web UI setup)
+
+---
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
