@@ -1,0 +1,37 @@
+# Coverage configuration for CodeFRAME
+
+[run]
+source = codeframe
+omit =
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */venv/*
+    */env/*
+    setup.py
+
+[report]
+# Set minimum coverage threshold
+fail_under = 85
+precision = 2
+show_missing = true
+skip_covered = false
+
+# Exclude lines from coverage
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    @abc.abstractmethod
+    Protocol
+    pass
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
