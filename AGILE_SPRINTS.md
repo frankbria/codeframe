@@ -91,7 +91,7 @@ codeframe start
   - **Tests**: 11 comprehensive test cases (100% pass rate)
   - **Coverage**: 4 test classes - projects, status, agents, integration
   - **Code Quality**: 85% code reduction (mock data → database calls)
-  - **Commit**: [pending] - "feat(cf-8.3): Wire endpoints to database using TDD"
+  - **Commit**: aaec07a - "feat(cf-8.3): Wire endpoints to database using TDD"
 
 - [ ] **cf-8.4**: Basic unit tests
   - Test: Create project and retrieve it
@@ -500,7 +500,7 @@ curl -X POST http://localhost:8080/api/projects \
 
 - **cf-8.3**: Wire Endpoints to Database (TDD)
   - Status: ✅ Complete
-  - Commit: [pending]
+  - Commit: aaec07a
   - Tests: 11 test cases (100% pass rate)
   - Coverage: 4 test classes (projects, status, agents, integration)
   - Code Quality: 85% reduction (removed mock data)
