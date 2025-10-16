@@ -69,7 +69,7 @@ Get WSL IP: `ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1`
 1. **WSL2 with Ubuntu** (already installed)
 2. **Node.js and npm** (already installed: v22.20.0, npm 10.9.3)
 3. **Python 3.13+** (already installed)
-4. **PM2** (already installed locally in project)
+4. **PM2** (install globally: `sudo npm install -g pm2`)
 
 ### Environment Configuration
 
@@ -89,28 +89,33 @@ LOG_LEVEL=INFO
 
 ### PM2 Process Management
 
+**Install PM2 globally (first time only):**
+```bash
+sudo npm install -g pm2
+```
+
 **Start Services:**
 ```bash
 ./scripts/start-staging.sh
 # OR
-npx pm2 start ecosystem.staging.config.js
+pm2 start ecosystem.staging.config.js
 ```
 
 **View Running Processes:**
 ```bash
-npx pm2 list
+pm2 list
 ```
 
 **View Logs:**
 ```bash
 # All logs (combined)
-npx pm2 logs
+pm2 logs
 
 # Backend logs only
-npx pm2 logs codeframe-backend-staging
+pm2 logs codeframe-backend-staging
 
 # Frontend logs only
-npx pm2 logs codeframe-frontend-staging
+pm2 logs codeframe-frontend-staging
 
 # Log files location
 tail -f logs/backend-out.log
@@ -119,20 +124,20 @@ tail -f logs/frontend-out.log
 
 **Stop Services:**
 ```bash
-npx pm2 stop all
+pm2 stop all
 # OR stop individual
-npx pm2 stop codeframe-backend-staging
-npx pm2 stop codeframe-frontend-staging
+pm2 stop codeframe-backend-staging
+pm2 stop codeframe-frontend-staging
 ```
 
 **Restart Services:**
 ```bash
-npx pm2 restart all
+pm2 restart all
 ```
 
 **Delete Processes:**
 ```bash
-npx pm2 delete all
+pm2 delete all
 ```
 
 ## WSL Persistence Strategy
@@ -193,7 +198,7 @@ Start-ScheduledTask -TaskName "CodeFRAME Staging Server"
 Get-Content C:\Scripts\codeframe-staging-startup.log -Tail 20
 
 # Verify services
-wsl -d Ubuntu -u frankbria bash -c "npx pm2 list"
+wsl -d Ubuntu -u frankbria bash -c "pm2 list"
 ```
 
 **Full documentation:** See `scripts/WINDOWS_AUTOSTART_SETUP.md`
@@ -439,14 +444,17 @@ Follow the manual testing checklist in `TESTING.md`:
 **Solutions**:
 ```bash
 # Check PM2 installation
-npx pm2 --version
+pm2 --version
+
+# If not found, install globally
+sudo npm install -g pm2
 
 # Clear PM2 processes
-npx pm2 delete all
-npx pm2 kill
+pm2 delete all
+pm2 kill
 
 # Restart with verbose output
-npx pm2 start ecosystem.staging.config.js --log-date-format="YYYY-MM-DD HH:mm:ss"
+pm2 start ecosystem.staging.config.js --log-date-format="YYYY-MM-DD HH:mm:ss"
 ```
 
 ### Port Already in Use
@@ -463,7 +471,7 @@ ss -tulpn | grep :3000
 kill -9 <PID>
 
 # Start PM2 again
-npx pm2 start ecosystem.staging.config.js
+pm2 start ecosystem.staging.config.js
 ```
 
 ### WSL Network Issues
@@ -493,7 +501,7 @@ wsl --shutdown
 **Solutions**:
 ```bash
 # Stop all processes
-npx pm2 stop all
+pm2 stop all
 
 # Check for stale locks
 ls -la staging/.codeframe/
@@ -502,7 +510,7 @@ rm staging/.codeframe/state.db-shm
 rm staging/.codeframe/state.db-wal
 
 # Restart services
-npx pm2 start ecosystem.staging.config.js
+pm2 start ecosystem.staging.config.js
 ```
 
 ### Logs Not Showing
@@ -517,7 +525,7 @@ ls -la logs/
 chmod 755 logs/
 
 # Check PM2 log paths
-npx pm2 show codeframe-backend-staging | grep log
+pm2 show codeframe-backend-staging | grep log
 
 # View logs directly
 tail -f logs/backend-out.log
@@ -548,19 +556,19 @@ cd ..
 
 3. **Restart services:**
 ```bash
-npx pm2 restart all
+pm2 restart all
 ```
 
 ### Monitoring
 
 **Real-time monitoring:**
 ```bash
-npx pm2 monit
+pm2 monit
 ```
 
 **Resource usage:**
 ```bash
-npx pm2 list
+pm2 list
 # Shows: CPU %, Memory usage for each process
 ```
 

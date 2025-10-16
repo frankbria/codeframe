@@ -47,7 +47,7 @@ try {
 
     # Verify services are running
     Start-Sleep -Seconds 10
-    $PmStatus = wsl -d Ubuntu -u frankbria bash -c "cd /home/frankbria/projects/codeframe && npx pm2 list" 2>&1
+    $PmStatus = wsl -d Ubuntu -u frankbria bash -c "cd /home/frankbria/projects/codeframe && pm2 list" 2>&1
     Write-Log "PM2 Status: $PmStatus"
 
     Write-Log "✓ Staging server started successfully"
