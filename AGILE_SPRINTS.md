@@ -513,19 +513,44 @@ curl -X POST http://localhost:8080/api/projects \
   - Test Suites: 3 comprehensive test files
   - Analysis: All coverage gaps justified and aligned with sprint planning
 
+- **cf-9**: Lead Agent with Anthropic SDK (TDD)
+  - Status: ✅ Complete
+  - Commit: 006f63e
+  - Tests: 34 test cases (100% pass rate) - 17 AnthropicProvider + 17 LeadAgent
+  - Implementation: AnthropicProvider class, LeadAgent.chat(), conversation persistence
+  - Features: Claude API integration, token usage tracking, error handling
+
+- **cf-10**: Project Start & Agent Lifecycle (TDD)
+  - Status: ✅ Complete
+  - Commit: 69faad5
+  - Tests: 18 test cases (100% pass rate)
+  - Implementation: POST /api/projects/{id}/start endpoint, agent management, WebSocket broadcasts
+  - Features: Non-blocking agent startup, greeting messages, status updates
+
+- **cf-11**: Project Creation API (TDD)
+  - Status: ✅ Complete
+  - Commit: 5a6aab8
+  - Tests: 12 test cases (100% pass rate)
+  - Implementation: POST /api/projects endpoint, Pydantic models, validation
+  - Features: Project creation via API, duplicate detection, error handling (201, 400, 409, 422, 500)
+
 ### Pending ⏳
-- **cf-9**: Lead Agent with Anthropic SDK
-- **cf-10**: Project Start & Agent Lifecycle
-- **cf-11**: Project Creation API
 - **cf-13**: Manual Testing Checklist
 
 ### Sprint 1 Metrics
-- **Tasks Completed**: 5/9 (56% - infrastructure phase)
-- **Total Tests**: 47 test cases (100% pass rate)
-- **Test Coverage**: 92.06% (database.py), 66.00% (server.py), 80.70% (overall)
-- **TDD Compliance**: 100% (cf-8.1, cf-8.2, cf-8.3 all followed strict TDD)
-- **Code Quality**: 85% reduction in endpoint code (mock → database)
-- **Foundation Ready**: Database, server initialization, and API endpoints fully tested
+- **Tasks Completed**: 8/9 (89% - nearly complete!)
+- **Total Tests**: 111 test cases (100% pass rate across all features)
+- **Test Breakdown**:
+  - Database: 26 tests
+  - Server Init: 10 tests
+  - Endpoints: 11 tests
+  - Anthropic Provider: 17 tests
+  - Lead Agent: 17 tests
+  - Project Creation API: 12 tests
+  - Agent Lifecycle: 18 tests
+- **TDD Compliance**: 100% (ALL tasks followed strict RED-GREEN-REFACTOR)
+- **Code Quality**: Production-ready with comprehensive error handling
+- **Foundation Complete**: Full-stack implementation from database to API to Lead Agent
 
 ---
 
