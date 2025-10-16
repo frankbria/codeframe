@@ -93,11 +93,15 @@ codeframe start
   - **Code Quality**: 85% code reduction (mock data → database calls)
   - **Commit**: aaec07a - "feat(cf-8.3): Wire endpoints to database using TDD"
 
-- [ ] **cf-8.4**: Basic unit tests
-  - Test: Create project and retrieve it
-  - Test: Update project status
-  - Test: Create and retrieve conversation messages
-  - Test: Error handling for missing projects
+- [x] **cf-8.4**: Basic unit tests ✅
+  - ✅ Test: Create project and retrieve it
+  - ✅ Test: Update project status
+  - ✅ Test: Create and retrieve conversation messages
+  - ✅ Test: Error handling for missing projects
+  - **Implementation**: TDD approach (RED-GREEN-REFACTOR)
+  - **Tests**: Comprehensive database unit tests (100% pass rate)
+  - **Coverage**: Additional unit test coverage for database operations
+  - **Commit**: 969ca3a - "test: Complete cf-8.4 - Unit tests pass with coverage verification"
 
 **Definition of Done**:
 - ✅ Database CRUD methods implemented and tested
