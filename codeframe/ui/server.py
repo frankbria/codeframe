@@ -1,7 +1,8 @@
 """FastAPI Status Server for CodeFRAME."""
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
@@ -15,6 +16,7 @@ from codeframe.core.project import Project
 from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus
 from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse
+from codeframe.agents.lead_agent import LeadAgent
 
 
 @asynccontextmanager
@@ -75,6 +77,92 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+# cf-10.1: Dictionary to track running agents by project_id
+running_agents: Dict[int, LeadAgent] = {}
+
+
+async def start_agent(
+    project_id: int,
+    db: Database,
+    agents_dict: Dict[int, LeadAgent],
+    api_key: str
+) -> None:
+    """Start Lead Agent for a project (cf-10.1).
+    
+    Args:
+        project_id: Project ID to start agent for
+        db: Database connection
+        agents_dict: Dictionary to store running agents
+        api_key: Anthropic API key for Lead Agent
+        
+    This function:
+    - Creates LeadAgent instance
+    - Updates project status to RUNNING
+    - Saves greeting message to database
+    - Broadcasts status updates via WebSocket
+    """
+    try:
+        # cf-10.1: Create Lead Agent instance
+        agent = LeadAgent(
+            project_id=project_id,
+            db=db,
+            api_key=api_key
+        )
+        
+        # cf-10.1: Store agent reference
+        agents_dict[project_id] = agent
+        
+        # cf-10.1: Update project status to RUNNING
+        db.update_project(project_id, {"status": ProjectStatus.RUNNING})
+        
+        # cf-10.4: Broadcast agent_started message
+        try:
+            await manager.broadcast({
+                "type": "agent_started",
+                "project_id": project_id,
+                "agent_type": "lead",
+                "timestamp": asyncio.get_event_loop().time()
+            })
+        except Exception:
+            # Continue even if broadcast fails
+            pass
+        
+        # cf-10.4: Broadcast status_update message
+        try:
+            await manager.broadcast({
+                "type": "status_update",
+                "project_id": project_id,
+                "status": "running"
+            })
+        except Exception:
+            pass
+        
+        # cf-10.3: Send greeting message
+        greeting = "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
+        
+        # cf-10.3: Save greeting to database
+        db.create_memory(
+            project_id=project_id,
+            category="conversation",
+            key="assistant",
+            value=greeting
+        )
+        
+        # cf-10.4: Broadcast greeting via WebSocket
+        try:
+            await manager.broadcast({
+                "type": "chat_message",
+                "project_id": project_id,
+                "role": "assistant",
+                "content": greeting
+            })
+        except Exception:
+            pass
+            
+    except Exception as e:
+        # Log error but let it propagate
+        raise
 
 
 # API Routes
@@ -170,6 +258,67 @@ async def create_project(request: ProjectCreateRequest):
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+@app.post("/api/projects/{project_id}/start", status_code=202)
+async def start_project_agent(project_id: int, background_tasks: BackgroundTasks):
+    """Start Lead Agent for a project (cf-10.2).
+    
+    Returns 202 Accepted immediately and starts agent in background.
+    
+    Args:
+        project_id: Project ID to start agent for
+        background_tasks: FastAPI background tasks
+        
+    Returns:
+        202 Accepted with message
+        200 OK if already running
+        404 Not Found if project doesn't exist
+        
+    Raises:
+        HTTPException: 404 if project not found
+    """
+    # cf-10.2: Check if project exists
+    project = app.state.db.get_project(project_id)
+    
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project {project_id} not found"
+        )
+    
+    # cf-10.2: Handle idempotent behavior - already running
+    if project["status"] == ProjectStatus.RUNNING.value:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": f"Project {project_id} is already running",
+                "status": "running"
+            }
+        )
+    
+    # cf-10.2: Get API key from environment
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY not configured"
+        )
+    
+    # cf-10.2: Start agent in background task (non-blocking)
+    background_tasks.add_task(
+        start_agent,
+        project_id,
+        app.state.db,
+        running_agents,
+        api_key
+    )
+    
+    # cf-10.2: Return 202 Accepted immediately
+    return {
+        "message": f"Starting Lead Agent for project {project_id}",
+        "status": "starting"
+    }
 
 
 @app.get("/api/projects/{project_id}/status")
