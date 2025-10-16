@@ -86,104 +86,37 @@ async def root():
 @app.get("/api/projects")
 async def list_projects():
     """List all CodeFRAME projects."""
-    # TODO: Implement project discovery
-    return {
-        "projects": [
-            {
-                "id": 1,
-                "name": "example-project",
-                "status": "active",
-                "progress": 65
-            }
-        ]
-    }
+    from fastapi import Request
+
+    # Get projects from database
+    projects = app.state.db.list_projects()
+
+    return {"projects": projects}
 
 
 @app.get("/api/projects/{project_id}/status")
 async def get_project_status(project_id: int):
     """Get comprehensive project status."""
-    # TODO: Load project and gather status
+    # Get project from database
+    project = app.state.db.get_project(project_id)
+
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
     return {
-        "project_id": project_id,
-        "project_name": "example-project",
-        "status": "active",
-        "phase": "execution",
-        "workflow_step": 7,
-        "progress": {
-            "completed_tasks": 26,
-            "total_tasks": 40,
-            "percentage": 65
-        },
-        "time_tracking": {
-            "started_at": "2025-01-15T09:00:00Z",
-            "elapsed_hours": 3.5,
-            "estimated_remaining_hours": 2.25
-        },
-        "cost_tracking": {
-            "input_tokens": 1200000,
-            "output_tokens": 450000,
-            "estimated_cost": 8.50
-        }
+        "project_id": project["id"],
+        "project_name": project["name"],
+        "status": project["status"]
     }
 
 
 @app.get("/api/projects/{project_id}/agents")
 async def get_agent_status(project_id: int):
     """Get status of all agents."""
-    # TODO: Query database for agent status
-    return {
-        "agents": [
-            {
-                "id": "lead",
-                "type": "lead",
-                "provider": "claude",
-                "maturity": "supporting",
-                "status": "working",
-                "current_task": None,
-                "last_action": "Coordinating task assignments",
-                "context_tokens": 45000
-            },
-            {
-                "id": "backend-1",
-                "type": "backend",
-                "provider": "claude",
-                "maturity": "coaching",
-                "status": "working",
-                "current_task": {
-                    "id": 27,
-                    "title": "JWT refresh token flow"
-                },
-                "progress": 45,
-                "tests_passing": 3,
-                "tests_total": 5,
-                "context_tokens": 85000
-            },
-            {
-                "id": "frontend-1",
-                "type": "frontend",
-                "provider": "gpt4",
-                "maturity": "directive",
-                "status": "blocked",
-                "current_task": {
-                    "id": 28,
-                    "title": "Login UI components"
-                },
-                "blocker": "Waiting on Task #27 (backend API)"
-            },
-            {
-                "id": "test-1",
-                "type": "test",
-                "provider": "claude",
-                "maturity": "supporting",
-                "status": "working",
-                "current_task": {
-                    "id": 29,
-                    "title": "E2E auth flow tests"
-                },
-                "progress": 70
-            }
-        ]
-    }
+    # Get agents from database
+    agents = app.state.db.list_agents()
+
+    return {"agents": agents}
 
 
 @app.get("/api/projects/{project_id}/tasks")
