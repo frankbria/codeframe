@@ -1,0 +1,19 @@
+[Unit]
+Description=CodeFRAME Staging Server
+Documentation=https://github.com/frankbria/codeframe
+After=network.target
+
+[Service]
+Type=forking
+User=frankbria
+WorkingDirectory=/home/frankbria/projects/codeframe
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:/home/frankbria/projects/codeframe/node_modules/.bin"
+EnvironmentFile=/home/frankbria/projects/codeframe/.env.staging
+ExecStart=/usr/bin/npx pm2 start /home/frankbria/projects/codeframe/ecosystem.staging.config.js
+ExecStop=/usr/bin/npx pm2 stop all
+ExecReload=/usr/bin/npx pm2 restart all
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

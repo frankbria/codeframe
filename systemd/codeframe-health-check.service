@@ -1,0 +1,11 @@
+[Unit]
+Description=CodeFRAME Staging Server Health Check
+Documentation=https://github.com/frankbria/codeframe
+
+[Service]
+Type=oneshot
+User=frankbria
+WorkingDirectory=/home/frankbria/projects/codeframe
+ExecStart=/home/frankbria/projects/codeframe/scripts/health-check.sh
+StandardOutput=append:/home/frankbria/projects/codeframe/logs/health-check.log
+StandardError=append:/home/frankbria/projects/codeframe/logs/health-check.log

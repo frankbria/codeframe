@@ -31,9 +31,19 @@ cp .env.staging.example .env.staging
 # Edit .env.staging and add your ANTHROPIC_API_KEY
 nano .env.staging
 
-# Start staging server
+# Option A: Manual start (test first)
 ./scripts/start-staging.sh
+
+# Option B: Install systemd service (auto-start on WSL boot)
+sudo ./scripts/install-systemd-service.sh
+
+# Option C: Install health monitoring (daily checks + auto-recovery)
+sudo ./scripts/install-health-check.sh
 ```
+
+### 1a. Windows Autostart (Optional)
+
+For automatic startup when Windows boots, see `scripts/WINDOWS_AUTOSTART_SETUP.md`
 
 ### 2. Access URLs
 
@@ -139,62 +149,162 @@ cd /home/frankbria/projects/codeframe
 ./scripts/start-staging.sh
 ```
 
-#### Option 2: WSL Startup Script (Recommended)
+#### Option 2: Windows Autostart (For Windows Host)
 
-Create a Windows Task Scheduler task that:
-1. Starts WSL on Windows boot
-2. Runs the startup script
+Automatically start the staging server when Windows boots.
 
-**PowerShell script** (`start-codeframe-staging.ps1` in Windows):
+**Prerequisites**: Windows 10/11 with WSL2
+
+**Quick Setup:**
+1. Copy PowerShell script to Windows:
+   ```powershell
+   # In PowerShell (Administrator)
+   New-Item -Path "C:\Scripts" -ItemType Directory -Force
+   Copy-Item "\\wsl$\Ubuntu\home\frankbria\projects\codeframe\scripts\start-staging-windows.ps1" -Destination "C:\Scripts\start-codeframe-staging.ps1"
+   ```
+
+2. Create Windows Scheduled Task (Option A - GUI):
+   - Open Task Scheduler (`Win+R` → `taskschd.msc`)
+   - Create Basic Task → Name: "CodeFRAME Staging Server"
+   - Trigger: "When the computer starts"
+   - Action: "Start a program"
+   - Program: `powershell.exe`
+   - Arguments: `-ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Scripts\start-codeframe-staging.ps1`
+   - Run whether user is logged on or not: ✓
+   - Run with highest privileges: ✓
+
+3. Create Windows Scheduled Task (Option B - PowerShell):
+   ```powershell
+   # In PowerShell (Administrator)
+   $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Scripts\start-codeframe-staging.ps1"
+   $Trigger = New-ScheduledTaskTrigger -AtStartup
+   $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+   $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+   Register-ScheduledTask -TaskName "CodeFRAME Staging Server" -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings
+   ```
+
+**Verify Setup:**
 ```powershell
-# Save this in C:\Scripts\start-codeframe-staging.ps1
-wsl -d Ubuntu -u frankbria bash -c "cd /home/frankbria/projects/codeframe && ./scripts/start-staging.sh"
+# Test manually (without reboot)
+Start-ScheduledTask -TaskName "CodeFRAME Staging Server"
+
+# Check log
+Get-Content C:\Scripts\codeframe-staging-startup.log -Tail 20
+
+# Verify services
+wsl -d Ubuntu -u frankbria bash -c "npx pm2 list"
 ```
 
-**Windows Task Scheduler Setup:**
-1. Open Task Scheduler
-2. Create Basic Task → Name: "CodeFRAME Staging Server"
-3. Trigger: "When the computer starts"
-4. Action: "Start a program"
-5. Program: `powershell.exe`
-6. Arguments: `-ExecutionPolicy Bypass -File C:\Scripts\start-codeframe-staging.ps1`
-7. Run whether user is logged on or not
+**Full documentation:** See `scripts/WINDOWS_AUTOSTART_SETUP.md`
 
-#### Option 3: systemd Service (Advanced)
+#### Option 3: systemd Service (Recommended for WSL with systemd)
 
-If WSL2 has systemd enabled:
+**Prerequisites**: WSL2 with systemd enabled
 
+**Check if systemd is available:**
 ```bash
-# Check if systemd is enabled
 systemctl --version
-
-# Create systemd service
-sudo nano /etc/systemd/system/codeframe-staging.service
 ```
 
-Service file content:
-```ini
-[Unit]
-Description=CodeFRAME Staging Server
-After=network.target
-
-[Service]
-Type=forking
-User=frankbria
-WorkingDirectory=/home/frankbria/projects/codeframe
-ExecStart=/usr/bin/npx pm2 start ecosystem.staging.config.js
-ExecStop=/usr/bin/npx pm2 stop all
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
+**Install the systemd service:**
 ```bash
-sudo systemctl enable codeframe-staging
-sudo systemctl start codeframe-staging
+# Run the installation script
+sudo ./scripts/install-systemd-service.sh
+```
+
+This will:
+- Copy `systemd/codeframe-staging.service` to `/etc/systemd/system/`
+- Enable the service to start on WSL boot
+- Reload systemd daemon
+
+**Manual installation (if needed):**
+```bash
+# Copy service file
+sudo cp systemd/codeframe-staging.service /etc/systemd/system/
+sudo chmod 644 /etc/systemd/system/codeframe-staging.service
+
+# Reload systemd and enable service
+sudo systemctl daemon-reload
+sudo systemctl enable codeframe-staging.service
+sudo systemctl start codeframe-staging.service
+```
+
+**Verify service is running:**
+```bash
 sudo systemctl status codeframe-staging
+```
+
+**Service Management:**
+```bash
+sudo systemctl start codeframe-staging    # Start service
+sudo systemctl stop codeframe-staging     # Stop service
+sudo systemctl restart codeframe-staging  # Restart service
+sudo systemctl disable codeframe-staging  # Disable autostart
+sudo journalctl -u codeframe-staging -f   # View logs
+```
+
+### Health Monitoring
+
+Automated health checking and auto-recovery for the staging server.
+
+#### Daily Health Checker
+
+The health checker monitors PM2 processes and service ports, automatically restarting if issues are detected.
+
+**What it checks:**
+- PM2 process manager is running
+- Backend and frontend processes are online
+- Port 8000 (backend) is responding
+- Port 3000 (frontend) is responding
+
+**Install systemd timer (daily checks at 2 AM + 15 min after boot):**
+```bash
+# Install health check timer
+sudo ./scripts/install-health-check.sh
+```
+
+**Manual health check:**
+```bash
+# Run health check now
+./scripts/health-check.sh
+
+# View health check log
+tail -f logs/health-check.log
+```
+
+**Health check configuration:**
+- Runs daily at 2:00 AM
+- Runs 15 minutes after system boot
+- Auto-restarts services if unhealthy (up to 3 attempts)
+- Logs all checks to `logs/health-check.log`
+
+**Management commands:**
+```bash
+# Trigger health check manually
+sudo systemctl start codeframe-health-check.service
+
+# Check timer status
+sudo systemctl status codeframe-health-check.timer
+
+# View next scheduled run
+systemctl list-timers codeframe-health-check.timer
+
+# Disable health checks
+sudo systemctl stop codeframe-health-check.timer
+sudo systemctl disable codeframe-health-check.timer
+
+# View health check logs
+sudo journalctl -u codeframe-health-check -f
+```
+
+**Alternative: Cron-based health check (if not using systemd timer):**
+```bash
+# Add to crontab
+crontab -e
+
+# Add this line for daily 2 AM checks
+0 2 * * * /home/frankbria/projects/codeframe/scripts/health-check.sh >> /home/frankbria/projects/codeframe/logs/health-check.log 2>&1
 ```
 
 ## Network Access Setup
