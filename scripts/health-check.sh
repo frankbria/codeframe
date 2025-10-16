@@ -32,7 +32,7 @@ log() {
 # Function to check if PM2 is running
 check_pm2() {
     cd "$PROJECT_ROOT"
-    if npx pm2 list 2>/dev/null | grep -q "online"; then
+    if pm2 list 2>/dev/null | grep -q "online"; then
         return 0
     else
         return 1
@@ -56,8 +56,8 @@ check_port() {
 # Function to check PM2 process status
 check_pm2_processes() {
     cd "$PROJECT_ROOT"
-    local backend_status=$(npx pm2 jlist 2>/dev/null | grep -o '"name":"codeframe-backend-staging","pm2_env":{"status":"[^"]*"' | grep -o 'online')
-    local frontend_status=$(npx pm2 jlist 2>/dev/null | grep -o '"name":"codeframe-frontend-staging","pm2_env":{"status":"[^"]*"' | grep -o 'online')
+    local backend_status=$(pm2 jlist 2>/dev/null | grep -o '"name":"codeframe-backend-staging","pm2_env":{"status":"[^"]*"' | grep -o 'online')
+    local frontend_status=$(pm2 jlist 2>/dev/null | grep -o '"name":"codeframe-frontend-staging","pm2_env":{"status":"[^"]*"' | grep -o 'online')
 
     if [ "$backend_status" == "online" ] && [ "$frontend_status" == "online" ]; then
         log "✓ PM2 processes are online"
@@ -75,8 +75,8 @@ restart_services() {
     cd "$PROJECT_ROOT"
 
     # Stop existing processes
-    npx pm2 stop all 2>/dev/null || true
-    npx pm2 delete all 2>/dev/null || true
+    pm2 stop all 2>/dev/null || true
+    pm2 delete all 2>/dev/null || true
 
     # Wait a moment
     sleep 5
@@ -85,7 +85,7 @@ restart_services() {
     if [ -f "$PROJECT_ROOT/scripts/start-staging.sh" ]; then
         bash "$PROJECT_ROOT/scripts/start-staging.sh" >> "$LOG_FILE" 2>&1
     else
-        npx pm2 start ecosystem.staging.config.js >> "$LOG_FILE" 2>&1
+        pm2 start ecosystem.staging.config.js >> "$LOG_FILE" 2>&1
     fi
 
     # Wait for services to start

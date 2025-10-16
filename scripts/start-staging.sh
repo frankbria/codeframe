@@ -24,28 +24,28 @@ if [ ! -f ".env.staging" ]; then
 fi
 
 # Check if PM2 is installed
-if [ ! -d "node_modules/pm2" ]; then
+if ! command -v pm2 &> /dev/null; then
     echo -e "${RED}Error: PM2 not installed${NC}"
-    echo "Run: npm install pm2"
+    echo "Run: sudo npm install -g pm2"
     exit 1
 fi
 
 # Start PM2 ecosystem
 echo -e "${BLUE}Starting PM2 processes...${NC}"
-npx pm2 start ecosystem.staging.config.js
+pm2 start ecosystem.staging.config.js
 
 # Show status
 echo -e "${GREEN}Staging server started successfully!${NC}"
 echo ""
-npx pm2 list
+pm2 list
 echo ""
 echo -e "${BLUE}Access URLs:${NC}"
 echo "Frontend: http://localhost:3000"
 echo "Backend:  http://localhost:8000"
 echo ""
 echo -e "${BLUE}Useful PM2 commands:${NC}"
-echo "  npx pm2 list         - Show running processes"
-echo "  npx pm2 logs         - View all logs"
-echo "  npx pm2 stop all     - Stop all processes"
-echo "  npx pm2 restart all  - Restart all processes"
-echo "  npx pm2 delete all   - Delete all processes"
+echo "  pm2 list         - Show running processes"
+echo "  pm2 logs         - View all logs"
+echo "  pm2 stop all     - Stop all processes"
+echo "  pm2 restart all  - Restart all processes"
+echo "  pm2 delete all   - Delete all processes"
