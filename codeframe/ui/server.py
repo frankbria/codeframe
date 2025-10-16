@@ -9,10 +9,12 @@ from typing import List, Dict, Any
 import asyncio
 import json
 import os
+import sqlite3
 
 from codeframe.core.project import Project
-from codeframe.core.models import TaskStatus, AgentMaturity
+from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus
 from codeframe.persistence.database import Database
+from codeframe.ui.models import ProjectCreateRequest, ProjectResponse
 
 
 @asynccontextmanager
@@ -92,6 +94,82 @@ async def list_projects():
     projects = app.state.db.list_projects()
 
     return {"projects": projects}
+
+
+@app.post("/api/projects", status_code=201, response_model=ProjectResponse)
+async def create_project(request: ProjectCreateRequest):
+    """Create a new CodeFRAME project.
+
+    Task: cf-11.2 - POST /api/projects endpoint
+
+    Args:
+        request: Project creation request with name and type
+
+    Returns:
+        Created project details with ID and timestamp
+
+    Raises:
+        HTTPException:
+            - 400 Bad Request: Invalid input (empty name)
+            - 409 Conflict: Project name already exists
+            - 500 Internal Server Error: Database operation failed
+    """
+    try:
+        # Validate input (additional check beyond Pydantic)
+        if not request.project_name or not request.project_name.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Project name cannot be empty"
+            )
+
+        # Check for duplicate project names
+        existing_projects = app.state.db.list_projects()
+        for project in existing_projects:
+            if project["name"].lower() == request.project_name.strip().lower():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Project with name '{request.project_name}' already exists"
+                )
+
+        # Create project in database with INIT status
+        project_id = app.state.db.create_project(
+            name=request.project_name.strip(),
+            status=ProjectStatus.INIT
+        )
+
+        # Retrieve created project to get all fields
+        created_project = app.state.db.get_project(project_id)
+
+        if not created_project:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to retrieve created project"
+            )
+
+        # Return created project
+        return ProjectResponse(
+            id=created_project["id"],
+            name=created_project["name"],
+            status=created_project["status"],
+            created_at=created_project["created_at"],
+            config=created_project.get("config")
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except sqlite3.IntegrityError as e:
+        # Handle database constraint violations
+        raise HTTPException(
+            status_code=409,
+            detail=f"Database constraint violation: {str(e)}"
+        )
+    except Exception as e:
+        # Handle any other database errors
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 @app.get("/api/projects/{project_id}/status")
