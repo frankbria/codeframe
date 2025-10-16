@@ -2,8 +2,8 @@
 
 import sqlite3
 from pathlib import Path
-from typing import List, Optional
-from codeframe.core.models import ProjectStatus, Task, TaskStatus
+from typing import List, Optional, Dict, Any
+from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity
 
 
 class Database:
@@ -15,6 +15,9 @@ class Database:
 
     def initialize(self) -> None:
         """Initialize database schema."""
+        # Create parent directories if needed
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         self._create_schema()
@@ -87,7 +90,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS memory (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
-                category TEXT CHECK(category IN ('pattern', 'decision', 'gotcha', 'preference')),
+                category TEXT CHECK(category IN ('pattern', 'decision', 'gotcha', 'preference', 'conversation')),
                 key TEXT,
                 value TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -190,3 +193,229 @@ class Database:
         """Close database connection."""
         if self.conn:
             self.conn.close()
+            self.conn = None
+
+    def __enter__(self) -> "Database":
+        """Context manager entry."""
+        if not self.conn:
+            self.initialize()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit."""
+        self.close()
+
+    def list_projects(self) -> List[Dict[str, Any]]:
+        """List all projects.
+
+        Returns:
+            List of project dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM projects ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def update_project(self, project_id: int, updates: Dict[str, Any]) -> int:
+        """Update project fields.
+
+        Args:
+            project_id: Project ID to update
+            updates: Dictionary of fields to update
+
+        Returns:
+            Number of rows affected
+        """
+        if not updates:
+            return 0
+
+        # Build UPDATE query dynamically
+        fields = []
+        values = []
+        for key, value in updates.items():
+            fields.append(f"{key} = ?")
+            # Handle enum values
+            if isinstance(value, ProjectStatus):
+                values.append(value.value)
+            else:
+                values.append(value)
+
+        values.append(project_id)
+
+        query = f"UPDATE projects SET {', '.join(fields)} WHERE id = ?"
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, values)
+        self.conn.commit()
+
+        return cursor.rowcount
+
+    def create_agent(
+        self,
+        agent_id: str,
+        agent_type: str,
+        provider: str,
+        maturity_level: AgentMaturity,
+    ) -> str:
+        """Create a new agent.
+
+        Args:
+            agent_id: Unique agent identifier
+            agent_type: Type of agent (lead, backend, frontend, test, review)
+            provider: AI provider (claude, gpt4)
+            maturity_level: Maturity level (D1-D4)
+
+        Returns:
+            Agent ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO agents (id, type, provider, maturity_level, status)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (agent_id, agent_type, provider, maturity_level.value, "idle"),
+        )
+        self.conn.commit()
+        return agent_id
+
+    def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Get agent by ID.
+
+        Args:
+            agent_id: Agent ID
+
+        Returns:
+            Agent dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def list_agents(self) -> List[Dict[str, Any]]:
+        """List all agents.
+
+        Returns:
+            List of agent dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM agents ORDER BY id")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def update_agent(self, agent_id: str, updates: Dict[str, Any]) -> int:
+        """Update agent fields.
+
+        Args:
+            agent_id: Agent ID to update
+            updates: Dictionary of fields to update
+
+        Returns:
+            Number of rows affected
+        """
+        if not updates:
+            return 0
+
+        fields = []
+        values = []
+        for key, value in updates.items():
+            fields.append(f"{key} = ?")
+            # Handle enum values
+            if isinstance(value, AgentMaturity):
+                values.append(value.value)
+            else:
+                values.append(value)
+
+        values.append(agent_id)
+
+        query = f"UPDATE agents SET {', '.join(fields)} WHERE id = ?"
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, values)
+        self.conn.commit()
+
+        return cursor.rowcount
+
+    def create_memory(
+        self,
+        project_id: int,
+        category: str,
+        key: str,
+        value: str,
+    ) -> int:
+        """Create a memory entry.
+
+        Args:
+            project_id: Project ID
+            category: Memory category (pattern, decision, gotcha, preference, conversation)
+            key: Memory key (role for conversation: user_1, assistant_1, etc.)
+            value: Memory value (content)
+
+        Returns:
+            Memory ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO memory (project_id, category, key, value)
+            VALUES (?, ?, ?, ?)
+            """,
+            (project_id, category, key, value),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_memory(self, memory_id: int) -> Optional[Dict[str, Any]]:
+        """Get memory entry by ID.
+
+        Args:
+            memory_id: Memory ID
+
+        Returns:
+            Memory dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM memory WHERE id = ?", (memory_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_project_memories(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get all memory entries for a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of memory dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM memory WHERE project_id = ? ORDER BY created_at",
+            (project_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_conversation(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get conversation history for a project.
+
+        Conversation messages are stored in memory table with category='conversation'.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of conversation message dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM memory
+            WHERE project_id = ? AND category = 'conversation'
+            ORDER BY created_at
+            """,
+            (project_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
