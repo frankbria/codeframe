@@ -2,10 +2,9 @@ module.exports = {
   apps: [
     {
       name: 'codeframe-backend-staging',
-      script: 'python',
-      args: '-m codeframe.ui.server',
+      script: '/home/frankbria/projects/codeframe/venv/bin/python',
+      args: '-m codeframe.ui.server --port 14200',
       cwd: '/home/frankbria/projects/codeframe',
-      interpreter: '/home/frankbria/projects/codeframe/venv/bin/python',
       env: {
         PYTHONPATH: '/home/frankbria/projects/codeframe',
         NODE_ENV: 'staging'
@@ -20,8 +19,8 @@ module.exports = {
     },
     {
       name: 'codeframe-frontend-staging',
-      script: 'npm',
-      args: 'run dev -- --host 0.0.0.0 --port 3000',
+      script: './node_modules/.bin/next',
+      args: 'dev -H 0.0.0.0 -p 14100',
       cwd: '/home/frankbria/projects/codeframe/web-ui',
       env: {
         NODE_ENV: 'staging'

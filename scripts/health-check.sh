@@ -15,8 +15,8 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_ROOT="/home/frankbria/projects/codeframe"
 LOG_FILE="$PROJECT_ROOT/logs/health-check.log"
-FRONTEND_PORT=3000
-BACKEND_PORT=8000
+FRONTEND_PORT=14100
+BACKEND_PORT=14200
 MAX_RETRIES=3
 RETRY_DELAY=10
 

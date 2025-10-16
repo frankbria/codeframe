@@ -530,4 +530,23 @@ def run_server(host: str = "0.0.0.0", port: int = 8080):
 
 
 if __name__ == "__main__":
-    run_server()
+    import argparse
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="CodeFRAME Status Server")
+    parser.add_argument(
+        "--host",
+        type=str,
+        default=os.environ.get("HOST", "0.0.0.0"),
+        help="Host to bind to (default: 0.0.0.0 or HOST env var)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("BACKEND_PORT", os.environ.get("PORT", "8080"))),
+        help="Port to bind to (default: 8080 or BACKEND_PORT/PORT env var)"
+    )
+
+    args = parser.parse_args()
+
+    run_server(host=args.host, port=args.port)
