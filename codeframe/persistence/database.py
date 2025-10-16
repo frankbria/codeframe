@@ -31,7 +31,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                status TEXT CHECK(status IN ('init', 'planning', 'active', 'paused', 'completed')),
+                status TEXT CHECK(status IN ('init', 'planning', 'running', 'active', 'paused', 'completed')),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )

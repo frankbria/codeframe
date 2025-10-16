@@ -28,6 +28,7 @@ class ProjectStatus(Enum):
     """Project lifecycle status."""
     INIT = "init"
     PLANNING = "planning"
+    RUNNING = "running"  # cf-10: Agent actively working on project
     ACTIVE = "active"
     PAUSED = "paused"
     COMPLETED = "completed"
