@@ -6,8 +6,8 @@ Complete guide for setting up and managing the CodeFRAME staging server on WSL f
 
 **Technology Stack:**
 - **Process Manager**: PM2 (manages both backend and frontend processes)
-- **Backend**: FastAPI Status Server (Python, port 8000)
-- **Frontend**: Vite/React Web UI (Node.js, port 3000)
+- **Backend**: FastAPI Status Server (Python, port 14200)
+- **Frontend**: Vite/React Web UI (Node.js, port 14100)
 - **Database**: SQLite (file-based, persistent)
 - **Platform**: WSL2 (Windows Subsystem for Linux)
 
@@ -48,13 +48,13 @@ For automatic startup when Windows boots, see `scripts/WINDOWS_AUTOSTART_SETUP.m
 ### 2. Access URLs
 
 **From Windows Host:**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+- Frontend: http://localhost:14100
+- Backend API: http://localhost:14200
+- API Docs: http://localhost:14200/docs
 
 **From LAN (other devices on network):**
-- Frontend: http://<WSL_IP>:3000
-- Backend API: http://<WSL_IP>:8000
+- Frontend: http://<WSL_IP>:14100
+- Backend API: http://<WSL_IP>:14200
 
 Get WSL IP: `ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1`
 
@@ -79,8 +79,8 @@ Create `.env.staging` from the template:
 # CodeFRAME Staging Environment Configuration
 ANTHROPIC_API_KEY=your-actual-api-key-here
 DATABASE_PATH=/home/frankbria/projects/codeframe/staging/.codeframe/state.db
-BACKEND_PORT=8000
-FRONTEND_PORT=3000
+BACKEND_PORT=14200
+FRONTEND_PORT=14100
 HOST=0.0.0.0
 NODE_ENV=staging
 PYTHON_ENV=staging
@@ -260,8 +260,8 @@ The health checker monitors PM2 processes and service ports, automatically resta
 **What it checks:**
 - PM2 process manager is running
 - Backend and frontend processes are online
-- Port 8000 (backend) is responding
-- Port 3000 (frontend) is responding
+- Port 14200 (backend) is responding
+- Port 14100 (frontend) is responding
 
 **Install systemd timer (daily checks at 2 AM + 15 min after boot):**
 ```bash
@@ -325,11 +325,11 @@ ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1
 
 Open PowerShell as Administrator and run:
 ```powershell
-# Allow port 3000 (Frontend)
-New-NetFirewallRule -DisplayName "CodeFRAME Frontend Staging" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
+# Allow port 14100 (Frontend)
+New-NetFirewallRule -DisplayName "CodeFRAME Frontend Staging" -Direction Inbound -LocalPort 14100 -Protocol TCP -Action Allow
 
-# Allow port 8000 (Backend)
-New-NetFirewallRule -DisplayName "CodeFRAME Backend Staging" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
+# Allow port 14200 (Backend)
+New-NetFirewallRule -DisplayName "CodeFRAME Backend Staging" -Direction Inbound -LocalPort 14200 -Protocol TCP -Action Allow
 ```
 
 3. **Port Forwarding from Windows to WSL (if needed):**
@@ -341,15 +341,15 @@ WSL2 uses a virtual network adapter, so ports are usually accessible directly. I
 wsl hostname -I
 
 # Forward ports
-netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectport=3000 connectaddress=<WSL_IP>
-netsh interface portproxy add v4tov4 listenport=8000 listenaddress=0.0.0.0 connectport=8000 connectaddress=<WSL_IP>
+netsh interface portproxy add v4tov4 listenport=14100 listenaddress=0.0.0.0 connectport=14100 connectaddress=<WSL_IP>
+netsh interface portproxy add v4tov4 listenport=14200 listenaddress=0.0.0.0 connectport=14200 connectaddress=<WSL_IP>
 
 # View port forwarding rules
 netsh interface portproxy show all
 
 # Delete port forwarding (if needed)
-netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0
-netsh interface portproxy delete v4tov4 listenport=8000 listenaddress=0.0.0.0
+netsh interface portproxy delete v4tov4 listenport=14100 listenaddress=0.0.0.0
+netsh interface portproxy delete v4tov4 listenport=14200 listenaddress=0.0.0.0
 ```
 
 ### Router Configuration
@@ -362,19 +362,19 @@ netsh interface portproxy delete v4tov4 listenport=8000 listenaddress=0.0.0.0
 
 **Option 2: Port Forwarding (for external access)**
 1. Forward external ports to Windows host IP
-2. Frontend: External 3000 → 192.168.1.100:3000
-3. Backend: External 8000 → 192.168.1.100:8000
+2. Frontend: External 14100 → 192.168.1.100:14100
+3. Backend: External 14200 → 192.168.1.100:14200
 
 ### Tailscale Setup
 
 **Windows Host Tailscale:**
 1. Install Tailscale on Windows
 2. WSL ports are automatically accessible via Windows Tailscale IP
-3. Access from any Tailscale device: http://<tailscale-ip>:3000
+3. Access from any Tailscale device: http://<tailscale-ip>:14100
 
 **Access URLs:**
-- Frontend: http://100.x.x.x:3000 (use your Tailscale IP)
-- Backend: http://100.x.x.x:8000
+- Frontend: http://100.x.x.x:14100 (use your Tailscale IP)
+- Backend: http://100.x.x.x:14200
 
 ## Testing the Staging Server
 
@@ -393,17 +393,17 @@ npx pm2 list
 2. **Backend API Test:**
 ```bash
 # Health check
-curl http://localhost:8000/health
+curl http://localhost:14200/health
 
 # List projects
-curl http://localhost:8000/api/projects
+curl http://localhost:14200/api/projects
 
 # API documentation
-curl http://localhost:8000/docs
+curl http://localhost:14200/docs
 ```
 
 3. **Frontend Access:**
-- Open browser: http://localhost:3000
+- Open browser: http://localhost:14100
 - Should see CodeFRAME dashboard
 - Should show any existing projects
 
@@ -416,7 +416,7 @@ sqlite3 staging/.codeframe/state.db ".tables"
 5. **Network Access Test:**
 ```bash
 # From another device on LAN
-curl http://<WSL_IP>:8000/health
+curl http://<WSL_IP>:14200/health
 # Should return: {"status":"ok"}
 ```
 
@@ -425,7 +425,7 @@ curl http://<WSL_IP>:8000/health
 Follow the manual testing checklist in `TESTING.md`:
 
 1. **Project Creation (cf-8, cf-11)**
-   - Create project via API: `curl -X POST http://localhost:8000/api/projects -H "Content-Type: application/json" -d '{"project_name": "test", "project_type": "python"}'`
+   - Create project via API: `curl -X POST http://localhost:14200/api/projects -H "Content-Type: application/json" -d '{"project_name": "test", "project_type": "python"}'`
    - Verify in dashboard
 
 2. **Lead Agent (cf-9)**
@@ -462,10 +462,10 @@ pm2 start ecosystem.staging.config.js --log-date-format="YYYY-MM-DD HH:mm:ss"
 **Issue**: "Address already in use" error
 **Solutions**:
 ```bash
-# Find process using port 3000
-lsof -i :3000
+# Find process using port 14100
+lsof -i :14100
 # OR
-ss -tulpn | grep :3000
+ss -tulpn | grep :14100
 
 # Kill process
 kill -9 <PID>
@@ -483,11 +483,11 @@ pm2 start ecosystem.staging.config.js
 ip addr show eth0
 
 # 2. Test from WSL
-curl http://localhost:3000
-curl http://localhost:8000
+curl http://localhost:14100
+curl http://localhost:14200
 
 # 3. Test from Windows PowerShell
-curl http://localhost:3000
+curl http://localhost:14100
 # If this fails, check Windows firewall
 
 # 4. Restart WSL networking
