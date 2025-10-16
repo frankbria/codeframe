@@ -48,6 +48,13 @@ htmlcov/
 # Environment
 .env
 .env.local
+.env.staging
+
+# Staging server
+/staging/
+/logs/
+.pm2/
+node_modules/
 
 # OS
 .DS_Store
