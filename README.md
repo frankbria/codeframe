@@ -119,15 +119,35 @@ CodeFRAME is an autonomous AI development system where multiple specialized agen
 ### Installation
 
 ```bash
-# Install CodeFRAME
-pip install codeframe
+# Clone the repository (for development)
+git clone https://github.com/frankbria/codeframe.git
+cd codeframe
 
-# Setup (interactive config for API keys)
-codeframe init --setup
+# Install Python dependencies
+pip install -e .
+
+# Setup environment variables
+cp .env.example .env
+
+# Edit .env and add your API keys:
+# ANTHROPIC_API_KEY=sk-ant-api03-...  (Required for Sprint 1)
+# OPENAI_API_KEY=sk-...               (Optional, for future sprints)
 
 # Verify installation
 codeframe --version
 ```
+
+### Environment Setup
+
+**Required for Sprint 1**:
+- `ANTHROPIC_API_KEY` - Get yours at [console.anthropic.com](https://console.anthropic.com/)
+
+**Optional** (for future sprints):
+- `OPENAI_API_KEY` - For GPT-4 agents
+- `DATABASE_PATH` - Custom database location (default: `.codeframe/state.db`)
+- `LOG_LEVEL` - Logging verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+See `.env.example` for all available configuration options.
 
 ### Create Your First Project
 
