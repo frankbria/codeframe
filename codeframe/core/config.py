@@ -1,10 +1,13 @@
 """Configuration management for CodeFRAME."""
 
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
 
 
 class ProviderConfig(BaseModel):
@@ -74,18 +77,127 @@ class ProjectConfig(BaseModel):
 
 
 class GlobalConfig(BaseSettings):
-    """Global CodeFRAME configuration."""
-    anthropic_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    twilio_account_sid: Optional[str] = None
-    twilio_auth_token: Optional[str] = None
+    """Global CodeFRAME configuration loaded from environment variables."""
 
+    # API Keys (REQUIRED for Sprint 1)
+    anthropic_api_key: Optional[str] = Field(None, alias="ANTHROPIC_API_KEY")
+    openai_api_key: Optional[str] = Field(None, alias="OPENAI_API_KEY")
+
+    # Notification services (optional, for future sprints)
+    twilio_account_sid: Optional[str] = Field(None, alias="TWILIO_ACCOUNT_SID")
+    twilio_auth_token: Optional[str] = Field(None, alias="TWILIO_AUTH_TOKEN")
+
+    # Database configuration
+    database_path: str = Field(".codeframe/state.db", alias="DATABASE_PATH")
+
+    # Status Server configuration
+    api_host: str = Field("0.0.0.0", alias="API_HOST")
+    api_port: int = Field(8080, alias="API_PORT")
+    cors_origins: str = Field("http://localhost:3000,http://localhost:5173", alias="CORS_ORIGINS")
+
+    # Logging configuration
+    log_level: str = Field("INFO", alias="LOG_LEVEL")
+    log_file: Optional[str] = Field(".codeframe/logs/codeframe.log", alias="LOG_FILE")
+
+    # Development flags
+    debug: bool = Field(False, alias="DEBUG")
+    hot_reload: bool = Field(False, alias="HOT_RELOAD")
+
+    # Provider defaults
     default_provider: str = "claude"
     default_model: str = "claude-sonnet-4"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        """Validate log level is one of the allowed values."""
+        allowed = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        v_upper = v.upper()
+        if v_upper not in allowed:
+            raise ValueError(f"LOG_LEVEL must be one of {allowed}, got: {v}")
+        return v_upper
+
+    @field_validator("api_port")
+    @classmethod
+    def validate_port(cls, v: int) -> int:
+        """Validate port is in valid range."""
+        if not (1 <= v <= 65535):
+            raise ValueError(f"API_PORT must be between 1 and 65535, got: {v}")
+        return v
+
+    def get_cors_origins_list(self) -> list[str]:
+        """Parse CORS origins from comma-separated string."""
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    def validate_required_for_sprint(self, sprint: int = 1) -> None:
+        """Validate that required configuration is present for a given sprint.
+
+        Args:
+            sprint: Sprint number (1-8)
+
+        Raises:
+            ValueError: If required configuration is missing
+        """
+        errors = []
+
+        if sprint >= 1:
+            # Sprint 1 requires Anthropic API key for Lead Agent
+            if not self.anthropic_api_key:
+                errors.append(
+                    "ANTHROPIC_API_KEY is required for Sprint 1 (Lead Agent with Claude).\n"
+                    "  Get your API key at: https://console.anthropic.com/\n"
+                    "  Then add it to your .env file (see .env.example)"
+                )
+
+        if sprint >= 4:
+            # Sprint 4+ may require OpenAI for multi-agent
+            if not self.openai_api_key and not self.anthropic_api_key:
+                errors.append(
+                    "At least one AI provider API key is required.\n"
+                    "  ANTHROPIC_API_KEY or OPENAI_API_KEY must be set."
+                )
+
+        if sprint >= 5:
+            # Sprint 5+ may require notification services
+            pass  # Notifications are optional, will use webhook fallback
+
+        if errors:
+            error_msg = "\n\n".join(errors)
+            raise ValueError(f"\n{'='*70}\nCONFIGURATION ERROR\n{'='*70}\n\n{error_msg}\n\n{'='*70}\n")
+
+    def ensure_directories(self) -> None:
+        """Ensure required directories exist."""
+        # Create database directory
+        db_path = Path(self.database_path)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create log directory if log file is specified
+        if self.log_file:
+            log_path = Path(self.log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def load_environment(env_file: str = ".env") -> None:
+    """Load environment variables from .env file.
+
+    Args:
+        env_file: Path to .env file (default: .env in current directory)
+    """
+    env_path = Path(env_file)
+    if env_path.exists():
+        load_dotenv(env_path)
+        # Also try project root .env if we're in a subdirectory
+        if not env_path.is_absolute():
+            root_env = Path.cwd() / ".env"
+            if root_env.exists() and root_env != env_path.absolute():
+                load_dotenv(root_env)
 
 
 class Config:
@@ -97,6 +209,9 @@ class Config:
         self.config_file = self.config_dir / "config.json"
         self._project_config: Optional[ProjectConfig] = None
         self._global_config: Optional[GlobalConfig] = None
+
+        # Load environment variables
+        load_environment()
 
     def load(self) -> ProjectConfig:
         """Load project configuration."""
@@ -120,10 +235,30 @@ class Config:
         self._project_config = config
 
     def get_global(self) -> GlobalConfig:
-        """Load global configuration."""
+        """Load global configuration from environment variables.
+
+        Returns:
+            GlobalConfig instance with values from environment
+
+        Raises:
+            ValueError: If required configuration is missing
+        """
         if not self._global_config:
             self._global_config = GlobalConfig()
         return self._global_config
+
+    def validate_for_sprint(self, sprint: int = 1) -> None:
+        """Validate configuration for a specific sprint.
+
+        Args:
+            sprint: Sprint number to validate for
+
+        Raises:
+            ValueError: If required configuration is missing
+        """
+        global_config = self.get_global()
+        global_config.validate_required_for_sprint(sprint)
+        global_config.ensure_directories()
 
     def set(self, key: str, value: Any) -> None:
         """Set configuration value using dot notation."""
