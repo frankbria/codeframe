@@ -19,7 +19,12 @@
       "Bash(python -m pytest:*)",
       "Bash(python3 -m pytest:*)",
       "Bash(pip3 install:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(pytest:*)",
+      "Bash(git stash:*)",
+      "mcp__serena__read_memory"
     ],
     "deny": [],
     "ask": []

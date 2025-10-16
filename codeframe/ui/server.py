@@ -1,5 +1,6 @@
 """FastAPI Status Server for CodeFRAME."""
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,14 +8,35 @@ from pathlib import Path
 from typing import List, Dict, Any
 import asyncio
 import json
+import os
 
 from codeframe.core.project import Project
 from codeframe.core.models import TaskStatus, AgentMaturity
+from codeframe.persistence.database import Database
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan - startup and shutdown."""
+    # Startup: Initialize database
+    db_path_str = os.environ.get("DATABASE_PATH", ".codeframe/state.db")
+    db_path = Path(db_path_str)
+
+    app.state.db = Database(db_path)
+    app.state.db.initialize()
+
+    yield
+
+    # Shutdown: Close database connection
+    if hasattr(app.state, "db") and app.state.db:
+        app.state.db.close()
+
 
 app = FastAPI(
     title="CodeFRAME Status Server",
     description="Real-time monitoring and control for CodeFRAME projects",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan
 )
 
 # CORS for development
@@ -339,14 +361,6 @@ async def broadcast_updates():
         }
 
         await manager.broadcast(update)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks."""
-    # TODO: Start background update broadcaster
-    # asyncio.create_task(broadcast_updates())
-    pass
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8080):

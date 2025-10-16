@@ -17,3 +17,4 @@ When initializing this project, update this file with:
 ## Next Steps
 
 Once the project is initialized with a tech stack and initial code, re-run `/init` to generate comprehensive guidance based on the actual codebase structure.
+- Always update AGILE_SPRINTS.md with each commit to remote to ensure it reflects the true state of the codebase.
