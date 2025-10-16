@@ -609,9 +609,13 @@ curl -X POST http://localhost:8080/api/projects \
 
 ---
 
-## Sprint 2: Socratic Discovery (Week 2)
+## Sprint 2: Socratic Discovery (Week 2) 🚧 IN PROGRESS
 
 **Goal**: Lead Agent conducts requirements gathering
+
+**📋 Detailed Plan**: See `docs/SPRINT2_PLAN.md` for comprehensive implementation details
+
+**📊 Status**: Started - All 15 tasks created in beads issue tracker (cf-14 through cf-17)
 
 **User Story**: As a developer, I want the Lead Agent to ask me questions about my project, generate a PRD, and show it in the dashboard.
 
@@ -643,29 +647,24 @@ Lead: "✅ I've created your PRD. Generating tasks now..."
 ```
 
 **Implementation Tasks**:
-- [ ] **cf-12**: Implement Socratic questioning system (P0)
-  - Predefined question flow
-  - Context-aware follow-ups
-  - Store Q&A in memory table
-  - Demo: Lead asks questions, remembers answers
+- [ ] **cf-14**: Chat Interface & API Integration (P0)
+  - [ ] cf-14.1: Backend Chat API Endpoints
+  - [ ] cf-14.2: Frontend Chat Component
+  - [ ] cf-14.3: Message Persistence
 
-- [ ] **cf-13**: Generate PRD from discovery (P0)
-  - Claude generates PRD from Q&A
-  - Save to .codeframe/memory/prd.md
-  - Display in dashboard
-  - Demo: PRD appears after discovery
+- [ ] **cf-15**: Socratic Discovery Flow (P0)
+  - [ ] cf-15.1: Discovery Question Framework
+  - [ ] cf-15.2: Answer Capture & Structuring
+  - [ ] cf-15.3: Lead Agent Discovery Integration
 
-- [ ] **cf-14**: Task decomposition (basic) (P0)
-  - Claude breaks PRD into tasks
-  - Create task records in DB
-  - Show in dashboard task list
-  - Demo: Tasks appear with dependencies
+- [ ] **cf-16**: PRD Generation & Task Decomposition (P0)
+  - [ ] cf-16.1: PRD Generation from Discovery
+  - [ ] cf-16.2: Basic Task Decomposition
+  - [ ] cf-16.3: PRD & Task Dashboard Display
 
-- [ ] **cf-15**: Dashboard memory/PRD viewer (P1)
-  - View PRD in UI
-  - View task list with dependencies
-  - Visualize task DAG (simple)
-  - Demo: Click "View PRD" shows document
+- [ ] **cf-17**: Discovery State Management (P0)
+  - [ ] cf-17.1: Project Phase Tracking
+  - [ ] cf-17.2: Progress Indicators
 
 **Definition of Done**:
 - ✅ Lead Agent asks discovery questions
