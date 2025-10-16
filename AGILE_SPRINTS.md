@@ -80,7 +80,7 @@ codeframe start
   - **Implementation**: TDD approach (RED-GREEN-REFACTOR)
   - **Tests**: 10 comprehensive test cases (100% pass rate)
   - **Coverage**: 4 test classes - initialization, access, error handling, integration
-  - **Commit**: [pending] - "feat(cf-8.2): Initialize database on server startup with TDD"
+  - **Commit**: c4a92b6 - "feat(cf-8.2): Initialize database on server startup using TDD"
 
 - [ ] **cf-8.3**: Wire Status Server endpoints to database
   - `GET /api/projects` → `database.list_projects()`
@@ -488,7 +488,7 @@ curl -X POST http://localhost:8080/api/projects \
 
 - **cf-8.2**: Database Initialization on Server Startup (TDD)
   - Status: ✅ Complete
-  - Commit: [pending]
+  - Commit: c4a92b6
   - Tests: 10 test cases (100% pass rate)
   - Coverage: 4 test classes (initialization, access, error handling, integration)
   - Implementation: FastAPI lifespan event, thread-safe SQLite, environment config
