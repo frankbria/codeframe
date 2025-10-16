@@ -483,38 +483,55 @@ codeframe chat "<message>"        # Talk to Lead Agent
 
 ## Development Roadmap
 
-### ✅ Phase 1: Core Orchestration (Weeks 1-3)
+**Development follows an Agile sprint approach with functional demos at each milestone.**
+See [AGILE_SPRINTS.md](./AGILE_SPRINTS.md) for detailed sprint planning and demo scripts.
 
-- [x] Lead Agent with Socratic discovery
-- [x] SQLite state management
-- [x] Task queue with dependencies
-- [x] Single worker agent (Backend)
-- [x] Flash save/recovery
-- [x] CLI commands
+### ✅ Sprint 0: Foundation (Complete)
 
-### 🚧 Phase 2: Multi-Agent Execution (Weeks 4-5)
+- [x] Comprehensive specification (CODEFRAME_SPEC.md)
+- [x] Architecture and README
+- [x] Python package structure
+- [x] Core models and database schema
+- [x] FastAPI Status Server with WebSocket
+- [x] Next.js web dashboard
+- [x] CLI with typer + rich
 
-- [ ] Frontend + Test agents
-- [ ] Parallel task execution
-- [ ] Git auto-commits
-- [ ] Blocker escalation
-- [ ] Test runner integration
-- [ ] Self-correction loops
+### 🚧 Sprint 1: Hello CodeFRAME (Week 1) - In Progress
 
-### 📋 Phase 3: Status Server (Weeks 6-7)
+**Demo**: `codeframe init` → see in dashboard → chat with Lead Agent using real Claude API
 
-- [ ] FastAPI backend
-- [ ] Web UI dashboard
-- [ ] Chat interface
-- [ ] Real-time updates (WebSocket)
-- [ ] Tailscale setup
+- [ ] cf-8: Connect Status Server to Database
+- [ ] cf-9: Implement basic Lead Agent with Anthropic SDK
+- [ ] cf-10: Connect Project.start() to Lead Agent
+- [ ] cf-11: Add project creation to Status Server API
 
-### 🎯 Phase 4: Production (Weeks 8-9)
+### 📋 Sprint 2: Socratic Discovery (Week 2)
 
-- [ ] Multi-channel notifications
-- [ ] Review Agent
-- [ ] Metrics & monitoring
-- [ ] Documentation
+**Demo**: Lead Agent asks 3 questions → user answers → generates basic PRD
+
+### 📋 Sprint 3: Single Agent Execution (Week 3)
+
+**Demo**: Agent creates file → test fails → agent fixes → test passes (self-correction)
+
+### 📋 Sprint 4: Multi-Agent Coordination (Week 4)
+
+**Demo**: 2 agents work on different files simultaneously → status shows both
+
+### 📋 Sprint 5: Human in the Loop (Week 5)
+
+**Demo**: Agent hits blocker → notification sent → user answers in UI → agent continues
+
+### 📋 Sprint 6: Context Management (Week 6)
+
+**Demo**: Virtual Project context tiers items → shows token savings in dashboard
+
+### 📋 Sprint 7: Agent Maturity (Week 7)
+
+**Demo**: Agent completes tasks → metrics improve → maturity level increases → dashboard reflects
+
+### 🎯 Sprint 8: Review & Polish (Week 8)
+
+**Demo**: Complete end-to-end workflow with all features integrated
 
 ### 🔮 Future
 
