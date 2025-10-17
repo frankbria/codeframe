@@ -58,6 +58,11 @@ export const chatApi = {
       `/api/projects/${projectId}/chat`,
       { message }
     ),
+  getHistory: (projectId: number, limit?: number, offset?: number) =>
+    api.get<{ messages: { role: string; content: string; timestamp: string }[] }>(
+      `/api/projects/${projectId}/chat/history`,
+      { params: { limit, offset } }
+    ),
 };
 
 export default api;
