@@ -9,6 +9,7 @@ import useSWR from 'swr';
 import { projectsApi, agentsApi, blockersApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
 import type { Project, Agent, Blocker, ActivityItem, WebSocketMessage } from '@/types';
+import ChatInterface from './ChatInterface';
 
 interface DashboardProps {
   projectId: number;
@@ -16,6 +17,7 @@ interface DashboardProps {
 
 export default function Dashboard({ projectId }: DashboardProps) {
   const [wsConnected, setWsConnected] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   // Fetch project status
   const { data: projectData, mutate: mutateProject } = useSWR(
@@ -74,7 +76,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                CodeFRAME - {projectData.project_name}
+                CodeFRAME - {projectData.name}
               </h1>
               <div className="flex items-center gap-4 mt-1">
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -92,8 +94,15 @@ export default function Dashboard({ projectId }: DashboardProps) {
               </div>
             </div>
             <div className="flex gap-2">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-                Chat with Lead
+              <button
+                onClick={() => setShowChat(!showChat)}
+                className={`px-4 py-2 rounded-md transition-colors ${
+                  showChat
+                    ? 'bg-blue-700 text-white hover:bg-blue-800'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {showChat ? 'Hide Chat' : 'Chat with Lead'}
               </button>
               <button className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
                 Pause
@@ -104,6 +113,16 @@ export default function Dashboard({ projectId }: DashboardProps) {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Chat Interface (cf-14.2) */}
+        {showChat && (
+          <div className="mb-6" style={{ height: '500px' }}>
+            <ChatInterface
+              projectId={projectId}
+              agentStatus={agentsData?.find((a) => a.type === 'lead')?.status}
+            />
+          </div>
+        )}
+
         {/* Progress Section */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Progress</h2>
