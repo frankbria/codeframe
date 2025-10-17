@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity
+from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue
 
 
 class Database:
@@ -37,16 +37,43 @@ class Database:
             )
         """)
 
-        # Tasks table
+        # Issues table (cf-16.2: Hierarchical Issue/Task model)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS issues (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id),
+                issue_number TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
+                priority INTEGER CHECK(priority BETWEEN 0 AND 4),
+                workflow_step INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                UNIQUE(project_id, issue_number)
+            )
+        """)
+
+        # Create index for issues
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_issues_number
+            ON issues(project_id, issue_number)
+        """)
+
+        # Tasks table (enhanced for Issue relationship)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
+                issue_id INTEGER REFERENCES issues(id),
+                task_number TEXT,
+                parent_issue_number TEXT,
                 title TEXT NOT NULL,
                 description TEXT,
                 status TEXT CHECK(status IN ('pending', 'assigned', 'in_progress', 'blocked', 'completed', 'failed')),
                 assigned_to TEXT,
                 depends_on TEXT,
+                can_parallelize BOOLEAN DEFAULT FALSE,
                 priority INTEGER CHECK(priority BETWEEN 0 AND 4),
                 workflow_step INTEGER,
                 requires_mcp BOOLEAN DEFAULT FALSE,
@@ -55,6 +82,12 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP
             )
+        """)
+
+        # Create index for tasks by parent issue number
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tasks_issue_number
+            ON tasks(parent_issue_number)
         """)
 
         # Agents table
@@ -158,6 +191,67 @@ class Database:
         cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    def create_issue(self, issue: Issue) -> int:
+        """Create a new issue.
+
+        Args:
+            issue: Issue object to create
+
+        Returns:
+            Created issue ID
+
+        Raises:
+            sqlite3.IntegrityError: If issue_number already exists for project
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO issues (
+                project_id, issue_number, title, description,
+                status, priority, workflow_step
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            issue.project_id,
+            issue.issue_number,
+            issue.title,
+            issue.description,
+            issue.status.value if hasattr(issue.status, 'value') else issue.status,
+            issue.priority,
+            issue.workflow_step,
+        ))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_issue(self, issue_id: int) -> Optional[Dict[str, Any]]:
+        """Get issue by ID.
+
+        Args:
+            issue_id: Issue ID
+
+        Returns:
+            Issue dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM issues WHERE id = ?", (issue_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_project_issues(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get all issues for a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of issue dictionaries ordered by issue_number
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM issues WHERE project_id = ? ORDER BY issue_number",
+            (project_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
 
     def create_task(self, task: Task) -> int:
         """Create a new task."""
@@ -414,6 +508,214 @@ class Database:
             SELECT * FROM memory
             WHERE project_id = ? AND category = 'conversation'
             ORDER BY id
+            """,
+            (project_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    # Additional Issue methods (cf-16.2)
+    def list_issues(self, project_id: int) -> List[Dict[str, Any]]:
+        """Alias for get_project_issues for test compatibility."""
+        return self.get_project_issues(project_id)
+
+    def update_issue(self, issue_id: int, updates: Dict[str, Any]) -> int:
+        """Update issue fields.
+
+        Args:
+            issue_id: Issue ID to update
+            updates: Dictionary of fields to update
+
+        Returns:
+            Number of rows affected
+        """
+        if not updates:
+            return 0
+
+        fields = []
+        values = []
+        for key, value in updates.items():
+            fields.append(f"{key} = ?")
+            values.append(value)
+
+        values.append(issue_id)
+
+        query = f"UPDATE issues SET {', '.join(fields)} WHERE id = ?"
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, values)
+        self.conn.commit()
+
+        return cursor.rowcount
+
+    def create_task_with_issue(
+        self,
+        project_id: int,
+        issue_id: int,
+        task_number: str,
+        parent_issue_number: str,
+        title: str,
+        description: str,
+        status: TaskStatus,
+        priority: int,
+        workflow_step: int,
+        can_parallelize: bool,
+        requires_mcp: bool = False,
+    ) -> int:
+        """Create a new task with issue relationship.
+
+        Args:
+            project_id: Project ID
+            issue_id: Parent issue ID
+            task_number: Hierarchical task number (e.g., "1.5.1", "2.3.2")
+            parent_issue_number: Parent issue number (e.g., "1.5")
+            title: Task title
+            description: Task description
+            status: Task status
+            priority: Task priority (0-4, 0 = highest)
+            workflow_step: Workflow step (1-15)
+            can_parallelize: Whether task can run in parallel
+            requires_mcp: Whether task requires MCP tools
+
+        Returns:
+            Task ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tasks (
+                project_id, issue_id, task_number, parent_issue_number,
+                title, description, status, priority, workflow_step,
+                can_parallelize, requires_mcp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                issue_id,
+                task_number,
+                parent_issue_number,
+                title,
+                description,
+                status.value,
+                priority,
+                workflow_step,
+                can_parallelize,
+                requires_mcp,
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_tasks_by_issue(self, issue_id: int) -> List[Dict[str, Any]]:
+        """Get all tasks for an issue.
+
+        Args:
+            issue_id: Issue ID
+
+        Returns:
+            List of task dictionaries ordered by task_number
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM tasks WHERE issue_id = ? ORDER BY task_number",
+            (issue_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_tasks_by_parent_issue_number(
+        self, parent_issue_number: str
+    ) -> List[Dict[str, Any]]:
+        """Get all tasks by parent issue number.
+
+        Args:
+            parent_issue_number: Parent issue number (e.g., "1.5")
+
+        Returns:
+            List of task dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM tasks WHERE parent_issue_number = ? ORDER BY task_number",
+            (parent_issue_number,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_issue_with_task_counts(self, issue_id: int) -> Optional[Dict[str, Any]]:
+        """Get issue with count of associated tasks.
+
+        Args:
+            issue_id: Issue ID
+
+        Returns:
+            Issue dictionary with task_count field, or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT i.*, COUNT(t.id) as task_count
+            FROM issues i
+            LEFT JOIN tasks t ON t.issue_id = i.id
+            WHERE i.id = ?
+            GROUP BY i.id
+            """,
+            (issue_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def get_issue_completion_status(self, issue_id: int) -> Dict[str, Any]:
+        """Calculate issue completion based on task statuses.
+
+        Args:
+            issue_id: Issue ID
+
+        Returns:
+            Dictionary with total_tasks, completed_tasks, completion_percentage
+        """
+        cursor = self.conn.cursor()
+
+        # Get total task count
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE issue_id = ?", (issue_id,))
+        total_tasks = cursor.fetchone()[0]
+
+        # Get completed task count
+        cursor.execute(
+            "SELECT COUNT(*) FROM tasks WHERE issue_id = ? AND status = ?",
+            (issue_id, "completed"),
+        )
+        completed_tasks = cursor.fetchone()[0]
+
+        # Calculate percentage
+        completion_percentage = (
+            (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
+        )
+
+        return {
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "completion_percentage": completion_percentage,
+        }
+
+    def list_issues_with_progress(self, project_id: int) -> List[Dict[str, Any]]:
+        """List issues with their progress metrics.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of issue dictionaries with task_count field
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT i.*, COUNT(t.id) as task_count
+            FROM issues i
+            LEFT JOIN tasks t ON t.issue_id = i.id
+            WHERE i.project_id = ?
+            GROUP BY i.id
+            ORDER BY i.issue_number
             """,
             (project_id,),
         )

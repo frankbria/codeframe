@@ -48,16 +48,44 @@ class ContextTier(Enum):
 
 
 @dataclass
+class Issue:
+    """Represents a high-level work item that contains multiple tasks.
+
+    Issues are numbered hierarchically (e.g., "1.5", "2.3") and can parallelize
+    with other issues at the same level. Each issue contains sequential tasks.
+    """
+    id: Optional[int] = None
+    project_id: Optional[int] = None
+    issue_number: str = ""  # e.g., "1.5" or "2.1"
+    title: str = ""
+    description: str = ""
+    status: TaskStatus = TaskStatus.PENDING
+    priority: int = 2  # 0-4, 0 = highest
+    workflow_step: int = 1
+    created_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+
+
+@dataclass
 class Task:
-    """Represents a development task."""
-    id: int
-    project_id: int
-    title: str
-    description: str
+    """Represents an atomic development task within an issue.
+
+    Tasks are numbered hierarchically (e.g., "1.5.1", "1.5.2") and are
+    always sequential within their parent issue (cannot parallelize).
+    Each task depends on the previous task in the sequence.
+    """
+    id: Optional[int] = None
+    project_id: Optional[int] = None
+    issue_id: Optional[int] = None  # Foreign key to parent issue
+    task_number: str = ""  # e.g., "1.5.3"
+    parent_issue_number: str = ""  # e.g., "1.5"
+    title: str = ""
+    description: str = ""
     status: TaskStatus = TaskStatus.PENDING
     assigned_to: Optional[str] = None
-    depends_on: List[int] = field(default_factory=list)
-    priority: int = 2  # 0-4, 0 = highest
+    depends_on: str = ""  # Previous task number (e.g., "1.5.2")
+    can_parallelize: bool = False  # Always FALSE within issue
+    priority: int = 2  # 0-4, 0 = highest (inherited from issue)
     workflow_step: int = 1  # Maps to 15-step workflow
     requires_mcp: bool = False
     estimated_tokens: int = 0
