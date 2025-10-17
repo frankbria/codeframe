@@ -56,6 +56,9 @@ htmlcov/
 .pm2/
 node_modules/
 
+# Git worktrees
+.worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
