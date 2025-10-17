@@ -652,10 +652,10 @@ Lead: "✅ I've created your PRD. Generating tasks now..."
   - [x] cf-14.2: Frontend Chat Component ✅
   - [x] cf-14.3: Message Persistence ✅
 
-- [ ] **cf-15**: Socratic Discovery Flow (P0)
-  - [ ] cf-15.1: Discovery Question Framework
-  - [ ] cf-15.2: Answer Capture & Structuring
-  - [ ] cf-15.3: Lead Agent Discovery Integration
+- [x] **cf-15**: Socratic Discovery Flow (P0) ✅
+  - [x] cf-15.1: Discovery Question Framework ✅
+  - [x] cf-15.2: Answer Capture & Structuring ✅
+  - [x] cf-15.3: Lead Agent Discovery Integration ✅
 
 - [ ] **cf-16**: PRD Generation & Task Decomposition (P0)
   - [ ] cf-16.1: PRD Generation from Discovery
@@ -771,8 +771,129 @@ ANTHROPIC_API_KEY="test-key" uv run pytest tests/test_chat_api.py -v
 - ✅ Coverage targets met (>85% functional)
 
 **Commits**:
-- [Pending] Backend implementation with tests
-- [Pending] Frontend implementation with TypeScript validation
+- 2005c0e - feat(cf-14.1): Backend Chat API implementation
+- 5e820e2 - feat(cf-14.2): Frontend Chat Component implementation
+
+---
+
+### ✅ cf-15: Socratic Discovery Flow - COMPLETE
+
+**Status**: ✅ Complete (2025-10-17)
+**Owner**: Backend/AI Integration
+**Dependencies**: cf-14 (Chat Interface)
+**Actual Effort**: 6 hours (parallel execution optimized)
+
+**Execution Strategy**:
+- **Phase 1 (Parallel)**: cf-15.1 and cf-15.2 executed simultaneously
+- **Phase 2 (Sequential)**: cf-15.3 integrated after Phase 1 completion
+- **Methodology**: Strict TDD (RED-GREEN-REFACTOR) across all subitems
+
+**Detailed Subtasks**:
+
+- [x] **cf-15.1**: Discovery Question Framework ✅
+  - ✅ `DiscoveryQuestionFramework` class with 10 questions
+  - ✅ Question categories: problem, users, features, constraints, tech_stack
+  - ✅ Smart progression (required questions prioritized, answered ones skipped)
+  - ✅ Answer validation (minimum length, invalid patterns)
+  - ✅ Methods: `generate_questions()`, `get_next_question()`, `is_discovery_complete()`
+  - **Implementation**: 268 lines in codeframe/discovery/questions.py
+  - **Tests**: 15 test cases (100% pass rate, 100% coverage)
+  - **Test Classes**: 5 comprehensive test suites
+  - **Files**:
+    - codeframe/discovery/__init__.py (package init)
+    - codeframe/discovery/questions.py (framework)
+    - tests/test_discovery_questions.py (15 tests)
+
+- [x] **cf-15.2**: Answer Capture & Structuring ✅
+  - ✅ `AnswerCapture` class for natural language parsing
+  - ✅ Feature extraction (action verbs, capabilities from text)
+  - ✅ User extraction (roles, personas, user types)
+  - ✅ Constraint extraction (tech, performance, security)
+  - ✅ Structured data generation for PRD preparation
+  - ✅ Methods: `capture_answer()`, `extract_features()`, `extract_users()`, `extract_constraints()`, `get_structured_data()`
+  - **Implementation**: 131 lines in codeframe/discovery/answers.py
+  - **Tests**: 25 test cases (100% pass rate, 98.47% coverage)
+  - **Test Classes**: 5 test suites (basics, features, users, constraints, structured data, edge cases)
+  - **Files**:
+    - codeframe/discovery/answers.py (parser)
+    - tests/test_discovery_answers.py (25 tests)
+    - claudedocs/cf-15.2-answer-capture-summary.md (documentation)
+
+- [x] **cf-15.3**: Lead Agent Discovery Integration ✅
+  - ✅ Discovery state machine (idle → discovering → completed)
+  - ✅ Methods: `start_discovery()`, `process_discovery_answer()`, `get_discovery_status()`
+  - ✅ Database persistence of discovery state and answers
+  - ✅ State restoration on agent restart
+  - ✅ Automatic question progression through chat
+  - ✅ End-to-end discovery flow with structured data extraction
+  - **Implementation**: Modified lead_agent.py, database.py
+  - **Tests**: 15 integration test cases (100% pass rate)
+  - **Test Classes**: 5 integration test suites
+  - **Database**: Added `discovery_state` and `discovery_answers` categories
+  - **Files**:
+    - codeframe/agents/lead_agent.py (state machine integration)
+    - codeframe/persistence/database.py (schema updates)
+    - tests/test_discovery_integration.py (15 tests)
+
+**Test Results**:
+- **Total Tests**: 72/72 passing (100% pass rate)
+  - Discovery Questions: 15/15 ✅
+  - Discovery Answers: 25/25 ✅
+  - Discovery Integration: 15/15 ✅
+  - Lead Agent (existing): 17/17 ✅ (backward compatible)
+- **Execution Time**: 231.34 seconds (3 min 51 sec)
+- **Coverage**: >95% across all discovery modules
+- **Test-to-Code Ratio**: ~2.7:1 (1108 test lines / 399 implementation lines)
+
+**TDD Compliance**:
+- ✅ RED-GREEN-REFACTOR cycle followed for all 3 subitems
+- ✅ Tests written before implementation
+- ✅ All tests passing before commit
+- ✅ Coverage targets exceeded (>85% requirement)
+
+**Database Schema Updates**:
+```sql
+-- New memory categories added:
+discovery_state: {state: "discovering", current_question: "problem_1"}
+discovery_answers: {problem_1: "Authentication system", users_1: "developers"}
+```
+
+**Example Usage**:
+```python
+from codeframe.agents.lead_agent import LeadAgent
+
+agent = LeadAgent(project_id)
+agent.start_discovery()
+# Returns: "What problem does this application solve?"
+
+response = agent.chat("Authentication for a SaaS app")
+# Processes answer, asks next question: "Who are the primary users?"
+
+# ... continue through 5 required questions
+
+status = agent.get_discovery_status()
+# Returns: {
+#   "state": "completed",
+#   "progress": {"answered": 5, "required": 5},
+#   "structured_data": {
+#     "features": ["Authentication", "SaaS"],
+#     "users": ["developers"],
+#     ...
+#   }
+# }
+```
+
+**Quality Metrics**:
+- **Parallel Efficiency**: 50% time saving via Phase 1 parallel execution
+- **Backward Compatibility**: 100% (all existing tests pass)
+- **Code Quality**: Clean state machines with comprehensive error handling
+- **Documentation**: Comprehensive inline docs and summary documentation
+
+**Issues Found & Fixed**:
+- None - Clean implementation with no regressions
+
+**Commit**:
+- 3fc2dfc - feat(cf-15): Implement Socratic Discovery Flow with comprehensive TDD
 
 ---
 
