@@ -9,7 +9,10 @@ import useSWR from 'swr';
 import { projectsApi, agentsApi, blockersApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
 import type { Project, Agent, Blocker, ActivityItem, WebSocketMessage } from '@/types';
+import type { PRDResponse, IssuesResponse } from '@/types/api';
 import ChatInterface from './ChatInterface';
+import PRDModal from './PRDModal';
+import TaskTreeView from './TaskTreeView';
 
 interface DashboardProps {
   projectId: number;
@@ -18,6 +21,7 @@ interface DashboardProps {
 export default function Dashboard({ projectId }: DashboardProps) {
   const [wsConnected, setWsConnected] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showPRD, setShowPRD] = useState(false);
 
   // Fetch project status
   const { data: projectData, mutate: mutateProject } = useSWR(
@@ -41,6 +45,20 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const { data: activityData } = useSWR(
     `/projects/${projectId}/activity`,
     () => activityApi.list(projectId, 10).then((res) => res.data.activity)
+  );
+
+  // Fetch PRD data (cf-26)
+  const { data: prdData } = useSWR<PRDResponse>(
+    `/projects/${projectId}/prd`,
+    () => projectsApi.getPRD(projectId).then((res) => res.data),
+    { shouldRetryOnError: false }
+  );
+
+  // Fetch issues/tasks data (cf-26)
+  const { data: issuesData } = useSWR<IssuesResponse>(
+    `/projects/${projectId}/issues`,
+    () => projectsApi.getIssues(projectId).then((res) => res.data),
+    { shouldRetryOnError: false }
   );
 
   // WebSocket connection
@@ -94,6 +112,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
               </div>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={() => setShowPRD(true)}
+                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                View PRD
+              </button>
               <button
                 onClick={() => setShowChat(!showChat)}
                 className={`px-4 py-2 rounded-md transition-colors ${
@@ -171,6 +195,19 @@ export default function Dashboard({ projectId }: DashboardProps) {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Issues & Tasks Section (cf-26) */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">🎯 Issues & Tasks</h2>
+            {issuesData && (
+              <span className="text-sm text-gray-500">
+                {issuesData.total_issues} issues, {issuesData.total_tasks} tasks
+              </span>
+            )}
+          </div>
+          <TaskTreeView issues={issuesData?.issues || []} />
         </div>
 
         {/* Agents Section */}
@@ -290,6 +327,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
           </div>
         </div>
       </main>
+
+      {/* PRD Modal (cf-26) */}
+      <PRDModal
+        isOpen={showPRD}
+        onClose={() => setShowPRD(false)}
+        prdData={prdData || null}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@
 
 import axios from 'axios';
 import type { Project, Agent, Task, Blocker, ActivityItem } from '@/types';
+import type { PRDResponse, IssuesResponse } from '@/types/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -22,6 +23,12 @@ export const projectsApi = {
     api.post(`/api/projects/${projectId}/pause`),
   resume: (projectId: number) =>
     api.post(`/api/projects/${projectId}/resume`),
+  getPRD: (projectId: number | string) =>
+    api.get<PRDResponse>(`/api/projects/${projectId}/prd`),
+  getIssues: (projectId: number | string, cursor?: string) =>
+    api.get<IssuesResponse>(`/api/projects/${projectId}/issues`, {
+      params: cursor ? { cursor } : {},
+    }),
 };
 
 export const agentsApi = {
