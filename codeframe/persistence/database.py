@@ -123,10 +123,11 @@ class Database:
             CREATE TABLE IF NOT EXISTS memory (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
-                category TEXT CHECK(category IN ('pattern', 'decision', 'gotcha', 'preference', 'conversation', 'discovery_state', 'discovery_answers')),
+                category TEXT CHECK(category IN ('pattern', 'decision', 'gotcha', 'preference', 'conversation', 'discovery_state', 'discovery_answers', 'prd')),
                 key TEXT,
                 value TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -721,3 +722,196 @@ class Database:
         )
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
+
+    # PRD methods (cf-26)
+    def get_prd(self, project_id: int) -> Optional[Dict[str, Any]]:
+        """Get PRD for a project.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dictionary with prd_content, generated_at, updated_at or None if not found
+        """
+        from datetime import datetime
+
+        cursor = self.conn.cursor()
+
+        # Get PRD content
+        cursor.execute(
+            """
+            SELECT value, created_at, updated_at
+            FROM memory
+            WHERE project_id = ? AND category = 'prd' AND key = 'prd_content'
+            """,
+            (project_id,),
+        )
+        prd_row = cursor.fetchone()
+
+        if not prd_row:
+            return None
+
+        # Get generated_at timestamp
+        cursor.execute(
+            """
+            SELECT value
+            FROM memory
+            WHERE project_id = ? AND category = 'prd' AND key = 'generated_at'
+            """,
+            (project_id,),
+        )
+        generated_row = cursor.fetchone()
+
+        # Convert SQLite timestamps to RFC 3339 format
+        def ensure_rfc3339(timestamp_str: str) -> str:
+            """Ensure timestamp is in RFC 3339 format with timezone."""
+            if not timestamp_str:
+                return timestamp_str
+            # If already has 'Z' or timezone, return as-is
+            if 'Z' in timestamp_str or '+' in timestamp_str:
+                return timestamp_str
+            # Parse and add Z suffix for UTC
+            try:
+                # SQLite format: "2025-10-17 22:01:56"
+                dt = datetime.fromisoformat(timestamp_str)
+                return dt.isoformat() + 'Z'
+            except:
+                return timestamp_str
+
+        # Determine generated_at
+        generated_at = generated_row["value"] if generated_row else ensure_rfc3339(prd_row["created_at"])
+
+        # Determine updated_at - use generated_at if updated_at is same as created_at
+        updated_at = ensure_rfc3339(prd_row["updated_at"] if prd_row["updated_at"] else prd_row["created_at"])
+
+        # If updated_at == created_at (never been updated), use generated_at for both
+        if prd_row["updated_at"] == prd_row["created_at"] and generated_row:
+            updated_at = generated_at
+
+        return {
+            "prd_content": prd_row["value"],
+            "generated_at": generated_at,
+            "updated_at": updated_at,
+        }
+
+    # Issues/Tasks methods (cf-26)
+    def get_issues_with_tasks(
+        self, project_id: int, include_tasks: bool = False
+    ) -> Dict[str, Any]:
+        """Get issues for a project with optional tasks.
+
+        Args:
+            project_id: Project ID
+            include_tasks: Whether to include tasks in response
+
+        Returns:
+            Dictionary with issues, total_issues, total_tasks
+        """
+        from datetime import datetime
+
+        cursor = self.conn.cursor()
+
+        # Get all issues for project
+        cursor.execute(
+            """
+            SELECT * FROM issues
+            WHERE project_id = ?
+            ORDER BY issue_number
+            """,
+            (project_id,),
+        )
+        issue_rows = cursor.fetchall()
+
+        # Helper function for RFC 3339 timestamps
+        def ensure_rfc3339(timestamp_str: str) -> str:
+            """Ensure timestamp is in RFC 3339 format with timezone."""
+            if not timestamp_str:
+                return timestamp_str
+            if 'Z' in timestamp_str or '+' in timestamp_str:
+                return timestamp_str
+            try:
+                dt = datetime.fromisoformat(timestamp_str)
+                return dt.isoformat() + 'Z'
+            except:
+                return timestamp_str
+
+        # Format issues according to API contract
+        issues = []
+        total_tasks = 0
+
+        for issue_row in issue_rows:
+            issue_dict = dict(issue_row)
+
+            # Format issue according to API contract
+            formatted_issue = {
+                "id": str(issue_dict["id"]),
+                "issue_number": issue_dict["issue_number"],
+                "title": issue_dict["title"],
+                "description": issue_dict["description"] or "",
+                "status": issue_dict["status"],
+                "priority": issue_dict["priority"],
+                "depends_on": [],  # TODO: Parse from database if stored
+                "proposed_by": "agent",  # Default for now
+                "created_at": ensure_rfc3339(issue_dict["created_at"]),
+                "updated_at": ensure_rfc3339(issue_dict["created_at"]),  # Use created_at for now
+                "completed_at": ensure_rfc3339(issue_dict["completed_at"]) if issue_dict.get("completed_at") else None,
+            }
+
+            # Include tasks if requested
+            if include_tasks:
+                # Get tasks for this issue
+                cursor.execute(
+                    """
+                    SELECT * FROM tasks
+                    WHERE issue_id = ?
+                    ORDER BY task_number
+                    """,
+                    (issue_dict["id"],),
+                )
+                task_rows = cursor.fetchall()
+
+                # Format tasks according to API contract
+                tasks = []
+                for task_row in task_rows:
+                    task_dict = dict(task_row)
+
+                    # Parse depends_on if it's a string
+                    depends_on = []
+                    if task_dict.get("depends_on"):
+                        # depends_on might be a comma-separated string or single value
+                        depends_on_str = task_dict["depends_on"]
+                        if depends_on_str:
+                            depends_on = [depends_on_str] if ',' not in depends_on_str else depends_on_str.split(',')
+
+                    formatted_task = {
+                        "id": str(task_dict["id"]),
+                        "task_number": task_dict["task_number"],
+                        "title": task_dict["title"],
+                        "description": task_dict["description"] or "",
+                        "status": task_dict["status"],
+                        "depends_on": depends_on,
+                        "proposed_by": "agent",  # Default for now
+                        "created_at": ensure_rfc3339(task_dict["created_at"]),
+                        "updated_at": ensure_rfc3339(task_dict["created_at"]),  # Use created_at for now
+                        "completed_at": ensure_rfc3339(task_dict["completed_at"]) if task_dict.get("completed_at") else None,
+                    }
+                    tasks.append(formatted_task)
+                    total_tasks += 1
+
+                formatted_issue["tasks"] = tasks
+            else:
+                # Count tasks even if not including them
+                cursor.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE issue_id = ?",
+                    (issue_dict["id"],),
+                )
+                task_count = cursor.fetchone()[0]
+                total_tasks += task_count
+
+            issues.append(formatted_issue)
+
+        return {
+            "issues": issues,
+            "total_issues": len(issues),
+            "total_tasks": total_tasks,
+        }
