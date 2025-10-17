@@ -406,14 +406,14 @@ class Database:
             project_id: Project ID
 
         Returns:
-            List of conversation message dictionaries
+            List of conversation message dictionaries ordered by insertion (id)
         """
         cursor = self.conn.cursor()
         cursor.execute(
             """
             SELECT * FROM memory
             WHERE project_id = ? AND category = 'conversation'
-            ORDER BY created_at
+            ORDER BY id
             """,
             (project_id,),
         )
