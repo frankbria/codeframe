@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, List, Dict, Any, Optional
 
 from codeframe.providers.anthropic import AnthropicProvider
 from codeframe.persistence.database import Database
+from codeframe.discovery.questions import DiscoveryQuestionFramework
+from codeframe.discovery.answers import AnswerCapture
 
 if TYPE_CHECKING:
     from codeframe.core.project import Project
@@ -50,6 +52,13 @@ class LeadAgent:
         self.project_id = project_id
         self.db = db
         self.provider = AnthropicProvider(api_key=api_key, model=model)
+
+        # Discovery components
+        self.discovery_framework = DiscoveryQuestionFramework()
+        self.answer_capture = AnswerCapture()
+
+        # Load discovery state from database
+        self._load_discovery_state()
 
         logger.info(f"Initialized Lead Agent for project {project_id}")
 
@@ -143,20 +152,184 @@ class LeadAgent:
             logger.error(f"Error during chat: {e}", exc_info=True)
             raise
 
+    def _load_discovery_state(self) -> None:
+        """Load discovery state from database."""
+        try:
+            # Load all memories and filter by category
+            all_memories = self.db.get_project_memories(self.project_id)
+
+            # Initialize default state
+            self._discovery_state = "idle"
+            self._current_question_id: Optional[str] = None
+            self._discovery_answers: Dict[str, str] = {}
+
+            # Filter and restore discovery state
+            state_memories = [m for m in all_memories if m["category"] == "discovery_state"]
+            for memory in state_memories:
+                if memory["key"] == "state":
+                    self._discovery_state = memory["value"]
+                elif memory["key"] == "current_question_id":
+                    self._current_question_id = memory["value"]
+
+            # Filter and load discovery answers
+            answer_memories = [m for m in all_memories if m["category"] == "discovery_answers"]
+            for memory in answer_memories:
+                question_id = memory["key"]
+                answer_text = memory["value"]
+                self._discovery_answers[question_id] = answer_text
+                # Also capture in answer_capture for structured extraction
+                self.answer_capture.capture_answer(question_id, answer_text)
+
+            logger.debug(
+                f"Loaded discovery state: {self._discovery_state}, "
+                f"answers: {len(self._discovery_answers)}"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to load discovery state: {e}")
+            # Initialize with defaults
+            self._discovery_state = "idle"
+            self._current_question_id = None
+            self._discovery_answers = {}
+
+    def _save_discovery_state(self) -> None:
+        """Save discovery state to database."""
+        try:
+            # Save current state
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="state",
+                value=self._discovery_state,
+            )
+
+            # Save current question ID if exists
+            if self._current_question_id:
+                self.db.create_memory(
+                    project_id=self.project_id,
+                    category="discovery_state",
+                    key="current_question_id",
+                    value=self._current_question_id,
+                )
+
+            logger.debug(f"Saved discovery state: {self._discovery_state}")
+
+        except Exception as e:
+            logger.error(f"Failed to save discovery state: {e}")
+
     def start_discovery(self) -> str:
         """
         Begin Socratic requirements discovery.
 
-        Returns:
-            Initial discovery prompt
-        """
-        return """Hi! I'm your Lead Agent. Let's figure out what we're building.
-I'll ask some questions to understand the requirements. Ready?
+        Transitions state from 'idle' to 'discovering' and asks the first question.
 
-1. What problem does this application solve?
-2. Who are the primary users?
-3. What are the core features (top 3)?
-"""
+        Returns:
+            First discovery question
+        """
+        # Update state to discovering
+        self._discovery_state = "discovering"
+        self._save_discovery_state()
+
+        # Get first question
+        next_question = self.discovery_framework.get_next_question(self._discovery_answers)
+
+        if next_question:
+            self._current_question_id = next_question["id"]
+            self._save_discovery_state()
+
+            logger.info(f"Started discovery, first question: {next_question['id']}")
+            return next_question["text"]
+        else:
+            # No questions available (shouldn't happen)
+            logger.warning("No questions available to start discovery")
+            return "Discovery framework initialized but no questions available."
+
+    def process_discovery_answer(self, answer: str) -> str:
+        """
+        Process user answer during discovery phase.
+
+        Saves the answer, advances to next question, and checks for completion.
+
+        Args:
+            answer: User's answer to current discovery question
+
+        Returns:
+            Next question or completion message
+        """
+        if self._discovery_state != "discovering":
+            logger.warning(
+                f"process_discovery_answer called in state: {self._discovery_state}"
+            )
+            return "Discovery is not active. Call start_discovery() first."
+
+        # Save current answer
+        if self._current_question_id:
+            self._discovery_answers[self._current_question_id] = answer
+            self.answer_capture.capture_answer(self._current_question_id, answer)
+
+            # Persist to database
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_answers",
+                key=self._current_question_id,
+                value=answer,
+            )
+
+            logger.info(f"Captured answer for {self._current_question_id}")
+
+        # Check if discovery is complete
+        if self.discovery_framework.is_discovery_complete(self._discovery_answers):
+            self._discovery_state = "completed"
+            self._save_discovery_state()
+            logger.info("Discovery completed!")
+            return "Discovery complete! All required questions have been answered."
+
+        # Get next question
+        next_question = self.discovery_framework.get_next_question(self._discovery_answers)
+
+        if next_question:
+            self._current_question_id = next_question["id"]
+            self._save_discovery_state()
+            return next_question["text"]
+        else:
+            # All questions answered
+            self._discovery_state = "completed"
+            self._save_discovery_state()
+            return "Discovery complete! All questions have been answered."
+
+    def get_discovery_status(self) -> Dict[str, Any]:
+        """
+        Get current discovery status.
+
+        Returns:
+            Dictionary with state, current_question, answers, and structured_data
+        """
+        status = {
+            "state": self._discovery_state,
+            "answered_count": len(self._discovery_answers),
+            "answers": self._discovery_answers.copy(),
+        }
+
+        # Add current question if in discovering state
+        if self._discovery_state == "discovering" and self._current_question_id:
+            # Find current question details
+            questions = self.discovery_framework.generate_questions()
+            current_q = next(
+                (q for q in questions if q["id"] == self._current_question_id),
+                None
+            )
+            if current_q:
+                status["current_question"] = current_q
+
+            # Add remaining count
+            total_required = len([q for q in questions if q["importance"] == "required"])
+            status["remaining_count"] = total_required - len(self._discovery_answers)
+
+        # Add structured data if completed
+        if self._discovery_state == "completed":
+            status["structured_data"] = self.answer_capture.get_structured_data()
+
+        return status
 
     def process_discovery_response(self, user_response: str) -> str:
         """

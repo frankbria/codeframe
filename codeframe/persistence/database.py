@@ -90,7 +90,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS memory (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
-                category TEXT CHECK(category IN ('pattern', 'decision', 'gotcha', 'preference', 'conversation')),
+                category TEXT CHECK(category IN ('pattern', 'decision', 'gotcha', 'preference', 'conversation', 'discovery_state', 'discovery_answers')),
                 key TEXT,
                 value TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
