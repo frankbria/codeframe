@@ -160,6 +160,74 @@ class TestProjectCRUD:
         result = db.update_project(99999, {"status": ProjectStatus.ACTIVE})
         assert result == 0  # 0 rows affected
 
+    def test_project_has_default_phase(self, temp_db_path):
+        """Test that new projects default to 'discovery' phase."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project = db.get_project(project_id)
+
+        assert project["phase"] == "discovery"
+
+    def test_update_project_phase(self, temp_db_path):
+        """Test updating project phase."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        # Update phase to planning
+        db.update_project(project_id, {"phase": "planning"})
+
+        project = db.get_project(project_id)
+        assert project["phase"] == "planning"
+
+    def test_project_phase_constraint(self, temp_db_path):
+        """Test that invalid project phase is rejected."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        cursor = db.conn.cursor()
+
+        # SQLite with CHECK constraint should reject invalid values
+        with pytest.raises(Exception):  # sqlite3.IntegrityError
+            cursor.execute(
+                "INSERT INTO projects (name, status, phase) VALUES (?, ?, ?)",
+                ("test", "init", "INVALID_PHASE"),
+            )
+
+    def test_phase_transitions(self, temp_db_path):
+        """Test typical phase transitions during project lifecycle."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        # Verify starts at discovery
+        project = db.get_project(project_id)
+        assert project["phase"] == "discovery"
+
+        # Transition to planning
+        db.update_project(project_id, {"phase": "planning"})
+        project = db.get_project(project_id)
+        assert project["phase"] == "planning"
+
+        # Transition to active
+        db.update_project(project_id, {"phase": "active"})
+        project = db.get_project(project_id)
+        assert project["phase"] == "active"
+
+        # Transition to review
+        db.update_project(project_id, {"phase": "review"})
+        project = db.get_project(project_id)
+        assert project["phase"] == "review"
+
+        # Transition to complete
+        db.update_project(project_id, {"phase": "complete"})
+        project = db.get_project(project_id)
+        assert project["phase"] == "complete"
+
 
 @pytest.mark.unit
 class TestAgentCRUD:

@@ -173,6 +173,43 @@ async def root():
     return {"status": "online", "service": "CodeFRAME Status Server"}
 
 
+@app.get("/health")
+async def health_check():
+    """Detailed health check with deployment info.
+
+    Returns:
+        - status: Service health status
+        - version: API version from FastAPI app
+        - commit: Git commit hash (short)
+        - deployed_at: Server startup timestamp
+        - database: Database connection status
+    """
+    import subprocess
+    from datetime import datetime, UTC
+
+    # Get git commit hash
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=Path(__file__).parent.parent.parent,
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        git_commit = "unknown"
+
+    # Check database connection
+    db_status = "connected" if hasattr(app.state, "db") and app.state.db else "disconnected"
+
+    return {
+        "status": "healthy",
+        "service": "CodeFRAME Status Server",
+        "version": app.version,
+        "commit": git_commit,
+        "deployed_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
+        "database": db_status
+    }
+
+
 @app.get("/api/projects")
 async def list_projects():
     """List all CodeFRAME projects."""
@@ -239,6 +276,7 @@ async def create_project(request: ProjectCreateRequest):
             id=created_project["id"],
             name=created_project["name"],
             status=created_project["status"],
+            phase=created_project.get("phase", "discovery"),
             created_at=created_project["created_at"],
             config=created_project.get("config")
         )

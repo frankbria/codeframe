@@ -32,6 +32,7 @@ class Database:
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 status TEXT CHECK(status IN ('init', 'planning', 'running', 'active', 'paused', 'completed')),
+                phase TEXT CHECK(phase IN ('discovery', 'planning', 'active', 'review', 'complete')) DEFAULT 'discovery',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )
