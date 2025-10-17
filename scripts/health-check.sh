@@ -12,13 +12,17 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Determine project root from script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
 # Configuration
-PROJECT_ROOT="/home/frankbria/projects/codeframe"
 LOG_FILE="$PROJECT_ROOT/logs/health-check.log"
 FRONTEND_PORT=14100
 BACKEND_PORT=14200
 MAX_RETRIES=3
-RETRY_DELAY=10
+SERVICE_TIMEOUT=60
 
 # Ensure log directory exists
 mkdir -p "$PROJECT_ROOT/logs"
@@ -31,7 +35,6 @@ log() {
 
 # Function to check if PM2 is running
 check_pm2() {
-    cd "$PROJECT_ROOT"
     if pm2 list 2>/dev/null | grep -q "online"; then
         return 0
     else
@@ -39,59 +42,82 @@ check_pm2() {
     fi
 }
 
-# Function to check if a port is responding
+# Function to check if a port is responding with timeout and retry
 check_port() {
     local port=$1
     local service=$2
+    local timeout=10
+    local elapsed=0
 
-    if curl -sf "http://localhost:$port" >/dev/null 2>&1; then
-        log "✓ $service (port $port) is responding"
-        return 0
-    else
-        log "✗ $service (port $port) is NOT responding"
-        return 1
-    fi
+    while [ $elapsed -lt $timeout ]; do
+        if curl -sf --max-time 2 "http://localhost:$port" >/dev/null 2>&1; then
+            log "✓ $service (port $port) is responding"
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    log "✗ $service (port $port) is NOT responding after ${timeout}s"
+    return 1
 }
 
 # Function to check PM2 process status
 check_pm2_processes() {
-    cd "$PROJECT_ROOT"
-    local backend_status=$(pm2 jlist 2>/dev/null | grep -o '"name":"codeframe-backend-staging","pm2_env":{"status":"[^"]*"' | grep -o 'online')
-    local frontend_status=$(pm2 jlist 2>/dev/null | grep -o '"name":"codeframe-frontend-staging","pm2_env":{"status":"[^"]*"' | grep -o 'online')
+    local backend_status=$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="codeframe-staging-backend") | .pm2_env.status' 2>/dev/null || echo "")
+    local frontend_status=$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name=="codeframe-staging-frontend") | .pm2_env.status' 2>/dev/null || echo "")
 
     if [ "$backend_status" == "online" ] && [ "$frontend_status" == "online" ]; then
         log "✓ PM2 processes are online"
         return 0
     else
-        log "✗ PM2 processes are not all online (backend: $backend_status, frontend: $frontend_status)"
+        log "✗ PM2 processes are not all online (backend: ${backend_status:-missing}, frontend: ${frontend_status:-missing})"
         return 1
     fi
+}
+
+# Function to wait for service to be ready
+wait_for_service() {
+    local port=$1
+    local service_name=$2
+    local timeout=$SERVICE_TIMEOUT
+    local elapsed=0
+
+    log "Waiting for $service_name (port $port) to be ready..."
+
+    while [ $elapsed -lt $timeout ]; do
+        if curl -sf --max-time 2 "http://localhost:$port" >/dev/null 2>&1; then
+            log "✓ $service_name is ready"
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+
+    log "✗ $service_name failed to start within ${timeout}s"
+    return 1
 }
 
 # Function to restart services
 restart_services() {
     log "🔄 Attempting to restart staging server..."
 
-    cd "$PROJECT_ROOT"
-
-    # Stop existing processes
+    # Stop existing processes with graceful shutdown
     pm2 stop all 2>/dev/null || true
-    pm2 delete all 2>/dev/null || true
-
-    # Wait a moment
     sleep 5
+    pm2 delete all 2>/dev/null || true
+    sleep 2
 
-    # Start services using the startup script
+    # Start services using the startup script if available
     if [ -f "$PROJECT_ROOT/scripts/start-staging.sh" ]; then
+        log "Using start-staging.sh for restart..."
         bash "$PROJECT_ROOT/scripts/start-staging.sh" >> "$LOG_FILE" 2>&1
     else
-        pm2 start ecosystem.staging.config.js >> "$LOG_FILE" 2>&1
+        log "Using PM2 directly for restart..."
+        pm2 start "$PROJECT_ROOT/ecosystem.staging.config.js" >> "$LOG_FILE" 2>&1
     fi
 
-    # Wait for services to start
-    sleep 10
-
-    log "✓ Restart completed"
+    log "✓ Restart command completed"
 }
 
 # Main health check logic
@@ -102,14 +128,14 @@ main() {
 
     # Check 1: PM2 is running
     if ! check_pm2; then
-        log "⚠️ PM2 is not running or has no processes"
+        log "⚠️  PM2 is not running or has no processes"
         needs_restart=true
     fi
 
     # Check 2: PM2 processes are online
     if [ "$needs_restart" = false ]; then
         if ! check_pm2_processes; then
-            log "⚠️ PM2 processes are not in online state"
+            log "⚠️  PM2 processes are not in online state"
             needs_restart=true
         fi
     fi
@@ -117,7 +143,7 @@ main() {
     # Check 3: Backend port is responding
     if [ "$needs_restart" = false ]; then
         if ! check_port "$BACKEND_PORT" "Backend"; then
-            log "⚠️ Backend is not responding on port $BACKEND_PORT"
+            log "⚠️  Backend is not responding on port $BACKEND_PORT"
             needs_restart=true
         fi
     fi
@@ -125,7 +151,7 @@ main() {
     # Check 4: Frontend port is responding
     if [ "$needs_restart" = false ]; then
         if ! check_port "$FRONTEND_PORT" "Frontend"; then
-            log "⚠️ Frontend is not responding on port $FRONTEND_PORT"
+            log "⚠️  Frontend is not responding on port $FRONTEND_PORT"
             needs_restart=true
         fi
     fi
@@ -138,15 +164,24 @@ main() {
             log "Restart attempt $i of $MAX_RETRIES..."
             restart_services
 
-            sleep $RETRY_DELAY
-
-            # Verify restart was successful
-            if check_pm2_processes && check_port "$BACKEND_PORT" "Backend" && check_port "$FRONTEND_PORT" "Frontend"; then
-                log "✅ Health check passed after restart"
-                log "=== Health Check Completed Successfully ==="
-                exit 0
+            # Wait for services to be ready
+            if wait_for_service "$BACKEND_PORT" "Backend" && wait_for_service "$FRONTEND_PORT" "Frontend"; then
+                # Verify PM2 processes are also healthy
+                if check_pm2_processes; then
+                    log "✅ Health check passed after restart"
+                    log "=== Health Check Completed Successfully ==="
+                    exit 0
+                else
+                    log "⚠️  PM2 processes not healthy after restart"
+                fi
             else
-                log "⚠️ Restart attempt $i failed, services still not healthy"
+                log "⚠️  Restart attempt $i failed, services not ready"
+            fi
+
+            # Wait before next retry
+            if [ $i -lt $MAX_RETRIES ]; then
+                log "Waiting 10 seconds before retry..."
+                sleep 10
             fi
         done
 

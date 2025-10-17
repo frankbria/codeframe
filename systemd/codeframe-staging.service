@@ -4,13 +4,16 @@ Documentation=https://github.com/frankbria/codeframe
 After=network.target
 
 [Service]
-Type=forking
+Type=oneshot
+RemainAfterExit=yes
 User=frankbria
 WorkingDirectory=/home/frankbria/projects/codeframe
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=/home/frankbria/projects/codeframe/.env.staging
 ExecStart=/usr/bin/pm2 start /home/frankbria/projects/codeframe/ecosystem.staging.config.js
 ExecStop=/usr/bin/pm2 stop all
+ExecStop=/bin/sleep 5
+ExecStop=/usr/bin/pm2 delete all
 ExecReload=/usr/bin/pm2 restart all
 Restart=on-failure
 RestartSec=10s
