@@ -574,6 +574,116 @@ async def get_chat_history(
     return {"messages": messages}
 
 
+@app.get("/api/projects/{project_id}/prd")
+async def get_project_prd(project_id: int):
+    """Get PRD for a project (cf-26).
+
+    Sprint 2 Foundation Contract:
+    Returns PRDResponse with:
+    - project_id: string (not int)
+    - prd_content: string
+    - generated_at: ISODate (RFC 3339 with timezone)
+    - updated_at: ISODate (RFC 3339 with timezone)
+    - status: 'available' | 'generating' | 'not_found'
+
+    Args:
+        project_id: Project ID
+
+    Returns:
+        PRDResponse dictionary
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+    """
+    from datetime import datetime, UTC
+
+    # Check if project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Get PRD from database
+    prd_data = app.state.db.get_prd(project_id)
+
+    if not prd_data:
+        # PRD not found - return empty response
+        return {
+            "project_id": str(project_id),
+            "prd_content": "",
+            "generated_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
+            "updated_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
+            "status": "not_found"
+        }
+
+    # PRD exists - return it
+    return {
+        "project_id": str(project_id),
+        "prd_content": prd_data["prd_content"],
+        "generated_at": prd_data["generated_at"],
+        "updated_at": prd_data["updated_at"],
+        "status": "available"
+    }
+
+
+@app.get("/api/projects/{project_id}/issues")
+async def get_project_issues(project_id: int, include: str = None):
+    """Get issues for a project (cf-26).
+
+    Sprint 2 Foundation Contract:
+    Returns IssuesResponse with:
+    - issues: Issue[]
+    - total_issues: number
+    - total_tasks: number
+    - next_cursor?: string (optional)
+    - prev_cursor?: string (optional)
+
+    Each Issue contains:
+    - id: string (not int)
+    - issue_number: string
+    - title: string
+    - description: string
+    - status: WorkStatus
+    - priority: number
+    - depends_on: string[]
+    - proposed_by: 'agent' | 'human'
+    - created_at: ISODate (RFC 3339)
+    - updated_at: ISODate (RFC 3339)
+    - completed_at: ISODate | null
+    - tasks?: Task[] (if include=tasks)
+
+    Args:
+        project_id: Project ID
+        include: Optional query param, 'tasks' to include tasks
+
+    Returns:
+        IssuesResponse dictionary
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+    """
+    # Check if project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Determine if tasks should be included
+    include_tasks = include == "tasks"
+
+    # Get issues from database
+    issues_data = app.state.db.get_issues_with_tasks(project_id, include_tasks)
+
+    # Return according to API contract
+    return issues_data
+
+
 @app.post("/api/projects/{project_id}/pause")
 async def pause_project(project_id: int):
     """Pause project execution."""
