@@ -42,11 +42,13 @@ class ProjectResponse(BaseModel):
     """Response model for project data.
 
     Task: cf-11.1 - Create ProjectResponse model
+    Updated cf-17.1: Added phase field for project phase tracking
     """
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="Unique project ID")
     name: str = Field(..., description="Project name")
     status: str = Field(..., description="Project status (init, planning, active, etc.)")
+    phase: str = Field(default="discovery", description="Project phase (discovery, planning, active, review, complete)")
     created_at: str = Field(..., description="ISO timestamp of project creation")
     config: Optional[dict] = Field(default=None, description="Optional project configuration")
