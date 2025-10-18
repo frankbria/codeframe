@@ -1539,12 +1539,30 @@ db.update_project(project_id, {"phase": "active"})
   - **Commit**: efa6bf7 - feat(cf-32): Implement codebase indexing with tree-sitter parsers
   - **Beads**: ✅ Closed cf-32 (2025-10-17)
 
-- [ ] **cf-44**: Git Auto-Commit - Commit agent changes with descriptive messages (P1)
-  - Commit files with descriptive message based on task
-  - Update changelog
-  - Show commit in activity feed
-  - Demo: Git history shows agent commits
-  - **Estimated Effort**: 2-3 hours
+- [x] **cf-44**: Git Auto-Commit - Commit agent changes with descriptive messages (P1) ✅ COMPLETE
+  - **Implementation Complete** (2025-10-18):
+    - ✅ **commit_task_changes() method** in GitWorkflowManager
+      - Generates conventional commit messages (feat/fix/test/docs/refactor)
+      - Infers commit type from task title and description keywords
+      - Includes task number as scope (e.g., `feat(1.5.2): Task title`)
+      - Lists all modified files in commit body
+      - Records commit in changelog table for activity feed
+    - ✅ **Commit Message Generation**:
+      - `_infer_commit_type()` - Keyword-based type detection
+      - `_generate_commit_message()` - Conventional commit format
+      - Follows pattern: `<type>(<scope>): <subject>\n\n<body>\n\nModified files:\n- file1\n- file2`
+    - ✅ **Changelog Integration**:
+      - Commits recorded in `changelog` table
+      - JSON details include: commit_hash, commit_message, files_modified
+      - Queryable by task_id and agent_id for activity feed
+    - ✅ **Comprehensive Test Coverage** (18 tests, 100% pass rate):
+      - 6 tests for commit message generation
+      - 5 tests for commit creation
+      - 4 tests for changelog integration
+      - 3 tests for error handling
+    - ✅ **Status**: Production-ready with full TDD coverage
+  - **Actual Effort**: ~3 hours (design, implementation, testing)
+  - **Commit**: [pending] - feat(cf-44): Implement Git Auto-Commit with conventional commit messages
 
 - [x] **cf-33**: Git Branching & Deployment Workflow (P0) ✅ COMPLETE
   - **All Phases Complete** (2025-10-17):
