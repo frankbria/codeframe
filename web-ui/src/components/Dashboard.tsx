@@ -13,6 +13,7 @@ import type { PRDResponse, IssuesResponse } from '@/types/api';
 import ChatInterface from './ChatInterface';
 import PRDModal from './PRDModal';
 import TaskTreeView from './TaskTreeView';
+import DiscoveryProgress from './DiscoveryProgress';
 
 interface DashboardProps {
   projectId: number;
@@ -137,6 +138,9 @@ export default function Dashboard({ projectId }: DashboardProps) {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Discovery Progress (cf-17.2) */}
+        <DiscoveryProgress projectId={projectId} />
+
         {/* Chat Interface (cf-14.2) */}
         {showChat && (
           <div className="mb-6" style={{ height: '500px' }}>

@@ -1185,26 +1185,73 @@ summary = agent.decompose_prd(sprint_number=2)
     - tests/test_database.py (4 new tests)
 
 - [x] **cf-17.2**: Progress Indicators ✅
-  - ✅ Enhanced `get_discovery_status()` with progress tracking
-  - ✅ Added `progress_percentage` field (0-100% float)
-  - ✅ Added `total_required` field (5 required questions)
-  - ✅ New API endpoint: `GET /api/projects/{id}/discovery/progress`
-  - ✅ Returns discovery progress combined with project phase
-  - ✅ Handles idle state (returns null for discovery field)
-  - ✅ State-specific fields (remaining_count, current_question, structured_data)
-  - ✅ Excludes sensitive "answers" field for security
-  - **Implementation**: Strict TDD (RED-GREEN-REFACTOR)
-  - **Tests**: 18 test cases total (12 new + 6 from cf-15)
-    - TestDiscoveryProgressIndicators: 6 tests (100% pass rate)
-    - TestDiscoveryProgressEndpoint: 6 tests (100% pass rate)
-  - **Coverage**: >95% for new code (get_discovery_status enhancements and API endpoint)
-  - **Files Modified**:
-    - codeframe/agents/lead_agent.py (get_discovery_status method enhanced)
-    - codeframe/ui/server.py (new GET /api/projects/{id}/discovery/progress endpoint)
-  - **Files Created**:
-    - tests/test_api_discovery_progress.py (6 comprehensive API tests)
-    - Updated tests/test_discovery_integration.py (6 additional progress tests)
-  - **No Regressions**: All 21 existing discovery tests continue passing
+  - ✅ **Backend API** Implementation (TDD):
+    - ✅ Enhanced `get_discovery_status()` with progress tracking
+    - ✅ Added `progress_percentage` field (0-100% float)
+    - ✅ Added `total_required` field (5 required questions)
+    - ✅ New API endpoint: `GET /api/projects/{id}/discovery/progress`
+    - ✅ Returns discovery progress combined with project phase
+    - ✅ Handles idle state (returns null for discovery field)
+    - ✅ State-specific fields (remaining_count, current_question, structured_data)
+    - ✅ Excludes sensitive "answers" field for security
+    - **Implementation**: Strict TDD (RED-GREEN-REFACTOR)
+    - **Tests**: 18 test cases total (12 new + 6 from cf-15)
+      - TestDiscoveryProgressIndicators: 6 tests (100% pass rate)
+      - TestDiscoveryProgressEndpoint: 6 tests (100% pass rate)
+    - **Coverage**: >95% for new code (get_discovery_status enhancements and API endpoint)
+    - **Files Modified**:
+      - codeframe/agents/lead_agent.py (get_discovery_status method enhanced)
+      - codeframe/ui/server.py (new GET /api/projects/{id}/discovery/progress endpoint)
+    - **Files Created**:
+      - tests/test_api_discovery_progress.py (6 comprehensive API tests)
+      - Updated tests/test_discovery_integration.py (6 additional progress tests)
+    - **No Regressions**: All 21 existing discovery tests continue passing
+
+  - ✅ **Frontend UI Components** (React + TypeScript + TDD):
+    - ✅ `ProgressBar.tsx` - Horizontal progress bar with color coding
+      - Props: percentage, label, showPercentage
+      - Colors: Green (>75%), Yellow (25-75%), Red (<25%)
+      - ARIA compliant with proper roles and labels
+      - Responsive design with Tailwind CSS
+      - **Tests**: 26 test cases (100% pass rate, 100% coverage)
+
+    - ✅ `PhaseIndicator.tsx` - Color-coded phase badge
+      - Props: phase (discovery/planning/active/review/complete)
+      - Colors: Blue (discovery), Purple (planning), Green (active), Yellow (review), Gray (complete)
+      - Handles invalid phases gracefully
+      - **Tests**: 24 test cases (100% pass rate, 100% coverage)
+
+    - ✅ `DiscoveryProgress.tsx` - Main progress display component
+      - Fetches progress from API endpoint
+      - Displays PhaseIndicator and ProgressBar
+      - Shows current question when discovering
+      - Auto-refreshes every 10 seconds during discovery
+      - Handles loading/error states
+      - **Tests**: 18 test cases (100% pass rate, 97.22% coverage)
+
+    - ✅ Dashboard Integration
+      - Added DiscoveryProgress component above chat interface
+      - Updated test mocks and integration tests
+      - All 17 Dashboard tests passing (100% pass rate)
+
+    - **Total Frontend Tests**: 85/85 passing (127 total with other components)
+    - **Coverage**: All components exceed 80% target (97-100%)
+    - **TypeScript**: 0 compilation errors
+    - **TDD Methodology**: Strict RED-GREEN-REFACTOR for all 3 components
+    - **Files Created**:
+      - web-ui/src/components/ProgressBar.tsx
+      - web-ui/src/components/PhaseIndicator.tsx
+      - web-ui/src/components/DiscoveryProgress.tsx
+      - web-ui/src/components/__tests__/ProgressBar.test.tsx
+      - web-ui/src/components/__tests__/PhaseIndicator.test.tsx
+      - web-ui/src/components/__tests__/DiscoveryProgress.test.tsx
+      - web-ui/src/test-setup.d.ts (TypeScript types for jest-dom)
+    - **Files Modified**:
+      - web-ui/src/components/Dashboard.tsx (integration)
+      - web-ui/src/components/Dashboard.test.tsx (integration tests)
+      - web-ui/src/lib/api.ts (getDiscoveryProgress method)
+      - web-ui/src/types/api.ts (DiscoveryProgressResponse types)
+      - web-ui/jest.config.js (coverage thresholds)
 
 **Test Results**:
 - **Total Tests**: 30/30 passing (100% pass rate)

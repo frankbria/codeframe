@@ -317,10 +317,12 @@ describe('DiscoveryProgress Component', () => {
 
       render(<DiscoveryProgress projectId={1} />);
 
-      // Initial fetch
+      // Wait for initial fetch and data to be set (which triggers interval setup)
       await waitFor(() => {
-        expect(projectsApi.getDiscoveryProgress).toHaveBeenCalledTimes(1);
+        expect(screen.getByText(/answered/i)).toBeInTheDocument();
       });
+
+      expect(projectsApi.getDiscoveryProgress).toHaveBeenCalledTimes(1);
 
       // Advance 10 seconds
       jest.advanceTimersByTime(10000);
