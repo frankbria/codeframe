@@ -429,6 +429,182 @@ class TestDiscoveryCompletionDetection:
 
 
 @pytest.mark.integration
+class TestDiscoveryProgressIndicators:
+    """Test discovery progress percentage and total_required fields (cf-17.2)."""
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_get_discovery_status_includes_progress_percentage_at_0_percent(
+        self, mock_provider_class, temp_db_path
+    ):
+        """Test progress_percentage is 0% when discovery just started."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # ACT
+        status = agent.get_discovery_status()
+
+        # ASSERT
+        assert "progress_percentage" in status
+        assert status["progress_percentage"] == 0.0
+        assert status["answered_count"] == 0
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_get_discovery_status_includes_progress_percentage_at_60_percent(
+        self, mock_provider_class, temp_db_path
+    ):
+        """Test progress_percentage is 60% when 3 of 5 required questions answered."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        mock_provider = Mock()
+        mock_provider.send_message.return_value = {
+            "content": "Next question...",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 8}
+        }
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # Answer 3 questions
+        agent.process_discovery_answer("Answer 1 with sufficient content")
+        agent.process_discovery_answer("Answer 2 with sufficient content")
+        agent.process_discovery_answer("Answer 3 with sufficient content")
+
+        # ACT
+        status = agent.get_discovery_status()
+
+        # ASSERT
+        assert "progress_percentage" in status
+        assert status["progress_percentage"] == 60.0  # 3/5 * 100
+        assert status["answered_count"] == 3
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_get_discovery_status_includes_progress_percentage_at_100_percent(
+        self, mock_provider_class, temp_db_path
+    ):
+        """Test progress_percentage is 100% when all required questions answered."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        mock_provider = Mock()
+        mock_provider.send_message.return_value = {
+            "content": "Next question...",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 8}
+        }
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # Answer all 5 required questions
+        for i in range(5):
+            agent.process_discovery_answer(f"Answer {i + 1} with sufficient content")
+
+        # ACT
+        status = agent.get_discovery_status()
+
+        # ASSERT
+        assert "progress_percentage" in status
+        assert status["progress_percentage"] == 100.0  # 5/5 * 100
+        assert status["answered_count"] == 5
+        assert status["state"] == "completed"
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_get_discovery_status_includes_total_required_count(
+        self, mock_provider_class, temp_db_path
+    ):
+        """Test total_required field is included in status."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # ACT
+        status = agent.get_discovery_status()
+
+        # ASSERT
+        assert "total_required" in status
+        assert status["total_required"] == 5  # Framework has 5 required questions
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_get_discovery_status_handles_idle_state_progress(
+        self, mock_provider_class, temp_db_path
+    ):
+        """Test progress indicators in idle state (before discovery started)."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+
+        # ACT
+        status = agent.get_discovery_status()
+
+        # ASSERT
+        assert status["state"] == "idle"
+        assert "progress_percentage" not in status  # No progress in idle state
+        assert "total_required" not in status  # No total_required in idle state
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_get_discovery_status_handles_completed_state_progress(
+        self, mock_provider_class, temp_db_path
+    ):
+        """Test progress indicators show 100% in completed state."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", ProjectStatus.INIT)
+
+        mock_provider = Mock()
+        mock_provider.send_message.return_value = {
+            "content": "Next question...",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 8}
+        }
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # Complete discovery
+        for i in range(5):
+            agent.process_discovery_answer(f"Answer {i + 1} with sufficient content")
+
+        # ACT
+        status = agent.get_discovery_status()
+
+        # ASSERT
+        assert status["state"] == "completed"
+        assert status["progress_percentage"] == 100.0
+        assert status["total_required"] == 5
+
+
+@pytest.mark.integration
 class TestDiscoveryEndToEndFlow:
     """Test complete end-to-end discovery flow."""
 

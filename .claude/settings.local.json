@@ -57,7 +57,9 @@
       "Bash(pm2 restart:*)",
       "Bash(venv/bin/python -m codeframe.ui.server:*)",
       "Bash(curl:*)",
-      "Bash(bd:*)"
+      "Bash(bd:*)",
+      "mcp__serena__search_for_pattern",
+      "mcp__serena__replace_symbol_body"
     ],
     "deny": [],
     "ask": []
