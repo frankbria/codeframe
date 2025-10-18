@@ -668,10 +668,39 @@ Lead: "✅ I've created your PRD. Generating tasks now..."
   - [x] cf-17.1: Project Phase Tracking ✅
   - [x] cf-17.2: Progress Indicators ✅
 
-- [ ] **cf-27**: Frontend Project Initialization Workflow (P0)
-  - [ ] cf-27.1: Project Creation Form Component
-  - [ ] cf-27.2: Agent Configuration UI (P1)
-  - [ ] cf-27.3: Start Project Button & Flow
+- [ ] **cf-27**: Frontend Project Initialization Workflow (P0) 🚧 IN PROGRESS
+  - [x] cf-27.1: API Client Methods ✅
+    - ✅ `projectsApi.list()` method implemented
+    - ✅ `projectsApi.create()` method implemented
+    - ✅ 9 comprehensive tests (100% pass rate)
+    - ✅ Full error handling and TypeScript types
+    - **File**: web-ui/src/lib/api.ts
+    - **Tests**: web-ui/src/lib/__tests__/api.test.ts
+
+  - [x] cf-27.2: ProjectCreationForm Component ✅
+    - ✅ Form with project name and description inputs
+    - ✅ Success/error states with visual feedback
+    - ✅ onSuccess callback integration
+    - ✅ Accessibility (ARIA labels, keyboard navigation)
+    - ✅ 14 comprehensive tests (100% pass rate, 23 total)
+    - **File**: web-ui/src/components/ProjectCreationForm.tsx
+    - **Tests**: web-ui/src/components/__tests__/ProjectCreationForm.test.tsx
+
+  - [x] cf-27.3: ProjectList Component ✅
+    - ✅ Fetches projects using SWR
+    - ✅ Displays project cards in grid layout (name, status, phase, date)
+    - ✅ Cards clickable → navigate to /projects/{id}
+    - ✅ Empty state with helpful message
+    - ✅ "Create New Project" button shows ProjectCreationForm
+    - ✅ Refreshes list after project creation (SWR mutate)
+    - ✅ Loading and error states
+    - ✅ Date formatting ("January 15, 2025")
+    - ✅ 10 comprehensive tests (100% pass rate, 160 total)
+    - **File**: web-ui/src/components/ProjectList.tsx
+    - **Tests**: web-ui/src/components/__tests__/ProjectList.test.tsx
+
+  - [ ] cf-27.4: Agent Configuration UI (P1)
+  - [ ] cf-27.5: Start Project Button & Flow (P1)
 
 ---
 
