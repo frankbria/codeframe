@@ -10,6 +10,7 @@ from codeframe.discovery.answers import AnswerCapture
 from codeframe.planning.issue_generator import IssueGenerator
 from codeframe.planning.task_decomposer import TaskDecomposer
 from codeframe.core.models import Issue, Task
+from codeframe.indexing.codebase_index import CodebaseIndex
 
 if TYPE_CHECKING:
     from codeframe.core.project import Project
@@ -59,6 +60,9 @@ class LeadAgent:
         # Discovery components
         self.discovery_framework = DiscoveryQuestionFramework()
         self.answer_capture = AnswerCapture()
+
+        # Codebase indexing
+        self.codebase_index: Optional[CodebaseIndex] = None
 
         # Load discovery state from database
         self._load_discovery_state()
@@ -747,4 +751,83 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         except Exception as e:
             logger.error(f"Failed to decompose PRD: {e}", exc_info=True)
+            raise
+
+    def build_codebase_index(self) -> Dict[str, Any]:
+        """Build index of project codebase structure.
+
+        Returns:
+            Dictionary with index stats (files indexed, symbols found, etc.)
+
+        Raises:
+            ValueError: If project root path is invalid
+            Exception: If indexing fails
+        """
+        try:
+            # Get project root from database
+            project = self.db.get_project(self.project_id)
+            project_root = project.get("root_path", ".")
+
+            logger.info(f"Building codebase index for project at: {project_root}")
+
+            # Create and build index
+            self.codebase_index = CodebaseIndex(project_root)
+            self.codebase_index.build()
+
+            # Get statistics
+            file_paths = set(s.file_path for s in self.codebase_index.symbols)
+            languages = set(s.language for s in self.codebase_index.symbols)
+
+            stats = {
+                "files_indexed": len(file_paths),
+                "symbols_found": len(self.codebase_index.symbols),
+                "languages": list(languages),
+            }
+
+            logger.info(
+                f"Codebase indexed successfully: {stats['files_indexed']} files, "
+                f"{stats['symbols_found']} symbols"
+            )
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"Failed to build codebase index: {e}", exc_info=True)
+            raise
+
+    def query_codebase(self, query: str, query_type: str = "name") -> List[Dict[str, Any]]:
+        """Query codebase structure.
+
+        Args:
+            query: Search query (symbol name or pattern)
+            query_type: 'name' or 'pattern'
+
+        Returns:
+            List of symbols matching query
+
+        Raises:
+            ValueError: If unknown query_type or codebase not indexed
+            Exception: If query fails
+        """
+        if not self.codebase_index:
+            self.build_codebase_index()
+
+        try:
+            if query_type == "name":
+                symbols = self.codebase_index.find_symbols(query)
+            elif query_type == "pattern":
+                symbols = self.codebase_index.search_pattern(query)
+            else:
+                raise ValueError(f"Unknown query_type: {query_type}")
+
+            logger.debug(f"Query '{query}' ({query_type}) found {len(symbols)} results")
+
+            return [s.to_dict() for s in symbols]
+
+        except ValueError as e:
+            logger.error(f"Validation error during codebase query: {e}")
+            raise
+
+        except Exception as e:
+            logger.error(f"Failed to query codebase: {e}", exc_info=True)
             raise
