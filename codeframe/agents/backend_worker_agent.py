@@ -164,10 +164,32 @@ class BackendWorkerAgent:
                 "related_symbols": List[Symbol],  # Symbols from codebase index
                 "issue_context": Dict[str, Any]  # Parent issue information
             }
-
-        Note: Implementation in Phase 2 (cf-41)
         """
-        raise NotImplementedError("build_context() - Phase 2 implementation")
+        # Extract keywords from task title and description for symbol search
+        search_terms = f"{task.get('title', '')} {task.get('description', '')}"
+
+        # Query codebase index for related symbols
+        related_symbols = self.codebase_index.search_pattern(search_terms)
+
+        # Extract unique file paths from symbols
+        related_files = list(set(symbol.file_path for symbol in related_symbols))
+
+        # Get parent issue context if available
+        issue_context = None
+        if task.get("issue_id"):
+            issue_context = self.db.get_issue(task["issue_id"])
+
+        logger.debug(
+            f"Built context for task {task['id']}: "
+            f"{len(related_symbols)} symbols, {len(related_files)} files"
+        )
+
+        return {
+            "task": task,
+            "related_files": related_files,
+            "related_symbols": related_symbols,
+            "issue_context": issue_context
+        }
 
     def generate_code(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -191,10 +213,98 @@ class BackendWorkerAgent:
                 ],
                 "explanation": str  # What was changed and why
             }
-
-        Note: Implementation in Phase 2 (cf-41)
         """
-        raise NotImplementedError("generate_code() - Phase 2 implementation")
+        import anthropic
+
+        task = context["task"]
+        related_symbols = context.get("related_symbols", [])
+        related_files = context.get("related_files", [])
+        issue_context = context.get("issue_context")
+
+        # Build system prompt
+        system_prompt = """You are a Backend Worker Agent in the CodeFRAME autonomous development system.
+
+Your role:
+- Read the task description carefully
+- Analyze existing codebase structure
+- Write clean, tested Python code
+- Follow project conventions and patterns
+
+Output format:
+Return a JSON object with this structure:
+{
+  "files": [
+    {
+      "path": "relative/path/to/file.py",
+      "action": "create" | "modify" | "delete",
+      "content": "file content here"
+    }
+  ],
+  "explanation": "Brief explanation of changes"
+}
+
+Guidelines:
+- Use strict TDD: Write tests before implementation
+- Follow existing code style and patterns
+- Keep functions small and focused
+- Add comprehensive docstrings
+- Handle errors gracefully"""
+
+        # Build user prompt
+        user_prompt_parts = [
+            f"Task: {task.get('title', 'Untitled task')}",
+            "",
+            "Description:",
+            task.get('description', 'No description provided'),
+            ""
+        ]
+
+        if related_files:
+            user_prompt_parts.append("Related Files:")
+            for file in related_files[:10]:  # Limit to 10 files
+                user_prompt_parts.append(f"- {file}")
+            user_prompt_parts.append("")
+
+        if related_symbols:
+            user_prompt_parts.append("Related Symbols:")
+            for symbol in related_symbols[:20]:  # Limit to 20 symbols
+                user_prompt_parts.append(
+                    f"- {symbol.name} ({symbol.type.value}) in {symbol.file_path}:{symbol.line_number}"
+                )
+            user_prompt_parts.append("")
+
+        if issue_context:
+            user_prompt_parts.append("Issue Context:")
+            user_prompt_parts.append(f"- Issue: {issue_context.get('title', 'Unknown')}")
+            user_prompt_parts.append(f"- Description: {issue_context.get('description', 'No description')}")
+            user_prompt_parts.append("")
+
+        user_prompt_parts.append("Please implement this task following TDD methodology.")
+        user_prompt = "\n".join(user_prompt_parts)
+
+        # Call Anthropic API
+        client = anthropic.Anthropic(api_key=self.api_key)
+
+        logger.debug(f"Calling Anthropic API for task {task.get('id', 'unknown')}")
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
+        # Parse response
+        response_text = response.content[0].text
+        result = json.loads(response_text)
+
+        logger.info(
+            f"Generated {len(result.get('files', []))} file changes for task {task.get('id', 'unknown')}"
+        )
+
+        return result
 
     def apply_file_changes(self, files: List[Dict[str, Any]]) -> List[str]:
         """
