@@ -1386,3 +1386,285 @@ class TestBackendWorkerAgentExecution:
         cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
         updated_task = cursor.fetchone()
         assert updated_task["status"] == "failed"
+
+
+class TestBackendWorkerAgentTestRunnerIntegration:
+    """Test integration with TestRunner (cf-42 Phase 3)."""
+
+    @patch('anthropic.Anthropic')
+    def test_execute_task_runs_tests_after_code_generation(self, mock_anthropic_class, tmp_path):
+        """Test execute_task runs tests after generating code (Phase 3)."""
+        from codeframe.testing.test_runner import TestRunner
+        from codeframe.testing.models import TestResult
+
+        db = Database(":memory:")
+        db.initialize()
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Create User model",
+            description="Create basic User class",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        index = Mock(spec=CodebaseIndex)
+        index.search_pattern.return_value = []
+
+        # Mock Anthropic API
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        mock_response = Mock()
+        mock_response.content = [Mock(text=json.dumps({
+            "files": [
+                {
+                    "path": "codeframe/models/user.py",
+                    "action": "create",
+                    "content": "class User:\n    pass\n"
+                }
+            ],
+            "explanation": "Created User model"
+        }))]
+        mock_client.messages.create.return_value = mock_response
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path
+        )
+
+        # Mock test runner
+        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+            mock_run_tests.return_value = TestResult(
+                status="passed",
+                total=5,
+                passed=5,
+                failed=0,
+                errors=0,
+                skipped=0,
+                duration=1.2
+            )
+
+            # Get task from database
+            cursor = db.conn.cursor()
+            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            task = dict(cursor.fetchone())
+
+            result = agent.execute_task(task)
+
+            # Verify test runner was called
+            mock_run_tests.assert_called_once()
+
+            # Verify execution completed successfully
+            assert result["status"] == "completed"
+            assert result["error"] is None
+
+            # Verify test results were stored in database
+            test_results = db.get_test_results_by_task(task_id)
+            assert len(test_results) == 1
+            assert test_results[0]["status"] == "passed"
+            assert test_results[0]["passed"] == 5
+            assert test_results[0]["failed"] == 0
+            assert test_results[0]["errors"] == 0
+
+    @patch('anthropic.Anthropic')
+    def test_execute_task_handles_test_failures(self, mock_anthropic_class, tmp_path):
+        """Test execute_task handles test failures (Phase 3)."""
+        from codeframe.testing.test_runner import TestRunner
+        from codeframe.testing.models import TestResult
+
+        db = Database(":memory:")
+        db.initialize()
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Create User model",
+            description="Create basic User class with tests",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        index = Mock(spec=CodebaseIndex)
+        index.search_pattern.return_value = []
+
+        # Mock Anthropic API
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        mock_response = Mock()
+        mock_response.content = [Mock(text=json.dumps({
+            "files": [
+                {
+                    "path": "codeframe/models/user.py",
+                    "action": "create",
+                    "content": "class User:\n    pass\n"
+                },
+                {
+                    "path": "tests/test_user.py",
+                    "action": "create",
+                    "content": "def test_user():\n    assert False  # Failing test\n"
+                }
+            ],
+            "explanation": "Created User model with tests"
+        }))]
+        mock_client.messages.create.return_value = mock_response
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path
+        )
+
+        # Mock test runner with failures
+        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+            mock_run_tests.return_value = TestResult(
+                status="failed",
+                total=5,
+                passed=3,
+                failed=2,
+                errors=0,
+                skipped=0,
+                duration=1.5
+            )
+
+            # Get task from database
+            cursor = db.conn.cursor()
+            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            task = dict(cursor.fetchone())
+
+            result = agent.execute_task(task)
+
+            # Verify execution completed (tests run but failed)
+            # Note: In Phase 3, we just record test results
+            # Self-correction (cf-43) will handle failures later
+            assert result["status"] == "completed"
+            assert result["error"] is None
+
+            # Verify test results were stored
+            test_results = db.get_test_results_by_task(task_id)
+            assert len(test_results) == 1
+            assert test_results[0]["status"] == "failed"
+            assert test_results[0]["passed"] == 3
+            assert test_results[0]["failed"] == 2
+
+    @patch('anthropic.Anthropic')
+    def test_execute_task_handles_test_runner_errors(self, mock_anthropic_class, tmp_path):
+        """Test execute_task handles test runner errors gracefully (Phase 3)."""
+        from codeframe.testing.test_runner import TestRunner
+        from codeframe.testing.models import TestResult
+
+        db = Database(":memory:")
+        db.initialize()
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Create User model",
+            description="Create basic User class",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        index = Mock(spec=CodebaseIndex)
+        index.search_pattern.return_value = []
+
+        # Mock Anthropic API
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        mock_response = Mock()
+        mock_response.content = [Mock(text=json.dumps({
+            "files": [
+                {
+                    "path": "codeframe/models/user.py",
+                    "action": "create",
+                    "content": "class User:\n    pass\n"
+                }
+            ],
+            "explanation": "Created User model"
+        }))]
+        mock_client.messages.create.return_value = mock_response
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path
+        )
+
+        # Mock test runner with error
+        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+            mock_run_tests.return_value = TestResult(
+                status="error",
+                total=0,
+                passed=0,
+                failed=0,
+                errors=1,
+                skipped=0,
+                duration=0.1,
+                output="pytest not found"
+            )
+
+            # Get task from database
+            cursor = db.conn.cursor()
+            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            task = dict(cursor.fetchone())
+
+            result = agent.execute_task(task)
+
+            # Verify execution completed with error recorded
+            assert result["status"] == "completed"
+            assert result["error"] is None
+
+            # Verify test error was stored
+            test_results = db.get_test_results_by_task(task_id)
+            assert len(test_results) == 1
+            assert test_results[0]["status"] == "error"
+            assert test_results[0]["errors"] == 1
