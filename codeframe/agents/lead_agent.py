@@ -64,6 +64,14 @@ class LeadAgent:
         # Codebase indexing
         self.codebase_index: Optional[CodebaseIndex] = None
 
+        # Git workflow manager (cf-33)
+        from codeframe.git.workflow_manager import GitWorkflowManager
+        from pathlib import Path
+
+        project = self.db.get_project(project_id)
+        project_root = Path(project.get("root_path", "."))
+        self.git_workflow = GitWorkflowManager(project_root, db)
+
         # Load discovery state from database
         self._load_discovery_state()
 
@@ -831,3 +839,120 @@ Generate the PRD in markdown format with clear sections and professional languag
         except Exception as e:
             logger.error(f"Failed to query codebase: {e}", exc_info=True)
             raise
+
+    def start_issue_work(self, issue_id: int) -> Dict[str, Any]:
+        """
+        Start work on an issue by creating feature branch.
+
+        Creates git branch using GitWorkflowManager and tracks in database.
+
+        Args:
+            issue_id: Database ID of the issue
+
+        Returns:
+            dict with:
+                - branch_name: Created branch name
+                - issue_number: Issue number
+                - status: 'created'
+
+        Raises:
+            ValueError: If issue doesn't exist or already has active branch
+        """
+        # 1. Get issue from database
+        issue = self.db.get_issue(issue_id)
+        if not issue:
+            raise ValueError(f"Issue {issue_id} not found")
+
+        # 2. Check if issue already has active branch
+        existing_branch = self.db.get_branch_for_issue(issue_id)
+        if existing_branch:
+            raise ValueError(
+                f"Issue {issue['issue_number']} already has an active branch: "
+                f"{existing_branch['branch_name']}"
+            )
+
+        # 3. Create feature branch via GitWorkflowManager
+        branch_name = self.git_workflow.create_feature_branch(
+            issue['issue_number'],
+            issue['title']
+        )
+
+        # 4. Record in git_branches table (already done by GitWorkflowManager)
+        # GitWorkflowManager.create_feature_branch() already stores in database
+
+        # 5. Return branch info
+        logger.info(f"Started work on issue {issue['issue_number']}: created branch {branch_name}")
+
+        return {
+            "branch_name": branch_name,
+            "issue_number": issue['issue_number'],
+            "status": "created",
+        }
+
+    def complete_issue(self, issue_id: int) -> Dict[str, Any]:
+        """
+        Complete an issue by merging feature branch to main.
+
+        Validates all tasks complete, merges branch, updates database, and triggers deployment.
+
+        Args:
+            issue_id: Database ID of the issue
+
+        Returns:
+            dict with:
+                - merge_commit: Git commit hash
+                - branch_name: Merged branch name
+                - tasks_completed: Number of tasks in issue
+                - status: 'merged'
+                - deployment: Deployment result dict (if triggered)
+
+        Raises:
+            ValueError: If tasks not all complete or no active branch
+        """
+        # 1. Get issue from database
+        issue = self.db.get_issue(issue_id)
+        if not issue:
+            raise ValueError(f"Issue {issue_id} not found")
+
+        # 2. Validate all tasks completed using GitWorkflowManager
+        if not self.git_workflow.is_issue_complete(issue_id):
+            raise ValueError(
+                f"Cannot complete issue {issue['issue_number']}: incomplete tasks remain"
+            )
+
+        # 3. Get active branch for issue
+        branch_record = self.db.get_branch_for_issue(issue_id)
+        if not branch_record:
+            raise ValueError(f"No active branch found for issue {issue['issue_number']}")
+
+        # 4. Merge to main via GitWorkflowManager
+        merge_result = self.git_workflow.merge_to_main(issue['issue_number'])
+
+        # 5. Update issue status to 'completed'
+        self.db.update_issue(issue_id, {"status": "completed"})
+
+        # 6. Count tasks
+        tasks = self.db.get_tasks_by_issue(issue_id)
+        tasks_completed = len(tasks)
+
+        # 7. Trigger deployment after successful merge
+        from codeframe.deployment.deployer import Deployer
+
+        deployer = Deployer(self.git_workflow.project_root, self.db)
+        deployment_result = deployer.trigger_deployment(
+            commit_hash=merge_result["merge_commit"],
+            environment="staging"
+        )
+
+        logger.info(
+            f"Completed issue {issue['issue_number']}: merged {merge_result['branch_name']} "
+            f"with {tasks_completed} tasks, deployment {deployment_result['status']}"
+        )
+
+        return {
+            "merge_commit": merge_result["merge_commit"],
+            "branch_name": merge_result["branch_name"],
+            "tasks_completed": tasks_completed,
+            "status": "merged",
+            "deployment": deployment_result,
+        }

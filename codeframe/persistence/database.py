@@ -35,6 +35,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
+                root_path TEXT,
                 status TEXT CHECK(status IN ('init', 'planning', 'running', 'active', 'paused', 'completed')),
                 phase TEXT CHECK(phase IN ('discovery', 'planning', 'active', 'review', 'complete')) DEFAULT 'discovery',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -189,6 +190,19 @@ class Database:
                 merged_at TIMESTAMP,
                 merge_commit TEXT,
                 status TEXT CHECK(status IN ('active', 'merged', 'abandoned')) DEFAULT 'active'
+            )
+        """)
+
+        # Deployments table (cf-33: Deployment tracking)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS deployments (
+                id INTEGER PRIMARY KEY,
+                commit_hash TEXT NOT NULL,
+                environment TEXT CHECK(environment IN ('staging', 'production')),
+                status TEXT CHECK(status IN ('success', 'failed')),
+                output TEXT,
+                duration_seconds REAL,
+                triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
