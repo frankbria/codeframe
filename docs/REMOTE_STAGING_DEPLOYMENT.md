@@ -1,12 +1,31 @@
 # Remote Staging Server Deployment Guide
 
-This guide provides step-by-step instructions for deploying CodeFRAME to a centralized staging server on **frankbria-inspiron-7586** instead of running it locally.
+This guide provides step-by-step instructions for deploying CodeFRAME to a centralized staging server instead of running it locally.
 
-## Overview
+## Server Configuration
 
-**Remote Server**: `frankbria-inspiron-7586` (Linux box with SSH access)
-**Frontend URL**: `http://frankbria-inspiron-7586:14100`
-**Backend API URL**: `http://frankbria-inspiron-7586:14200`
+Before starting, create your server configuration file:
+
+```bash
+# In your local codeframe directory
+cp .staging-server.conf.example .staging-server.conf
+nano .staging-server.conf
+```
+
+Fill in your actual server details:
+```bash
+STAGING_SERVER_HOST="your-server-hostname"
+STAGING_SERVER_USER="your-username"
+STAGING_FRONTEND_PORT="14100"
+STAGING_BACKEND_PORT="14200"
+```
+
+**Note**: `.staging-server.conf` is gitignored and contains your private server details.
+
+Throughout this guide:
+- `YOUR_STAGING_SERVER` = your server hostname
+- `YOUR_USER` = your SSH username
+- Replace these placeholders with your actual values or use the environment variables from `.staging-server.conf`
 
 ---
 
@@ -14,7 +33,7 @@ This guide provides step-by-step instructions for deploying CodeFRAME to a centr
 
 Before starting, ensure you have:
 
-1. **SSH access** to frankbria-inspiron-7586
+1. **SSH access** to your staging server
 2. **Git installed** on the remote server
 3. **API Keys** (ANTHROPIC_API_KEY, optionally OPENAI_API_KEY)
 4. **Network access** to ports 14100 (frontend) and 14200 (backend) on the remote server
@@ -27,7 +46,7 @@ Before starting, ensure you have:
 
 ```bash
 # From your local machine
-ssh frankbria@frankbria-inspiron-7586
+ssh YOUR_USER@YOUR_STAGING_SERVER
 ```
 
 ### Step 1.2: Install System Dependencies
@@ -238,10 +257,10 @@ sudo ufw status numbered
 
 ```bash
 # Test backend API
-curl http://frankbria-inspiron-7586:14200
+curl http://YOUR_STAGING_SERVER:14200
 
 # Open frontend in browser
-# Navigate to: http://frankbria-inspiron-7586:14100
+# Navigate to: http://YOUR_STAGING_SERVER:14100
 ```
 
 **Expected**: Frontend should load in browser, backend API should return JSON status.
@@ -263,7 +282,7 @@ pm2 save
 pm2 startup
 
 # Follow the instructions shown - will be something like:
-# sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u frankbria --hp /home/frankbria
+# sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u YOUR_USER --hp /home/YOUR_USER
 # (Copy and run the exact command PM2 outputs)
 ```
 
@@ -271,7 +290,7 @@ pm2 startup
 
 ```bash
 # Check PM2 startup status
-systemctl status pm2-frankbria
+systemctl status pm2-YOUR_USER
 
 # Test by rebooting (optional)
 # sudo reboot
@@ -289,7 +308,7 @@ When you push new code to the repository:
 
 ```bash
 # SSH to remote server
-ssh frankbria@frankbria-inspiron-7586
+ssh YOUR_USER@YOUR_STAGING_SERVER
 
 # Navigate to project
 cd ~/projects/codeframe
@@ -568,14 +587,14 @@ pm2 start ecosystem.staging.config.js
 
 ## Summary Checklist
 
-- [ ] SSH access to frankbria-inspiron-7586 confirmed
+- [ ] SSH access to YOUR_STAGING_SERVER confirmed
 - [ ] System dependencies installed (Node.js, uv, PM2)
 - [ ] Repository cloned to ~/projects/codeframe
 - [ ] .env.staging configured with valid API keys
 - [ ] Deployment script executed successfully
 - [ ] Services running (pm2 list shows online)
 - [ ] Local access verified (curl http://localhost:14100)
-- [ ] Remote access verified (browser to http://frankbria-inspiron-7586:14100)
+- [ ] Remote access verified (browser to http://YOUR_STAGING_SERVER:14100)
 - [ ] Firewall configured (if applicable)
 - [ ] PM2 auto-start enabled (optional)
 - [ ] Monitoring commands tested
@@ -588,7 +607,7 @@ pm2 start ecosystem.staging.config.js
 # ============================================
 # DEPLOYMENT
 # ============================================
-ssh frankbria@frankbria-inspiron-7586
+ssh YOUR_USER@YOUR_STAGING_SERVER
 cd ~/projects/codeframe
 git pull origin main
 ./scripts/deploy-staging.sh
@@ -617,8 +636,8 @@ sudo lsof -i :14200
 # ============================================
 # ACCESS URLS
 # ============================================
-Frontend: http://frankbria-inspiron-7586:14100
-Backend:  http://frankbria-inspiron-7586:14200
+Frontend: http://YOUR_STAGING_SERVER:14100
+Backend:  http://YOUR_STAGING_SERVER:14200
 ```
 
 ---
@@ -633,4 +652,4 @@ Backend:  http://frankbria-inspiron-7586:14200
 
 **Deployment Guide Version**: 1.0
 **Last Updated**: 2025-10-17
-**Target Server**: frankbria-inspiron-7586
+**Target Server**: YOUR_STAGING_SERVER

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CodeFRAME Remote Server Initial Setup Script
-# Run this script on the remote server (frankbria-inspiron-7586) for first-time setup
+# Run this script on the remote server (YOUR_STAGING_SERVER) for first-time setup
 
 set -e
 
@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║   CodeFRAME Remote Server Initial Setup                   ║${NC}"
-echo -e "${BLUE}║   Target: frankbria-inspiron-7586                          ║${NC}"
+echo -e "${BLUE}║   Target: YOUR_STAGING_SERVER                          ║${NC}"
 echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -260,8 +260,8 @@ echo "   cd ~/projects/codeframe"
 echo "   ./scripts/deploy-staging.sh"
 echo ""
 echo "3. After deployment, access the dashboard:"
-echo "   Frontend: http://frankbria-inspiron-7586:14100"
-echo "   Backend:  http://frankbria-inspiron-7586:14200"
+echo "   Frontend: http://YOUR_STAGING_SERVER:14100"
+echo "   Backend:  http://YOUR_STAGING_SERVER:14200"
 echo ""
 echo "4. (Optional) Enable auto-start on boot:"
 echo "   pm2 save"

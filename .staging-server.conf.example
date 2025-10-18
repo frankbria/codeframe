@@ -1,0 +1,21 @@
+# Staging Server Configuration Template
+# Copy this file to .staging-server.conf and fill in your actual values
+# .staging-server.conf is gitignored and will not be committed
+
+# Remote Server Configuration
+STAGING_SERVER_HOST="your-server-hostname"
+STAGING_SERVER_USER="your-username"
+STAGING_SERVER_SSH="${STAGING_SERVER_USER}@${STAGING_SERVER_HOST}"
+
+# Service Ports
+STAGING_FRONTEND_PORT="14100"
+STAGING_BACKEND_PORT="14200"
+
+# Project Paths
+STAGING_PROJECT_DIR="~/projects/codeframe"
+
+# Example:
+# STAGING_SERVER_HOST="staging-box.local"
+# STAGING_SERVER_USER="deploy"
+# STAGING_FRONTEND_PORT="14100"
+# STAGING_BACKEND_PORT="14200"

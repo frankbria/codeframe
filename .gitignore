@@ -50,6 +50,9 @@ htmlcov/
 .env.local
 .env.staging
 
+# Staging server private configuration
+.staging-server.conf
+
 # Staging server
 /staging/
 /logs/
