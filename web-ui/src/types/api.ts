@@ -67,3 +67,30 @@ export interface IssuesResponse {
   next_cursor?: string;
   prev_cursor?: string;
 }
+
+/**
+ * Discovery progress response (cf-17.2)
+ */
+export type ProjectPhase = 'discovery' | 'planning' | 'active' | 'review' | 'complete';
+export type DiscoveryState = 'idle' | 'discovering' | 'completed';
+
+export interface CurrentQuestion {
+  id: string;
+  question: string;
+  category: string;
+}
+
+export interface DiscoveryInfo {
+  state: DiscoveryState;
+  progress_percentage: number;
+  answered_count: number;
+  total_required: number;
+  remaining_count?: number;
+  current_question?: CurrentQuestion;
+}
+
+export interface DiscoveryProgressResponse {
+  project_id: number;
+  phase: ProjectPhase;
+  discovery: DiscoveryInfo | null;
+}

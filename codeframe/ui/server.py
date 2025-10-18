@@ -667,6 +667,98 @@ async def get_project_prd(project_id: int):
     }
 
 
+@app.get("/api/projects/{project_id}/discovery/progress")
+async def get_discovery_progress(project_id: int):
+    """Get discovery progress for a project (cf-17.2).
+
+    Returns discovery progress combined with project phase.
+
+    Response format:
+        {
+            "project_id": int,
+            "phase": str,  # Project phase (discovery, planning, development, etc.)
+            "discovery": {  # null if discovery not started (idle state)
+                "state": str,  # idle, discovering, completed
+                "progress_percentage": float,  # 0-100
+                "answered_count": int,
+                "total_required": int,
+                "remaining_count": int,  # Only in discovering state
+                "current_question": dict,  # Only in discovering state
+                "structured_data": dict  # Only in completed state
+            }
+        }
+
+    Args:
+        project_id: Project ID
+
+    Returns:
+        Discovery progress response
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+    """
+    # Check if project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Get project phase (default to "discovery" if not set)
+    project_phase = project.get("phase", "discovery")
+
+    # Initialize LeadAgent to get discovery status
+    # Use dummy API key for status retrieval (no API calls made)
+    try:
+        from codeframe.agents.lead_agent import LeadAgent
+
+        agent = LeadAgent(
+            project_id=project_id,
+            db=app.state.db,
+            api_key="dummy-key-for-status"
+        )
+
+        # Get discovery status
+        status = agent.get_discovery_status()
+
+        # If discovery is in idle state, return null for discovery field
+        if status["state"] == "idle":
+            discovery_data = None
+        else:
+            # Build discovery response, excluding sensitive fields
+            discovery_data = {
+                "state": status["state"],
+                "progress_percentage": status["progress_percentage"],
+                "answered_count": status["answered_count"],
+                "total_required": status["total_required"],
+            }
+
+            # Add state-specific fields
+            if status["state"] == "discovering":
+                discovery_data["remaining_count"] = status["remaining_count"]
+                discovery_data["current_question"] = status.get("current_question")
+
+            if status["state"] == "completed":
+                discovery_data["structured_data"] = status.get("structured_data")
+
+            # Exclude "answers" field for security (contains raw user input)
+
+        return {
+            "project_id": project_id,
+            "phase": project_phase,
+            "discovery": discovery_data
+        }
+
+    except Exception as e:
+        # Log error but don't expose internals
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving discovery progress: {str(e)}"
+        )
+
+
 @app.get("/api/projects/{project_id}/issues")
 async def get_project_issues(project_id: int, include: str = None):
     """Get issues for a project (cf-26).

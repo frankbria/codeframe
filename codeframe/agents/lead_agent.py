@@ -305,7 +305,17 @@ class LeadAgent:
         Get current discovery status.
 
         Returns:
-            Dictionary with state, current_question, answers, and structured_data
+            Dictionary with state, current_question, answers, progress indicators, and structured_data
+
+            Fields include:
+            - state: Current discovery state (idle, discovering, completed)
+            - answered_count: Number of questions answered
+            - answers: Dict of question_id -> answer text
+            - progress_percentage: Float 0-100 (only in discovering/completed states)
+            - total_required: Total number of required questions (only in discovering/completed states)
+            - remaining_count: Number of unanswered required questions (only in discovering state)
+            - current_question: Current question details (only in discovering state)
+            - structured_data: Extracted structured data (only in completed state)
         """
         status = {
             "state": self._discovery_state,
@@ -313,10 +323,24 @@ class LeadAgent:
             "answers": self._discovery_answers.copy(),
         }
 
-        # Add current question if in discovering state
+        # Add progress indicators and current question if in discovering state
         if self._discovery_state == "discovering" and self._current_question_id:
-            # Find current question details
+            # Get all questions to calculate progress
             questions = self.discovery_framework.generate_questions()
+            total_required = len([q for q in questions if q["importance"] == "required"])
+
+            # Calculate progress percentage: (answered / total_required) * 100
+            # Handle edge case: if total_required is 0, progress is 0%
+            if total_required > 0:
+                progress_percentage = (len(self._discovery_answers) / total_required) * 100
+            else:
+                progress_percentage = 0.0
+
+            status["progress_percentage"] = progress_percentage
+            status["total_required"] = total_required
+            status["remaining_count"] = total_required - len(self._discovery_answers)
+
+            # Find current question details
             current_q = next(
                 (q for q in questions if q["id"] == self._current_question_id),
                 None
@@ -324,12 +348,13 @@ class LeadAgent:
             if current_q:
                 status["current_question"] = current_q
 
-            # Add remaining count
-            total_required = len([q for q in questions if q["importance"] == "required"])
-            status["remaining_count"] = total_required - len(self._discovery_answers)
-
-        # Add structured data if completed
+        # Add progress indicators if completed (100% progress)
         if self._discovery_state == "completed":
+            questions = self.discovery_framework.generate_questions()
+            total_required = len([q for q in questions if q["importance"] == "required"])
+
+            status["progress_percentage"] = 100.0
+            status["total_required"] = total_required
             status["structured_data"] = self.answer_capture.get_structured_data()
 
         return status
