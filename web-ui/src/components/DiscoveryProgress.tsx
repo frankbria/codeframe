@@ -39,12 +39,11 @@ export default function DiscoveryProgress({ projectId }: DiscoveryProgressProps)
     fetchProgress();
   }, [projectId]);
 
-  // Auto-refresh during discovery
+  // Auto-refresh only during discovery
   useEffect(() => {
     if (!data) return;
 
     const isDiscovering = data.discovery?.state === 'discovering';
-
     if (!isDiscovering) return;
 
     const intervalId = setInterval(() => {
@@ -52,7 +51,7 @@ export default function DiscoveryProgress({ projectId }: DiscoveryProgressProps)
     }, 10000); // 10 seconds
 
     return () => clearInterval(intervalId);
-  }, [data, projectId]);
+  }, [data]);
 
   // Loading state
   if (loading) {

@@ -11,11 +11,15 @@ import Dashboard from './Dashboard';
 jest.mock('swr', () => ({
   __esModule: true,
   default: jest.fn((key, fetcher) => {
+    // Extract project ID from key
+    const projectIdMatch = key.match(/\/projects\/(\d+)\//);
+    const projectId = projectIdMatch ? projectIdMatch[1] : '1';
+
     // Mock different endpoints
-    if (key === '/projects/1/status') {
+    if (key.includes('/status')) {
       return {
         data: {
-          name: 'Test Project',
+          name: `Test Project ${projectId}`,
           status: 'active',
           phase: 'development',
           workflow_step: 5,
@@ -39,20 +43,20 @@ jest.mock('swr', () => ({
         mutate: jest.fn(),
       };
     }
-    if (key === '/projects/1/agents') {
+    if (key.includes('/agents')) {
       return {
         data: [],
         error: undefined,
       };
     }
-    if (key === '/projects/1/blockers') {
+    if (key.includes('/blockers')) {
       return {
         data: [],
         error: undefined,
         mutate: jest.fn(),
       };
     }
-    if (key === '/projects/1/activity') {
+    if (key.includes('/activity')) {
       return {
         data: [],
         error: undefined,
@@ -78,6 +82,7 @@ jest.mock('@/lib/api', () => ({
     getStatus: jest.fn(),
     getPRD: jest.fn(),
     getIssues: jest.fn(),
+    getDiscoveryProgress: jest.fn(),
   },
   agentsApi: {
     list: jest.fn(),
@@ -89,6 +94,13 @@ jest.mock('@/lib/api', () => ({
     list: jest.fn(),
   },
 }));
+
+// Mock DiscoveryProgress component (cf-17.2)
+jest.mock('./DiscoveryProgress', () => {
+  return function MockDiscoveryProgress({ projectId }: { projectId: number }) {
+    return <div data-testid="discovery-progress">Discovery Progress for project {projectId}</div>;
+  };
+});
 
 describe('Dashboard - PRD and Task Integration (cf-26)', () => {
   describe('PRD Button', () => {
@@ -163,7 +175,8 @@ describe('Dashboard - PRD and Task Integration (cf-26)', () => {
     it('should render task tree after progress section', () => {
       const { container } = render(<Dashboard projectId={1} />);
 
-      const progressSection = screen.getByText(/Progress/i).closest('div');
+      // Find the specific "Progress" section (not "Discovery Progress")
+      const progressSection = screen.getByRole('heading', { name: /^Progress$/i }).closest('div');
       const taskTreeSection = screen.getByText(/issues.*tasks/i).closest('div');
 
       // Get all sections
@@ -180,7 +193,7 @@ describe('Dashboard - PRD and Task Integration (cf-26)', () => {
       render(<Dashboard projectId={1} />);
 
       // All existing sections should still be present
-      expect(screen.getByText(/Progress/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /^Progress$/i })).toBeInTheDocument();
       expect(screen.getByText(/Agent Status/i)).toBeInTheDocument();
       expect(screen.getByText(/Recent Activity/i)).toBeInTheDocument();
     });
@@ -248,5 +261,29 @@ describe('Dashboard - PRD and Task Integration (cf-26)', () => {
       const h2s = headings.filter((h) => h.tagName === 'H2');
       expect(h2s.length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('Dashboard - Discovery Progress Integration (cf-17.2)', () => {
+  it('should render DiscoveryProgress component when project exists', () => {
+    render(<Dashboard projectId={1} />);
+
+    expect(screen.getByTestId('discovery-progress')).toBeInTheDocument();
+  });
+
+  it('should pass correct projectId to DiscoveryProgress', () => {
+    render(<Dashboard projectId={42} />);
+
+    const discoveryProgress = screen.getByTestId('discovery-progress');
+    expect(discoveryProgress).toHaveTextContent('Discovery Progress for project 42');
+  });
+
+  it('should display DiscoveryProgress before chat interface', () => {
+    const { container } = render(<Dashboard projectId={1} />);
+
+    const discoveryProgress = screen.getByTestId('discovery-progress');
+    const main = container.querySelector('main');
+
+    expect(main).toContainElement(discoveryProgress);
   });
 });

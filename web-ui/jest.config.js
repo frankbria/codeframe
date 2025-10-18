@@ -35,6 +35,25 @@ const customJestConfig = {
       lines: 80,
       statements: 80,
     },
+    // Specific thresholds for cf-17.2 components
+    './src/components/ProgressBar.tsx': {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+    './src/components/PhaseIndicator.tsx': {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+    './src/components/DiscoveryProgress.tsx': {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
   },
 }
 

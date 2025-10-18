@@ -83,14 +83,12 @@ describe('PhaseIndicator Component', () => {
 
   describe('Invalid Phase Handling', () => {
     it('should render "Unknown" for invalid phase', () => {
-      // @ts-expect-error Testing invalid phase
       render(<PhaseIndicator phase="invalid" />);
 
       expect(screen.getByText('Unknown')).toBeInTheDocument();
     });
 
     it('should display gray color for invalid phase', () => {
-      // @ts-expect-error Testing invalid phase
       const { container } = render(<PhaseIndicator phase="invalid" />);
 
       const badge = container.querySelector('[data-testid="phase-badge"]');
@@ -99,7 +97,6 @@ describe('PhaseIndicator Component', () => {
     });
 
     it('should handle empty string phase', () => {
-      // @ts-expect-error Testing empty phase
       render(<PhaseIndicator phase="" />);
 
       expect(screen.getByText('Unknown')).toBeInTheDocument();
@@ -179,7 +176,6 @@ describe('PhaseIndicator Component', () => {
     });
 
     it('should have aria-label for unknown phase', () => {
-      // @ts-expect-error Testing invalid phase
       render(<PhaseIndicator phase="invalid" />);
 
       const badge = screen.getByRole('status');
@@ -196,7 +192,6 @@ describe('PhaseIndicator Component', () => {
 
     it('should handle uppercase phase names (if converted)', () => {
       // Component should handle and normalize case
-      // @ts-expect-error Testing case handling
       render(<PhaseIndicator phase="DISCOVERY" />);
 
       // Should still display properly capitalized
