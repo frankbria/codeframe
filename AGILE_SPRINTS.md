@@ -668,39 +668,60 @@ Lead: "✅ I've created your PRD. Generating tasks now..."
   - [x] cf-17.1: Project Phase Tracking ✅
   - [x] cf-17.2: Progress Indicators ✅
 
-- [ ] **cf-27**: Frontend Project Initialization Workflow (P0) 🚧 IN PROGRESS
+- [x] **cf-27**: Frontend Project Initialization Workflow (P0) ✅ COMPLETE
   - [x] cf-27.1: API Client Methods ✅
-    - ✅ `projectsApi.list()` method implemented
-    - ✅ `projectsApi.create()` method implemented
+    - ✅ `projectsApi.createProject(name, type)` method implemented
+    - ✅ `projectsApi.startProject(projectId)` method implemented
     - ✅ 9 comprehensive tests (100% pass rate)
     - ✅ Full error handling and TypeScript types
+    - ✅ ProjectResponse and StartProjectResponse types
     - **File**: web-ui/src/lib/api.ts
     - **Tests**: web-ui/src/lib/__tests__/api.test.ts
 
   - [x] cf-27.2: ProjectCreationForm Component ✅
-    - ✅ Form with project name and description inputs
+    - ✅ Form with project name and type (python/javascript/typescript/java/go/rust) inputs
     - ✅ Success/error states with visual feedback
-    - ✅ onSuccess callback integration
+    - ✅ onSuccess callback integration for parent components
+    - ✅ "Start Project" button appears after successful creation (cf-27.3)
+    - ✅ Calls startProject() API and navigates to project page
+    - ✅ Loading states during both creation and project start
     - ✅ Accessibility (ARIA labels, keyboard navigation)
-    - ✅ 14 comprehensive tests (100% pass rate, 23 total)
+    - ✅ 14 comprehensive tests (100% pass rate)
     - **File**: web-ui/src/components/ProjectCreationForm.tsx
     - **Tests**: web-ui/src/components/__tests__/ProjectCreationForm.test.tsx
 
-  - [x] cf-27.3: ProjectList Component ✅
-    - ✅ Fetches projects using SWR
-    - ✅ Displays project cards in grid layout (name, status, phase, date)
-    - ✅ Cards clickable → navigate to /projects/{id}
+  - [x] cf-27.3: ProjectList Component & Routing ✅
+    - ✅ Fetches projects using SWR for real-time data
+    - ✅ Displays project cards in responsive grid layout (name, status, phase, created_at)
+    - ✅ Cards clickable → navigate to /projects/{projectId}
     - ✅ Empty state with helpful message
-    - ✅ "Create New Project" button shows ProjectCreationForm
+    - ✅ "Create New Project" button shows embedded ProjectCreationForm
     - ✅ Refreshes list after project creation (SWR mutate)
-    - ✅ Loading and error states
+    - ✅ Loading, error, and empty states
     - ✅ Date formatting ("January 15, 2025")
     - ✅ 10 comprehensive tests (100% pass rate, 160 total)
-    - **File**: web-ui/src/components/ProjectList.tsx
+    - **Files**:
+      - web-ui/src/components/ProjectList.tsx (component)
+      - web-ui/src/app/page.tsx (homepage - shows ProjectList)
+      - web-ui/src/app/projects/[projectId]/page.tsx (dynamic route for project view)
     - **Tests**: web-ui/src/components/__tests__/ProjectList.test.tsx
 
-  - [ ] cf-27.4: Agent Configuration UI (P1)
-  - [ ] cf-27.5: Start Project Button & Flow (P1)
+**TDD Compliance**:
+- ✅ RED-GREEN-REFACTOR cycle followed for all components
+- ✅ Tests written before implementation
+- ✅ All 160 tests passing (100% pass rate across entire suite)
+- ✅ No regressions in existing tests
+
+**Integration**:
+- ✅ Full workflow: Create project → Start project → View dashboard
+- ✅ Next.js build passes with 0 TypeScript errors
+- ✅ Routing works: / (ProjectList) → /projects/[id] (Dashboard)
+
+**Notes**:
+- cf-27.4 (Agent Configuration UI) deferred to future sprint - P1 priority
+- cf-27.5 (Start Project Button) implemented within cf-27.2 (ProjectCreationForm)
+
+**Status**: ✅ Complete (2025-10-17) - Frontend project initialization workflow fully functional
 
 ---
 

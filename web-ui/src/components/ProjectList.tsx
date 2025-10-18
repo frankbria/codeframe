@@ -5,7 +5,7 @@ import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
 import { projectsApi } from '@/lib/api';
 import ProjectCreationForm from '@/components/ProjectCreationForm';
-import type { Project } from '@/types';
+import type { Project, ProjectResponse } from '@/types';
 
 /**
  * Formats an ISO date string to a readable format
@@ -35,7 +35,7 @@ export default function ProjectList() {
     router.push(`/projects/${projectId}`);
   };
 
-  const handleProjectCreated = (project: Project) => {
+  const handleProjectCreated = (project: ProjectResponse) => {
     // Hide form
     setShowForm(false);
     // Refresh project list
@@ -116,7 +116,9 @@ export default function ProjectList() {
                 <p>
                   Phase: <span className="font-medium">{project.phase}</span>
                 </p>
-                <p className="text-gray-500">{formatDate(project.created_at)}</p>
+                {project.created_at && (
+                  <p className="text-gray-500">{formatDate(project.created_at)}</p>
+                )}
               </div>
             </div>
           ))}
