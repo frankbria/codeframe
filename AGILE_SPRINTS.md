@@ -1417,11 +1417,20 @@ db.update_project(project_id, {"phase": "active"})
       - codeframe/agents/backend_worker_agent.py (267 lines)
       - tests/test_backend_worker_agent.py (381 lines)
     - **Commit**: e18f6d6 - feat(cf-41): Backend Worker Agent Phase 1 - Foundation
-  - **Phase 2: Context Building & Code Generation** ⏳ NEXT
-    - build_context() - Query codebase index for related symbols/files
-    - generate_code() - Call Anthropic Claude API for code generation
-    - Construct prompts from context
-    - Parse LLM responses
+  - **Phase 2: Context Building & Code Generation** ✅ COMPLETE (2025-10-17)
+    - ✅ build_context() - Query codebase index for related symbols/files
+    - ✅ generate_code() - Call Anthropic Claude API for code generation
+    - ✅ Prompt engineering (system + user prompts with context)
+    - ✅ JSON response parsing for file operations
+    - ✅ 9 comprehensive tests (5 context building + 4 code generation)
+    - ✅ 87.84% code coverage (exceeds 85% target)
+    - ✅ Anthropic Claude Sonnet 4 integration
+    - ✅ Error handling (API failures, malformed responses)
+    - **Files Modified**:
+      - codeframe/agents/backend_worker_agent.py (+117 lines)
+      - tests/test_backend_worker_agent.py (+384 lines)
+    - **Total Tests**: 19 passing (Phase 1: 10, Phase 2: 9)
+    - **Commit**: 3b7081b - feat(cf-41): Backend Worker Agent Phase 2 - Context & Code Generation
   - **Phase 3: File Operations & Task Management** ⏳ PENDING
     - apply_file_changes() - Safe file writes with validation
     - update_task_status() - Database status updates
@@ -1429,7 +1438,7 @@ db.update_project(project_id, {"phase": "active"})
   - **Phase 4: Integration & Testing** ⏳ PENDING
     - End-to-end integration tests
     - Demo: Agent completes real task
-  - **Estimated Effort**: 8-10 hours (Phase 1: 2 hours ✅, Phase 2-4: 6-8 hours remaining)
+  - **Estimated Effort**: 8-10 hours (Phase 1: 2 hours ✅, Phase 2: 3 hours ✅, Phase 3-4: 3-5 hours remaining)
 
 - [ ] **cf-42**: Test Runner Integration - Pytest execution and result parsing (P0)
   - Run pytest on task files
