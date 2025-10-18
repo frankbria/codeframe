@@ -20,6 +20,7 @@ export interface Project {
   status: ProjectStatus;
   phase?: string;
   workflow_step?: number;
+  created_at?: string;
   progress: {
     completed_tasks: number;
     total_tasks: number;
@@ -97,4 +98,24 @@ export interface WebSocketMessage {
   blocker_id?: number;
   answer?: string;
   project_id?: number;
+}
+
+/**
+ * Response from creating a new project
+ */
+export interface ProjectResponse {
+  id: number;
+  name: string;
+  status: ProjectStatus;
+  phase?: string;
+  created_at: string;
+  config?: Record<string, any>;
+}
+
+/**
+ * Response from starting a project
+ */
+export interface StartProjectResponse {
+  message: string;
+  status: string;
 }

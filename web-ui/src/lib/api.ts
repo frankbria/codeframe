@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import type { Project, Agent, Task, Blocker, ActivityItem } from '@/types';
+import type { Project, Agent, Task, Blocker, ActivityItem, ProjectResponse, StartProjectResponse } from '@/types';
 import type { PRDResponse, IssuesResponse, DiscoveryProgressResponse } from '@/types/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -17,6 +17,13 @@ const api = axios.create({
 
 export const projectsApi = {
   list: () => api.get<{ projects: Project[] }>('/api/projects'),
+  createProject: (name: string, type: string) =>
+    api.post<ProjectResponse>('/api/projects', {
+      project_name: name,
+      project_type: type,
+    }),
+  startProject: (projectId: number) =>
+    api.post<StartProjectResponse>(`/api/projects/${projectId}/start`),
   getStatus: (projectId: number) =>
     api.get<Project>(`/api/projects/${projectId}/status`),
   pause: (projectId: number) =>
