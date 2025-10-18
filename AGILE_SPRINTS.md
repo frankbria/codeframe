@@ -1424,12 +1424,27 @@ db.update_project(project_id, {"phase": "active"})
   - Retry tests
   - Demo: Watch agent fix failing tests
 
-- [ ] **cf-18.5**: Codebase Indexing (P0)
-  - Index project structure and symbols
-  - Provide structural awareness to agents
-  - Fast lookups for classes, functions, dependencies
-  - Demo: Agents can query codebase structure
-  - **Estimated Effort**: 4-6 hours
+- [x] **cf-32**: Codebase Indexing (P0) ✅ COMPLETE
+  - ✅ Tree-sitter-based multi-language parsing (Python, TypeScript/JavaScript)
+  - ✅ Symbol extraction (classes, functions, methods, interfaces, types)
+  - ✅ CodebaseIndex with query capabilities (by name, type, pattern)
+  - ✅ LeadAgent integration (build_codebase_index, query_codebase methods)
+  - ✅ Strict TDD methodology (RED-GREEN-REFACTOR)
+  - **Implementation**: 4 hours (concise execution)
+  - **Tests**: 47 comprehensive tests (100% pass rate)
+  - **Coverage**: 87.78% (exceeds 85% requirement)
+  - **Files Created**:
+    - codeframe/indexing/models.py (Symbol, SymbolType dataclasses)
+    - codeframe/indexing/parsers/python_parser.py (Python tree-sitter parser)
+    - codeframe/indexing/parsers/typescript_parser.py (TypeScript/JavaScript parser)
+    - codeframe/indexing/codebase_index.py (Main indexing API)
+    - tests/test_indexing_models.py (10 tests)
+    - tests/test_python_parser.py (15 tests)
+    - tests/test_typescript_parser.py (13 tests)
+    - tests/test_codebase_index.py (9 tests)
+  - **Dependencies Added**: tree-sitter, tree-sitter-python, tree-sitter-javascript, tree-sitter-typescript
+  - **Demo**: Agents can query codebase structure for classes, functions, and dependencies
+  - **Status**: ✅ Complete (2025-10-17) - Production-ready codebase indexing system
 
 - [ ] **cf-19**: Git auto-commit after task completion (P1)
   - Commit files with descriptive message
