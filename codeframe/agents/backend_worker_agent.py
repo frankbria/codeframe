@@ -320,12 +320,50 @@ Guidelines:
             List of modified file paths
 
         Raises:
-            SecurityError: If path traversal detected
-            FileOperationError: If file operations fail
-
-        Note: Implementation in Phase 3 (cf-41)
+            ValueError: If path traversal or absolute path detected
+            FileNotFoundError: If file to modify/delete doesn't exist
         """
-        raise NotImplementedError("apply_file_changes() - Phase 3 implementation")
+        modified_paths = []
+
+        for file_spec in files:
+            path = file_spec["path"]
+            action = file_spec["action"]
+            content = file_spec.get("content", "")
+
+            # Security: Validate path (no absolute paths, no traversal)
+            if Path(path).is_absolute():
+                raise ValueError(f"Absolute path not allowed: {path}")
+
+            # Resolve path and check it stays within project_root
+            target_path = (self.project_root / path).resolve()
+            try:
+                target_path.relative_to(self.project_root.resolve())
+            except ValueError:
+                raise ValueError(f"Path traversal detected: {path}")
+
+            # Perform action
+            if action == "create" or action == "modify":
+                if action == "modify" and not target_path.exists():
+                    raise FileNotFoundError(f"Cannot modify non-existent file: {path}")
+
+                # Create parent directories if needed
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Write file
+                target_path.write_text(content, encoding="utf-8")
+                logger.info(f"{action.capitalize()}d file: {path}")
+
+            elif action == "delete":
+                if not target_path.exists():
+                    raise FileNotFoundError(f"Cannot delete non-existent file: {path}")
+
+                target_path.unlink()
+                logger.info(f"Deleted file: {path}")
+
+            modified_paths.append(path)
+
+        logger.info(f"Applied {len(modified_paths)} file changes")
+        return modified_paths
 
     def update_task_status(
         self,
@@ -340,10 +378,28 @@ Guidelines:
             task_id: Task ID
             status: New status ("in_progress", "completed", "failed")
             output: Optional execution output/error message
-
-        Note: Implementation in Phase 3 (cf-41)
         """
-        raise NotImplementedError("update_task_status() - Phase 3 implementation")
+        from datetime import datetime
+
+        cursor = self.db.conn.cursor()
+
+        # Update status and completed_at if status is completed
+        if status == TaskStatus.COMPLETED.value:
+            cursor.execute(
+                "UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?",
+                (status, datetime.now().isoformat(), task_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE tasks SET status = ? WHERE id = ?",
+                (status, task_id)
+            )
+
+        self.db.conn.commit()
+        logger.info(f"Updated task {task_id} to status: {status}")
+
+        if output:
+            logger.debug(f"Task {task_id} output: {output[:200]}")
 
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -367,10 +423,46 @@ Guidelines:
                 "output": str,
                 "error": Optional[str]
             }
-
-        Raises:
-            TaskExecutionError: If task fails after all retries
-
-        Note: Implementation in Phase 3 (cf-41)
         """
-        raise NotImplementedError("execute_task() - Phase 3 implementation")
+        task_id = task["id"]
+        files_modified = []
+        error = None
+
+        try:
+            # 1. Update status to in_progress
+            self.update_task_status(task_id, TaskStatus.IN_PROGRESS.value)
+            logger.info(f"Starting execution of task {task_id}: {task['title']}")
+
+            # 2. Build context from codebase
+            context = self.build_context(task)
+
+            # 3. Generate code using LLM
+            generation_result = self.generate_code(context)
+
+            # 4. Apply file changes
+            files_modified = self.apply_file_changes(generation_result["files"])
+
+            # 5. Update status to completed
+            output = generation_result.get("explanation", "Task completed")
+            self.update_task_status(task_id, TaskStatus.COMPLETED.value, output=output)
+
+            logger.info(f"Successfully completed task {task_id}")
+            return {
+                "status": "completed",
+                "files_modified": files_modified,
+                "output": output,
+                "error": None
+            }
+
+        except Exception as e:
+            # Update status to failed
+            error = f"{type(e).__name__}: {str(e)}"
+            self.update_task_status(task_id, TaskStatus.FAILED.value, output=error)
+
+            logger.error(f"Task {task_id} failed: {error}")
+            return {
+                "status": "failed",
+                "files_modified": files_modified,
+                "output": "",
+                "error": error
+            }
