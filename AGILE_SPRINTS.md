@@ -1406,23 +1406,29 @@ db.update_project(project_id, {"phase": "active"})
 ```
 
 **Implementation Tasks**:
-- [ ] **cf-16**: Create Backend Worker Agent (P0)
+- [ ] **cf-41**: Backend Worker Agent - Task execution with LLM (P0)
   - Initialize with provider (Claude)
   - Execute task with LLM
   - Write code to files
+  - Use codebase indexing (cf-32) for context
   - Demo: Agent creates real files
+  - **Estimated Effort**: 8-10 hours
 
-- [ ] **cf-17**: Implement test runner (Python only) (P0)
+- [ ] **cf-42**: Test Runner Integration - Pytest execution and result parsing (P0)
   - Run pytest on task files
-  - Parse test output
-  - Return results to agent
+  - Parse test output (pass/fail/error)
+  - Return structured results to agent
   - Demo: Tests run automatically
+  - **Estimated Effort**: 4-6 hours
 
-- [ ] **cf-18**: Self-correction loop (max 3 attempts) (P0)
+- [ ] **cf-43**: Self-Correction Loop - Auto-fix test failures (max 3 attempts) (P0)
   - Agent reads test failures
+  - Analyzes errors
   - Attempts fix
-  - Retry tests
+  - Retry tests (up to 3 attempts)
+  - Escalate to blocker if still failing
   - Demo: Watch agent fix failing tests
+  - **Estimated Effort**: 6-8 hours
 
 - [x] **cf-32**: Codebase Indexing (P0) ✅ COMPLETE
   - ✅ Tree-sitter-based multi-language parsing (Python, TypeScript/JavaScript)
@@ -1445,12 +1451,15 @@ db.update_project(project_id, {"phase": "active"})
   - **Dependencies Added**: tree-sitter, tree-sitter-python, tree-sitter-javascript, tree-sitter-typescript
   - **Demo**: Agents can query codebase structure for classes, functions, and dependencies
   - **Status**: ✅ Complete (2025-10-17) - Production-ready codebase indexing system
+  - **Commit**: efa6bf7 - feat(cf-32): Implement codebase indexing with tree-sitter parsers
+  - **Beads**: ✅ Closed cf-32 (2025-10-17)
 
-- [ ] **cf-19**: Git auto-commit after task completion (P1)
-  - Commit files with descriptive message
+- [ ] **cf-44**: Git Auto-Commit - Commit agent changes with descriptive messages (P1)
+  - Commit files with descriptive message based on task
   - Update changelog
   - Show commit in activity feed
   - Demo: Git history shows agent commits
+  - **Estimated Effort**: 2-3 hours
 
 - [x] **cf-33**: Git Branching & Deployment Workflow (P0) ✅ COMPLETE
   - **All Phases Complete** (2025-10-17):
@@ -1596,15 +1605,17 @@ db.update_project(project_id, {"phase": "active"})
 
   - **Commits**:
     - 75d2556 - feat(cf-33): Implement Git workflow management (Phases 1&2)
-    - [Pending] - feat(cf-33): Complete Phases 3&4 - LeadAgent integration and deployment automation
+    - ce3d66e - feat(cf-33): Complete Phases 3&4 - LeadAgent integration and deployment automation
 
-  - **Beads**: Ready to close cf-33 after final commit
+  - **Beads**: ✅ Closed cf-33 (2025-10-17)
 
-- [ ] **cf-20**: Real-time dashboard updates (P1)
+- [ ] **cf-45**: Real-time Dashboard Updates - WebSocket integration for live updates (P1)
   - WebSocket broadcasts on task status change
   - Activity feed updates live
   - Agent status card updates
+  - Progress bars update without refresh
   - Demo: No refresh needed, see updates live
+  - **Estimated Effort**: 4-6 hours
 
 **Definition of Done**:
 - ✅ Backend Agent executes a real task
