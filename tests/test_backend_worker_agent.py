@@ -764,3 +764,625 @@ class TestBackendWorkerAgentCodeGeneration:
 
         with pytest.raises(json.JSONDecodeError):
             agent.generate_code(context)
+
+
+class TestBackendWorkerAgentFileOperations:
+    """Test file operations (create/modify/delete)."""
+
+    def test_apply_file_changes_creates_new_file(self, tmp_path):
+        """Test apply_file_changes creates a new file."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        files = [
+            {
+                "path": "codeframe/models/user.py",
+                "action": "create",
+                "content": "class User:\n    pass\n"
+            }
+        ]
+
+        modified_paths = agent.apply_file_changes(files)
+
+        # Verify file was created
+        target_file = tmp_path / "codeframe" / "models" / "user.py"
+        assert target_file.exists()
+        assert target_file.read_text() == "class User:\n    pass\n"
+        assert modified_paths == ["codeframe/models/user.py"]
+
+    def test_apply_file_changes_modifies_existing_file(self, tmp_path):
+        """Test apply_file_changes modifies an existing file."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        # Create existing file
+        existing_file = tmp_path / "codeframe" / "models" / "user.py"
+        existing_file.parent.mkdir(parents=True)
+        existing_file.write_text("class User:\n    pass\n")
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        files = [
+            {
+                "path": "codeframe/models/user.py",
+                "action": "modify",
+                "content": "class User:\n    def __init__(self):\n        pass\n"
+            }
+        ]
+
+        modified_paths = agent.apply_file_changes(files)
+
+        # Verify file was modified
+        assert existing_file.read_text() == "class User:\n    def __init__(self):\n        pass\n"
+        assert modified_paths == ["codeframe/models/user.py"]
+
+    def test_apply_file_changes_deletes_file(self, tmp_path):
+        """Test apply_file_changes deletes a file."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        # Create existing file
+        existing_file = tmp_path / "codeframe" / "models" / "user.py"
+        existing_file.parent.mkdir(parents=True)
+        existing_file.write_text("class User:\n    pass\n")
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        files = [
+            {
+                "path": "codeframe/models/user.py",
+                "action": "delete"
+            }
+        ]
+
+        modified_paths = agent.apply_file_changes(files)
+
+        # Verify file was deleted
+        assert not existing_file.exists()
+        assert modified_paths == ["codeframe/models/user.py"]
+
+    def test_apply_file_changes_creates_parent_directories(self, tmp_path):
+        """Test apply_file_changes creates parent directories if needed."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        files = [
+            {
+                "path": "codeframe/deep/nested/path/file.py",
+                "action": "create",
+                "content": "# Nested file\n"
+            }
+        ]
+
+        modified_paths = agent.apply_file_changes(files)
+
+        # Verify nested directories and file were created
+        target_file = tmp_path / "codeframe" / "deep" / "nested" / "path" / "file.py"
+        assert target_file.exists()
+        assert target_file.read_text() == "# Nested file\n"
+        assert modified_paths == ["codeframe/deep/nested/path/file.py"]
+
+    def test_apply_file_changes_handles_multiple_files(self, tmp_path):
+        """Test apply_file_changes handles multiple file operations."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        # Create existing file
+        existing_file = tmp_path / "codeframe" / "models" / "user.py"
+        existing_file.parent.mkdir(parents=True)
+        existing_file.write_text("class User:\n    pass\n")
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        files = [
+            {
+                "path": "codeframe/models/user.py",
+                "action": "modify",
+                "content": "# Updated User\n"
+            },
+            {
+                "path": "codeframe/models/task.py",
+                "action": "create",
+                "content": "class Task:\n    pass\n"
+            },
+            {
+                "path": "tests/test_user.py",
+                "action": "create",
+                "content": "# Tests\n"
+            }
+        ]
+
+        modified_paths = agent.apply_file_changes(files)
+
+        # Verify all files were processed
+        assert len(modified_paths) == 3
+        assert "codeframe/models/user.py" in modified_paths
+        assert "codeframe/models/task.py" in modified_paths
+        assert "tests/test_user.py" in modified_paths
+
+        # Verify file contents
+        assert existing_file.read_text() == "# Updated User\n"
+        assert (tmp_path / "codeframe" / "models" / "task.py").read_text() == "class Task:\n    pass\n"
+        assert (tmp_path / "tests" / "test_user.py").read_text() == "# Tests\n"
+
+    def test_apply_file_changes_prevents_path_traversal(self, tmp_path):
+        """Test apply_file_changes blocks path traversal attacks."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        # Attempt path traversal
+        files = [
+            {
+                "path": "../../../etc/passwd",
+                "action": "create",
+                "content": "malicious content"
+            }
+        ]
+
+        with pytest.raises(ValueError) as exc_info:
+            agent.apply_file_changes(files)
+
+        assert "path traversal" in str(exc_info.value).lower()
+
+    def test_apply_file_changes_handles_absolute_paths(self, tmp_path):
+        """Test apply_file_changes rejects absolute paths."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        # Attempt absolute path
+        files = [
+            {
+                "path": "/etc/passwd",
+                "action": "create",
+                "content": "malicious content"
+            }
+        ]
+
+        with pytest.raises(ValueError) as exc_info:
+            agent.apply_file_changes(files)
+
+        assert "absolute path" in str(exc_info.value).lower()
+
+    def test_apply_file_changes_handles_file_not_found_for_modify(self, tmp_path):
+        """Test apply_file_changes handles missing file for modify action."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        files = [
+            {
+                "path": "nonexistent.py",
+                "action": "modify",
+                "content": "new content"
+            }
+        ]
+
+        with pytest.raises(FileNotFoundError):
+            agent.apply_file_changes(files)
+
+    def test_apply_file_changes_handles_file_not_found_for_delete(self, tmp_path):
+        """Test apply_file_changes handles missing file for delete action."""
+        db = Mock(spec=Database)
+        index = Mock(spec=CodebaseIndex)
+
+        agent = BackendWorkerAgent(
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        files = [
+            {
+                "path": "nonexistent.py",
+                "action": "delete"
+            }
+        ]
+
+        with pytest.raises(FileNotFoundError):
+            agent.apply_file_changes(files)
+
+
+class TestBackendWorkerAgentTaskStatus:
+    """Test task status management."""
+
+    def test_update_task_status_to_in_progress(self, tmp_path):
+        """Test update_task_status marks task as in_progress."""
+        db = Database(":memory:")
+        db.initialize()
+        index = Mock(spec=CodebaseIndex)
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        agent.update_task_status(task_id, TaskStatus.IN_PROGRESS.value)
+
+        # Verify task status updated
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        assert row["status"] == "in_progress"
+
+    def test_update_task_status_to_completed(self, tmp_path):
+        """Test update_task_status marks task as completed."""
+        db = Database(":memory:")
+        db.initialize()
+        index = Mock(spec=CodebaseIndex)
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        output = "Successfully created User model"
+        agent.update_task_status(task_id, TaskStatus.COMPLETED.value, output=output)
+
+        # Verify task status updated
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status, completed_at FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        assert row["status"] == "completed"
+        assert row["completed_at"] is not None
+
+    def test_update_task_status_to_failed(self, tmp_path):
+        """Test update_task_status marks task as failed."""
+        db = Database(":memory:")
+        db.initialize()
+        index = Mock(spec=CodebaseIndex)
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            project_root=tmp_path
+        )
+
+        output = "Error: API timeout"
+        agent.update_task_status(task_id, TaskStatus.FAILED.value, output=output)
+
+        # Verify task status updated
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        assert row["status"] == "failed"
+
+
+class TestBackendWorkerAgentExecution:
+    """Test end-to-end task execution orchestration."""
+
+    @patch('anthropic.Anthropic')
+    def test_execute_task_success(self, mock_anthropic_class, tmp_path):
+        """Test execute_task completes successfully."""
+        db = Database(":memory:")
+        db.initialize()
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Create User model",
+            description="Create basic User class",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        index = Mock(spec=CodebaseIndex)
+        index.search_pattern.return_value = []
+
+        # Mock Anthropic API
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        mock_response = Mock()
+        mock_response.content = [Mock(text=json.dumps({
+            "files": [
+                {
+                    "path": "codeframe/models/user.py",
+                    "action": "create",
+                    "content": "class User:\n    pass\n"
+                }
+            ],
+            "explanation": "Created User model"
+        }))]
+        mock_client.messages.create.return_value = mock_response
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path
+        )
+
+        # Get task from database
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task = dict(cursor.fetchone())
+
+        result = agent.execute_task(task)
+
+        # Verify execution result
+        assert result["status"] == "completed"
+        assert len(result["files_modified"]) == 1
+        assert "codeframe/models/user.py" in result["files_modified"]
+        assert result["error"] is None
+
+        # Verify file was created
+        target_file = tmp_path / "codeframe" / "models" / "user.py"
+        assert target_file.exists()
+
+        # Verify task status updated in database
+        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        updated_task = cursor.fetchone()
+        assert updated_task["status"] == "completed"
+
+    @patch('anthropic.Anthropic')
+    def test_execute_task_handles_api_failure(self, mock_anthropic_class, tmp_path):
+        """Test execute_task handles API failures."""
+        db = Database(":memory:")
+        db.initialize()
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Create User model",
+            description="Create basic User class",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        index = Mock(spec=CodebaseIndex)
+        index.search_pattern.return_value = []
+
+        # Mock API failure
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        mock_client.messages.create.side_effect = Exception("API timeout")
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path
+        )
+
+        # Get task from database
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task = dict(cursor.fetchone())
+
+        result = agent.execute_task(task)
+
+        # Verify execution result
+        assert result["status"] == "failed"
+        assert result["error"] is not None
+        assert "API timeout" in result["error"]
+
+        # Verify task status updated in database
+        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        updated_task = cursor.fetchone()
+        assert updated_task["status"] == "failed"
+
+    @patch('anthropic.Anthropic')
+    def test_execute_task_handles_file_operation_failure(self, mock_anthropic_class, tmp_path):
+        """Test execute_task handles file operation failures."""
+        db = Database(":memory:")
+        db.initialize()
+
+        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Modify User model",
+            description="Update User class",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        index = Mock(spec=CodebaseIndex)
+        index.search_pattern.return_value = []
+
+        # Mock Anthropic API - returns modify action on non-existent file
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        mock_response = Mock()
+        mock_response.content = [Mock(text=json.dumps({
+            "files": [
+                {
+                    "path": "codeframe/models/user.py",
+                    "action": "modify",
+                    "content": "class User:\n    def __init__(self):\n        pass\n"
+                }
+            ],
+            "explanation": "Updated User model"
+        }))]
+        mock_client.messages.create.return_value = mock_response
+
+        agent = BackendWorkerAgent(
+            project_id=project_id,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path
+        )
+
+        # Get task from database
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        task = dict(cursor.fetchone())
+
+        result = agent.execute_task(task)
+
+        # Verify execution result
+        assert result["status"] == "failed"
+        assert result["error"] is not None
+        assert "FileNotFoundError" in result["error"] or "file" in result["error"].lower()
+
+        # Verify task status updated in database
+        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+        updated_task = cursor.fetchone()
+        assert updated_task["status"] == "failed"
