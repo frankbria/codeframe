@@ -9,16 +9,17 @@ from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity
 class Database:
     """SQLite database manager for project state."""
 
-    def __init__(self, db_path: Path):
-        self.db_path = db_path
+    def __init__(self, db_path: Path | str):
+        self.db_path = Path(db_path) if db_path != ":memory:" else db_path
         self.conn: Optional[sqlite3.Connection] = None
 
     def initialize(self) -> None:
         """Initialize database schema."""
-        # Create parent directories if needed
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Create parent directories if needed (skip for in-memory databases)
+        if self.db_path != ":memory:":
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
         # Enable foreign key constraints
@@ -225,11 +226,11 @@ class Database:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def create_issue(self, issue: Issue) -> int:
+    def create_issue(self, issue: Issue | dict) -> int:
         """Create a new issue.
 
         Args:
-            issue: Issue object to create
+            issue: Issue object or dict to create
 
         Returns:
             Created issue ID
@@ -237,6 +238,24 @@ class Database:
         Raises:
             sqlite3.IntegrityError: If issue_number already exists for project
         """
+        # Handle both Issue objects and dicts for test flexibility
+        if isinstance(issue, dict):
+            project_id = issue.get("project_id")
+            issue_number = issue.get("issue_number")
+            title = issue.get("title", "")
+            description = issue.get("description", "")
+            status = issue.get("status", "pending")
+            priority = issue.get("priority", 2)
+            workflow_step = issue.get("workflow_step", 1)
+        else:
+            project_id = issue.project_id
+            issue_number = issue.issue_number
+            title = issue.title
+            description = issue.description
+            status = issue.status.value if hasattr(issue.status, 'value') else issue.status
+            priority = issue.priority
+            workflow_step = issue.workflow_step
+
         cursor = self.conn.cursor()
         cursor.execute("""
             INSERT INTO issues (
@@ -244,13 +263,13 @@ class Database:
                 status, priority, workflow_step
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            issue.project_id,
-            issue.issue_number,
-            issue.title,
-            issue.description,
-            issue.status.value if hasattr(issue.status, 'value') else issue.status,
-            issue.priority,
-            issue.workflow_step,
+            project_id,
+            issue_number,
+            title,
+            description,
+            status,
+            priority,
+            workflow_step,
         ))
         self.conn.commit()
         return cursor.lastrowid
