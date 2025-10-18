@@ -417,6 +417,7 @@ Guidelines:
             records the results. Self-correction (cf-43) will handle failures.
         """
         from codeframe.testing.test_runner import TestRunner
+        import json
 
         # Initialize test runner with project root
         test_runner = TestRunner(project_root=self.project_root)
@@ -424,6 +425,14 @@ Guidelines:
         # Run tests
         logger.info(f"Running tests for task {task_id}")
         test_result = test_runner.run_tests()
+
+        # Convert output dict to JSON string if it's not already a string
+        output_str = None
+        if test_result.output is not None:
+            if isinstance(test_result.output, dict):
+                output_str = json.dumps(test_result.output)
+            else:
+                output_str = str(test_result.output)
 
         # Record results in database
         self.db.create_test_result(
@@ -434,7 +443,7 @@ Guidelines:
             errors=test_result.errors,
             skipped=test_result.skipped,
             duration=test_result.duration,
-            output=test_result.output
+            output=output_str
         )
 
         logger.info(
@@ -442,6 +451,192 @@ Guidelines:
             f"{test_result.passed}/{test_result.total} passed, "
             f"{test_result.failed} failed, {test_result.errors} errors"
         )
+
+    def _attempt_self_correction(
+        self,
+        task: Dict[str, Any],
+        test_result_id: int,
+        attempt_number: int
+    ) -> Dict[str, Any]:
+        """
+        Attempt to fix failing tests by analyzing errors and regenerating code.
+
+        This implements the self-correction loop (cf-43) where the agent:
+        1. Analyzes test failure output
+        2. Generates code fixes
+        3. Applies the fixes
+        4. Returns the result
+
+        Args:
+            task: Task dictionary
+            test_result_id: ID of the failed test result
+            attempt_number: Which correction attempt this is (1-3)
+
+        Returns:
+            Dict with:
+                - "error_analysis": str - Analysis of what went wrong
+                - "fix_description": str - Description of the fix
+                - "code_changes": List[Dict] - File changes to apply
+        """
+        task_id = task["id"]
+        logger.info(f"Attempting self-correction #{attempt_number} for task {task_id}")
+
+        # Get the test result to analyze
+        test_results = self.db.get_test_results_by_task(task_id)
+        latest_result = test_results[-1] if test_results else None
+        
+        if not latest_result:
+            raise RuntimeError(f"No test results found for task {task_id}")
+
+        # Build context with test failure information
+        context = self.build_context(task)
+        context["test_failure"] = {
+            "status": latest_result["status"],
+            "failed": latest_result["failed"],
+            "errors": latest_result["errors"],
+            "output": latest_result["output"]
+        }
+        context["attempt_number"] = attempt_number
+
+        # Generate corrective code using LLM
+        # Modify the prompt to focus on fixing the specific test failures
+        correction_prompt = f"""
+Previous attempt failed with test errors. Please analyze the failures and fix them.
+
+Test Results:
+- Status: {latest_result['status']}
+- Failed: {latest_result['failed']} tests
+- Errors: {latest_result['errors']} errors
+
+Test Output:
+{latest_result['output']}
+
+This is correction attempt #{attempt_number} of 3.
+
+Please:
+1. Analyze what went wrong
+2. Identify the root cause
+3. Generate fixes for the failing code
+4. Return the corrected files
+
+Focus ONLY on fixing the test failures. Do not make unrelated changes.
+"""
+        
+        # Generate code with correction context
+        try:
+            # Add correction context to the generation
+            context["correction_mode"] = True
+            context["correction_prompt"] = correction_prompt
+            
+            generation_result = self.generate_code(context)
+            
+            # Extract analysis from generation output
+            error_analysis = latest_result['output'][:500] if latest_result['output'] else "Test failures detected"
+            fix_description = generation_result.get("explanation", "Applied code corrections")
+            
+            return {
+                "error_analysis": error_analysis,
+                "fix_description": fix_description,
+                "code_changes": generation_result["files"]
+            }
+            
+        except Exception as e:
+            logger.error(f"Self-correction attempt {attempt_number} failed: {e}")
+            return {
+                "error_analysis": str(e),
+                "fix_description": f"Correction attempt failed: {e}",
+                "code_changes": []
+            }
+
+    def _self_correction_loop(self, task: Dict[str, Any], initial_test_result_id: int) -> bool:
+        """
+        Execute self-correction loop to fix failing tests (cf-43).
+
+        Attempts to fix failing tests up to 3 times. For each attempt:
+        1. Analyze test failures
+        2. Generate corrective code
+        3. Apply changes
+        4. Re-run tests
+        5. Record correction attempt
+
+        If tests pass after any attempt, returns True.
+        If all 3 attempts fail, escalates to blocker and returns False.
+
+        Args:
+            task: Task dictionary
+            initial_test_result_id: ID of the failed test result that triggered correction
+
+        Returns:
+            True if tests eventually pass, False if all attempts exhausted
+        """
+        task_id = task["id"]
+        max_attempts = 3
+
+        for attempt_num in range(1, max_attempts + 1):
+            logger.info(f"Self-correction attempt {attempt_num}/{max_attempts} for task {task_id}")
+
+            # Attempt correction
+            correction = self._attempt_self_correction(task, initial_test_result_id, attempt_num)
+
+            # Record the correction attempt
+            attempt_id = self.db.create_correction_attempt(
+                task_id=task_id,
+                attempt_number=attempt_num,
+                error_analysis=correction["error_analysis"],
+                fix_description=correction["fix_description"],
+                code_changes=str(correction.get("code_changes", [])),
+                test_result_id=initial_test_result_id
+            )
+            logger.info(f"Recorded correction attempt {attempt_id}")
+
+            # Apply the code changes if any
+            if correction["code_changes"]:
+                try:
+                    files_modified = self.apply_file_changes(correction["code_changes"])
+                    logger.info(f"Applied corrections to {len(files_modified)} files")
+                except Exception as e:
+                    logger.error(f"Failed to apply corrections: {e}")
+                    continue
+
+            # Re-run tests
+            self._run_and_record_tests(task_id)
+
+            # Check if tests now pass
+            test_results = self.db.get_test_results_by_task(task_id)
+            latest_result = test_results[-1] if test_results else None
+
+            if latest_result and latest_result["status"] == "passed":
+                logger.info(f"Self-correction successful after {attempt_num} attempt(s)!")
+                return True
+
+            logger.warning(
+                f"Attempt {attempt_num} did not resolve failures. "
+                f"Status: {latest_result['status'] if latest_result else 'unknown'}"
+            )
+
+        # All attempts exhausted - escalate to blocker
+        logger.error(
+            f"Self-correction failed after {max_attempts} attempts for task {task_id}. "
+            f"Escalating to blocker."
+        )
+        
+        # Create blocker for manual intervention
+        cursor = self.db.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO blockers (task_id, severity, reason, question)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                task_id,
+                "sync",
+                f"Tests still failing after {max_attempts} self-correction attempts",
+                "Please review the test failures and correction attempts, then provide manual fix."
+            )
+        )
+        self.db.conn.commit()
+        
+        return False
 
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -452,7 +647,9 @@ Guidelines:
         2. Build context from codebase
         3. Generate code using LLM
         4. Apply file changes
-        5. Update status to 'completed' or 'failed'
+        5. Run tests (cf-42)
+        6. Self-correct if tests fail (cf-43)
+        7. Update status to 'completed' or 'failed'
 
         Args:
             task: Task dictionary from fetch_next_task()
@@ -484,10 +681,38 @@ Guidelines:
             # 4. Apply file changes
             files_modified = self.apply_file_changes(generation_result["files"])
 
-            # 4.5. Run tests (cf-42 Phase 3)
+            # 5. Run tests (cf-42 Phase 3)
             self._run_and_record_tests(task_id)
 
-            # 5. Update status to completed
+            # 6. Check test results and self-correct if needed (cf-43)
+            test_results = self.db.get_test_results_by_task(task_id)
+            latest_test = test_results[-1] if test_results else None
+            
+            if latest_test and latest_test["status"] != "passed":
+                logger.warning(
+                    f"Tests failed for task {task_id}. Status: {latest_test['status']}. "
+                    f"Starting self-correction loop..."
+                )
+                
+                # Attempt self-correction (up to 3 attempts)
+                correction_successful = self._self_correction_loop(task, latest_test["id"])
+                
+                if not correction_successful:
+                    # Self-correction failed - mark task as blocked
+                    self.update_task_status(
+                        task_id,
+                        TaskStatus.BLOCKED.value,
+                        output="Tests still failing after 3 correction attempts. Manual intervention required."
+                    )
+                    
+                    return {
+                        "status": "blocked",
+                        "files_modified": files_modified,
+                        "output": "Self-correction exhausted. See blocker for details.",
+                        "error": "Tests failed after 3 correction attempts"
+                    }
+
+            # 7. Update status to completed
             output = generation_result.get("explanation", "Task completed")
             self.update_task_status(task_id, TaskStatus.COMPLETED.value, output=output)
 
