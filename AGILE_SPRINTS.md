@@ -1406,13 +1406,30 @@ db.update_project(project_id, {"phase": "active"})
 ```
 
 **Implementation Tasks**:
-- [ ] **cf-41**: Backend Worker Agent - Task execution with LLM (P0)
-  - Initialize with provider (Claude)
-  - Execute task with LLM
-  - Write code to files
-  - Use codebase indexing (cf-32) for context
-  - Demo: Agent creates real files
-  - **Estimated Effort**: 8-10 hours
+- [ ] **cf-41**: Backend Worker Agent - Task execution with LLM (P0) 🚧 IN PROGRESS
+  - **Phase 1: Foundation** ✅ COMPLETE (2025-10-17)
+    - ✅ BackendWorkerAgent class initialization (dependency injection)
+    - ✅ Task fetching with priority/workflow ordering
+    - ✅ 10 comprehensive tests (4 initialization + 6 task fetching)
+    - ✅ 97.14% code coverage (exceeds 85% target)
+    - ✅ Database enhancements (Path | str, Issue | dict support)
+    - **Files Created**:
+      - codeframe/agents/backend_worker_agent.py (267 lines)
+      - tests/test_backend_worker_agent.py (381 lines)
+    - **Commit**: e18f6d6 - feat(cf-41): Backend Worker Agent Phase 1 - Foundation
+  - **Phase 2: Context Building & Code Generation** ⏳ NEXT
+    - build_context() - Query codebase index for related symbols/files
+    - generate_code() - Call Anthropic Claude API for code generation
+    - Construct prompts from context
+    - Parse LLM responses
+  - **Phase 3: File Operations & Task Management** ⏳ PENDING
+    - apply_file_changes() - Safe file writes with validation
+    - update_task_status() - Database status updates
+    - execute_task() - Full orchestration
+  - **Phase 4: Integration & Testing** ⏳ PENDING
+    - End-to-end integration tests
+    - Demo: Agent completes real task
+  - **Estimated Effort**: 8-10 hours (Phase 1: 2 hours ✅, Phase 2-4: 6-8 hours remaining)
 
 - [ ] **cf-42**: Test Runner Integration - Pytest execution and result parsing (P0)
   - Run pytest on task files
