@@ -38,6 +38,7 @@ class TestDatabaseInitialization:
             "context_items",
             "checkpoints",
             "changelog",
+            "test_results",
         ]
 
         for table in expected_tables:
@@ -560,3 +561,173 @@ class TestDatabaseIntegration:
 
         agents = db.list_agents()
         assert len(agents) >= 1
+
+
+@pytest.mark.unit
+class TestTestResults:
+    """Test test_results table and operations (cf-42)."""
+
+    def test_create_test_result(self, temp_db_path):
+        """Test creating a test result record."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create project and task
+        project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.COMPLETED,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        # Create test result
+        result_id = db.create_test_result(
+            task_id=task_id,
+            status="passed",
+            passed=10,
+            failed=0,
+            errors=0,
+            skipped=0,
+            duration=1.5,
+            output='{"summary": "all passed"}'
+        )
+
+        assert result_id is not None
+        assert isinstance(result_id, int)
+
+    def test_get_test_results_by_task(self, temp_db_path):
+        """Test retrieving test results for a task."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create project and task
+        project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.COMPLETED,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        # Create test result
+        db.create_test_result(
+            task_id=task_id,
+            status="passed",
+            passed=10,
+            failed=0,
+            errors=0,
+            skipped=0,
+            duration=1.5,
+            output='{"summary": "all passed"}'
+        )
+
+        # Retrieve results
+        results = db.get_test_results_by_task(task_id)
+
+        assert len(results) == 1
+        assert results[0]["status"] == "passed"
+        assert results[0]["passed"] == 10
+        assert results[0]["duration"] == 1.5
+
+    def test_test_results_foreign_key_to_task(self, temp_db_path):
+        """Test that test_results has foreign key to tasks table."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Verify schema includes task_id foreign key
+        cursor = db.conn.cursor()
+        cursor.execute("PRAGMA table_info(test_results)")
+        columns = cursor.fetchall()
+
+        column_names = [col[1] for col in columns]
+        assert "task_id" in column_names
+
+    def test_multiple_test_runs_for_task(self, temp_db_path):
+        """Test storing multiple test runs for same task (retries)."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create task
+        project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
+        })
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.COMPLETED,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        # First run: failed
+        db.create_test_result(
+            task_id=task_id,
+            status="failed",
+            passed=7,
+            failed=3,
+            errors=0,
+            skipped=0,
+            duration=2.0,
+            output='{"summary": "some failed"}'
+        )
+
+        # Second run: passed
+        db.create_test_result(
+            task_id=task_id,
+            status="passed",
+            passed=10,
+            failed=0,
+            errors=0,
+            skipped=0,
+            duration=1.8,
+            output='{"summary": "all passed"}'
+        )
+
+        # Get all results
+        results = db.get_test_results_by_task(task_id)
+
+        assert len(results) == 2
+        # Should be ordered by created_at (newest first or oldest first)
+        statuses = [r["status"] for r in results]
+        assert "failed" in statuses
+        assert "passed" in statuses
