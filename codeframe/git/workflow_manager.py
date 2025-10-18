@@ -9,7 +9,7 @@ Manages git branching and merge workflows:
 import re
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import git
 
 from codeframe.persistence.database import Database
@@ -257,3 +257,139 @@ class GitWorkflowManager:
         """
         self.repo.git.checkout(branch_name)
         logger.info(f"Checked out branch: {branch_name}")
+
+    def _infer_commit_type(self, title: str, description: str) -> str:
+        """Infer conventional commit type from task title and description.
+
+        Args:
+            title: Task title
+            description: Task description
+
+        Returns:
+            Commit type (feat, fix, refactor, test, docs, chore)
+        """
+        # Combine title and description for keyword matching
+        text = (title + " " + (description or "")).lower()
+
+        # Check for keywords
+        if any(kw in text for kw in ["fix", "bug", "repair", "correct"]):
+            return "fix"
+        elif any(kw in text for kw in ["test", "testing", "spec"]):
+            return "test"
+        elif any(kw in text for kw in ["refactor", "restructure", "reorganize"]):
+            return "refactor"
+        elif any(kw in text for kw in ["document", "docs", "readme"]):
+            return "docs"
+        elif any(kw in text for kw in ["chore", "config", "setup"]):
+            return "chore"
+        else:
+            # Default to "feat" for implementation tasks
+            return "feat"
+
+    def _generate_commit_message(
+        self, task: Dict[str, Any], files_modified: List[str]
+    ) -> str:
+        """Generate conventional commit message from task.
+
+        Args:
+            task: Task dictionary with task_number, title, description
+            files_modified: List of modified file paths
+
+        Returns:
+            Conventional commit message string
+        """
+        # Infer commit type
+        commit_type = self._infer_commit_type(
+            task["title"],
+            task.get("description", "")
+        )
+
+        # Build message
+        scope = task["task_number"]
+        subject = task["title"]
+
+        # Start with conventional format
+        message = f"{commit_type}({scope}): {subject}"
+
+        # Add body with description if present
+        if task.get("description"):
+            message += f"\n\n{task['description']}"
+
+        # Add file listing
+        if files_modified:
+            message += "\n\nModified files:"
+            for file_path in files_modified:
+                message += f"\n- {file_path}"
+
+        return message
+
+    def commit_task_changes(
+        self,
+        task: Dict[str, Any],
+        files_modified: List[str],
+        agent_id: str
+    ) -> str:
+        """Create git commit for task changes and record in changelog.
+
+        Args:
+            task: Task dictionary with id, project_id, task_number, title, description
+            files_modified: List of file paths that were modified
+            agent_id: ID of agent making the commit
+
+        Returns:
+            Commit SHA hash
+
+        Raises:
+            ValueError: If files_modified is empty
+            KeyError: If task missing required fields
+            git.GitCommandError: If git operations fail
+        """
+        # Validate inputs
+        if not files_modified:
+            raise ValueError("No files to commit")
+
+        # Ensure required task fields exist
+        required_fields = ["id", "project_id", "task_number", "title"]
+        for field in required_fields:
+            if field not in task:
+                raise KeyError(f"Task missing required field: {field}")
+
+        # Generate commit message
+        commit_message = self._generate_commit_message(task, files_modified)
+
+        # Stage files
+        self.repo.index.add(files_modified)
+
+        # Create commit
+        commit = self.repo.index.commit(commit_message)
+        commit_hash = commit.hexsha
+
+        logger.info(
+            f"Created commit {commit_hash[:7]} for task {task['task_number']}"
+        )
+
+        # Record in changelog
+        import json
+        try:
+            details = json.dumps({
+                "commit_hash": commit_hash,
+                "commit_message": commit_message,
+                "files_modified": files_modified,
+            })
+
+            cursor = self.db.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO changelog (project_id, agent_id, task_id, action, details)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (task["project_id"], agent_id, task["id"], "commit", details),
+            )
+            self.db.conn.commit()
+
+            logger.debug(f"Recorded commit in changelog for task {task['id']}")
+        except Exception as e:
+            logger.warning(f"Failed to record commit in changelog: {e}")
+            # Don't fail the commit if changelog recording fails
+
+        return commit_hash
