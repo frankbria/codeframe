@@ -1491,13 +1491,21 @@ db.update_project(project_id, {"phase": "active"})
   - **Estimated Effort**: 4-6 hours (actual: ~3 hours for Phases 3 & 4)
 
 - [ ] **cf-43**: Self-Correction Loop - Auto-fix test failures (max 3 attempts) (P0)
-  - Agent reads test failures
-  - Analyzes errors
-  - Attempts fix
-  - Retry tests (up to 3 attempts)
-  - Escalate to blocker if still failing
-  - Demo: Watch agent fix failing tests
-  - **Estimated Effort**: 6-8 hours
+  - **Phase 1 Complete** (2025-10-18):
+    - ✅ Added `correction_attempts` table to database schema
+    - ✅ Implemented database methods: create_correction_attempt, get_correction_attempts_by_task, get_latest_correction_attempt, count_correction_attempts
+    - ✅ Created CorrectionAttempt model with validation (attempt_number 1-3)
+    - ✅ Added `_attempt_self_correction` method to BackendWorkerAgent
+    - ✅ Added `_self_correction_loop` method (max 3 attempts)
+    - ✅ Integrated self-correction into `execute_task` workflow
+    - ✅ Fixed test result output serialization (dict to JSON string)
+    - ✅ 13 correction-specific tests passing (test_correction_attempt.py, test_correction_database.py)
+    - ✅ Creates blocker with "sync" severity when all attempts exhausted
+  - **Remaining**: Phase 2 - Testing & Documentation
+    - Write integration tests for self-correction loop
+    - Update backend worker agent tests to account for new behavior
+    - Document self-correction workflow and error escalation
+  - **Estimated Effort**: 6-8 hours (Phase 1: ~2 hours actual)
 
 - [x] **cf-32**: Codebase Indexing (P0) ✅ COMPLETE
   - ✅ Tree-sitter-based multi-language parsing (Python, TypeScript/JavaScript)
