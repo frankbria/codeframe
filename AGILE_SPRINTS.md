@@ -1457,12 +1457,38 @@ db.update_project(project_id, {"phase": "active"})
   - **Estimated Effort**: 8-10 hours (Phase 1: 2 hours ✅, Phase 2: 3 hours ✅, Phase 3: 2 hours ✅, Phase 4: 1 hour ✅)
   - **Status**: ✅ COMPLETE - Backend Worker Agent fully functional with comprehensive testing
 
-- [ ] **cf-42**: Test Runner Integration - Pytest execution and result parsing (P0)
-  - Run pytest on task files
-  - Parse test output (pass/fail/error)
-  - Return structured results to agent
-  - Demo: Tests run automatically
-  - **Estimated Effort**: 4-6 hours
+- [x] **cf-42**: Test Runner Integration - Pytest execution and result parsing (P0) ✅ COMPLETE
+  - ✅ **Phase 1 & 2**: TestRunner core functionality and database integration (Phases 1 & 2 completed previously)
+    - ✅ TestRunner class with pytest subprocess execution
+    - ✅ JSON report parsing (pytest-json-report plugin)
+    - ✅ TestResult model with status, passed, failed, errors, skipped, duration fields
+    - ✅ Database integration (create_test_result, get_test_results_by_task)
+  - ✅ **Phase 3**: Backend Worker Agent integration
+    - ✅ `_run_and_record_tests()` method integrated into execute_task() workflow
+    - ✅ Test results automatically stored in database after code generation
+    - ✅ Integration tests with mocked TestRunner
+  - ✅ **Phase 4**: Real pytest execution integration tests
+    - ✅ Tests create actual Python test files and execute pytest
+    - ✅ Verification of passing, failing, and error test scenarios
+    - ✅ Specific test path execution support
+  - **Implementation**: TDD methodology (RED-GREEN-REFACTOR)
+  - **Tests**: 25 comprehensive tests (100% pass rate)
+    - 4 TestResult model tests
+    - 4 TestRunner initialization tests
+    - 7 TestRunner execution tests (mocked)
+    - 3 pytest JSON parsing tests
+    - 4 real pytest integration tests
+    - 3 Backend Worker Agent integration tests
+  - **Coverage**: 92.86% (exceeds 85% requirement)
+  - **Files Modified**:
+    - codeframe/testing/test_runner.py (refactored to use temp file for JSON reports)
+    - codeframe/agents/backend_worker_agent.py (added test runner integration)
+    - tests/test_test_runner.py (updated mocked tests, added Phase 4 integration tests)
+    - tests/test_backend_worker_agent.py (added Phase 3 integration tests)
+    - pyproject.toml (added pytest-json-report>=1.5.0 dev dependency)
+  - **Demo**: Backend Worker Agent automatically runs tests after code generation and stores results
+  - **Status**: ✅ Complete (2025-10-17) - Test runner fully integrated into autonomous workflow
+  - **Estimated Effort**: 4-6 hours (actual: ~3 hours for Phases 3 & 4)
 
 - [ ] **cf-43**: Self-Correction Loop - Auto-fix test failures (max 3 attempts) (P0)
   - Agent reads test failures

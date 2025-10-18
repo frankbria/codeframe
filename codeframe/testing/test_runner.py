@@ -64,6 +64,9 @@ class TestRunner:
         2. Parses JSON output into TestResult
         3. Handles errors gracefully (timeout, missing pytest, etc.)
         """
+        import tempfile
+        import os
+
         # Validate project root exists
         if not self.project_root.exists():
             logger.error(f"Project root does not exist: {self.project_root}")
@@ -72,21 +75,25 @@ class TestRunner:
                 output=f"Project directory not found: {self.project_root}"
             )
 
-        # Build pytest command
-        cmd = [
-            "pytest",
-            "--json-report",
-            "--json-report-file=-",  # Output to stdout
-            "-v"
-        ]
-
-        # Add specific test paths if provided
-        if test_paths:
-            cmd.extend(test_paths)
-
-        logger.info(f"Running tests in {self.project_root} with timeout={self.timeout}s")
+        # Create temporary file for JSON report
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as tmp_file:
+            json_report_path = tmp_file.name
 
         try:
+            # Build pytest command
+            cmd = [
+                "pytest",
+                "--json-report",
+                f"--json-report-file={json_report_path}",
+                "-v"
+            ]
+
+            # Add specific test paths if provided
+            if test_paths:
+                cmd.extend(test_paths)
+
+            logger.info(f"Running tests in {self.project_root} with timeout={self.timeout}s")
+
             # Execute pytest
             result = subprocess.run(
                 cmd,
@@ -96,8 +103,12 @@ class TestRunner:
                 timeout=self.timeout
             )
 
+            # Read JSON report from file
+            with open(json_report_path, 'r') as f:
+                json_output = f.read()
+
             # Parse results
-            return self._parse_results(result.stdout, result.returncode)
+            return self._parse_results(json_output, result.returncode)
 
         except subprocess.TimeoutExpired:
             logger.warning(f"Test execution timeout after {self.timeout}s")
@@ -119,6 +130,13 @@ class TestRunner:
                 status="error",
                 output=f"Unexpected error: {type(e).__name__}: {str(e)}"
             )
+
+        finally:
+            # Clean up temporary file
+            try:
+                os.unlink(json_report_path)
+            except Exception:
+                pass  # Ignore cleanup errors
 
     def _parse_results(self, json_output: str, returncode: int) -> TestResult:
         """

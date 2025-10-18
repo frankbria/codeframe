@@ -401,6 +401,48 @@ Guidelines:
         if output:
             logger.debug(f"Task {task_id} output: {output[:200]}")
 
+    def _run_and_record_tests(self, task_id: int) -> None:
+        """
+        Run tests and record results in database (cf-42 Phase 3).
+
+        Uses TestRunner to execute pytest on the project, parses results,
+        and stores them in the database for self-correction (cf-43) and
+        tracking purposes.
+
+        Args:
+            task_id: Task ID for which to record test results
+
+        Note:
+            This method does not raise exceptions if tests fail - it only
+            records the results. Self-correction (cf-43) will handle failures.
+        """
+        from codeframe.testing.test_runner import TestRunner
+
+        # Initialize test runner with project root
+        test_runner = TestRunner(project_root=self.project_root)
+
+        # Run tests
+        logger.info(f"Running tests for task {task_id}")
+        test_result = test_runner.run_tests()
+
+        # Record results in database
+        self.db.create_test_result(
+            task_id=task_id,
+            status=test_result.status,
+            passed=test_result.passed,
+            failed=test_result.failed,
+            errors=test_result.errors,
+            skipped=test_result.skipped,
+            duration=test_result.duration,
+            output=test_result.output
+        )
+
+        logger.info(
+            f"Test results for task {task_id}: {test_result.status} - "
+            f"{test_result.passed}/{test_result.total} passed, "
+            f"{test_result.failed} failed, {test_result.errors} errors"
+        )
+
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a single task end-to-end.
@@ -441,6 +483,9 @@ Guidelines:
 
             # 4. Apply file changes
             files_modified = self.apply_file_changes(generation_result["files"])
+
+            # 4.5. Run tests (cf-42 Phase 3)
+            self._run_and_record_tests(task_id)
 
             # 5. Update status to completed
             output = generation_result.get("explanation", "Task completed")

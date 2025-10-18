@@ -114,21 +114,22 @@ class TestTestRunnerExecution:
         """Test run_tests with all passing tests."""
         runner = TestRunner(project_root=tmp_path)
 
-        # Mock subprocess.run to simulate pytest success
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({
-                    "summary": {
-                        "total": 10,
-                        "passed": 10,
-                        "failed": 0,
-                        "error": 0,
-                        "skipped": 0
-                    },
-                    "duration": 1.5
-                })
-            )
+        # Mock subprocess.run and file operations to simulate pytest success
+        mock_json_data = {
+            "summary": {
+                "total": 10,
+                "passed": 10,
+                "failed": 0,
+                "error": 0,
+                "skipped": 0
+            },
+            "duration": 1.5
+        }
+
+        with patch('subprocess.run') as mock_run, \
+             patch('builtins.open', create=True) as mock_open:
+            mock_run.return_value = MagicMock(returncode=0)
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
 
             result = runner.run_tests()
 
@@ -142,23 +143,24 @@ class TestTestRunnerExecution:
         """Test run_tests with some failing tests."""
         runner = TestRunner(project_root=tmp_path)
 
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stdout=json.dumps({
-                    "summary": {
-                        "total": 10,
-                        "passed": 7,
-                        "failed": 3,
-                        "error": 0,
-                        "skipped": 0
-                    },
-                    "duration": 2.3,
-                    "tests": [
-                        {"outcome": "failed", "nodeid": "test_foo.py::test_bar"}
-                    ]
-                })
-            )
+        mock_json_data = {
+            "summary": {
+                "total": 10,
+                "passed": 7,
+                "failed": 3,
+                "error": 0,
+                "skipped": 0
+            },
+            "duration": 2.3,
+            "tests": [
+                {"outcome": "failed", "nodeid": "test_foo.py::test_bar"}
+            ]
+        }
+
+        with patch('subprocess.run') as mock_run, \
+             patch('builtins.open', create=True) as mock_open:
+            mock_run.return_value = MagicMock(returncode=1)
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
 
             result = runner.run_tests()
 
@@ -171,20 +173,21 @@ class TestTestRunnerExecution:
         """Test run_tests with test errors/exceptions only (no failures)."""
         runner = TestRunner(project_root=tmp_path)
 
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=1,
-                stdout=json.dumps({
-                    "summary": {
-                        "total": 10,
-                        "passed": 7,
-                        "failed": 0,
-                        "error": 3,
-                        "skipped": 0
-                    },
-                    "duration": 1.8
-                })
-            )
+        mock_json_data = {
+            "summary": {
+                "total": 10,
+                "passed": 7,
+                "failed": 0,
+                "error": 3,
+                "skipped": 0
+            },
+            "duration": 1.8
+        }
+
+        with patch('subprocess.run') as mock_run, \
+             patch('builtins.open', create=True) as mock_open:
+            mock_run.return_value = MagicMock(returncode=1)
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
 
             result = runner.run_tests()
 
@@ -196,20 +199,21 @@ class TestTestRunnerExecution:
         """Test run_tests when no tests are found."""
         runner = TestRunner(project_root=tmp_path)
 
-        with patch('subprocess.run') as mock_run:
-            mock_run.return_value = MagicMock(
-                returncode=5,  # pytest exit code for no tests collected
-                stdout=json.dumps({
-                    "summary": {
-                        "total": 0,
-                        "passed": 0,
-                        "failed": 0,
-                        "error": 0,
-                        "skipped": 0
-                    },
-                    "duration": 0.1
-                })
-            )
+        mock_json_data = {
+            "summary": {
+                "total": 0,
+                "passed": 0,
+                "failed": 0,
+                "error": 0,
+                "skipped": 0
+            },
+            "duration": 0.1
+        }
+
+        with patch('subprocess.run') as mock_run, \
+             patch('builtins.open', create=True) as mock_open:
+            mock_run.return_value = MagicMock(returncode=5)  # pytest exit code for no tests collected
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
 
             result = runner.run_tests()
 
@@ -310,3 +314,114 @@ class TestPytestJSONParsing:
         assert result.total == 5
         assert result.passed >= 0
         assert result.failed >= 0
+
+
+class TestTestRunnerRealPytestExecution:
+    """Integration tests with real pytest execution (cf-42 Phase 4)."""
+
+    def test_run_tests_with_real_pytest_passing(self, tmp_path):
+        """Test run_tests executes real pytest with passing tests."""
+        # Create a simple test file
+        test_file = tmp_path / "test_simple.py"
+        test_file.write_text(
+            """
+def test_addition():
+    assert 1 + 1 == 2
+
+def test_subtraction():
+    assert 5 - 3 == 2
+"""
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        result = runner.run_tests()
+
+        assert result.status == "passed"
+        assert result.total == 2
+        assert result.passed == 2
+        assert result.failed == 0
+        assert result.errors == 0
+
+    def test_run_tests_with_real_pytest_failing(self, tmp_path):
+        """Test run_tests executes real pytest with failing tests."""
+        # Create a test file with failures
+        test_file = tmp_path / "test_failures.py"
+        test_file.write_text(
+            """
+def test_pass():
+    assert True
+
+def test_fail():
+    assert False, "This test should fail"
+
+def test_also_pass():
+    assert 1 == 1
+"""
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        result = runner.run_tests()
+
+        assert result.status == "failed"
+        assert result.total == 3
+        assert result.passed == 2
+        assert result.failed == 1
+        assert result.errors == 0
+
+    def test_run_tests_with_real_pytest_errors(self, tmp_path):
+        """Test run_tests executes real pytest with test errors.
+
+        Note: pytest treats exceptions in tests as 'failed', not 'error'.
+        Errors in pytest are typically collection failures or fixture issues.
+        """
+        # Create a test file with an exception (pytest treats this as failed)
+        test_file = tmp_path / "test_errors.py"
+        test_file.write_text(
+            """
+def test_pass():
+    assert True
+
+def test_error():
+    raise ValueError("This is an error")
+"""
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        result = runner.run_tests()
+
+        # pytest treats exceptions in test bodies as "failed", not "error"
+        assert result.status == "failed"
+        assert result.total == 2
+        assert result.passed == 1
+        assert result.failed == 1
+        assert result.errors == 0
+
+    def test_run_tests_with_specific_test_paths(self, tmp_path):
+        """Test run_tests can run specific test files."""
+        # Create multiple test files
+        test1 = tmp_path / "test_one.py"
+        test1.write_text(
+            """
+def test_one():
+    assert True
+"""
+        )
+
+        test2 = tmp_path / "test_two.py"
+        test2.write_text(
+            """
+def test_two():
+    assert True
+
+def test_two_b():
+    assert True
+"""
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        # Run only test_two.py
+        result = runner.run_tests(test_paths=["test_two.py"])
+
+        assert result.status == "passed"
+        assert result.total == 2  # Only tests from test_two.py
+        assert result.passed == 2
