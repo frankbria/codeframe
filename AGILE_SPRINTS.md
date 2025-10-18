@@ -1490,7 +1490,7 @@ db.update_project(project_id, {"phase": "active"})
   - **Status**: ✅ Complete (2025-10-17) - Test runner fully integrated into autonomous workflow
   - **Estimated Effort**: 4-6 hours (actual: ~3 hours for Phases 3 & 4)
 
-- [ ] **cf-43**: Self-Correction Loop - Auto-fix test failures (max 3 attempts) (P0)
+- [x] **cf-43**: Self-Correction Loop - Auto-fix test failures (max 3 attempts) (P0) ✅ COMPLETE
   - **Phase 1 Complete** (2025-10-18):
     - ✅ Added `correction_attempts` table to database schema
     - ✅ Implemented database methods: create_correction_attempt, get_correction_attempts_by_task, get_latest_correction_attempt, count_correction_attempts
@@ -1501,11 +1501,19 @@ db.update_project(project_id, {"phase": "active"})
     - ✅ Fixed test result output serialization (dict to JSON string)
     - ✅ 13 correction-specific tests passing (test_correction_attempt.py, test_correction_database.py)
     - ✅ Creates blocker with "sync" severity when all attempts exhausted
-  - **Remaining**: Phase 2 - Testing & Documentation
-    - Write integration tests for self-correction loop
-    - Update backend worker agent tests to account for new behavior
-    - Document self-correction workflow and error escalation
-  - **Estimated Effort**: 6-8 hours (Phase 1: ~2 hours actual)
+  - **Phase 2 Complete** (2025-10-18):
+    - ✅ Created comprehensive integration tests (test_self_correction_integration.py)
+      - 4 test scenarios: successful correction (1st attempt), exhausted attempts, successful correction (2nd attempt), no correction needed
+    - ✅ Updated backend worker agent tests for new behavior
+      - Updated test_execute_task_handles_test_failures to expect "blocked" status after 3 failed corrections
+      - Updated test_execute_task_handles_test_runner_errors to expect "blocked" status after 3 failed corrections
+    - ✅ Created self-correction workflow documentation (docs/self_correction_workflow.md)
+      - Workflow diagram, component details, database integration, testing strategy, future enhancements
+    - ✅ All 54 tests passing (100% pass rate)
+  - **Status**: ✅ Complete (2025-10-18) - Self-correction loop fully functional with comprehensive test coverage
+  - **Estimated Effort**: 6-8 hours (actual: ~4 hours total for both phases)
+  - **Demo**: Backend Worker Agent automatically attempts to fix test failures up to 3 times before escalating to blocker
+  - **Commit**: (pending) - feat(cf-43): Complete self-correction loop with integration tests and documentation
 
 - [x] **cf-32**: Codebase Indexing (P0) ✅ COMPLETE
   - ✅ Tree-sitter-based multi-language parsing (Python, TypeScript/JavaScript)

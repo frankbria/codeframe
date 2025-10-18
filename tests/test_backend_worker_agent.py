@@ -1177,6 +1177,9 @@ class TestBackendWorkerAgentExecution:
     @patch('anthropic.Anthropic')
     def test_execute_task_success(self, mock_anthropic_class, tmp_path):
         """Test execute_task completes successfully."""
+        from codeframe.testing.test_runner import TestRunner
+        from codeframe.testing.models import TestResult
+
         db = Database(":memory:")
         db.initialize()
 
@@ -1230,27 +1233,39 @@ class TestBackendWorkerAgentExecution:
             project_root=tmp_path
         )
 
-        # Get task from database
-        cursor = db.conn.cursor()
-        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        task = dict(cursor.fetchone())
+        # Mock test runner to return passing tests (cf-43: prevents self-correction loop)
+        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+            mock_run_tests.return_value = TestResult(
+                status="passed",
+                total=5,
+                passed=5,
+                failed=0,
+                errors=0,
+                skipped=0,
+                duration=1.0
+            )
 
-        result = agent.execute_task(task)
+            # Get task from database
+            cursor = db.conn.cursor()
+            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+            task = dict(cursor.fetchone())
 
-        # Verify execution result
-        assert result["status"] == "completed"
-        assert len(result["files_modified"]) == 1
-        assert "codeframe/models/user.py" in result["files_modified"]
-        assert result["error"] is None
+            result = agent.execute_task(task)
 
-        # Verify file was created
-        target_file = tmp_path / "codeframe" / "models" / "user.py"
-        assert target_file.exists()
+            # Verify execution result
+            assert result["status"] == "completed"
+            assert len(result["files_modified"]) == 1
+            assert "codeframe/models/user.py" in result["files_modified"]
+            assert result["error"] is None
 
-        # Verify task status updated in database
-        cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
-        updated_task = cursor.fetchone()
-        assert updated_task["status"] == "completed"
+            # Verify file was created
+            target_file = tmp_path / "codeframe" / "models" / "user.py"
+            assert target_file.exists()
+
+            # Verify task status updated in database
+            cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+            updated_task = cursor.fetchone()
+            assert updated_task["status"] == "completed"
 
     @patch('anthropic.Anthropic')
     def test_execute_task_handles_api_failure(self, mock_anthropic_class, tmp_path):
@@ -1548,7 +1563,8 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             project_root=tmp_path
         )
 
-        # Mock test runner with failures
+        # Mock test runner with failures (always returns failed)
+        # cf-43: This will trigger self-correction loop (3 attempts)
         with patch.object(TestRunner, 'run_tests') as mock_run_tests:
             mock_run_tests.return_value = TestResult(
                 status="failed",
@@ -1560,6 +1576,22 @@ class TestBackendWorkerAgentTestRunnerIntegration:
                 duration=1.5
             )
 
+            # Need to mock multiple API calls for correction attempts
+            correction_responses = []
+            for i in range(3):  # 3 correction attempts
+                response = Mock()
+                response.content = [Mock(text=json.dumps({
+                    "files": [{
+                        "path": "codeframe/models/user.py",
+                        "action": "modify",
+                        "content": f"# Correction attempt {i+1}\nclass User:\n    pass\n"
+                    }],
+                    "explanation": f"Correction attempt {i+1}"
+                }))]
+                correction_responses.append(response)
+
+            mock_client.messages.create.side_effect = [mock_response] + correction_responses
+
             # Get task from database
             cursor = db.conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
@@ -1567,18 +1599,25 @@ class TestBackendWorkerAgentTestRunnerIntegration:
 
             result = agent.execute_task(task)
 
-            # Verify execution completed (tests run but failed)
-            # Note: In Phase 3, we just record test results
-            # Self-correction (cf-43) will handle failures later
-            assert result["status"] == "completed"
-            assert result["error"] is None
+            # cf-43: Tests fail, triggers 3 self-correction attempts, all fail -> blocked
+            assert result["status"] == "blocked"
+            assert result["error"] is not None
+            assert "3 correction attempts" in result["error"]
 
-            # Verify test results were stored
+            # Verify test results were stored (initial + 3 correction attempts)
             test_results = db.get_test_results_by_task(task_id)
-            assert len(test_results) == 1
-            assert test_results[0]["status"] == "failed"
-            assert test_results[0]["passed"] == 3
-            assert test_results[0]["failed"] == 2
+            assert len(test_results) == 4  # Initial + 3 corrections
+            assert all(tr["status"] == "failed" for tr in test_results)
+
+            # Verify 3 correction attempts were recorded
+            attempts = db.get_correction_attempts_by_task(task_id)
+            assert len(attempts) == 3
+
+            # Verify blocker was created
+            cursor.execute("SELECT * FROM blockers WHERE task_id = ?", (task_id,))
+            blocker = cursor.fetchone()
+            assert blocker is not None
+            assert blocker["severity"] == "sync"
 
     @patch('anthropic.Anthropic')
     def test_execute_task_handles_test_runner_errors(self, mock_anthropic_class, tmp_path):
@@ -1639,7 +1678,8 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             project_root=tmp_path
         )
 
-        # Mock test runner with error
+        # Mock test runner with error (always returns error)
+        # cf-43: This will trigger self-correction loop (3 attempts)
         with patch.object(TestRunner, 'run_tests') as mock_run_tests:
             mock_run_tests.return_value = TestResult(
                 status="error",
@@ -1652,6 +1692,22 @@ class TestBackendWorkerAgentTestRunnerIntegration:
                 output="pytest not found"
             )
 
+            # Need to mock multiple API calls for correction attempts
+            correction_responses = []
+            for i in range(3):  # 3 correction attempts
+                response = Mock()
+                response.content = [Mock(text=json.dumps({
+                    "files": [{
+                        "path": "codeframe/models/user.py",
+                        "action": "modify",
+                        "content": f"# Error correction attempt {i+1}\nclass User:\n    pass\n"
+                    }],
+                    "explanation": f"Error correction attempt {i+1}"
+                }))]
+                correction_responses.append(response)
+
+            mock_client.messages.create.side_effect = [mock_response] + correction_responses
+
             # Get task from database
             cursor = db.conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
@@ -1659,12 +1715,22 @@ class TestBackendWorkerAgentTestRunnerIntegration:
 
             result = agent.execute_task(task)
 
-            # Verify execution completed with error recorded
-            assert result["status"] == "completed"
-            assert result["error"] is None
+            # cf-43: Test errors trigger 3 self-correction attempts, all error -> blocked
+            assert result["status"] == "blocked"
+            assert result["error"] is not None
+            assert "3 correction attempts" in result["error"]
 
-            # Verify test error was stored
+            # Verify test error was stored (initial + 3 correction attempts)
             test_results = db.get_test_results_by_task(task_id)
-            assert len(test_results) == 1
-            assert test_results[0]["status"] == "error"
-            assert test_results[0]["errors"] == 1
+            assert len(test_results) == 4  # Initial + 3 corrections
+            assert all(tr["status"] == "error" for tr in test_results)
+
+            # Verify 3 correction attempts were recorded
+            attempts = db.get_correction_attempts_by_task(task_id)
+            assert len(attempts) == 3
+
+            # Verify blocker was created
+            cursor.execute("SELECT * FROM blockers WHERE task_id = ?", (task_id,))
+            blocker = cursor.fetchone()
+            assert blocker is not None
+            assert blocker["severity"] == "sync"
