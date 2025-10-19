@@ -138,6 +138,11 @@ HOST=0.0.0.0  # Listen on all interfaces for network access
 # This tells the Next.js frontend where the backend API is located
 NEXT_PUBLIC_API_URL=http://localhost:14200
 
+# === CORS Configuration ===
+# Comma-separated list of allowed origins for API requests
+# Add your server's IP or domain if accessing from network
+CORS_ALLOWED_ORIGINS=http://localhost:14100,http://0.0.0.0:14100
+
 # === Database Configuration ===
 DATABASE_PATH=./staging/.codeframe/state.db
 
