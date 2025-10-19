@@ -43,10 +43,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS for development
+# CORS configuration - allow dev and staging origins
+# Development: 3000 (Next.js dev), 5173 (Vite), 8080 (local backend)
+# Staging: 14100 (frontend), 14200 (backend)
+allowed_origins = [
+    "http://localhost:3000",      # Next.js dev server
+    "http://localhost:5173",      # Vite dev server
+    "http://localhost:14100",     # Staging frontend
+    "http://0.0.0.0:14100",       # Staging frontend (all interfaces)
+]
+
+# Add environment-specific origins
+frontend_port = os.environ.get("FRONTEND_PORT")
+if frontend_port:
+    allowed_origins.append(f"http://localhost:{frontend_port}")
+    allowed_origins.append(f"http://0.0.0.0:{frontend_port}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React/Vite dev servers
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
