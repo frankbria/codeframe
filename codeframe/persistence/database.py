@@ -394,15 +394,68 @@ class Database:
         self.close()
 
     def list_projects(self) -> List[Dict[str, Any]]:
-        """List all projects.
+        """List all projects with progress metrics.
 
         Returns:
-            List of project dictionaries
+            List of project dictionaries, each with a 'progress' field containing:
+            - completed_tasks: Number of tasks with status='completed'
+            - total_tasks: Total number of tasks
+            - percentage: Completion percentage (0.0-100.0)
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM projects ORDER BY created_at DESC")
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+
+        projects = []
+        for row in rows:
+            project = dict(row)
+            project_id = project["id"]
+
+            # Calculate progress metrics for this project
+            progress = self._calculate_project_progress(project_id)
+            project["progress"] = progress
+
+            projects.append(project)
+
+        return projects
+
+    def _calculate_project_progress(self, project_id: int) -> Dict[str, Any]:
+        """Calculate task completion progress for a project.
+
+        Uses a single SQL query to efficiently get both total and completed task counts.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dictionary with completed_tasks, total_tasks, and percentage
+        """
+        cursor = self.conn.cursor()
+
+        # Get both counts in a single query using SUM with CASE
+        cursor.execute(
+            """
+            SELECT 
+                COUNT(*) as total_tasks,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks
+            FROM tasks
+            WHERE project_id = ?
+            """,
+            (project_id,)
+        )
+        row = cursor.fetchone()
+        
+        total_tasks = row["total_tasks"]
+        completed_tasks = row["completed_tasks"] or 0  # Handle NULL when no tasks
+
+        # Calculate completion percentage
+        percentage = (completed_tasks / total_tasks * 100.0) if total_tasks > 0 else 0.0
+
+        return {
+            "completed_tasks": completed_tasks,
+            "total_tasks": total_tasks,
+            "percentage": percentage,
+        }
 
     def update_project(self, project_id: int, updates: Dict[str, Any]) -> int:
         """Update project fields.
