@@ -1712,13 +1712,67 @@ db.update_project(project_id, {"phase": "active"})
 
   - **Beads**: ✅ Closed cf-33 (2025-10-17)
 
-- [ ] **cf-45**: Real-time Dashboard Updates - WebSocket integration for live updates (P1)
-  - WebSocket broadcasts on task status change
-  - Activity feed updates live
-  - Agent status card updates
-  - Progress bars update without refresh
-  - Demo: No refresh needed, see updates live
-  - **Estimated Effort**: 4-6 hours
+- [x] **cf-45**: Real-time Dashboard Updates - WebSocket integration for live updates (P1) ✅ COMPLETE
+  - **Implementation Complete** (2025-10-18):
+    - ✅ **WebSocket Message Types** (Backend + Frontend):
+      - task_status_changed - Task status transitions (pending → in_progress → completed/failed/blocked)
+      - agent_status_changed - Agent status updates (idle → working → blocked)
+      - test_result - Test execution results (passed/failed counts, duration)
+      - commit_created - Git commit events (hash, message, files)
+      - activity_update - Activity feed entries
+      - progress_update - Project progress (completed/total tasks, percentage)
+      - correction_attempt - Self-correction loop attempts (in_progress/success/failed)
+    - ✅ **Broadcast Helper Functions** (`codeframe/ui/websocket_broadcasts.py`, 346 lines):
+      - `broadcast_task_status()` - Task status changes with agent and progress
+      - `broadcast_agent_status()` - Agent status with current task and progress
+      - `broadcast_test_result()` - Test results with pass/fail/error counts
+      - `broadcast_commit_created()` - Git commits with file list
+      - `broadcast_activity_update()` - Activity feed updates
+      - `broadcast_progress_update()` - Project progress updates
+      - `broadcast_correction_attempt()` - Self-correction attempts
+      - Proper error handling (graceful degradation on broadcast failures)
+      - ISO 8601 timestamps with Z suffix (UTC)
+    - ✅ **Backend Integration**:
+      - BackendWorkerAgent accepts optional `ws_manager` parameter
+      - `update_task_status()` broadcasts task status changes
+      - `_run_and_record_tests()` broadcasts test results and activity updates
+      - `_self_correction_loop()` broadcasts correction attempts (in_progress/success/failed)
+      - `execute_task()` broadcasts task completion and activity updates
+      - All broadcasts use asyncio.create_task() for non-blocking execution
+    - ✅ **Frontend Updates** (`web-ui/src/components/Dashboard.tsx`):
+      - Local state for real-time updates (tasks, agents, activity, progress)
+      - WebSocket message handler with switch statement for all message types
+      - Task status updates in real-time (state mutation on task_status_changed)
+      - Agent status updates in real-time (state mutation on agent_status_changed)
+      - Test results added to activity feed (formatted with emojis)
+      - Commits added to activity feed (formatted with commit hash)
+      - Activity updates prepended to feed (max 50 items)
+      - Progress bar updates with smooth transition (duration-500)
+      - Correction attempts shown in activity feed with status indicators
+      - State initialized from API data on mount
+    - ✅ **TypeScript Types** (`web-ui/src/types/index.ts`):
+      - WebSocketMessageType union type with all 13 message types
+      - Comprehensive WebSocketMessage interface with all fields
+      - Type-safe message handling in frontend
+    - ✅ **Comprehensive Test Coverage**:
+      - 18 broadcast helper tests (`tests/ui/test_websocket_broadcasts.py`)
+      - Tests for all 7 broadcast functions
+      - Tests for optional parameters (agent_id, progress, files_changed, etc.)
+      - Error handling tests (graceful degradation)
+      - Timestamp format validation (ISO 8601 with Z suffix)
+      - Multiple broadcasts in sequence verification
+  - **Demo Features**:
+    - Task status changes appear live on dashboard
+    - Agent status updates in real-time (working → idle)
+    - Activity feed updates without refresh (scrolls to latest)
+    - Test results show immediately when completed
+    - Git commits appear in activity feed
+    - Progress bars update live with smooth animation
+    - Self-correction attempts visible in activity feed
+    - No page refresh required for any updates
+  - **Status**: ✅ Complete (2025-10-18) - Real-time dashboard fully operational with comprehensive WebSocket integration
+  - **Actual Effort**: ~6 hours (design, implementation, testing, documentation)
+  - **Commit**: [pending] - feat(cf-45): Complete Real-Time Dashboard Updates with WebSocket integration
 
 **Definition of Done**:
 - ✅ Backend Agent executes a real task
