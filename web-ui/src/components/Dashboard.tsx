@@ -129,10 +129,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'test_result':
           // Add test result to activity feed
           if (message.task_id) {
+            const passed = message.passed ?? 0;
+            const total = message.total ?? 0;
             const testMessage =
               message.status === 'passed'
-                ? `✅ All tests passed (${message.passed}/${message.total})`
-                : `⚠️ Tests ${message.status} (${message.passed}/${message.total} passed)`;
+                ? `✅ All tests passed (${passed}/${total})`
+                : `⚠️ Tests ${message.status} (${passed}/${total} passed)`;
 
             setActivity((prev) => [
               {
@@ -149,12 +151,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'commit_created':
           // Add commit to activity feed
           if (message.commit_hash && message.commit_message) {
+            const commitHash = message.commit_hash.substring(0, 7);
             setActivity((prev) => [
               {
                 timestamp: message.timestamp,
                 type: 'commit_created',
                 agent: 'backend-worker',
-                message: `📝 ${message.commit_message} (${message.commit_hash.substring(0, 7)})`,
+                message: `📝 ${message.commit_message} (${commitHash})`,
               },
               ...prev.slice(0, 49),
             ]);
@@ -164,12 +167,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'activity_update':
           // Add activity to feed
           if (message.message) {
+            const activityMessage = message.message;
             setActivity((prev) => [
               {
                 timestamp: message.timestamp,
                 type: message.activity_type || 'activity',
                 agent: message.agent || 'system',
-                message: message.message,
+                message: activityMessage,
               },
               ...prev.slice(0, 49),
             ]);
@@ -191,12 +195,16 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'correction_attempt':
           // Add correction attempt to activity feed
           if (message.task_id) {
+            const attemptNum = message.attempt_number ?? 0;
+            const maxAttempts = message.max_attempts ?? 3;
+            const errorSummary = message.error_summary ?? 'unknown error';
+
             const correctionMessage =
               message.status === 'success'
-                ? `✅ Self-correction successful (attempt ${message.attempt_number}/${message.max_attempts})`
+                ? `✅ Self-correction successful (attempt ${attemptNum}/${maxAttempts})`
                 : message.status === 'in_progress'
-                ? `🔄 Self-correction attempt ${message.attempt_number}/${message.max_attempts}...`
-                : `⚠️ Correction attempt ${message.attempt_number} failed: ${message.error_summary}`;
+                ? `🔄 Self-correction attempt ${attemptNum}/${maxAttempts}...`
+                : `⚠️ Correction attempt ${attemptNum} failed: ${errorSummary}`;
 
             setActivity((prev) => [
               {
