@@ -138,6 +138,10 @@ HOST=0.0.0.0  # Listen on all interfaces for network access
 # This tells the Next.js frontend where the backend API is located
 NEXT_PUBLIC_API_URL=http://localhost:14200
 
+# === WebSocket URL ===
+# WebSocket endpoint for real-time updates
+NEXT_PUBLIC_WS_URL=ws://localhost:14200/ws
+
 # === CORS Configuration ===
 # Comma-separated list of allowed origins for API requests
 # IMPORTANT: If accessing via network (not localhost), add your server's hostname/domain
