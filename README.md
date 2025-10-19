@@ -516,22 +516,35 @@ See [AGILE_SPRINTS.md](./AGILE_SPRINTS.md) for detailed sprint planning and demo
 - [x] Next.js web dashboard
 - [x] CLI with typer + rich
 
-### 🚧 Sprint 1: Hello CodeFRAME (Week 1) - In Progress
+### ✅ Sprint 1: Hello CodeFRAME (Week 1) - Complete
 
 **Demo**: `codeframe init` → see in dashboard → chat with Lead Agent using real Claude API
 
-- [ ] cf-8: Connect Status Server to Database
-- [ ] cf-9: Implement basic Lead Agent with Anthropic SDK
-- [ ] cf-10: Connect Project.start() to Lead Agent
-- [ ] cf-11: Add project creation to Status Server API
+- [x] cf-8: Connect Status Server to Database
+- [x] cf-9: Implement basic Lead Agent with Anthropic SDK
+- [x] cf-10: Connect Project.start() to Lead Agent
+- [x] cf-11: Add project creation to Status Server API
+- [x] cf-12: Environment & Configuration Management
+- [x] cf-13: Manual Testing Checklist
 
-### 📋 Sprint 2: Socratic Discovery (Week 2)
+**Completion Date**: 2025-10-16 | **Tests**: 111/111 passing (100%)
+
+### 🚧 Sprint 2: Socratic Discovery (Week 2) - In Progress
 
 **Demo**: Lead Agent asks 3 questions → user answers → generates basic PRD
 
-### 📋 Sprint 3: Single Agent Execution (Week 3)
+### ✅ Sprint 3: Single Agent Execution (Week 3) - Complete
 
 **Demo**: Agent creates file → test fails → agent fixes → test passes (self-correction)
+
+- [x] cf-41: Backend Worker Agent with LLM integration
+- [x] cf-42: Test Runner Integration (pytest execution)
+- [x] cf-43: Self-Correction Loop (max 3 attempts)
+- [x] cf-44: Git Auto-Commit with conventional commits
+- [x] cf-45: Real-Time Dashboard Updates (WebSocket)
+- [x] cf-46: Production Bug Fixes (staging deployment)
+
+**Completion Date**: 2025-10-18 | **Features**: Autonomous agent with self-correction
 
 ### 📋 Sprint 4: Multi-Agent Coordination (Week 4)
 
@@ -646,10 +659,22 @@ For comprehensive technical documentation, see:
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
 - [CONCEPTS_INTEGRATION.md](CONCEPTS_INTEGRATION.md) - General concepts integration analysis
 
-### Additional Resources
-- [docs/](docs/) - Archived documentation and reference materials
-  - [docs/archive/sprint1/](docs/archive/sprint1/) - Sprint 1 implementation results
-  - [docs/process/](docs/process/) - Development process guides (TDD workflow, Web UI setup)
+### Sprint Documentation
+- [docs/archive/sprint1/](docs/archive/sprint1/) - Sprint 1 completion summary and implementation results
+- [docs/archive/sprint3/](docs/archive/sprint3/) - Sprint 3 bug fixes and WebSocket analysis
+- [docs/SPRINT2_PLAN.md](docs/SPRINT2_PLAN.md) - Detailed Sprint 2 implementation plan
+
+### Process & Infrastructure
+- [docs/process/TDD_WORKFLOW.md](docs/process/TDD_WORKFLOW.md) - Test-Driven Development workflow
+- [docs/process/WEB_UI_SETUP.md](docs/process/WEB_UI_SETUP.md) - Web UI development guide
+- [docs/REMOTE_STAGING_DEPLOYMENT.md](docs/REMOTE_STAGING_DEPLOYMENT.md) - Staging server deployment guide
+- [docs/STAGING_SERVER.md](docs/STAGING_SERVER.md) - Staging server configuration
+- [docs/self_correction_workflow.md](docs/self_correction_workflow.md) - Self-correction loop documentation
+
+### Technical Design
+- [docs/CF-41_BACKEND_WORKER_AGENT_DESIGN.md](docs/CF-41_BACKEND_WORKER_AGENT_DESIGN.md) - Backend Worker Agent architecture
+- [docs/API_CONTRACT_ROADMAP.md](docs/API_CONTRACT_ROADMAP.md) - API evolution and contract management
+- [docs/BIG_PICTURE.md](docs/BIG_PICTURE.md) - High-level system architecture and vision
 
 ---
 
