@@ -3,7 +3,10 @@
 import sqlite3
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+import logging
 from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -13,8 +16,12 @@ class Database:
         self.db_path = Path(db_path) if db_path != ":memory:" else db_path
         self.conn: Optional[sqlite3.Connection] = None
 
-    def initialize(self) -> None:
-        """Initialize database schema."""
+    def initialize(self, run_migrations: bool = True) -> None:
+        """Initialize database schema.
+
+        Args:
+            run_migrations: Whether to run database migrations after schema creation
+        """
         # Create parent directories if needed (skip for in-memory databases)
         if self.db_path != ":memory:":
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -26,6 +33,10 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = ON")
 
         self._create_schema()
+
+        # Run migrations if requested
+        if run_migrations:
+            self._run_migrations()
 
     def _create_schema(self) -> None:
         """Create database tables."""
@@ -101,7 +112,7 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
-                type TEXT CHECK(type IN ('lead', 'backend', 'frontend', 'test', 'review')),
+                type TEXT NOT NULL,
                 provider TEXT,
                 maturity_level TEXT CHECK(maturity_level IN ('directive', 'coaching', 'supporting', 'delegating')),
                 status TEXT CHECK(status IN ('idle', 'working', 'blocked', 'offline')),
@@ -250,6 +261,34 @@ class Database:
         """)
 
         self.conn.commit()
+
+    def _run_migrations(self) -> None:
+        """Run database migrations.
+
+        Automatically discovers and runs migration scripts from the migrations directory.
+        """
+        try:
+            from codeframe.persistence.migrations import MigrationRunner
+            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration
+
+            # Skip migrations for in-memory databases
+            if self.db_path == ":memory:":
+                logger.debug("Skipping migrations for in-memory database")
+                return
+
+            runner = MigrationRunner(str(self.db_path))
+
+            # Register migrations
+            runner.register(migration)
+
+            # Apply all pending migrations
+            runner.apply_all()
+
+        except ImportError as e:
+            logger.warning(f"Migration system not available: {e}")
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+            raise
 
     def create_project(self, name: str, status: ProjectStatus) -> int:
         """Create a new project record."""

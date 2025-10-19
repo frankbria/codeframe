@@ -13,12 +13,14 @@ class WorkerAgent:
         agent_id: str,
         agent_type: str,
         provider: str,
-        maturity: AgentMaturity = AgentMaturity.D1
+        maturity: AgentMaturity = AgentMaturity.D1,
+        system_prompt: str | None = None
     ):
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.provider = provider
         self.maturity = maturity
+        self.system_prompt = system_prompt
         self.current_task: Task | None = None
 
     def execute_task(self, task: Task) -> dict:

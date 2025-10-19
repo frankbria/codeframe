@@ -2281,6 +2281,58 @@ db.update_project(project_id, {"phase": "active"})
 
 ---
 
+## Sprint 9: Advanced Agent Routing (Future)
+
+**Goal**: Capability-based agent assignment with project-level customization
+
+**User Story**: As a developer, I want agents to be assigned based on their actual capabilities, and I want to customize agent definitions for my project's specific needs.
+
+**Implementation Tasks**:
+
+- [ ] **cf-50**: Project-level agent definitions (P0)
+  - Support `.codeframe/agents/definitions/` directory
+  - Load project definitions in addition to system defaults
+  - Merge strategy: project overrides system
+  - Demo: Add custom agent to specific project
+
+- [ ] **cf-51**: Task capability analysis (P0)
+  - `TaskAnalyzer` class for extracting required capabilities
+  - Keyword → capability mapping
+  - LLM-based fallback for ambiguous tasks
+  - Demo: Task analyzed, capabilities extracted
+
+- [ ] **cf-52**: Capability-based agent matching (P0)
+  - `AgentMatcher` scoring algorithm
+  - Match task capabilities to agent capabilities
+  - Handle tie-breaking (round-robin, load balancing)
+  - Demo: Best agent automatically selected
+
+- [ ] **cf-53**: Lead Agent integration with AgentFactory (P0)
+  - Initialize factory with system + project paths
+  - Agent discovery on project start
+  - Dynamic agent pool management
+  - Demo: Lead Agent queries available agents
+
+- [ ] **cf-54**: Database schema for capabilities (P0)
+  - Add `required_capabilities` JSON field to tasks
+  - Migration script
+  - Store/query capabilities efficiently
+  - Demo: Tasks record their capability requirements
+
+**Definition of Done**:
+- ✅ Users can add custom agents via `.codeframe/agents/definitions/`
+- ✅ Tasks auto-analyzed for required capabilities
+- ✅ Agents matched to tasks by capability overlap
+- ✅ Lead Agent uses AgentFactory for discovery
+- ✅ No hardcoded agent type checks
+- ✅ 100% backward compatible with simple assignment
+
+**Sprint Review**: Intelligent agent routing - right agent, right task, every time!
+
+**Estimated Effort**: 8-10 hours (deferred from Sprint 4 refactor)
+
+---
+
 ## Sprint Execution Guidelines
 
 ### Sprint Ceremony Schedule
