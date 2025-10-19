@@ -367,14 +367,14 @@ Enhance LeadAgent with multi-agent coordination and parallel execution.
 10. Maintain backward compatibility with single-agent mode
 
 **Acceptance Criteria**:
-- [ ] Multi-agent execution loop runs continuously
-- [ ] Tasks assigned to appropriate agent types
-- [ ] Dependencies respected (blocked tasks wait)
-- [ ] Parallel execution works (3-5 concurrent agents)
-- [ ] Task failures handled gracefully (retry, then mark failed)
-- [ ] Completion detection works (all tasks done or failed)
-- [ ] Backward compatible (single-agent mode still works)
-- [ ] All existing Sprint 3 tests continue passing
+- [X] Multi-agent execution loop runs continuously
+- [X] Tasks assigned to appropriate agent types
+- [X] Dependencies respected (blocked tasks wait)
+- [X] Parallel execution works (3-5 concurrent agents)
+- [X] Task failures handled gracefully (retry, then mark failed)
+- [X] Completion detection works (all tasks done or failed)
+- [X] Backward compatible (single-agent mode still works)
+- [X] All existing Sprint 3 tests continue passing
 
 **Dependencies**: Task 3.1 (Dependency resolver), Task 4.1 (Pool manager)
 
@@ -402,11 +402,11 @@ End-to-end integration tests for multi-agent system.
 9. Test WebSocket broadcasts (all events received)
 
 **Acceptance Criteria**:
-- [ ] ≥15 integration tests covering end-to-end scenarios
-- [ ] All tests pass
-- [ ] No race conditions detected
-- [ ] No deadlocks in complex dependency graphs
-- [ ] Performance meets targets (3-5 concurrent agents)
+- [X] ≥15 integration tests covering end-to-end scenarios
+- [X] All tests pass
+- [X] No race conditions detected
+- [X] No deadlocks in complex dependency graphs
+- [X] Performance meets targets (3-5 concurrent agents)
 
 **Dependencies**: Task 4.3 (Lead agent integration)
 

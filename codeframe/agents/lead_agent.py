@@ -1,6 +1,7 @@
 """Lead Agent orchestrator for CodeFRAME."""
 
 import logging
+import asyncio
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
 
 from codeframe.providers.anthropic import AnthropicProvider
@@ -11,6 +12,9 @@ from codeframe.planning.issue_generator import IssueGenerator
 from codeframe.planning.task_decomposer import TaskDecomposer
 from codeframe.core.models import Issue, Task
 from codeframe.indexing.codebase_index import CodebaseIndex
+from codeframe.agents.agent_pool_manager import AgentPoolManager
+from codeframe.agents.dependency_resolver import DependencyResolver
+from codeframe.agents.simple_assignment import SimpleAgentAssigner
 
 if TYPE_CHECKING:
     from codeframe.core.project import Project
@@ -35,6 +39,8 @@ class LeadAgent:
         db: Database,
         api_key: Optional[str] = None,
         model: str = "claude-sonnet-4-20250514",
+        ws_manager=None,
+        max_agents: int = 10,
     ):
         """Initialize Lead Agent with database and Anthropic provider.
 
@@ -43,6 +49,8 @@ class LeadAgent:
             db: Database connection for conversation persistence
             api_key: Anthropic API key (required)
             model: Claude model to use (default: claude-sonnet-4-20250514)
+            ws_manager: WebSocket manager for broadcasts (optional)
+            max_agents: Maximum number of concurrent agents (default: 10)
 
         Raises:
             ValueError: If API key is missing
@@ -63,6 +71,17 @@ class LeadAgent:
 
         # Codebase indexing
         self.codebase_index: Optional[CodebaseIndex] = None
+
+        # Multi-agent coordination (Sprint 4)
+        self.agent_pool_manager = AgentPoolManager(
+            project_id=project_id,
+            db=db,
+            ws_manager=ws_manager,
+            max_agents=max_agents,
+            api_key=api_key
+        )
+        self.dependency_resolver = DependencyResolver()
+        self.agent_assigner = SimpleAgentAssigner()
 
         # Git workflow manager (cf-33)
         from codeframe.git.workflow_manager import GitWorkflowManager
@@ -956,3 +975,274 @@ Generate the PRD in markdown format with clear sections and professional languag
             "status": "merged",
             "deployment": deployment_result,
         }
+
+    async def start_multi_agent_execution(
+        self,
+        max_retries: int = 3,
+        max_concurrent: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Start multi-agent parallel task execution.
+
+        Main coordination loop that:
+        1. Loads all project tasks and builds dependency graph
+        2. Continuously assigns ready tasks to agents
+        3. Executes tasks in parallel (up to max_concurrent)
+        4. Handles task completion and dependency unblocking
+        5. Retries failed tasks (up to max_retries)
+        6. Continues until all tasks complete or fail
+
+        Args:
+            max_retries: Maximum retry attempts per task (default: 3)
+            max_concurrent: Maximum concurrent task executions (default: 5)
+
+        Returns:
+            Dict with execution summary:
+                - total_tasks: Total number of tasks
+                - completed: Number of successfully completed tasks
+                - failed: Number of failed tasks
+                - retries: Total number of retry attempts
+                - execution_time: Total execution time in seconds
+
+        Raises:
+            ValueError: If no tasks found for project
+            Exception: If critical execution error occurs
+        """
+        import time
+        start_time = time.time()
+
+        # Load all tasks for project
+        task_dicts = self.db.get_project_tasks(self.project_id)
+        if not task_dicts:
+            raise ValueError(f"No tasks found for project {self.project_id}")
+
+        # Convert to Task objects
+        tasks = []
+        for task_dict in task_dicts:
+            task = Task(
+                id=task_dict["id"],
+                project_id=task_dict["project_id"],
+                issue_id=task_dict.get("issue_id"),
+                task_number=task_dict["task_number"],
+                parent_issue_number=task_dict.get("parent_issue_number"),
+                title=task_dict["title"],
+                description=task_dict["description"],
+                status=task_dict["status"],
+                priority=task_dict.get("priority", "medium"),
+                workflow_step=task_dict.get("workflow_step"),
+                can_parallelize=task_dict.get("can_parallelize", False),
+                requires_mcp=task_dict.get("requires_mcp", False),
+                depends_on=task_dict.get("depends_on", "[]")
+            )
+            tasks.append(task)
+
+        logger.info(f"Starting multi-agent execution: {len(tasks)} tasks")
+
+        # Build dependency graph
+        self.dependency_resolver.build_dependency_graph(tasks)
+
+        # Track execution state
+        retry_counts = {}  # task_id -> retry_count
+        running_tasks = {}  # task_id -> asyncio.Task
+        total_retries = 0
+
+        try:
+            # Main execution loop
+            while not self._all_tasks_complete():
+                # Get ready tasks (dependencies satisfied, not completed/running)
+                ready_task_ids = self.dependency_resolver.get_ready_tasks(exclude_completed=True)
+                
+                # Filter out already running tasks
+                ready_task_ids = [tid for tid in ready_task_ids if tid not in running_tasks]
+
+                # Assign and execute ready tasks (up to max_concurrent)
+                for task_id in ready_task_ids[:max_concurrent - len(running_tasks)]:
+                    task = next((t for t in tasks if t.id == task_id), None)
+                    if not task:
+                        continue
+
+                    # Check retry limit
+                    if retry_counts.get(task_id, 0) >= max_retries:
+                        logger.warning(f"Task {task_id} exceeded max retries ({max_retries}), marking as failed")
+                        self.db.update_task(task_id, {"status": "failed"})
+                        self.dependency_resolver.completed_tasks.add(task_id)
+                        continue
+
+                    # Assign and execute task
+                    task_future = asyncio.create_task(
+                        self._assign_and_execute_task(task, retry_counts)
+                    )
+                    running_tasks[task_id] = task_future
+
+                # Wait for at least one task to complete
+                if running_tasks:
+                    done, pending = await asyncio.wait(
+                        running_tasks.values(),
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+
+                    # Process completed tasks
+                    for completed_future in done:
+                        # Find which task this was
+                        task_id = next(
+                            (tid for tid, fut in running_tasks.items() if fut == completed_future),
+                            None
+                        )
+                        
+                        if task_id:
+                            # Remove from running tasks
+                            running_tasks.pop(task_id, None)
+
+                            # Check if task succeeded or failed
+                            try:
+                                success = await completed_future
+                                if success:
+                                    # Unblock dependent tasks
+                                    unblocked = self.dependency_resolver.unblock_dependent_tasks(task_id)
+                                    if unblocked:
+                                        logger.info(f"Task {task_id} completion unblocked tasks: {unblocked}")
+                                else:
+                                    # Task failed - increment retry count
+                                    retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
+                                    total_retries += 1
+                                    logger.warning(
+                                        f"Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
+                                    )
+                            except Exception as e:
+                                logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
+                                retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
+                                total_retries += 1
+                else:
+                    # No tasks running and none ready - check if we're stuck
+                    if not self._all_tasks_complete():
+                        logger.warning("No tasks running or ready, but not all tasks complete. Checking for deadlock...")
+                        blocked = self.dependency_resolver.get_blocked_tasks()
+                        if blocked:
+                            logger.error(f"Deadlock detected! Blocked tasks: {blocked}")
+                            break
+                        else:
+                            # Small delay before checking again
+                            await asyncio.sleep(0.1)
+
+        except Exception as e:
+            logger.error(f"Critical error in multi-agent execution: {e}", exc_info=True)
+            raise
+
+        # Calculate summary statistics
+        execution_time = time.time() - start_time
+        completed_count = len([t for t in tasks if t.id in self.dependency_resolver.completed_tasks])
+        failed_count = len([t for t in tasks if self.db.get_task(t.id).get("status") == "failed"])
+
+        summary = {
+            "total_tasks": len(tasks),
+            "completed": completed_count,
+            "failed": failed_count,
+            "retries": total_retries,
+            "execution_time": execution_time
+        }
+
+        logger.info(
+            f"Multi-agent execution complete: {completed_count}/{len(tasks)} tasks completed, "
+            f"{failed_count} failed, {total_retries} retries, {execution_time:.2f}s"
+        )
+
+        return summary
+
+    async def _assign_and_execute_task(
+        self,
+        task: Task,
+        retry_counts: Dict[int, int]
+    ) -> bool:
+        """
+        Assign task to agent and execute asynchronously.
+
+        Args:
+            task: Task object to execute
+            retry_counts: Dictionary tracking retry counts per task
+
+        Returns:
+            True if task succeeded, False if failed
+
+        Workflow:
+        1. Determine agent type using SimpleAgentAssigner
+        2. Get or create agent from pool
+        3. Mark agent as busy
+        4. Execute task via agent
+        5. Update task status in database
+        6. Mark agent as idle
+        7. Broadcast task status changes
+        """
+        try:
+            # Determine agent type
+            task_dict = {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description
+            }
+            agent_type = self.agent_assigner.assign_agent_type(task_dict)
+
+            logger.info(f"Assigning task {task.id} ({task.title}) to {agent_type}")
+
+            # Get or create agent
+            agent_id = self.agent_pool_manager.get_or_create_agent(agent_type)
+
+            # Mark agent busy
+            self.agent_pool_manager.mark_agent_busy(agent_id, task.id)
+
+            # Update task status to in_progress
+            self.db.update_task(task.id, {"status": "in_progress"})
+
+            # Get agent instance
+            agent_instance = self.agent_pool_manager.get_agent_instance(agent_id)
+
+            # Execute task (assuming agents have execute_task method)
+            logger.info(f"Agent {agent_id} executing task {task.id}")
+            
+            # Note: Worker agents may not all have async execute_task yet
+            # For now, we'll wrap synchronous execution in executor
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                agent_instance.execute_task,
+                task_dict
+            )
+
+            # Task succeeded
+            self.db.update_task(task.id, {"status": "completed"})
+            logger.info(f"Task {task.id} completed successfully by agent {agent_id}")
+
+            # Mark agent idle
+            self.agent_pool_manager.mark_agent_idle(agent_id)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Task {task.id} execution failed: {e}", exc_info=True)
+
+            # Update task status
+            self.db.update_task(task.id, {"status": "failed"})
+
+            # Mark agent idle if it was assigned
+            try:
+                if 'agent_id' in locals():
+                    self.agent_pool_manager.mark_agent_idle(agent_id)
+            except Exception:
+                pass
+
+            return False
+
+    def _all_tasks_complete(self) -> bool:
+        """
+        Check if all tasks are completed or failed.
+
+        Returns:
+            True if all tasks are in terminal state (completed/failed)
+        """
+        task_dicts = self.db.get_project_tasks(self.project_id)
+        
+        for task_dict in task_dicts:
+            status = task_dict.get("status", "pending")
+            if status not in ("completed", "failed"):
+                return False
+
+        return True
