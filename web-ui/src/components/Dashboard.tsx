@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { projectsApi, agentsApi, blockersApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
-import type { Project, Agent, Blocker, ActivityItem, WebSocketMessage } from '@/types';
+import type { Project, Agent, Blocker, ActivityItem, WebSocketMessage, Task, TaskStatus, AgentStatus } from '@/types';
 import type { PRDResponse, IssuesResponse } from '@/types/api';
 import ChatInterface from './ChatInterface';
 import PRDModal from './PRDModal';
