@@ -36,6 +36,7 @@ dependencies = [
     "rich>=13.7.0",
     "requests>=2.31.0",
     "gitpython>=3.1.40",
+    "pyyaml>=6.0.0",
     "tree-sitter>=0.20.4",
     "tree-sitter-python>=0.20.4",
     "tree-sitter-javascript>=0.20.3",
