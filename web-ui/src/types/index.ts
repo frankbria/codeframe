@@ -91,13 +91,78 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+/**
+ * WebSocket message types for real-time dashboard updates (cf-45)
+ */
+export type WebSocketMessageType =
+  | 'task_status_changed'
+  | 'agent_status_changed'
+  | 'test_result'
+  | 'commit_created'
+  | 'activity_update'
+  | 'progress_update'
+  | 'correction_attempt'
+  | 'agent_started'
+  | 'status_update'
+  | 'chat_message'
+  | 'blocker_resolved'
+  | 'ping'
+  | 'pong'
+  | 'subscribe'
+  | 'subscribed';
+
 export interface WebSocketMessage {
-  type: string;
+  type: WebSocketMessageType;
   timestamp: string;
+  project_id?: number;
   data?: any;
+
+  // Legacy fields (for backward compatibility)
   blocker_id?: number;
   answer?: string;
-  project_id?: number;
+
+  // task_status_changed fields
+  task_id?: number;
+  status?: string;
+  agent_id?: string;
+  progress?: number;
+
+  // agent_status_changed fields
+  current_task?: {
+    id: number;
+    title: string;
+  };
+
+  // test_result fields
+  passed?: number;
+  failed?: number;
+  errors?: number;
+  total?: number;
+  duration?: number;
+
+  // commit_created fields
+  commit_hash?: string;
+  commit_message?: string;
+  files_changed?: string[];
+
+  // activity_update fields
+  activity_type?: string;
+  agent?: string;
+  message?: string;
+
+  // progress_update fields
+  completed_tasks?: number;
+  total_tasks?: number;
+  percentage?: number;
+
+  // correction_attempt fields
+  attempt_number?: number;
+  max_attempts?: number;
+  error_summary?: string;
+
+  // chat_message fields
+  role?: 'user' | 'assistant';
+  content?: string;
 }
 
 /**

@@ -20,6 +20,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 import json
+import asyncio
 
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
@@ -57,7 +58,8 @@ class BackendWorkerAgent:
         codebase_index: CodebaseIndex,
         provider: str = "claude",
         api_key: Optional[str] = None,
-        project_root: Path = Path(".")
+        project_root: Path = Path("."),
+        ws_manager = None
     ):
         """
         Initialize Backend Worker Agent.
@@ -69,6 +71,7 @@ class BackendWorkerAgent:
             provider: LLM provider (default: "claude")
             api_key: API key for LLM provider (uses ANTHROPIC_API_KEY env var if not provided)
             project_root: Project root directory for file operations
+            ws_manager: Optional WebSocket ConnectionManager for real-time updates (cf-45)
 
         Raises:
             ValueError: If project_id is invalid or database not initialized
@@ -79,6 +82,7 @@ class BackendWorkerAgent:
         self.provider = provider
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.project_root = Path(project_root)
+        self.ws_manager = ws_manager
 
         # Validate project exists
         if not self.db:
@@ -86,7 +90,8 @@ class BackendWorkerAgent:
 
         logger.info(
             f"Initialized BackendWorkerAgent: project_id={project_id}, "
-            f"provider={provider}, project_root={project_root}"
+            f"provider={provider}, project_root={project_root}, "
+            f"ws_enabled={ws_manager is not None}"
         )
 
     def fetch_next_task(self) -> Optional[Dict[str, Any]]:
@@ -369,15 +374,17 @@ Guidelines:
         self,
         task_id: int,
         status: str,
-        output: Optional[str] = None
+        output: Optional[str] = None,
+        agent_id: str = "backend-worker"
     ) -> None:
         """
-        Update task status in database.
+        Update task status in database and broadcast via WebSocket (cf-45).
 
         Args:
             task_id: Task ID
             status: New status ("in_progress", "completed", "failed")
             output: Optional execution output/error message
+            agent_id: Agent identifier for broadcast
         """
         from datetime import datetime
 
@@ -400,6 +407,22 @@ Guidelines:
 
         if output:
             logger.debug(f"Task {task_id} output: {output[:200]}")
+
+        # Broadcast status change via WebSocket (cf-45)
+        if self.ws_manager:
+            try:
+                from codeframe.ui.websocket_broadcasts import broadcast_task_status
+                asyncio.create_task(
+                    broadcast_task_status(
+                        self.ws_manager,
+                        self.project_id,
+                        task_id,
+                        status,
+                        agent_id=agent_id
+                    )
+                )
+            except Exception as e:
+                logger.debug(f"Failed to broadcast task status: {e}")
 
     def _run_and_record_tests(self, task_id: int) -> None:
         """
@@ -451,6 +474,48 @@ Guidelines:
             f"{test_result.passed}/{test_result.total} passed, "
             f"{test_result.failed} failed, {test_result.errors} errors"
         )
+
+        # Broadcast test results via WebSocket (cf-45)
+        if self.ws_manager:
+            try:
+                from codeframe.ui.websocket_broadcasts import (
+                    broadcast_test_result,
+                    broadcast_activity_update
+                )
+
+                # Broadcast test result
+                asyncio.create_task(
+                    broadcast_test_result(
+                        self.ws_manager,
+                        self.project_id,
+                        task_id,
+                        test_result.status,
+                        test_result.passed,
+                        test_result.failed,
+                        test_result.errors,
+                        test_result.total,
+                        test_result.duration
+                    )
+                )
+
+                # Broadcast activity update
+                if test_result.status == "passed":
+                    activity_message = f"All tests passed for task #{task_id} ({test_result.passed}/{test_result.total})"
+                else:
+                    activity_message = f"Tests {test_result.status} for task #{task_id} ({test_result.passed}/{test_result.total} passed)"
+
+                asyncio.create_task(
+                    broadcast_activity_update(
+                        self.ws_manager,
+                        self.project_id,
+                        "tests_completed",
+                        "backend-worker",
+                        activity_message,
+                        task_id=task_id
+                    )
+                )
+            except Exception as e:
+                logger.debug(f"Failed to broadcast test result: {e}")
 
     def _attempt_self_correction(
         self,
@@ -575,6 +640,23 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         for attempt_num in range(1, max_attempts + 1):
             logger.info(f"Self-correction attempt {attempt_num}/{max_attempts} for task {task_id}")
 
+            # Broadcast correction attempt start (cf-45)
+            if self.ws_manager:
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
+                    asyncio.create_task(
+                        broadcast_correction_attempt(
+                            self.ws_manager,
+                            self.project_id,
+                            task_id,
+                            attempt_num,
+                            max_attempts,
+                            "in_progress"
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast correction attempt: {e}")
+
             # Attempt correction
             correction = self._attempt_self_correction(task, initial_test_result_id, attempt_num)
 
@@ -607,12 +689,62 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
 
             if latest_result and latest_result["status"] == "passed":
                 logger.info(f"Self-correction successful after {attempt_num} attempt(s)!")
+
+                # Broadcast success (cf-45)
+                if self.ws_manager:
+                    try:
+                        from codeframe.ui.websocket_broadcasts import (
+                            broadcast_correction_attempt,
+                            broadcast_activity_update
+                        )
+                        asyncio.create_task(
+                            broadcast_correction_attempt(
+                                self.ws_manager,
+                                self.project_id,
+                                task_id,
+                                attempt_num,
+                                max_attempts,
+                                "success"
+                            )
+                        )
+                        asyncio.create_task(
+                            broadcast_activity_update(
+                                self.ws_manager,
+                                self.project_id,
+                                "correction_success",
+                                "backend-worker",
+                                f"Self-correction successful after {attempt_num} attempt(s) for task #{task_id}",
+                                task_id=task_id
+                            )
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to broadcast correction success: {e}")
+
                 return True
 
             logger.warning(
                 f"Attempt {attempt_num} did not resolve failures. "
                 f"Status: {latest_result['status'] if latest_result else 'unknown'}"
             )
+
+            # Broadcast attempt failure (cf-45)
+            if self.ws_manager:
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
+                    error_summary = f"Status: {latest_result['status'] if latest_result else 'unknown'}"
+                    asyncio.create_task(
+                        broadcast_correction_attempt(
+                            self.ws_manager,
+                            self.project_id,
+                            task_id,
+                            attempt_num,
+                            max_attempts,
+                            "failed",
+                            error_summary=error_summary
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast correction failure: {e}")
 
         # All attempts exhausted - escalate to blocker
         logger.error(
@@ -715,6 +847,23 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             # 7. Update status to completed
             output = generation_result.get("explanation", "Task completed")
             self.update_task_status(task_id, TaskStatus.COMPLETED.value, output=output)
+
+            # Broadcast task completion activity (cf-45)
+            if self.ws_manager:
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_activity_update
+                    asyncio.create_task(
+                        broadcast_activity_update(
+                            self.ws_manager,
+                            self.project_id,
+                            "task_completed",
+                            "backend-worker",
+                            f"Completed task #{task_id}: {task['title']}",
+                            task_id=task_id
+                        )
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast task completion: {e}")
 
             logger.info(f"Successfully completed task {task_id}")
             return {

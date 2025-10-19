@@ -62,18 +62,167 @@ export default function Dashboard({ projectId }: DashboardProps) {
     { shouldRetryOnError: false }
   );
 
-  // WebSocket connection
+  // Local state for real-time updates (cf-45)
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [projectProgress, setProjectProgress] = useState<any>(null);
+
+  // Initialize local state from API data
+  useEffect(() => {
+    if (agentsData) {
+      setAgents(agentsData);
+    }
+  }, [agentsData]);
+
+  useEffect(() => {
+    if (activityData) {
+      setActivity(activityData);
+    }
+  }, [activityData]);
+
+  // WebSocket connection (cf-45)
   useEffect(() => {
     const ws = getWebSocketClient();
     ws.connect();
     ws.subscribe(projectId);
 
     const unsubscribe = ws.onMessage((message: WebSocketMessage) => {
-      if (message.type === 'status_update') {
-        mutateProject();
-      } else if (message.type === 'blocker_resolved') {
-        mutateBlockers();
+      // Only process messages for this project
+      if (message.project_id && message.project_id !== projectId) {
+        return;
       }
+
+      // Handle different message types
+      switch (message.type) {
+        case 'task_status_changed':
+          // Update task status in real-time
+          if (message.task_id && message.status) {
+            setTasks((prev) =>
+              prev.map((task) =>
+                task.id === message.task_id
+                  ? { ...task, status: message.status as TaskStatus, progress: message.progress }
+                  : task
+              )
+            );
+          }
+          break;
+
+        case 'agent_status_changed':
+          // Update agent status in real-time
+          if (message.agent_id && message.status) {
+            setAgents((prev) =>
+              prev.map((agent) =>
+                agent.id === message.agent_id
+                  ? {
+                      ...agent,
+                      status: message.status as AgentStatus,
+                      current_task: message.current_task,
+                      progress: message.progress,
+                    }
+                  : agent
+              )
+            );
+          }
+          break;
+
+        case 'test_result':
+          // Add test result to activity feed
+          if (message.task_id) {
+            const testMessage =
+              message.status === 'passed'
+                ? `✅ All tests passed (${message.passed}/${message.total})`
+                : `⚠️ Tests ${message.status} (${message.passed}/${message.total} passed)`;
+
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'test_result',
+                agent: 'test-runner',
+                message: testMessage,
+              },
+              ...prev.slice(0, 49), // Keep only 50 items
+            ]);
+          }
+          break;
+
+        case 'commit_created':
+          // Add commit to activity feed
+          if (message.commit_hash && message.commit_message) {
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'commit_created',
+                agent: 'backend-worker',
+                message: `📝 ${message.commit_message} (${message.commit_hash.substring(0, 7)})`,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
+        case 'activity_update':
+          // Add activity to feed
+          if (message.message) {
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: message.activity_type || 'activity',
+                agent: message.agent || 'system',
+                message: message.message,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
+        case 'progress_update':
+          // Update project progress
+          if (message.completed_tasks !== undefined && message.total_tasks !== undefined) {
+            setProjectProgress({
+              completed_tasks: message.completed_tasks,
+              total_tasks: message.total_tasks,
+              percentage: message.percentage,
+            });
+            mutateProject(); // Also refresh full project data
+          }
+          break;
+
+        case 'correction_attempt':
+          // Add correction attempt to activity feed
+          if (message.task_id) {
+            const correctionMessage =
+              message.status === 'success'
+                ? `✅ Self-correction successful (attempt ${message.attempt_number}/${message.max_attempts})`
+                : message.status === 'in_progress'
+                ? `🔄 Self-correction attempt ${message.attempt_number}/${message.max_attempts}...`
+                : `⚠️ Correction attempt ${message.attempt_number} failed: ${message.error_summary}`;
+
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'correction_attempt',
+                agent: 'backend-worker',
+                message: correctionMessage,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
+        case 'status_update':
+          mutateProject();
+          break;
+
+        case 'blocker_resolved':
+          mutateBlockers();
+          break;
+
+        default:
+          // Ignore unknown message types
+          break;
+      }
+
       setWsConnected(true);
     });
 
@@ -157,14 +306,15 @@ export default function Dashboard({ projectId }: DashboardProps) {
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>
-                {projectData.progress.completed_tasks} / {projectData.progress.total_tasks} tasks
+                {(projectProgress || projectData.progress).completed_tasks} /{' '}
+                {(projectProgress || projectData.progress).total_tasks} tasks
               </span>
-              <span>{projectData.progress.percentage}%</span>
+              <span>{(projectProgress || projectData.progress).percentage}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-4">
               <div
-                className="bg-blue-600 h-4 rounded-full transition-all"
-                style={{ width: `${projectData.progress.percentage}%` }}
+                className="bg-blue-600 h-4 rounded-full transition-all duration-500"
+                style={{ width: `${(projectProgress || projectData.progress).percentage}%` }}
               ></div>
             </div>
           </div>
@@ -218,7 +368,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">🤖 Agent Status</h2>
           <div className="space-y-4">
-            {agentsData?.map((agent) => (
+            {(agents.length > 0 ? agents : agentsData || []).map((agent) => (
               <div key={agent.id} className="border-l-4 border-gray-300 pl-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -313,7 +463,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">📝 Recent Activity</h2>
           <div className="space-y-2">
-            {activityData?.map((item, index) => (
+            {(activity.length > 0 ? activity : activityData || []).map((item, index) => (
               <div key={index} className="flex items-start gap-3 text-sm">
                 <span className="text-gray-400 min-w-[60px]">
                   {new Date(item.timestamp).toLocaleTimeString()}
