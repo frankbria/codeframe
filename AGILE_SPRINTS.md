@@ -1515,6 +1515,44 @@ db.update_project(project_id, {"phase": "active"})
   - **Demo**: Backend Worker Agent automatically attempts to fix test failures up to 3 times before escalating to blocker
   - **Commit**: (pending) - feat(cf-43): Complete self-correction loop with integration tests and documentation
 
+- [x] **cf-46**: Production Bug Fixes - Staging Demo Blockers (P0) ✅ COMPLETE
+  - **Context**: Sprint 3 staging deployment revealed 3 critical bugs blocking demo
+  - **Bug 1**: Missing progress field in `/api/projects/{id}/status` endpoint
+    - **Root Cause**: Dashboard uses `/status` endpoint, not `/projects`
+    - **Impact**: `TypeError: Cannot read properties of undefined (reading 'completed_tasks')`
+    - **Fix**: Added `progress` calculation to `get_project_status()` in server.py
+    - **Note**: Previous commit (9ea75dc) only fixed `/api/projects`, missing the actual endpoint used by Dashboard
+  - **Bug 2**: WebSocket connectivity issues
+    - **Root Cause**: Nginx proxy not forwarding WebSocket upgrade headers
+    - **Impact**: Real-time updates not working
+    - **Fix**: Created comprehensive nginx configuration documentation (docs/nginx-websocket-config.md)
+    - **Status**: ✅ Verified working (curl test returned 101 Switching Protocols)
+  - **Bug 3**: Missing deployment contract tests
+    - **Root Cause**: No tests validating API contracts match frontend expectations
+    - **Impact**: Production bugs not caught before deployment
+    - **Fix**: Created comprehensive test suite (tests/test_deployment_contract.py)
+      - API contract tests (projects, status endpoints)
+      - Environment configuration tests (CORS, ports, URLs)
+      - Data integrity tests (task statuses, progress calculation)
+      - Edge case tests (NULL fields, large projects, multiple projects)
+  - **Implementation**: TDD methodology (RED-GREEN-REFACTOR)
+  - **Tests**: 15 comprehensive deployment contract tests (100% pass rate)
+  - **Files Created/Modified**:
+    - codeframe/ui/server.py (modified - added progress field to /status endpoint)
+    - tests/test_deployment_contract.py (new, 474 lines)
+    - docs/nginx-websocket-config.md (new, 633 lines - complete WebSocket guide)
+    - DEPLOY_CF46_FIX.md (deployment guide)
+    - VERIFY_DEPLOYMENT.md (verification checklist)
+    - DEBUG_WEBSOCKET.md (troubleshooting steps)
+    - verify.sh (automated verification script)
+  - **Deployment**: Requires `./scripts/deploy-staging.sh` for proper service configuration
+  - **Status**: ✅ Complete (2025-10-19) - All bugs fixed, staging demo functional
+  - **Commits**:
+    - 9ea75dc - fix(cf-46): Fix production bugs blocking Sprint 3 staging demo
+    - a553e72 - fix(cf-46): Add progress field to /status endpoint (ACTUAL Bug 1 fix)
+  - **Estimated Effort**: 3-4 hours (actual: ~2 hours for bug fixes + 1 hour for comprehensive documentation)
+  - **Demo**: Staging dashboard at http://codeframe.home.frankbria.net:14100 loads without errors
+
 - [x] **cf-32**: Codebase Indexing (P0) ✅ COMPLETE
   - ✅ Tree-sitter-based multi-language parsing (Python, TypeScript/JavaScript)
   - ✅ Symbol extraction (classes, functions, methods, interfaces, types)
