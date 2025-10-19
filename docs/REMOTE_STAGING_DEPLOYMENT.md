@@ -309,7 +309,112 @@ chmod +x scripts/seed-staging.sh
 
 ## Part 4: Network Access Setup
 
-### Step 4.1: Configure Firewall (if applicable)
+### Step 4.1: Configure WebSocket Support in Nginx Proxy Manager ⭐ CRITICAL
+
+**IMPORTANT**: Nginx Proxy Manager's "WebSocket Support" checkbox does NOT properly configure WebSocket. You MUST add custom configuration manually.
+
+**Why This Is Critical**:
+- Without this, real-time updates won't work
+- Dashboard will show stale data
+- Chat messages won't appear in real-time
+- Agent status updates won't be live
+
+**Steps**:
+
+1. **Open Nginx Proxy Manager**:
+   ```
+   http://frankbria-inspiron-7586:81
+   ```
+
+2. **Navigate to Proxy Hosts**
+
+3. **Edit** the proxy host for `api.codeframe.home.frankbria.net`
+
+4. **Go to the "Advanced" tab**
+
+5. **Paste this configuration**:
+   ```nginx
+   # WebSocket Support - Required Headers
+   proxy_http_version 1.1;
+   proxy_set_header Upgrade $http_upgrade;
+   proxy_set_header Connection "upgrade";
+
+   # WebSocket Timeouts (24 hours for persistent connections)
+   proxy_read_timeout 86400s;
+   proxy_send_timeout 86400s;
+   proxy_connect_timeout 60s;
+
+   # Prevent buffering (critical for WebSocket)
+   proxy_buffering off;
+
+   # Forward client information
+   proxy_set_header Host $host;
+   proxy_set_header X-Real-IP $remote_addr;
+   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+   proxy_set_header X-Forwarded-Proto $scheme;
+   ```
+
+6. **Save** the configuration
+
+7. **Verify WebSocket Configuration**:
+   ```bash
+   # From your local machine (not on server)
+   curl -i -N \
+        -H "Connection: Upgrade" \
+        -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Version: 13" \
+        -H "Sec-WebSocket-Key: test" \
+        http://api.codeframe.home.frankbria.net/ws
+   ```
+
+   **Expected Response**:
+   ```
+   HTTP/1.1 101 Switching Protocols
+   Upgrade: websocket
+   Connection: Upgrade
+   ```
+
+   **If You Get** 400, 502, or connection closes → WebSocket config not applied. Re-check Advanced tab.
+
+8. **Update Frontend Environment Variable**:
+
+   On the server, edit `.env.staging`:
+   ```bash
+   nano ~/projects/codeframe/.env.staging
+   ```
+
+   Update the WebSocket URL to use the public domain:
+   ```bash
+   NEXT_PUBLIC_WS_URL=ws://api.codeframe.home.frankbria.net/ws
+   ```
+
+   **IMPORTANT**: This is baked into the build at compile-time. You MUST rebuild:
+   ```bash
+   cd ~/projects/codeframe/web-ui
+   npm run build
+   pm2 restart codeframe-staging-frontend
+   ```
+
+9. **Test WebSocket Connection**:
+   ```bash
+   # On the server
+   cd ~/projects/codeframe
+   python3 scripts/test-websocket.py
+   ```
+
+   **Expected Output**:
+   ```
+   ✅ Direct Backend Connection: PASSED
+   ✅ Nginx Proxy Connection: PASSED
+   ✅ Connection Stability: PASSED
+   ✅ ALL CRITICAL TESTS PASSED ✓
+   ```
+
+   **If Test Fails**: See troubleshooting in `docs/nginx-websocket-config.md`
+
+**Detailed Configuration Guide**: See `docs/nginx-websocket-config.md` for complete explanation of each directive and troubleshooting steps.
+
+### Step 4.2: Configure Firewall (if applicable)
 
 ```bash
 # Check if ufw firewall is active
@@ -663,6 +768,10 @@ pm2 start ecosystem.staging.config.js
 - [ ] System dependencies installed (Node.js, uv, PM2)
 - [ ] Repository cloned to ~/projects/codeframe
 - [ ] .env.staging configured with valid API keys
+- [ ] **WebSocket configuration added to Nginx Proxy Manager Advanced tab** ⭐ **CRITICAL!**
+- [ ] **NEXT_PUBLIC_WS_URL updated to use public domain (not localhost)** ⭐ **CRITICAL!**
+- [ ] **Frontend rebuilt after environment variable change** ⭐ **CRITICAL!**
+- [ ] **WebSocket test passed (scripts/test-websocket.py)** ⭐ **CRITICAL!**
 - [ ] Deployment script executed successfully
 - [ ] Services running (pm2 list shows online)
 - [ ] Demo data seeded (scripts/seed-staging.sh) ⭐ **Important!**
