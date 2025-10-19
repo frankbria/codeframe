@@ -57,6 +57,11 @@ else:
         "http://localhost:5173",      # Vite dev server
     ]
 
+# Log CORS configuration for debugging
+print(f"🔒 CORS Configuration:")
+print(f"   CORS_ALLOWED_ORIGINS env: {cors_origins_env!r}")
+print(f"   Parsed allowed origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
