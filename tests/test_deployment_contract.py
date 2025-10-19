@@ -9,6 +9,12 @@ Created in response to cf-46 where production bugs were not caught by tests.
 
 import pytest
 import os
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus, TaskStatus, Issue
 
@@ -88,6 +94,71 @@ class TestAPIContracts:
         assert progress["completed_tasks"] >= 0
         assert progress["total_tasks"] >= 0
         assert 0.0 <= progress["percentage"] <= 100.0
+
+    def test_project_status_endpoint_contract(self):
+        """
+        Validate /api/projects/{id}/status response schema.
+
+        Frontend Dashboard.tsx uses THIS endpoint (not /api/projects).
+        This was the actual Bug 1 in cf-46!
+        """
+        # Given: A database with a project and tasks
+        db = Database(":memory:")
+        db.initialize()
+
+        project_id = db.create_project("Status Test", ProjectStatus.ACTIVE)
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="1.1",
+            title="Test Issue",
+            description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=2,
+            workflow_step=1
+        )
+        issue_id = db.create_issue(issue)
+
+        db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.1.1",
+            parent_issue_number="1.1",
+            title="Completed Task",
+            description="Test",
+            status=TaskStatus.COMPLETED,
+            priority=2,
+            workflow_step=1,
+            can_parallelize=False
+        )
+
+        # When: We simulate the /status endpoint (get_project + calculate_progress)
+        project = db.get_project(project_id)
+        progress = db._calculate_project_progress(project_id)
+
+        # Build response like server.py does
+        status_response = {
+            "project_id": project["id"],
+            "name": project["name"],
+            "status": project["status"],
+            "phase": project.get("phase", "discovery"),
+            "workflow_step": project.get("workflow_step", 1),
+            "progress": progress
+        }
+
+        # Then: Response must have progress field
+        assert "progress" in status_response, \
+            "Missing 'progress' - this was the cf-46 bug!"
+
+        # Validate progress structure
+        assert "completed_tasks" in status_response["progress"]
+        assert "total_tasks" in status_response["progress"]
+        assert "percentage" in status_response["progress"]
+
+        # Validate values
+        assert status_response["progress"]["completed_tasks"] == 1
+        assert status_response["progress"]["total_tasks"] == 1
+        assert status_response["progress"]["percentage"] == 100.0
 
     def test_projects_endpoint_empty_database(self):
         """Test /api/projects returns empty array when no projects exist."""

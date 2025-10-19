@@ -60,7 +60,11 @@
       "Bash(bd:*)",
       "mcp__serena__search_for_pattern",
       "mcp__serena__replace_symbol_body",
-      "mcp__serena__insert_after_symbol"
+      "mcp__serena__insert_after_symbol",
+      "mcp__uvx__find_files",
+      "mcp__uvx__set_project_path",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
     ],
     "deny": [],
     "ask": []
