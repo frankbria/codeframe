@@ -386,10 +386,16 @@ async def get_project_status(project_id: int):
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Calculate progress metrics (cf-46)
+    progress = app.state.db._calculate_project_progress(project_id)
+
     return {
         "project_id": project["id"],
-        "project_name": project["name"],
-        "status": project["status"]
+        "name": project["name"],
+        "status": project["status"],
+        "phase": project.get("phase", "discovery"),
+        "workflow_step": project.get("workflow_step", 1),
+        "progress": progress
     }
 
 
