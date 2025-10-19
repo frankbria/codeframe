@@ -233,6 +233,64 @@ curl http://localhost:14200
 curl http://localhost:14100
 ```
 
+### Step 3.4: Seed Demo Data (Recommended)
+
+```bash
+# Make seed script executable
+chmod +x scripts/seed-staging.sh
+
+# Run the seed script to populate demo data
+./scripts/seed-staging.sh
+```
+
+**What this script does**:
+1. ✓ Creates a demo project ("Demo SaaS Application")
+2. ✓ Populates discovery conversation (5 questions/answers)
+3. ✓ Generates a Product Requirements Document (PRD)
+4. ✓ Creates 6 issues (Sprint 2 features)
+5. ✓ Generates 25-30 hierarchical tasks
+
+**Expected Output**:
+```
+╔════════════════════════════════════════════════════════════════╗
+║                   CodeFRAME Staging Seeder                     ║
+║            Populating Sprint 1-2 Demo Data                     ║
+╚════════════════════════════════════════════════════════════════╝
+
+📡 Checking API health... ✓
+🔍 Checking for existing projects... No existing projects
+
+═══════════════════════════════════════════════════════════════
+  Phase 1: Creating Project
+═══════════════════════════════════════════════════════════════
+📦 Creating project 'Demo SaaS Application'... ✓ (ID: 1)
+
+═══════════════════════════════════════════════════════════════
+  Phase 2: Seeding Discovery Conversation
+═══════════════════════════════════════════════════════════════
+   Q1: Sending discovery question... ✓
+   A1: Sending user answer... ✓
+   ...
+   📝 Discovery complete (5 questions answered)
+
+═══════════════════════════════════════════════════════════════
+  Seeding Complete! 🎉
+═══════════════════════════════════════════════════════════════
+
+📋 Summary:
+   • Project: Demo SaaS Application (ID: 1)
+   • Discovery: 5 questions answered
+   • PRD: Generated (6 major features)
+   • Issues: 6 issues created (Sprint 2)
+   • Tasks: ~25-30 tasks generated
+```
+
+**Benefits**:
+- Frontend homepage shows a real project instead of "Error loading projects"
+- You can immediately click into the project and see the dashboard
+- PRD, issues, and tasks are visible for Sprint 2 demo
+- Can test all Sprint 1-2 features without manual setup
+
 ---
 
 ## Part 4: Network Access Setup
@@ -593,6 +651,7 @@ pm2 start ecosystem.staging.config.js
 - [ ] .env.staging configured with valid API keys
 - [ ] Deployment script executed successfully
 - [ ] Services running (pm2 list shows online)
+- [ ] Demo data seeded (scripts/seed-staging.sh) ⭐ **Important!**
 - [ ] Local access verified (curl http://localhost:14100)
 - [ ] Remote access verified (browser to http://YOUR_STAGING_SERVER:14100)
 - [ ] Firewall configured (if applicable)
