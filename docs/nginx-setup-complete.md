@@ -30,7 +30,22 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:14100;
-        # Standard proxy headers configured
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # Timeout settings for Next.js
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        
+        # Buffering settings
+        proxy_buffering off;
+        proxy_request_buffering off;
     }
 
     listen 443 ssl; # managed by Certbot
