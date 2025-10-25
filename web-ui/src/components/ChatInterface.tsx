@@ -47,7 +47,7 @@ export default function ChatInterface({ projectId, agentStatus = 'idle' }: ChatI
   // Initialize messages from history
   useEffect(() => {
     if (historyData?.messages) {
-      setMessages(historyData.messages);
+      setMessages(historyData.messages as ChatMessage[]);
     }
   }, [historyData]);
 
