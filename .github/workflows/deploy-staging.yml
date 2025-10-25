@@ -11,6 +11,7 @@ jobs:
   deploy:
     name: Deploy to Staging Server
     runs-on: ubuntu-latest
+    environment: staging
     needs: []
     # Note: To enforce CI before deploy, add this after CI workflow is tested:
     # needs: [ci-tests]
@@ -21,8 +22,8 @@ jobs:
 
       - name: Configure SSH
         env:
-          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
-          SSH_HOST: ${{ secrets.STAGING_HOST }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.HOST }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/staging_key
@@ -31,8 +32,8 @@ jobs:
 
       - name: Pre-deployment health check
         env:
-          SSH_HOST: ${{ secrets.STAGING_HOST }}
-          SSH_USER: ${{ secrets.STAGING_USER }}
+          SSH_HOST: ${{ secrets.HOST }}
+          SSH_USER: ${{ secrets.USER }}
         run: |
           ssh -i ~/.ssh/staging_key -o StrictHostKeyChecking=no \
             "$SSH_USER@$SSH_HOST" \
@@ -40,9 +41,9 @@ jobs:
 
       - name: Deploy to staging
         env:
-          SSH_HOST: ${{ secrets.STAGING_HOST }}
-          SSH_USER: ${{ secrets.STAGING_USER }}
-          PROJECT_PATH: ${{ secrets.STAGING_PROJECT_PATH }}
+          SSH_HOST: ${{ secrets.HOST }}
+          SSH_USER: ${{ secrets.USER }}
+          PROJECT_PATH: ${{ secrets.PROJECT_PATH }}
           BRANCH: ${{ github.ref_name }}
         run: |
           ssh -i ~/.ssh/staging_key -o StrictHostKeyChecking=no \
@@ -84,8 +85,8 @@ jobs:
 
       - name: Post-deployment health checks
         env:
-          SSH_HOST: ${{ secrets.STAGING_HOST }}
-          SSH_USER: ${{ secrets.STAGING_USER }}
+          SSH_HOST: ${{ secrets.HOST }}
+          SSH_USER: ${{ secrets.USER }}
         run: |
           ssh -i ~/.ssh/staging_key -o StrictHostKeyChecking=no \
             "$SSH_USER@$SSH_HOST" << 'ENDSSH'
@@ -121,8 +122,8 @@ jobs:
           echo "✅ Deployment to staging successful"
           echo "Branch: ${{ github.ref_name }}"
           echo "Commit: ${{ github.sha }}"
-          echo "Frontend: http://${{ secrets.STAGING_HOST }}:14100"
-          echo "Backend: http://${{ secrets.STAGING_HOST }}:14200"
+          echo "Frontend: http://${{ secrets.HOST }}:14100"
+          echo "Backend: http://${{ secrets.HOST }}:14200"
 
       - name: Cleanup SSH key
         if: always()

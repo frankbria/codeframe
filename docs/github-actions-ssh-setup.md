@@ -1,6 +1,6 @@
-# GitHub Actions SSH Setup for Staging Deployment
+# GitHub Actions SSH Setup for Deployments
 
-This document describes how to configure SSH access for GitHub Actions to deploy to the staging server.
+This document describes how to configure SSH access for GitHub Actions to deploy to staging (and other environments).
 
 ## Prerequisites
 
@@ -52,16 +52,23 @@ ssh -i ~/.ssh/github_actions_staging your-user@staging-server 'echo "Connection 
 
 Expected output: "Connection successful"
 
-## Step 4: Add Secrets to GitHub Repository
+## Step 4: Configure GitHub Environment and Secrets
+
+### Create Environment
 
 1. Go to your repository on GitHub
-2. Navigate to: **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Add the following secrets:
+2. Navigate to: **Settings** → **Environments**
+3. Click **New environment**
+4. Name: `staging`
+5. Click **Configure environment**
 
-### STAGING_SSH_KEY
+### Add Environment Secrets
 
-- Name: `STAGING_SSH_KEY`
+In the staging environment configuration, add the following secrets:
+
+### SSH_KEY
+
+- Name: `SSH_KEY`
 - Value: Contents of `~/.ssh/github_actions_staging` (private key)
 
 ```bash
@@ -70,32 +77,35 @@ cat ~/.ssh/github_actions_staging
 # Copy the entire output including BEGIN and END lines
 ```
 
-### STAGING_HOST
+### HOST
 
-- Name: `STAGING_HOST`
+- Name: `HOST`
 - Value: Staging server hostname or IP address
 - Example: `staging.example.com` or `192.168.1.100`
 
-### STAGING_USER
+### USER
 
-- Name: `STAGING_USER`
+- Name: `USER`
 - Value: SSH username on staging server
 - Example: `frankbria`
 
-### STAGING_PROJECT_PATH
+### PROJECT_PATH
 
-- Name: `STAGING_PROJECT_PATH`
+- Name: `PROJECT_PATH`
 - Value: Absolute path to the CodeFRAME project on staging server
 - Example: `/home/frankbria/projects/codeframe`
 
-## Step 5: Verify Secrets
+**Note**: These generic secret names can be reused across different environments (staging, production, etc.) by configuring them in each environment separately.
 
-After adding all secrets, verify they appear in the secrets list:
+## Step 5: Verify Environment Configuration
 
-- STAGING_SSH_KEY
-- STAGING_HOST
-- STAGING_USER
-- STAGING_PROJECT_PATH
+After adding all secrets, verify in **Settings** → **Environments** → **staging**:
+
+- ✅ Environment exists
+- ✅ SSH_KEY configured
+- ✅ HOST configured
+- ✅ USER configured
+- ✅ PROJECT_PATH configured
 
 ## Step 6: Test Deployment Workflow
 
@@ -115,39 +125,51 @@ After adding all secrets, verify they appear in the secrets list:
 - Rotate SSH keys every 90 days
 - To rotate:
   1. Generate new key pair
-  2. Add new public key to staging server
-  3. Update `STAGING_SSH_KEY` secret in GitHub
-  4. Remove old public key from staging server
+  2. Add new public key to deployment server
+  3. Update `SSH_KEY` secret in the environment (Settings → Environments → staging)
+  4. Remove old public key from deployment server
   5. Delete old private key locally
 
 ### Access Control
 - Only grant repository admin access to trusted users
-- Consider using a dedicated deployment user on staging server
+- Consider using a dedicated deployment user on the server
 - Audit secret access logs regularly
+- Use environment protection rules to require approvals for sensitive deployments
 
 ## Troubleshooting
 
 ### "Permission denied (publickey)"
-- Verify public key is in `~/.ssh/authorized_keys` on staging server
+- Verify public key is in `~/.ssh/authorized_keys` on deployment server
 - Check file permissions: `authorized_keys` should be 600, `.ssh` should be 700
-- Verify `STAGING_SSH_KEY` secret contains the complete private key
+- Verify `SSH_KEY` environment secret contains the complete private key
 
 ### "Host key verification failed"
 - Workflow includes `ssh-keyscan` to add host key automatically
 - If issue persists, manually add host key to workflow
 
 ### "Connection refused"
-- Verify `STAGING_HOST` is correct
-- Ensure staging server is accessible from internet
+- Verify `HOST` environment secret is correct
+- Ensure deployment server is accessible from internet
 - Check firewall settings allow SSH (port 22)
 
 ### "No such file or directory" during deployment
-- Verify `STAGING_PROJECT_PATH` is correct
-- Ensure project directory exists on staging server
+- Verify `PROJECT_PATH` environment secret is correct
+- Ensure project directory exists on deployment server
 - Check user has read/write permissions to project directory
+
+## Using Multiple Environments
+
+To configure production or other environments:
+
+1. Create a new environment (e.g., `production`)
+2. Add the same secret names (`SSH_KEY`, `HOST`, `USER`, `PROJECT_PATH`) with different values
+3. Update workflow to reference the appropriate environment
+
+This pattern allows using the same secret names across all environments while maintaining environment-specific values.
 
 ## Additional Resources
 
+- [GitHub Actions Environments](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
 - [GitHub Actions SSH documentation](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-cloud-providers)
 - [SSH key generation guide](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent)
 - [PM2 deployment documentation](https://pm2.keymetrics.io/docs/usage/deployment/)

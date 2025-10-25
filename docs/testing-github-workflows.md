@@ -71,11 +71,11 @@ Test that CI fails on test failures:
 ### Prerequisites
 
 - [ ] SSH keys generated and configured (see `docs/github-actions-ssh-setup.md`)
-- [ ] GitHub Secrets added:
-  - `STAGING_SSH_KEY`
-  - `STAGING_HOST`
-  - `STAGING_USER`
-  - `STAGING_PROJECT_PATH`
+- [ ] GitHub Environment `staging` created with secrets:
+  - `SSH_KEY`
+  - `HOST`
+  - `USER`
+  - `PROJECT_PATH`
 - [ ] Health check endpoints implemented (`/health` on backend and frontend)
 - [ ] Staging server accessible from internet
 
