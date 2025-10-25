@@ -53,7 +53,17 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({ onSuccess }) 
 
       // Extract error message from API response
       if (error.response?.data?.detail) {
-        setErrorMessage(error.response.data.detail);
+        // Handle FastAPI validation errors (array of error objects)
+        if (Array.isArray(error.response.data.detail)) {
+          const errors = error.response.data.detail
+            .map((err: any) => err.msg || JSON.stringify(err))
+            .join(', ');
+          setErrorMessage(errors);
+        } else if (typeof error.response.data.detail === 'string') {
+          setErrorMessage(error.response.data.detail);
+        } else {
+          setErrorMessage(JSON.stringify(error.response.data.detail));
+        }
       } else if (error.response?.data?.error) {
         setErrorMessage(error.response.data.error);
       } else {
