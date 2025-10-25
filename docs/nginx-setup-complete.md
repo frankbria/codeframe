@@ -59,15 +59,34 @@ server {
 server {
     server_name api.dev.codeframeapp.com;
 
+    # Regular API endpoints
     location / {
         proxy_pass http://127.0.0.1:14200;
-        # Standard proxy headers configured
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Important for POST/PUT requests with body
+        proxy_set_header Content-Length $content_length;
+        proxy_set_header Content-Type $content_type;
+        
+        # Buffering settings
+        proxy_buffering off;
+        proxy_request_buffering off;
     }
 
+    # WebSocket support
     location /ws {
         proxy_pass http://127.0.0.1:14200;
-        # WebSocket headers configured
-        # 7-day timeout for persistent connections
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 7d;
+        proxy_connect_timeout 7d;
+        proxy_send_timeout 7d;
     }
 
     listen 443 ssl; # managed by Certbot
