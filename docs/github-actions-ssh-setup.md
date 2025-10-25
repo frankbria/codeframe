@@ -8,7 +8,59 @@ This document describes how to configure SSH access for GitHub Actions to deploy
 - GitHub repository admin access (to add secrets)
 - SSH client installed locally
 
-## Step 1: Generate SSH Key Pair
+## Step 1: Set Up Project Directory on Server
+
+On the staging server, create the project directory and clone the repository:
+
+```bash
+# Create directory
+sudo mkdir -p /opt/codeframe
+sudo chown $USER:$USER /opt/codeframe
+
+# Clone repository
+cd /opt/codeframe
+git clone https://github.com/YOUR_USERNAME/codeframe.git .
+
+# Verify git is set up correctly
+git remote -v
+git status
+```
+
+**Note**: The deployment workflow uses `git fetch` and `git reset --hard`, so the project must be a git repository on the server.
+
+### Initial Server Setup
+
+After cloning, set up the environment:
+
+```bash
+cd /opt/codeframe
+
+# Create environment file (copy from example or create new)
+cp .env.example .env.staging
+# Edit .env.staging with staging-specific values
+nano .env.staging
+
+# Install Python dependencies
+python3 -m venv .venv
+source .venv/bin/activate
+pip install uv
+uv sync
+
+# Install frontend dependencies
+cd web-ui
+npm install
+npm run build
+cd ..
+
+# Set up PM2 configuration (if not already committed)
+# Create ecosystem.staging.config.js with appropriate ports
+```
+
+**Important files to configure:**
+- `.env.staging` - Environment variables for staging
+- `ecosystem.staging.config.js` - PM2 process configuration
+
+## Step 2: Generate SSH Key Pair
 
 On your local machine or the staging server:
 
@@ -23,7 +75,7 @@ This creates two files:
 - `~/.ssh/github_actions_staging` (private key) - for GitHub Secrets
 - `~/.ssh/github_actions_staging.pub` (public key) - for staging server
 
-## Step 2: Add Public Key to Staging Server
+## Step 3: Add Public Key to Staging Server
 
 Copy the public key to the staging server's authorized_keys:
 
@@ -42,7 +94,7 @@ chmod 700 ~/.ssh
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-## Step 3: Test SSH Connection
+## Step 4: Test SSH Connection
 
 Verify the key works:
 
@@ -52,7 +104,7 @@ ssh -i ~/.ssh/github_actions_staging your-user@staging-server 'echo "Connection 
 
 Expected output: "Connection successful"
 
-## Step 4: Configure GitHub Environment and Secrets
+## Step 5: Configure GitHub Environment and Secrets
 
 ### Create Environment
 
@@ -93,11 +145,12 @@ cat ~/.ssh/github_actions_staging
 
 - Name: `PROJECT_PATH`
 - Value: Absolute path to the CodeFRAME project on staging server
-- Example: `/home/frankbria/projects/codeframe`
+- Example: `/opt/codeframe`
+- **Recommended**: Use `/opt/codeframe` for staging/production deployments
 
 **Note**: These generic secret names can be reused across different environments (staging, production, etc.) by configuring them in each environment separately.
 
-## Step 5: Verify Environment Configuration
+## Step 6: Verify Environment Configuration
 
 After adding all secrets, verify in **Settings** → **Environments** → **staging**:
 
@@ -107,7 +160,7 @@ After adding all secrets, verify in **Settings** → **Environments** → **stag
 - ✅ USER configured
 - ✅ PROJECT_PATH configured
 
-## Step 6: Test Deployment Workflow
+## Step 7: Test Deployment Workflow
 
 1. Push a commit to the `staging` or `development` branch
 2. Go to **Actions** tab in GitHub repository
