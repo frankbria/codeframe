@@ -35,9 +35,8 @@ export default function ChatInterface({ projectId, agentStatus = 'idle' }: ChatI
   const { data: historyData, error: historyError } = useSWR(
     `/projects/${projectId}/chat/history`,
     async () => {
-      const response = await fetch(`http://localhost:8080/api/projects/${projectId}/chat/history`);
-      if (!response.ok) throw new Error('Failed to load chat history');
-      return response.json();
+      const response = await chatApi.getHistory(projectId);
+      return response.data;
     },
     {
       revalidateOnFocus: false,
