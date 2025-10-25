@@ -1,0 +1,130 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - staging
+      - development
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Staging Server
+    runs-on: ubuntu-latest
+    needs: []
+    # Note: To enforce CI before deploy, add this after CI workflow is tested:
+    # needs: [ci-tests]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          SSH_HOST: ${{ secrets.STAGING_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Pre-deployment health check
+        env:
+          SSH_HOST: ${{ secrets.STAGING_HOST }}
+          SSH_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          ssh -i ~/.ssh/staging_key -o StrictHostKeyChecking=no \
+            "$SSH_USER@$SSH_HOST" \
+            'echo "Server reachable"'
+
+      - name: Deploy to staging
+        env:
+          SSH_HOST: ${{ secrets.STAGING_HOST }}
+          SSH_USER: ${{ secrets.STAGING_USER }}
+          PROJECT_PATH: ${{ secrets.STAGING_PROJECT_PATH }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          ssh -i ~/.ssh/staging_key -o StrictHostKeyChecking=no \
+            "$SSH_USER@$SSH_HOST" << 'ENDSSH'
+            set -e
+
+            # Navigate to project
+            cd "$PROJECT_PATH"
+
+            # Update code
+            git fetch origin
+            git reset --hard origin/$BRANCH
+
+            # Load environment
+            if [ -f .env.staging ]; then
+              export $(cat .env.staging | grep -v '^#' | xargs)
+            fi
+
+            # Update Python dependencies
+            if [ -f .venv/bin/activate ]; then
+              source .venv/bin/activate
+            fi
+            uv sync --frozen
+
+            # Update and build frontend
+            cd web-ui
+            npm ci
+            npm run build
+            cd ..
+
+            # Restart PM2 services
+            pm2 restart ecosystem.staging.config.js
+
+            echo "Deployment complete"
+          ENDSSH
+
+      - name: Wait for services to stabilize
+        run: sleep 10
+
+      - name: Post-deployment health checks
+        env:
+          SSH_HOST: ${{ secrets.STAGING_HOST }}
+          SSH_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          ssh -i ~/.ssh/staging_key -o StrictHostKeyChecking=no \
+            "$SSH_USER@$SSH_HOST" << 'ENDSSH'
+            set -e
+
+            # Check backend health
+            echo "Checking backend health..."
+            curl -f http://localhost:14200/health || {
+              echo "Backend health check failed"
+              exit 1
+            }
+
+            # Check frontend health
+            echo "Checking frontend health..."
+            curl -f http://localhost:14100 || {
+              echo "Frontend health check failed"
+              exit 1
+            }
+
+            # Check PM2 processes
+            echo "Checking PM2 processes..."
+            pm2 list | grep 'online' || {
+              echo "PM2 processes not running"
+              exit 1
+            }
+
+            echo "All health checks passed"
+          ENDSSH
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "✅ Deployment to staging successful"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Frontend: http://${{ secrets.STAGING_HOST }}:14100"
+          echo "Backend: http://${{ secrets.STAGING_HOST }}:14200"
+
+      - name: Cleanup SSH key
+        if: always()
+        run: |
+          rm -f ~/.ssh/staging_key

@@ -1,0 +1,106 @@
+name: CI Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, staging, development]
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        run: |
+          pip install uv
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
+      - name: Install Python dependencies
+        run: |
+          uv sync --frozen
+
+      - name: Check code formatting (black)
+        run: |
+          uv run black --check .
+
+      - name: Lint code (ruff)
+        run: |
+          uv run ruff check .
+
+      - name: Type check (mypy)
+        run: |
+          uv run mypy codeframe/
+        continue-on-error: true
+
+      - name: Run tests with coverage
+        run: |
+          uv run pytest --cov=codeframe --cov-report=xml --cov-report=term-missing --cov-report=html
+        env:
+          ANTHROPIC_API_KEY: test-key-for-ci
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.11'
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+
+      - name: Check coverage threshold
+        if: matrix.python-version == '3.11'
+        run: |
+          uv run coverage report --fail-under=80
+
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: web-ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: web-ui
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_WS_URL: ws://localhost:8000/ws
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: web-ui/.next/
