@@ -54,6 +54,7 @@ export interface Agent {
   context_tokens?: number;
   last_action?: string;
   blocker?: string;
+  tasks_completed?: number; // Sprint 4: Multi-Agent Coordination
 }
 
 export interface Task {
@@ -93,6 +94,7 @@ export interface ChatMessage {
 
 /**
  * WebSocket message types for real-time dashboard updates (cf-45)
+ * Sprint 4: Multi-Agent Coordination message types added
  */
 export type WebSocketMessageType =
   | 'task_status_changed'
@@ -109,7 +111,12 @@ export type WebSocketMessageType =
   | 'ping'
   | 'pong'
   | 'subscribe'
-  | 'subscribed';
+  | 'subscribed'
+  | 'agent_created'      // Sprint 4
+  | 'agent_retired'      // Sprint 4
+  | 'task_assigned'      // Sprint 4
+  | 'task_blocked'       // Sprint 4
+  | 'task_unblocked';    // Sprint 4
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
@@ -163,6 +170,14 @@ export interface WebSocketMessage {
   // chat_message fields
   role?: 'user' | 'assistant';
   content?: string;
+
+  // Sprint 4: Multi-Agent Coordination fields
+  agent_type?: string;           // agent_created
+  tasks_completed?: number;      // agent_created, agent_retired
+  task_title?: string;           // task_assigned, task_blocked, task_unblocked
+  blocked_by?: number[];         // task_blocked
+  blocked_count?: number;        // task_blocked
+  unblocked_by?: number;         // task_unblocked
 }
 
 /**
@@ -183,4 +198,13 @@ export interface ProjectResponse {
 export interface StartProjectResponse {
   message: string;
   status: string;
+}
+
+/**
+ * Task dependency relationship (Sprint 4: Multi-Agent Coordination)
+ */
+export interface TaskDependency {
+  id: number;
+  task_id: number;
+  depends_on_task_id: number;
 }
