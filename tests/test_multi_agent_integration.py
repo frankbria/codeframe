@@ -20,7 +20,35 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import Task, ProjectStatus
+from codeframe.core.models import Task, ProjectStatus, TaskStatus
+
+
+# Helper function to create Task objects easily
+def create_test_task(
+    db,
+    project_id,
+    task_number,
+    title,
+    description,
+    status=None,
+    depends_on=""
+):
+    """Helper to create Task objects for testing."""
+    if status is None:
+        status = TaskStatus.PENDING
+    elif isinstance(status, str):
+        status = TaskStatus[status.upper()]
+
+    task = Task(
+        id=None,
+        project_id=project_id,
+        task_number=task_number,
+        title=title,
+        description=description,
+        status=status,
+        depends_on=depends_on
+    )
+    return db.create_task(task)
 
 
 @pytest.fixture
@@ -77,27 +105,21 @@ class TestThreeAgentParallelExecution:
     async def test_parallel_execution_three_agents(self, lead_agent, db, project_id):
         """Test that 3 different agent types can execute tasks in parallel."""
         # Create 3 tasks (backend, frontend, test)
-        backend_task_id = db.create_task(
-            project_id=project_id,
-            task_number="T-001",
-            title="Create API endpoint",
-            description="Build REST API endpoint for user management",
+        backend_task_id = create_test_task(
+            db, project_id, "T-001",
+            "Create API endpoint", "Build REST API endpoint for user management",
             status="pending"
         )
 
-        frontend_task_id = db.create_task(
-            project_id=project_id,
-            task_number="T-002",
-            title="Create login form component",
-            description="Build React component for user login with form validation",
+        frontend_task_id = create_test_task(
+            db, project_id, "T-002",
+            "Create login form component", "Build React component for user login with form validation",
             status="pending"
         )
 
-        test_task_id = db.create_task(
-            project_id=project_id,
-            task_number="T-003",
-            title="Write unit tests for auth",
-            description="Create pytest test suite for authentication module",
+        test_task_id = create_test_task(
+            db, project_id, "T-003",
+            "Write unit tests for auth", "Create pytest test suite for authentication module",
             status="pending"
         )
 
@@ -105,6 +127,11 @@ class TestThreeAgentParallelExecution:
         with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task') as mock_backend, \
              patch('codeframe.agents.frontend_worker_agent.FrontendWorkerAgent.execute_task') as mock_frontend, \
              patch('codeframe.agents.test_worker_agent.TestWorkerAgent.execute_task') as mock_test:
+
+            # Configure mocks to return success dictionaries
+            mock_backend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            mock_frontend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            mock_test.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
 
             # Execute multi-agent coordination
             summary = await lead_agent.start_multi_agent_execution(max_concurrent=3)
@@ -136,22 +163,17 @@ class TestDependencyBlocking:
     async def test_task_waits_for_dependency(self, lead_agent, db, project_id):
         """Test that a task waits for its dependency to complete."""
         # Create task 1 (no dependencies)
-        task1_id = db.create_task(
-            project_id=project_id,
-            task_number="T-001",
-            title="Create API endpoint",
-            description="Build REST API endpoint",
-            status="pending",
-            depends_on="[]"
+        task1_id = create_test_task(
+            db, project_id, "T-001",
+            "Create API endpoint", "Build REST API endpoint",
+            status="pending", depends_on="[]"
         )
 
         # Create task 2 (depends on task 1)
-        task2_id = db.create_task(
-            project_id=project_id,
-            task_number="T-002",
-            title="Create frontend component",
-            description="Build UI component that calls the API",
-            status="pending",
+        task2_id = create_test_task(
+            db, project_id, "T-002",
+            "Create frontend component",
+            "Build UI component that calls the API",
             depends_on=f"[{task1_id}]"
         )
 
@@ -159,9 +181,11 @@ class TestDependencyBlocking:
 
         def track_backend_execution(task_dict):
             execution_order.append(task_dict["id"])
+            return {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
 
         def track_frontend_execution(task_dict):
             execution_order.append(task_dict["id"])
+            return {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
 
         with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task', side_effect=track_backend_execution), \
              patch('codeframe.agents.frontend_worker_agent.FrontendWorkerAgent.execute_task', side_effect=track_frontend_execution):
@@ -183,29 +207,23 @@ class TestDependencyUnblocking:
     async def test_task_starts_when_unblocked(self, lead_agent, db, project_id):
         """Test that dependent task starts immediately when dependency completes."""
         # Create chain: task1 -> task2 -> task3
-        task1_id = db.create_task(
-            project_id=project_id,
-            task_number="T-001",
-            title="Setup database schema",
-            description="Create database tables",
+        task1_id = create_test_task(
+            db, project_id, "T-001",
+            "Setup database schema", "Create database tables",
             status="pending"
         )
 
-        task2_id = db.create_task(
-            project_id=project_id,
-            task_number="T-002",
-            title="Create API endpoint",
-            description="Build API using database",
-            status="pending",
+        task2_id = create_test_task(
+            db, project_id, "T-002",
+            "Create API endpoint",
+            "Build API using database",
             depends_on=f"[{task1_id}]"
         )
 
-        task3_id = db.create_task(
-            project_id=project_id,
-            task_number="T-003",
-            title="Create UI component",
-            description="Build UI calling the API",
-            status="pending",
+        task3_id = create_test_task(
+            db, project_id, "T-003",
+            "Create UI component",
+            "Build UI calling the API",
             depends_on=f"[{task2_id}]"
         )
 
@@ -216,6 +234,7 @@ class TestDependencyUnblocking:
             # Small delay to simulate work
             import time
             time.sleep(0.1)
+            return {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
 
         with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task', side_effect=track_execution), \
              patch('codeframe.agents.frontend_worker_agent.FrontendWorkerAgent.execute_task', side_effect=track_execution):
@@ -251,69 +270,75 @@ class TestComplexDependencyGraph:
         task_ids = {}
 
         # Level 0: T1 (no deps)
-        task_ids[1] = db.create_task(
-            project_id=project_id, task_number="T-001", title="Task 1",
-            description="Root task", status="pending"
+        task_ids[1] = create_test_task(
+            db, project_id, "T-001",
+            "Task 1", "Root task",
+            status="pending"
         )
 
         # Level 1: T2, T3 (depend on T1)
-        task_ids[2] = db.create_task(
-            project_id=project_id, task_number="T-002", title="Task 2",
-            description="Backend task", status="pending",
+        task_ids[2] = create_test_task(
+            db, project_id, "T-002", "Task 2",
+            "Backend task",
             depends_on=f"[{task_ids[1]}]"
         )
-        task_ids[3] = db.create_task(
-            project_id=project_id, task_number="T-003", title="Task 3",
-            description="Frontend task", status="pending",
+        task_ids[3] = create_test_task(
+            db, project_id, "T-003", "Task 3",
+            "Frontend task",
             depends_on=f"[{task_ids[1]}]"
         )
 
         # Level 2: T4 (depends on T2), T5 (depends on T3)
-        task_ids[4] = db.create_task(
-            project_id=project_id, task_number="T-004", title="Task 4",
-            description="Backend subtask", status="pending",
+        task_ids[4] = create_test_task(
+            db, project_id, "T-004", "Task 4",
+            "Backend subtask",
             depends_on=f"[{task_ids[2]}]"
         )
-        task_ids[5] = db.create_task(
-            project_id=project_id, task_number="T-005", title="Task 5",
-            description="Frontend subtask", status="pending",
+        task_ids[5] = create_test_task(
+            db, project_id, "T-005", "Task 5",
+            "Frontend subtask",
             depends_on=f"[{task_ids[3]}]"
         )
 
         # Level 3: T6 (depends on T4, T5)
-        task_ids[6] = db.create_task(
-            project_id=project_id, task_number="T-006", title="Task 6",
-            description="Integration task", status="pending",
+        task_ids[6] = create_test_task(
+            db, project_id, "T-006", "Task 6",
+            "Integration task",
             depends_on=f"[{task_ids[4]}, {task_ids[5]}]"
         )
 
         # Level 4: T7, T8, T9 (depend on T6)
-        task_ids[7] = db.create_task(
-            project_id=project_id, task_number="T-007", title="Task 7",
-            description="Test task 1", status="pending",
+        task_ids[7] = create_test_task(
+            db, project_id, "T-007", "Task 7",
+            "Test task 1",
             depends_on=f"[{task_ids[6]}]"
         )
-        task_ids[8] = db.create_task(
-            project_id=project_id, task_number="T-008", title="Task 8",
-            description="Test task 2", status="pending",
+        task_ids[8] = create_test_task(
+            db, project_id, "T-008", "Task 8",
+            "Test task 2",
             depends_on=f"[{task_ids[6]}]"
         )
-        task_ids[9] = db.create_task(
-            project_id=project_id, task_number="T-009", title="Task 9",
-            description="Test task 3", status="pending",
+        task_ids[9] = create_test_task(
+            db, project_id, "T-009", "Task 9",
+            "Test task 3",
             depends_on=f"[{task_ids[6]}]"
         )
 
         # Level 5: T10 (depends on T7, T8, T9)
-        task_ids[10] = db.create_task(
-            project_id=project_id, task_number="T-010", title="Task 10",
-            description="Final integration", status="pending",
+        task_ids[10] = create_test_task(
+            db, project_id, "T-010", "Task 10",
+            "Final integration",
             depends_on=f"[{task_ids[7]}, {task_ids[8]}, {task_ids[9]}]"
         )
 
-        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task'), \
-             patch('codeframe.agents.frontend_worker_agent.FrontendWorkerAgent.execute_task'), \
-             patch('codeframe.agents.test_worker_agent.TestWorkerAgent.execute_task'):
+        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task') as mock_backend, \
+             patch('codeframe.agents.frontend_worker_agent.FrontendWorkerAgent.execute_task') as mock_frontend, \
+             patch('codeframe.agents.test_worker_agent.TestWorkerAgent.execute_task') as mock_test:
+
+            # Configure mocks to return success
+            mock_backend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            mock_frontend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            mock_test.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
 
             summary = await lead_agent.start_multi_agent_execution(max_concurrent=5)
 
@@ -335,20 +360,25 @@ class TestAgentReuse:
     async def test_agent_reuse_same_type_tasks(self, lead_agent, db, project_id):
         """Test that idle agents are reused for tasks of the same type."""
         # Create 3 backend tasks
-        task1_id = db.create_task(
-            project_id=project_id, task_number="T-001",
-            title="Create API endpoint 1", description="Backend task 1", status="pending"
+        task1_id = create_test_task(
+            db, project_id, "T-001",
+            "Create API endpoint 1", "Backend task 1",
+            status="pending"
         )
-        task2_id = db.create_task(
-            project_id=project_id, task_number="T-002",
-            title="Create API endpoint 2", description="Backend task 2", status="pending"
+        task2_id = create_test_task(
+            db, project_id, "T-002",
+            "Create API endpoint 2", "Backend task 2",
+            status="pending"
         )
-        task3_id = db.create_task(
-            project_id=project_id, task_number="T-003",
-            title="Create API endpoint 3", description="Backend task 3", status="pending"
+        task3_id = create_test_task(
+            db, project_id, "T-003",
+            "Create API endpoint 3", "Backend task 3",
+            status="pending"
         )
 
-        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task'):
+        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task') as mock_backend:
+            mock_backend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            
             summary = await lead_agent.start_multi_agent_execution(max_concurrent=1)
 
             # Verify all tasks completed
@@ -368,9 +398,10 @@ class TestErrorRecovery:
     @pytest.mark.asyncio
     async def test_task_retry_after_failure(self, lead_agent, db, project_id):
         """Test that failed tasks are retried up to max_retries."""
-        task_id = db.create_task(
-            project_id=project_id, task_number="T-001",
-            title="Create API endpoint", description="Backend task", status="pending"
+        task_id = create_test_task(
+            db, project_id, "T-001",
+            "Create API endpoint", "Backend task",
+            status="pending"
         )
 
         call_count = 0
@@ -381,6 +412,7 @@ class TestErrorRecovery:
             if call_count < 3:
                 raise Exception("Simulated failure")
             # Third attempt succeeds
+            return {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
 
         with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task', side_effect=fail_twice_then_succeed):
             summary = await lead_agent.start_multi_agent_execution(max_retries=3)
@@ -396,9 +428,10 @@ class TestErrorRecovery:
     @pytest.mark.asyncio
     async def test_task_fails_after_max_retries(self, lead_agent, db, project_id):
         """Test that task is marked failed after exceeding max_retries."""
-        task_id = db.create_task(
-            project_id=project_id, task_number="T-001",
-            title="Create API endpoint", description="Backend task", status="pending"
+        task_id = create_test_task(
+            db, project_id, "T-001",
+            "Create API endpoint", "Backend task",
+            status="pending"
         )
 
         def always_fail(task_dict):
@@ -425,12 +458,14 @@ class TestCompletionDetection:
         """Test that execution stops when all tasks are completed."""
         # Create 5 tasks
         for i in range(1, 6):
-            db.create_task(
-                project_id=project_id, task_number=f"T-{i:03d}",
-                title=f"Task {i}", description=f"Backend task {i}", status="pending"
+            create_test_task(
+                db, project_id, f"T-{i:03d}",
+                f"Task {i}", f"Backend task {i}"
             )
 
-        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task'):
+        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task') as mock_backend:
+            mock_backend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            
             summary = await lead_agent.start_multi_agent_execution()
 
             # Verify all tasks completed
@@ -451,13 +486,15 @@ class TestConcurrentDatabaseAccess:
         # Create 10 tasks that can run in parallel
         task_ids = []
         for i in range(1, 11):
-            task_id = db.create_task(
-                project_id=project_id, task_number=f"T-{i:03d}",
-                title=f"Backend task {i}", description=f"API endpoint {i}", status="pending"
+            task_id = create_test_task(
+                db, project_id, f"T-{i:03d}",
+                f"Backend task {i}", f"API endpoint {i}"
             )
             task_ids.append(task_id)
 
-        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task'):
+        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task') as mock_backend:
+            mock_backend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            
             # Run with high concurrency to stress test database
             summary = await lead_agent.start_multi_agent_execution(max_concurrent=10)
 
@@ -492,17 +529,22 @@ class TestWebSocketBroadcasts:
         )
 
         # Create tasks
-        db.create_task(
-            project_id=project_id, task_number="T-001",
-            title="Backend task", description="API endpoint", status="pending"
+        create_test_task(
+            db, project_id, "T-001",
+            "Backend task", "API endpoint",
+            status="pending"
         )
-        db.create_task(
-            project_id=project_id, task_number="T-002",
-            title="Frontend task", description="UI component", status="pending"
+        create_test_task(
+            db, project_id, "T-002",
+            "Frontend task", "UI component",
+            status="pending"
         )
 
-        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task'), \
-             patch('codeframe.agents.frontend_worker_agent.FrontendWorkerAgent.execute_task'):
+        with patch('codeframe.agents.backend_worker_agent.BackendWorkerAgent.execute_task') as mock_backend, \
+             patch('codeframe.agents.frontend_worker_agent.FrontendWorkerAgent.execute_task') as mock_frontend:
+
+            mock_backend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
+            mock_frontend.return_value = {"status": "completed", "files_modified": [], "output": "Task completed", "error": None}
 
             summary = await agent.start_multi_agent_execution(max_concurrent=2)
 
@@ -521,18 +563,19 @@ class TestDeadlockPrevention:
     def test_circular_dependency_detection(self, lead_agent, db, project_id):
         """Test that circular dependencies are detected during graph building."""
         # Create circular dependency: T1 -> T2 -> T3 -> T1
-        task1_id = db.create_task(
-            project_id=project_id, task_number="T-001",
-            title="Task 1", description="Task 1", status="pending"
+        task1_id = create_test_task(
+            db, project_id, "T-001",
+            "Task 1", "Task 1",
+            status="pending"
         )
-        task2_id = db.create_task(
-            project_id=project_id, task_number="T-002",
-            title="Task 2", description="Task 2", status="pending",
+        task2_id = create_test_task(
+            db, project_id, "T-002",
+            "Task 2", "Task 2",
             depends_on=f"[{task1_id}]"
         )
-        task3_id = db.create_task(
-            project_id=project_id, task_number="T-003",
-            title="Task 3", description="Task 3", status="pending",
+        task3_id = create_test_task(
+            db, project_id, "T-003",
+            "Task 3", "Task 3",
             depends_on=f"[{task2_id}]"
         )
 
