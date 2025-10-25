@@ -439,6 +439,23 @@ class Database:
         # TODO: Convert rows to Task objects
         return []
 
+    def get_project_tasks(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get all tasks for a project (all statuses).
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of task dictionaries ordered by task_number
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM tasks WHERE project_id = ? ORDER BY task_number",
+            (project_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
     def close(self) -> None:
         """Close database connection."""
         if self.conn:
