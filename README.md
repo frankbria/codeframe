@@ -347,6 +347,34 @@ class AgentProvider(ABC):
 
 ---
 
+## CI/CD Pipeline
+
+CodeFRAME uses GitHub Actions for automated testing and deployment.
+
+### Workflows
+
+- **CI Tests** - Runs on all commits and PRs
+  - Python 3.11 & 3.12 testing
+  - Code quality checks (black, ruff, mypy)
+  - Coverage reporting (80% threshold)
+  - Frontend build validation
+
+- **Staging Deployment** - Auto-deploys from `staging`/`development` branches
+  - Automated deployment to staging server
+  - Health checks before and after deployment
+  - PM2 process restart
+
+### Status Badges
+
+![CI Tests](https://github.com/frankbria/codeframe/workflows/CI%20Tests/badge.svg)
+![Deploy to Staging](https://github.com/frankbria/codeframe/workflows/Deploy%20to%20Staging/badge.svg)
+
+### Setup
+
+For setting up SSH access for staging deployments, see [GitHub Actions SSH Setup](docs/github-actions-ssh-setup.md).
+
+---
+
 ## Test Automation
 
 ### Supported Languages (MVP)
@@ -376,6 +404,34 @@ else:
     # Retry (up to 3 attempts)
     retry(task)
 ```
+
+---
+
+## CI/CD Pipeline
+
+CodeFRAME uses GitHub Actions for automated testing and deployment.
+
+### Workflows
+
+- **CI Tests** - Runs on all commits and PRs
+  - Python 3.11 & 3.12 testing
+  - Code quality checks (black, ruff, mypy)
+  - Coverage reporting (80% threshold)
+  - Frontend build validation
+
+- **Staging Deployment** - Auto-deploys from `staging`/`development` branches
+  - Automated deployment to staging server
+  - Health checks before and after deployment
+  - PM2 process restart
+
+### Status Badges
+
+![CI Tests](https://github.com/frankbria/codeframe/workflows/CI%20Tests/badge.svg)
+![Deploy to Staging](https://github.com/frankbria/codeframe/workflows/Deploy%20to%20Staging/badge.svg)
+
+### Setup
+
+For setting up SSH access for staging deployments, see [GitHub Actions SSH Setup](docs/github-actions-ssh-setup.md).
 
 ---
 
