@@ -86,10 +86,21 @@ class LeadAgent:
         # Git workflow manager (cf-33)
         from codeframe.git.workflow_manager import GitWorkflowManager
         from pathlib import Path
+        import git
 
         project = self.db.get_project(project_id)
-        project_root = Path(project.get("root_path", "."))
-        self.git_workflow = GitWorkflowManager(project_root, db)
+        project_root_str = project.get("root_path")
+
+        # Only initialize GitWorkflowManager if root_path is set and is a valid git repo
+        self.git_workflow = None
+        if project_root_str:
+            try:
+                project_root = Path(project_root_str)
+                self.git_workflow = GitWorkflowManager(project_root, db)
+            except (git.InvalidGitRepositoryError, git.NoSuchPathError) as e:
+                logger.warning(f"Could not initialize GitWorkflowManager: {e}. Git features will be disabled.")
+            except Exception as e:
+                logger.warning(f"Unexpected error initializing GitWorkflowManager: {e}. Git features will be disabled.")
 
         # Load discovery state from database
         self._load_discovery_state()
@@ -876,7 +887,12 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         Raises:
             ValueError: If issue doesn't exist or already has active branch
+            RuntimeError: If git workflow is not available
         """
+        # Check if git workflow is available
+        if not self.git_workflow:
+            raise RuntimeError("Git workflow is not available. Please ensure project has a valid git repository.")
+
         # 1. Get issue from database
         issue = self.db.get_issue(issue_id)
         if not issue:
@@ -927,7 +943,12 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         Raises:
             ValueError: If tasks not all complete or no active branch
+            RuntimeError: If git workflow is not available
         """
+        # Check if git workflow is available
+        if not self.git_workflow:
+            raise RuntimeError("Git workflow is not available. Please ensure project has a valid git repository.")
+
         # 1. Get issue from database
         issue = self.db.get_issue(issue_id)
         if not issue:
