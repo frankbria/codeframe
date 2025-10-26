@@ -456,6 +456,53 @@ class Database:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+    def update_task(self, task_id: int, updates: Dict[str, Any]) -> int:
+        """Update task fields.
+
+        Args:
+            task_id: Task ID to update
+            updates: Dictionary of fields to update
+
+        Returns:
+            Number of rows affected
+        """
+        if not updates:
+            return 0
+
+        fields = []
+        values = []
+        for key, value in updates.items():
+            fields.append(f"{key} = ?")
+            # Handle enum values
+            if isinstance(value, TaskStatus):
+                values.append(value.value)
+            else:
+                values.append(value)
+
+        values.append(task_id)
+
+        query = f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?"
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, values)
+        self.conn.commit()
+
+        return cursor.rowcount
+
+    def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """Get task by ID.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            Task dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
     def close(self) -> None:
         """Close database connection."""
         if self.conn:

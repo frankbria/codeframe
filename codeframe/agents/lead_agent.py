@@ -979,10 +979,11 @@ Generate the PRD in markdown format with clear sections and professional languag
     async def start_multi_agent_execution(
         self,
         max_retries: int = 3,
-        max_concurrent: int = 5
+        max_concurrent: int = 5,
+        timeout: int = 300
     ) -> Dict[str, Any]:
         """
-        Start multi-agent parallel task execution.
+        Start multi-agent parallel task execution with timeout protection.
 
         Main coordination loop that:
         1. Loads all project tasks and builds dependency graph
@@ -995,6 +996,7 @@ Generate the PRD in markdown format with clear sections and professional languag
         Args:
             max_retries: Maximum retry attempts per task (default: 3)
             max_concurrent: Maximum concurrent task executions (default: 5)
+            timeout: Maximum execution time in seconds (default: 300)
 
         Returns:
             Dict with execution summary:
@@ -1006,17 +1008,42 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         Raises:
             ValueError: If no tasks found for project
+            asyncio.TimeoutError: If execution exceeds timeout
             Exception: If critical execution error occurs
         """
+        print(f"\n🚀 DEBUG: start_multi_agent_execution ENTERED (timeout={timeout})")
+        try:
+            print("🚀 DEBUG: Creating asyncio.timeout context...")
+            async with asyncio.timeout(timeout):
+                print("🚀 DEBUG: Inside timeout context, calling _execute_coordination_loop...")
+                return await self._execute_coordination_loop(max_retries, max_concurrent)
+        except asyncio.TimeoutError:
+            print("❌ DEBUG: Caught TimeoutError!")
+            logger.error(f"❌ Multi-agent execution timed out after {timeout}s")
+            await self._emergency_shutdown()
+            raise
+
+    async def _execute_coordination_loop(
+        self,
+        max_retries: int = 3,
+        max_concurrent: int = 5
+    ) -> Dict[str, Any]:
+        """Internal coordination loop extracted for timeout wrapping."""
+        print(f"\n🔄 DEBUG: _execute_coordination_loop ENTERED (max_retries={max_retries}, max_concurrent={max_concurrent})")
         import time
+        print("🔄 DEBUG: Imported time module")
         start_time = time.time()
+        print(f"🔄 DEBUG: Start time: {start_time}")
 
         # Load all tasks for project
+        print(f"🔄 DEBUG: Loading tasks for project {self.project_id}...")
         task_dicts = self.db.get_project_tasks(self.project_id)
+        print(f"🔄 DEBUG: Loaded {len(task_dicts)} task_dicts")
         if not task_dicts:
             raise ValueError(f"No tasks found for project {self.project_id}")
 
         # Convert to Task objects
+        print("🔄 DEBUG: Converting to Task objects...")
         tasks = []
         for task_dict in task_dicts:
             task = Task(
@@ -1035,30 +1062,66 @@ Generate the PRD in markdown format with clear sections and professional languag
                 depends_on=task_dict.get("depends_on", "[]")
             )
             tasks.append(task)
+        print(f"🔄 DEBUG: Converted {len(tasks)} Task objects")
 
-        logger.info(f"Starting multi-agent execution: {len(tasks)} tasks")
+        logger.info(f"🚀 Multi-agent execution started: {len(tasks)} tasks")
+        print(f"🔄 DEBUG: Logged execution start")
 
         # Build dependency graph
+        print("🔄 DEBUG: Building dependency graph...")
         self.dependency_resolver.build_dependency_graph(tasks)
+        print("🔄 DEBUG: Dependency graph built ✅")
 
         # Track execution state
+        print("🔄 DEBUG: Initializing execution state...")
         retry_counts = {}  # task_id -> retry_count
         running_tasks = {}  # task_id -> asyncio.Task
         total_retries = 0
+        iteration_count = 0
+        max_iterations = 1000  # Safety watchdog
+        print("🔄 DEBUG: Execution state initialized ✅")
 
+        print("🔄 DEBUG: Entering try block...")
         try:
+            print("🔄 DEBUG: About to enter main while loop...")
             # Main execution loop
             while not self._all_tasks_complete():
+                print(f"🔄 DEBUG: While loop iteration {iteration_count}")
+                iteration_count += 1
+                print(f"🔄 DEBUG: Checking watchdog (iteration={iteration_count}, max={max_iterations})...")
+                if iteration_count > max_iterations:
+                    logger.error(f"❌ WATCHDOG: Hit max iterations {max_iterations}")
+                    logger.error(f"Running tasks: {len(running_tasks)}")
+                    logger.error(f"Retry counts: {retry_counts}")
+                    await self._emergency_shutdown()
+                    break
+
                 # Get ready tasks (dependencies satisfied, not completed/running)
+                print(f"🔄 DEBUG: Getting ready tasks from dependency_resolver...")
                 ready_task_ids = self.dependency_resolver.get_ready_tasks(exclude_completed=True)
+                print(f"🔄 DEBUG: Got {len(ready_task_ids)} ready task IDs: {ready_task_ids}")
                 
                 # Filter out already running tasks
+                print(f"🔄 DEBUG: Filtering out running tasks (currently {len(running_tasks)} running)...")
                 ready_task_ids = [tid for tid in ready_task_ids if tid not in running_tasks]
+                print(f"🔄 DEBUG: After filtering: {len(ready_task_ids)} ready tasks")
+
+                # Log loop state
+                print(f"🔄 DEBUG: Calculating loop state...")
+                completed_count = len([t for t in tasks if t.id in self.dependency_resolver.completed_tasks])
+                print(f"🔄 DEBUG: Loop state: ready={len(ready_task_ids)}, running={len(running_tasks)}, completed={completed_count}/{len(tasks)}")
+                logger.debug(
+                    f"🔄 Loop {iteration_count}: {len(ready_task_ids)} ready, "
+                    f"{len(running_tasks)} running, {completed_count}/{len(tasks)} complete"
+                )
 
                 # Assign and execute ready tasks (up to max_concurrent)
+                print(f"🔄 DEBUG: About to assign tasks (max_concurrent={max_concurrent})...")
                 for task_id in ready_task_ids[:max_concurrent - len(running_tasks)]:
+                    print(f"🔄 DEBUG: Processing task {task_id}...")
                     task = next((t for t in tasks if t.id == task_id), None)
                     if not task:
+                        print(f"🔄 DEBUG: Task {task_id} not found in tasks list, skipping")
                         continue
 
                     # Check retry limit
@@ -1069,6 +1132,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                         continue
 
                     # Assign and execute task
+                    print(f"🔄 DEBUG: Assigning task {task_id}: {task.title}")
                     task_future = asyncio.create_task(
                         self._assign_and_execute_task(task, retry_counts)
                     )
@@ -1076,12 +1140,14 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 # Wait for at least one task to complete
                 if running_tasks:
-                    done, pending = await asyncio.wait(
+                    print(f"🔄 DEBUG: About to wait for tasks...")
+                    done, _ = await asyncio.wait(
                         running_tasks.values(),
                         return_when=asyncio.FIRST_COMPLETED
                     )
 
                     # Process completed tasks
+                    print(f"🔄 DEBUG: Processing completed tasks...")
                     for completed_future in done:
                         # Find which task this was
                         task_id = next(
@@ -1097,35 +1163,34 @@ Generate the PRD in markdown format with clear sections and professional languag
                             try:
                                 success = await completed_future
                                 if success:
+                                    print(f"🔄 DEBUG: Task {task_id} completed successfully")
                                     # Unblock dependent tasks
                                     unblocked = self.dependency_resolver.unblock_dependent_tasks(task_id)
                                     if unblocked:
-                                        logger.info(f"Task {task_id} completion unblocked tasks: {unblocked}")
+                                        print(f"🔄 DEBUG: Task {task_id} unblocked: {unblocked}")
                                 else:
                                     # Task failed - increment retry count
                                     retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                     total_retries += 1
-                                    logger.warning(
-                                        f"Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
-                                    )
+                                    print(f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}")
                             except Exception as e:
-                                logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
+                                logger.exception(f"Error processing task {task_id}")
                                 retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                 total_retries += 1
                 else:
                     # No tasks running and none ready - check if we're stuck
                     if not self._all_tasks_complete():
-                        logger.warning("No tasks running or ready, but not all tasks complete. Checking for deadlock...")
+                        logger.warning("⚠️  No tasks running or ready, but not all tasks complete")
                         blocked = self.dependency_resolver.get_blocked_tasks()
                         if blocked:
-                            logger.error(f"Deadlock detected! Blocked tasks: {blocked}")
+                            logger.error(f"❌ DEADLOCK: Blocked tasks: {blocked}")
                             break
                         else:
                             # Small delay before checking again
                             await asyncio.sleep(0.1)
 
         except Exception as e:
-            logger.error(f"Critical error in multi-agent execution: {e}", exc_info=True)
+            logger.exception("Critical error in multi-agent execution")
             raise
 
         # Calculate summary statistics
@@ -1138,15 +1203,34 @@ Generate the PRD in markdown format with clear sections and professional languag
             "completed": completed_count,
             "failed": failed_count,
             "retries": total_retries,
-            "execution_time": execution_time
+            "execution_time": execution_time,
+            "iterations": iteration_count
         }
 
         logger.info(
-            f"Multi-agent execution complete: {completed_count}/{len(tasks)} tasks completed, "
-            f"{failed_count} failed, {total_retries} retries, {execution_time:.2f}s"
+            f"✅ Multi-agent execution complete: {completed_count}/{len(tasks)} tasks, "
+            f"{failed_count} failed, {total_retries} retries, {execution_time:.2f}s, {iteration_count} iterations"
         )
 
         return summary
+
+    async def _emergency_shutdown(self) -> None:
+        """Emergency shutdown: retire all agents and cancel pending tasks."""
+        logger.warning("🚨 Emergency shutdown initiated")
+        try:
+            # Retire all active agents
+            if hasattr(self, 'agent_pool'):
+                agent_status = self.agent_pool.get_agent_status()
+                for agent_id in list(agent_status.keys()):
+                    try:
+                        self.agent_pool.retire_agent(agent_id)
+                        logger.debug(f"Retired agent {agent_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to retire agent {agent_id}: {e}")
+            
+            logger.info("Emergency shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during emergency shutdown: {e}")
 
     async def _assign_and_execute_task(
         self,
@@ -1172,52 +1256,73 @@ Generate the PRD in markdown format with clear sections and professional languag
         6. Mark agent as idle
         7. Broadcast task status changes
         """
+        print(f"\n🎯 DEBUG: _assign_and_execute_task ENTERED for task {task.id}")
         try:
             # Determine agent type
+            print(f"🎯 DEBUG: Creating task_dict for agent assignment...")
             task_dict = {
                 "id": task.id,
                 "title": task.title,
                 "description": task.description
             }
+            print(f"🎯 DEBUG: Calling agent_assigner.assign_agent_type()...")
             agent_type = self.agent_assigner.assign_agent_type(task_dict)
+            print(f"🎯 DEBUG: Agent type assigned: {agent_type}")
 
             logger.info(f"Assigning task {task.id} ({task.title}) to {agent_type}")
 
             # Get or create agent
+            print(f"🎯 DEBUG: Calling agent_pool_manager.get_or_create_agent({agent_type})...")
             agent_id = self.agent_pool_manager.get_or_create_agent(agent_type)
+            print(f"🎯 DEBUG: Got agent_id: {agent_id}")
 
             # Mark agent busy
+            print(f"🎯 DEBUG: Marking agent {agent_id} as busy...")
             self.agent_pool_manager.mark_agent_busy(agent_id, task.id)
+            print(f"🎯 DEBUG: Agent marked as busy ✅")
 
             # Update task status to in_progress
+            print(f"🎯 DEBUG: Updating task {task.id} status to in_progress...")
             self.db.update_task(task.id, {"status": "in_progress"})
+            print(f"🎯 DEBUG: Task status updated ✅")
 
             # Get agent instance
+            print(f"🎯 DEBUG: Getting agent instance for {agent_id}...")
             agent_instance = self.agent_pool_manager.get_agent_instance(agent_id)
+            print(f"🎯 DEBUG: Got agent instance: {type(agent_instance)}")
 
             # Execute task (assuming agents have execute_task method)
             logger.info(f"Agent {agent_id} executing task {task.id}")
+            print(f"🎯 DEBUG: About to execute task via run_in_executor...")
             
             # Note: Worker agents may not all have async execute_task yet
             # For now, we'll wrap synchronous execution in executor
+            print(f"🎯 DEBUG: Getting event loop...")
             loop = asyncio.get_running_loop()
+            print(f"🎯 DEBUG: Calling run_in_executor...")
             await loop.run_in_executor(
                 None,
                 agent_instance.execute_task,
                 task_dict
             )
+            print(f"🎯 DEBUG: run_in_executor completed ✅")
 
             # Task succeeded
+            print(f"🎯 DEBUG: Updating task {task.id} to completed...")
             self.db.update_task(task.id, {"status": "completed"})
             logger.info(f"Task {task.id} completed successfully by agent {agent_id}")
 
             # Mark agent idle
+            print(f"🎯 DEBUG: Marking agent {agent_id} as idle...")
             self.agent_pool_manager.mark_agent_idle(agent_id)
+            print(f"🎯 DEBUG: Agent marked as idle ✅")
 
+            print(f"🎯 DEBUG: _assign_and_execute_task returning True")
             return True
 
         except Exception as e:
-            logger.error(f"Task {task.id} execution failed: {e}", exc_info=True)
+            print(f"🎯 DEBUG: Exception in _assign_and_execute_task: {type(e).__name__}: {e}")
+            logger.exception(f"Task {task.id} execution failed")
 
             # Update task status
             self.db.update_task(task.id, {"status": "failed"})
@@ -1234,15 +1339,42 @@ Generate the PRD in markdown format with clear sections and professional languag
     def _all_tasks_complete(self) -> bool:
         """
         Check if all tasks are completed or failed.
+        Detects deadlock scenario where all remaining tasks are blocked.
 
         Returns:
-            True if all tasks are in terminal state (completed/failed)
+            True if all tasks are in terminal state (completed/failed) OR deadlocked
         """
+        print("🔍 DEBUG: _all_tasks_complete called")
+        print(f"🔍 DEBUG: Getting tasks for project {self.project_id}...")
         task_dicts = self.db.get_project_tasks(self.project_id)
+        print(f"🔍 DEBUG: Got {len(task_dicts)} tasks")
         
+        incomplete = []
+        blocked = []
+        
+        print("🔍 DEBUG: Iterating through tasks...")
         for task_dict in task_dicts:
             status = task_dict.get("status", "pending")
+            print(f"🔍 DEBUG: Task {task_dict['id']}: status={status}")
             if status not in ("completed", "failed"):
-                return False
-
-        return True
+                incomplete.append(task_dict["id"])
+                if status == "blocked":
+                    blocked.append(task_dict["id"])
+        
+        print(f"🔍 DEBUG: incomplete={incomplete}, blocked={blocked}")
+        
+        # No incomplete tasks means all done
+        if not incomplete:
+            print("🔍 DEBUG: All tasks complete!")
+            return True
+        
+        # Deadlock detection: if all remaining tasks are blocked, we're stuck
+        if incomplete and len(blocked) == len(incomplete):
+            print(f"🔍 DEBUG: DEADLOCK DETECTED!")
+            logger.error(
+                f"❌ DEADLOCK DETECTED: All {len(incomplete)} remaining tasks are blocked: {blocked}"
+            )
+            return True  # Force exit to prevent infinite loop
+        
+        logger.debug(f"Tasks remaining: {len(incomplete)} ({len(blocked)} blocked)")
+        return False
