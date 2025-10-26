@@ -14,6 +14,7 @@ import ChatInterface from './ChatInterface';
 import PRDModal from './PRDModal';
 import TaskTreeView from './TaskTreeView';
 import DiscoveryProgress from './DiscoveryProgress';
+import AgentCard from './AgentCard';
 
 interface DashboardProps {
   projectId: number;
@@ -218,6 +219,151 @@ export default function Dashboard({ projectId }: DashboardProps) {
           }
           break;
 
+        case 'agent_created':
+          // Add new agent to state
+          if (message.agent_id && message.agent_type) {
+            setAgents((prev) => {
+              // Check if agent already exists
+              if (prev.some(a => a.id === message.agent_id)) {
+                return prev;
+              }
+              // Add new agent
+              return [
+                ...prev,
+                {
+                  id: message.agent_id,
+                  type: message.agent_type,
+                  status: 'idle' as AgentStatus,
+                  provider: 'anthropic',
+                  maturity: 'D1',
+                  current_task: undefined,
+                  blocker: undefined,
+                  context_tokens: 0,
+                  tasks_completed: 0,
+                },
+              ];
+            });
+
+            // Add to activity feed
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'agent_created',
+                agent: 'system',
+                message: `🤖 Created ${message.agent_type} agent (${message.agent_id})`,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
+        case 'agent_retired':
+          // Remove agent from state
+          if (message.agent_id) {
+            setAgents((prev) => prev.filter(a => a.id !== message.agent_id));
+
+            // Add to activity feed
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'agent_retired',
+                agent: 'system',
+                message: `👋 Retired agent ${message.agent_id}`,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
+        case 'task_assigned':
+          // Update task and agent state when task is assigned
+          if (message.task_id && message.agent_id) {
+            // Update task status
+            setTasks((prev) =>
+              prev.map((task) =>
+                task.id === message.task_id
+                  ? { ...task, status: 'in_progress' as TaskStatus, agent_id: message.agent_id }
+                  : task
+              )
+            );
+
+            // Update agent status
+            setAgents((prev) =>
+              prev.map((agent) =>
+                agent.id === message.agent_id
+                  ? {
+                      ...agent,
+                      status: 'working' as AgentStatus,
+                      current_task: { id: message.task_id, title: message.task_title || `Task #${message.task_id}` },
+                    }
+                  : agent
+              )
+            );
+
+            // Add to activity feed
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'task_assigned',
+                agent: message.agent_id || 'system',
+                message: `📋 Assigned task #${message.task_id} to ${message.agent_id}`,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
+        case 'task_blocked':
+          // Update task status to blocked
+          if (message.task_id) {
+            setTasks((prev) =>
+              prev.map((task) =>
+                task.id === message.task_id
+                  ? { ...task, status: 'blocked' as TaskStatus, blocked_by: message.blocked_by }
+                  : task
+              )
+            );
+
+            // Add to activity feed
+            const blockedByText = message.blocked_by
+              ? ` (waiting for ${Array.isArray(message.blocked_by) ? message.blocked_by.join(', ') : message.blocked_by})`
+              : '';
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'task_blocked',
+                agent: 'system',
+                message: `🚫 Task #${message.task_id} blocked${blockedByText}`,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
+        case 'task_unblocked':
+          // Update task status from blocked to pending/ready
+          if (message.task_id) {
+            setTasks((prev) =>
+              prev.map((task) =>
+                task.id === message.task_id
+                  ? { ...task, status: 'pending' as TaskStatus, blocked_by: undefined }
+                  : task
+              )
+            );
+
+            // Add to activity feed
+            setActivity((prev) => [
+              {
+                timestamp: message.timestamp,
+                type: 'task_unblocked',
+                agent: 'system',
+                message: `✅ Task #${message.task_id} unblocked and ready`,
+              },
+              ...prev.slice(0, 49),
+            ]);
+          }
+          break;
+
         case 'status_update':
           mutateProject();
           break;
@@ -374,53 +520,37 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
         {/* Agents Section */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">🤖 Agent Status</h2>
-          <div className="space-y-4">
-            {(agents.length > 0 ? agents : agentsData || []).map((agent) => (
-              <div key={agent.id} className="border-l-4 border-gray-300 pl-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-3 h-3 rounded-full ${
-                        agent.status === 'working'
-                          ? 'bg-green-500'
-                          : agent.status === 'blocked'
-                          ? 'bg-red-500'
-                          : 'bg-yellow-500'
-                      }`}
-                    ></span>
-                    <span className="font-medium">
-                      {agent.type.charAt(0).toUpperCase() + agent.type.slice(1)} Agent
-                    </span>
-                    <span className="text-xs text-gray-500">({agent.provider})</span>
-                    <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">
-                      Maturity: {agent.maturity}
-                    </span>
-                  </div>
-                  <span className="text-sm text-gray-500">
-                    Status: {agent.status === 'working' ? '▶' : agent.status === 'blocked' ? '⏸' : '⏳'}{' '}
-                    {agent.status}
-                  </span>
-                </div>
-                {agent.current_task && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    Task #{agent.current_task.id}: {agent.current_task.title}
-                    {agent.progress !== undefined && (
-                      <span className="ml-2 text-gray-500">({agent.progress}%)</span>
-                    )}
-                  </div>
-                )}
-                {agent.blocker && (
-                  <div className="mt-1 text-sm text-red-600">⚠️ {agent.blocker}</div>
-                )}
-                {agent.context_tokens && (
-                  <div className="mt-1 text-xs text-gray-500">
-                    Context: {(agent.context_tokens / 1000).toFixed(0)}K tokens
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">🤖 Multi-Agent Pool</h2>
+            {(agents.length > 0 || (agentsData && agentsData.length > 0)) && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {agents.length > 0 ? agents.length : agentsData?.length || 0} agents active
+              </span>
+            )}
           </div>
+          
+          {(agents.length > 0 || (agentsData && agentsData.length > 0)) ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {(agents.length > 0 ? agents : agentsData || []).map((agent) => (
+                <AgentCard
+                  key={agent.id}
+                  agent={{
+                    id: agent.id,
+                    type: agent.type,
+                    status: agent.status === 'working' ? 'busy' : agent.status === 'blocked' ? 'blocked' : 'idle',
+                    currentTask: agent.current_task?.id,
+                    tasksCompleted: 0, // TODO: Track in backend
+                    blockedBy: agent.blocker ? [0] : undefined, // TODO: Parse blocker IDs
+                  }}
+                  onAgentClick={(agentId) => console.log('Agent clicked:', agentId)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No agents active yet. Agents will be created automatically when tasks are assigned.
+            </div>
+          )}
         </div>
 
         {/* Blockers Section */}

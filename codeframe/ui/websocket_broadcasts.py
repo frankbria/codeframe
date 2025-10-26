@@ -9,6 +9,7 @@ Integration Points:
 - TestRunner (cf-42): Test results
 - GitWorkflowManager (cf-44): Commit events
 - SelfCorrectionLoop (cf-43): Correction attempts
+- Multi-Agent Coordination (Sprint 4): Agent lifecycle and task assignments
 
 Message Types:
 - task_status_changed: Task status transitions (pending → in_progress → completed)
@@ -18,6 +19,11 @@ Message Types:
 - activity_update: Activity feed entries
 - progress_update: Progress bar updates
 - correction_attempt: Self-correction loop attempts
+- agent_created: New agent instantiated (Sprint 4)
+- agent_retired: Agent removed from pool (Sprint 4)
+- task_assigned: Task assigned to agent (Sprint 4)
+- task_blocked: Task blocked by dependencies (Sprint 4)
+- task_unblocked: Task unblocked (Sprint 4)
 """
 
 from datetime import datetime, UTC
@@ -99,7 +105,7 @@ async def broadcast_agent_status(
     if current_task_id:
         message["current_task"] = {
             "id": current_task_id,
-            "title": current_task_title or f"Task #{current_task_id}"
+            "title": current_task_title if current_task_title else f"Task #{current_task_id}"
         }
 
     if progress is not None:
@@ -117,11 +123,11 @@ async def broadcast_test_result(
     project_id: int,
     task_id: int,
     status: str,
-    passed: int,
-    failed: int,
-    errors: int,
-    total: int,
-    duration: float
+    passed: int = 0,
+    failed: int = 0,
+    errors: int = 0,
+    skipped: int = 0,
+    duration: float = 0.0
 ) -> None:
     """
     Broadcast test execution results to connected clients.
@@ -130,11 +136,11 @@ async def broadcast_test_result(
         manager: ConnectionManager instance
         project_id: Project ID
         task_id: Task ID that tests were run for
-        status: Test status (passed/failed/error/no_tests/timeout)
-        passed: Number of tests passed
-        failed: Number of tests failed
-        errors: Number of tests with errors
-        total: Total number of tests
+        status: Test result status (passed/failed/error/timeout/no_tests)
+        passed: Number of passed tests
+        failed: Number of failed tests
+        errors: Number of test errors
+        skipped: Number of skipped tests
         duration: Test execution duration in seconds
     """
     message = {
@@ -145,7 +151,7 @@ async def broadcast_test_result(
         "passed": passed,
         "failed": failed,
         "errors": errors,
-        "total": total,
+        "skipped": skipped,
         "duration": duration,
         "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
     }
@@ -153,8 +159,8 @@ async def broadcast_test_result(
     try:
         await manager.broadcast(message)
         logger.debug(
-            f"Broadcast test_result: task {task_id}, {status} "
-            f"({passed}/{total} passed)"
+            f"Broadcast test_result: task {task_id}, "
+            f"{passed} passed, {failed} failed, {errors} errors"
         )
     except Exception as e:
         logger.error(f"Failed to broadcast test result: {e}")
@@ -166,21 +172,18 @@ async def broadcast_commit_created(
     task_id: int,
     commit_hash: str,
     commit_message: str,
-    files_changed: Optional[List[str]] = None
+    files_changed: Optional[int] = None
 ) -> None:
     """
     Broadcast git commit creation to connected clients.
 
-    This integrates with cf-44 (Git Workflow Manager) to show
-    commits in the activity feed in real-time.
-
     Args:
         manager: ConnectionManager instance
         project_id: Project ID
-        task_id: Task ID the commit is for
-        commit_hash: Full or short commit hash
+        task_id: Task ID that triggered the commit
+        commit_hash: Git commit hash (short form)
         commit_message: Commit message
-        files_changed: Optional list of files changed
+        files_changed: Optional number of files changed
     """
     message = {
         "type": "commit_created",
@@ -191,7 +194,7 @@ async def broadcast_commit_created(
         "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
     }
 
-    if files_changed:
+    if files_changed is not None:
         message["files_changed"] = files_changed
 
     try:
@@ -205,9 +208,9 @@ async def broadcast_activity_update(
     manager,
     project_id: int,
     activity_type: str,
-    agent_id: str,
     message_text: str,
-    task_id: Optional[int] = None
+    task_id: Optional[int] = None,
+    agent_id: Optional[str] = None
 ) -> None:
     """
     Broadcast activity feed update to connected clients.
@@ -215,16 +218,15 @@ async def broadcast_activity_update(
     Args:
         manager: ConnectionManager instance
         project_id: Project ID
-        activity_type: Type of activity (task_completed, tests_passed, blocker_created, etc.)
-        agent_id: Agent that performed the action
-        message_text: Human-readable message for activity feed
+        activity_type: Type of activity (task/agent/test/commit/etc.)
+        message_text: Human-readable activity message
         task_id: Optional related task ID
+        agent_id: Optional related agent ID
     """
     message = {
         "type": "activity_update",
         "project_id": project_id,
         "activity_type": activity_type,
-        "agent": agent_id,
         "message": message_text,
         "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
     }
@@ -232,9 +234,12 @@ async def broadcast_activity_update(
     if task_id:
         message["task_id"] = task_id
 
+    if agent_id:
+        message["agent_id"] = agent_id
+
     try:
         await manager.broadcast(message)
-        logger.debug(f"Broadcast activity_update: {activity_type} by {agent_id}")
+        logger.debug(f"Broadcast activity_update: {activity_type} - {message_text[:50]}")
     except Exception as e:
         logger.error(f"Failed to broadcast activity: {e}")
 
@@ -242,9 +247,9 @@ async def broadcast_activity_update(
 async def broadcast_progress_update(
     manager,
     project_id: int,
-    completed_tasks: int,
-    total_tasks: int,
-    percentage: float
+    completed: int,
+    total: int,
+    percentage: Optional[int] = None
 ) -> None:
     """
     Broadcast project progress update to connected clients.
@@ -252,25 +257,25 @@ async def broadcast_progress_update(
     Args:
         manager: ConnectionManager instance
         project_id: Project ID
-        completed_tasks: Number of completed tasks
-        total_tasks: Total number of tasks
-        percentage: Progress percentage (0-100)
+        completed: Number of completed tasks
+        total: Total number of tasks
+        percentage: Optional progress percentage (auto-calculated if not provided)
     """
+    if percentage is None and total > 0:
+        percentage = int((completed / total) * 100)
+
     message = {
         "type": "progress_update",
         "project_id": project_id,
-        "completed_tasks": completed_tasks,
-        "total_tasks": total_tasks,
-        "percentage": percentage,
+        "completed": completed,
+        "total": total,
+        "percentage": percentage if percentage is not None else 0,
         "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
     }
 
     try:
         await manager.broadcast(message)
-        logger.debug(
-            f"Broadcast progress_update: {completed_tasks}/{total_tasks} "
-            f"({percentage:.1f}%)"
-        )
+        logger.debug(f"Broadcast progress_update: {completed}/{total} ({percentage}%)")
     except Exception as e:
         logger.error(f"Failed to broadcast progress: {e}")
 
@@ -287,15 +292,12 @@ async def broadcast_correction_attempt(
     """
     Broadcast self-correction attempt to connected clients.
 
-    This integrates with cf-43 (Self-Correction Loop) to show
-    correction attempts in real-time.
-
     Args:
         manager: ConnectionManager instance
         project_id: Project ID
         task_id: Task ID being corrected
         attempt_number: Current attempt number (1-3)
-        max_attempts: Maximum attempts (usually 3)
+        max_attempts: Maximum attempts allowed
         status: Attempt status (in_progress/success/failed)
         error_summary: Optional error summary for failed attempts
     """
@@ -320,3 +322,182 @@ async def broadcast_correction_attempt(
         )
     except Exception as e:
         logger.error(f"Failed to broadcast correction attempt: {e}")
+
+
+# ============================================================================
+# Sprint 4: Multi-Agent Coordination Broadcasts
+# ============================================================================
+
+async def broadcast_agent_created(
+    manager,
+    project_id: int,
+    agent_id: str,
+    agent_type: str,
+    tasks_completed: int = 0
+) -> None:
+    """
+    Broadcast agent creation to connected clients (Sprint 4).
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        agent_id: Unique agent identifier (e.g., "backend-worker-001")
+        agent_type: Agent type (e.g., "backend-worker", "frontend-specialist")
+        tasks_completed: Initial task completion count (default: 0)
+    """
+    message = {
+        "type": "agent_created",
+        "project_id": project_id,
+        "agent_id": agent_id,
+        "agent_type": agent_type,
+        "status": "idle",
+        "tasks_completed": tasks_completed,
+        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast agent_created: {agent_id} ({agent_type})")
+    except Exception as e:
+        logger.error(f"Failed to broadcast agent creation: {e}")
+
+
+async def broadcast_agent_retired(
+    manager,
+    project_id: int,
+    agent_id: str,
+    tasks_completed: int = 0
+) -> None:
+    """
+    Broadcast agent retirement to connected clients (Sprint 4).
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        agent_id: Agent identifier being retired
+        tasks_completed: Total tasks completed by this agent
+    """
+    message = {
+        "type": "agent_retired",
+        "project_id": project_id,
+        "agent_id": agent_id,
+        "tasks_completed": tasks_completed,
+        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast agent_retired: {agent_id} ({tasks_completed} tasks)")
+    except Exception as e:
+        logger.error(f"Failed to broadcast agent retirement: {e}")
+
+
+async def broadcast_task_assigned(
+    manager,
+    project_id: int,
+    task_id: int,
+    agent_id: str,
+    task_title: Optional[str] = None
+) -> None:
+    """
+    Broadcast task assignment to agent (Sprint 4).
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        task_id: Task ID being assigned
+        agent_id: Agent ID receiving the task
+        task_title: Optional task title for display
+    """
+    message = {
+        "type": "task_assigned",
+        "project_id": project_id,
+        "task_id": task_id,
+        "agent_id": agent_id,
+        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    if task_title:
+        message["task_title"] = task_title
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast task_assigned: task {task_id} → {agent_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast task assignment: {e}")
+
+
+async def broadcast_task_blocked(
+    manager,
+    project_id: int,
+    task_id: int,
+    blocked_by: List[int],
+    task_title: Optional[str] = None
+) -> None:
+    """
+    Broadcast task blocked by dependencies (Sprint 4).
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        task_id: Task ID that is blocked
+        blocked_by: List of task IDs blocking this task
+        task_title: Optional task title for display
+    """
+    message = {
+        "type": "task_blocked",
+        "project_id": project_id,
+        "task_id": task_id,
+        "blocked_by": blocked_by,
+        "blocked_count": len(blocked_by),
+        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    if task_title:
+        message["task_title"] = task_title
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(
+            f"Broadcast task_blocked: task {task_id} blocked by "
+            f"{len(blocked_by)} tasks"
+        )
+    except Exception as e:
+        logger.error(f"Failed to broadcast task blocked: {e}")
+
+
+async def broadcast_task_unblocked(
+    manager,
+    project_id: int,
+    task_id: int,
+    unblocked_by: Optional[int] = None,
+    task_title: Optional[str] = None
+) -> None:
+    """
+    Broadcast task unblocked (Sprint 4).
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        task_id: Task ID that was unblocked
+        unblocked_by: Optional ID of task whose completion unblocked this one
+        task_title: Optional task title for display
+    """
+    message = {
+        "type": "task_unblocked",
+        "project_id": project_id,
+        "task_id": task_id,
+        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    if unblocked_by:
+        message["unblocked_by"] = unblocked_by
+
+    if task_title:
+        message["task_title"] = task_title
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast task_unblocked: task {task_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast task unblocked: {e}")

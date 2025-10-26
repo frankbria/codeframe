@@ -60,6 +60,23 @@ export default function TaskTreeView({ issues }: TaskTreeViewProps) {
     return proposedBy === 'agent' ? '🤖' : '👤';
   };
 
+  // Check if task is blocked by dependencies
+  const isTaskBlocked = (task: Task, allTasks: Task[]): boolean => {
+    if (!task.depends_on || task.depends_on.length === 0) return false;
+    if (task.status === 'completed' || task.status === 'in_progress') return false;
+
+    // Find dependency tasks and check if any are not completed
+    return task.depends_on.some((depId) => {
+      const depTask = allTasks.find((t) => t.id === depId || t.task_number === depId);
+      return depTask && depTask.status !== 'completed';
+    });
+  };
+
+  // Get all tasks from all issues for dependency checking
+  const getAllTasks = (): Task[] => {
+    return issues.flatMap((issue) => issue.tasks || []);
+  };
+
   if (!issues || issues.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
@@ -135,45 +152,114 @@ export default function TaskTreeView({ issues }: TaskTreeViewProps) {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {issue.tasks!.map((task) => (
-                      <div
-                        key={task.id}
-                        className="ml-8 p-3 bg-white border border-gray-200 rounded"
-                      >
-                        <div className="flex items-start gap-2 mb-1">
-                          <span className="flex-shrink-0 text-xs font-mono text-gray-500">
-                            {task.task_number}
-                          </span>
-                          <span className="flex-1 text-sm font-medium text-gray-900">
-                            {task.title}
-                          </span>
-                          <span className="flex-shrink-0" title={`Proposed by ${task.proposed_by}`}>
-                            {getProvenanceIcon(task.proposed_by)}
-                          </span>
-                        </div>
+                    {issue.tasks!.map((task) => {
+                      const allTasks = getAllTasks();
+                      const blocked = isTaskBlocked(task, allTasks);
+                      const hasDependencies = task.depends_on && task.depends_on.length > 0;
 
-                        <div className="ml-14 flex items-center gap-2 flex-wrap">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusClasses(
-                              task.status
-                            )}`}
-                          >
-                            {task.status}
-                          </span>
-                          {task.depends_on && task.depends_on.length > 0 && (
-                            <span className="text-xs text-gray-500">
-                              Depends on: {task.depends_on.join(', ')}
+                      return (
+                        <div
+                          key={task.id}
+                          className={`ml-8 p-3 bg-white border rounded transition-colors ${
+                            blocked
+                              ? 'border-red-300 bg-red-50'
+                              : task.status === 'completed'
+                              ? 'border-green-200'
+                              : task.status === 'in_progress'
+                              ? 'border-blue-200'
+                              : 'border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2 mb-1">
+                            {/* Dependency indicator */}
+                            {hasDependencies && (
+                              <span
+                                className="flex-shrink-0 text-sm"
+                                title={`Depends on: ${task.depends_on.join(', ')}`}
+                              >
+                                🔗
+                              </span>
+                            )}
+                            <span className="flex-shrink-0 text-xs font-mono text-gray-500">
+                              {task.task_number}
                             </span>
+                            <span className="flex-1 text-sm font-medium text-gray-900">
+                              {task.title}
+                            </span>
+                            <span className="flex-shrink-0" title={`Proposed by ${task.proposed_by}`}>
+                              {getProvenanceIcon(task.proposed_by)}
+                            </span>
+                          </div>
+
+                          <div className="ml-14 flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusClasses(
+                                task.status
+                              )}`}
+                            >
+                              {task.status}
+                            </span>
+
+                            {/* Blocked badge */}
+                            {blocked && (
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800"
+                                title="Waiting for dependencies to complete"
+                              >
+                                🚫 Blocked
+                              </span>
+                            )}
+
+                            {/* Dependency details with hover tooltip */}
+                            {hasDependencies && (
+                              <span
+                                className="group relative inline-flex items-center text-xs text-gray-500 cursor-help"
+                                title={`Dependencies: ${task.depends_on.join(', ')}`}
+                              >
+                                ↳ {task.depends_on.length} {task.depends_on.length === 1 ? 'dependency' : 'dependencies'}
+                                {/* Hover tooltip */}
+                                <span className="invisible group-hover:visible absolute left-0 top-full mt-1 w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                                  <strong>Depends on:</strong>
+                                  <ul className="mt-1 list-disc list-inside">
+                                    {task.depends_on.map((depId) => {
+                                      const depTask = allTasks.find(
+                                        (t) => t.id === depId || t.task_number === depId
+                                      );
+                                      return (
+                                        <li key={depId} className="truncate">
+                                          {depTask ? (
+                                            <span>
+                                              {depTask.task_number}: {depTask.title}
+                                              <span
+                                                className={`ml-1 ${
+                                                  depTask.status === 'completed'
+                                                    ? 'text-green-400'
+                                                    : 'text-yellow-400'
+                                                }`}
+                                              >
+                                                ({depTask.status})
+                                              </span>
+                                            </span>
+                                          ) : (
+                                            depId
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </span>
+                              </span>
+                            )}
+                          </div>
+
+                          {task.description && (
+                            <div className="ml-14 mt-2 text-xs text-gray-600">
+                              {task.description}
+                            </div>
                           )}
                         </div>
-
-                        {task.description && (
-                          <div className="ml-14 mt-2 text-xs text-gray-600">
-                            {task.description}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
