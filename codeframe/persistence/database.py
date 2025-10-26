@@ -1664,3 +1664,75 @@ class Database:
         """, (task_id,))
         
         self.conn.commit()
+
+    def get_blockers(self, project_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all unresolved blockers for a project.
+
+        Args:
+            project_id: Project ID to filter blockers
+
+        Returns:
+            List of blocker dictionaries with task info
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT 
+                b.id,
+                b.task_id,
+                b.severity,
+                b.question,
+                b.reason,
+                b.created_at
+            FROM blockers b
+            JOIN tasks t ON b.task_id = t.id
+            WHERE t.project_id = ?
+                AND b.resolved_at IS NULL
+            ORDER BY b.created_at DESC
+        """, (project_id,))
+
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def get_recent_activity(self, project_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Get recent activity/changelog entries for a project.
+
+        Args:
+            project_id: Project ID to filter activity
+            limit: Maximum number of activity items to return
+
+        Returns:
+            List of activity dictionaries formatted for frontend
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT 
+                timestamp,
+                agent_id,
+                action,
+                task_id,
+                details
+            FROM changelog
+            WHERE project_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (project_id, limit))
+
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+
+        # Format for frontend
+        activity_items = []
+        for row in rows:
+            activity_dict = dict(zip(columns, row))
+            
+            # Map database fields to frontend expected format
+            activity_items.append({
+                "timestamp": activity_dict["timestamp"],
+                "type": activity_dict["action"],
+                "agent": activity_dict["agent_id"] or "system",
+                "message": activity_dict.get("details") or activity_dict["action"],
+            })
+
+        return activity_items

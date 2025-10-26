@@ -436,29 +436,36 @@ async def get_tasks(
 @app.get("/api/projects/{project_id}/blockers")
 async def get_blockers(project_id: int):
     """Get pending blockers requiring user input."""
-    # TODO: Query database for unresolved blockers
-    return {
-        "blockers": [
-            {
-                "id": 1,
-                "task_id": 30,
-                "severity": "sync",
-                "question": "Should password reset tokens expire after 1hr or 24hrs?",
-                "reason": "Security vs UX trade-off",
-                "created_at": "2025-01-15T14:00:00Z",
-                "blocking_agents": ["backend-1", "test-1"]
-            },
-            {
-                "id": 2,
-                "task_id": 25,
-                "severity": "async",
-                "question": "Use Material UI or Ant Design for form components?",
-                "reason": "Design system choice",
-                "created_at": "2025-01-15T12:00:00Z",
-                "blocking_agents": []
-            }
-        ]
-    }
+    try:
+        # Query database for unresolved blockers
+        blockers = app.state.db.get_blockers(project_id)
+
+        # Format blockers for API response
+        formatted_blockers = []
+        for blocker in blockers:
+            # Parse blocking_agents from JSON if present
+            blocking_agents = []
+            if blocker.get("blocking_agents"):
+                import json
+                try:
+                    blocking_agents = json.loads(blocker["blocking_agents"])
+                except (json.JSONDecodeError, TypeError):
+                    blocking_agents = []
+
+            formatted_blockers.append({
+                "id": blocker["id"],
+                "task_id": blocker["task_id"],
+                "severity": blocker["severity"],
+                "question": blocker["question"],
+                "reason": blocker["reason"],
+                "created_at": blocker["created_at"],
+                "blocking_agents": blocking_agents
+            })
+
+        return {"blockers": formatted_blockers}
+    except Exception as e:
+        logger.error(f"Error fetching blockers: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching blockers: {str(e)}")
 
 
 @app.post("/api/projects/{project_id}/blockers/{blocker_id}/resolve")
@@ -484,29 +491,14 @@ async def resolve_blocker(project_id: int, blocker_id: int, resolution: Dict[str
 @app.get("/api/projects/{project_id}/activity")
 async def get_activity(project_id: int, limit: int = 50):
     """Get recent activity log."""
-    # TODO: Query changelog table
-    return {
-        "activity": [
-            {
-                "timestamp": "2025-01-15T14:32:00Z",
-                "type": "task_completed",
-                "agent": "backend-1",
-                "message": "Completed Task #26 (login endpoint)"
-            },
-            {
-                "timestamp": "2025-01-15T14:28:00Z",
-                "type": "tests_passed",
-                "agent": "test-1",
-                "message": "All tests passed for auth module"
-            },
-            {
-                "timestamp": "2025-01-15T14:15:00Z",
-                "type": "blocker_created",
-                "agent": "backend-1",
-                "message": "Escalated blocker on Task #30"
-            }
-        ]
-    }
+    try:
+        # Query changelog table for activity
+        activity_items = app.state.db.get_recent_activity(project_id, limit=limit)
+
+        return {"activity": activity_items}
+    except Exception as e:
+        logger.error(f"Error fetching activity: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error fetching activity: {str(e)}")
 
 
 @app.post("/api/projects/{project_id}/chat")
