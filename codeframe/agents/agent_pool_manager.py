@@ -7,7 +7,7 @@ This module manages a pool of worker agents, enabling reuse and parallel executi
 import logging
 import asyncio
 from typing import Dict, Optional, Any
-from threading import Lock
+from threading import RLock
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
@@ -60,8 +60,8 @@ class AgentPoolManager:
         # Agent ID counter
         self.next_agent_number = 1
 
-        # Thread lock for pool operations
-        self.lock = Lock()
+        # Thread lock for pool operations (using RLock for reentrancy)
+        self.lock = RLock()
 
         logger.info(f"Agent Pool Manager initialized: project_id={project_id}, max_agents={max_agents}")
 
@@ -79,7 +79,9 @@ class AgentPoolManager:
             ValueError: If unknown agent type
             RuntimeError: If agent pool at maximum capacity
         """
+        print(f"\n🏭 DEBUG: create_agent called with agent_type={agent_type}")
         with self.lock:
+            print(f"🏭 DEBUG: Acquired lock")
             # Check pool capacity
             if len(self.agent_pool) >= self.max_agents:
                 raise RuntimeError(
@@ -88,30 +90,43 @@ class AgentPoolManager:
                 )
 
             # Generate agent ID
+            print(f"🏭 DEBUG: Generating agent ID...")
             agent_id = f"{agent_type}-worker-{self.next_agent_number:03d}"
             self.next_agent_number += 1
+            print(f"🏭 DEBUG: Generated agent_id={agent_id}")
 
-            # Create agent instance based on type
-            if agent_type == "backend":
+            # Create agent instance based on type with correct constructor arguments
+            print(f"🏭 DEBUG: About to create {agent_type} agent instance...")
+            if agent_type == "backend" or agent_type == "backend-worker":
+                print(f"🏭 DEBUG: Calling BackendWorkerAgent constructor...")
                 agent_instance = BackendWorkerAgent(
-                    agent_id=agent_id,
+                    project_id=self.project_id,
+                    db=self.db,
+                    codebase_index=None,  # Optional for workers
                     provider="anthropic",
                     api_key=self.api_key
                 )
-            elif agent_type == "frontend":
+            elif agent_type == "frontend" or agent_type == "frontend-specialist":
                 agent_instance = FrontendWorkerAgent(
                     agent_id=agent_id,
                     provider="anthropic",
-                    api_key=self.api_key
+                    api_key=self.api_key,
+                    websocket_manager=self.ws_manager
                 )
-            elif agent_type == "test":
+            elif agent_type == "test" or agent_type == "test-engineer":
+                print(f"🏭 DEBUG: Calling TestWorkerAgent constructor...")
                 agent_instance = TestWorkerAgent(
                     agent_id=agent_id,
                     provider="anthropic",
-                    api_key=self.api_key
+                    api_key=self.api_key,
+                    websocket_manager=self.ws_manager
                 )
+                print(f"🏭 DEBUG: TestWorkerAgent created successfully")
             else:
+                print(f"🏭 DEBUG: Unknown agent type: {agent_type}")
                 raise ValueError(f"Unknown agent type: {agent_type}")
+
+            print(f"🏭 DEBUG: Agent instance created: {type(agent_instance)}")
 
             # Add to pool
             self.agent_pool[agent_id] = {
@@ -147,15 +162,20 @@ class AgentPoolManager:
         Returns:
             agent_id: ID of available agent
         """
+        print(f"\n🔧 DEBUG: get_or_create_agent called with agent_type={agent_type}")
         with self.lock:
+            print(f"🔧 DEBUG: Acquired lock in get_or_create_agent")
             # Look for idle agent of this type
+            print(f"🔧 DEBUG: Looking for idle {agent_type} agents in pool (pool size: {len(self.agent_pool)})")
             for agent_id, agent_info in self.agent_pool.items():
                 if (agent_info["agent_type"] == agent_type and
                     agent_info["status"] == "idle"):
                     logger.debug(f"Reusing idle agent: {agent_id}")
+                    print(f"🔧 DEBUG: Found idle agent: {agent_id}")
                     return agent_id
 
             # No idle agent found - create new one
+            print(f"🔧 DEBUG: No idle agent found, calling create_agent({agent_type})")
             return self.create_agent(agent_type)
 
     def mark_agent_busy(self, agent_id: str, task_id: int) -> None:

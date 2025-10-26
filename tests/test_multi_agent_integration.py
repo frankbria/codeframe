@@ -54,40 +54,59 @@ def create_test_task(
 @pytest.fixture
 def db():
     """Create test database."""
+    print("🔵 FIXTURE: Creating database...")
     db = Database(":memory:")
+    print("🔵 FIXTURE: Database created, initializing schema...")
     db.initialize()  # Initialize the database schema
+    print("🔵 FIXTURE: Database initialized ✅")
     yield db
+    print("🔵 FIXTURE: Closing database...")
     db.close()
+    print("🔵 FIXTURE: Database closed ✅")
 
 
 @pytest.fixture
 def temp_project_dir():
     """Create temporary project directory."""
+    print("🟡 FIXTURE: Creating temp directory...")
     with tempfile.TemporaryDirectory() as tmpdir:
+        print(f"🟡 FIXTURE: Temp dir created: {tmpdir}")
         # Initialize git repo
+        print("🟡 FIXTURE: Running git init...")
         import subprocess
         subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True)
+        print("🟡 FIXTURE: Git init complete ✅")
         yield tmpdir
+        print("🟡 FIXTURE: Cleaning up temp dir...")
 
 
 @pytest.fixture
 def project_id(db, temp_project_dir):
     """Create test project."""
+    print("🟢 FIXTURE: Creating project in database...")
     project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+    print(f"🟢 FIXTURE: Project created with ID: {project_id}")
     # Update project with root_path
+    print(f"🟢 FIXTURE: Updating project root_path to {temp_project_dir}...")
     db.update_project(project_id, {"root_path": temp_project_dir})
+    print("🟢 FIXTURE: Project fixture complete ✅")
     return project_id
 
 
 @pytest.fixture
 def api_key():
     """Get test API key."""
-    return os.environ.get("ANTHROPIC_API_KEY", "test-key")
+    print("🔴 FIXTURE: Getting API key...")
+    key = os.environ.get("ANTHROPIC_API_KEY", "test-key")
+    print(f"🔴 FIXTURE: API key: {key[:8]}... ✅")
+    return key
 
 
 @pytest.fixture
 def lead_agent(db, project_id, api_key):
     """Create LeadAgent with multi-agent support."""
+    print("🟣 FIXTURE: Creating LeadAgent...")
+    print(f"🟣 FIXTURE: - project_id={project_id}, api_key={api_key[:8]}...")
     agent = LeadAgent(
         project_id=project_id,
         db=db,
@@ -95,7 +114,67 @@ def lead_agent(db, project_id, api_key):
         ws_manager=None,  # No WebSocket for unit tests
         max_agents=10
     )
+    print("🟣 FIXTURE: LeadAgent created ✅")
     return agent
+
+
+class TestMinimalIntegration:
+    """Minimal integration test - simplest possible scenario to verify basic functionality."""
+
+    @pytest.mark.asyncio
+    async def test_single_task_execution_minimal(self, lead_agent, db, project_id):
+        """
+        Simplest possible integration test - 1 task, 1 agent, immediate success.
+        This test should pass quickly (< 5 seconds) and verify basic coordination.
+        """
+        print("\n" + "="*80)
+        print("⭐ TEST STARTED: test_single_task_execution_minimal")
+        print("="*80)
+        
+        # Create single backend task
+        print("📝 Creating test task...")
+        task_id = create_test_task(
+            db, project_id, "T-001",
+            "Simple backend task", "Test task description",
+            status="pending"
+        )
+        print(f"📝 Task created: {task_id}")
+
+        # Patch TestWorkerAgent at creation point (in AgentPoolManager)
+        # Task will be assigned to test-engineer based on "Test" in description
+        with patch('codeframe.agents.agent_pool_manager.TestWorkerAgent') as MockAgent:
+            # Create mock instance
+            mock_agent_instance = Mock()
+            mock_agent_instance.execute_task.return_value = {
+                "status": "completed",
+                "files_modified": [],
+                "output": "Task completed successfully",
+                "error": None
+            }
+            
+            # When AgentPoolManager creates BackendWorkerAgent, return our mock
+            MockAgent.return_value = mock_agent_instance
+
+            # Execute with short timeout - should complete quickly
+            summary = await asyncio.wait_for(
+                lead_agent.start_multi_agent_execution(max_concurrent=1),
+                timeout=5.0  # Fail fast if hanging
+            )
+
+            # Verify basic execution
+            assert summary["total_tasks"] == 1
+            assert summary["completed"] == 1
+            assert summary["failed"] == 0
+            assert summary["iterations"] > 0
+            assert summary["iterations"] < 100  # Should not take many iterations
+
+            # Verify task completed in database
+            task = db.get_task(task_id)
+            assert task["status"] == "completed"
+
+            # Verify agent was called
+            assert mock_agent_instance.execute_task.called
+            assert mock_agent_instance.execute_task.call_count == 1
 
 
 class TestThreeAgentParallelExecution:
@@ -560,7 +639,8 @@ class TestWebSocketBroadcasts:
 class TestDeadlockPrevention:
     """Test that circular dependencies are detected and prevented."""
 
-    def test_circular_dependency_detection(self, lead_agent, db, project_id):
+    @pytest.mark.asyncio
+    async def test_circular_dependency_detection(self, lead_agent, db, project_id):
         """Test that circular dependencies are detected during graph building."""
         # Create circular dependency: T1 -> T2 -> T3 -> T1
         task1_id = create_test_task(
@@ -585,4 +665,4 @@ class TestDeadlockPrevention:
         # Should raise ValueError due to circular dependency
         with pytest.raises(ValueError, match="Circular dependencies detected"):
             # This will fail when building dependency graph
-            asyncio.run(lead_agent.start_multi_agent_execution())
+            await lead_agent.start_multi_agent_execution()
