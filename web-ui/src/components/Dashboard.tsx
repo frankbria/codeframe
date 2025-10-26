@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { projectsApi, agentsApi, blockersApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
-import type { Project, Agent, Blocker, ActivityItem, WebSocketMessage, Task, TaskStatus, AgentStatus } from '@/types';
+import type { Project, Agent, Blocker, ActivityItem, WebSocketMessage, Task, TaskStatus, AgentStatus, AgentType, AgentMaturity } from '@/types';
 import type { PRDResponse, IssuesResponse } from '@/types/api';
 import ChatInterface from './ChatInterface';
 import PRDModal from './PRDModal';
@@ -222,20 +222,23 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'agent_created':
           // Add new agent to state
           if (message.agent_id && message.agent_type) {
+            const agentId = message.agent_id;
+            const agentType = message.agent_type as AgentType;
+
             setAgents((prev) => {
               // Check if agent already exists
-              if (prev.some(a => a.id === message.agent_id)) {
+              if (prev.some(a => a.id === agentId)) {
                 return prev;
               }
               // Add new agent
               return [
                 ...prev,
                 {
-                  id: message.agent_id,
-                  type: message.agent_type,
+                  id: agentId,
+                  type: agentType,
                   status: 'idle' as AgentStatus,
                   provider: 'anthropic',
-                  maturity: 'D1',
+                  maturity: 'directive' as AgentMaturity,
                   current_task: undefined,
                   blocker: undefined,
                   context_tokens: 0,
@@ -250,7 +253,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 timestamp: message.timestamp,
                 type: 'agent_created',
                 agent: 'system',
-                message: `🤖 Created ${message.agent_type} agent (${message.agent_id})`,
+                message: `🤖 Created ${agentType} agent (${agentId})`,
               },
               ...prev.slice(0, 49),
             ]);
@@ -278,11 +281,15 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'task_assigned':
           // Update task and agent state when task is assigned
           if (message.task_id && message.agent_id) {
+            const taskId = message.task_id;
+            const agentId = message.agent_id;
+            const taskTitle = message.task_title;
+
             // Update task status
             setTasks((prev) =>
               prev.map((task) =>
-                task.id === message.task_id
-                  ? { ...task, status: 'in_progress' as TaskStatus, agent_id: message.agent_id }
+                task.id === taskId
+                  ? { ...task, status: 'in_progress' as TaskStatus, agent_id: agentId }
                   : task
               )
             );
@@ -290,11 +297,11 @@ export default function Dashboard({ projectId }: DashboardProps) {
             // Update agent status
             setAgents((prev) =>
               prev.map((agent) =>
-                agent.id === message.agent_id
+                agent.id === agentId
                   ? {
                       ...agent,
                       status: 'working' as AgentStatus,
-                      current_task: { id: message.task_id, title: message.task_title || `Task #${message.task_id}` },
+                      current_task: { id: taskId, title: taskTitle || `Task #${taskId}` },
                     }
                   : agent
               )
@@ -305,8 +312,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
               {
                 timestamp: message.timestamp,
                 type: 'task_assigned',
-                agent: message.agent_id || 'system',
-                message: `📋 Assigned task #${message.task_id} to ${message.agent_id}`,
+                agent: agentId,
+                message: `📋 Assigned task #${taskId} to ${agentId}`,
               },
               ...prev.slice(0, 49),
             ]);
@@ -316,24 +323,27 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'task_blocked':
           // Update task status to blocked
           if (message.task_id) {
+            const taskId = message.task_id;
+            const blockedBy = message.blocked_by;
+
             setTasks((prev) =>
               prev.map((task) =>
-                task.id === message.task_id
-                  ? { ...task, status: 'blocked' as TaskStatus, blocked_by: message.blocked_by }
+                task.id === taskId
+                  ? { ...task, status: 'blocked' as TaskStatus, blocked_by: blockedBy }
                   : task
               )
             );
 
             // Add to activity feed
-            const blockedByText = message.blocked_by
-              ? ` (waiting for ${Array.isArray(message.blocked_by) ? message.blocked_by.join(', ') : message.blocked_by})`
+            const blockedByText = blockedBy
+              ? ` (waiting for ${Array.isArray(blockedBy) ? blockedBy.join(', ') : blockedBy})`
               : '';
             setActivity((prev) => [
               {
                 timestamp: message.timestamp,
                 type: 'task_blocked',
                 agent: 'system',
-                message: `🚫 Task #${message.task_id} blocked${blockedByText}`,
+                message: `🚫 Task #${taskId} blocked${blockedByText}`,
               },
               ...prev.slice(0, 49),
             ]);
@@ -343,9 +353,11 @@ export default function Dashboard({ projectId }: DashboardProps) {
         case 'task_unblocked':
           // Update task status from blocked to pending/ready
           if (message.task_id) {
+            const taskId = message.task_id;
+
             setTasks((prev) =>
               prev.map((task) =>
-                task.id === message.task_id
+                task.id === taskId
                   ? { ...task, status: 'pending' as TaskStatus, blocked_by: undefined }
                   : task
               )
@@ -357,7 +369,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 timestamp: message.timestamp,
                 type: 'task_unblocked',
                 agent: 'system',
-                message: `✅ Task #${message.task_id} unblocked and ready`,
+                message: `✅ Task #${taskId} unblocked and ready`,
               },
               ...prev.slice(0, 49),
             ]);
