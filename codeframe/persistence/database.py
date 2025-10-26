@@ -260,6 +260,29 @@ class Database:
             ON correction_attempts(task_id)
         """)
 
+        # Task Dependencies junction table (Sprint 4: Multi-Agent Coordination)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS task_dependencies (
+                id INTEGER PRIMARY KEY,
+                task_id INTEGER NOT NULL,
+                depends_on_task_id INTEGER NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id),
+                FOREIGN KEY (depends_on_task_id) REFERENCES tasks(id),
+                UNIQUE(task_id, depends_on_task_id)
+            )
+        """)
+
+        # Create index for task_dependencies queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_task_dependencies_task
+            ON task_dependencies(task_id)
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_task_dependencies_depends_on
+            ON task_dependencies(depends_on_task_id)
+        """)
+
         self.conn.commit()
 
     def _run_migrations(self) -> None:
@@ -415,6 +438,70 @@ class Database:
         rows = cursor.fetchall()
         # TODO: Convert rows to Task objects
         return []
+
+    def get_project_tasks(self, project_id: int) -> List[Dict[str, Any]]:
+        """Get all tasks for a project (all statuses).
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of task dictionaries ordered by task_number
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM tasks WHERE project_id = ? ORDER BY task_number",
+            (project_id,),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def update_task(self, task_id: int, updates: Dict[str, Any]) -> int:
+        """Update task fields.
+
+        Args:
+            task_id: Task ID to update
+            updates: Dictionary of fields to update
+
+        Returns:
+            Number of rows affected
+        """
+        if not updates:
+            return 0
+
+        fields = []
+        values = []
+        for key, value in updates.items():
+            fields.append(f"{key} = ?")
+            # Handle enum values
+            if isinstance(value, TaskStatus):
+                values.append(value.value)
+            else:
+                values.append(value)
+
+        values.append(task_id)
+
+        query = f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?"
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, values)
+        self.conn.commit()
+
+        return cursor.rowcount
+
+    def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """Get task by ID.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            Task dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
     def close(self) -> None:
         """Close database connection."""
@@ -1451,3 +1538,129 @@ class Database:
             (task_id,)
         )
         return cursor.fetchone()[0]
+
+    # Task Dependency Management Methods (Sprint 4: cf-21)
+    
+    def add_task_dependency(self, task_id: int, depends_on_task_id: int) -> None:
+        """Add a dependency relationship between tasks.
+        
+        Args:
+            task_id: The task that depends on another
+            depends_on_task_id: The task that must be completed first
+            
+        Raises:
+            sqlite3.IntegrityError: If dependency would create a cycle
+        """
+        cursor = self.conn.cursor()
+        
+        # Insert into junction table
+        cursor.execute("""
+            INSERT INTO task_dependencies (task_id, depends_on_task_id)
+            VALUES (?, ?)
+        """, (task_id, depends_on_task_id))
+        
+        # Update depends_on JSON array in tasks table
+        cursor.execute("SELECT depends_on FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        
+        if row and row[0]:
+            import json
+            depends_on = json.loads(row[0]) if row[0] else []
+        else:
+            depends_on = []
+            
+        if depends_on_task_id not in depends_on:
+            depends_on.append(depends_on_task_id)
+            
+        cursor.execute("""
+            UPDATE tasks SET depends_on = ? WHERE id = ?
+        """, (json.dumps(depends_on), task_id))
+        
+        self.conn.commit()
+    
+    def get_task_dependencies(self, task_id: int) -> list:
+        """Get all tasks that the given task depends on.
+        
+        Args:
+            task_id: The task ID to get dependencies for
+            
+        Returns:
+            List of task IDs that must be completed first
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT depends_on_task_id 
+            FROM task_dependencies 
+            WHERE task_id = ?
+        """, (task_id,))
+        
+        return [row[0] for row in cursor.fetchall()]
+    
+    def get_dependent_tasks(self, task_id: int) -> list:
+        """Get all tasks that depend on the given task.
+        
+        Args:
+            task_id: The task ID to find dependents for
+            
+        Returns:
+            List of task IDs that depend on this task
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT task_id 
+            FROM task_dependencies 
+            WHERE depends_on_task_id = ?
+        """, (task_id,))
+        
+        return [row[0] for row in cursor.fetchall()]
+    
+    def remove_task_dependency(self, task_id: int, depends_on_task_id: int) -> None:
+        """Remove a dependency relationship between tasks.
+        
+        Args:
+            task_id: The task that currently depends on another
+            depends_on_task_id: The task dependency to remove
+        """
+        cursor = self.conn.cursor()
+        
+        # Remove from junction table
+        cursor.execute("""
+            DELETE FROM task_dependencies 
+            WHERE task_id = ? AND depends_on_task_id = ?
+        """, (task_id, depends_on_task_id))
+        
+        # Update depends_on JSON array in tasks table
+        cursor.execute("SELECT depends_on FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        
+        if row and row[0]:
+            import json
+            depends_on = json.loads(row[0]) if row[0] else []
+            if depends_on_task_id in depends_on:
+                depends_on.remove(depends_on_task_id)
+                
+            cursor.execute("""
+                UPDATE tasks SET depends_on = ? WHERE id = ?
+            """, (json.dumps(depends_on), task_id))
+        
+        self.conn.commit()
+    
+    def clear_all_task_dependencies(self, task_id: int) -> None:
+        """Remove all dependencies for a given task.
+        
+        Args:
+            task_id: The task ID to clear dependencies for
+        """
+        cursor = self.conn.cursor()
+        
+        # Remove from junction table
+        cursor.execute("""
+            DELETE FROM task_dependencies WHERE task_id = ?
+        """, (task_id,))
+        
+        # Clear depends_on JSON array
+        cursor.execute("""
+            UPDATE tasks SET depends_on = '[]' WHERE id = ?
+        """, (task_id,))
+        
+        self.conn.commit()
