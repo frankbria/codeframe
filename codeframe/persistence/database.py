@@ -332,12 +332,18 @@ class Database:
             logger.error(f"Migration failed: {e}")
             raise
 
-    def create_project(self, name: str, status: ProjectStatus) -> int:
+    def create_project(
+        self,
+        name: str,
+        status: ProjectStatus,
+        description: str = "Have not set a description yet. Prompt the user to complete it.",
+        workspace_path: str = ""
+    ) -> int:
         """Create a new project record."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT INTO projects (name, status) VALUES (?, ?)",
-            (name, status.value)
+            "INSERT INTO projects (name, description, workspace_path, status) VALUES (?, ?, ?, ?)",
+            (name, description, workspace_path, status.value)
         )
         self.conn.commit()
         return cursor.lastrowid
