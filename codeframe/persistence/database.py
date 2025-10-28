@@ -42,10 +42,6 @@ class Database:
         """Create database tables."""
         cursor = self.conn.cursor()
 
-        # Drop old projects table if it exists (migration for schema refactoring)
-        # This is safe for development as we're only dropping test/dev data
-        cursor.execute("DROP TABLE IF EXISTS projects")
-
         # Projects table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS projects (
@@ -311,7 +307,8 @@ class Database:
         """
         try:
             from codeframe.persistence.migrations import MigrationRunner
-            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration
+            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration as migration_001
+            from codeframe.persistence.migrations.migration_002_refactor_projects_schema import migration as migration_002
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -321,7 +318,8 @@ class Database:
             runner = MigrationRunner(str(self.db_path))
 
             # Register migrations
-            runner.register(migration)
+            runner.register(migration_001)
+            runner.register(migration_002)
 
             # Apply all pending migrations
             runner.apply_all()
