@@ -47,9 +47,24 @@ class Database:
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                root_path TEXT,
+                description TEXT NOT NULL,
+
+                -- Source tracking (optional, can be set during setup or later)
+                source_type TEXT CHECK(source_type IN ('git_remote', 'local_path', 'upload', 'empty')) DEFAULT 'empty',
+                source_location TEXT,
+                source_branch TEXT DEFAULT 'main',
+
+                -- Managed workspace (always local to running instance)
+                workspace_path TEXT NOT NULL,
+
+                -- Git tracking (foundation for all projects)
+                git_initialized BOOLEAN DEFAULT FALSE,
+                current_commit TEXT,
+
+                -- Workflow state
                 status TEXT CHECK(status IN ('init', 'planning', 'running', 'active', 'paused', 'completed')),
                 phase TEXT CHECK(phase IN ('discovery', 'planning', 'active', 'review', 'complete')) DEFAULT 'discovery',
+
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )
@@ -292,7 +307,8 @@ class Database:
         """
         try:
             from codeframe.persistence.migrations import MigrationRunner
-            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration
+            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration as migration_001
+            from codeframe.persistence.migrations.migration_002_refactor_projects_schema import migration as migration_002
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -302,7 +318,8 @@ class Database:
             runner = MigrationRunner(str(self.db_path))
 
             # Register migrations
-            runner.register(migration)
+            runner.register(migration_001)
+            runner.register(migration_002)
 
             # Apply all pending migrations
             runner.apply_all()
@@ -313,12 +330,49 @@ class Database:
             logger.error(f"Migration failed: {e}")
             raise
 
-    def create_project(self, name: str, status: ProjectStatus) -> int:
-        """Create a new project record."""
+    def create_project(
+        self,
+        name: str,
+        description: str,
+        source_type: str = "empty",
+        source_location: Optional[str] = None,
+        source_branch: str = "main",
+        workspace_path: Optional[str] = None,
+        **kwargs
+    ) -> int:
+        """Create a new project.
+
+        Args:
+            name: Project name
+            description: Project description/purpose
+            source_type: Source type (git_remote, local_path, upload, empty)
+            source_location: Git URL, local path, or upload filename
+            source_branch: Git branch (for git_remote)
+            workspace_path: Path to workspace directory
+            **kwargs: Additional fields (config, status, etc.)
+
+        Returns:
+            Created project ID
+        """
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT INTO projects (name, status) VALUES (?, ?)",
-            (name, status.value)
+            """
+            INSERT INTO projects (
+                name, description, source_type, source_location,
+                source_branch, workspace_path, git_initialized, status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                description,
+                source_type,
+                source_location,
+                source_branch,
+                workspace_path or "",
+                False,  # Will be set to True after workspace initialization
+                "init"  # Default status
+            )
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -616,6 +670,16 @@ class Database:
         self.conn.commit()
 
         return cursor.rowcount
+
+    def delete_project(self, project_id: int) -> None:
+        """Delete a project.
+
+        Args:
+            project_id: Project ID to delete
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        self.conn.commit()
 
     def create_agent(
         self,
@@ -1664,3 +1728,75 @@ class Database:
         """, (task_id,))
         
         self.conn.commit()
+
+    def get_blockers(self, project_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all unresolved blockers for a project.
+
+        Args:
+            project_id: Project ID to filter blockers
+
+        Returns:
+            List of blocker dictionaries with task info
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT 
+                b.id,
+                b.task_id,
+                b.severity,
+                b.question,
+                b.reason,
+                b.created_at
+            FROM blockers b
+            JOIN tasks t ON b.task_id = t.id
+            WHERE t.project_id = ?
+                AND b.resolved_at IS NULL
+            ORDER BY b.created_at DESC
+        """, (project_id,))
+
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def get_recent_activity(self, project_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Get recent activity/changelog entries for a project.
+
+        Args:
+            project_id: Project ID to filter activity
+            limit: Maximum number of activity items to return
+
+        Returns:
+            List of activity dictionaries formatted for frontend
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT 
+                timestamp,
+                agent_id,
+                action,
+                task_id,
+                details
+            FROM changelog
+            WHERE project_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (project_id, limit))
+
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+
+        # Format for frontend
+        activity_items = []
+        for row in rows:
+            activity_dict = dict(zip(columns, row))
+            
+            # Map database fields to frontend expected format
+            activity_items.append({
+                "timestamp": activity_dict["timestamp"],
+                "type": activity_dict["action"],
+                "agent": activity_dict["agent_id"] or "system",
+                "message": activity_dict.get("details") or activity_dict["action"],
+            })
+
+        return activity_items
