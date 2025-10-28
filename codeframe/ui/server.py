@@ -17,6 +17,7 @@ from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus
 from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
 from codeframe.agents.lead_agent import LeadAgent
+from codeframe.workspace import WorkspaceManager
 
 
 @asynccontextmanager
@@ -28,6 +29,10 @@ async def lifespan(app: FastAPI):
 
     app.state.db = Database(db_path)
     app.state.db.initialize()
+
+    # Initialize workspace manager
+    workspace_root = Path.cwd() / ".codeframe" / "workspaces"
+    app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     yield
 
@@ -241,79 +246,60 @@ async def list_projects():
 
 @app.post("/api/projects", status_code=201, response_model=ProjectResponse)
 async def create_project(request: ProjectCreateRequest):
-    """Create a new CodeFRAME project.
-
-    Task: cf-11.2 - POST /api/projects endpoint
+    """Create a new project.
 
     Args:
-        request: Project creation request with name and type
+        request: Project creation request with name, description, source config
 
     Returns:
-        Created project details with ID and timestamp
-
-    Raises:
-        HTTPException:
-            - 400 Bad Request: Invalid input (empty name)
-            - 409 Conflict: Project name already exists
-            - 500 Internal Server Error: Database operation failed
+        Created project details
     """
+    # TODO: Add deployment-mode validation (Task 5)
+
+    # Create project record first (to get ID)
+    project_id = app.state.db.create_project(
+        name=request.name,
+        description=request.description,
+        source_type=request.source_type.value,
+        source_location=request.source_location,
+        source_branch=request.source_branch,
+        workspace_path=""  # Will be updated after workspace creation
+    )
+
+    # Create workspace
     try:
-        # Validate input (additional check beyond Pydantic)
-        if not request.project_name or not request.project_name.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="Project name cannot be empty"
-            )
-
-        # Check for duplicate project names
-        existing_projects = app.state.db.list_projects()
-        for project in existing_projects:
-            if project["name"].lower() == request.project_name.strip().lower():
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Project with name '{request.project_name}' already exists"
-                )
-
-        # Create project in database with INIT status
-        project_id = app.state.db.create_project(
-            name=request.project_name.strip(),
-            status=ProjectStatus.INIT
+        workspace_path = app.state.workspace_manager.create_workspace(
+            project_id=project_id,
+            source_type=request.source_type,
+            source_location=request.source_location,
+            source_branch=request.source_branch
         )
 
-        # Retrieve created project to get all fields
-        created_project = app.state.db.get_project(project_id)
-
-        if not created_project:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to retrieve created project"
-            )
-
-        # Return created project
-        return ProjectResponse(
-            id=created_project["id"],
-            name=created_project["name"],
-            status=created_project["status"],
-            phase=created_project.get("phase", "discovery"),
-            created_at=created_project["created_at"],
-            config=created_project.get("config")
+        # Update project with workspace path and git status
+        app.state.db.update_project(
+            project_id,
+            {
+                "workspace_path": str(workspace_path),
+                "git_initialized": True
+            }
         )
 
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is
-        raise
-    except sqlite3.IntegrityError as e:
-        # Handle database constraint violations
-        raise HTTPException(
-            status_code=409,
-            detail=f"Database constraint violation: {str(e)}"
-        )
     except Exception as e:
-        # Handle any other database errors
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
+        # Cleanup: delete project if workspace creation fails
+        app.state.db.delete_project(project_id)
+        raise HTTPException(status_code=500, detail=f"Workspace creation failed: {str(e)}")
+
+    # Return project details
+    project = app.state.db.get_project(project_id)
+
+    return ProjectResponse(
+        id=project["id"],
+        name=project["name"],
+        status=project.get("status", "init"),
+        phase=project.get("phase", "discovery"),
+        created_at=project["created_at"],
+        config=project.get("config")
+    )
 
 
 @app.post("/api/projects/{project_id}/start", status_code=202)
