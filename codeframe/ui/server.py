@@ -15,7 +15,7 @@ import sqlite3
 from codeframe.core.project import Project
 from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus
 from codeframe.persistence.database import Database
-from codeframe.ui.models import ProjectCreateRequest, ProjectResponse
+from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
 from codeframe.agents.lead_agent import LeadAgent
 
 

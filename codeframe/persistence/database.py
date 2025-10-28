@@ -47,9 +47,24 @@ class Database:
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                root_path TEXT,
+                description TEXT NOT NULL,
+
+                -- Source tracking (optional, can be set during setup or later)
+                source_type TEXT CHECK(source_type IN ('git_remote', 'local_path', 'upload', 'empty')) DEFAULT 'empty',
+                source_location TEXT,
+                source_branch TEXT DEFAULT 'main',
+
+                -- Managed workspace (always local to running instance)
+                workspace_path TEXT NOT NULL,
+
+                -- Git tracking (foundation for all projects)
+                git_initialized BOOLEAN DEFAULT FALSE,
+                current_commit TEXT,
+
+                -- Workflow state
                 status TEXT CHECK(status IN ('init', 'planning', 'running', 'active', 'paused', 'completed')),
                 phase TEXT CHECK(phase IN ('discovery', 'planning', 'active', 'review', 'complete')) DEFAULT 'discovery',
+
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )
@@ -292,7 +307,8 @@ class Database:
         """
         try:
             from codeframe.persistence.migrations import MigrationRunner
-            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration
+            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration as migration_001
+            from codeframe.persistence.migrations.migration_002_refactor_projects_schema import migration as migration_002
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -302,7 +318,8 @@ class Database:
             runner = MigrationRunner(str(self.db_path))
 
             # Register migrations
-            runner.register(migration)
+            runner.register(migration_001)
+            runner.register(migration_002)
 
             # Apply all pending migrations
             runner.apply_all()
@@ -313,12 +330,18 @@ class Database:
             logger.error(f"Migration failed: {e}")
             raise
 
-    def create_project(self, name: str, status: ProjectStatus) -> int:
+    def create_project(
+        self,
+        name: str,
+        status: ProjectStatus,
+        description: str = "Have not set a description yet. Prompt the user to complete it.",
+        workspace_path: str = ""
+    ) -> int:
         """Create a new project record."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT INTO projects (name, status) VALUES (?, ?)",
-            (name, status.value)
+            "INSERT INTO projects (name, description, workspace_path, status) VALUES (?, ?, ?, ?)",
+            (name, description, workspace_path, status.value)
         )
         self.conn.commit()
         return cursor.lastrowid
