@@ -84,7 +84,7 @@ class TestWorkerAgent(WorkerAgent):
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(
+            asyncio.run_coroutine_threadsafe(
                 broadcast_task_status(
                     self.websocket_manager,
                     project_id,
@@ -92,7 +92,8 @@ class TestWorkerAgent(WorkerAgent):
                     status,
                     agent_id=agent_id,
                     progress=progress
-                )
+                ),
+                loop
             )
         except RuntimeError:
             logger.debug(
@@ -602,7 +603,7 @@ Provide ONLY the corrected test code, no explanations."""
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(
+            asyncio.run_coroutine_threadsafe(
                 broadcast_test_result(
                     self.websocket_manager,
                     project_id,
@@ -611,7 +612,8 @@ Provide ONLY the corrected test code, no explanations."""
                     passed=counts.get("passed", 0),
                     failed=counts.get("failed", 0),
                     errors=counts.get("errors", 0)
-                )
+                ),
+                loop
             )
         except RuntimeError:
             logger.debug("Skipped test result broadcast (no event loop)")
