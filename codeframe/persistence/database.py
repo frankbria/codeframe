@@ -333,15 +333,46 @@ class Database:
     def create_project(
         self,
         name: str,
-        status: ProjectStatus,
-        description: str = "Have not set a description yet. Prompt the user to complete it.",
-        workspace_path: str = ""
+        description: str,
+        source_type: str = "empty",
+        source_location: Optional[str] = None,
+        source_branch: str = "main",
+        workspace_path: Optional[str] = None,
+        **kwargs
     ) -> int:
-        """Create a new project record."""
+        """Create a new project.
+
+        Args:
+            name: Project name
+            description: Project description/purpose
+            source_type: Source type (git_remote, local_path, upload, empty)
+            source_location: Git URL, local path, or upload filename
+            source_branch: Git branch (for git_remote)
+            workspace_path: Path to workspace directory
+            **kwargs: Additional fields (config, status, etc.)
+
+        Returns:
+            Created project ID
+        """
         cursor = self.conn.cursor()
         cursor.execute(
-            "INSERT INTO projects (name, description, workspace_path, status) VALUES (?, ?, ?, ?)",
-            (name, description, workspace_path, status.value)
+            """
+            INSERT INTO projects (
+                name, description, source_type, source_location,
+                source_branch, workspace_path, git_initialized, status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                name,
+                description,
+                source_type,
+                source_location,
+                source_branch,
+                workspace_path or "",
+                False,  # Will be set to True after workspace initialization
+                "init"  # Default status
+            )
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -639,6 +670,16 @@ class Database:
         self.conn.commit()
 
         return cursor.rowcount
+
+    def delete_project(self, project_id: int) -> None:
+        """Delete a project.
+
+        Args:
+            project_id: Project ID to delete
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        self.conn.commit()
 
     def create_agent(
         self,
