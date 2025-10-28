@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 
@@ -18,6 +19,9 @@ from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.workspace import WorkspaceManager
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
