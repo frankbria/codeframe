@@ -94,6 +94,37 @@ class BackendWorkerAgent:
             f"ws_enabled={ws_manager is not None}"
         )
 
+    def _broadcast_async(
+        self,
+        broadcast_func,
+        *args,
+        **kwargs
+    ) -> None:
+        """
+        Helper to broadcast WebSocket messages (handles async event loop safely).
+
+        Uses asyncio.run_coroutine_threadsafe to schedule coroutines from threads,
+        avoiding deadlocks when called from thread pool executors.
+
+        Args:
+            broadcast_func: Async function to call (e.g., broadcast_task_status)
+            *args: Positional arguments for broadcast_func
+            **kwargs: Keyword arguments for broadcast_func
+        """
+        if not self.ws_manager:
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.run_coroutine_threadsafe(
+                broadcast_func(*args, **kwargs),
+                loop
+            )
+        except RuntimeError:
+            logger.debug(
+                f"Skipped broadcast (no event loop): {broadcast_func.__name__}"
+            )
+
     def fetch_next_task(self) -> Optional[Dict[str, Any]]:
         """
         Fetch highest priority pending task for this project.
@@ -412,14 +443,13 @@ Guidelines:
         if self.ws_manager:
             try:
                 from codeframe.ui.websocket_broadcasts import broadcast_task_status
-                asyncio.create_task(
-                    broadcast_task_status(
-                        self.ws_manager,
-                        self.project_id,
-                        task_id,
-                        status,
-                        agent_id=agent_id
-                    )
+                self._broadcast_async(
+                    broadcast_task_status,
+                    self.ws_manager,
+                    self.project_id,
+                    task_id,
+                    status,
+                    agent_id=agent_id
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast task status: {e}")
@@ -484,18 +514,17 @@ Guidelines:
                 )
 
                 # Broadcast test result
-                asyncio.create_task(
-                    broadcast_test_result(
-                        self.ws_manager,
-                        self.project_id,
-                        task_id,
-                        test_result.status,
-                        test_result.passed,
-                        test_result.failed,
-                        test_result.errors,
-                        test_result.total,
-                        test_result.duration
-                    )
+                self._broadcast_async(
+                    broadcast_test_result,
+                    self.ws_manager,
+                    self.project_id,
+                    task_id,
+                    test_result.status,
+                    test_result.passed,
+                    test_result.failed,
+                    test_result.errors,
+                    test_result.total,
+                    test_result.duration
                 )
 
                 # Broadcast activity update
@@ -504,15 +533,14 @@ Guidelines:
                 else:
                     activity_message = f"Tests {test_result.status} for task #{task_id} ({test_result.passed}/{test_result.total} passed)"
 
-                asyncio.create_task(
-                    broadcast_activity_update(
-                        self.ws_manager,
-                        self.project_id,
-                        "tests_completed",
-                        "backend-worker",
-                        activity_message,
-                        task_id=task_id
-                    )
+                self._broadcast_async(
+                    broadcast_activity_update,
+                    self.ws_manager,
+                    self.project_id,
+                    "tests_completed",
+                    "backend-worker",
+                    activity_message,
+                    task_id=task_id
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast test result: {e}")
@@ -644,15 +672,14 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             if self.ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
-                    asyncio.create_task(
-                        broadcast_correction_attempt(
-                            self.ws_manager,
-                            self.project_id,
-                            task_id,
-                            attempt_num,
-                            max_attempts,
-                            "in_progress"
-                        )
+                    self._broadcast_async(
+                        broadcast_correction_attempt,
+                        self.ws_manager,
+                        self.project_id,
+                        task_id,
+                        attempt_num,
+                        max_attempts,
+                        "in_progress"
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast correction attempt: {e}")
@@ -697,25 +724,23 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                             broadcast_correction_attempt,
                             broadcast_activity_update
                         )
-                        asyncio.create_task(
-                            broadcast_correction_attempt(
-                                self.ws_manager,
-                                self.project_id,
-                                task_id,
-                                attempt_num,
-                                max_attempts,
-                                "success"
-                            )
+                        self._broadcast_async(
+                            broadcast_correction_attempt,
+                            self.ws_manager,
+                            self.project_id,
+                            task_id,
+                            attempt_num,
+                            max_attempts,
+                            "success"
                         )
-                        asyncio.create_task(
-                            broadcast_activity_update(
-                                self.ws_manager,
-                                self.project_id,
-                                "correction_success",
-                                "backend-worker",
-                                f"Self-correction successful after {attempt_num} attempt(s) for task #{task_id}",
-                                task_id=task_id
-                            )
+                        self._broadcast_async(
+                            broadcast_activity_update,
+                            self.ws_manager,
+                            self.project_id,
+                            "correction_success",
+                            "backend-worker",
+                            f"Self-correction successful after {attempt_num} attempt(s) for task #{task_id}",
+                            task_id=task_id
                         )
                     except Exception as e:
                         logger.debug(f"Failed to broadcast correction success: {e}")
@@ -732,16 +757,15 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
                     error_summary = f"Status: {latest_result['status'] if latest_result else 'unknown'}"
-                    asyncio.create_task(
-                        broadcast_correction_attempt(
-                            self.ws_manager,
-                            self.project_id,
-                            task_id,
-                            attempt_num,
-                            max_attempts,
-                            "failed",
-                            error_summary=error_summary
-                        )
+                    self._broadcast_async(
+                        broadcast_correction_attempt,
+                        self.ws_manager,
+                        self.project_id,
+                        task_id,
+                        attempt_num,
+                        max_attempts,
+                        "failed",
+                        error_summary=error_summary
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast correction failure: {e}")
@@ -852,15 +876,14 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             if self.ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_activity_update
-                    asyncio.create_task(
-                        broadcast_activity_update(
-                            self.ws_manager,
-                            self.project_id,
-                            "task_completed",
-                            "backend-worker",
-                            f"Completed task #{task_id}: {task['title']}",
-                            task_id=task_id
-                        )
+                    self._broadcast_async(
+                        broadcast_activity_update,
+                        self.ws_manager,
+                        self.project_id,
+                        "task_completed",
+                        "backend-worker",
+                        f"Completed task #{task_id}: {task['title']}",
+                        task_id=task_id
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task completion: {e}")

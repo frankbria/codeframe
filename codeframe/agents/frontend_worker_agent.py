@@ -89,8 +89,8 @@ class FrontendWorkerAgent(WorkerAgent):
         try:
             # Check if there's a running event loop
             loop = asyncio.get_running_loop()
-            # If we're already in an async context, create task
-            loop.create_task(
+            # Use run_coroutine_threadsafe for thread-safe execution
+            asyncio.run_coroutine_threadsafe(
                 broadcast_task_status(
                     self.websocket_manager,
                     project_id,
@@ -98,7 +98,8 @@ class FrontendWorkerAgent(WorkerAgent):
                     status,
                     agent_id=agent_id,
                     progress=progress
-                )
+                ),
+                loop
             )
         except RuntimeError:
             # No running event loop - skip broadcast in sync context
