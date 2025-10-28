@@ -42,14 +42,33 @@ class Database:
         """Create database tables."""
         cursor = self.conn.cursor()
 
+        # Drop old projects table if it exists (migration for schema refactoring)
+        # This is safe for development as we're only dropping test/dev data
+        cursor.execute("DROP TABLE IF EXISTS projects")
+
         # Projects table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                root_path TEXT,
+                description TEXT NOT NULL,
+
+                -- Source tracking (optional, can be set during setup or later)
+                source_type TEXT CHECK(source_type IN ('git_remote', 'local_path', 'upload', 'empty')) DEFAULT 'empty',
+                source_location TEXT,
+                source_branch TEXT DEFAULT 'main',
+
+                -- Managed workspace (always local to running instance)
+                workspace_path TEXT NOT NULL,
+
+                -- Git tracking (foundation for all projects)
+                git_initialized BOOLEAN DEFAULT FALSE,
+                current_commit TEXT,
+
+                -- Workflow state
                 status TEXT CHECK(status IN ('init', 'planning', 'running', 'active', 'paused', 'completed')),
                 phase TEXT CHECK(phase IN ('discovery', 'planning', 'active', 'review', 'complete')) DEFAULT 'discovery',
+
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )
