@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from typing import List, Dict, Any
+from enum import Enum
 import asyncio
 import json
 import os
@@ -18,6 +19,34 @@ from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.workspace import WorkspaceManager
+
+
+class DeploymentMode(str, Enum):
+    """Deployment mode for CodeFRAME."""
+    SELF_HOSTED = "self_hosted"
+    HOSTED = "hosted"
+
+
+def get_deployment_mode() -> DeploymentMode:
+    """Get current deployment mode from environment.
+
+    Returns:
+        DeploymentMode.SELF_HOSTED or DeploymentMode.HOSTED
+    """
+    mode = os.getenv("CODEFRAME_DEPLOYMENT_MODE", "self_hosted").lower()
+
+    if mode == "hosted":
+        return DeploymentMode.HOSTED
+    return DeploymentMode.SELF_HOSTED
+
+
+def is_hosted_mode() -> bool:
+    """Check if running in hosted SaaS mode.
+
+    Returns:
+        True if hosted mode, False if self-hosted
+    """
+    return get_deployment_mode() == DeploymentMode.HOSTED
 
 
 @asynccontextmanager
@@ -254,7 +283,12 @@ async def create_project(request: ProjectCreateRequest):
     Returns:
         Created project details
     """
-    # TODO: Add deployment-mode validation (Task 5)
+    # Security: Hosted mode cannot access user's local filesystem
+    if is_hosted_mode() and request.source_type == SourceType.LOCAL_PATH:
+        raise HTTPException(
+            status_code=403,
+            detail="source_type='local_path' not available in hosted mode"
+        )
 
     # Create project record first (to get ID)
     project_id = app.state.db.create_project(
