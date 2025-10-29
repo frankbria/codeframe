@@ -1961,6 +1961,91 @@ db.update_project(project_id, {"phase": "active"})
 
 ---
 
+## Sprint 4.5: Project Schema Refactoring ✅ COMPLETE
+
+**Goal**: Remove restrictive project_type enum, support flexible source types, enable both deployment modes
+
+**User Story**: As a developer, I want to create projects from multiple sources (git, local, upload, empty) in both self-hosted and hosted SaaS modes.
+
+**Status**: ✅ COMPLETE (2025-10-28)
+
+**Implementation Tasks**:
+
+1. ✅ **Database Schema Migration**
+   - Dropped old projects table with `project_type` enum and `root_path`
+   - Added: `description`, `source_type`, `source_location`, `source_branch`, `workspace_path`, `git_initialized`, `current_commit`
+   - Implemented CHECK constraints for enum validation
+   - **Tests**: 3 schema validation tests (100% pass)
+   - **Commit**: 78f6a0b
+
+2. ✅ **API Models Refactoring**
+   - Replaced `ProjectType` enum with `SourceType` enum
+   - Created new `ProjectCreateRequest` model with source configuration
+   - Added cross-field validation (source_location required when source_type != empty)
+   - **Tests**: 6 model validation tests (100% pass)
+   - **Commit**: c2e8a3f
+
+3. ✅ **Workspace Management Module**
+   - Created `codeframe/workspace/manager.py` for isolated project workspaces
+   - Supports git_remote, local_path, upload, and empty source types
+   - Automatic git initialization for all workspaces
+   - **Tests**: 3 workspace creation tests (100% pass)
+   - **Commit**: 80384f1
+
+4. ✅ **API Endpoint Updates**
+   - Updated `/api/projects` POST endpoint with new schema
+   - Integrated WorkspaceManager for workspace creation
+   - Added rollback mechanism (delete project if workspace creation fails)
+   - **Tests**: 4 API integration tests (100% pass)
+   - **Commit**: 5a208c8
+
+5. ✅ **Deployment Mode Validation**
+   - Added `DeploymentMode` enum and detection functions
+   - Security: Block `local_path` source type in hosted mode (HTTP 403)
+   - Environment variable: `CODEFRAME_DEPLOYMENT_MODE` (self_hosted|hosted)
+   - **Tests**: 3 deployment mode tests (100% pass)
+   - **Commit**: 7e7727d
+
+6. ✅ **Integration Testing**
+   - End-to-end project creation flow tests
+   - Rollback mechanism verification
+   - Database + workspace + git initialization integration
+   - **Tests**: 2 integration tests (100% pass)
+   - **Commit**: 1131fc5
+
+**Total Tests Added**: 21 tests (100% pass rate)
+
+**Schema Changes Summary**:
+- **Removed**: `project_type` enum, `root_path` field
+- **Added**: `description` (NOT NULL), `source_type` (enum), `source_location`, `source_branch`, `workspace_path`, `git_initialized`, `current_commit`
+
+**Source Types Supported**:
+- `git_remote` - Clone from git URL (both modes)
+- `local_path` - Copy from filesystem (self-hosted only)
+- `upload` - Extract from archive (future)
+- `empty` - Initialize empty git repo (both modes)
+
+**Deployment Modes**:
+- `self_hosted` (default) - All source types allowed, filesystem access
+- `hosted` - Git remote/empty/upload only, no filesystem access
+
+**Definition of Done**:
+- ✅ Database schema migrated with new fields
+- ✅ API models support flexible source types
+- ✅ Workspace manager creates isolated project directories
+- ✅ API endpoints integrated with workspace management
+- ✅ Deployment mode security validation active
+- ✅ 21 new tests passing (100% coverage)
+- ✅ Integration tests verify end-to-end flow
+
+**Documentation**:
+- ✅ Implementation plan: `docs/plans/2025-10-27-project-schema-implementation.md`
+- ✅ Test results: `claudedocs/project-schema-test-results.md`
+
+**Sprint Review**: Flexible project creation - multiple sources, secure deployment modes, robust workspace management!
+
+---
+
 ## Sprint 5: Human in the Loop (Week 5)
 
 **Goal**: Agents can ask for help when blocked
