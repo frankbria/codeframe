@@ -10,6 +10,7 @@ from typing import List, Dict, Any
 from enum import Enum
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 
@@ -47,6 +48,8 @@ def is_hosted_mode() -> bool:
         True if hosted mode, False if self-hosted
     """
     return get_deployment_mode() == DeploymentMode.HOSTED
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
