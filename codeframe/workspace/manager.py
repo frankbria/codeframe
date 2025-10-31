@@ -206,8 +206,11 @@ class WorkspaceManager:
     def _is_safe_path(self, path: Path) -> bool:
         """Check if path is safe to access.
 
-        Security policy: Only allow paths under user's home directory.
-        This prevents access to system files, other users' files, etc.
+        Security policy:
+        - Must be under user's home directory
+        - Must be a real path (resolve symlinks)
+        - Cannot contain sensitive directories
+        - No path traversal attempts
 
         Args:
             path: Path to validate (must be absolute)
@@ -216,14 +219,22 @@ class WorkspaceManager:
             True if path is safe to access
         """
         try:
-            # Get user's home directory
+            # Resolve symlinks and normalize (strict=True requires path to exist)
+            resolved_path = path.resolve(strict=True)
             home_dir = Path.home().resolve()
 
             # Check if path is under home directory
-            path.relative_to(home_dir)
+            resolved_path.relative_to(home_dir)
+
+            # Blacklist sensitive directories
+            sensitive_dirs = {'.ssh', '.aws', '.gnupg', '.config'}
+            for part in resolved_path.parts:
+                if part in sensitive_dirs:
+                    return False
+
             return True
-        except ValueError:
-            # Path is not under home directory
+        except (ValueError, RuntimeError, OSError):
+            # Path is not under home directory, doesn't exist, or other error
             return False
 
     def _init_from_upload(self, workspace_path: Path, upload_filename: str) -> None:
