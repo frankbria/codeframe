@@ -3,7 +3,7 @@
  * Tests T100 and T101: Dashboard integration with WebSocket updates
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import Dashboard from '@/components/Dashboard';
 import { AgentStateProvider } from '@/components/AgentStateProvider';
 import * as api from '@/lib/api';
@@ -134,20 +134,16 @@ describe('Dashboard Real-Time Updates Integration', () => {
       const agentCreatedMessage = {
         type: 'agent_created',
         project_id: 1,
-        data: {
-          id: 'backend-worker-1',
-          type: 'backend-worker',
-          status: 'idle',
-          provider: 'anthropic',
-          maturity: 'directive',
-          context_tokens: 0,
-          tasks_completed: 0,
-          timestamp: Date.now(),
-        },
+        agent_id: 'backend-worker-1',
+        agent_type: 'backend-worker',
+        provider: 'anthropic',
+        timestamp: Date.now(),
       };
 
-      // Trigger message handler
-      messageHandlers.forEach((handler) => handler(agentCreatedMessage));
+      // Trigger message handler wrapped in act
+      await act(async () => {
+        messageHandlers.forEach((handler) => handler(agentCreatedMessage));
+      });
 
       // Verify Dashboard updates with new agent
       await waitFor(() => {
@@ -202,8 +198,10 @@ describe('Dashboard Real-Time Updates Integration', () => {
         },
       };
 
-      // Trigger message handler
-      messageHandlers.forEach((handler) => handler(statusChangeMessage));
+      // Trigger message handler wrapped in act
+      await act(async () => {
+        messageHandlers.forEach((handler) => handler(statusChangeMessage));
+      });
 
       // Verify agent status updated
       await waitFor(() => {
@@ -272,7 +270,9 @@ describe('Dashboard Real-Time Updates Integration', () => {
         },
       };
 
-      messageHandlers.forEach((handler) => handler(backendUpdateMessage));
+      await act(async () => {
+        messageHandlers.forEach((handler) => handler(backendUpdateMessage));
+      });
 
       // Verify backend worker updated but frontend specialist unchanged
       await waitFor(() => {
@@ -296,7 +296,9 @@ describe('Dashboard Real-Time Updates Integration', () => {
         },
       };
 
-      messageHandlers.forEach((handler) => handler(frontendUpdateMessage));
+      await act(async () => {
+        messageHandlers.forEach((handler) => handler(frontendUpdateMessage));
+      });
 
       // Both should still be present and updated
       await waitFor(() => {
@@ -389,8 +391,10 @@ describe('Dashboard Real-Time Updates Integration', () => {
         },
       ];
 
-      updates.forEach((update) => {
-        messageHandlers.forEach((handler) => handler(update));
+      await act(async () => {
+        updates.forEach((update) => {
+          messageHandlers.forEach((handler) => handler(update));
+        });
       });
 
       // All agents should still be present

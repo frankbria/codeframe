@@ -43,6 +43,7 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
 
   // Format agent type for display
   const formatAgentType = (type: string): string => {
+    if (!type) return 'Unknown';
     if (type.includes('-')) {
       // Convert "backend-worker" to "Backend Worker"
       return type
