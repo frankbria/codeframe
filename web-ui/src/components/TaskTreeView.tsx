@@ -5,14 +5,14 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import type { Issue, Task, WorkStatus } from '@/types/api';
 
 interface TaskTreeViewProps {
   issues: Issue[];
 }
 
-export default function TaskTreeView({ issues }: TaskTreeViewProps) {
+const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
   const [expandedIssues, setExpandedIssues] = useState<Set<string>>(new Set());
 
   // Toggle issue expansion
@@ -269,4 +269,8 @@ export default function TaskTreeView({ issues }: TaskTreeViewProps) {
       })}
     </div>
   );
-}
+});
+
+TaskTreeView.displayName = 'TaskTreeView';
+
+export default TaskTreeView;

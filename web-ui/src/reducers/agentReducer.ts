@@ -1,0 +1,348 @@
+/**
+ * Agent State Reducer
+ *
+ * Core reducer for centralized agent state management.
+ * Handles all state transitions with immutability and timestamp-based conflict resolution.
+ *
+ * Phase: 5.2 - Dashboard Multi-Agent State Management
+ * Date: 2025-11-06
+ * Tasks: T020-T034
+ */
+
+import type { AgentState, AgentAction } from '@/types/agentState';
+
+// ============================================================================
+// Initial State
+// ============================================================================
+
+/**
+ * Get initial agent state
+ * Used for both initialization and testing
+ */
+export function getInitialState(): AgentState {
+  return {
+    agents: [],
+    tasks: [],
+    activity: [],
+    projectProgress: null,
+    wsConnected: false,
+    lastSyncTimestamp: 0,
+  };
+}
+
+// ============================================================================
+// Validation Helpers
+// ============================================================================
+
+/**
+ * Warn if agent count exceeds recommended maximum
+ * Called after state updates that modify agents array
+ */
+function validateAgentCount(agentCount: number): void {
+  if (agentCount > 10) {
+    console.warn(
+      `Agent count (${agentCount}) exceeds maximum of 10. ` +
+      `Performance may be impacted. Consider retiring unused agents.`
+    );
+  }
+}
+
+/**
+ * Warn if activity feed exceeds maximum size
+ * This should never happen due to FIFO trimming, but check anyway
+ */
+function validateActivitySize(activityCount: number): void {
+  if (activityCount > 50) {
+    console.error(
+      `Activity feed size (${activityCount}) exceeds maximum of 50. ` +
+      `This indicates a bug in the FIFO trimming logic.`
+    );
+  }
+}
+
+// ============================================================================
+// Main Reducer
+// ============================================================================
+
+/**
+ * Agent state reducer
+ *
+ * Handles all state transitions with the following guarantees:
+ * - Immutability: Never mutates state, always returns new objects
+ * - Timestamp conflict resolution: Rejects stale updates
+ * - FIFO activity feed: Maintains 50-item sliding window
+ * - Atomic updates: Multiple related changes happen together
+ */
+export function agentReducer(
+  state: AgentState,
+  action: AgentAction
+): AgentState {
+  // Development mode logging
+  if (process.env.NODE_ENV === 'development') {
+    console.group(`🔄 Action: ${action.type}`);
+    console.log('Previous State:', state);
+    console.log('Action Payload:', action.payload);
+  }
+
+  let newState: AgentState;
+
+  switch (action.type) {
+    // ========================================================================
+    // T021: AGENTS_LOADED - Load initial agents
+    // ========================================================================
+    case 'AGENTS_LOADED': {
+      newState = {
+        ...state,
+        agents: action.payload,
+      };
+      validateAgentCount(newState.agents.length);
+      break;
+    }
+
+    // ========================================================================
+    // T022: AGENT_CREATED - Add new agent
+    // ========================================================================
+    case 'AGENT_CREATED': {
+      newState = {
+        ...state,
+        agents: [...state.agents, action.payload],
+      };
+      validateAgentCount(newState.agents.length);
+      break;
+    }
+
+    // ========================================================================
+    // T023: AGENT_UPDATED - Update agent with timestamp conflict resolution
+    // ========================================================================
+    case 'AGENT_UPDATED': {
+      const { agentId, updates, timestamp } = action.payload;
+      const existingAgent = state.agents.find((a) => a.id === agentId);
+
+      // Agent not found - no change
+      if (!existingAgent) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`Agent ${agentId} not found for update`);
+        }
+        newState = state;
+        break;
+      }
+
+      // Timestamp conflict resolution: reject stale updates
+      if (existingAgent.timestamp > timestamp) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(
+            `Rejected stale update for agent ${agentId}. ` +
+            `Current timestamp: ${existingAgent.timestamp}, ` +
+            `Update timestamp: ${timestamp}`
+          );
+        }
+        newState = state; // Return same reference for rejected updates
+        break;
+      }
+
+      // Apply update
+      newState = {
+        ...state,
+        agents: state.agents.map((agent) =>
+          agent.id === agentId
+            ? { ...agent, ...updates, timestamp }
+            : agent
+        ),
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T024: AGENT_RETIRED - Remove agent
+    // ========================================================================
+    case 'AGENT_RETIRED': {
+      const { agentId } = action.payload;
+
+      newState = {
+        ...state,
+        agents: state.agents.filter((agent) => agent.id !== agentId),
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T025: TASK_ASSIGNED - Atomic agent + task update
+    // ========================================================================
+    case 'TASK_ASSIGNED': {
+      const { taskId, agentId, taskTitle, timestamp } = action.payload;
+
+      // Update task status and agent assignment
+      newState = {
+        ...state,
+        tasks: state.tasks.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: 'in_progress',
+                agent_id: agentId,
+                timestamp,
+              }
+            : task
+        ),
+        agents: state.agents.map((agent) =>
+          agent.id === agentId
+            ? {
+                ...agent,
+                status: 'working',
+                current_task: {
+                  id: taskId,
+                  title: taskTitle || `Task #${taskId}`,
+                },
+                timestamp,
+              }
+            : agent
+        ),
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T026: TASK_STATUS_CHANGED - Update task status and progress
+    // ========================================================================
+    case 'TASK_STATUS_CHANGED': {
+      const { taskId, status, progress, timestamp } = action.payload;
+
+      newState = {
+        ...state,
+        tasks: state.tasks.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status,
+                progress,
+                timestamp,
+              }
+            : task
+        ),
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T027: TASK_BLOCKED - Mark task as blocked with dependencies
+    // ========================================================================
+    case 'TASK_BLOCKED': {
+      const { taskId, blockedBy, timestamp } = action.payload;
+
+      newState = {
+        ...state,
+        tasks: state.tasks.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: 'blocked',
+                blocked_by: blockedBy,
+                timestamp,
+              }
+            : task
+        ),
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T028: TASK_UNBLOCKED - Unblock task and clear dependencies
+    // ========================================================================
+    case 'TASK_UNBLOCKED': {
+      const { taskId, timestamp } = action.payload;
+
+      newState = {
+        ...state,
+        tasks: state.tasks.map((task) =>
+          task.id === taskId
+            ? {
+                ...task,
+                status: 'pending',
+                blocked_by: undefined,
+                timestamp,
+              }
+            : task
+        ),
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T029: ACTIVITY_ADDED - Add activity with FIFO 50-item limit
+    // ========================================================================
+    case 'ACTIVITY_ADDED': {
+      // Add new item at beginning, keep only first 49 old items (total 50)
+      const newActivity = [action.payload, ...state.activity.slice(0, 49)];
+
+      newState = {
+        ...state,
+        activity: newActivity,
+      };
+
+      validateActivitySize(newState.activity.length);
+      break;
+    }
+
+    // ========================================================================
+    // T030: PROGRESS_UPDATED - Update project progress
+    // ========================================================================
+    case 'PROGRESS_UPDATED': {
+      newState = {
+        ...state,
+        projectProgress: action.payload,
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T031: WS_CONNECTED - Update WebSocket connection status
+    // ========================================================================
+    case 'WS_CONNECTED': {
+      newState = {
+        ...state,
+        wsConnected: action.payload,
+      };
+      break;
+    }
+
+    // ========================================================================
+    // T032: FULL_RESYNC - Atomic state replacement after reconnection
+    // ========================================================================
+    case 'FULL_RESYNC': {
+      const { agents, tasks, activity, timestamp } = action.payload;
+
+      newState = {
+        ...state,
+        agents,
+        tasks,
+        activity,
+        wsConnected: true, // Resync implies connection restored
+        lastSyncTimestamp: timestamp,
+        // Preserve projectProgress (not included in resync payload)
+      };
+
+      validateAgentCount(newState.agents.length);
+      validateActivitySize(newState.activity.length);
+      break;
+    }
+
+    // ========================================================================
+    // Default case - unknown action type
+    // ========================================================================
+    default: {
+      // TypeScript exhaustiveness check
+      const _exhaustiveCheck: never = action;
+      console.warn('Unknown action type:', _exhaustiveCheck);
+      newState = state;
+      break;
+    }
+  }
+
+  // Development mode logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Next State:', newState);
+    console.groupEnd();
+  }
+
+  return newState;
+}
