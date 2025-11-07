@@ -1,0 +1,6 @@
+
+/**
+ * Test fixtures for agent state
+ * NOT A TEST SUITE - just helper functions
+ */
+
