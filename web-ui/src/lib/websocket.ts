@@ -10,6 +10,14 @@ export class WebSocketClient {
   private ws: WebSocket | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private messageHandlers: Set<(message: WebSocketMessage) => void> = new Set();
+  private reconnectHandlers: Set<() => void> = new Set();
+  private connectionHandlers: Set<(connected: boolean) => void> = new Set();
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 10;
+  private baseReconnectDelay: number = 1000; // 1 second
+  private maxReconnectDelay: number = 30000; // 30 seconds
+  private lastReconnectTime: number = 0;
+  private minReconnectInterval: number = 500; // Minimum 500ms between reconnects (debounce)
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) {
@@ -20,10 +28,18 @@ export class WebSocketClient {
 
     this.ws.onopen = () => {
       console.log('WebSocket connected');
+
+      // Reset reconnect attempts on successful connection
+      this.reconnectAttempts = 0;
+
       if (this.reconnectTimeout) {
         clearTimeout(this.reconnectTimeout);
         this.reconnectTimeout = null;
+        // Notify reconnect handlers
+        this.notifyReconnect();
       }
+      // Notify connection change
+      this.notifyConnectionChange(true);
     };
 
     this.ws.onmessage = (event) => {
@@ -37,6 +53,7 @@ export class WebSocketClient {
 
     this.ws.onclose = () => {
       console.log('WebSocket disconnected, reconnecting...');
+      this.notifyConnectionChange(false);
       this.reconnect();
     };
 
@@ -56,10 +73,51 @@ export class WebSocketClient {
     }
   }
 
+  /**
+   * Reconnect with exponential backoff and debounce (T093-T094)
+   *
+   * Implements:
+   * - Exponential backoff: delay doubles with each attempt (1s, 2s, 4s, 8s, 16s, 30s max)
+   * - Max attempts: stops after 10 failed attempts
+   * - Debounce: minimum 500ms between reconnection attempts
+   */
   private reconnect() {
+    // Debounce: Prevent rapid reconnect cycles (T094)
+    const now = Date.now();
+    const timeSinceLastReconnect = now - this.lastReconnectTime;
+    if (timeSinceLastReconnect < this.minReconnectInterval) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Reconnect debounced, too soon since last attempt');
+      }
+      return;
+    }
+
+    // Check max attempts
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error(
+        `WebSocket failed to reconnect after ${this.maxReconnectAttempts} attempts`
+      );
+      return;
+    }
+
+    // Calculate exponential backoff delay (T093)
+    // Formula: baseDelay * 2^attempts, capped at maxDelay
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts),
+      this.maxReconnectDelay
+    );
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        `Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`
+      );
+    }
+
     this.reconnectTimeout = setTimeout(() => {
+      this.reconnectAttempts++;
+      this.lastReconnectTime = Date.now();
       this.connect();
-    }, 3000); // Reconnect after 3 seconds
+    }, delay);
   }
 
   subscribe(projectId: number) {
@@ -82,6 +140,36 @@ export class WebSocketClient {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     }
+  }
+
+  /**
+   * Register a callback to be called when WebSocket reconnects
+   */
+  onReconnect(handler: () => void) {
+    this.reconnectHandlers.add(handler);
+    return () => this.reconnectHandlers.delete(handler);
+  }
+
+  /**
+   * Register a callback to be called when connection status changes
+   */
+  onConnectionChange(handler: (connected: boolean) => void) {
+    this.connectionHandlers.add(handler);
+    return () => this.connectionHandlers.delete(handler);
+  }
+
+  /**
+   * Notify all connection change handlers
+   */
+  private notifyConnectionChange(connected: boolean) {
+    this.connectionHandlers.forEach((handler) => handler(connected));
+  }
+
+  /**
+   * Notify all reconnect handlers
+   */
+  private notifyReconnect() {
+    this.reconnectHandlers.forEach((handler) => handler());
   }
 }
 

@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { projectsApi } from '@/lib/api';
 import type { DiscoveryProgressResponse } from '@/types/api';
 import ProgressBar from './ProgressBar';
@@ -15,7 +15,7 @@ interface DiscoveryProgressProps {
   projectId: number;
 }
 
-export default function DiscoveryProgress({ projectId }: DiscoveryProgressProps) {
+const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: DiscoveryProgressProps) {
   const [data, setData] = useState<DiscoveryProgressResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,4 +133,8 @@ export default function DiscoveryProgress({ projectId }: DiscoveryProgressProps)
       </div>
     </div>
   );
-}
+});
+
+DiscoveryProgress.displayName = 'DiscoveryProgress';
+
+export default DiscoveryProgress;

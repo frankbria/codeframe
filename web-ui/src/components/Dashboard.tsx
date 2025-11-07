@@ -4,11 +4,11 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import useSWR from 'swr';
-import { projectsApi, agentsApi, blockersApi, activityApi } from '@/lib/api';
-import { getWebSocketClient } from '@/lib/websocket';
-import type { Project, Agent, Blocker, ActivityItem, WebSocketMessage, Task, TaskStatus, AgentStatus, AgentType, AgentMaturity } from '@/types';
+import { projectsApi, blockersApi } from '@/lib/api';
+import { useAgentState } from '@/hooks/useAgentState';
+import type { Project, Blocker, WebSocketMessage } from '@/types';
 import type { PRDResponse, IssuesResponse } from '@/types/api';
 import ChatInterface from './ChatInterface';
 import PRDModal from './PRDModal';
@@ -21,9 +21,27 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ projectId }: DashboardProps) {
-  const [wsConnected, setWsConnected] = useState(false);
+  // Use centralized agent state from Context (Phase 5.2)
+  const { agents, tasks, activity, projectProgress, wsConnected } = useAgentState();
+
   const [showChat, setShowChat] = useState(false);
   const [showPRD, setShowPRD] = useState(false);
+
+  // Memoize filtered agent lists for performance (T111)
+  const activeAgents = useMemo(
+    () => agents.filter(a => a.status === 'working' || a.status === 'blocked'),
+    [agents]
+  );
+
+  const idleAgents = useMemo(
+    () => agents.filter(a => a.status === 'idle'),
+    [agents]
+  );
+
+  // Stable callback for agent click handler (T112)
+  const handleAgentClick = useCallback((agentId: string) => {
+    console.log('Agent clicked:', agentId);
+  }, []);
 
   // Fetch project status
   const { data: projectData, mutate: mutateProject } = useSWR(
@@ -31,22 +49,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
     () => projectsApi.getStatus(projectId).then((res) => res.data)
   );
 
-  // Fetch agents
-  const { data: agentsData } = useSWR(
-    `/projects/${projectId}/agents`,
-    () => agentsApi.list(projectId).then((res) => res.data.agents)
-  );
-
   // Fetch blockers
   const { data: blockersData, mutate: mutateBlockers } = useSWR(
     `/projects/${projectId}/blockers`,
     () => blockersApi.list(projectId).then((res) => res.data.blockers)
-  );
-
-  // Fetch activity
-  const { data: activityData } = useSWR(
-    `/projects/${projectId}/activity`,
-    () => activityApi.list(projectId, 10).then((res) => res.data.activity)
   );
 
   // Fetch PRD data (cf-26)
@@ -63,340 +69,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
     { shouldRetryOnError: false }
   );
 
-  // Local state for real-time updates (cf-45)
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [projectProgress, setProjectProgress] = useState<any>(null);
-
-  // Initialize local state from API data
-  useEffect(() => {
-    if (agentsData) {
-      setAgents(agentsData);
-    }
-  }, [agentsData]);
-
-  useEffect(() => {
-    if (activityData) {
-      setActivity(activityData);
-    }
-  }, [activityData]);
-
-  // WebSocket connection (cf-45)
-  useEffect(() => {
-    const ws = getWebSocketClient();
-    ws.connect();
-    ws.subscribe(projectId);
-
-    const unsubscribe = ws.onMessage((message: WebSocketMessage) => {
-      // Only process messages for this project
-      if (message.project_id && message.project_id !== projectId) {
-        return;
-      }
-
-      // Handle different message types
-      switch (message.type) {
-        case 'task_status_changed':
-          // Update task status in real-time
-          if (message.task_id && message.status) {
-            setTasks((prev) =>
-              prev.map((task) =>
-                task.id === message.task_id
-                  ? { ...task, status: message.status as TaskStatus, progress: message.progress }
-                  : task
-              )
-            );
-          }
-          break;
-
-        case 'agent_status_changed':
-          // Update agent status in real-time
-          if (message.agent_id && message.status) {
-            setAgents((prev) =>
-              prev.map((agent) =>
-                agent.id === message.agent_id
-                  ? {
-                      ...agent,
-                      status: message.status as AgentStatus,
-                      current_task: message.current_task,
-                      progress: message.progress,
-                    }
-                  : agent
-              )
-            );
-          }
-          break;
-
-        case 'test_result':
-          // Add test result to activity feed
-          if (message.task_id) {
-            const passed = message.passed ?? 0;
-            const total = message.total ?? 0;
-            const testMessage =
-              message.status === 'passed'
-                ? `✅ All tests passed (${passed}/${total})`
-                : `⚠️ Tests ${message.status} (${passed}/${total} passed)`;
-
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'test_result',
-                agent: 'test-runner',
-                message: testMessage,
-              },
-              ...prev.slice(0, 49), // Keep only 50 items
-            ]);
-          }
-          break;
-
-        case 'commit_created':
-          // Add commit to activity feed
-          if (message.commit_hash && message.commit_message) {
-            const commitHash = message.commit_hash.substring(0, 7);
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'commit_created',
-                agent: 'backend-worker',
-                message: `📝 ${message.commit_message} (${commitHash})`,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'activity_update':
-          // Add activity to feed
-          if (message.message) {
-            const activityMessage = message.message;
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: message.activity_type || 'activity',
-                agent: message.agent || 'system',
-                message: activityMessage,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'progress_update':
-          // Update project progress
-          if (message.completed_tasks !== undefined && message.total_tasks !== undefined) {
-            setProjectProgress({
-              completed_tasks: message.completed_tasks,
-              total_tasks: message.total_tasks,
-              percentage: message.percentage,
-            });
-            mutateProject(); // Also refresh full project data
-          }
-          break;
-
-        case 'correction_attempt':
-          // Add correction attempt to activity feed
-          if (message.task_id) {
-            const attemptNum = message.attempt_number ?? 0;
-            const maxAttempts = message.max_attempts ?? 3;
-            const errorSummary = message.error_summary ?? 'unknown error';
-
-            const correctionMessage =
-              message.status === 'success'
-                ? `✅ Self-correction successful (attempt ${attemptNum}/${maxAttempts})`
-                : message.status === 'in_progress'
-                ? `🔄 Self-correction attempt ${attemptNum}/${maxAttempts}...`
-                : `⚠️ Correction attempt ${attemptNum} failed: ${errorSummary}`;
-
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'correction_attempt',
-                agent: 'backend-worker',
-                message: correctionMessage,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'agent_created':
-          // Add new agent to state
-          if (message.agent_id && message.agent_type) {
-            const agentId = message.agent_id;
-            const agentType = message.agent_type as AgentType;
-
-            setAgents((prev) => {
-              // Check if agent already exists
-              if (prev.some(a => a.id === agentId)) {
-                return prev;
-              }
-              // Add new agent
-              return [
-                ...prev,
-                {
-                  id: agentId,
-                  type: agentType,
-                  status: 'idle' as AgentStatus,
-                  provider: 'anthropic',
-                  maturity: 'directive' as AgentMaturity,
-                  current_task: undefined,
-                  blocker: undefined,
-                  context_tokens: 0,
-                  tasks_completed: 0,
-                },
-              ];
-            });
-
-            // Add to activity feed
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'agent_created',
-                agent: 'system',
-                message: `🤖 Created ${agentType} agent (${agentId})`,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'agent_retired':
-          // Remove agent from state
-          if (message.agent_id) {
-            setAgents((prev) => prev.filter(a => a.id !== message.agent_id));
-
-            // Add to activity feed
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'agent_retired',
-                agent: 'system',
-                message: `👋 Retired agent ${message.agent_id}`,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'task_assigned':
-          // Update task and agent state when task is assigned
-          if (message.task_id && message.agent_id) {
-            const taskId = message.task_id;
-            const agentId = message.agent_id;
-            const taskTitle = message.task_title;
-
-            // Update task status
-            setTasks((prev) =>
-              prev.map((task) =>
-                task.id === taskId
-                  ? { ...task, status: 'in_progress' as TaskStatus, agent_id: agentId }
-                  : task
-              )
-            );
-
-            // Update agent status
-            setAgents((prev) =>
-              prev.map((agent) =>
-                agent.id === agentId
-                  ? {
-                      ...agent,
-                      status: 'working' as AgentStatus,
-                      current_task: { id: taskId, title: taskTitle || `Task #${taskId}` },
-                    }
-                  : agent
-              )
-            );
-
-            // Add to activity feed
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'task_assigned',
-                agent: agentId,
-                message: `📋 Assigned task #${taskId} to ${agentId}`,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'task_blocked':
-          // Update task status to blocked
-          if (message.task_id) {
-            const taskId = message.task_id;
-            const blockedBy = message.blocked_by;
-
-            setTasks((prev) =>
-              prev.map((task) =>
-                task.id === taskId
-                  ? { ...task, status: 'blocked' as TaskStatus, blocked_by: blockedBy }
-                  : task
-              )
-            );
-
-            // Add to activity feed
-            const blockedByText = blockedBy
-              ? ` (waiting for ${Array.isArray(blockedBy) ? blockedBy.join(', ') : blockedBy})`
-              : '';
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'task_blocked',
-                agent: 'system',
-                message: `🚫 Task #${taskId} blocked${blockedByText}`,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'task_unblocked':
-          // Update task status from blocked to pending/ready
-          if (message.task_id) {
-            const taskId = message.task_id;
-
-            setTasks((prev) =>
-              prev.map((task) =>
-                task.id === taskId
-                  ? { ...task, status: 'pending' as TaskStatus, blocked_by: undefined }
-                  : task
-              )
-            );
-
-            // Add to activity feed
-            setActivity((prev) => [
-              {
-                timestamp: message.timestamp,
-                type: 'task_unblocked',
-                agent: 'system',
-                message: `✅ Task #${taskId} unblocked and ready`,
-              },
-              ...prev.slice(0, 49),
-            ]);
-          }
-          break;
-
-        case 'status_update':
-          mutateProject();
-          break;
-
-        case 'blocker_resolved':
-          mutateBlockers();
-          break;
-
-        default:
-          // Ignore unknown message types
-          break;
-      }
-
-      setWsConnected(true);
-    });
-
-    return () => {
-      unsubscribe();
-      ws.disconnect();
-    };
-  }, [projectId, mutateProject, mutateBlockers]);
+  // WebSocket connection and real-time updates are now handled by AgentStateProvider (Phase 5.2)
+  // All WebSocket message handling, state updates, and reconnection logic moved to Provider
 
   if (!projectData) {
     return <div className="p-8 text-center">Loading...</div>;
@@ -419,10 +93,16 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 <span className="text-sm text-gray-500">
                   Phase: {projectData.phase} (Step {projectData.workflow_step}/15)
                 </span>
-                {wsConnected && (
-                  <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                {/* Connection status from AgentStateProvider */}
+                {wsConnected ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-green-600">
                     <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                    Live
+                    Connected
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs text-red-600">
+                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                    Disconnected
                   </span>
                 )}
               </div>
@@ -461,7 +141,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
           <div className="mb-6" style={{ height: '500px' }}>
             <ChatInterface
               projectId={projectId}
-              agentStatus={agentsData?.find((a) => a.type === 'lead')?.status}
+              agentStatus={agents.find((a) => a.type === 'lead')?.status}
             />
           </div>
         )}
@@ -534,16 +214,16 @@ export default function Dashboard({ projectId }: DashboardProps) {
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">🤖 Multi-Agent Pool</h2>
-            {(agents.length > 0 || (agentsData && agentsData.length > 0)) && (
+            {agents.length > 0 && (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                {agents.length > 0 ? agents.length : agentsData?.length || 0} agents active
+                {agents.length} agents active
               </span>
             )}
           </div>
           
-          {(agents.length > 0 || (agentsData && agentsData.length > 0)) ? (
+          {agents.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(agents.length > 0 ? agents : agentsData || []).map((agent) => (
+              {agents.map((agent) => (
                 <AgentCard
                   key={agent.id}
                   agent={{
@@ -551,10 +231,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     type: agent.type,
                     status: agent.status === 'working' ? 'busy' : agent.status === 'blocked' ? 'blocked' : 'idle',
                     currentTask: agent.current_task?.id,
-                    tasksCompleted: 0, // TODO: Track in backend
-                    blockedBy: agent.blocker ? [0] : undefined, // TODO: Parse blocker IDs
+                    tasksCompleted: agent.tasks_completed || 0,
+                    blockedBy: agent.blocker ? [0] : undefined,
                   }}
-                  onAgentClick={(agentId) => console.log('Agent clicked:', agentId)}
+                  onAgentClick={handleAgentClick}
                 />
               ))}
             </div>
@@ -613,21 +293,27 @@ export default function Dashboard({ projectId }: DashboardProps) {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">📝 Recent Activity</h2>
           <div className="space-y-2">
-            {(activity.length > 0 ? activity : activityData || []).map((item, index) => (
-              <div key={index} className="flex items-start gap-3 text-sm">
-                <span className="text-gray-400 min-w-[60px]">
-                  {new Date(item.timestamp).toLocaleTimeString()}
-                </span>
-                <span className="flex-1">
-                  {item.type === 'task_completed' && '✅'}
-                  {item.type === 'tests_passed' && '🧪'}
-                  {item.type === 'blocker_created' && '⚠️'}
-                  {item.type === 'blocker_resolved' && '✓'}
-                  {' '}
-                  <span className="font-medium">{item.agent}:</span> {item.message}
-                </span>
+            {activity.length > 0 ? (
+              activity.map((item, index) => (
+                <div key={index} className="flex items-start gap-3 text-sm">
+                  <span className="text-gray-400 min-w-[60px]">
+                    {new Date(item.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className="flex-1">
+                    {item.type === 'task_completed' && '✅'}
+                    {item.type === 'tests_passed' && '🧪'}
+                    {item.type === 'blocker_created' && '⚠️'}
+                    {item.type === 'blocker_resolved' && '✓'}
+                    {' '}
+                    <span className="font-medium">{item.agent}:</span> {item.message}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-4 text-gray-500">
+                No recent activity
               </div>
-            ))}
+            )}
           </div>
         </div>
       </main>
