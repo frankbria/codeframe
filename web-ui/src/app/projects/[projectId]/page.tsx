@@ -11,6 +11,7 @@
 import { Profiler, ProfilerOnRenderCallback } from 'react';
 import Dashboard from '@/components/Dashboard';
 import { AgentStateProvider } from '@/components/AgentStateProvider';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 interface ProjectPageProps {
   params: {
@@ -72,10 +73,12 @@ export default function ProjectPage({ params }: ProjectPageProps) {
   }
 
   return (
-    <Profiler id="Dashboard" onRender={onRenderCallback}>
-      <AgentStateProvider projectId={projectId}>
-        <Dashboard projectId={projectId} />
-      </AgentStateProvider>
-    </Profiler>
+    <ErrorBoundary>
+      <Profiler id="Dashboard" onRender={onRenderCallback}>
+        <AgentStateProvider projectId={projectId}>
+          <Dashboard projectId={projectId} />
+        </AgentStateProvider>
+      </Profiler>
+    </ErrorBoundary>
   );
 }
