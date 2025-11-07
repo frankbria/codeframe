@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { PRDResponse } from '@/types/api';
 
@@ -15,7 +15,7 @@ interface PRDModalProps {
   prdData: PRDResponse | null;
 }
 
-export default function PRDModal({ isOpen, onClose, prdData }: PRDModalProps) {
+const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -198,4 +198,8 @@ export default function PRDModal({ isOpen, onClose, prdData }: PRDModalProps) {
       </div>
     </div>
   );
-}
+});
+
+PRDModal.displayName = 'PRDModal';
+
+export default PRDModal;

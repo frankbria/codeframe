@@ -1,0 +1,1898 @@
+[2025-11-06 19:50:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 19:50:45] Error: Non-canonical database name: cf.db
+[2025-11-06 19:50:45] Expected: beads.db
+[2025-11-06 19:50:45] 
+[2025-11-06 19:50:45] Run 'bd init' to migrate to canonical name
+[2025-11-06 19:52:58] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 19:52:58] Error: Non-canonical database name: cf.db
+[2025-11-06 19:52:58] Expected: beads.db
+[2025-11-06 19:52:58] 
+[2025-11-06 19:52:58] Run 'bd init' to migrate to canonical name
+[2025-11-06 19:55:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 19:55:45] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 19:55:46] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 19:55:46] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:33:57] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:33:57] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:33:58] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:33:58] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:34:25] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:34:25] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:34:26] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:34:26] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:07] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:07] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:08] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:08] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:13] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:13] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:14] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:14] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:17] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:17] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:18] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:18] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:24] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:24] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:24] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:24] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:30] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:30] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:31] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:31] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:37] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:37] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:38] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:38] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:43] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:43] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:44] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:44] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:48] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:48] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:49] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:49] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:35:54] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:35:54] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:55] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:35:55] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:36:01] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:36:01] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:02] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:02] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:36:08] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:36:08] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:08] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:08] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:36:14] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:36:14] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:15] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:15] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:36:18] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:36:18] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:19] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:19] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:36:46] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:36:46] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:44] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:44] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:36:50] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:36:50] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:51] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:51] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:36:58] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:36:58] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:59] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:36:59] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:37:05] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:37:05] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:05] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:05] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:37:11] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:37:11] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:12] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:12] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:37:16] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:37:16] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:17] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:17] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:37:22] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:37:22] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:23] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:23] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:37:30] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:37:30] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:31] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:31] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:37:38] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:37:38] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:39] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:39] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:37:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:37:45] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:46] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:37:46] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:38:35] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:38:35] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:36] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:36] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:38:41] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:38:41] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:42] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:42] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:38:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:38:45] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:46] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:46] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:38:52] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:38:52] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:53] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:53] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:38:58] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:38:58] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:59] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:38:59] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:05] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:05] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:06] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:06] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:11] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:11] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:12] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:12] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:15] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:15] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:16] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:16] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:23] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:23] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:24] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:24] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:33] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:33] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:34] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:34] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:40] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:40] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:41] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:41] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:44] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:44] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:45] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:45] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:39:51] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:39:51] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:52] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:39:52] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 20:40:05] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 20:40:05] Using database: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:40:06] Database opened: /home/frankbria/projects/codeframe/.beads/beads.db
+[2025-11-06 20:40:06] Error: 
+LEGACY DATABASE DETECTED!
+
+This database was created before version 0.17.5 and lacks a repository fingerprint.
+To continue using this database, you must explicitly set its repository ID:
+
+  bd migrate --update-repo-id
+
+This ensures the database is bound to this repository and prevents accidental
+database sharing between different repositories.
+
+If this is a fresh clone, run:
+  rm -rf .beads && bd init
+
+Note: Auto-claiming legacy databases is intentionally disabled to prevent
+silent corruption when databases are copied between repositories.
+
+[2025-11-06 21:30:55] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 21:30:55] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 21:58:22] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 21:58:22] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 21:58:29] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 21:58:29] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 21:58:39] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 21:58:39] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 21:58:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 21:58:45] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 21:58:52] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 21:58:52] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:01:46] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:01:46] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:04:00] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:04:00] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:16:20] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:16:20] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:16:31] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:16:31] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:16:42] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:16:42] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:19:17] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:19:17] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:20:20] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:20:20] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:20:48] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:20:48] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:45:51] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:45:51] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:46:04] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:46:04] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:46:20] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:46:20] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:46:31] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:46:31] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:46:43] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:46:43] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:46:57] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:46:57] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:47:07] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:47:07] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:47:21] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:47:21] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 22:47:34] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 22:47:34] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 23:03:36] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 23:03:36] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 23:29:34] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 23:29:34] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 23:29:52] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 23:29:52] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 23:30:01] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 23:30:01] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 23:30:12] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 23:30:12] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 23:30:24] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 23:30:24] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-06 23:30:32] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-06 23:30:32] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:00:04] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:00:04] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:00:13] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:00:13] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:00:25] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:00:25] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:00:31] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:00:31] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:00:39] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:00:39] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:00:46] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:00:46] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:01:04] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:01:04] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 00:02:01] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 00:02:01] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:02:37] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:02:37] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:12:15] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:12:15] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:29:22] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:29:22] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:31:48] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:31:48] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:32:33] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:32:33] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:32:43] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:32:43] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:32:54] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:32:54] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:33:06] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:33:06] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:33:19] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:33:19] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:33:29] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:33:29] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:33:49] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:33:49] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:34:01] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:34:01] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:34:12] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:34:12] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:34:22] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:34:22] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:34:33] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:34:33] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:34:44] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:34:44] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:34:55] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:34:55] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:35:06] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:35:06] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:35:17] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:35:17] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:35:30] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:35:30] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:35:40] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:35:40] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:35:50] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:35:50] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:36:02] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:36:02] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:36:20] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:36:20] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:36:26] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:36:26] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:36:32] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:36:32] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:36:39] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:36:39] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:36:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:36:45] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:36:49] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:36:49] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:02] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:02] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:08] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:08] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:14] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:14] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:21] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:21] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:25] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:25] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:31] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:31] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:37] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:37] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:43] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:43] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:50] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:50] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:37:54] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:37:54] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:00] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:00] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:06] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:06] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:12] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:12] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:27] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:27] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:33] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:33] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:39] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:39] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:45] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:51] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:51] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:38:56] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:38:56] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:39:12] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:39:12] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:39:24] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:39:24] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:39:42] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:39:42] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:39:57] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:39:57] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:46:35] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:46:35] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:47:00] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:47:00] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:47:07] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:47:07] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:51:27] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:51:27] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:51:33] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:51:33] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:51:39] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:51:39] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:51:45] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:51:45] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:51:50] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:51:50] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:51:56] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:51:56] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:52:08] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:52:08] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:54:17] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:54:17] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:54:28] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:54:28] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:56:22] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:56:22] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 13:57:05] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 13:57:05] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:03:15] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:03:15] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:03:29] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:03:29] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:03:41] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:03:41] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:03:52] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:03:52] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:04:05] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:04:05] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:04:15] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:04:15] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:04:28] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:04:28] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:04:46] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:04:46] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:05:05] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:05:05] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:05:26] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:05:26] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:05:44] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:05:44] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:05:57] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:05:57] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:06:09] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:06:09] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:06:21] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:06:21] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:06:33] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:06:33] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:06:55] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:06:55] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:01] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:01] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:07] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:07] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:13] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:13] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:19] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:19] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:24] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:24] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:30] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:30] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:36] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:36] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:42] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:42] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:48] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:48] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:07:53] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:07:53] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:08:00] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:08:00] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:08:06] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:08:06] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:08:22] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:08:22] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:08:28] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:08:28] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:08:43] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:08:43] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
+[2025-11-07 14:13:27] Daemon started (interval: 5s, auto-commit: false, auto-push: false)
+[2025-11-07 14:13:27] Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics
