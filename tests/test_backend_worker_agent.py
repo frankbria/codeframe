@@ -14,7 +14,7 @@ Following strict TDD methodology (RED-GREEN-REFACTOR).
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, MagicMock, patch, AsyncMock
 import tempfile
 import json
 
@@ -98,7 +98,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         # Create issue
         issue_id = db.create_issue({
@@ -144,7 +144,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
@@ -163,7 +163,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         issue_id = db.create_issue({
             "project_id": project_id,
@@ -221,7 +221,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         issue_id = db.create_issue({
             "project_id": project_id,
@@ -280,8 +280,8 @@ class TestBackendWorkerAgentTaskFetching:
         db.initialize()
 
         # Create two projects
-        project1_id = db.create_project("project1", ProjectStatus.ACTIVE)
-        project2_id = db.create_project("project2", ProjectStatus.ACTIVE)
+        project1_id = db.create_project("project1", "Test project 1")
+        project2_id = db.create_project("project2", "Test project 2")
 
         # Create issue for project 2
         issue2_id = db.create_issue({
@@ -325,7 +325,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         issue_id = db.create_issue({
             "project_id": project_id,
@@ -478,7 +478,8 @@ class TestBackendWorkerAgentContextBuilding:
         assert context["issue_context"]["title"] == "User Authentication System"
         db.get_issue.assert_called_once_with(1)
 
-    def test_build_context_with_related_files(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_build_context_with_related_files(self, tmp_path):
         """Test build_context identifies related files from symbols."""
         from codeframe.indexing.models import Symbol, SymbolType
 
@@ -532,7 +533,8 @@ class TestBackendWorkerAgentContextBuilding:
         assert "codeframe/models/user.py" in context["related_files"]
         assert "codeframe/auth/user_auth.py" in context["related_files"]
 
-    def test_build_context_handles_empty_codebase_index(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_build_context_handles_empty_codebase_index(self, tmp_path):
         """Test build_context works when no related symbols found."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
@@ -565,7 +567,8 @@ class TestBackendWorkerAgentContextBuilding:
         assert context["related_files"] == []
         assert context["issue_context"] is None
 
-    def test_build_context_handles_missing_issue_id(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_build_context_handles_missing_issue_id(self, tmp_path):
         """Test build_context works when issue_id is None."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
@@ -600,14 +603,15 @@ class TestBackendWorkerAgentContextBuilding:
 class TestBackendWorkerAgentCodeGeneration:
     """Test code generation using LLM API."""
 
-    @patch('anthropic.Anthropic')
-    def test_generate_code_creates_single_file(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_generate_code_creates_single_file(self, mock_anthropic_class, tmp_path):
         """Test generate_code returns single file creation."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
         # Mock Anthropic API response
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
@@ -641,7 +645,7 @@ class TestBackendWorkerAgentCodeGeneration:
             "issue_context": None
         }
 
-        result = agent.generate_code(context)
+        result = await agent.generate_code(context)
 
         assert result is not None
         assert "files" in result
@@ -651,13 +655,14 @@ class TestBackendWorkerAgentCodeGeneration:
         assert "class User" in result["files"][0]["content"]
         assert result["explanation"] == "Created User model"
 
-    @patch('anthropic.Anthropic')
-    def test_generate_code_modifies_multiple_files(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_generate_code_modifies_multiple_files(self, mock_anthropic_class, tmp_path):
         """Test generate_code returns multiple file modifications."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
@@ -696,19 +701,20 @@ class TestBackendWorkerAgentCodeGeneration:
             "issue_context": None
         }
 
-        result = agent.generate_code(context)
+        result = await agent.generate_code(context)
 
         assert len(result["files"]) == 2
         assert result["files"][0]["action"] == "modify"
         assert result["files"][1]["action"] == "create"
 
-    @patch('anthropic.Anthropic')
-    def test_generate_code_handles_api_error(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_generate_code_handles_api_error(self, mock_anthropic_class, tmp_path):
         """Test generate_code handles API errors gracefully."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         # Simulate API error
@@ -730,17 +736,18 @@ class TestBackendWorkerAgentCodeGeneration:
         }
 
         with pytest.raises(Exception) as exc_info:
-            agent.generate_code(context)
+            await agent.generate_code(context)
 
         assert "API timeout" in str(exc_info.value)
 
-    @patch('anthropic.Anthropic')
-    def test_generate_code_handles_malformed_response(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_generate_code_handles_malformed_response(self, mock_anthropic_class, tmp_path):
         """Test generate_code handles invalid JSON response."""
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
@@ -763,7 +770,7 @@ class TestBackendWorkerAgentCodeGeneration:
         }
 
         with pytest.raises(json.JSONDecodeError):
-            agent.generate_code(context)
+            await agent.generate_code(context)
 
 
 class TestBackendWorkerAgentFileOperations:
@@ -1041,7 +1048,7 @@ class TestBackendWorkerAgentTaskStatus:
         db.initialize()
         index = Mock(spec=CodebaseIndex)
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1079,13 +1086,14 @@ class TestBackendWorkerAgentTaskStatus:
         row = cursor.fetchone()
         assert row["status"] == "in_progress"
 
-    def test_update_task_status_to_completed(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_update_task_status_to_completed(self, tmp_path):
         """Test update_task_status marks task as completed."""
         db = Database(":memory:")
         db.initialize()
         index = Mock(spec=CodebaseIndex)
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1125,13 +1133,14 @@ class TestBackendWorkerAgentTaskStatus:
         assert row["status"] == "completed"
         assert row["completed_at"] is not None
 
-    def test_update_task_status_to_failed(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_update_task_status_to_failed(self, tmp_path):
         """Test update_task_status marks task as failed."""
         db = Database(":memory:")
         db.initialize()
         index = Mock(spec=CodebaseIndex)
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1174,8 +1183,9 @@ class TestBackendWorkerAgentTaskStatus:
 class TestBackendWorkerAgentExecution:
     """Test end-to-end task execution orchestration."""
 
-    @patch('anthropic.Anthropic')
-    def test_execute_task_success(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_execute_task_success(self, mock_anthropic_class, tmp_path):
         """Test execute_task completes successfully."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1183,7 +1193,7 @@ class TestBackendWorkerAgentExecution:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1210,7 +1220,7 @@ class TestBackendWorkerAgentExecution:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
         mock_response.content = [Mock(text=json.dumps({
@@ -1250,7 +1260,7 @@ class TestBackendWorkerAgentExecution:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # Verify execution result
             assert result["status"] == "completed"
@@ -1267,13 +1277,14 @@ class TestBackendWorkerAgentExecution:
             updated_task = cursor.fetchone()
             assert updated_task["status"] == "completed"
 
-    @patch('anthropic.Anthropic')
-    def test_execute_task_handles_api_failure(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_execute_task_handles_api_failure(self, mock_anthropic_class, tmp_path):
         """Test execute_task handles API failures."""
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1300,7 +1311,7 @@ class TestBackendWorkerAgentExecution:
         index.search_pattern.return_value = []
 
         # Mock API failure
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_client.messages.create.side_effect = Exception("API timeout")
 
@@ -1317,7 +1328,7 @@ class TestBackendWorkerAgentExecution:
         cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
         task = dict(cursor.fetchone())
 
-        result = agent.execute_task(task)
+        result = await agent.execute_task(task)
 
         # Verify execution result
         assert result["status"] == "failed"
@@ -1329,13 +1340,14 @@ class TestBackendWorkerAgentExecution:
         updated_task = cursor.fetchone()
         assert updated_task["status"] == "failed"
 
-    @patch('anthropic.Anthropic')
-    def test_execute_task_handles_file_operation_failure(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_execute_task_handles_file_operation_failure(self, mock_anthropic_class, tmp_path):
         """Test execute_task handles file operation failures."""
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1362,7 +1374,7 @@ class TestBackendWorkerAgentExecution:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API - returns modify action on non-existent file
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
         mock_response.content = [Mock(text=json.dumps({
@@ -1390,7 +1402,7 @@ class TestBackendWorkerAgentExecution:
         cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
         task = dict(cursor.fetchone())
 
-        result = agent.execute_task(task)
+        result = await agent.execute_task(task)
 
         # Verify execution result
         assert result["status"] == "failed"
@@ -1406,8 +1418,9 @@ class TestBackendWorkerAgentExecution:
 class TestBackendWorkerAgentTestRunnerIntegration:
     """Test integration with TestRunner (cf-42 Phase 3)."""
 
-    @patch('anthropic.Anthropic')
-    def test_execute_task_runs_tests_after_code_generation(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_execute_task_runs_tests_after_code_generation(self, mock_anthropic_class, tmp_path):
         """Test execute_task runs tests after generating code (Phase 3)."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1415,7 +1428,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1442,7 +1455,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
         mock_response.content = [Mock(text=json.dumps({
@@ -1482,7 +1495,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # Verify test runner was called
             mock_run_tests.assert_called_once()
@@ -1499,8 +1512,9 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             assert test_results[0]["failed"] == 0
             assert test_results[0]["errors"] == 0
 
-    @patch('anthropic.Anthropic')
-    def test_execute_task_handles_test_failures(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_execute_task_handles_test_failures(self, mock_anthropic_class, tmp_path):
         """Test execute_task handles test failures (Phase 3)."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1508,7 +1522,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1535,7 +1549,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
         mock_response.content = [Mock(text=json.dumps({
@@ -1597,7 +1611,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # cf-43: Tests fail, triggers 3 self-correction attempts, all fail -> blocked
             assert result["status"] == "blocked"
@@ -1619,8 +1633,9 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             assert blocker is not None
             assert blocker["severity"] == "sync"
 
-    @patch('anthropic.Anthropic')
-    def test_execute_task_handles_test_runner_errors(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_execute_task_handles_test_runner_errors(self, mock_anthropic_class, tmp_path):
         """Test execute_task handles test runner errors gracefully (Phase 3)."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1628,7 +1643,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1655,7 +1670,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
         mock_response.content = [Mock(text=json.dumps({
@@ -1713,7 +1728,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # cf-43: Test errors trigger 3 self-correction attempts, all error -> blocked
             assert result["status"] == "blocked"

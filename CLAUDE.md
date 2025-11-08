@@ -1,9 +1,9 @@
 # codeframe Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2025-11-06
+Auto-generated from all feature plans. Last updated: 2025-11-07
 
 ## Active Technologies
-- TypeScript 5.3+ (frontend), Python 3.11+ (backend - existing) (005-project-schema-refactoring)
+- Python 3.11 + anthropic (AsyncAnthropic), asyncio, FastAPI, websockets (048-async-worker-agents)
 
 ## Project Structure
 ```

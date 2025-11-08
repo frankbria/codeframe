@@ -4,7 +4,7 @@ Tests for Test Worker Agent (Sprint 4: cf-49).
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from anthropic.types import Message, TextBlock
 
 from codeframe.agents.test_worker_agent import TestWorkerAgent
@@ -48,7 +48,8 @@ def sample_task():
 class TestTestWorkerAgentInitialization:
     """Test agent initialization."""
 
-    def test_initialization_with_defaults(self):
+    @pytest.mark.asyncio
+    async def test_initialization_with_defaults(self):
         """Test agent initializes with default values."""
         agent = TestWorkerAgent(agent_id="test-001")
 
@@ -57,7 +58,8 @@ class TestTestWorkerAgentInitialization:
         assert agent.provider == "anthropic"
         assert agent.max_correction_attempts == 3
 
-    def test_initialization_with_custom_attempts(self):
+    @pytest.mark.asyncio
+    async def test_initialization_with_custom_attempts(self):
         """Test agent initializes with custom correction attempts."""
         agent = TestWorkerAgent(
             agent_id="test-002",
@@ -70,7 +72,8 @@ class TestTestWorkerAgentInitialization:
 class TestTestSpecParsing:
     """Test specification parsing."""
 
-    def test_parse_json_spec(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_parse_json_spec(self, test_agent):
         """Test parsing valid JSON specification."""
         import json
         json_spec = json.dumps({
@@ -84,7 +87,8 @@ class TestTestSpecParsing:
         assert spec["test_name"] == "test_user_service"
         assert spec["target_file"] == "codeframe/services/user_service.py"
 
-    def test_parse_plain_text_with_test_keyword(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_parse_plain_text_with_test_keyword(self, test_agent):
         """Test parsing plain text with 'test:' keyword."""
         text_spec = "Test: test_auth_service\nTarget: codeframe/services/auth.py"
 
@@ -93,7 +97,8 @@ class TestTestSpecParsing:
         assert spec["test_name"] == "test_auth_service"
         assert spec["target_file"] == "codeframe/services/auth.py"
 
-    def test_parse_minimal_spec(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_parse_minimal_spec(self, test_agent):
         """Test parsing minimal specification."""
         minimal_spec = "Some description"
 
@@ -106,7 +111,8 @@ class TestTestSpecParsing:
 class TestCodeAnalysis:
     """Test code analysis functionality."""
 
-    def test_analyze_existing_file(self, test_agent, tmp_path):
+    @pytest.mark.asyncio
+    async def test_analyze_existing_file(self, test_agent, tmp_path):
         """Test analyzing existing Python file."""
         # Create sample target file
         target_file = tmp_path / "sample.py"
@@ -129,14 +135,16 @@ class Calculator:
         assert "Calculator" in analysis["classes"]
         assert len(analysis["code_snippet"]) > 0
 
-    def test_analyze_nonexistent_file(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_analyze_nonexistent_file(self, test_agent):
         """Test analyzing non-existent file returns empty analysis."""
         analysis = test_agent._analyze_target_code("nonexistent.py")
 
         assert analysis["functions"] == []
         assert analysis["classes"] == []
 
-    def test_analyze_none_file(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_analyze_none_file(self, test_agent):
         """Test analyzing None returns empty analysis."""
         analysis = test_agent._analyze_target_code(None)
 
@@ -147,7 +155,8 @@ class Calculator:
 class TestTestGeneration:
     """Test pytest test generation."""
 
-    def test_generate_basic_test_template(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_generate_basic_test_template(self, test_agent):
         """Test generating basic test template."""
         spec = {
             "test_name": "test_calculator",
@@ -164,10 +173,11 @@ class TestTestGeneration:
         assert "import pytest" in code
         assert "def test_calculator" in code
 
-    @patch('codeframe.agents.test_worker_agent.Anthropic')
-    def test_generate_tests_with_api_success(self, mock_anthropic_class, test_agent):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_generate_tests_with_api_success(self, mock_anthropic_class, test_agent):
         """Test generating tests using Claude API."""
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         mock_text_block = Mock(spec=TextBlock)
@@ -191,7 +201,7 @@ def test_subtract():
         spec = {"test_name": "test_calculator", "target_file": "calculator.py"}
         code_analysis = {"functions": ["add", "subtract"], "classes": []}
 
-        code = test_agent._generate_pytest_tests(spec, code_analysis)
+        code = await test_agent._generate_pytest_tests(spec, code_analysis)
 
         assert "test_add" in code
         assert "test_subtract" in code
@@ -201,7 +211,8 @@ def test_subtract():
 class TestFileCreation:
     """Test test file creation."""
 
-    def test_create_test_file(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_create_test_file(self, test_agent):
         """Test creating test file."""
         test_code = "import pytest\n\ndef test_example():\n    assert True"
 
@@ -211,7 +222,8 @@ class TestFileCreation:
         assert test_file.name == "test_example.py"
         assert test_file.read_text() == test_code
 
-    def test_create_test_file_adds_prefix(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_create_test_file_adds_prefix(self, test_agent):
         """Test creating test file adds 'test_' prefix if missing."""
         test_code = "import pytest\n\ndef test_foo():\n    assert True"
 
@@ -219,7 +231,8 @@ class TestFileCreation:
 
         assert test_file.name == "test_foo.py"
 
-    def test_create_test_file_adds_extension(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_create_test_file_adds_extension(self, test_agent):
         """Test creating test file adds .py extension if missing."""
         test_code = "import pytest\n\ndef test_bar():\n    assert True"
 
@@ -231,7 +244,8 @@ class TestFileCreation:
 class TestTestExecution:
     """Test pytest execution."""
 
-    def test_execute_passing_tests(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_execute_passing_tests(self, test_agent):
         """Test executing passing tests."""
         test_code = """
 import pytest
@@ -251,7 +265,8 @@ def test_passing_2():
         assert counts["failed"] == 0
         assert "PASSED" in output
 
-    def test_execute_failing_tests(self, test_agent):
+    @pytest.mark.asyncio
+    async def test_execute_failing_tests(self, test_agent):
         """Test executing failing tests."""
         test_code = """
 import pytest
@@ -275,10 +290,11 @@ def test_failing():
 class TestSelfCorrection:
     """Test self-correction loop."""
 
-    @patch('codeframe.agents.test_worker_agent.Anthropic')
-    def test_correct_failing_tests(self, mock_anthropic_class, test_agent):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_correct_failing_tests(self, mock_anthropic_class, test_agent):
         """Test correcting failing tests using Claude API."""
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         mock_text_block = Mock(spec=TextBlock)
@@ -299,7 +315,7 @@ def test_corrected():
         spec = {"test_name": "test_example"}
         code_analysis = {}
 
-        corrected = test_agent._correct_failing_tests(
+        corrected = await test_agent._correct_failing_tests(
             original_code,
             error_output,
             spec,
@@ -314,17 +330,19 @@ def test_corrected():
 class TestTaskExecution:
     """Test complete task execution flow."""
 
-    def test_execute_task_basic(self, test_agent, sample_task):
+    @pytest.mark.asyncio
+    async def test_execute_task_basic(self, test_agent, sample_task):
         """Test basic task execution without API."""
         test_agent.client = None  # Force fallback template
 
-        result = test_agent.execute_task(sample_task, project_id=1)
+        result = await test_agent.execute_task(sample_task, project_id=1)
 
         assert "status" in result
         assert "test_file" in result or "error" in result
 
     @patch('codeframe.agents.test_worker_agent.TestWorkerAgent._execute_tests')
-    def test_execute_task_success(self, mock_execute, test_agent, sample_task):
+    @pytest.mark.asyncio
+    async def test_execute_task_success(self, mock_execute, test_agent, sample_task):
         """Test successful task execution with mocked test execution."""
         test_agent.client = None
 
@@ -335,14 +353,15 @@ class TestTaskExecution:
             {"passed": 2, "failed": 0, "errors": 0, "total": 2}  # counts
         )
 
-        result = test_agent.execute_task(sample_task, project_id=1)
+        result = await test_agent.execute_task(sample_task, project_id=1)
 
         assert result["status"] == "completed"
         assert "test_results" in result
         assert result["test_results"]["passed"] is True
 
     @patch('codeframe.agents.test_worker_agent.TestWorkerAgent._execute_tests')
-    def test_execute_task_with_corrections(self, mock_execute, test_agent, sample_task):
+    @pytest.mark.asyncio
+    async def test_execute_task_with_corrections(self, mock_execute, test_agent, sample_task):
         """Test task execution with self-correction."""
         test_agent.client = None
         test_agent.max_correction_attempts = 2
@@ -359,7 +378,7 @@ class TestTaskExecution:
             '_correct_failing_tests',
             return_value="import pytest\n\ndef test_fixed():\n    assert True"
         ):
-            result = test_agent.execute_task(sample_task, project_id=1)
+            result = await test_agent.execute_task(sample_task, project_id=1)
 
             # Should eventually pass after correction
             assert result["status"] in ["completed", "failed"]
@@ -377,9 +396,9 @@ class TestWebSocketIntegration:
         counts = {"passed": 5, "failed": 1, "errors": 0, "total": 6}
 
         # This will attempt broadcast but gracefully handle no event loop
-        test_agent._broadcast_test_result(1, sample_task.id, counts, False)
+        await test_agent._broadcast_test_result(1, sample_task.id, counts, False)
 
-        # In sync context, it should just log and continue
+        # In async context, it should broadcast results
 
 
 class TestErrorHandling:

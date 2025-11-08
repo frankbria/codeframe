@@ -84,7 +84,7 @@ def temp_project_dir():
 def project_id(db, temp_project_dir):
     """Create test project."""
     print("🟢 FIXTURE: Creating project in database...")
-    project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+    project_id = db.create_project("test-project", "Multi-agent test project")
     print(f"🟢 FIXTURE: Project created with ID: {project_id}")
     # Update project with root_path
     print(f"🟢 FIXTURE: Updating project root_path to {temp_project_dir}...")
