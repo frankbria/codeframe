@@ -98,7 +98,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         # Create issue
         issue_id = db.create_issue({
@@ -144,7 +144,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
@@ -163,7 +163,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         issue_id = db.create_issue({
             "project_id": project_id,
@@ -221,7 +221,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         issue_id = db.create_issue({
             "project_id": project_id,
@@ -280,8 +280,8 @@ class TestBackendWorkerAgentTaskFetching:
         db.initialize()
 
         # Create two projects
-        project1_id = db.create_project("project1", ProjectStatus.ACTIVE)
-        project2_id = db.create_project("project2", ProjectStatus.ACTIVE)
+        project1_id = db.create_project("project1", "Test project 1")
+        project2_id = db.create_project("project2", "Test project 2")
 
         # Create issue for project 2
         issue2_id = db.create_issue({
@@ -325,7 +325,7 @@ class TestBackendWorkerAgentTaskFetching:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
 
         issue_id = db.create_issue({
             "project_id": project_id,
@@ -1048,7 +1048,7 @@ class TestBackendWorkerAgentTaskStatus:
         db.initialize()
         index = Mock(spec=CodebaseIndex)
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1093,7 +1093,7 @@ class TestBackendWorkerAgentTaskStatus:
         db.initialize()
         index = Mock(spec=CodebaseIndex)
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1140,7 +1140,7 @@ class TestBackendWorkerAgentTaskStatus:
         db.initialize()
         index = Mock(spec=CodebaseIndex)
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1193,7 +1193,7 @@ class TestBackendWorkerAgentExecution:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1284,7 +1284,7 @@ class TestBackendWorkerAgentExecution:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1347,7 +1347,7 @@ class TestBackendWorkerAgentExecution:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1428,7 +1428,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1522,7 +1522,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -1643,7 +1643,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
