@@ -157,7 +157,7 @@ class TestSelfCorrectionLoop:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API - returns different attempts each time
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         responses = []
