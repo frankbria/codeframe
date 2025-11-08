@@ -10,6 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
+
 # Python lib directories (but not TypeScript lib/)
 /lib/
 /lib64/
@@ -65,3 +66,7 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+# Beads
+.beads/
+!.beads/*.jsonl
