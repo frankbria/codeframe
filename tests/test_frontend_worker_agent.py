@@ -159,11 +159,12 @@ class TestComponentGeneration:
         assert "className=" in code  # Tailwind CSS
         assert "import React from 'react'" in code
 
-    @patch('codeframe.agents.frontend_worker_agent.Anthropic')
-    def test_generate_component_with_api_success(self, mock_anthropic_class, frontend_agent):
+    @patch('codeframe.agents.frontend_worker_agent.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_generate_component_with_api_success(self, mock_anthropic_class, frontend_agent):
         """Test generating component using Claude API successfully."""
         # Setup mock
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         # Create proper mock response structure
@@ -192,14 +193,15 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
             "description": "A button component"
         }
 
-        code = frontend_agent._generate_react_component(spec)
+        code = await frontend_agent._generate_react_component(spec)
 
         assert "Button" in code
         assert "ButtonProps" in code
         assert "React.FC" in code
         mock_client.messages.create.assert_called_once()
 
-    def test_generate_component_api_fallback(self, frontend_agent):
+    @pytest.mark.asyncio
+    async def test_generate_component_api_fallback(self, frontend_agent):
         """Test component generation falls back on API failure."""
         # Set client to None to trigger fallback
         frontend_agent.client = None
@@ -209,7 +211,7 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
             "description": "Component with API failure"
         }
 
-        code = frontend_agent._generate_react_component(spec)
+        code = await frontend_agent._generate_react_component(spec)
 
         # Should get basic template
         assert "FallbackComponent" in code
@@ -325,9 +327,10 @@ class TestImportExportUpdates:
 class TestTaskExecution:
     """Test complete task execution flow."""
 
-    def test_execute_task_success(self, frontend_agent, sample_task):
+    @pytest.mark.asyncio
+    async def test_execute_task_success(self, frontend_agent, sample_task):
         """Test successful task execution without WebSocket."""
-        result = frontend_agent.execute_task(sample_task, project_id=1)
+        result = await frontend_agent.execute_task(sample_task, project_id=1)
 
         assert result["status"] == "completed"
         assert "UserCard" in result["output"]
@@ -338,7 +341,8 @@ class TestTaskExecution:
         component_file = frontend_agent.components_dir / "UserCard.tsx"
         assert component_file.exists()
 
-    def test_execute_task_with_websocket_broadcasts(
+    @pytest.mark.asyncio
+    async def test_execute_task_with_websocket_broadcasts(
         self,
         frontend_agent,
         sample_task,
@@ -347,13 +351,14 @@ class TestTaskExecution:
         """Test task execution broadcasts WebSocket messages."""
         frontend_agent.websocket_manager = mock_websocket_manager
 
-        result = frontend_agent.execute_task(sample_task, project_id=1)
+        result = await frontend_agent.execute_task(sample_task, project_id=1)
 
         assert result["status"] == "completed"
         # Note: broadcasts are async, so we can't directly assert on them in sync test
         # In real usage, they would be handled by event loop
 
-    def test_execute_task_json_spec(self, frontend_agent):
+    @pytest.mark.asyncio
+    async def test_execute_task_json_spec(self, frontend_agent):
         """Test task execution with JSON specification."""
         json_task = Task(
             id=2,
@@ -368,7 +373,7 @@ class TestTaskExecution:
             workflow_step=1
         )
 
-        result = frontend_agent.execute_task(json_task, project_id=1)
+        result = await frontend_agent.execute_task(json_task, project_id=1)
 
         assert result["status"] == "completed"
         assert result["component_name"] == "Button"
@@ -377,7 +382,8 @@ class TestTaskExecution:
         component_file = frontend_agent.components_dir / "Button.tsx"
         assert component_file.exists()
 
-    def test_execute_task_error_handling(self, frontend_agent):
+    @pytest.mark.asyncio
+    async def test_execute_task_error_handling(self, frontend_agent):
         """Test task execution handles errors gracefully."""
         # Create task with invalid spec that will cause error
         invalid_task = Task(
@@ -397,7 +403,7 @@ class TestTaskExecution:
 
         frontend_agent._create_component_files = raise_error
 
-        result = frontend_agent.execute_task(invalid_task, project_id=1)
+        result = await frontend_agent.execute_task(invalid_task, project_id=1)
 
         assert result["status"] == "failed"
         assert "error" in result
@@ -421,7 +427,7 @@ class TestWebSocketIntegration:
         frontend_agent.websocket_manager = mock_websocket_manager
 
         # Execute task (broadcasts are fire-and-forget)
-        result = frontend_agent.execute_task(sample_task, project_id=1)
+        result = await frontend_agent.execute_task(sample_task, project_id=1)
 
         assert result["status"] == "completed"
         # Broadcasts happen asynchronously, testing integration separately
@@ -436,7 +442,7 @@ class TestWebSocketIntegration:
         """Test broadcasting task completed status."""
         frontend_agent.websocket_manager = mock_websocket_manager
 
-        result = frontend_agent.execute_task(sample_task, project_id=1)
+        result = await frontend_agent.execute_task(sample_task, project_id=1)
 
         assert result["status"] == "completed"
 
@@ -444,7 +450,8 @@ class TestWebSocketIntegration:
 class TestErrorHandling:
     """Test error handling and recovery."""
 
-    def test_handle_file_already_exists(self, frontend_agent):
+    @pytest.mark.asyncio
+    async def test_handle_file_already_exists(self, frontend_agent):
         """Test graceful handling when component file already exists."""
         # Create existing component
         existing_file = frontend_agent.components_dir / "Existing.tsx"
@@ -459,7 +466,7 @@ class TestErrorHandling:
             workflow_step=1
         )
 
-        result = frontend_agent.execute_task(task, project_id=1)
+        result = await frontend_agent.execute_task(task, project_id=1)
 
         assert result["status"] == "failed"
         assert "already exists" in result["error"]
@@ -467,7 +474,8 @@ class TestErrorHandling:
         # Original file should be unchanged
         assert existing_file.read_text() == "original content"
 
-    def test_handle_missing_api_key(self):
+    @pytest.mark.asyncio
+    async def test_handle_missing_api_key(self):
         """Test agent works without API key (using fallback templates)."""
         agent = FrontendWorkerAgent(
             agent_id="frontend-no-key",
@@ -478,7 +486,7 @@ class TestErrorHandling:
 
         # Should still be able to generate basic components
         spec = {"name": "Test", "description": "Test component"}
-        code = agent._generate_react_component(spec)
+        code = await agent._generate_react_component(spec)
 
         assert "Test" in code
         assert "TestProps" in code
