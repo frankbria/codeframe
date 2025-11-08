@@ -201,7 +201,7 @@ def test_subtract():
         spec = {"test_name": "test_calculator", "target_file": "calculator.py"}
         code_analysis = {"functions": ["add", "subtract"], "classes": []}
 
-        code = await agent._generate_pytest_tests(spec, code_analysis)
+        code = await test_agent._generate_pytest_tests(spec, code_analysis)
 
         assert "test_add" in code
         assert "test_subtract" in code
@@ -315,7 +315,7 @@ def test_corrected():
         spec = {"test_name": "test_example"}
         code_analysis = {}
 
-        corrected = await agent._correct_failing_tests(
+        corrected = await test_agent._correct_failing_tests(
             original_code,
             error_output,
             spec,
@@ -335,7 +335,7 @@ class TestTaskExecution:
         """Test basic task execution without API."""
         test_agent.client = None  # Force fallback template
 
-        result = await agent.execute_task(sample_task, project_id=1)
+        result = await test_agent.execute_task(sample_task, project_id=1)
 
         assert "status" in result
         assert "test_file" in result or "error" in result
@@ -353,7 +353,7 @@ class TestTaskExecution:
             {"passed": 2, "failed": 0, "errors": 0, "total": 2}  # counts
         )
 
-        result = await agent.execute_task(sample_task, project_id=1)
+        result = await test_agent.execute_task(sample_task, project_id=1)
 
         assert result["status"] == "completed"
         assert "test_results" in result
@@ -378,7 +378,7 @@ class TestTaskExecution:
             '_correct_failing_tests',
             return_value="import pytest\n\ndef test_fixed():\n    assert True"
         ):
-            result = await agent.execute_task(sample_task, project_id=1)
+            result = await test_agent.execute_task(sample_task, project_id=1)
 
             # Should eventually pass after correction
             assert result["status"] in ["completed", "failed"]
@@ -396,9 +396,9 @@ class TestWebSocketIntegration:
         counts = {"passed": 5, "failed": 1, "errors": 0, "total": 6}
 
         # This will attempt broadcast but gracefully handle no event loop
-        test_agent._broadcast_test_result(1, sample_task.id, counts, False)
+        await test_agent._broadcast_test_result(1, sample_task.id, counts, False)
 
-        # In sync context, it should just log and continue
+        # In async context, it should broadcast results
 
 
 class TestErrorHandling:

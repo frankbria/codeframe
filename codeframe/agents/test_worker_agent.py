@@ -6,6 +6,7 @@ analyzing code for test requirements, and self-correcting failing tests.
 """
 
 import os
+import sys
 import json
 import logging
 import subprocess
@@ -398,8 +399,9 @@ def {test_name}():
             Tuple of (all_passed, output, counts)
         """
         try:
+            # Use python -m pytest to ensure we use the correct pytest from the current environment
             result = subprocess.run(
-                ["pytest", str(test_file), "-v", "--tb=short"],
+                [sys.executable, "-m", "pytest", str(test_file), "-v", "--tb=short"],
                 capture_output=True,
                 text=True,
                 timeout=60
