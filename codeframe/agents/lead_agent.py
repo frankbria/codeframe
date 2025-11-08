@@ -1277,72 +1277,45 @@ Generate the PRD in markdown format with clear sections and professional languag
         6. Mark agent as idle
         7. Broadcast task status changes
         """
-        print(f"\n🎯 DEBUG: _assign_and_execute_task ENTERED for task {task.id}")
         try:
             # Determine agent type
-            print(f"🎯 DEBUG: Creating task_dict for agent assignment...")
             task_dict = {
                 "id": task.id,
                 "title": task.title,
                 "description": task.description
             }
-            print(f"🎯 DEBUG: Calling agent_assigner.assign_agent_type()...")
             agent_type = self.agent_assigner.assign_agent_type(task_dict)
-            print(f"🎯 DEBUG: Agent type assigned: {agent_type}")
 
             logger.info(f"Assigning task {task.id} ({task.title}) to {agent_type}")
 
             # Get or create agent
-            print(f"🎯 DEBUG: Calling agent_pool_manager.get_or_create_agent({agent_type})...")
             agent_id = self.agent_pool_manager.get_or_create_agent(agent_type)
-            print(f"🎯 DEBUG: Got agent_id: {agent_id}")
 
             # Mark agent busy
-            print(f"🎯 DEBUG: Marking agent {agent_id} as busy...")
             self.agent_pool_manager.mark_agent_busy(agent_id, task.id)
-            print(f"🎯 DEBUG: Agent marked as busy ✅")
 
             # Update task status to in_progress
-            print(f"🎯 DEBUG: Updating task {task.id} status to in_progress...")
             self.db.update_task(task.id, {"status": "in_progress"})
-            print(f"🎯 DEBUG: Task status updated ✅")
 
             # Get agent instance
-            print(f"🎯 DEBUG: Getting agent instance for {agent_id}...")
             agent_instance = self.agent_pool_manager.get_agent_instance(agent_id)
-            print(f"🎯 DEBUG: Got agent instance: {type(agent_instance)}")
 
             # Execute task (assuming agents have execute_task method)
             logger.info(f"Agent {agent_id} executing task {task.id}")
-            print(f"🎯 DEBUG: About to execute task via run_in_executor...")
-            
-            # Note: Worker agents may not all have async execute_task yet
-            # For now, we'll wrap synchronous execution in executor
-            print(f"🎯 DEBUG: Getting event loop...")
-            loop = asyncio.get_running_loop()
-            print(f"🎯 DEBUG: Calling run_in_executor...")
-            await loop.run_in_executor(
-                None,
-                agent_instance.execute_task,
-                task_dict
-            )
-            print(f"🎯 DEBUG: run_in_executor completed ✅")
+
+            # Worker agents now use async execute_task - no threading needed
+            await agent_instance.execute_task(task_dict)
 
             # Task succeeded
-            print(f"🎯 DEBUG: Updating task {task.id} to completed...")
             self.db.update_task(task.id, {"status": "completed"})
             logger.info(f"Task {task.id} completed successfully by agent {agent_id}")
 
             # Mark agent idle
-            print(f"🎯 DEBUG: Marking agent {agent_id} as idle...")
             self.agent_pool_manager.mark_agent_idle(agent_id)
-            print(f"🎯 DEBUG: Agent marked as idle ✅")
 
-            print(f"🎯 DEBUG: _assign_and_execute_task returning True")
             return True
 
         except Exception as e:
-            print(f"🎯 DEBUG: Exception in _assign_and_execute_task: {type(e).__name__}: {e}")
             logger.exception(f"Task {task.id} execution failed")
 
             # Update task status
