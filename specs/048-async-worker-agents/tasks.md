@@ -60,36 +60,36 @@ Phase 1: Backend Worker Agent
 
 ### 1.1 Method Signature Conversions
 
-- [ ] T001 Convert `execute_task()` to async in codeframe/agents/backend_worker_agent.py:797
-- [ ] T002 Convert `generate_code()` to async in codeframe/agents/backend_worker_agent.py:230
-- [ ] T003 Convert `_run_and_record_tests()` to async in codeframe/agents/backend_worker_agent.py:457
-- [ ] T004 Convert `_self_correction_loop()` to async in codeframe/agents/backend_worker_agent.py:644
-- [ ] T005 Convert `_attempt_self_correction()` to async in codeframe/agents/backend_worker_agent.py:548
+- [X] T001 Convert `execute_task()` to async in codeframe/agents/backend_worker_agent.py:797
+- [X] T002 Convert `generate_code()` to async in codeframe/agents/backend_worker_agent.py:230
+- [X] T003 Convert `_run_and_record_tests()` to async in codeframe/agents/backend_worker_agent.py:457
+- [X] T004 Convert `_self_correction_loop()` to async in codeframe/agents/backend_worker_agent.py:644
+- [X] T005 Convert `_attempt_self_correction()` to async in codeframe/agents/backend_worker_agent.py:548
 
 ### 1.2 Anthropic Client Migration
 
-- [ ] T006 Replace `import anthropic` with `from anthropic import AsyncAnthropic` in codeframe/agents/backend_worker_agent.py:253
-- [ ] T007 Change `anthropic.Anthropic()` to `AsyncAnthropic()` in generate_code() method
-- [ ] T008 Add `await` to `client.messages.create()` call in generate_code() method
+- [X] T006 Replace `import anthropic` with `from anthropic import AsyncAnthropic` in codeframe/agents/backend_worker_agent.py:253
+- [X] T007 Change `anthropic.Anthropic()` to `AsyncAnthropic()` in generate_code() method
+- [X] T008 Add `await` to `client.messages.create()` call in generate_code() method
 
 ### 1.3 Internal Method Updates (Add await)
 
-- [ ] T009 Add `await` to `generate_code()` call in execute_task() method (line ~835)
-- [ ] T010 Add `await` to `_run_and_record_tests()` call in execute_task() method (line ~841)
-- [ ] T011 Add `await` to `_self_correction_loop()` call in execute_task() method (line ~854)
-- [ ] T012 Add `await` to `_attempt_self_correction()` call in _self_correction_loop() method (line ~688)
-- [ ] T013 Add `await` to `_run_and_record_tests()` call in _self_correction_loop() method (line ~711)
-- [ ] T014 Add `await` to `generate_code()` call in _attempt_self_correction() method (line ~624)
+- [X] T009 Add `await` to `generate_code()` call in execute_task() method (line ~835)
+- [X] T010 Add `await` to `_run_and_record_tests()` call in execute_task() method (line ~841)
+- [X] T011 Add `await` to `_self_correction_loop()` call in execute_task() method (line ~854)
+- [X] T012 Add `await` to `_attempt_self_correction()` call in _self_correction_loop() method (line ~688)
+- [X] T013 Add `await` to `_run_and_record_tests()` call in _self_correction_loop() method (line ~711)
+- [X] T014 Add `await` to `generate_code()` call in _attempt_self_correction() method (line ~624)
 
 ### 1.4 Broadcast Pattern Refactoring
 
-- [ ] T015 Remove `_broadcast_async()` method entirely from codeframe/agents/backend_worker_agent.py:97-126
-- [ ] T016 Replace broadcast in execute_task() completion (line ~876-889) with direct await
-- [ ] T017 Replace broadcast in _run_and_record_tests() test results (line ~511-528) with direct await
-- [ ] T018 Replace broadcast in _run_and_record_tests() activity (line ~531-544) with direct await
-- [ ] T019 Replace broadcast in _self_correction_loop() attempt start (line ~674-685) with direct await
-- [ ] T020 Replace broadcast in _self_correction_loop() success (line ~721-745) with direct await
-- [ ] T021 Replace broadcast in _self_correction_loop() failure (line ~756-771) with direct await
+- [X] T015 Remove `_broadcast_async()` method entirely from codeframe/agents/backend_worker_agent.py:97-126
+- [X] T016 Replace broadcast in execute_task() completion (line ~876-889) with direct await
+- [X] T017 Replace broadcast in _run_and_record_tests() test results (line ~511-528) with direct await
+- [X] T018 Replace broadcast in _run_and_record_tests() activity (line ~531-544) with direct await
+- [X] T019 Replace broadcast in _self_correction_loop() attempt start (line ~674-685) with direct await
+- [X] T020 Replace broadcast in _self_correction_loop() success (line ~721-745) with direct await
+- [X] T021 Replace broadcast in _self_correction_loop() failure (line ~756-771) with direct await
 
 ### 1.5 Test Migration
 
@@ -115,23 +115,23 @@ Phase 1: Backend Worker Agent
 
 ### 2.1 Frontend Worker Agent
 
-- [ ] T027 [P] Convert execute_task() to async in codeframe/agents/frontend_worker_agent.py
-- [ ] T028 [P] Convert generate_code() to async in codeframe/agents/frontend_worker_agent.py
-- [ ] T029 [P] Replace Anthropic with AsyncAnthropic client in codeframe/agents/frontend_worker_agent.py
-- [ ] T030 [P] Add await to all internal async method calls in codeframe/agents/frontend_worker_agent.py
-- [ ] T031 [P] Remove _broadcast_async() method from codeframe/agents/frontend_worker_agent.py
-- [ ] T032 [P] Replace all _broadcast_async() calls with direct await in codeframe/agents/frontend_worker_agent.py
+- [X] T027 [P] Convert execute_task() to async in codeframe/agents/frontend_worker_agent.py
+- [X] T028 [P] Convert generate_code() to async in codeframe/agents/frontend_worker_agent.py
+- [X] T029 [P] Replace Anthropic with AsyncAnthropic client in codeframe/agents/frontend_worker_agent.py
+- [X] T030 [P] Add await to all internal async method calls in codeframe/agents/frontend_worker_agent.py
+- [X] T031 [P] Remove _broadcast_async() method from codeframe/agents/frontend_worker_agent.py
+- [X] T032 [P] Replace all _broadcast_async() calls with direct await in codeframe/agents/frontend_worker_agent.py
 - [ ] T033 [P] Update tests in tests/agents/test_frontend_worker_agent.py to async pattern
 - [ ] T034 [P] Run frontend worker tests: `pytest tests/agents/test_frontend_worker_agent.py -v`
 
 ### 2.2 Test Worker Agent
 
-- [ ] T035 [P] Convert execute_task() to async in codeframe/agents/test_worker_agent.py
-- [ ] T036 [P] Convert generate_code() to async in codeframe/agents/test_worker_agent.py
-- [ ] T037 [P] Replace Anthropic with AsyncAnthropic client in codeframe/agents/test_worker_agent.py
-- [ ] T038 [P] Add await to all internal async method calls in codeframe/agents/test_worker_agent.py
-- [ ] T039 [P] Remove _broadcast_async() method from codeframe/agents/test_worker_agent.py
-- [ ] T040 [P] Replace all _broadcast_async() calls with direct await in codeframe/agents/test_worker_agent.py
+- [X] T035 [P] Convert execute_task() to async in codeframe/agents/test_worker_agent.py
+- [X] T036 [P] Convert generate_code() to async in codeframe/agents/test_worker_agent.py
+- [X] T037 [P] Replace Anthropic with AsyncAnthropic client in codeframe/agents/test_worker_agent.py
+- [X] T038 [P] Add await to all internal async method calls in codeframe/agents/test_worker_agent.py
+- [X] T039 [P] Remove _broadcast_async() method from codeframe/agents/test_worker_agent.py
+- [X] T040 [P] Replace all _broadcast_async() calls with direct await in codeframe/agents/test_worker_agent.py
 - [ ] T041 [P] Update tests in tests/agents/test_test_worker_agent.py to async pattern
 - [ ] T042 [P] Run test worker tests: `pytest tests/agents/test_test_worker_agent.py -v`
 
@@ -154,10 +154,10 @@ Phase 1: Backend Worker Agent
 
 ### 3.1 Remove Threading Wrapper
 
-- [ ] T045 Locate run_in_executor() call in codeframe/agents/lead_agent.py:_assign_and_execute_task() (line ~1324)
-- [ ] T046 Replace `await loop.run_in_executor(None, agent_instance.execute_task, task_dict)` with `await agent_instance.execute_task(task_dict)` in codeframe/agents/lead_agent.py
-- [ ] T047 Remove `loop = asyncio.get_running_loop()` line if no longer needed (line ~1319)
-- [ ] T048 Remove any unused executor imports from codeframe/agents/lead_agent.py
+- [X] T045 Locate run_in_executor() call in codeframe/agents/lead_agent.py:_assign_and_execute_task() (line ~1324)
+- [X] T046 Replace `await loop.run_in_executor(None, agent_instance.execute_task, task_dict)` with `await agent_instance.execute_task(task_dict)` in codeframe/agents/lead_agent.py
+- [X] T047 Remove `loop = asyncio.get_running_loop()` line if no longer needed (line ~1319)
+- [X] T048 Remove any unused executor imports from codeframe/agents/lead_agent.py
 
 ### 3.2 Integration Testing
 

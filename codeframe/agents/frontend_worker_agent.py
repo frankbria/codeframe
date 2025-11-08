@@ -10,7 +10,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
 from codeframe.core.models import Task, AgentMaturity
 from codeframe.agents.worker_agent import WorkerAgent
@@ -56,57 +56,11 @@ class FrontendWorkerAgent(WorkerAgent):
             system_prompt=self._build_system_prompt()
         )
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.client = Anthropic(api_key=self.api_key) if self.api_key else None
+        self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.websocket_manager = websocket_manager
         self.project_root = Path(__file__).parent.parent.parent  # codeframe/
         self.web_ui_root = self.project_root / "web-ui"
         self.components_dir = self.web_ui_root / "src" / "components"
-
-    def _broadcast_async(
-        self,
-        project_id: int,
-        task_id: int,
-        status: str,
-        agent_id: Optional[str] = None,
-        progress: Optional[int] = None
-    ) -> None:
-        """
-        Helper to broadcast task status (handles async event loop safely).
-
-        Args:
-            project_id: Project ID
-            task_id: Task ID
-            status: Task status
-            agent_id: Optional agent ID
-            progress: Optional progress percentage
-        """
-        if not self.websocket_manager:
-            return
-
-        import asyncio
-        from codeframe.ui.websocket_broadcasts import broadcast_task_status
-
-        try:
-            # Check if there's a running event loop
-            loop = asyncio.get_running_loop()
-            # Use run_coroutine_threadsafe for thread-safe execution
-            asyncio.run_coroutine_threadsafe(
-                broadcast_task_status(
-                    self.websocket_manager,
-                    project_id,
-                    task_id,
-                    status,
-                    agent_id=agent_id,
-                    progress=progress
-                ),
-                loop
-            )
-        except RuntimeError:
-            # No running event loop - skip broadcast in sync context
-            # This is expected in synchronous test environments
-            logger.debug(
-                f"Skipped broadcast (no event loop): task {task_id} → {status}"
-            )
 
     def _build_system_prompt(self) -> str:
         """Build system prompt for frontend-specific tasks."""
@@ -130,7 +84,7 @@ Output format:
 - Ensure proper TypeScript typing (no 'any' types)
 """
 
-    def execute_task(self, task: Task, project_id: int = 1) -> Dict[str, Any]:
+    async def execute_task(self, task: Task, project_id: int = 1) -> Dict[str, Any]:
         """
         Execute frontend task: generate React component.
 
@@ -146,13 +100,18 @@ Output format:
         try:
             # Broadcast task started
             if self.websocket_manager:
-                self._broadcast_async(
-                    project_id,
-                    task.id,
-                    "in_progress",
-                    agent_id=self.agent_id,
-                    progress=0
-                )
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_task_status
+                    await broadcast_task_status(
+                        self.websocket_manager,
+                        project_id,
+                        task.id,
+                        "in_progress",
+                        agent_id=self.agent_id,
+                        progress=0
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast task status: {e}")
 
             logger.info(f"Frontend agent {self.agent_id} executing task {task.id}: {task.title}")
 
@@ -160,7 +119,7 @@ Output format:
             component_spec = self._parse_component_spec(task.description)
 
             # Generate component code
-            component_code = self._generate_react_component(component_spec)
+            component_code = await self._generate_react_component(component_spec)
 
             # Generate TypeScript types if needed
             if component_spec.get("generate_types"):
@@ -180,13 +139,18 @@ Output format:
 
             # Broadcast completion
             if self.websocket_manager:
-                self._broadcast_async(
-                    project_id,
-                    task.id,
-                    "completed",
-                    agent_id=self.agent_id,
-                    progress=100
-                )
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_task_status
+                    await broadcast_task_status(
+                        self.websocket_manager,
+                        project_id,
+                        task.id,
+                        "completed",
+                        agent_id=self.agent_id,
+                        progress=100
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast task status: {e}")
 
             logger.info(f"Frontend agent {self.agent_id} completed task {task.id}")
 
@@ -202,12 +166,17 @@ Output format:
 
             # Broadcast failure
             if self.websocket_manager:
-                self._broadcast_async(
-                    project_id,
-                    task.id,
-                    "failed",
-                    agent_id=self.agent_id
-                )
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_task_status
+                    await broadcast_task_status(
+                        self.websocket_manager,
+                        project_id,
+                        task.id,
+                        "failed",
+                        agent_id=self.agent_id
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast task status: {e}")
 
             return {
                 "status": "failed",
@@ -261,7 +230,7 @@ Output format:
             "use_tailwind": True
         }
 
-    def _generate_react_component(self, spec: Dict[str, Any]) -> str:
+    async def _generate_react_component(self, spec: Dict[str, Any]) -> str:
         """
         Generate React component code using Claude API.
 
@@ -290,7 +259,7 @@ Requirements:
 Provide ONLY the component code, no explanations."""
 
         try:
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=2000,
                 messages=[

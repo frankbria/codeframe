@@ -12,7 +12,7 @@ import subprocess
 import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 
 from codeframe.core.models import Task, AgentMaturity
 from codeframe.agents.worker_agent import WorkerAgent
@@ -61,44 +61,11 @@ class TestWorkerAgent(WorkerAgent):
             system_prompt=self._build_system_prompt()
         )
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.client = Anthropic(api_key=self.api_key) if self.api_key else None
+        self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.websocket_manager = websocket_manager
         self.max_correction_attempts = max_correction_attempts
         self.project_root = Path(__file__).parent.parent.parent
         self.tests_dir = self.project_root / "tests"
-
-    def _broadcast_async(
-        self,
-        project_id: int,
-        task_id: int,
-        status: str,
-        agent_id: Optional[str] = None,
-        progress: Optional[int] = None
-    ) -> None:
-        """Helper to broadcast task status (handles async event loop safely)."""
-        if not self.websocket_manager:
-            return
-
-        import asyncio
-        from codeframe.ui.websocket_broadcasts import broadcast_task_status
-
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.run_coroutine_threadsafe(
-                broadcast_task_status(
-                    self.websocket_manager,
-                    project_id,
-                    task_id,
-                    status,
-                    agent_id=agent_id,
-                    progress=progress
-                ),
-                loop
-            )
-        except RuntimeError:
-            logger.debug(
-                f"Skipped broadcast (no event loop): task {task_id} → {status}"
-            )
 
     def _build_system_prompt(self) -> str:
         """Build system prompt for test-specific tasks."""
@@ -124,7 +91,7 @@ Output format:
 - Ensure proper async/await handling for async code
 """
 
-    def execute_task(self, task: Task, project_id: int = 1) -> Dict[str, Any]:
+    async def execute_task(self, task: Task, project_id: int = 1) -> Dict[str, Any]:
         """
         Execute test generation task.
 
@@ -140,13 +107,18 @@ Output format:
         try:
             # Broadcast task started
             if self.websocket_manager:
-                self._broadcast_async(
-                    project_id,
-                    task.id,
-                    "in_progress",
-                    agent_id=self.agent_id,
-                    progress=0
-                )
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_task_status
+                    await broadcast_task_status(
+                        self.websocket_manager,
+                        project_id,
+                        task.id,
+                        "in_progress",
+                        agent_id=self.agent_id,
+                        progress=0
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast task status: {e}")
 
             logger.info(f"Test agent {self.agent_id} executing task {task.id}: {task.title}")
 
@@ -157,13 +129,13 @@ Output format:
             code_analysis = self._analyze_target_code(test_spec.get("target_file"))
 
             # Generate test code
-            test_code = self._generate_pytest_tests(test_spec, code_analysis)
+            test_code = await self._generate_pytest_tests(test_spec, code_analysis)
 
             # Create test file
             test_file = self._create_test_file(test_spec["test_name"], test_code)
 
             # Execute tests and self-correct if needed
-            test_result = self._execute_and_correct_tests(
+            test_result = await self._execute_and_correct_tests(
                 test_file,
                 test_spec,
                 code_analysis,
@@ -174,13 +146,18 @@ Output format:
             # Broadcast completion or failure
             final_status = "completed" if test_result["passed"] else "failed"
             if self.websocket_manager:
-                self._broadcast_async(
-                    project_id,
-                    task.id,
-                    final_status,
-                    agent_id=self.agent_id,
-                    progress=100
-                )
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_task_status
+                    await broadcast_task_status(
+                        self.websocket_manager,
+                        project_id,
+                        task.id,
+                        final_status,
+                        agent_id=self.agent_id,
+                        progress=100
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast task status: {e}")
 
             logger.info(
                 f"Test agent {self.agent_id} completed task {task.id}: "
@@ -199,12 +176,17 @@ Output format:
             logger.error(f"Test agent {self.agent_id} failed task {task.id}: {e}")
 
             if self.websocket_manager:
-                self._broadcast_async(
-                    project_id,
-                    task.id,
-                    "failed",
-                    agent_id=self.agent_id
-                )
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_task_status
+                    await broadcast_task_status(
+                        self.websocket_manager,
+                        project_id,
+                        task.id,
+                        "failed",
+                        agent_id=self.agent_id
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast task status: {e}")
 
             return {
                 "status": "failed",
@@ -283,7 +265,7 @@ Output format:
             logger.error(f"Failed to analyze target code: {e}")
             return {"functions": [], "classes": [], "imports": []}
 
-    def _generate_pytest_tests(
+    async def _generate_pytest_tests(
         self,
         spec: Dict[str, Any],
         code_analysis: Dict[str, Any]
@@ -328,7 +310,7 @@ Requirements:
 Provide ONLY the test code, no explanations."""
 
         try:
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=3000,
                 messages=[{"role": "user", "content": prompt}]
@@ -446,7 +428,7 @@ def {test_name}():
         except Exception as e:
             return False, str(e), {"passed": 0, "failed": 0, "errors": 1, "total": 1}
 
-    def _execute_and_correct_tests(
+    async def _execute_and_correct_tests(
         self,
         test_file: Path,
         test_spec: Dict[str, Any],
@@ -475,7 +457,7 @@ def {test_name}():
 
             # Broadcast test results
             if self.websocket_manager:
-                self._broadcast_test_result(
+                await self._broadcast_test_result(
                     project_id,
                     task_id,
                     counts,
@@ -497,7 +479,7 @@ def {test_name}():
             if attempt < self.max_correction_attempts:
                 logger.info(f"Attempting to fix failing tests (attempt {attempt})")
 
-                corrected_code = self._correct_failing_tests(
+                corrected_code = await self._correct_failing_tests(
                     test_file.read_text(),
                     output,
                     test_spec,
@@ -521,7 +503,7 @@ def {test_name}():
             "output": output
         }
 
-    def _correct_failing_tests(
+    async def _correct_failing_tests(
         self,
         original_code: str,
         error_output: str,
@@ -565,7 +547,7 @@ Requirements:
 Provide ONLY the corrected test code, no explanations."""
 
         try:
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=3000,
                 messages=[{"role": "user", "content": prompt}]
@@ -585,7 +567,7 @@ Provide ONLY the corrected test code, no explanations."""
             logger.error(f"Failed to correct tests: {e}")
             return None
 
-    def _broadcast_test_result(
+    async def _broadcast_test_result(
         self,
         project_id: int,
         task_id: int,
@@ -596,24 +578,19 @@ Provide ONLY the corrected test code, no explanations."""
         if not self.websocket_manager:
             return
 
-        import asyncio
         from codeframe.ui.websocket_broadcasts import broadcast_test_result
 
         status = "passed" if all_passed else "failed"
 
         try:
-            loop = asyncio.get_running_loop()
-            asyncio.run_coroutine_threadsafe(
-                broadcast_test_result(
-                    self.websocket_manager,
-                    project_id,
-                    task_id,
-                    status,
-                    passed=counts.get("passed", 0),
-                    failed=counts.get("failed", 0),
-                    errors=counts.get("errors", 0)
-                ),
-                loop
+            await broadcast_test_result(
+                self.websocket_manager,
+                project_id,
+                task_id,
+                status,
+                passed=counts.get("passed", 0),
+                failed=counts.get("failed", 0),
+                errors=counts.get("errors", 0)
             )
-        except RuntimeError:
-            logger.debug("Skipped test result broadcast (no event loop)")
+        except Exception as e:
+            logger.debug(f"Failed to broadcast test result: {e}")

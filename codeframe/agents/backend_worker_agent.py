@@ -94,37 +94,6 @@ class BackendWorkerAgent:
             f"ws_enabled={ws_manager is not None}"
         )
 
-    def _broadcast_async(
-        self,
-        broadcast_func,
-        *args,
-        **kwargs
-    ) -> None:
-        """
-        Helper to broadcast WebSocket messages (handles async event loop safely).
-
-        Uses asyncio.run_coroutine_threadsafe to schedule coroutines from threads,
-        avoiding deadlocks when called from thread pool executors.
-
-        Args:
-            broadcast_func: Async function to call (e.g., broadcast_task_status)
-            *args: Positional arguments for broadcast_func
-            **kwargs: Keyword arguments for broadcast_func
-        """
-        if not self.ws_manager:
-            return
-
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.run_coroutine_threadsafe(
-                broadcast_func(*args, **kwargs),
-                loop
-            )
-        except RuntimeError:
-            logger.debug(
-                f"Skipped broadcast (no event loop): {broadcast_func.__name__}"
-            )
-
     def fetch_next_task(self) -> Optional[Dict[str, Any]]:
         """
         Fetch highest priority pending task for this project.
@@ -227,7 +196,7 @@ class BackendWorkerAgent:
             "issue_context": issue_context
         }
 
-    def generate_code(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_code(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generate code using LLM based on context.
 
@@ -250,7 +219,7 @@ class BackendWorkerAgent:
                 "explanation": str  # What was changed and why
             }
         """
-        import anthropic
+        from anthropic import AsyncAnthropic
 
         task = context["task"]
         related_symbols = context.get("related_symbols", [])
@@ -319,11 +288,11 @@ Guidelines:
         user_prompt = "\n".join(user_prompt_parts)
 
         # Call Anthropic API
-        client = anthropic.Anthropic(api_key=self.api_key)
+        client = AsyncAnthropic(api_key=self.api_key)
 
         logger.debug(f"Calling Anthropic API for task {task.get('id', 'unknown')}")
 
-        response = client.messages.create(
+        response = await client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             system=system_prompt,
@@ -439,22 +408,7 @@ Guidelines:
         if output:
             logger.debug(f"Task {task_id} output: {output[:200]}")
 
-        # Broadcast status change via WebSocket (cf-45)
-        if self.ws_manager:
-            try:
-                from codeframe.ui.websocket_broadcasts import broadcast_task_status
-                self._broadcast_async(
-                    broadcast_task_status,
-                    self.ws_manager,
-                    self.project_id,
-                    task_id,
-                    status,
-                    agent_id=agent_id
-                )
-            except Exception as e:
-                logger.debug(f"Failed to broadcast task status: {e}")
-
-    def _run_and_record_tests(self, task_id: int) -> None:
+    async def _run_and_record_tests(self, task_id: int) -> None:
         """
         Run tests and record results in database (cf-42 Phase 3).
 
@@ -477,7 +431,7 @@ Guidelines:
 
         # Run tests
         logger.info(f"Running tests for task {task_id}")
-        test_result = test_runner.run_tests()
+        test_result = await test_runner.run_tests()
 
         # Convert output dict to JSON string if it's not already a string
         output_str = None
@@ -514,8 +468,7 @@ Guidelines:
                 )
 
                 # Broadcast test result
-                self._broadcast_async(
-                    broadcast_test_result,
+                await broadcast_test_result(
                     self.ws_manager,
                     self.project_id,
                     task_id,
@@ -533,8 +486,7 @@ Guidelines:
                 else:
                     activity_message = f"Tests {test_result.status} for task #{task_id} ({test_result.passed}/{test_result.total} passed)"
 
-                self._broadcast_async(
-                    broadcast_activity_update,
+                await broadcast_activity_update(
                     self.ws_manager,
                     self.project_id,
                     "tests_completed",
@@ -545,7 +497,7 @@ Guidelines:
             except Exception as e:
                 logger.debug(f"Failed to broadcast test result: {e}")
 
-    def _attempt_self_correction(
+    async def _attempt_self_correction(
         self,
         task: Dict[str, Any],
         test_result_id: int,
@@ -621,7 +573,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             context["correction_mode"] = True
             context["correction_prompt"] = correction_prompt
             
-            generation_result = self.generate_code(context)
+            generation_result = await self.generate_code(context)
             
             # Extract analysis from generation output
             error_analysis = latest_result['output'][:500] if latest_result['output'] else "Test failures detected"
@@ -641,7 +593,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 "code_changes": []
             }
 
-    def _self_correction_loop(self, task: Dict[str, Any], initial_test_result_id: int) -> bool:
+    async def _self_correction_loop(self, task: Dict[str, Any], initial_test_result_id: int) -> bool:
         """
         Execute self-correction loop to fix failing tests (cf-43).
 
@@ -672,8 +624,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             if self.ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
-                    self._broadcast_async(
-                        broadcast_correction_attempt,
+                    await broadcast_correction_attempt(
                         self.ws_manager,
                         self.project_id,
                         task_id,
@@ -685,7 +636,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     logger.debug(f"Failed to broadcast correction attempt: {e}")
 
             # Attempt correction
-            correction = self._attempt_self_correction(task, initial_test_result_id, attempt_num)
+            correction = await self._attempt_self_correction(task, initial_test_result_id, attempt_num)
 
             # Record the correction attempt
             attempt_id = self.db.create_correction_attempt(
@@ -708,7 +659,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     continue
 
             # Re-run tests
-            self._run_and_record_tests(task_id)
+            await self._run_and_record_tests(task_id)
 
             # Check if tests now pass
             test_results = self.db.get_test_results_by_task(task_id)
@@ -724,8 +675,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                             broadcast_correction_attempt,
                             broadcast_activity_update
                         )
-                        self._broadcast_async(
-                            broadcast_correction_attempt,
+                        await broadcast_correction_attempt(
                             self.ws_manager,
                             self.project_id,
                             task_id,
@@ -733,8 +683,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                             max_attempts,
                             "success"
                         )
-                        self._broadcast_async(
-                            broadcast_activity_update,
+                        await broadcast_activity_update(
                             self.ws_manager,
                             self.project_id,
                             "correction_success",
@@ -757,8 +706,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
                     error_summary = f"Status: {latest_result['status'] if latest_result else 'unknown'}"
-                    self._broadcast_async(
-                        broadcast_correction_attempt,
+                    await broadcast_correction_attempt(
                         self.ws_manager,
                         self.project_id,
                         task_id,
@@ -794,7 +742,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         
         return False
 
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a single task end-to-end.
 
@@ -832,13 +780,13 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             context = self.build_context(task)
 
             # 3. Generate code using LLM
-            generation_result = self.generate_code(context)
+            generation_result = await self.generate_code(context)
 
             # 4. Apply file changes
             files_modified = self.apply_file_changes(generation_result["files"])
 
             # 5. Run tests (cf-42 Phase 3)
-            self._run_and_record_tests(task_id)
+            await self._run_and_record_tests(task_id)
 
             # 6. Check test results and self-correct if needed (cf-43)
             test_results = self.db.get_test_results_by_task(task_id)
@@ -851,7 +799,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 )
                 
                 # Attempt self-correction (up to 3 attempts)
-                correction_successful = self._self_correction_loop(task, latest_test["id"])
+                correction_successful = await self._self_correction_loop(task, latest_test["id"])
                 
                 if not correction_successful:
                     # Self-correction failed - mark task as blocked
@@ -876,8 +824,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             if self.ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_activity_update
-                    self._broadcast_async(
-                        broadcast_activity_update,
+                    await broadcast_activity_update(
                         self.ws_manager,
                         self.project_id,
                         "task_completed",
