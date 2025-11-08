@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import useSWR from 'swr';
 import { chatApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
@@ -23,7 +23,7 @@ interface ChatInterfaceProps {
   agentStatus?: 'idle' | 'working' | 'blocked' | 'offline';
 }
 
-export default function ChatInterface({ projectId, agentStatus = 'idle' }: ChatInterfaceProps) {
+const ChatInterface = memo(function ChatInterface({ projectId, agentStatus = 'idle' }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -249,4 +249,8 @@ export default function ChatInterface({ projectId, agentStatus = 'idle' }: ChatI
       </form>
     </div>
   );
-}
+});
+
+ChatInterface.displayName = 'ChatInterface';
+
+export default ChatInterface;
