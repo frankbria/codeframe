@@ -11,7 +11,7 @@ Tests the full self-correction workflow:
 import pytest
 import json
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
@@ -22,15 +22,16 @@ from codeframe.testing.models import TestResult
 class TestSelfCorrectionLoop:
     """Test self-correction loop integration."""
 
-    @patch('anthropic.Anthropic')
-    def test_self_correction_successful_on_first_attempt(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_self_correction_successful_on_first_attempt(self, mock_anthropic_class, tmp_path):
         """Test self-correction succeeds on first attempt."""
         from codeframe.testing.test_runner import TestRunner
 
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -57,7 +58,7 @@ class TestSelfCorrectionLoop:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         # First response: code with failing test
@@ -103,7 +104,7 @@ class TestSelfCorrectionLoop:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # Verify task completed after successful correction
             assert result["status"] == "completed"
@@ -120,15 +121,16 @@ class TestSelfCorrectionLoop:
             assert test_results[0]["status"] == "failed"
             assert test_results[1]["status"] == "passed"
 
-    @patch('anthropic.Anthropic')
-    def test_self_correction_exhausts_all_attempts(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_self_correction_exhausts_all_attempts(self, mock_anthropic_class, tmp_path):
         """Test self-correction exhausts all 3 attempts and creates blocker."""
         from codeframe.testing.test_runner import TestRunner
 
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -198,7 +200,7 @@ class TestSelfCorrectionLoop:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # Verify task is blocked after 3 attempts
             assert result["status"] == "blocked"
@@ -224,15 +226,16 @@ class TestSelfCorrectionLoop:
             updated_task = cursor.fetchone()
             assert updated_task["status"] == "blocked"
 
-    @patch('anthropic.Anthropic')
-    def test_self_correction_successful_on_second_attempt(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_self_correction_successful_on_second_attempt(self, mock_anthropic_class, tmp_path):
         """Test self-correction succeeds on second attempt."""
         from codeframe.testing.test_runner import TestRunner
 
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -259,7 +262,7 @@ class TestSelfCorrectionLoop:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
 
         responses = [
@@ -298,7 +301,7 @@ class TestSelfCorrectionLoop:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # Verify task completed
             assert result["status"] == "completed"
@@ -312,15 +315,16 @@ class TestSelfCorrectionLoop:
             test_results = db.get_test_results_by_task(task_id)
             assert len(test_results) == 3  # Initial + 2 correction attempts
 
-    @patch('anthropic.Anthropic')
-    def test_no_self_correction_when_tests_pass_initially(self, mock_anthropic_class, tmp_path):
+    @patch('anthropic.AsyncAnthropic')
+    @pytest.mark.asyncio
+    async def test_no_self_correction_when_tests_pass_initially(self, mock_anthropic_class, tmp_path):
         """Test self-correction is not triggered when tests pass initially."""
         from codeframe.testing.test_runner import TestRunner
 
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue({
             "project_id": project_id,
             "issue_number": "1.0",
@@ -347,7 +351,7 @@ class TestSelfCorrectionLoop:
         index.search_pattern.return_value = []
 
         # Mock Anthropic API
-        mock_client = Mock()
+        mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
         mock_response.content = [Mock(text=json.dumps({
@@ -380,7 +384,7 @@ class TestSelfCorrectionLoop:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # Verify task completed
             assert result["status"] == "completed"
