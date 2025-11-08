@@ -1,0 +1,7 @@
+Error: Multiple database files found in /home/frankbria/projects/codeframe/.beads:
+  - beads.db
+  - cf.db
+
+Beads requires a single canonical database: beads.db
+Run 'bd init' to migrate legacy databases or manually remove old databases
+Or run 'bd doctor' for more diagnostics

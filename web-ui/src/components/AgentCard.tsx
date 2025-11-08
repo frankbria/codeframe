@@ -14,7 +14,7 @@ interface AgentCardProps {
   onAgentClick?: (agentId: string) => void;
 }
 
-export const AgentCard: React.FC<AgentCardProps> = ({ agent, onAgentClick }) => {
+const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) => {
   // Status color mapping
   const statusColors = {
     idle: 'bg-green-100 border-green-500 text-green-800',
@@ -43,6 +43,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ agent, onAgentClick }) => 
 
   // Format agent type for display
   const formatAgentType = (type: string): string => {
+    if (!type) return 'Unknown';
     if (type.includes('-')) {
       // Convert "backend-worker" to "Backend Worker"
       return type
@@ -132,5 +133,23 @@ export const AgentCard: React.FC<AgentCardProps> = ({ agent, onAgentClick }) => 
     </div>
   );
 };
+
+// Memoize AgentCard to prevent unnecessary re-renders (Phase 5.2 - T110)
+// Only re-render if agent data or handler changes
+export const AgentCard = React.memo(
+  AgentCardComponent,
+  (prevProps, nextProps) => {
+    // Custom comparison: only re-render if agent changed
+    return (
+      prevProps.agent.id === nextProps.agent.id &&
+      prevProps.agent.status === nextProps.agent.status &&
+      prevProps.agent.currentTask === nextProps.agent.currentTask &&
+      prevProps.agent.tasksCompleted === nextProps.agent.tasksCompleted &&
+      JSON.stringify(prevProps.agent.blockedBy) === JSON.stringify(nextProps.agent.blockedBy)
+    );
+  }
+);
+
+AgentCard.displayName = 'AgentCard';
 
 export default AgentCard;

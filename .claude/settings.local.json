@@ -117,6 +117,7 @@
       "Bash(timeout 60 python -m pytest:*)",
       "Bash(git merge-base:*)",
       "Bash(/dev/null)",
+      "Bash(gh pr create:*)",
       "Bash(git fetch:*)",
       "Bash(git cherry-pick:*)",
       "Bash(npm test:*)",
