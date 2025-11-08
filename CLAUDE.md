@@ -1,23 +1,52 @@
 # codeframe Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2025-11-07
+Auto-generated from all feature plans. Last updated: 2025-11-08
+
+## Documentation Navigation
+
+**For efficient documentation navigation**, see [AGENTS.md](AGENTS.md).
+
+Quick reference:
+- **Current sprint**: [SPRINTS.md](SPRINTS.md) (sprint timeline index)
+- **Sprint details**: `sprints/sprint-NN-name.md` (individual sprint summaries)
+- **Feature specs**: `specs/{feature}/` (detailed implementation guides)
+- **Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md) (system design)
+
+## Documentation Structure
+
+- **`sprints/`** - Sprint execution records (WHAT was delivered WHEN)
+- **`specs/`** - Feature implementation specifications (HOW to implement)
+- **Root** - Project-wide documentation (coding standards, architecture)
 
 ## Active Technologies
 - Python 3.11 + anthropic (AsyncAnthropic), asyncio, FastAPI, websockets (048-async-worker-agents)
 
 ## Project Structure
 ```
-src/
-tests/
+/
+├── sprints/          # Sprint summaries (80-120 lines each)
+├── specs/            # Feature specifications (400-800 lines each)
+├── codeframe/        # Python package
+├── web-ui/           # React frontend
+├── tests/            # Test suite
+└── docs/             # Additional documentation
 ```
 
 ## Commands
-cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+```bash
+pytest                 # Run all tests
+pytest tests/test_*worker_agent.py  # Worker agent tests (async)
+ruff check .           # Lint code
+cd web-ui && npm test  # Frontend tests
+```
 
 ## Code Style
-TypeScript 5.3+ (frontend), Python 3.11+ (backend - existing): Follow standard conventions
+- **Backend**: Python 3.11+ with async/await pattern, type hints, comprehensive tests
+- **Frontend**: TypeScript 5.3+ with React, strict mode, 85%+ test coverage
+- **Conventions**: Follow existing patterns in codebase
 
 ## Recent Changes
+- 2025-11-08: Restructured documentation (SPRINTS.md, AGENTS.md, sprints/ directory)
 - 005-project-schema-refactoring: Added TypeScript 5.3+ (frontend), Python 3.11+ (backend - existing)
 
 <!-- MANUAL ADDITIONS START -->
