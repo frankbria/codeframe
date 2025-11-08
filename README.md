@@ -501,9 +501,9 @@ codeframe chat "<message>"        # Talk to Lead Agent
 
 ## Development Roadmap
 
-**Current Focus**: Multi-agent coordination and Human-in-the-Loop notifications
+**Current Focus**: Human-in-the-Loop notifications (Sprint 6)
 
-See [AGILE_SPRINTS.md](./AGILE_SPRINTS.md) for detailed sprint planning and history.
+See [SPRINTS.md](./SPRINTS.md) for complete sprint timeline and planning.
 
 ### Recent Milestones
 
@@ -526,21 +526,21 @@ See [AGILE_SPRINTS.md](./AGILE_SPRINTS.md) for detailed sprint planning and hist
 
 ### Next Up
 
-**🚧 Sprint 6: Multi-Agent Coordination**
+**✅ Sprint 4: Multi-Agent Coordination (Complete - Oct 2025)**
 - Parallel task execution across multiple agents
 - Dependency resolution and task scheduling
-- Agent pool management
+- Agent pool management (Frontend, Test, Backend agents)
 
-**📋 Sprint 7: Human in the Loop**
+**🚧 Sprint 6: Human in the Loop (Planned)**
 - Two-level notification system (sync/async)
-- Multi-channel delivery (email, SMS, webhook)
-- Blocker escalation workflow
+- Blocker creation when agents get stuck
+- Dashboard UI for answering agent questions
+- Agent resume after blocker resolved
 
 **📋 Future Sprints**
-- Context Management (Virtual Project memory tiers)
-- Agent Maturity tracking (Situational Leadership)
-- Socratic requirements discovery
-- Advanced deployment automation
+- Sprint 7: Context Management (Flash memory, tiered importance)
+- Sprint 8: Agent Maturity (Situational Leadership promotions)
+- Sprint 9: Polish & Review (Review agent, E2E tests)
 
 ---
 
@@ -638,9 +638,10 @@ See `CONTRIBUTING.md` for guidelines.
 
 For comprehensive technical documentation, see:
 - **[CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)** - Complete technical specification
+- **[SPRINTS.md](SPRINTS.md)** - Sprint timeline and planning
+- **[AGENTS.md](AGENTS.md)** - Documentation navigation guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Detailed changelog with migration guides
 - **[CLAUDE.md](CLAUDE.md)** - AI assistant development guidelines
-- **[AGILE_SPRINTS.md](AGILE_SPRINTS.md)** - Sprint progress and planning
 - **[specs/048-async-worker-agents/](specs/048-async-worker-agents/)** - Async migration documentation
 
 ---
@@ -656,39 +657,44 @@ For comprehensive technical documentation, see:
 
 ## Documentation
 
-### Core Documentation
-- [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md) - Complete technical specification
-- [CHANGELOG.md](CHANGELOG.md) - Version history and migration guides
-- [AGILE_SPRINTS.md](AGILE_SPRINTS.md) - Sprint plan and progress tracking
-- [CLAUDE.md](CLAUDE.md) - AI assistant development guidelines
-- [TESTING.md](TESTING.md) - Manual testing guide and checklist
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
-- [CONCEPTS_INTEGRATION.md](CONCEPTS_INTEGRATION.md) - General concepts integration analysis
+### 📚 Documentation Structure
 
-### Sprint Documentation
-- [docs/archive/sprint1/](docs/archive/sprint1/) - Sprint 1 completion summary
-- [docs/archive/sprint3/](docs/archive/sprint3/) - Sprint 3 bug fixes and WebSocket analysis
-- [docs/SPRINT2_PLAN.md](docs/SPRINT2_PLAN.md) - Detailed Sprint 2 implementation plan
+CodeFRAME documentation is organized into three main categories for efficient navigation:
 
-### Feature Specifications
-- [specs/048-async-worker-agents/](specs/048-async-worker-agents/) - Complete async migration documentation
-  - [spec.md](specs/048-async-worker-agents/spec.md) - Feature specification
-  - [plan.md](specs/048-async-worker-agents/plan.md) - Implementation plan
-  - [tasks.md](specs/048-async-worker-agents/tasks.md) - Task breakdown
-  - [quickstart.md](specs/048-async-worker-agents/quickstart.md) - Migration guide
+#### **Sprint Planning & History** (`sprints/`)
+Individual sprint summaries with deliverables, metrics, and retrospectives:
+- [SPRINTS.md](SPRINTS.md) - Sprint timeline index and execution guidelines
+- [sprints/sprint-05-async-workers.md](sprints/sprint-05-async-workers.md) - Latest completed sprint
+- [sprints/sprint-04-multi-agent.md](sprints/sprint-04-multi-agent.md) - Multi-agent coordination
+- [sprints/sprint-03-single-agent.md](sprints/sprint-03-single-agent.md) - Backend worker agent
+- [sprints/](sprints/) - Complete sprint history (Sprint 0-9)
 
-### Process & Infrastructure
+#### **Feature Specifications** (`specs/`)
+Detailed implementation guides for major features:
+- [specs/048-async-worker-agents/](specs/048-async-worker-agents/) - Async migration (spec, plan, tasks, research)
+- [specs/004-multi-agent-coordination/](specs/004-multi-agent-coordination/) - Multi-agent system
+- [specs/005-project-schema-refactoring/](specs/005-project-schema-refactoring/) - Schema refactoring
+
+#### **Project-Wide Documentation** (Root)
+- **[AGENTS.md](AGENTS.md)** - Documentation navigation guide for AI agents
+- **[CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)** - Complete technical specification
+- **[CLAUDE.md](CLAUDE.md)** - AI assistant development guidelines
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and migration guides
+- **[TESTING.md](TESTING.md)** - Testing standards and procedures
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+
+### 🗂️ Additional Resources
+
+#### Process & Infrastructure
 - [docs/process/TDD_WORKFLOW.md](docs/process/TDD_WORKFLOW.md) - Test-Driven Development workflow
 - [docs/process/WEB_UI_SETUP.md](docs/process/WEB_UI_SETUP.md) - Web UI development guide
-- [docs/REMOTE_STAGING_DEPLOYMENT.md](docs/REMOTE_STAGING_DEPLOYMENT.md) - Staging server deployment guide
-- [docs/STAGING_SERVER.md](docs/STAGING_SERVER.md) - Staging server configuration
-- [docs/self_correction_workflow.md](docs/self_correction_workflow.md) - Self-correction loop documentation
-- [docs/nginx-setup-complete.md](docs/nginx-setup-complete.md) - Nginx and SSL configuration
+- [docs/REMOTE_STAGING_DEPLOYMENT.md](docs/REMOTE_STAGING_DEPLOYMENT.md) - Staging server deployment
 
-### Technical Design
+#### Technical Design
 - [docs/CF-41_BACKEND_WORKER_AGENT_DESIGN.md](docs/CF-41_BACKEND_WORKER_AGENT_DESIGN.md) - Backend Worker Agent architecture
-- [docs/API_CONTRACT_ROADMAP.md](docs/API_CONTRACT_ROADMAP.md) - API evolution and contract management
-- [docs/BIG_PICTURE.md](docs/BIG_PICTURE.md) - High-level system architecture and vision
+- [docs/BIG_PICTURE.md](docs/BIG_PICTURE.md) - High-level system architecture
+
+**For AI agents**: See [AGENTS.md](AGENTS.md) for efficient documentation navigation
 
 ---
 
