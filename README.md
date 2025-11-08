@@ -501,89 +501,46 @@ codeframe chat "<message>"        # Talk to Lead Agent
 
 ## Development Roadmap
 
-**Development follows an Agile sprint approach with functional demos at each milestone.**
-See [AGILE_SPRINTS.md](./AGILE_SPRINTS.md) for detailed sprint planning and demo scripts.
+**Current Focus**: Multi-agent coordination and Human-in-the-Loop notifications
 
-### ✅ Sprint 0: Foundation (Complete)
+See [AGILE_SPRINTS.md](./AGILE_SPRINTS.md) for detailed sprint planning and history.
 
-- [x] Comprehensive specification (CODEFRAME_SPEC.md)
-- [x] Architecture and README
-- [x] Python package structure
-- [x] Core models and database schema
-- [x] FastAPI Status Server with WebSocket
-- [x] Next.js web dashboard
-- [x] CLI with typer + rich
+### Recent Milestones
 
-### ✅ Sprint 1: Hello CodeFRAME (Complete)
+**✅ Sprint 5: Async Worker Agents (Complete - Nov 2025)**
+- Converted all worker agents to async/await pattern
+- 30-50% performance improvement in concurrent execution
+- 93/93 tests passing (100% coverage)
+- [See PR #11](https://github.com/frankbria/codeframe/pull/11)
 
-**Demo**: `codeframe init` → see in dashboard → chat with Lead Agent using real Claude API
+**✅ Sprint 3: Single Agent Execution (Complete - Oct 2025)**
+- Backend Worker Agent with self-correction loop
+- Test automation integration (pytest)
+- Git auto-commit with conventional commits
+- Real-time WebSocket dashboard updates
 
-- [x] cf-8: Connect Status Server to Database
-- [x] cf-9: Implement basic Lead Agent with Anthropic SDK
-- [x] cf-10: Connect Project.start() to Lead Agent
-- [x] cf-11: Add project creation to Status Server API
-- [x] cf-12: Environment & Configuration Management
-- [x] cf-13: Manual Testing Checklist
+**✅ Sprint 1: Hello CodeFRAME (Complete - Oct 2025)**
+- Lead Agent with Anthropic SDK integration
+- FastAPI Status Server + Next.js dashboard
+- CLI with project initialization
 
-**Completion Date**: 2025-10-16 | **Tests**: 111/111 passing (100%)
+### Next Up
 
-### 🚧 Sprint 2: Socratic Discovery (In Progress)
+**🚧 Sprint 6: Multi-Agent Coordination**
+- Parallel task execution across multiple agents
+- Dependency resolution and task scheduling
+- Agent pool management
 
-**Demo**: Lead Agent asks 3 questions → user answers → generates basic PRD
+**📋 Sprint 7: Human in the Loop**
+- Two-level notification system (sync/async)
+- Multi-channel delivery (email, SMS, webhook)
+- Blocker escalation workflow
 
-### ✅ Sprint 3: Single Agent Execution (Complete)
-
-**Demo**: Agent creates file → test fails → agent fixes → test passes (self-correction)
-
-- [x] cf-41: Backend Worker Agent with LLM integration
-- [x] cf-42: Test Runner Integration (pytest execution)
-- [x] cf-43: Self-Correction Loop (max 3 attempts)
-- [x] cf-44: Git Auto-Commit with conventional commits
-- [x] cf-45: Real-Time Dashboard Updates (WebSocket)
-- [x] cf-46: Production Bug Fixes (staging deployment)
-
-**Completion Date**: 2025-10-18 | **Features**: Autonomous agent with self-correction
-
-### 📋 Sprint 4: Multi-Agent Coordination (Week 4)
-
-**Demo**: 2 agents work on different files simultaneously → status shows both
-
-### ✅ Sprint 5: Async Worker Agents (Complete)
-
-**Demo**: True async execution with improved performance and concurrency
-
-- [x] cf-48: Convert all worker agents to async/await pattern
-- [x] Phase 1: Backend Worker Agent async conversion
-- [x] Phase 2: Frontend Worker Agent async conversion
-- [x] Phase 3: Test Worker Agent async conversion
-- [x] Phase 4: Test migration and validation (93/93 tests passing)
-
-**Completion Date**: 2025-11-08 | **Performance**: 30-50% improvement in concurrent execution
-
-### 📋 Sprint 6: Human in the Loop (Week 6)
-
-**Demo**: Agent hits blocker → notification sent → user answers in UI → agent continues
-
-### 📋 Sprint 7: Context Management (Week 7)
-
-**Demo**: Virtual Project context tiers items → shows token savings in dashboard
-
-### 📋 Sprint 8: Agent Maturity (Week 8)
-
-**Demo**: Agent completes tasks → metrics improve → maturity level increases → dashboard reflects
-
-### 🎯 Sprint 9: Review & Polish (Week 9)
-
-**Demo**: Complete end-to-end workflow with all features integrated
-
-### 🔮 Future
-
-- Project templates
-- Global memory across projects
-- Multi-user collaboration
-- Advanced rollback
-- Additional providers (Gemini, Llama)
-- Additional languages (Java, Go)
+**📋 Future Sprints**
+- Context Management (Virtual Project memory tiers)
+- Agent Maturity tracking (Situational Leadership)
+- Socratic requirements discovery
+- Advanced deployment automation
 
 ---
 
