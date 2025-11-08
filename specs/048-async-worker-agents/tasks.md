@@ -206,9 +206,9 @@ Phase 1: Backend Worker Agent
 
 ### 4.5 Final Commit
 
-- [ ] T066 Stage all changes: `git add codeframe/agents/ tests/agents/`
-- [ ] T067 Commit with descriptive message: `git commit -m "feat: convert worker agents to async/await (cf-48)"`
-- [ ] T068 Verify git status is clean
+- [X] T066 Stage all changes: `git add codeframe/agents/ tests/agents/`
+- [X] T067 Commit with descriptive message: `git commit -m "feat: convert worker agents to async/await (cf-48)"`
+- [X] T068 Verify git status is clean
 
 ---
 
