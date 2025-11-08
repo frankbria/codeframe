@@ -431,7 +431,7 @@ Guidelines:
 
         # Run tests
         logger.info(f"Running tests for task {task_id}")
-        test_result = await test_runner.run_tests()
+        test_result = test_runner.run_tests()
 
         # Convert output dict to JSON string if it's not already a string
         output_str = None
