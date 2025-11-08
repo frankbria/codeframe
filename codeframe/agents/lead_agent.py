@@ -1314,19 +1314,11 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             # Execute task (assuming agents have execute_task method)
             logger.info(f"Agent {agent_id} executing task {task.id}")
-            print(f"🎯 DEBUG: About to execute task via run_in_executor...")
-            
-            # Note: Worker agents may not all have async execute_task yet
-            # For now, we'll wrap synchronous execution in executor
-            print(f"🎯 DEBUG: Getting event loop...")
-            loop = asyncio.get_running_loop()
-            print(f"🎯 DEBUG: Calling run_in_executor...")
-            await loop.run_in_executor(
-                None,
-                agent_instance.execute_task,
-                task_dict
-            )
-            print(f"🎯 DEBUG: run_in_executor completed ✅")
+            print(f"🎯 DEBUG: About to execute task directly (async)...")
+
+            # Worker agents now use async execute_task - no threading needed
+            await agent_instance.execute_task(task_dict)
+            print(f"🎯 DEBUG: execute_task completed ✅")
 
             # Task succeeded
             print(f"🎯 DEBUG: Updating task {task.id} to completed...")
