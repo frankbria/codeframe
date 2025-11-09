@@ -15,7 +15,7 @@ import os
 import sqlite3
 
 from codeframe.core.project import Project
-from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus
+from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus, BlockerResolve
 from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
 from codeframe.agents.lead_agent import LeadAgent
@@ -915,6 +915,89 @@ async def get_blocker(blocker_id: int):
         )
 
     return blocker
+
+
+@app.post("/api/blockers/{blocker_id}/resolve")
+async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
+    """Resolve a blocker with user's answer (049-human-in-loop, Phase 4/US2).
+
+    Args:
+        blocker_id: Blocker ID to resolve
+        request: BlockerResolve containing the answer
+
+    Returns:
+        200 OK: Blocker resolution successful
+        {
+            "blocker_id": int,
+            "status": "RESOLVED",
+            "resolved_at": ISODate (RFC 3339)
+        }
+
+        409 Conflict: Blocker already resolved
+        {
+            "error": "Blocker already resolved",
+            "blocker_id": int,
+            "resolved_at": ISODate (RFC 3339)
+        }
+
+        404 Not Found: Blocker doesn't exist
+        {
+            "error": "Blocker not found",
+            "blocker_id": int
+        }
+
+    Raises:
+        HTTPException:
+            - 404: Blocker not found
+            - 409: Blocker already resolved (duplicate resolution)
+            - 422: Invalid request (validation error)
+    """
+    from datetime import datetime, UTC
+
+    # Check if blocker exists
+    blocker = app.state.db.get_blocker(blocker_id)
+    if not blocker:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Blocker not found", "blocker_id": blocker_id}
+        )
+
+    # Attempt to resolve blocker (returns False if already resolved)
+    success = app.state.db.resolve_blocker(blocker_id, request.answer)
+
+    if not success:
+        # Blocker already resolved - return 409 Conflict
+        blocker = app.state.db.get_blocker(blocker_id)
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "Blocker already resolved",
+                "blocker_id": blocker_id,
+                "resolved_at": blocker["resolved_at"]
+            }
+        )
+
+    # Get updated blocker for response
+    blocker = app.state.db.get_blocker(blocker_id)
+
+    # Broadcast blocker_resolved event via WebSocket
+    try:
+        await manager.broadcast({
+            "type": "blocker_resolved",
+            "blocker_id": blocker_id,
+            "answer": request.answer,
+            "resolved_at": blocker["resolved_at"]
+        })
+    except Exception as e:
+        # Log error but don't fail the request
+        logger.error(f"Failed to broadcast blocker_resolved event: {e}")
+
+    # Return success response
+    return {
+        "blocker_id": blocker_id,
+        "status": "RESOLVED",
+        "resolved_at": blocker["resolved_at"]
+    }
 
 
 @app.post("/api/projects/{project_id}/pause")

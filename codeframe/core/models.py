@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class TaskStatus(Enum):
@@ -178,6 +178,8 @@ class Notification:
 
 class BlockerModel(BaseModel):
     """Pydantic model for blocker database records."""
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
     id: int
     agent_id: str
     task_id: Optional[int] = None
@@ -187,10 +189,6 @@ class BlockerModel(BaseModel):
     status: BlockerStatus
     created_at: datetime
     resolved_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True  # For SQLAlchemy/SQLite compatibility
-        use_enum_values = True
 
 
 class BlockerCreate(BaseModel):

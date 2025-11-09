@@ -59,10 +59,11 @@ export const blockersApi = {
     }),
   get: (blockerId: number) =>
     api.get<Blocker>(`/api/blockers/${blockerId}`),
-  resolve: (projectId: number, blockerId: number, answer: string) =>
-    api.post(`/api/projects/${projectId}/blockers/${blockerId}/resolve`, {
-      answer,
-    }),
+  resolve: (blockerId: number, answer: string) =>
+    api.post<{ blocker_id: number; status: string; resolved_at: string }>(
+      `/api/blockers/${blockerId}/resolve`,
+      { answer }
+    ),
 
   // Aliases for T019 compatibility
   fetchBlockers: (projectId: number, status?: string) =>
@@ -72,6 +73,22 @@ export const blockersApi = {
   fetchBlocker: (blockerId: number) =>
     api.get<Blocker>(`/api/blockers/${blockerId}`),
 };
+
+/**
+ * Resolve a blocker with user's answer (T023).
+ *
+ * @param blockerId - ID of the blocker to resolve
+ * @param answer - User's answer to the blocker question
+ * @returns Promise resolving to success indicator
+ */
+export async function resolveBlocker(blockerId: number, answer: string): Promise<{ success: boolean }> {
+  try {
+    await blockersApi.resolve(blockerId, answer);
+    return { success: true };
+  } catch (error) {
+    throw error;
+  }
+}
 
 export const activityApi = {
   list: (projectId: number, limit?: number) =>
