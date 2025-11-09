@@ -117,8 +117,8 @@
 ### Implementation for User Story 4
 
 - [X] T035 [US4] Add blocker type classification logic to create_blocker() method (agents determine SYNC vs ASYNC)
-- [ ] T036 [US4] Add SYNC blocker dependency handling to LeadAgent in codeframe/agents/lead_agent.py (pause dependent tasks)
-- [ ] T037 [US4] Add ASYNC blocker handling to LeadAgent (allow independent work to continue)
+- [X] T036 [US4] Add SYNC blocker dependency handling to LeadAgent in codeframe/agents/lead_agent.py (pause dependent tasks)
+- [X] T037 [US4] Add ASYNC blocker handling to LeadAgent (allow independent work to continue)
 - [X] T038 [US4] Update BlockerPanel to show different badges for SYNC (red/CRITICAL) vs ASYNC (yellow/INFO)
 - [X] T039 [US4] Update BlockerModal to display blocker type indicator
 
@@ -134,11 +134,11 @@
 
 ### Implementation for User Story 5
 
-- [ ] T040 [P] [US5] Create webhook notification service in codeframe/notifications/webhook.py (send_blocker_notification method)
-- [ ] T041 [US5] Add webhook configuration support (BLOCKER_WEBHOOK_URL environment variable) in codeframe/config or settings
-- [ ] T042 [US5] Integrate webhook notification into create_blocker() flow (SYNC blockers only)
-- [ ] T043 [US5] Add webhook payload formatting (blocker details + dashboard_url) in codeframe/notifications/webhook.py
-- [ ] T044 [US5] Add async fire-and-forget delivery with 5s timeout and error logging
+- [X] T040 [P] [US5] Create webhook notification service in codeframe/notifications/webhook.py (send_blocker_notification method)
+- [X] T041 [US5] Add webhook configuration support (BLOCKER_WEBHOOK_URL environment variable) in codeframe/config or settings
+- [X] T042 [US5] Integrate webhook notification into create_blocker() flow (SYNC blockers only)
+- [X] T043 [US5] Add webhook payload formatting (blocker details + dashboard_url) in codeframe/notifications/webhook.py
+- [X] T044 [US5] Add async fire-and-forget delivery with 5s timeout and error logging
 
 **Checkpoint**: SYNC blockers trigger webhook notifications for external alerting
 
