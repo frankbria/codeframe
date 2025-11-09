@@ -76,13 +76,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Add POST /api/blockers/:blocker_id/resolve endpoint to codeframe/ui/server.py
-- [ ] T022 [P] [US2] Create BlockerModal component in web-ui/src/components/BlockerModal.tsx
-- [ ] T023 [US2] Add resolveBlocker() API client method in web-ui/src/lib/api.ts
-- [ ] T024 [US2] Add WebSocket handler for blocker_resolved event in BlockerPanel component
-- [ ] T025 [US2] Wire BlockerModal to BlockerPanel (click blocker → open modal) in web-ui/src/components/BlockerPanel.tsx
-- [ ] T026 [US2] Add answer validation (non-empty, max 5000 chars) to BlockerModal submit handler
-- [ ] T027 [US2] Add success/error toast notifications to BlockerModal (resolved, conflict, validation errors)
+- [X] T021 [US2] Add POST /api/blockers/:blocker_id/resolve endpoint to codeframe/ui/server.py
+- [X] T022 [P] [US2] Create BlockerModal component in web-ui/src/components/BlockerModal.tsx
+- [X] T023 [US2] Add resolveBlocker() API client method in web-ui/src/lib/api.ts
+- [X] T024 [US2] Add WebSocket handler for blocker_resolved event in BlockerPanel component
+- [X] T025 [US2] Wire BlockerModal to BlockerPanel (click blocker → open modal) in web-ui/src/components/BlockerPanel.tsx
+- [X] T026 [US2] Add answer validation (non-empty, max 5000 chars) to BlockerModal submit handler
+- [X] T027 [US2] Add success/error toast notifications to BlockerModal (resolved, conflict, validation errors)
 
 **Checkpoint**: At this point, users can resolve blockers through the dashboard and see real-time updates
 

@@ -17,6 +17,7 @@ import TaskTreeView from './TaskTreeView';
 import DiscoveryProgress from './DiscoveryProgress';
 import AgentCard from './AgentCard';
 import BlockerPanel from './BlockerPanel';
+import { BlockerModal } from './BlockerModal';
 
 interface DashboardProps {
   projectId: number;
@@ -308,6 +309,14 @@ export default function Dashboard({ projectId }: DashboardProps) {
         isOpen={showPRD}
         onClose={() => setShowPRD(false)}
         prdData={prdData || null}
+      />
+
+      {/* Blocker Resolution Modal (T025, 049-human-in-loop) */}
+      <BlockerModal
+        isOpen={selectedBlocker !== null}
+        blocker={selectedBlocker}
+        onClose={() => setSelectedBlocker(null)}
+        onResolved={() => mutateBlockers()}
       />
     </div>
   );
