@@ -20,6 +20,8 @@ Quick reference:
 
 ## Active Technologies
 - Python 3.11 + anthropic (AsyncAnthropic), asyncio, FastAPI, websockets (048-async-worker-agents)
+- Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets (049-human-in-loop)
+- SQLite with async support (aiosqlite) - blockers table schema already exists (049-human-in-loop)
 
 ## Project Structure
 ```
@@ -46,6 +48,7 @@ cd web-ui && npm test  # Frontend tests
 - **Conventions**: Follow existing patterns in codebase
 
 ## Recent Changes
+- 049-human-in-loop: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets
 - 2025-11-08: Restructured documentation (SPRINTS.md, AGENTS.md, sprints/ directory)
 - 005-project-schema-refactoring: Added TypeScript 5.3+ (frontend), Python 3.11+ (backend - existing)
 
