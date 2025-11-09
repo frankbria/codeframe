@@ -58,11 +58,11 @@
 - [X] T013 [P] [US1] Add create_blocker() method to TestWorkerAgent in codeframe/agents/test_worker_agent.py
 - [X] T014 [US1] Add GET /api/projects/:project_id/blockers endpoint to codeframe/ui/server.py
 - [X] T015 [US1] Add GET /api/blockers/:blocker_id endpoint to codeframe/ui/server.py
-- [ ] T016 [P] [US1] Create BlockerBadge component in web-ui/src/components/BlockerBadge.tsx
-- [ ] T017 [P] [US1] Create BlockerPanel component in web-ui/src/components/BlockerPanel.tsx
-- [ ] T018 [US1] Add WebSocket handler for blocker_created event in BlockerPanel component
-- [ ] T019 [US1] Add API client methods for blockers in web-ui/src/lib/api.ts (fetchBlockers, fetchBlocker)
-- [ ] T020 [US1] Integrate BlockerPanel into Dashboard component in web-ui/src/components/Dashboard.tsx
+- [X] T016 [P] [US1] Create BlockerBadge component in web-ui/src/components/BlockerBadge.tsx
+- [X] T017 [P] [US1] Create BlockerPanel component in web-ui/src/components/BlockerPanel.tsx
+- [X] T018 [US1] Add WebSocket handler for blocker_created event in BlockerPanel component
+- [X] T019 [US1] Add API client methods for blockers in web-ui/src/lib/api.ts (fetchBlockers, fetchBlocker)
+- [X] T020 [US1] Integrate BlockerPanel into Dashboard component in web-ui/src/components/Dashboard.tsx
 
 **Checkpoint**: At this point, agents can create blockers and they appear in the dashboard blocker panel
 

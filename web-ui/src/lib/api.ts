@@ -53,12 +53,24 @@ export const tasksApi = {
 };
 
 export const blockersApi = {
-  list: (projectId: number) =>
-    api.get<{ blockers: Blocker[] }>(`/api/projects/${projectId}/blockers`),
+  list: (projectId: number, status?: string) =>
+    api.get<{ blockers: Blocker[] }>(`/api/projects/${projectId}/blockers`, {
+      params: status ? { status } : {},
+    }),
+  get: (blockerId: number) =>
+    api.get<Blocker>(`/api/blockers/${blockerId}`),
   resolve: (projectId: number, blockerId: number, answer: string) =>
     api.post(`/api/projects/${projectId}/blockers/${blockerId}/resolve`, {
       answer,
     }),
+
+  // Aliases for T019 compatibility
+  fetchBlockers: (projectId: number, status?: string) =>
+    api.get<{ blockers: Blocker[] }>(`/api/projects/${projectId}/blockers`, {
+      params: status ? { status } : {},
+    }),
+  fetchBlocker: (blockerId: number) =>
+    api.get<Blocker>(`/api/blockers/${blockerId}`),
 };
 
 export const activityApi = {
