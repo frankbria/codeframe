@@ -116,11 +116,11 @@
 
 ### Implementation for User Story 4
 
-- [ ] T035 [US4] Add blocker type classification logic to create_blocker() method (agents determine SYNC vs ASYNC)
+- [X] T035 [US4] Add blocker type classification logic to create_blocker() method (agents determine SYNC vs ASYNC)
 - [ ] T036 [US4] Add SYNC blocker dependency handling to LeadAgent in codeframe/agents/lead_agent.py (pause dependent tasks)
 - [ ] T037 [US4] Add ASYNC blocker handling to LeadAgent (allow independent work to continue)
-- [ ] T038 [US4] Update BlockerPanel to show different badges for SYNC (red/CRITICAL) vs ASYNC (yellow/INFO)
-- [ ] T039 [US4] Update BlockerModal to display blocker type indicator
+- [X] T038 [US4] Update BlockerPanel to show different badges for SYNC (red/CRITICAL) vs ASYNC (yellow/INFO)
+- [X] T039 [US4] Update BlockerModal to display blocker type indicator
 
 **Checkpoint**: SYNC and ASYNC blockers are handled differently by the system
 
