@@ -853,6 +853,70 @@ async def get_project_issues(project_id: int, include: str = None):
     return issues_data
 
 
+# Blocker endpoints (049-human-in-loop)
+
+@app.get("/api/projects/{project_id}/blockers")
+async def get_project_blockers(
+    project_id: int,
+    status: str = None
+):
+    """Get blockers for a project (049-human-in-loop).
+
+    Args:
+        project_id: Project ID
+        status: Optional filter by status ('PENDING', 'RESOLVED', 'EXPIRED')
+
+    Returns:
+        BlockerListResponse dictionary with:
+        - blockers: List of blocker dictionaries
+        - total: Total number of blockers
+        - pending_count: Number of pending blockers
+        - sync_count: Number of SYNC blockers
+        - async_count: Number of ASYNC blockers
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+    """
+    # Check if project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Get blockers from database
+    blockers_data = app.state.db.list_blockers(project_id, status)
+
+    return blockers_data
+
+
+@app.get("/api/blockers/{blocker_id}")
+async def get_blocker(blocker_id: int):
+    """Get details of a specific blocker (049-human-in-loop).
+
+    Args:
+        blocker_id: Blocker ID
+
+    Returns:
+        Blocker dictionary
+
+    Raises:
+        HTTPException:
+            - 404: Blocker not found
+    """
+    blocker = app.state.db.get_blocker(blocker_id)
+
+    if not blocker:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Blocker {blocker_id} not found"
+        )
+
+    return blocker
+
+
 @app.post("/api/projects/{project_id}/pause")
 async def pause_project(project_id: int):
     """Pause project execution."""

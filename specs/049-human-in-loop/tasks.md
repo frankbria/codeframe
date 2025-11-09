@@ -53,11 +53,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Add create_blocker() method to BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
-- [ ] T012 [P] [US1] Add create_blocker() method to FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
-- [ ] T013 [P] [US1] Add create_blocker() method to TestWorkerAgent in codeframe/agents/test_worker_agent.py
-- [ ] T014 [US1] Add GET /api/projects/:project_id/blockers endpoint to codeframe/ui/server.py
-- [ ] T015 [US1] Add GET /api/blockers/:blocker_id endpoint to codeframe/ui/server.py
+- [X] T011 [P] [US1] Add create_blocker() method to BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
+- [X] T012 [P] [US1] Add create_blocker() method to FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
+- [X] T013 [P] [US1] Add create_blocker() method to TestWorkerAgent in codeframe/agents/test_worker_agent.py
+- [X] T014 [US1] Add GET /api/projects/:project_id/blockers endpoint to codeframe/ui/server.py
+- [X] T015 [US1] Add GET /api/blockers/:blocker_id endpoint to codeframe/ui/server.py
 - [ ] T016 [P] [US1] Create BlockerBadge component in web-ui/src/components/BlockerBadge.tsx
 - [ ] T017 [P] [US1] Create BlockerPanel component in web-ui/src/components/BlockerPanel.tsx
 - [ ] T018 [US1] Add WebSocket handler for blocker_created event in BlockerPanel component
