@@ -21,10 +21,10 @@
 
 **Purpose**: Database migration and foundational models
 
-- [ ] T001 Run database migration 003 to update blockers table schema in codeframe/persistence/migrations/migration_003_update_blockers_schema.py
-- [ ] T002 [P] Add BlockerType and BlockerStatus enums to codeframe/core/models.py
-- [ ] T003 [P] Add Blocker, BlockerCreate, BlockerResolve Pydantic models to codeframe/core/models.py
-- [ ] T004 [P] Add TypeScript blocker types to web-ui/src/types/blocker.ts
+- [X] T001 Run database migration 003 to update blockers table schema in codeframe/persistence/migrations/migration_003_update_blockers_schema.py
+- [X] T002 [P] Add BlockerType and BlockerStatus enums to codeframe/core/models.py
+- [X] T003 [P] Add Blocker, BlockerCreate, BlockerResolve Pydantic models to codeframe/core/models.py
+- [X] T004 [P] Add TypeScript blocker types to web-ui/src/types/blocker.ts
 
 ---
 
@@ -34,12 +34,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement create_blocker() database method in codeframe/persistence/database.py
-- [ ] T006 [P] Implement resolve_blocker() database method in codeframe/persistence/database.py
-- [ ] T007 [P] Implement get_pending_blocker() database method in codeframe/persistence/database.py
-- [ ] T008 [P] Implement list_blockers() database method with enrichment in codeframe/persistence/database.py
-- [ ] T009 [P] Implement get_blocker() database method in codeframe/persistence/database.py
-- [ ] T010 Add WebSocket broadcast helpers to codeframe/ui/websocket_broadcasts.py (broadcast_blocker_created, broadcast_blocker_resolved, broadcast_agent_resumed)
+- [X] T005 Implement create_blocker() database method in codeframe/persistence/database.py
+- [X] T006 [P] Implement resolve_blocker() database method in codeframe/persistence/database.py
+- [X] T007 [P] Implement get_pending_blocker() database method in codeframe/persistence/database.py
+- [X] T008 [P] Implement list_blockers() database method with enrichment in codeframe/persistence/database.py
+- [X] T009 [P] Implement get_blocker() database method in codeframe/persistence/database.py
+- [X] T010 Add WebSocket broadcast helpers to codeframe/ui/websocket_broadcasts.py (broadcast_blocker_created, broadcast_blocker_resolved, broadcast_agent_resumed)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

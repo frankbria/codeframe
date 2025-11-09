@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(Enum):
@@ -35,9 +36,22 @@ class ProjectStatus(Enum):
 
 
 class BlockerSeverity(Enum):
-    """Blocker severity for escalation."""
+    """Blocker severity for escalation (deprecated, use BlockerType)."""
     SYNC = "sync"  # Urgent, needs immediate response
     ASYNC = "async"  # Can wait, stack for later
+
+
+class BlockerType(str, Enum):
+    """Type of blocker requiring human intervention."""
+    SYNC = "SYNC"      # Critical blocker - agent pauses immediately
+    ASYNC = "ASYNC"    # Clarification request - agent continues work
+
+
+class BlockerStatus(str, Enum):
+    """Current status of a blocker."""
+    PENDING = "PENDING"      # Awaiting user response
+    RESOLVED = "RESOLVED"    # User has provided answer
+    EXPIRED = "EXPIRED"      # Blocker timed out (24h default)
 
 
 class ContextTier(Enum):
@@ -158,3 +172,44 @@ class Notification:
     channels: List[str] = field(default_factory=list)
     sent_at: Optional[datetime] = None
     acknowledged_at: Optional[datetime] = None
+
+
+# Pydantic models for API validation and serialization
+
+class BlockerModel(BaseModel):
+    """Pydantic model for blocker database records."""
+    id: int
+    agent_id: str
+    task_id: Optional[int] = None
+    blocker_type: BlockerType
+    question: str = Field(..., max_length=2000)
+    answer: Optional[str] = Field(None, max_length=5000)
+    status: BlockerStatus
+    created_at: datetime
+    resolved_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True  # For SQLAlchemy/SQLite compatibility
+        use_enum_values = True
+
+
+class BlockerCreate(BaseModel):
+    """Request model for creating a blocker."""
+    agent_id: str
+    task_id: Optional[int] = None
+    blocker_type: BlockerType = BlockerType.ASYNC
+    question: str = Field(..., min_length=1, max_length=2000)
+
+
+class BlockerResolve(BaseModel):
+    """Request model for resolving a blocker."""
+    answer: str = Field(..., min_length=1, max_length=5000)
+
+
+class BlockerListResponse(BaseModel):
+    """Response model for listing blockers."""
+    blockers: List[BlockerModel]
+    total: int
+    pending_count: int
+    sync_count: int
+    async_count: int = 0
