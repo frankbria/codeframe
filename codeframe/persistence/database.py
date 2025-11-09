@@ -309,6 +309,7 @@ class Database:
             from codeframe.persistence.migrations import MigrationRunner
             from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration as migration_001
             from codeframe.persistence.migrations.migration_002_refactor_projects_schema import migration as migration_002
+            from codeframe.persistence.migrations.migration_003_update_blockers_schema import migration as migration_003
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -320,6 +321,7 @@ class Database:
             # Register migrations
             runner.register(migration_001)
             runner.register(migration_002)
+            runner.register(migration_003)
 
             # Apply all pending migrations
             runner.apply_all()
@@ -572,6 +574,165 @@ class Database:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit."""
         self.close()
+
+    # Blocker CRUD operations (049-human-in-loop)
+
+    def create_blocker(
+        self,
+        agent_id: str,
+        task_id: Optional[int],
+        blocker_type: str,
+        question: str
+    ) -> int:
+        """Create a new blocker.
+
+        Args:
+            agent_id: ID of the agent creating the blocker
+            task_id: Associated task ID (nullable)
+            blocker_type: Type of blocker ('SYNC' or 'ASYNC')
+            question: Question for the user (max 2000 chars)
+
+        Returns:
+            Blocker ID of the created blocker
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status)
+               VALUES (?, ?, ?, ?, 'PENDING')""",
+            (agent_id, task_id, blocker_type, question)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def resolve_blocker(self, blocker_id: int, answer: str) -> bool:
+        """Resolve a blocker with user's answer.
+
+        Args:
+            blocker_id: ID of the blocker to resolve
+            answer: User's answer (max 5000 chars)
+
+        Returns:
+            True if blocker was resolved, False if already resolved or not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """UPDATE blockers
+               SET answer = ?, status = 'RESOLVED', resolved_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND status = 'PENDING'""",
+            (answer, blocker_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_pending_blocker(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Get oldest pending blocker for an agent.
+
+        Args:
+            agent_id: ID of the agent
+
+        Returns:
+            Blocker dictionary or None if no pending blockers
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """SELECT * FROM blockers
+               WHERE agent_id = ? AND status = 'PENDING'
+               ORDER BY created_at ASC LIMIT 1""",
+            (agent_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def list_blockers(
+        self,
+        project_id: int,
+        status: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """List blockers with agent/task info joined.
+
+        Args:
+            project_id: Filter by project ID
+            status: Optional status filter ('PENDING', 'RESOLVED', 'EXPIRED')
+
+        Returns:
+            Dictionary with blockers list and counts:
+            - blockers: List of blocker dictionaries with enriched data
+            - total: Total number of blockers
+            - pending_count: Number of pending blockers
+            - sync_count: Number of SYNC blockers
+            - async_count: Number of ASYNC blockers
+        """
+        cursor = self.conn.cursor()
+
+        # Build query with optional status filter
+        query = """
+            SELECT
+                b.*,
+                a.type as agent_name,
+                t.title as task_title,
+                (julianday('now') - julianday(b.created_at)) * 86400000 as time_waiting_ms
+            FROM blockers b
+            LEFT JOIN agents a ON b.agent_id = a.id
+            LEFT JOIN tasks t ON b.task_id = t.id
+            WHERE t.project_id = ?
+        """
+        params = [project_id]
+
+        if status:
+            query += " AND b.status = ?"
+            params.append(status)
+
+        query += " ORDER BY b.created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        blockers = [dict(row) for row in rows]
+        pending_count = sum(1 for b in blockers if b.get('status') == 'PENDING')
+        sync_count = sum(1 for b in blockers if b.get('blocker_type') == 'SYNC')
+        async_count = sum(1 for b in blockers if b.get('blocker_type') == 'ASYNC')
+
+        return {
+            'blockers': blockers,
+            'total': len(blockers),
+            'pending_count': pending_count,
+            'sync_count': sync_count,
+            'async_count': async_count
+        }
+
+    def get_blocker(self, blocker_id: int) -> Optional[Dict[str, Any]]:
+        """Get blocker details by ID.
+
+        Args:
+            blocker_id: ID of the blocker
+
+        Returns:
+            Blocker dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM blockers WHERE id = ?", (blocker_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def expire_stale_blockers(self, hours: int = 24) -> List[int]:
+        """Expire blockers pending longer than specified hours.
+
+        Args:
+            hours: Number of hours before blocker is considered stale (default: 24)
+
+        Returns:
+            List of expired blocker IDs
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            f"""UPDATE blockers
+               SET status = 'EXPIRED'
+               WHERE status = 'PENDING'
+                 AND datetime(created_at) < datetime('now', '-{hours} hours')
+               RETURNING id"""
+        )
+        self.conn.commit()
+        return [row[0] for row in cursor.fetchall()]
 
     def list_projects(self) -> List[Dict[str, Any]]:
         """List all projects with progress metrics.

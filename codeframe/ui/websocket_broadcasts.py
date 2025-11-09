@@ -501,3 +501,150 @@ async def broadcast_task_unblocked(
         logger.debug(f"Broadcast task_unblocked: task {task_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast task unblocked: {e}")
+
+
+# Blocker broadcast functions (049-human-in-loop)
+
+async def broadcast_blocker_created(
+    manager,
+    project_id: int,
+    blocker_id: int,
+    agent_id: str,
+    task_id: Optional[int],
+    blocker_type: str,
+    question: str,
+    agent_name: Optional[str] = None,
+    task_title: Optional[str] = None
+) -> None:
+    """
+    Broadcast blocker creation to connected clients.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        blocker_id: Blocker ID
+        agent_id: Agent ID that created the blocker
+        task_id: Optional task ID associated with blocker
+        blocker_type: Type of blocker ('SYNC' or 'ASYNC')
+        question: Question for user
+        agent_name: Optional agent display name
+        task_title: Optional task title
+    """
+    message = {
+        "type": "blocker_created",
+        "project_id": project_id,
+        "blocker": {
+            "id": blocker_id,
+            "agent_id": agent_id,
+            "task_id": task_id,
+            "blocker_type": blocker_type,
+            "question": question,
+            "status": "PENDING",
+            "created_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        }
+    }
+
+    if agent_name:
+        message["blocker"]["agent_name"] = agent_name
+
+    if task_title:
+        message["blocker"]["task_title"] = task_title
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast blocker_created: blocker {blocker_id} by {agent_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast blocker created: {e}")
+
+
+async def broadcast_blocker_resolved(
+    manager,
+    project_id: int,
+    blocker_id: int,
+    answer: str
+) -> None:
+    """
+    Broadcast blocker resolution to connected clients.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        blocker_id: Blocker ID that was resolved
+        answer: User's answer to the blocker
+    """
+    message = {
+        "type": "blocker_resolved",
+        "project_id": project_id,
+        "blocker_id": blocker_id,
+        "answer": answer,
+        "resolved_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast blocker_resolved: blocker {blocker_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast blocker resolved: {e}")
+
+
+async def broadcast_agent_resumed(
+    manager,
+    project_id: int,
+    agent_id: str,
+    task_id: int,
+    blocker_id: int
+) -> None:
+    """
+    Broadcast agent resume after blocker resolution.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        agent_id: Agent ID that resumed
+        task_id: Task ID being resumed
+        blocker_id: Blocker ID that was resolved
+    """
+    message = {
+        "type": "agent_resumed",
+        "project_id": project_id,
+        "agent_id": agent_id,
+        "task_id": task_id,
+        "blocker_id": blocker_id,
+        "resumed_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast agent_resumed: agent {agent_id} on task {task_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast agent resumed: {e}")
+
+
+async def broadcast_blocker_expired(
+    manager,
+    project_id: int,
+    blocker_id: int,
+    task_id: Optional[int]
+) -> None:
+    """
+    Broadcast blocker expiration (>24h pending).
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        blocker_id: Blocker ID that expired
+        task_id: Optional task ID associated with blocker
+    """
+    message = {
+        "type": "blocker_expired",
+        "project_id": project_id,
+        "blocker_id": blocker_id,
+        "task_id": task_id,
+        "expired_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast blocker_expired: blocker {blocker_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast blocker expired: {e}")
