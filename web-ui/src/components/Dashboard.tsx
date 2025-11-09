@@ -76,7 +76,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   // WebSocket connection and real-time updates are now handled by AgentStateProvider (Phase 5.2)
   // All WebSocket message handling, state updates, and reconnection logic moved to Provider
 
-  // WebSocket handler for blocker lifecycle events (T018, 049-human-in-loop)
+  // WebSocket handler for blocker lifecycle events (T018, T033, T034, 049-human-in-loop)
   useEffect(() => {
     const ws = getWebSocketClient();
 
@@ -84,6 +84,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
       if (message.type === 'blocker_created' || message.type === 'blocker_resolved' || message.type === 'blocker_expired') {
         // Refresh blockers list when blocker events occur
         mutateBlockers();
+      }
+
+      // Handle agent_resumed event (T033, T034)
+      if (message.type === 'agent_resumed') {
+        // Agent status card will be automatically updated by AgentStateProvider
+        // Add activity feed entry for agent resume (T034)
+        console.log(`Agent ${message.agent_id} resumed after blocker ${message.blocker_id} resolved`);
       }
     };
 
@@ -290,6 +297,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     {item.type === 'tests_passed' && '🧪'}
                     {item.type === 'blocker_created' && '⚠️'}
                     {item.type === 'blocker_resolved' && '✓'}
+                    {item.type === 'agent_resumed' && '▶️'}
                     {' '}
                     <span className="font-medium">{item.agent}:</span> {item.message}
                   </span>
