@@ -1152,6 +1152,12 @@ Generate the PRD in markdown format with clear sections and professional languag
                         self.dependency_resolver.completed_tasks.add(task_id)
                         continue
 
+                    # T036/T037: Check for SYNC blocker before assigning
+                    can_assign = await self.can_assign_task(task_id)
+                    if not can_assign:
+                        logger.info(f"Task {task_id} skipped: blocked by pending SYNC blocker")
+                        continue
+
                     # Assign and execute task
                     print(f"🔄 DEBUG: Assigning task {task_id}: {task.title}")
                     task_future = asyncio.create_task(
@@ -1329,6 +1335,77 @@ Generate the PRD in markdown format with clear sections and professional languag
                 pass
 
             return False
+
+    async def can_assign_task(self, task_id: int) -> bool:
+        """
+        Check if a task can be assigned to an agent (T036, T037).
+        
+        Implements SYNC blocker dependency handling:
+        - SYNC blockers: Block all dependent tasks until resolved
+        - ASYNC blockers: Allow dependent tasks to continue (informational only)
+        
+        Args:
+            task_id: Database ID of the task
+            
+        Returns:
+            True if task can be assigned, False if blocked
+            
+        Blocking Conditions:
+        1. Task has pending SYNC blocker (direct block)
+        2. Task depends on another task with pending SYNC blocker (transitive block)
+        3. ASYNC blockers do NOT block task assignment
+        """
+        # Get task details
+        task = self.db.get_task(task_id)
+        if not task:
+            return False
+            
+        # Check if this task itself has a pending SYNC blocker
+        blockers = self.db.list_blockers(
+            project_id=self.project_id,
+            status="PENDING"
+        )
+        
+        for blocker in blockers.get('blockers', []):
+            if blocker.get('task_id') == task_id and blocker.get('blocker_type') == 'SYNC':
+                logger.debug(f"Task {task_id} blocked: has pending SYNC blocker {blocker.get('id')}")
+                return False
+        
+        # Check if task depends on tasks with pending SYNC blockers
+        depends_on = task.get('depends_on', '')
+        if depends_on:
+            # Get all project tasks to resolve dependencies
+            all_tasks = self.db.get_project_tasks(self.project_id)
+            
+            # Find the task this depends on
+            dependency_task = None
+            for t in all_tasks:
+                if t['task_number'] == depends_on:
+                    dependency_task = t
+                    break
+            
+            if dependency_task:
+                # Recursively check if dependency is blocked
+                can_assign_dependency = await self.can_assign_task(dependency_task['id'])
+                if not can_assign_dependency:
+                    logger.debug(
+                        f"Task {task_id} blocked: depends on task {dependency_task['id']} "
+                        f"which has SYNC blocker"
+                    )
+                    return False
+                
+                # Also check if dependency task has pending SYNC blocker
+                for blocker in blockers.get('blockers', []):
+                    if (blocker.get('task_id') == dependency_task['id'] and 
+                        blocker.get('blocker_type') == 'SYNC'):
+                        logger.debug(
+                            f"Task {task_id} blocked: dependency task {dependency_task['id']} "
+                            f"has SYNC blocker {blocker.get('id')}"
+                        )
+                        return False
+        
+        # No blocking conditions found
+        return True
 
     def _all_tasks_complete(self) -> bool:
         """

@@ -151,7 +151,13 @@
       "Bash(sqlite3:*)",
       "Bash(for:*)",
       "Bash(do test -f \"$file\")",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(timeout 120 npm test:*)",
+      "Bash(if [ -d /home/frankbria/projects/codeframe/specs/049-human-in-loop/checklists ])",
+      "Bash(then find /home/frankbria/projects/codeframe/specs/049-human-in-loop/checklists -name \"*.md\")",
+      "Bash(timeout 20 python3 -m pytest:*)",
+      "Bash(git restore:*)",
+      "Bash(venv/bin/pip3 show:*)"
     ],
     "deny": [],
     "ask": []

@@ -137,18 +137,34 @@ class Database:
             )
         """)
 
-        # Blockers table
+        # Blockers table (updated schema from migration 003)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS blockers (
-                id INTEGER PRIMARY KEY,
-                task_id INTEGER REFERENCES tasks(id),
-                severity TEXT CHECK(severity IN ('sync', 'async')),
-                reason TEXT,
-                question TEXT,
-                resolution TEXT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                task_id INTEGER,
+                blocker_type TEXT NOT NULL CHECK(blocker_type IN ('SYNC', 'ASYNC')),
+                question TEXT NOT NULL,
+                answer TEXT,
+                status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'RESOLVED', 'EXPIRED')),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                resolved_at TIMESTAMP
+                resolved_at TIMESTAMP,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
+        """)
+
+        # Blocker indexes (from migration 003)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blockers_status_created
+            ON blockers(status, created_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blockers_agent_status
+            ON blockers(agent_id, status)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blockers_task_id
+            ON blockers(task_id)
         """)
 
         # Memory table
@@ -731,8 +747,10 @@ class Database:
                  AND datetime(created_at) < datetime('now', '-{hours} hours')
                RETURNING id"""
         )
+        # Fetch results BEFORE commit (SQLite requirement for RETURNING clause)
+        expired_ids = [row[0] for row in cursor.fetchall()]
         self.conn.commit()
-        return [row[0] for row in cursor.fetchall()]
+        return expired_ids
 
     def list_projects(self) -> List[Dict[str, Any]]:
         """List all projects with progress metrics.

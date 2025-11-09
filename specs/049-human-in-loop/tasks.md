@@ -148,11 +148,11 @@
 
 **Purpose**: Prevent indefinite blocking with automatic 24-hour expiration
 
-- [ ] T045 Implement expire_stale_blockers() database method in codeframe/persistence/database.py
-- [ ] T046 Create stale blocker cron job script in codeframe/tasks/expire_blockers.py (runs hourly)
-- [ ] T047 Add blocker_expired WebSocket broadcast in cron job
-- [ ] T048 Add WebSocket handler for blocker_expired event in Dashboard (remove from panel, update task status)
-- [ ] T049 Add task failure logic when blocker expires (update task status to FAILED with reason)
+- [X] T045 Implement expire_stale_blockers() database method in codeframe/persistence/database.py
+- [X] T046 Create stale blocker cron job script in codeframe/tasks/expire_blockers.py (runs hourly)
+- [X] T047 Add blocker_expired WebSocket broadcast in cron job
+- [X] T048 Add WebSocket handler for blocker_expired event in Dashboard (remove from panel, update task status)
+- [X] T049 Add task failure logic when blocker expires (update task status to FAILED with reason)
 
 ---
 
