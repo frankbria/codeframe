@@ -855,3 +855,63 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 "output": "",
                 "error": error
             }
+
+    async def create_blocker(
+        self,
+        question: str,
+        blocker_type: str = "ASYNC",
+        task_id: Optional[int] = None
+    ) -> int:
+        """
+        Create a blocker when agent needs human input (049-human-in-loop).
+
+        Args:
+            question: Question for the user (max 2000 chars)
+            blocker_type: 'SYNC' (critical) or 'ASYNC' (clarification), default 'ASYNC'
+            task_id: Associated task ID (defaults to self.current_task_id)
+
+        Returns:
+            Blocker ID
+
+        Raises:
+            ValueError: If question is empty or too long
+        """
+        if not question or len(question.strip()) == 0:
+            raise ValueError("Question cannot be empty")
+
+        if len(question) > 2000:
+            raise ValueError("Question exceeds 2000 character limit")
+
+        # Use provided task_id or fall back to current task
+        blocker_task_id = task_id if task_id is not None else getattr(self, 'current_task_id', None)
+
+        # Get agent ID from self or use class name
+        agent_id = getattr(self, 'id', None) or f"backend-worker-{self.project_id}"
+
+        # Create blocker in database
+        blocker_id = self.db.create_blocker(
+            agent_id=agent_id,
+            task_id=blocker_task_id,
+            blocker_type=blocker_type,
+            question=question.strip()
+        )
+
+        logger.info(f"Blocker {blocker_id} created by {agent_id}: {question[:50]}...")
+
+        # Broadcast blocker creation via WebSocket (if manager available)
+        if self.ws_manager:
+            try:
+                from codeframe.ui.websocket_broadcasts import broadcast_blocker_created
+                await broadcast_blocker_created(
+                    manager=self.ws_manager,
+                    project_id=self.project_id,
+                    blocker_id=blocker_id,
+                    agent_id=agent_id,
+                    task_id=blocker_task_id,
+                    blocker_type=blocker_type,
+                    question=question.strip()
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast blocker creation: {e}")
+
+        return blocker_id
