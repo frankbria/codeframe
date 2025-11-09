@@ -484,6 +484,44 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             except Exception as e:
                 logger.warning(f"Failed to broadcast blocker creation: {e}")
 
+        # Send webhook notification for SYNC blockers (T042: 049-human-in-loop)
+        if blocker_type == "SYNC":
+            try:
+                from datetime import datetime
+                from codeframe.core.config import Config
+                from codeframe.notifications.webhook import WebhookNotificationService
+                from codeframe.core.models import BlockerType
+
+                # Get webhook URL from config
+                config = Config(Path.cwd())
+                global_config = config.get_global()
+                webhook_url = global_config.blocker_webhook_url
+
+                if webhook_url:
+                    # Initialize webhook service
+                    webhook_service = WebhookNotificationService(
+                        webhook_url=webhook_url,
+                        timeout=5,
+                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}"
+                    )
+
+                    # Send notification (fire-and-forget)
+                    webhook_service.send_blocker_notification_background(
+                        blocker_id=blocker_id,
+                        question=question.strip(),
+                        agent_id=agent_id,
+                        task_id=blocker_task_id or 0,
+                        blocker_type=BlockerType.SYNC,
+                        created_at=datetime.now()
+                    )
+                    logger.debug(f"Webhook notification queued for SYNC blocker {blocker_id}")
+                else:
+                    logger.debug("BLOCKER_WEBHOOK_URL not configured, skipping webhook notification")
+
+            except Exception as e:
+                # Log error but don't block blocker creation
+                logger.warning(f"Failed to send webhook notification for blocker {blocker_id}: {e}")
+
         return blocker_id
 
     async def wait_for_blocker_resolution(
