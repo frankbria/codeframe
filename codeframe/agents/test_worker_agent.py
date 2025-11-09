@@ -729,3 +729,92 @@ Provide ONLY the corrected test code, no explanations."""
 
         # Timeout reached
         raise TimeoutError(f"Blocker {blocker_id} not resolved within {timeout} seconds")
+
+    async def create_blocker_and_wait(
+        self,
+        question: str,
+        context: Dict[str, Any],
+        blocker_type: str = "ASYNC",
+        task_id: Optional[int] = None,
+        poll_interval: float = 5.0,
+        timeout: float = 600.0
+    ) -> Dict[str, Any]:
+        """
+        Create blocker, wait for resolution, and inject answer into context (049-human-in-loop, T031).
+
+        This is a convenience method that orchestrates the full blocker workflow:
+        1. Create blocker with question
+        2. Wait for user to provide answer
+        3. Inject answer into execution context
+        4. Return enriched context for continued execution
+
+        The answer is appended to the task context following the pattern from research.md:
+        "Previous blocker question: {question}\nUser answer: {answer}\nContinue task execution with this answer."
+
+        Args:
+            question: Question for user (max 2000 chars)
+            context: Current execution context
+            blocker_type: SYNC (critical) or ASYNC (clarification)
+            task_id: Associated task (defaults to context['task']['id'])
+            poll_interval: Seconds between database polls (default: 5.0)
+            timeout: Maximum seconds to wait (default: 600.0)
+
+        Returns:
+            Enriched context dictionary with blocker_answer field:
+            {
+                **context,  # Original context fields
+                "blocker_answer": str,  # The answer from user
+                "blocker_question": str,  # The original question
+                "blocker_id": int  # The blocker ID
+            }
+
+        Raises:
+            TimeoutError: If blocker not resolved within timeout
+            ValueError: If question invalid or blocker not found
+
+        Example:
+            # During task execution, agent encounters uncertainty
+            context = {"task": task, "test_requirements": requirements}
+
+            # Ask user for guidance
+            enriched_context = await agent.create_blocker_and_wait(
+                question="Should I use pytest or unittest for this test suite?",
+                context=context,
+                blocker_type="ASYNC"
+            )
+
+            # Continue execution with user's answer in context
+            result = await self.generate_tests(enriched_context)
+            # The answer "Use pytest for consistency" is now part of context
+        """
+        # Extract task_id from context if not provided
+        if task_id is None:
+            task_id = context.get("task", {}).get("id")
+
+        # 1. Create blocker
+        blocker_id = await self.create_blocker(
+            question=question,
+            blocker_type=blocker_type,
+            task_id=task_id
+        )
+
+        logger.info(f"Created blocker {blocker_id}, waiting for resolution...")
+
+        # 2. Wait for user to resolve blocker
+        answer = await self.wait_for_blocker_resolution(
+            blocker_id=blocker_id,
+            poll_interval=poll_interval,
+            timeout=timeout
+        )
+
+        logger.info(f"Blocker {blocker_id} resolved with answer: {answer[:50]}...")
+
+        # 3. Inject answer into context
+        enriched_context = {
+            **context,
+            "blocker_answer": answer,
+            "blocker_question": question,
+            "blocker_id": blocker_id
+        }
+
+        return enriched_context
