@@ -157,7 +157,8 @@
       "Bash(then find /home/frankbria/projects/codeframe/specs/049-human-in-loop/checklists -name \"*.md\")",
       "Bash(timeout 20 python3 -m pytest:*)",
       "Bash(git restore:*)",
-      "Bash(venv/bin/pip3 show:*)"
+      "Bash(venv/bin/pip3 show:*)",
+      "Bash(timeout 3 venv/bin/python:*)"
     ],
     "deny": [],
     "ask": []

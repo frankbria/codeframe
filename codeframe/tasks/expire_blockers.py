@@ -44,6 +44,7 @@ async def expire_stale_blockers_job(
         Number of blockers expired
     """
     db = Database(db_path)
+    db.initialize(run_migrations=False)  # Connect to existing database
 
     try:
         # Expire stale blockers
