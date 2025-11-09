@@ -624,27 +624,33 @@ async def broadcast_blocker_expired(
     manager,
     project_id: int,
     blocker_id: int,
-    task_id: Optional[int]
+    agent_id: str,
+    task_id: Optional[int],
+    question: str
 ) -> None:
     """
-    Broadcast blocker expiration (>24h pending).
+    Broadcast blocker expiration (>24h pending) to connected clients (T047).
 
     Args:
         manager: ConnectionManager instance
         project_id: Project ID
         blocker_id: Blocker ID that expired
+        agent_id: Agent ID that created the blocker
         task_id: Optional task ID associated with blocker
+        question: Original blocker question
     """
     message = {
         "type": "blocker_expired",
         "project_id": project_id,
         "blocker_id": blocker_id,
+        "agent_id": agent_id,
         "task_id": task_id,
+        "question": question,
         "expired_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
     }
 
     try:
         await manager.broadcast(message)
-        logger.debug(f"Broadcast blocker_expired: blocker {blocker_id}")
+        logger.debug(f"Broadcast blocker_expired: blocker {blocker_id} by {agent_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast blocker expired: {e}")
