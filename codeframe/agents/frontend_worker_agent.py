@@ -8,6 +8,7 @@ following project conventions (Tailwind CSS, functional components).
 import os
 import json
 import logging
+import asyncio
 from pathlib import Path
 from typing import Dict, Any, Optional
 from anthropic import AsyncAnthropic
@@ -475,3 +476,75 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                 logger.warning(f"Failed to broadcast blocker creation: {e}")
 
         return blocker_id
+
+    async def wait_for_blocker_resolution(
+        self,
+        blocker_id: int,
+        poll_interval: float = 5.0,
+        timeout: float = 600.0
+    ) -> str:
+        """
+        Wait for a blocker to be resolved by polling the database (049-human-in-loop, T029).
+
+        Polls the database at regular intervals until the blocker status changes to RESOLVED
+        or the timeout is reached. When resolved, broadcasts an agent_resumed event and returns
+        the answer.
+
+        Args:
+            blocker_id: ID of the blocker to wait for
+            poll_interval: Seconds between database polls (default: 5.0)
+            timeout: Maximum seconds to wait before raising TimeoutError (default: 600.0)
+
+        Returns:
+            The answer provided by the user when the blocker was resolved
+
+        Raises:
+            TimeoutError: If blocker not resolved within timeout period
+            ValueError: If blocker not found
+
+        Example:
+            blocker_id = await agent.create_blocker("Should I use React or Vue?")
+            answer = await agent.wait_for_blocker_resolution(blocker_id)
+            # answer = "Use React to match existing stack"
+        """
+        import time
+
+        start_time = time.time()
+        elapsed = 0.0
+
+        logger.info(f"Waiting for blocker {blocker_id} resolution (timeout: {timeout}s)")
+
+        while elapsed < timeout:
+            # Poll database for blocker status
+            blocker = self.db.get_blocker(blocker_id)
+
+            if not blocker:
+                raise ValueError(f"Blocker {blocker_id} not found")
+
+            # Check if resolved
+            if blocker.get("status") == "RESOLVED" and blocker.get("answer"):
+                answer = blocker["answer"]
+                logger.info(f"Blocker {blocker_id} resolved: {answer[:50]}...")
+
+                # Broadcast agent_resumed event via WebSocket (if manager available)
+                if self.ws_manager:
+                    try:
+                        from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
+                        await broadcast_agent_resumed(
+                            manager=self.ws_manager,
+                            project_id=self.project_id,
+                            agent_id=getattr(self, 'id', None) or f"frontend-worker-{self.project_id}",
+                            task_id=getattr(self, 'current_task_id', None) or blocker.get("task_id"),
+                            blocker_id=blocker_id
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to broadcast agent_resumed: {e}")
+
+                return answer
+
+            # Sleep for poll interval
+            await asyncio.sleep(poll_interval)
+            elapsed = time.time() - start_time
+
+        # Timeout reached
+        raise TimeoutError(f"Blocker {blocker_id} not resolved within {timeout} seconds")

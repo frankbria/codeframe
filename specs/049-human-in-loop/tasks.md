@@ -96,13 +96,13 @@
 
 ### Implementation for User Story 3
 
-- [ ] T028 [P] [US3] Implement wait_for_blocker_resolution() method in BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
-- [ ] T029 [P] [US3] Implement wait_for_blocker_resolution() method in FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
-- [ ] T030 [P] [US3] Implement wait_for_blocker_resolution() method in TestWorkerAgent in codeframe/agents/test_worker_agent.py
+- [X] T028 [P] [US3] Implement wait_for_blocker_resolution() method in BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
+- [X] T029 [P] [US3] Implement wait_for_blocker_resolution() method in FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
+- [X] T030 [P] [US3] Implement wait_for_blocker_resolution() method in TestWorkerAgent in codeframe/agents/test_worker_agent.py
 - [ ] T031 [US3] Add answer injection logic to agent execution loop (append answer to task context) in agent base class or individual agents
-- [ ] T032 [US3] Add WebSocket broadcast for agent_resumed event after blocker resolution in codeframe/ui/websocket_broadcasts.py
-- [ ] T033 [US3] Add WebSocket handler for agent_resumed event in Dashboard component (update agent status card)
-- [ ] T034 [US3] Add activity feed entry for agent resume in web-ui/src/components/Dashboard.tsx
+- [X] T032 [US3] Add WebSocket broadcast for agent_resumed event after blocker resolution in codeframe/ui/websocket_broadcasts.py
+- [X] T033 [US3] Add WebSocket handler for agent_resumed event in Dashboard component (update agent status card)
+- [X] T034 [US3] Add activity feed entry for agent resume in web-ui/src/components/Dashboard.tsx
 
 **Checkpoint**: At this point, the full blocker creation → resolution → agent resume workflow works end-to-end
 
