@@ -605,7 +605,11 @@ Provide ONLY the corrected test code, no explanations."""
         task_id: Optional[int] = None
     ) -> int:
         """
-        Create a blocker when agent needs human input (049-human-in-loop).
+        Create a blocker when agent needs human input (049-human-in-loop, T035).
+
+        The agent determines blocker classification at creation time:
+        - SYNC: Critical blocker requiring immediate attention (pauses dependent work)
+        - ASYNC: Informational/preferential question (allows parallel work to continue)
 
         Args:
             question: Question for the user (max 2000 chars)
@@ -616,13 +620,18 @@ Provide ONLY the corrected test code, no explanations."""
             Blocker ID
 
         Raises:
-            ValueError: If question is empty or too long
+            ValueError: If question is empty, too long, or blocker_type is invalid
         """
         if not question or len(question.strip()) == 0:
             raise ValueError("Question cannot be empty")
 
         if len(question) > 2000:
             raise ValueError("Question exceeds 2000 character limit")
+
+        # Validate blocker type (T035: blocker type classification)
+        valid_types = ["SYNC", "ASYNC"]
+        if blocker_type not in valid_types:
+            raise ValueError(f"Invalid blocker_type '{blocker_type}'. Must be 'SYNC' or 'ASYNC'")
 
         # Use provided task_id or fall back to current task
         blocker_task_id = task_id if task_id is not None else getattr(self, 'current_task_id', None)
