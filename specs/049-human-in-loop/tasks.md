@@ -160,18 +160,18 @@
 
 **Purpose**: Comprehensive testing of blocker workflow
 
-- [ ] T050 [P] Unit test for create_blocker() database method in tests/test_blockers.py
-- [ ] T051 [P] Unit test for resolve_blocker() database method in tests/test_blockers.py
-- [ ] T052 [P] Unit test for resolve_blocker() twice (duplicate resolution) in tests/test_blockers.py
-- [ ] T053 [P] Unit test for get_pending_blocker() agent polling in tests/test_blockers.py
-- [ ] T054 [P] Unit test for expire_stale_blockers() in tests/test_blockers.py
-- [ ] T055 Integration test for complete blocker workflow (create → display → resolve → resume) in tests/integration/test_blocker_workflow.py
-- [ ] T056 [P] Integration test for SYNC blocker pausing dependent tasks in tests/integration/test_blocker_workflow.py
-- [ ] T057 [P] Integration test for ASYNC blocker allowing parallel work in tests/integration/test_blocker_workflow.py
+- [X] T050 ✅ [P] Unit test for create_blocker() database method in tests/test_blockers.py
+- [X] T051 ✅ [P] Unit test for resolve_blocker() database method in tests/test_blockers.py
+- [X] T052 ✅ [P] Unit test for resolve_blocker() twice (duplicate resolution) in tests/test_blockers.py
+- [X] T053 ✅ [P] Unit test for get_pending_blocker() agent polling in tests/test_blockers.py
+- [X] T054 ✅ [P] Unit test for expire_stale_blockers() in tests/test_blockers.py
+- [X] T055 ✅ Integration test for complete blocker workflow (create → display → resolve → resume) in tests/integration/test_blocker_workflow.py
+- [X] T056 ✅ [P] Integration test for SYNC blocker pausing dependent tasks in tests/integration/test_blocker_workflow.py
+- [X] T057 ✅ [P] Integration test for ASYNC blocker allowing parallel work in tests/integration/test_blocker_workflow.py
 - [X] T058 [P] Frontend component test for BlockerPanel in web-ui/__tests__/components/BlockerPanel.test.tsx
 - [ ] T059 [P] Frontend component test for BlockerModal in web-ui/__tests__/components/BlockerModal.test.tsx
 - [X] T060 [P] Frontend component test for BlockerBadge in web-ui/__tests__/components/BlockerBadge.test.tsx
-- [ ] T061 Frontend integration test for blocker WebSocket events in web-ui/__tests__/integration/blocker-websocket.test.ts
+- [X] T061 ✅ Frontend integration test for blocker WebSocket events in web-ui/__tests__/integration/blocker-websocket.test.ts
 
 ---
 
