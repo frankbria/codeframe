@@ -620,14 +620,22 @@ Provide ONLY the corrected test code, no explanations."""
         Args:
             question: Question for the user (max 2000 chars)
             blocker_type: 'SYNC' (critical) or 'ASYNC' (clarification), default 'ASYNC'
-            task_id: Associated task ID (defaults to self.current_task_id)
+            task_id: Associated task ID (defaults to self.current_task.id)
 
         Returns:
             Blocker ID
 
         Raises:
             ValueError: If question is empty, too long, or blocker_type is invalid
+            RuntimeError: If db or project_id not configured
         """
+        # Defensive checks for required dependencies
+        if self.db is None:
+            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+
+        if self.project_id is None:
+            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+
         if not question or len(question.strip()) == 0:
             raise ValueError("Question cannot be empty")
 
@@ -640,7 +648,7 @@ Provide ONLY the corrected test code, no explanations."""
             raise ValueError(f"Invalid blocker_type '{blocker_type}'. Must be 'SYNC' or 'ASYNC'")
 
         # Use provided task_id or fall back to current task
-        blocker_task_id = task_id if task_id is not None else getattr(self, 'current_task_id', None)
+        blocker_task_id = task_id if task_id is not None else (self.current_task.id if hasattr(self, 'current_task') and self.current_task else None)
 
         # Create blocker in database
         blocker_id = self.db.create_blocker(
@@ -733,12 +741,20 @@ Provide ONLY the corrected test code, no explanations."""
         Raises:
             TimeoutError: If blocker not resolved within timeout period
             ValueError: If blocker not found
+            RuntimeError: If db or project_id not configured
 
         Example:
             blocker_id = await agent.create_blocker("Should I use pytest or unittest?")
             answer = await agent.wait_for_blocker_resolution(blocker_id)
             # answer = "Use pytest for consistency"
         """
+        # Defensive checks for required dependencies
+        if self.db is None:
+            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+
+        if self.project_id is None:
+            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+
         import time
 
         start_time = time.time()
@@ -766,7 +782,7 @@ Provide ONLY the corrected test code, no explanations."""
                             manager=self.websocket_manager,
                             project_id=self.project_id,
                             agent_id=self.agent_id,
-                            task_id=getattr(self, 'current_task_id', None) or blocker.get("task_id"),
+                            task_id=(self.current_task.id if hasattr(self, 'current_task') and self.current_task else None) or blocker.get("task_id"),
                             blocker_id=blocker_id
                         )
                     except Exception as e:
