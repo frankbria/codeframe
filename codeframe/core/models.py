@@ -211,3 +211,88 @@ class BlockerListResponse(BaseModel):
     pending_count: int
     sync_count: int
     async_count: int = 0
+
+
+# Context Management Models (007-context-management)
+
+class ContextItemType(str, Enum):
+    """Type of context item stored in the Virtual Project system."""
+    TASK = "TASK"
+    CODE = "CODE"
+    ERROR = "ERROR"
+    TEST_RESULT = "TEST_RESULT"
+    PRD_SECTION = "PRD_SECTION"
+
+
+class ContextItemModel(BaseModel):
+    """Pydantic model for context item database records."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: str
+    item_type: ContextItemType
+    content: str
+    importance_score: float = Field(..., ge=0.0, le=1.0)
+    tier: str  # References ContextTier enum (HOT/WARM/COLD)
+    access_count: int = 0
+    created_at: datetime
+    last_accessed: datetime
+
+
+class ContextItemCreateModel(BaseModel):
+    """Request model for creating a context item."""
+    item_type: ContextItemType
+    content: str = Field(..., min_length=1, max_length=100000)
+
+    def validate_content(self) -> str:
+        """Validate content is not empty or whitespace-only."""
+        if not self.content.strip():
+            raise ValueError("Content cannot be empty or whitespace-only")
+        return self.content.strip()
+
+
+class ContextItemResponse(BaseModel):
+    """Response model for a single context item."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: str
+    item_type: str
+    content: str
+    importance_score: float
+    tier: str
+    access_count: int
+    created_at: datetime
+    last_accessed: datetime
+
+
+class ContextStats(BaseModel):
+    """Response model for context statistics."""
+    agent_id: str
+    total_items: int
+    hot_count: int
+    warm_count: int
+    cold_count: int
+    total_tokens: int
+    hot_tokens: int
+    warm_tokens: int
+    cold_tokens: int
+    last_updated: datetime
+
+
+class FlashSaveRequest(BaseModel):
+    """Request model for initiating flash save."""
+    force: bool = False  # Force flash save even if below 80% threshold
+
+
+class FlashSaveResponse(BaseModel):
+    """Response model for flash save operation."""
+    checkpoint_id: int
+    agent_id: str
+    items_count: int
+    items_archived: int
+    hot_items_retained: int
+    token_count_before: int
+    token_count_after: int
+    reduction_percentage: float
+    created_at: datetime
