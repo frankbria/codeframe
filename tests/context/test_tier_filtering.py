@@ -51,7 +51,7 @@ class TestTierFiltering:
         # Manually set high score to ensure HOT tier
         cursor = temp_db.conn.cursor()
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.9, tier = 'HOT' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
             (hot_item_1,)
         )
         temp_db.conn.commit()
@@ -63,7 +63,7 @@ class TestTierFiltering:
             content="Some code"
         )
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.6, tier = 'WARM' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.6, current_tier = 'warm' WHERE id = ?",
             (warm_item,)
         )
         temp_db.conn.commit()
@@ -74,7 +74,7 @@ class TestTierFiltering:
         # ASSERT: Only HOT items returned
         assert len(hot_items) == 1
         assert hot_items[0]['id'] == hot_item_1
-        assert hot_items[0]['tier'] == "HOT"
+        assert hot_items[0]['current_tier'] == "hot"
 
     def test_filter_by_warm_tier(self, temp_db):
         """Test filtering returns only WARM tier items."""
@@ -88,7 +88,7 @@ class TestTierFiltering:
         )
         cursor = temp_db.conn.cursor()
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.9, tier = 'HOT' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
             (hot_item,)
         )
 
@@ -99,7 +99,7 @@ class TestTierFiltering:
             content="Some code"
         )
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.6, tier = 'WARM' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.6, current_tier = 'warm' WHERE id = ?",
             (warm_item_1,)
         )
 
@@ -109,7 +109,7 @@ class TestTierFiltering:
             content="Error log"
         )
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.5, tier = 'WARM' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.5, current_tier = 'warm' WHERE id = ?",
             (warm_item_2,)
         )
         temp_db.conn.commit()
@@ -122,7 +122,7 @@ class TestTierFiltering:
         warm_ids = [item['id'] for item in warm_items]
         assert warm_item_1 in warm_ids
         assert warm_item_2 in warm_ids
-        assert all(item['tier'] == "WARM" for item in warm_items)
+        assert all(item['current_tier'] == "warm" for item in warm_items)
 
     def test_filter_by_cold_tier(self, temp_db):
         """Test filtering returns only COLD tier items."""
@@ -136,7 +136,7 @@ class TestTierFiltering:
         )
         cursor = temp_db.conn.cursor()
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.9, tier = 'HOT' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
             (hot_item,)
         )
 
@@ -147,7 +147,7 @@ class TestTierFiltering:
             content="Old PRD section"
         )
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.2, tier = 'COLD' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.2, current_tier = 'cold' WHERE id = ?",
             (cold_item,)
         )
         temp_db.conn.commit()
@@ -158,7 +158,7 @@ class TestTierFiltering:
         # ASSERT: Only COLD items returned
         assert len(cold_items) == 1
         assert cold_items[0]['id'] == cold_item
-        assert cold_items[0]['tier'] == "COLD"
+        assert cold_items[0]['current_tier'] == "cold"
 
     def test_tier_none_returns_all_items(self, temp_db):
         """Test that tier=None returns all items regardless of tier."""
@@ -172,7 +172,7 @@ class TestTierFiltering:
         )
         cursor = temp_db.conn.cursor()
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.9, tier = 'HOT' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
             (hot_item,)
         )
 
@@ -182,7 +182,7 @@ class TestTierFiltering:
             content="WARM item"
         )
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.6, tier = 'WARM' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.6, current_tier = 'warm' WHERE id = ?",
             (warm_item,)
         )
 
@@ -192,7 +192,7 @@ class TestTierFiltering:
             content="COLD item"
         )
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.2, tier = 'COLD' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.2, current_tier = 'cold' WHERE id = ?",
             (cold_item,)
         )
         temp_db.conn.commit()
@@ -219,7 +219,7 @@ class TestTierFiltering:
         )
         cursor = temp_db.conn.cursor()
         cursor.execute(
-            "UPDATE context_items SET importance_score = 0.9, tier = 'HOT' WHERE id = ?",
+            "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
             (hot_item,)
         )
         temp_db.conn.commit()
