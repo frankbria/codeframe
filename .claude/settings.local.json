@@ -158,7 +158,8 @@
       "Bash(timeout 20 python3 -m pytest:*)",
       "Bash(git restore:*)",
       "Bash(venv/bin/pip3 show:*)",
-      "Bash(timeout 3 venv/bin/python:*)"
+      "Bash(timeout 3 venv/bin/python:*)",
+      "mcp__tavily__tavily-search"
     ],
     "deny": [],
     "ask": []

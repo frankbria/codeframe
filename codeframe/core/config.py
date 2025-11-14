@@ -49,6 +49,7 @@ class NotificationsConfig(BaseModel):
 
 class ContextManagementConfig(BaseModel):
     """Virtual Project context configuration."""
+    enabled: bool = True  # Feature flag for context management
     hot_tier_max_tokens: int = 20000
     warm_tier_max_tokens: int = 40000
     importance_threshold_hot: float = 0.8
