@@ -2112,7 +2112,7 @@ class Database:
             Created context item ID
         """
         from datetime import datetime, UTC
-        from codeframe.lib.importance_scorer import calculate_importance_score
+        from codeframe.lib.importance_scorer import calculate_importance_score, assign_tier
 
         # Auto-calculate importance score for new item
         created_at = datetime.now(UTC)
@@ -2123,9 +2123,8 @@ class Database:
             last_accessed=created_at
         )
 
-        # Auto-assign tier based on importance score (placeholder - will be Phase 5)
-        # For now, default to WARM
-        tier = "WARM"
+        # Auto-assign tier based on importance score (T040)
+        tier = assign_tier(importance_score)
 
         cursor = self.conn.cursor()
         cursor.execute(

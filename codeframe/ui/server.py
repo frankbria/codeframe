@@ -1207,6 +1207,45 @@ async def update_context_scores(agent_id: str):
     return {"updated_count": updated_count}
 
 
+@app.post(
+    "/api/agents/{agent_id}/context/update-tiers",
+    tags=["context"],
+    response_model=dict
+)
+async def update_context_tiers(agent_id: str):
+    """Recalculate scores and reassign tiers for all context items (T042).
+
+    Triggers batch recalculation of importance scores AND tier reassignment
+    for all context items belonging to the specified agent. This operation:
+    1. Recalculates importance scores based on current age/access patterns
+    2. Reassigns tiers (HOT >= 0.8, WARM 0.4-0.8, COLD < 0.4)
+
+    Use cases:
+    - Periodic tier maintenance (hourly cron job)
+    - Manual trigger to move aged items to lower tiers
+    - After major time passage (e.g., daily cleanup)
+
+    Args:
+        agent_id: Agent ID to update tiers for
+
+    Returns:
+        200 OK: {updated_count: int} - Number of items updated with new tiers
+
+    Example:
+        POST /api/agents/backend-worker-001/context/update-tiers
+        Response: {"updated_count": 150}
+    """
+    from codeframe.lib.context_manager import ContextManager
+
+    # Create context manager
+    context_mgr = ContextManager(db=app.state.db)
+
+    # Recalculate scores AND reassign tiers for all agent context items
+    updated_count = context_mgr.update_tiers_for_agent(agent_id)
+
+    return {"updated_count": updated_count}
+
+
 @app.post("/api/projects/{project_id}/pause")
 async def pause_project(project_id: int):
     """Pause project execution."""

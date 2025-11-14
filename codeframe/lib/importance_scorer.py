@@ -153,3 +153,41 @@ def calculate_importance_score(
 
     # Clamp to [0.0, 1.0] range (should already be in range, but be defensive)
     return max(0.0, min(score, 1.0))
+
+
+def assign_tier(importance_score: float) -> str:
+    """Assign tier based on importance score (T039).
+
+    Tier assignment thresholds:
+    - HOT: score >= 0.8 (always loaded, critical recent context)
+    - WARM: 0.4 <= score < 0.8 (on-demand loading)
+    - COLD: score < 0.4 (archived, rarely accessed)
+
+    Args:
+        importance_score: Calculated importance score in range [0.0, 1.0]
+
+    Returns:
+        str: Tier assignment ('HOT', 'WARM', or 'COLD')
+
+    Examples:
+        >>> assign_tier(0.9)
+        'HOT'
+        >>> assign_tier(0.6)
+        'WARM'
+        >>> assign_tier(0.2)
+        'COLD'
+        >>> assign_tier(0.8)  # Exact boundary
+        'HOT'
+        >>> assign_tier(0.4)  # Exact boundary
+        'WARM'
+    """
+    # HOT tier: score >= 0.8
+    if importance_score >= 0.8:
+        return "HOT"
+
+    # WARM tier: 0.4 <= score < 0.8
+    if importance_score >= 0.4:
+        return "WARM"
+
+    # COLD tier: score < 0.4
+    return "COLD"
