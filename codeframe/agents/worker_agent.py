@@ -136,3 +136,39 @@ class WorkerAgent:
             self.db.update_context_item_access(item_id)
 
         return item
+
+    async def update_tiers(self) -> int:
+        """Recalculate scores and reassign tiers for all context items (T043).
+
+        This method triggers batch tier reassignment for all context items
+        belonging to this agent. It:
+        1. Recalculates importance scores based on current age/access patterns
+        2. Reassigns tiers (HOT >= 0.8, WARM 0.4-0.8, COLD < 0.4)
+
+        Use cases:
+        - Periodic maintenance (called by scheduler/cron)
+        - Manual trigger to move aged items to lower tiers
+        - After major time passage (e.g., daily cleanup)
+
+        Returns:
+            int: Number of context items updated with new tiers
+
+        Raises:
+            ValueError: If db is not initialized
+
+        Example:
+            >>> agent = FrontendWorkerAgent(agent_id="frontend-001", db=db)
+            >>> updated = await agent.update_tiers()
+            >>> print(f"Updated {updated} items")
+            Updated 25 items
+        """
+        if not self.db:
+            raise ValueError("Database not initialized. Pass db parameter to __init__")
+
+        from codeframe.lib.context_manager import ContextManager
+
+        # Create context manager and trigger tier updates
+        context_mgr = ContextManager(db=self.db)
+        updated_count = context_mgr.update_tiers_for_agent(self.agent_id)
+
+        return updated_count

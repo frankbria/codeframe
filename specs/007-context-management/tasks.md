@@ -323,42 +323,42 @@ Tasks are organized into phases that align with user stories:
 
 #### Tests (TDD - Write First)
 
-- [ ] T037 [P] [US3] Create test file `tests/context/test_tier_assignment.py`:
+- [X] T037 [P] [US3] Create test file `tests/context/test_tier_assignment.py`:
   - `test_assign_tier_hot_for_high_score()` - score >= 0.8 → HOT
   - `test_assign_tier_warm_for_medium_score()` - 0.4 <= score < 0.8 → WARM
   - `test_assign_tier_cold_for_low_score()` - score < 0.4 → COLD
   - `test_tier_boundaries()` - Test exact threshold values (0.8, 0.4)
   - `test_tier_reassignment_on_score_change()` - Change score → tier updates
 
-- [ ] T038 [P] [US3] Create test file `tests/context/test_tier_filtering.py`:
+- [X] T038 [P] [US3] Create test file `tests/context/test_tier_filtering.py`:
   - `test_load_context_hot_tier_only()` - Filter returns only HOT items
   - `test_load_context_all_tiers()` - No filter returns all items
   - `test_list_api_filters_by_tier()` - API query param works
 
 #### Implementation
 
-- [ ] T039 [US3] Add to `codeframe/lib/importance_scorer.py`:
+- [X] T039 [US3] Add to `codeframe/lib/importance_scorer.py`:
   - `assign_tier(importance_score: float) -> ContextTier` function
     - Return HOT if score >= 0.8
     - Return WARM if 0.4 <= score < 0.8
     - Return COLD if score < 0.4
 
-- [ ] T040 [US3] Update `codeframe/persistence/database.py`:
+- [X] T040 [US3] Update `codeframe/persistence/database.py`:
   - Modify `create_context_item()` to auto-assign tier using `assign_tier(score)`
   - Modify `update_context_item_tier()` to accept both tier and score
 
-- [ ] T041 [US3] Update `codeframe/lib/context_manager.py`:
+- [X] T041 [US3] Update `codeframe/lib/context_manager.py`:
   - Add `update_tiers_for_agent(agent_id: str)` method
     - Recalculate scores for all items
     - Reassign tiers based on new scores
     - Return tier change statistics: `{hot_count, warm_count, cold_count, changes}`
 
-- [ ] T042 [US3] Add API endpoint in `codeframe/ui/server.py`:
+- [X] T042 [US3] Add API endpoint in `codeframe/ui/server.py`:
   - `POST /api/agents/{agent_id}/context/update-tiers` - Recalculate and reassign
   - Call `ContextManager.update_tiers_for_agent()`
   - Return tier counts and change count
 
-- [ ] T043 [P] [US3] Update `codeframe/agents/worker_agent.py`:
+- [X] T043 [P] [US3] Update `codeframe/agents/worker_agent.py`:
   - Add `async def update_tiers(self) -> dict` method
   - Wrapper for `ContextManager.update_tiers_for_agent(self.id)`
 
@@ -372,7 +372,7 @@ Tasks are organized into phases that align with user stories:
   - Recalculate tiers
   - Verify item moved to COLD as it aged
 
-- [ ] T046 [US3] Add unit test `tests/context/test_assign_tier.py`:
+- [X] T046 [US3] Add unit test `tests/context/test_assign_tier.py`:
   - Test `assign_tier()` function with various scores
   - Verify boundary conditions (0.8, 0.4, 0.0, 1.0)
 
