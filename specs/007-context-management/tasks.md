@@ -189,22 +189,22 @@ Tasks are organized into phases that align with user stories:
   - `DELETE /api/agents/{agent_id}/context/{item_id}` - Delete item
   - Return 204 on success, 404 if not found
 
-- [ ] T023 [US1] Add method to `codeframe/agents/worker_agent.py`:
+- [x] T023 [US1] Add method to `codeframe/agents/worker_agent.py`:
   - `async def save_context_item(self, item_type: ContextItemType, content: str) -> int`
-  - Call database `create_context_item()` with `agent_id=self.id`
+  - Call database `create_context_item()` with `agent_id=self.agent_id`
   - Return created item ID
 
-- [ ] T024 [P] [US1] Add method to `codeframe/agents/worker_agent.py`:
-  - `async def load_context(self, tier: ContextTier | None = ContextTier.HOT) -> List[ContextItem]`
+- [x] T024 [P] [US1] Add method to `codeframe/agents/worker_agent.py`:
+  - `async def load_context(self, tier: ContextTier | None = ContextTier.HOT) -> List[Dict[str, Any]]`
   - Call database `list_context_items()` filtered by tier
   - Update `last_accessed` for loaded items
-  - Return list of `ContextItem` objects
+  - Return list of context item dictionaries
 
-- [ ] T025 [P] [US1] Add method to `codeframe/agents/worker_agent.py`:
-  - `async def get_context_item(self, item_id: int) -> ContextItem | None`
+- [x] T025 [P] [US1] Add method to `codeframe/agents/worker_agent.py`:
+  - `async def get_context_item(self, item_id: int) -> Dict[str, Any] | None`
   - Call database `get_context_item()`
   - Update access tracking
-  - Return `ContextItem` or None
+  - Return context item dictionary or None
 
 - [ ] T026 [US1] Add integration test in `tests/integration/test_worker_context_storage.py`:
   - `test_worker_saves_and_loads_context()` - End-to-end workflow
