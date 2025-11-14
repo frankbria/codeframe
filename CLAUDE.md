@@ -50,8 +50,11 @@ cd web-ui && npm test  # Frontend tests
 - **Conventions**: Follow existing patterns in codebase
 
 ## Recent Changes
-- 2025-11-14: 007-context-management Phase 5 complete - Automatic tier assignment (HOT/WARM/COLD) based on importance scores (T037-T043, T046, 8/10 tasks, 26/26 algorithm tests passing)
-- 2025-11-14: 007-context-management Phase 4 complete - Importance scoring with hybrid exponential decay (T027-T036, 9/10 tasks)
+- 2025-11-14: 007-context-management Phase 4 & 5 complete - 100% test pass rate (59/59 tests) ✅
+  * Phase 4: Importance scoring with hybrid exponential decay (T027-T036)
+  * Phase 5: Automatic tier assignment HOT/WARM/COLD (T037-T043, T046)
+  * Fixed schema mismatch (agent_id→project_id, tier→current_tier, UUID ids)
+- 2025-11-14: 007-context-management - Implemented T012 and T013 database methods for context items and checkpoints
 - 2025-11-14: 007-context-management - Implemented T012 and T013 database methods for context items and checkpoints
 - 007-context-management: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting)
 - 049-human-in-loop: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets
