@@ -1,7 +1,7 @@
 # CodeFRAME Sprint Planning
 
-**Current Sprint**: [Sprint 6: Human in the Loop](sprints/sprint-06-human-loop.md) 🚧 Planned
-**Project Status**: Sprint 5 Complete - Async Migration Delivered
+**Current Sprint**: [Sprint 7: Context Management](sprints/sprint-07-context-mgmt.md) 📋 Planned
+**Project Status**: Sprint 6 Complete - Human-in-the-Loop Delivered
 
 ---
 
@@ -16,7 +16,7 @@
 | 4 | Multi-Agent Coordination | ✅ Complete | Week 4 | Parallel execution, Dependency resolution, Agent pool | Phase 1-4 |
 | 4.5 | Project Schema Refactoring | ✅ Complete | Interim | Schema normalization, TypeScript types | cf-f03 to cf-73z |
 | 5 | Async Worker Agents | ✅ Complete | Week 5 | Async/await migration, AsyncAnthropic, Performance boost | cf-48 |
-| 6 | Human in the Loop | 🚧 Planned | Week 6 | Blocker creation, Resolution UI, Agent resume | Planned |
+| 6 | Human in the Loop | ✅ Complete | Week 6 | Blocker creation, Resolution UI, Agent resume | PR #18 |
 | 7 | Context Management | 📋 Planned | Week 7 | Flash memory, Tier assignment, Context pruning | Planned |
 | 8 | Agent Maturity | 📋 Planned | Week 8 | Maturity levels, Promotion logic, Checkpoints | Planned |
 | 9 | Polish & Review | 📋 Planned | Week 9 | Review agent, E2E tests, Documentation | Planned |
@@ -26,12 +26,13 @@
 ## Quick Links
 
 ### Active Development
-- 📍 [Current Sprint: Sprint 6](sprints/sprint-06-human-loop.md) - Human in the Loop (Planned)
+- 📍 [Current Sprint: Sprint 7](sprints/sprint-07-context-mgmt.md) - Context Management (Planned)
 - 🔍 [Beads Issue Tracker](.beads/) - Run `bd list` for current tasks
 - 📚 [Documentation Guide](AGENTS.md) - How to navigate project docs
 
 ### Completed Work
-- [Sprint 5: Async Workers](sprints/sprint-05-async-workers.md) - Latest completed sprint
+- [Sprint 6: Human in the Loop](sprints/sprint-06-human-loop.md) - Latest completed sprint
+- [Sprint 5: Async Workers](sprints/sprint-05-async-workers.md) - Async/await migration
 - [Sprint 4: Multi-Agent Coordination](sprints/sprint-04-multi-agent.md) - Parallel execution
 - [Sprint 3: Single Agent Execution](sprints/sprint-03-single-agent.md) - Backend worker
 - [Sprint 2: Socratic Discovery](sprints/sprint-02-socratic-discovery.md) - Chat & PRD
@@ -53,7 +54,37 @@
 
 ## Completed Sprints
 
-### Sprint 5: Async Worker Agents ✅ (Latest)
+### Sprint 6: Human in the Loop ✅ (Latest)
+
+**Goal**: Enable agents to ask for help when blocked and resume work after receiving answers
+
+**Delivered**:
+- ✅ Blocker creation in all worker agents (Backend, Frontend, Test)
+- ✅ Database schema with project_id support (migration 003)
+- ✅ Blocker API endpoints (list, get, resolve)
+- ✅ Dashboard UI components (BlockerPanel, BlockerModal, BlockerBadge)
+- ✅ WebSocket real-time notifications
+- ✅ SYNC vs ASYNC blocker handling
+- ✅ Webhook notifications for critical blockers
+- ✅ Blocker expiration cron job (24h timeout)
+- ✅ 34+ test files with 100+ comprehensive tests
+
+**Key Metrics**:
+- Tests: All passing (100%)
+- Coverage: Complete blocker lifecycle coverage
+- Components: 3 new React components + 3 agent methods
+- API: 5 new endpoints
+
+**Links**:
+- [Full Sprint Details](sprints/sprint-06-human-loop.md)
+- [Feature Spec](specs/049-human-in-loop/spec.md)
+- [Pull Request #18](https://github.com/frankbria/codeframe/pull/18)
+
+**Commits**: 586df44 (merge), a038924, d482547, 25e8da6, 72f5684
+
+---
+
+### Sprint 5: Async Worker Agents ✅
 
 **Goal**: Convert worker agents to async/await pattern for true concurrent execution
 
@@ -185,24 +216,7 @@
 
 ## Future Sprints
 
-### Sprint 6: Human in the Loop 🚧 (Next)
-
-**Goal**: Agents ask for help when blocked, user provides answers via dashboard
-
-**Planned Features**:
-- Blocker creation when agents get stuck
-- Dashboard UI for answering agent questions
-- Agent resume after blocker resolved
-- SYNC vs ASYNC blocker handling
-- Notification system (email/webhook)
-
-**Status**: Planned - Database schema exists, implementation pending
-
-**Links**: [Sprint Plan](sprints/sprint-06-human-loop.md)
-
----
-
-### Sprint 7: Context Management 📋
+### Sprint 7: Context Management 📋 (Next)
 
 **Goal**: Flash memory system for efficient context management
 
@@ -355,7 +369,7 @@ Add retrospective to sprint file in `sprints/sprint-NN-name.md`
 ## Project Metrics
 
 ### Cumulative Progress
-- **Sprints Completed**: 7 of 10 (70%)
+- **Sprints Completed**: 8 of 10 (80%)
 - **Features Delivered**: 35+ major features
 - **Tests Written**: 400+ tests
 - **Code Coverage**: 90%+ average
