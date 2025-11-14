@@ -42,7 +42,9 @@ class TestWorkerAgent(WorkerAgent):
         maturity: AgentMaturity = AgentMaturity.D1,
         api_key: Optional[str] = None,
         websocket_manager=None,
-        max_correction_attempts: int = 3
+        max_correction_attempts: int = 3,
+        db=None,
+        project_id: Optional[int] = None
     ):
         """
         Initialize Test Worker Agent.
@@ -54,6 +56,8 @@ class TestWorkerAgent(WorkerAgent):
             api_key: API key for LLM provider
             websocket_manager: WebSocket connection manager
             max_correction_attempts: Maximum self-correction attempts
+            db: Database instance for blocker management (optional)
+            project_id: Project ID for blocker context (optional)
         """
         super().__init__(
             agent_id=agent_id,
@@ -66,6 +70,8 @@ class TestWorkerAgent(WorkerAgent):
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.websocket_manager = websocket_manager
         self.max_correction_attempts = max_correction_attempts
+        self.db = db
+        self.project_id = project_id
         self.project_root = Path(__file__).parent.parent.parent
         self.tests_dir = self.project_root / "tests"
 
@@ -636,18 +642,15 @@ Provide ONLY the corrected test code, no explanations."""
         # Use provided task_id or fall back to current task
         blocker_task_id = task_id if task_id is not None else getattr(self, 'current_task_id', None)
 
-        # Get agent ID from self or use class name
-        agent_id = getattr(self, 'id', None) or f"test-worker-{self.project_id}"
-
         # Create blocker in database
-        blocker_id = self.database.create_blocker(
-            agent_id=agent_id,
+        blocker_id = self.db.create_blocker(
+            agent_id=self.agent_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
             question=question.strip()
         )
 
-        logger.info(f"Blocker {blocker_id} created by {agent_id}: {question[:50]}...")
+        logger.info(f"Blocker {blocker_id} created by {self.agent_id}: {question[:50]}...")
 
         # Broadcast blocker creation via WebSocket (if manager available)
         if self.websocket_manager:
@@ -657,7 +660,7 @@ Provide ONLY the corrected test code, no explanations."""
                     manager=self.websocket_manager,
                     project_id=self.project_id,
                     blocker_id=blocker_id,
-                    agent_id=agent_id,
+                    agent_id=self.agent_id,
                     task_id=blocker_task_id,
                     blocker_type=blocker_type,
                     question=question.strip()
@@ -691,7 +694,7 @@ Provide ONLY the corrected test code, no explanations."""
                     webhook_service.send_blocker_notification_background(
                         blocker_id=blocker_id,
                         question=question.strip(),
-                        agent_id=agent_id,
+                        agent_id=self.agent_id,
                         task_id=blocker_task_id or 0,
                         blocker_type=BlockerType.SYNC,
                         created_at=datetime.now()
@@ -756,13 +759,13 @@ Provide ONLY the corrected test code, no explanations."""
                 logger.info(f"Blocker {blocker_id} resolved: {answer[:50]}...")
 
                 # Broadcast agent_resumed event via WebSocket (if manager available)
-                if self.ws_manager:
+                if self.websocket_manager:
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
                         await broadcast_agent_resumed(
-                            manager=self.ws_manager,
+                            manager=self.websocket_manager,
                             project_id=self.project_id,
-                            agent_id=getattr(self, 'id', None) or f"test-worker-{self.project_id}",
+                            agent_id=self.agent_id,
                             task_id=getattr(self, 'current_task_id', None) or blocker.get("task_id"),
                             blocker_id=blocker_id
                         )
