@@ -237,7 +237,7 @@ Tasks are organized into phases that align with user stories:
 
 #### Tests (TDD - Write First)
 
-- [ ] T027 [P] [US2] Create test file `tests/context/test_importance_scoring.py`:
+- [X] T027 [P] [US2] Create test file `tests/context/test_importance_scoring.py`:
   - `test_calculate_importance_for_new_task()` - Fresh TASK item gets high score (>0.8)
   - `test_calculate_importance_with_age_decay()` - 7-day-old item has lower score
   - `test_calculate_importance_with_access_boost()` - High access_count increases score
@@ -245,14 +245,14 @@ Tasks are organized into phases that align with user stories:
   - `test_importance_score_clamped_to_range()` - Result always in [0.0, 1.0]
   - `test_importance_formula_components()` - Verify 40% type + 40% age + 20% access
 
-- [ ] T028 [P] [US2] Create test file `tests/context/test_score_decay.py`:
+- [X] T028 [P] [US2] Create test file `tests/context/test_score_decay.py`:
   - `test_exponential_decay_over_time()` - Verify e^(-0.5 × days) formula
   - `test_zero_age_gives_max_decay()` - New item: age_decay = 1.0
   - `test_old_items_approach_zero()` - 30-day-old item: age_decay < 0.1
 
 #### Implementation
 
-- [ ] T029 [US2] Create `codeframe/lib/importance_scorer.py`:
+- [X] T029 [US2] Create `codeframe/lib/importance_scorer.py`:
   - `ITEM_TYPE_WEIGHTS` constant dict (per data-model.md)
   - `calculate_age_decay(created_at: datetime) -> float` function
     - Formula: `exp(-0.5 * age_days)`
@@ -262,15 +262,15 @@ Tasks are organized into phases that align with user stories:
     - Combine components: `0.4 * type_weight + 0.4 * age_decay + 0.2 * access_boost`
     - Clamp to [0.0, 1.0]
 
-- [ ] T030 [US2] Update `codeframe/persistence/database.py`:
+- [X] T030 [US2] Update `codeframe/persistence/database.py`:
   - Modify `create_context_item()` to auto-calculate importance_score using `calculate_importance_score()`
   - Remove hardcoded `importance_score` parameter
 
-- [ ] T031 [US2] Update `codeframe/agents/worker_agent.py`:
+- [X] T031 [US2] Update `codeframe/agents/worker_agent.py`:
   - Remove `importance_score` parameter from `save_context_item()` signature
   - Scoring happens automatically in database layer
 
-- [ ] T032 [P] [US2] Create `codeframe/lib/context_manager.py`:
+- [X] T032 [P] [US2] Create `codeframe/lib/context_manager.py`:
   - `ContextManager` class to encapsulate scoring logic
   - `recalculate_scores_for_agent(agent_id: str)` method
     - Load all items for agent
@@ -278,7 +278,7 @@ Tasks are organized into phases that align with user stories:
     - Update database
     - Return count of updated items
 
-- [ ] T033 [US2] Add API endpoint in `codeframe/ui/server.py`:
+- [X] T033 [US2] Add API endpoint in `codeframe/ui/server.py`:
   - `POST /api/agents/{agent_id}/context/update-scores` - Recalculate all scores
   - Call `ContextManager.recalculate_scores_for_agent()`
   - Return `{updated_count: int}`
@@ -287,12 +287,12 @@ Tasks are organized into phases that align with user stories:
   - Verify `create_context_item()` now auto-calculates score
   - Check score is reasonable (0.5-1.0 for new items)
 
-- [ ] T035 [P] [US2] Create integration test `tests/integration/test_score_recalculation.py`:
+- [X] T035 [P] [US2] Create integration test `tests/integration/test_score_recalculation.py`:
   - Create old item (mock created_at to 7 days ago)
   - Trigger score recalculation
   - Verify score decreased due to age decay
 
-- [ ] T036 [US2] Add unit test for `ContextManager` in `tests/context/test_context_manager.py`:
+- [X] T036 [US2] Add unit test for `ContextManager` in `tests/context/test_context_manager.py`:
   - `test_recalculate_scores_updates_all_items()`
   - `test_recalculate_scores_returns_count()`
 
