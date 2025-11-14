@@ -107,13 +107,13 @@ Tasks are organized into phases that align with user stories:
   - `list_checkpoints(agent_id, limit=10)` -> List[dict]
   - `get_checkpoint(checkpoint_id)` -> dict | None
 
-- [ ] T014 [P] Create `codeframe/lib/token_counter.py`:
+- [X] T014 [P] Create `codeframe/lib/token_counter.py`:
   - `TokenCounter` class with tiktoken integration
   - `count_tokens(content: str)` -> int method
   - Caching mechanism using content hash as key
   - Support for batch counting: `count_tokens_batch(contents: List[str])` -> List[int]
 
-- [ ] T015 [P] Create WebSocket event types in `codeframe/core/models.py`:
+- [X] T015 [P] Create WebSocket event types in `codeframe/core/models.py`:
   - `ContextTierUpdated` event (agent_id, item_count, tier_changes)
   - `FlashSaveCompleted` event (agent_id, checkpoint_id, reduction_percentage)
 
