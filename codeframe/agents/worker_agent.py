@@ -50,10 +50,61 @@ class WorkerAgent:
         # TODO: Implement maturity assessment
         pass
 
-    def flash_save(self) -> None:
-        """Save current state before context compactification."""
-        # TODO: Implement flash save
-        pass
+    async def flash_save(self) -> Dict[str, Any]:
+        """Save current state before context compactification (T056).
+
+        Creates a checkpoint with full context state and archives COLD tier items
+        to reduce memory footprint. This method is called automatically when context
+        approaches the token limit or manually via API.
+
+        Returns:
+            dict: Flash save response with checkpoint_id, tokens_before, tokens_after, reduction_percentage
+
+        Raises:
+            ValueError: If db is not initialized
+
+        Example:
+            >>> agent = BackendWorkerAgent(agent_id="backend-001", project_id=123, db=db)
+            >>> result = await agent.flash_save()
+            >>> print(f"Reduced from {result['tokens_before']} to {result['tokens_after']} tokens")
+            Reduced from 150000 to 50000 tokens
+        """
+        if not self.db:
+            raise ValueError("Database not initialized. Pass db parameter to __init__")
+
+        from codeframe.lib.context_manager import ContextManager
+
+        # Create context manager and execute flash save
+        context_mgr = ContextManager(db=self.db)
+        result = context_mgr.flash_save(self.project_id, self.agent_id)
+
+        return result
+
+    async def should_flash_save(self) -> bool:
+        """Check if flash save should be triggered (T057).
+
+        Determines if this agent's context has exceeded the token threshold
+        (80% of 180k = 144k tokens) and flash save should be triggered.
+
+        Returns:
+            bool: True if flash save should be triggered, False otherwise
+
+        Raises:
+            ValueError: If db is not initialized
+
+        Example:
+            >>> agent = BackendWorkerAgent(agent_id="backend-001", project_id=123, db=db)
+            >>> if await agent.should_flash_save():
+            ...     await agent.flash_save()
+        """
+        if not self.db:
+            raise ValueError("Database not initialized. Pass db parameter to __init__")
+
+        from codeframe.lib.context_manager import ContextManager
+
+        # Create context manager and check threshold
+        context_mgr = ContextManager(db=self.db)
+        return context_mgr.should_flash_save(self.project_id, self.agent_id, force=False)
 
     async def save_context_item(self, item_type: ContextItemType, content: str) -> int:
         """Save a context item for this agent.
