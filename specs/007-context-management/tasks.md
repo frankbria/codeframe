@@ -83,12 +83,12 @@ Tasks are organized into phases that align with user stories:
   - `FlashSaveRequest` request model
   - `FlashSaveResponse` response model
 
-- [ ] T010 [P] Create database migration 004 in `codeframe/persistence/migrations/migration_004_add_context_checkpoints.py`:
+- [X] T010 [P] Create database migration 004 in `codeframe/persistence/migrations/migration_004_add_context_checkpoints.py`:
   - Create `context_checkpoints` table per data-model.md schema
   - Add index `idx_checkpoints_agent_created`
   - Include rollback logic
 
-- [ ] T011 [P] Create database migration 005 in `codeframe/persistence/migrations/migration_005_add_context_indexes.py`:
+- [X] T011 [P] Create database migration 005 in `codeframe/persistence/migrations/migration_005_add_context_indexes.py`:
   - Add `idx_context_agent_tier` index
   - Add `idx_context_importance` index
   - Add `idx_context_last_accessed` index

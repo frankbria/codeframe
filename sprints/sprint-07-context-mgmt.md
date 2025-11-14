@@ -67,6 +67,8 @@ As a developer, I want to see agents intelligently manage their memory, keeping 
 - Database schema: `context_items` table (created in database.py:169-182)
 - Fields: id, agent_id, item_type, content, importance_score, tier, access_count, created_at, last_accessed
 - Stub method: WorkerAgent.flash_save() (currently just `pass` with TODO)
+- Migration 004: `context_checkpoints` table with indexes (2025-11-14)
+- Migration 005: Performance indexes on `context_items` table (2025-11-14)
 
 **What's Missing**:
 - Importance scoring algorithm (no code exists)
