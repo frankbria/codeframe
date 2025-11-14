@@ -94,7 +94,7 @@ Tasks are organized into phases that align with user stories:
   - Add `idx_context_last_accessed` index
   - Include rollback logic
 
-- [ ] T012 [P] Add database methods to `codeframe/persistence/database.py`:
+- [X] T012 [P] Add database methods to `codeframe/persistence/database.py`:
   - `create_context_item(agent_id, item_type, content, importance_score, tier)` -> int
   - `get_context_item(item_id)` -> dict | None
   - `list_context_items(agent_id, tier=None, limit=100, offset=0)` -> List[dict]
@@ -102,7 +102,7 @@ Tasks are organized into phases that align with user stories:
   - `delete_context_item(item_id)` -> None
   - `update_context_item_access(item_id)` -> None (updates last_accessed, access_count)
 
-- [ ] T013 [P] Add checkpoint database methods to `codeframe/persistence/database.py`:
+- [X] T013 [P] Add checkpoint database methods to `codeframe/persistence/database.py`:
   - `create_checkpoint(agent_id, checkpoint_data, items_count, items_archived, hot_items_retained, token_count)` -> int
   - `list_checkpoints(agent_id, limit=10)` -> List[dict]
   - `get_checkpoint(checkpoint_id)` -> dict | None

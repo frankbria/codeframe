@@ -2058,7 +2058,7 @@ class Database:
         """
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT 
+            SELECT
                 timestamp,
                 agent_id,
                 action,
@@ -2077,7 +2077,7 @@ class Database:
         activity_items = []
         for row in rows:
             activity_dict = dict(zip(columns, row))
-            
+
             # Map database fields to frontend expected format
             activity_items.append({
                 "timestamp": activity_dict["timestamp"],
@@ -2087,3 +2087,223 @@ class Database:
             })
 
         return activity_items
+
+    # Context Management Methods (007-context-management)
+
+    def create_context_item(
+        self,
+        agent_id: str,
+        item_type: str,
+        content: str,
+        importance_score: float,
+        tier: str
+    ) -> int:
+        """Create a new context item.
+
+        Args:
+            agent_id: Agent ID that owns this context
+            item_type: Type of context (TASK, CODE, ERROR, TEST_RESULT, PRD_SECTION)
+            content: The actual context content
+            importance_score: Calculated importance score (0.0-1.0)
+            tier: Tier assignment (HOT, WARM, COLD)
+
+        Returns:
+            Created context item ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO context_items (
+                agent_id, item_type, content, importance_score, tier
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (agent_id, item_type, content, importance_score, tier)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_context_item(self, item_id: int) -> Optional[Dict[str, Any]]:
+        """Get a context item by ID.
+
+        Args:
+            item_id: Context item ID
+
+        Returns:
+            Context item dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM context_items WHERE id = ?", (item_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def list_context_items(
+        self,
+        agent_id: str,
+        tier: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """List context items for an agent, optionally filtered by tier.
+
+        Args:
+            agent_id: Agent ID to filter by
+            tier: Optional tier filter (HOT, WARM, COLD)
+            limit: Maximum number of items to return
+            offset: Number of items to skip
+
+        Returns:
+            List of context item dictionaries
+        """
+        cursor = self.conn.cursor()
+
+        if tier:
+            query = """
+                SELECT * FROM context_items
+                WHERE agent_id = ? AND tier = ?
+                ORDER BY importance_score DESC, last_accessed DESC
+                LIMIT ? OFFSET ?
+            """
+            cursor.execute(query, (agent_id, tier, limit, offset))
+        else:
+            query = """
+                SELECT * FROM context_items
+                WHERE agent_id = ?
+                ORDER BY importance_score DESC, last_accessed DESC
+                LIMIT ? OFFSET ?
+            """
+            cursor.execute(query, (agent_id, limit, offset))
+
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def update_context_item_tier(
+        self,
+        item_id: int,
+        tier: str,
+        importance_score: float
+    ) -> None:
+        """Update a context item's tier and importance score.
+
+        Args:
+            item_id: Context item ID
+            tier: New tier (HOT, WARM, COLD)
+            importance_score: Updated importance score
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE context_items
+            SET tier = ?, importance_score = ?
+            WHERE id = ?
+            """,
+            (tier, importance_score, item_id)
+        )
+        self.conn.commit()
+
+    def delete_context_item(self, item_id: int) -> None:
+        """Delete a context item.
+
+        Args:
+            item_id: Context item ID to delete
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM context_items WHERE id = ?", (item_id,))
+        self.conn.commit()
+
+    def update_context_item_access(self, item_id: int) -> None:
+        """Update last_accessed timestamp and increment access_count.
+
+        Args:
+            item_id: Context item ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE context_items
+            SET last_accessed = CURRENT_TIMESTAMP,
+                access_count = access_count + 1
+            WHERE id = ?
+            """,
+            (item_id,)
+        )
+        self.conn.commit()
+
+    def create_checkpoint(
+        self,
+        agent_id: str,
+        checkpoint_data: str,
+        items_count: int,
+        items_archived: int,
+        hot_items_retained: int,
+        token_count: int
+    ) -> int:
+        """Create a flash save checkpoint.
+
+        Args:
+            agent_id: Agent ID creating the checkpoint
+            checkpoint_data: JSON serialized context state
+            items_count: Total items before flash save
+            items_archived: Number of COLD items archived
+            hot_items_retained: Number of HOT items kept
+            token_count: Total tokens before flash save
+
+        Returns:
+            Created checkpoint ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO context_checkpoints (
+                agent_id, checkpoint_data, items_count, items_archived,
+                hot_items_retained, token_count
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (agent_id, checkpoint_data, items_count, items_archived,
+             hot_items_retained, token_count)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def list_checkpoints(
+        self,
+        agent_id: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """List checkpoints for an agent, most recent first.
+
+        Args:
+            agent_id: Agent ID to filter by
+            limit: Maximum number of checkpoints to return
+
+        Returns:
+            List of checkpoint dictionaries ordered by created_at DESC
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM context_checkpoints
+            WHERE agent_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (agent_id, limit)
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def get_checkpoint(self, checkpoint_id: int) -> Optional[Dict[str, Any]]:
+        """Get a checkpoint by ID.
+
+        Args:
+            checkpoint_id: Checkpoint ID
+
+        Returns:
+            Checkpoint dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM context_checkpoints WHERE id = ?",
+            (checkpoint_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
