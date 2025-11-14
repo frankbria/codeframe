@@ -22,6 +22,8 @@ Quick reference:
 - Python 3.11 + anthropic (AsyncAnthropic), asyncio, FastAPI, websockets (048-async-worker-agents)
 - Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets (049-human-in-loop)
 - SQLite with async support (aiosqlite) - blockers table schema already exists (049-human-in-loop)
+- Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting) (007-context-management)
+- SQLite with async support (aiosqlite) - context_items table schema already exists (007-context-management)
 
 ## Project Structure
 ```
@@ -48,9 +50,9 @@ cd web-ui && npm test  # Frontend tests
 - **Conventions**: Follow existing patterns in codebase
 
 ## Recent Changes
+- 007-context-management: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting)
 - 049-human-in-loop: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets
 - 2025-11-08: Restructured documentation (SPRINTS.md, AGENTS.md, sprints/ directory)
-- 005-project-schema-refactoring: Added TypeScript 5.3+ (frontend), Python 3.11+ (backend - existing)
 
 <!-- MANUAL ADDITIONS START -->
 ## Frontend State Management Architecture (Phase 5.2)
