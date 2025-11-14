@@ -900,6 +900,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         # Create blocker in database
         blocker_id = self.db.create_blocker(
             agent_id=agent_id,
+            project_id=self.project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
             question=question.strip()

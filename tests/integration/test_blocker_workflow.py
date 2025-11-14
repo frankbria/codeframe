@@ -120,6 +120,7 @@ class TestCompleteBlockerWorkflow:
         # Step 1: Agent creates blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
             question="Should I use SQLite or PostgreSQL for the database?"
@@ -171,6 +172,7 @@ class TestCompleteBlockerWorkflow:
         # Create ASYNC blocker
         blocker_id = db.create_blocker(
             agent_id="frontend-worker-001",
+            project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.ASYNC,
             question="Should the button be blue or green?"
@@ -194,6 +196,7 @@ class TestCompleteBlockerWorkflow:
         # First blocker
         blocker1_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
             question="Question 1"
@@ -203,6 +206,7 @@ class TestCompleteBlockerWorkflow:
         # Second blocker (after first resolved)
         blocker2_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
             question="Question 2"
@@ -227,6 +231,7 @@ class TestSyncBlockerPausingDependentTasks:
         # Task 1 agent creates SYNC blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.SYNC,
             question="Critical decision needed for task 1"
@@ -258,6 +263,7 @@ class TestSyncBlockerPausingDependentTasks:
         # Task 1 creates SYNC blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.SYNC,
             question="Blocker for task 1"
@@ -284,6 +290,7 @@ class TestAsyncBlockerAllowingParallelWork:
         # Agent creates ASYNC blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.ASYNC,
             question="Preference question - not critical"
@@ -319,6 +326,7 @@ class TestAsyncBlockerAllowingParallelWork:
         # Create multiple ASYNC blockers
         blocker1_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.ASYNC,
             question="ASYNC question 1"
@@ -326,6 +334,7 @@ class TestAsyncBlockerAllowingParallelWork:
 
         blocker2_id = db.create_blocker(
             agent_id="frontend-worker-001",
+            project_id=1,
             task_id=task3_id,
             blocker_type=BlockerType.ASYNC,
             question="ASYNC question 2"
@@ -358,6 +367,7 @@ class TestBlockerWorkflowEdgeCases:
         # Create blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
             question="Question that will expire"
@@ -398,6 +408,7 @@ class TestBlockerWorkflowEdgeCases:
         for i in range(10):
             blocker_id = db.create_blocker(
                 agent_id="backend-worker-001",
+                project_id=1,
                 task_id=task_id,
                 blocker_type=BlockerType.SYNC,
                 question=f"Question {i}"

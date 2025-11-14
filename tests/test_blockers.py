@@ -67,10 +67,11 @@ async def sample_task(db, sample_project):
 class TestCreateBlocker:
     """Test T050: Unit test for create_blocker() database method."""
 
-    def test_create_blocker_sync(self, db, sample_task):
+    def test_create_blocker_sync(self, db, sample_task, sample_project):
         """Test creating a SYNC blocker."""
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Should I use SQLite or PostgreSQL?"
@@ -90,10 +91,11 @@ class TestCreateBlocker:
         assert blocker['resolved_at'] is None
         assert blocker['created_at'] is not None
 
-    def test_create_blocker_async(self, db, sample_task):
+    def test_create_blocker_async(self, db, sample_task, sample_project):
         """Test creating an ASYNC blocker."""
         blocker_id = db.create_blocker(
             agent_id="frontend-worker-002",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.ASYNC,
             question="Should I use Tailwind or CSS Modules?"
@@ -103,10 +105,11 @@ class TestCreateBlocker:
         assert blocker['blocker_type'] == BlockerType.ASYNC
         assert blocker['status'] == 'PENDING'
 
-    def test_create_blocker_without_task(self, db):
+    def test_create_blocker_without_task(self, db, sample_project):
         """Test creating a blocker without an associated task."""
         blocker_id = db.create_blocker(
             agent_id="test-agent-003",
+            project_id=sample_project,
             task_id=None,
             blocker_type=BlockerType.SYNC,
             question="General question without task"
@@ -116,11 +119,12 @@ class TestCreateBlocker:
         assert blocker['task_id'] is None
         assert blocker['status'] == 'PENDING'
 
-    def test_create_blocker_with_long_question(self, db, sample_task):
+    def test_create_blocker_with_long_question(self, db, sample_task, sample_project):
         """Test creating a blocker with maximum length question."""
         long_question = "A" * 2000  # Max 2000 chars
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question=long_question
@@ -133,11 +137,12 @@ class TestCreateBlocker:
 class TestResolveBlocker:
     """Test T051: Unit test for resolve_blocker() database method."""
 
-    def test_resolve_blocker_success(self, db, sample_task):
+    def test_resolve_blocker_success(self, db, sample_task, sample_project):
         """Test successfully resolving a blocker."""
         # Create blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="What API key should I use?"
@@ -158,10 +163,11 @@ class TestResolveBlocker:
         success = db.resolve_blocker(99999, "Some answer")
         assert success is False
 
-    def test_resolve_blocker_with_long_answer(self, db, sample_task):
+    def test_resolve_blocker_with_long_answer(self, db, sample_task, sample_project):
         """Test resolving with maximum length answer."""
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question?"
@@ -178,11 +184,12 @@ class TestResolveBlocker:
 class TestDuplicateResolution:
     """Test T052: Unit test for resolve_blocker() twice (duplicate resolution)."""
 
-    def test_resolve_blocker_twice(self, db, sample_task):
+    def test_resolve_blocker_twice(self, db, sample_task, sample_project):
         """Test that resolving an already-resolved blocker fails."""
         # Create blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question?"
@@ -201,10 +208,11 @@ class TestDuplicateResolution:
         assert blocker['status'] == 'RESOLVED'
         assert blocker['answer'] == "First answer"
 
-    def test_concurrent_resolution_race_condition(self, db, sample_task):
+    def test_concurrent_resolution_race_condition(self, db, sample_task, sample_project):
         """Test concurrent resolution attempts (race condition)."""
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question?"
@@ -241,11 +249,12 @@ class TestDuplicateResolution:
 class TestGetPendingBlocker:
     """Test T053: Unit test for get_pending_blocker() agent polling."""
 
-    def test_get_pending_blocker_exists(self, db, sample_task):
+    def test_get_pending_blocker_exists(self, db, sample_task, sample_project):
         """Test retrieving a pending blocker for an agent."""
         # Create blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question?"
@@ -262,11 +271,12 @@ class TestGetPendingBlocker:
         blocker = db.get_pending_blocker("nonexistent-agent")
         assert blocker is None
 
-    def test_get_pending_blocker_after_resolution(self, db, sample_task):
+    def test_get_pending_blocker_after_resolution(self, db, sample_task, sample_project):
         """Test that resolved blockers are not returned."""
         # Create and resolve blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question?"
@@ -277,11 +287,12 @@ class TestGetPendingBlocker:
         blocker = db.get_pending_blocker("backend-worker-001")
         assert blocker is None
 
-    def test_get_pending_blocker_oldest_first(self, db, sample_task):
+    def test_get_pending_blocker_oldest_first(self, db, sample_task, sample_project):
         """Test that oldest blocker is returned first."""
         # Create multiple blockers
         id1 = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="First question"
@@ -289,6 +300,7 @@ class TestGetPendingBlocker:
         time.sleep(0.1)  # Ensure different timestamps
         id2 = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Second question"
@@ -302,11 +314,12 @@ class TestGetPendingBlocker:
 class TestExpireStaleBlockers:
     """Test T054: Unit test for expire_stale_blockers()."""
 
-    def test_expire_stale_blockers_none_stale(self, db, sample_task):
+    def test_expire_stale_blockers_none_stale(self, db, sample_task, sample_project):
         """Test expiration when no blockers are stale."""
         # Create recent blocker
         db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Recent question"
@@ -316,11 +329,12 @@ class TestExpireStaleBlockers:
         expired_ids = db.expire_stale_blockers(hours=24)
         assert len(expired_ids) == 0
 
-    def test_expire_stale_blockers_one_stale(self, db, sample_task):
+    def test_expire_stale_blockers_one_stale(self, db, sample_task, sample_project):
         """Test expiring a single stale blocker."""
         # Create blocker with old timestamp (manual SQL update)
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Old question"
@@ -343,13 +357,14 @@ class TestExpireStaleBlockers:
         blocker = db.get_blocker(blocker_id)
         assert blocker['status'] == 'EXPIRED'
 
-    def test_expire_stale_blockers_multiple(self, db, sample_task):
+    def test_expire_stale_blockers_multiple(self, db, sample_task, sample_project):
         """Test expiring multiple stale blockers."""
         # Create 3 stale blockers
         blocker_ids = []
         for i in range(3):
             blocker_id = db.create_blocker(
                 agent_id=f"agent-{i}",
+                project_id=sample_project,
                 task_id=sample_task,
                 blocker_type=BlockerType.SYNC,
                 question=f"Question {i}"
@@ -370,11 +385,12 @@ class TestExpireStaleBlockers:
         assert len(expired_ids) == 3
         assert all(bid in expired_ids for bid in blocker_ids)
 
-    def test_expire_stale_blockers_skips_resolved(self, db, sample_task):
+    def test_expire_stale_blockers_skips_resolved(self, db, sample_task, sample_project):
         """Test that resolved blockers are not expired."""
         # Create and resolve a stale blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question"
@@ -415,12 +431,14 @@ class TestBlockerListWithEnrichment:
         # Create mixed blockers
         db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="SYNC question"
         )
         blocker2_id = db.create_blocker(
             agent_id="backend-worker-002",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.ASYNC,
             question="ASYNC question"
@@ -437,12 +455,14 @@ class TestBlockerListWithEnrichment:
         """Test filtering blockers by status."""
         blocker1_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question 1"
         )
         blocker2_id = db.create_blocker(
             agent_id="backend-worker-002",
+            project_id=sample_project,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question 2"

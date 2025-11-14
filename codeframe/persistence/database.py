@@ -142,6 +142,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS blockers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id TEXT NOT NULL,
+                project_id INTEGER NOT NULL,
                 task_id INTEGER,
                 blocker_type TEXT NOT NULL CHECK(blocker_type IN ('SYNC', 'ASYNC')),
                 question TEXT NOT NULL,
@@ -149,6 +150,7 @@ class Database:
                 status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'RESOLVED', 'EXPIRED')),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 resolved_at TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
         """)
@@ -596,6 +598,7 @@ class Database:
     def create_blocker(
         self,
         agent_id: str,
+        project_id: int,
         task_id: Optional[int],
         blocker_type: str,
         question: str
@@ -606,7 +609,8 @@ class Database:
 
         Args:
             agent_id: ID of the agent creating the blocker
-            task_id: Associated task ID (nullable)
+            project_id: ID of the project this blocker belongs to
+            task_id: Associated task ID (nullable for agent-level blockers)
             blocker_type: Type of blocker ('SYNC' or 'ASYNC')
             question: Question for the user (max 2000 chars)
 
@@ -637,9 +641,9 @@ class Database:
 
         # Create the blocker
         cursor.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status)
-               VALUES (?, ?, ?, ?, 'PENDING')""",
-            (agent_id, task_id, blocker_type, question)
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status)
+               VALUES (?, ?, ?, ?, ?, 'PENDING')""",
+            (agent_id, project_id, task_id, blocker_type, question)
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -714,7 +718,7 @@ class Database:
             FROM blockers b
             LEFT JOIN agents a ON b.agent_id = a.id
             LEFT JOIN tasks t ON b.task_id = t.id
-            WHERE t.project_id = ?
+            WHERE b.project_id = ?
         """
         params = [project_id]
 
@@ -2040,34 +2044,6 @@ class Database:
         
         self.conn.commit()
 
-    def get_blockers(self, project_id: int) -> List[Dict[str, Any]]:
-        """
-        Get all unresolved blockers for a project.
-
-        Args:
-            project_id: Project ID to filter blockers
-
-        Returns:
-            List of blocker dictionaries with task info
-        """
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
-                b.id,
-                b.task_id,
-                b.severity,
-                b.question,
-                b.reason,
-                b.created_at
-            FROM blockers b
-            JOIN tasks t ON b.task_id = t.id
-            WHERE t.project_id = ?
-                AND b.resolved_at IS NULL
-            ORDER BY b.created_at DESC
-        """, (project_id,))
-
-        columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
     def get_recent_activity(self, project_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         """
