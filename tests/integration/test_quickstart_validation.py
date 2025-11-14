@@ -66,6 +66,7 @@ class TestFiveMinuteTutorial:
         # Agent creates blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Should the user table use UUID or auto-increment ID?"
@@ -79,6 +80,7 @@ class TestFiveMinuteTutorial:
         # Create blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Should we use SQLite or PostgreSQL?"
@@ -102,6 +104,7 @@ class TestFiveMinuteTutorial:
         # Create blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Should we use SQLite or PostgreSQL?"
@@ -125,6 +128,7 @@ class TestFiveMinuteTutorial:
         # Agent creates blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="What API key should I use?"
@@ -157,6 +161,7 @@ class TestCommonPatterns:
         # Agent encounters missing API key
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="ANTHROPIC_API_KEY environment variable not set. Please provide the API key."
@@ -180,6 +185,7 @@ class TestCommonPatterns:
         # Agent needs style preference but can continue
         blocker_id = db.create_blocker(
             agent_id="frontend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.ASYNC,
             question="Should the button use primary blue (#0066CC) or teal (#00A8A8)?"
@@ -248,6 +254,7 @@ class TestCommonPatterns:
         # Multiple agents create blockers simultaneously
         blocker_a = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_a,
             blocker_type=BlockerType.SYNC,
             question="Use REST or GraphQL for API?"
@@ -255,6 +262,7 @@ class TestCommonPatterns:
 
         blocker_b = db.create_blocker(
             agent_id="frontend-worker-001",
+            project_id=1,
             task_id=task_b,
             blocker_type=BlockerType.ASYNC,
             question="Use Tailwind or CSS Modules?"
@@ -320,6 +328,7 @@ class TestTroubleshooting:
         # Create blocker in project 1
         db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task,
             blocker_type=BlockerType.SYNC,
             question="Test question"
@@ -338,6 +347,7 @@ class TestTroubleshooting:
         """Troubleshooting: Duplicate resolutions (409 conflict)."""
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Test question?"
@@ -361,6 +371,7 @@ class TestTroubleshooting:
         # Create blocker
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Old question"
@@ -393,12 +404,14 @@ class TestAdvancedUsage:
         # Create mix of blockers
         blocker1 = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
             question="Question 1"
         )
         blocker2 = db.create_blocker(
             agent_id="backend-worker-002",
+            project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.ASYNC,
             question="Question 2"
@@ -424,6 +437,7 @@ class TestAdvancedUsage:
         for i in range(10):
             db.create_blocker(
                 agent_id="backend-worker-001",
+                project_id=1,
                 task_id=sample_task,
                 blocker_type=BlockerType.SYNC,
                 question=f"Question {i}"
@@ -433,6 +447,7 @@ class TestAdvancedUsage:
         with pytest.raises(ValueError, match="Rate limit exceeded"):
             db.create_blocker(
                 agent_id="backend-worker-001",
+                project_id=1,
                 task_id=sample_task,
                 blocker_type=BlockerType.SYNC,
                 question="Question 11"

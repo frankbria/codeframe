@@ -472,6 +472,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         # Create blocker in database
         blocker_id = self.db.create_blocker(
             agent_id=self.agent_id,
+            project_id=self.project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
             question=question.strip()

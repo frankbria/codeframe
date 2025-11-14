@@ -48,7 +48,7 @@ def project_with_blocker(client):
     # Create project
     project_id = app.state.db.create_project(
         name="Test Blocker Project",
-        status=ProjectStatus.RUNNING
+        description="Test project for blocker resolution API tests"
     )
 
     # Create a blocker
@@ -56,6 +56,7 @@ def project_with_blocker(client):
     question = "Should I use JWT or session-based authentication?"
     blocker_id = app.state.db.create_blocker(
         agent_id=agent_id,
+        project_id=project_id,
         task_id=None,
         blocker_type=BlockerType.SYNC,
         question=question

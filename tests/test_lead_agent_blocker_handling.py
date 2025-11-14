@@ -79,6 +79,7 @@ class TestLeadAgentSyncBlockerHandling:
         # Create SYNC blocker for Task A
         blocker_id = db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.SYNC,
             question="Should we use JWT or session-based auth?"
@@ -136,6 +137,7 @@ class TestLeadAgentSyncBlockerHandling:
         # Create SYNC blocker for Task A
         db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.SYNC,
             question="Which database should we use?"
@@ -187,6 +189,7 @@ class TestLeadAgentSyncBlockerHandling:
         # Create SYNC blocker for Task A
         db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.SYNC,
             question="JWT or session auth?"
@@ -264,6 +267,7 @@ class TestLeadAgentAsyncBlockerHandling:
         # Create ASYNC blocker for Task A (informational question)
         db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.ASYNC,
             question="Do you prefer full-text search or simple keyword matching?"
@@ -310,6 +314,7 @@ class TestLeadAgentAsyncBlockerHandling:
         # Create ASYNC blocker for Task A
         db.create_blocker(
             agent_id="backend-worker-001",
+            project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.ASYNC,
             question="Should we add rate limiting to this endpoint?"
@@ -389,6 +394,7 @@ class TestLeadAgentBlockerHandlingIntegration:
                     # Create SYNC blocker during Task A execution
                     db.create_blocker(
                         agent_id="backend-worker-001",
+                        project_id=1,
                         task_id=task_a_id,
                         blocker_type=BlockerType.SYNC,
                         question="Critical decision needed"
