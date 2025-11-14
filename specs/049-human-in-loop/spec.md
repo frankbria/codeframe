@@ -57,17 +57,18 @@ As a developer who just resolved a blocker, I want the blocked agent to automati
 
 ### User Story 4 - SYNC vs ASYNC Blocker Handling (Priority: P2)
 
-As a developer coordinating multiple agents, when a SYNC blocker occurs (critical decision needed), I want all dependent work to pause automatically, and when an ASYNC blocker occurs (clarification question), I want other agents to continue working on independent tasks.
+As a developer coordinating multiple agents, when a SYNC blocker occurs (critical decision needed), I want all dependent work to pause automatically, and when an ASYNC blocker occurs (clarification question), I want that task deprioritized while other agents continue working on independent tasks.
 
-**Why this priority**: This prevents wasted work and enables intelligent workflow management. SYNC blockers signal "stop everything, this is critical" while ASYNC blockers allow parallel progress. This is valuable but not essential for MVP - the system works without it.
+**Why this priority**: This prevents wasted work and enables intelligent workflow management. SYNC blockers signal "stop dependent work, this is critical" while ASYNC blockers allow parallel progress by deprioritizing uncertain work. This is valuable but not essential for MVP - the system works without it.
 
-**Independent Test**: Can be tested by triggering both blocker types and verifying: 1) SYNC blocker pauses all dependent tasks in queue, 2) ASYNC blocker allows independent tasks to proceed, 3) Dashboard shows different visual indicators (e.g., red for SYNC, yellow for ASYNC). Delivers value by optimizing agent throughput.
+**Independent Test**: Can be tested by triggering both blocker types and verifying: 1) SYNC blocker pauses all dependent tasks in queue with "paused" status and blocker_id reference, 2) ASYNC blocker deprioritizes the blocked task allowing independent tasks to proceed, 3) Dashboard shows different visual indicators (red for SYNC, yellow for ASYNC). Delivers value by optimizing agent throughput.
 
 **Acceptance Scenarios**:
 
-1. **Given** an agent creates a SYNC blocker, **When** the Lead Agent processes it, **Then** all tasks dependent on the blocked task are marked as "waiting on blocker"
-2. **Given** an agent creates an ASYNC blocker, **When** other agents query for work, **Then** they receive independent tasks and continue execution
-3. **Given** blockers of different types exist, **When** displayed in dashboard, **Then** SYNC blockers show red badge and ASYNC show yellow badge
+1. **Given** an agent creates a SYNC blocker during task execution, **When** the Lead Agent processes it, **Then** the LeadAgent walks the dependency DAG to identify all tasks that directly or transitively depend on the blocked task, updates those tasks to "paused" status, and sets their blocker_id field to reference the blocker
+2. **Given** a SYNC blocker is resolved, **When** the LeadAgent processes the resolution, **Then** it queries all tasks with matching blocker_id, updates their status back to "pending", clears the blocker_id field, and allows normal task scheduling to pick them up
+3. **Given** an agent creates an ASYNC blocker, **When** the LeadAgent schedules next tasks, **Then** tasks with ASYNC blockers are queued at lower priority than tasks without blockers, allowing other work to proceed first
+4. **Given** blockers of different types exist, **When** displayed in dashboard, **Then** SYNC blockers show red badge with "CRITICAL" label and ASYNC blockers show yellow badge with "INFO" label
 
 ---
 
@@ -98,6 +99,16 @@ As a developer working outside the dashboard, when a SYNC blocker occurs (critic
 - What if a blocker resolution answer is empty or contains only whitespace?
 - How does the system handle concurrent blocker creation from multiple agents?
 
+## Clarifications
+
+### Session 2025-11-08
+
+- Q: When a worker agent creates a SYNC blocker during task execution, which tasks should the LeadAgent pause? → A: Only tasks that directly or transitively depend on the blocked task (walk the DAG dependents)
+- Q: When the LeadAgent pauses tasks due to a SYNC blocker, should their status be updated in the database? → A: Update to "paused" status without blocker reference
+- Q: How should the system track which tasks are affected by a SYNC blocker for resume coordination? → A: Add blocker_id field to paused tasks (tasks → blocker relationship)
+- Q: When a SYNC blocker is resolved, how should the LeadAgent resume the paused tasks? → A: Automatic resume - query paused tasks by blocker_id, update to "pending", let normal scheduling pick them up
+- Q: When a worker agent creates an ASYNC blocker, what should the LeadAgent do with task scheduling? → A: Queue ASYNC-blocked tasks at lower priority than non-blocked tasks
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -109,8 +120,8 @@ As a developer working outside the dashboard, when a SYNC blocker occurs (critic
 - **FR-005**: System MUST validate blocker resolution answers: non-empty, maximum 5000 characters, plain text only
 - **FR-006**: Resolved blockers MUST trigger agent resume: agent receives answer, incorporates into context, continues task execution from blocking point
 - **FR-007**: System MUST broadcast blocker lifecycle events via WebSocket: blocker_created, blocker_resolved, agent_resumed
-- **FR-008**: SYNC blockers MUST pause dependent tasks: Lead Agent marks tasks depending on blocked task as "waiting on blocker"
-- **FR-009**: ASYNC blockers MUST allow independent work to continue: agents can claim and execute tasks with no dependency on blocked task
+- **FR-008**: SYNC blockers MUST pause dependent tasks: Lead Agent walks dependency DAG to find all tasks that directly or transitively depend on blocked task, updates their status to "paused", and sets blocker_id field; on resolution, queries tasks by blocker_id, updates status to "pending", and clears blocker_id to resume normal scheduling
+- **FR-009**: ASYNC blockers MUST deprioritize uncertain work: Lead Agent queues tasks with ASYNC blockers at lower priority than non-blocked tasks, allowing independent work to proceed first while keeping blocked task eligible for execution if no other work available
 - **FR-010**: Dashboard MUST visually distinguish blocker types: SYNC shown with red/critical indicator, ASYNC shown with yellow/warning indicator
 - **FR-011**: System MUST track blocker metrics: time to resolution, resolution rate, average blockers per agent, blocker categories
 - **FR-012**: SYNC blockers MUST trigger notifications: webhook POST to configured endpoint with blocker details and dashboard link
@@ -144,10 +155,13 @@ As a developer working outside the dashboard, when a SYNC blocker occurs (critic
 ## Assumptions
 
 - Database schema for `blockers` table already exists with required fields (id, agent_id, task_id, blocker_type, question, answer, status, created_at, resolved_at)
+- Database schema for `tasks` table supports "paused" status and optional blocker_id field for tracking which blocker caused the pause
 - WebSocket infrastructure from Sprint 4 is available and supports custom event types
 - Dashboard is already rendering real-time agent status updates via WebSocket
 - Agent execution loop can be paused and resumed without loss of state
 - Agents have access to task context and can incorporate blocker resolution answers into their prompts
+- Lead Agent's DependencyResolver can traverse DAG to find dependent tasks for SYNC blocker propagation
+- Lead Agent's task scheduling supports priority queuing for deprioritizing ASYNC-blocked tasks
 - Default notification endpoint is a webhook (Zapier integration), email notifications are optional enhancement
 - User authentication/authorization is out of scope - anyone with dashboard access can resolve any blocker
 - Blocker questions are in English (internationalization is future work)

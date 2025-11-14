@@ -65,13 +65,15 @@ CREATE INDEX IF NOT EXISTS idx_blockers_agent_status
 CREATE TABLE IF NOT EXISTS blockers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id TEXT NOT NULL,           -- Agent that created blocker (e.g., 'backend-worker-001')
-    task_id INTEGER,                  -- Associated task (nullable if agent-level blocker)
+    project_id INTEGER NOT NULL,      -- Project this blocker belongs to
+    task_id INTEGER,                  -- Associated task (nullable for agent-level blockers)
     blocker_type TEXT NOT NULL,       -- 'SYNC' (critical) or 'ASYNC' (clarification)
     question TEXT NOT NULL,           -- Question for user (max 2000 chars)
     answer TEXT,                      -- User's answer (max 5000 chars, NULL until resolved)
     status TEXT NOT NULL DEFAULT 'PENDING',  -- 'PENDING' | 'RESOLVED' | 'EXPIRED'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     resolved_at TIMESTAMP,            -- When user submitted answer (NULL until resolved)
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 
@@ -80,6 +82,9 @@ CREATE INDEX IF NOT EXISTS idx_blockers_status_created
 
 CREATE INDEX IF NOT EXISTS idx_blockers_agent_status
     ON blockers(agent_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_blockers_project_status
+    ON blockers(project_id, status);
 ```
 
 **Migration Strategy**: Create migration script `migration_003_update_blockers_schema.py` to:
@@ -277,6 +282,7 @@ Sent when agent resumes work after blocker resolution:
 async def create_blocker(
     self,
     agent_id: str,
+    project_id: int,
     task_id: int | None,
     blocker_type: BlockerType,
     question: str
@@ -284,9 +290,9 @@ async def create_blocker(
     """Create new blocker, return blocker_id."""
     cursor = self.conn.cursor()
     cursor.execute(
-        """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status)
-           VALUES (?, ?, ?, ?, 'PENDING')""",
-        (agent_id, task_id, blocker_type.value, question)
+        """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status)
+           VALUES (?, ?, ?, ?, ?, 'PENDING')""",
+        (agent_id, project_id, task_id, blocker_type.value, question)
     )
     self.conn.commit()
     return cursor.lastrowid
@@ -370,7 +376,7 @@ async def list_blockers(
         FROM blockers b
         LEFT JOIN agents a ON b.agent_id = a.id
         LEFT JOIN tasks t ON b.task_id = t.id
-        WHERE t.project_id = ?
+        WHERE b.project_id = ?
     """
     params = [project_id]
 

@@ -53,13 +53,42 @@ export const tasksApi = {
 };
 
 export const blockersApi = {
-  list: (projectId: number) =>
-    api.get<{ blockers: Blocker[] }>(`/api/projects/${projectId}/blockers`),
-  resolve: (projectId: number, blockerId: number, answer: string) =>
-    api.post(`/api/projects/${projectId}/blockers/${blockerId}/resolve`, {
-      answer,
+  list: (projectId: number, status?: string) =>
+    api.get<{ blockers: Blocker[] }>(`/api/projects/${projectId}/blockers`, {
+      params: status ? { status } : {},
     }),
+  get: (blockerId: number) =>
+    api.get<Blocker>(`/api/blockers/${blockerId}`),
+  resolve: (blockerId: number, answer: string) =>
+    api.post<{ blocker_id: number; status: string; resolved_at: string }>(
+      `/api/blockers/${blockerId}/resolve`,
+      { answer }
+    ),
+
+  // Aliases for T019 compatibility
+  fetchBlockers: (projectId: number, status?: string) =>
+    api.get<{ blockers: Blocker[] }>(`/api/projects/${projectId}/blockers`, {
+      params: status ? { status } : {},
+    }),
+  fetchBlocker: (blockerId: number) =>
+    api.get<Blocker>(`/api/blockers/${blockerId}`),
 };
+
+/**
+ * Resolve a blocker with user's answer (T023).
+ *
+ * @param blockerId - ID of the blocker to resolve
+ * @param answer - User's answer to the blocker question
+ * @returns Promise resolving to success indicator
+ */
+export async function resolveBlocker(blockerId: number, answer: string): Promise<{ success: boolean }> {
+  try {
+    await blockersApi.resolve(blockerId, answer);
+    return { success: true };
+  } catch (error) {
+    throw error;
+  }
+}
 
 export const activityApi = {
   list: (projectId: number, limit?: number) =>

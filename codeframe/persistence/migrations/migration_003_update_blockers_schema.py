@@ -82,6 +82,7 @@ class UpdateBlockersSchema(Migration):
             CREATE TABLE blockers_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id TEXT NOT NULL,
+                project_id INTEGER NOT NULL,
                 task_id INTEGER,
                 blocker_type TEXT NOT NULL CHECK(blocker_type IN ('SYNC', 'ASYNC')),
                 question TEXT NOT NULL,
@@ -89,6 +90,7 @@ class UpdateBlockersSchema(Migration):
                 status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'RESOLVED', 'EXPIRED')),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 resolved_at TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
         """)
@@ -98,13 +100,17 @@ class UpdateBlockersSchema(Migration):
         if blocker_count > 0:
             cursor.execute("""
                 INSERT INTO blockers_new
-                    (id, agent_id, task_id, blocker_type, question, answer, status, created_at, resolved_at)
+                    (id, agent_id, project_id, task_id, blocker_type, question, answer, status, created_at, resolved_at)
                 SELECT
                     b.id,
                     COALESCE(
                         (SELECT a.id FROM agents a JOIN tasks t ON t.id = b.task_id WHERE a.id = t.current_task_id LIMIT 1),
                         'unknown-agent'
                     ) as agent_id,
+                    COALESCE(
+                        (SELECT t.project_id FROM tasks t WHERE t.id = b.task_id),
+                        (SELECT MIN(id) FROM projects)
+                    ) as project_id,
                     b.task_id,
                     UPPER(COALESCE(b.severity, 'async')) as blocker_type,
                     COALESCE(b.question, b.reason, 'No question provided') as question,
@@ -145,6 +151,12 @@ class UpdateBlockersSchema(Migration):
             ON blockers(task_id)
         """)
         logger.info("Created index: idx_blockers_task_id")
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blockers_project_status
+            ON blockers(project_id, status)
+        """)
+        logger.info("Created index: idx_blockers_project_status")
 
         conn.commit()
         logger.info("Migration 003 completed successfully")

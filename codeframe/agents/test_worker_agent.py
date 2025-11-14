@@ -9,6 +9,7 @@ import os
 import sys
 import json
 import logging
+import asyncio
 import subprocess
 import re
 from pathlib import Path
@@ -41,7 +42,9 @@ class TestWorkerAgent(WorkerAgent):
         maturity: AgentMaturity = AgentMaturity.D1,
         api_key: Optional[str] = None,
         websocket_manager=None,
-        max_correction_attempts: int = 3
+        max_correction_attempts: int = 3,
+        db=None,
+        project_id: Optional[int] = None
     ):
         """
         Initialize Test Worker Agent.
@@ -53,6 +56,8 @@ class TestWorkerAgent(WorkerAgent):
             api_key: API key for LLM provider
             websocket_manager: WebSocket connection manager
             max_correction_attempts: Maximum self-correction attempts
+            db: Database instance for blocker management (optional)
+            project_id: Project ID for blocker context (optional)
         """
         super().__init__(
             agent_id=agent_id,
@@ -65,6 +70,8 @@ class TestWorkerAgent(WorkerAgent):
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.websocket_manager = websocket_manager
         self.max_correction_attempts = max_correction_attempts
+        self.db = db
+        self.project_id = project_id
         self.project_root = Path(__file__).parent.parent.parent
         self.tests_dir = self.project_root / "tests"
 
@@ -596,3 +603,286 @@ Provide ONLY the corrected test code, no explanations."""
             )
         except Exception as e:
             logger.debug(f"Failed to broadcast test result: {e}")
+
+    async def create_blocker(
+        self,
+        question: str,
+        blocker_type: str = "ASYNC",
+        task_id: Optional[int] = None
+    ) -> int:
+        """
+        Create a blocker when agent needs human input (049-human-in-loop, T035).
+
+        The agent determines blocker classification at creation time:
+        - SYNC: Critical blocker requiring immediate attention (pauses dependent work)
+        - ASYNC: Informational/preferential question (allows parallel work to continue)
+
+        Args:
+            question: Question for the user (max 2000 chars)
+            blocker_type: 'SYNC' (critical) or 'ASYNC' (clarification), default 'ASYNC'
+            task_id: Associated task ID (defaults to self.current_task.id)
+
+        Returns:
+            Blocker ID
+
+        Raises:
+            ValueError: If question is empty, too long, or blocker_type is invalid
+            RuntimeError: If db or project_id not configured
+        """
+        # Defensive checks for required dependencies
+        if self.db is None:
+            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+
+        if self.project_id is None:
+            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+
+        if not question or len(question.strip()) == 0:
+            raise ValueError("Question cannot be empty")
+
+        if len(question) > 2000:
+            raise ValueError("Question exceeds 2000 character limit")
+
+        # Validate blocker type (T035: blocker type classification)
+        valid_types = ["SYNC", "ASYNC"]
+        if blocker_type not in valid_types:
+            raise ValueError(f"Invalid blocker_type '{blocker_type}'. Must be 'SYNC' or 'ASYNC'")
+
+        # Use provided task_id or fall back to current task
+        blocker_task_id = task_id if task_id is not None else (self.current_task.id if hasattr(self, 'current_task') and self.current_task else None)
+
+        # Create blocker in database
+        blocker_id = self.db.create_blocker(
+            agent_id=self.agent_id,
+            project_id=self.project_id,
+            task_id=blocker_task_id,
+            blocker_type=blocker_type,
+            question=question.strip()
+        )
+
+        logger.info(f"Blocker {blocker_id} created by {self.agent_id}: {question[:50]}...")
+
+        # Broadcast blocker creation via WebSocket (if manager available)
+        if self.websocket_manager:
+            try:
+                from codeframe.ui.websocket_broadcasts import broadcast_blocker_created
+                await broadcast_blocker_created(
+                    manager=self.websocket_manager,
+                    project_id=self.project_id,
+                    blocker_id=blocker_id,
+                    agent_id=self.agent_id,
+                    task_id=blocker_task_id,
+                    blocker_type=blocker_type,
+                    question=question.strip()
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast blocker creation: {e}")
+
+        # Send webhook notification for SYNC blockers (T042: 049-human-in-loop)
+        if blocker_type == "SYNC":
+            try:
+                from datetime import datetime
+                from pathlib import Path
+                from codeframe.core.config import Config
+                from codeframe.notifications.webhook import WebhookNotificationService
+                from codeframe.core.models import BlockerType
+
+                # Get webhook URL from config
+                config = Config(Path.cwd())
+                global_config = config.get_global()
+                webhook_url = global_config.blocker_webhook_url
+
+                if webhook_url:
+                    # Initialize webhook service
+                    webhook_service = WebhookNotificationService(
+                        webhook_url=webhook_url,
+                        timeout=5,
+                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}"
+                    )
+
+                    # Send notification (fire-and-forget)
+                    webhook_service.send_blocker_notification_background(
+                        blocker_id=blocker_id,
+                        question=question.strip(),
+                        agent_id=self.agent_id,
+                        task_id=blocker_task_id or 0,
+                        blocker_type=BlockerType.SYNC,
+                        created_at=datetime.now()
+                    )
+                    logger.debug(f"Webhook notification queued for SYNC blocker {blocker_id}")
+                else:
+                    logger.debug("BLOCKER_WEBHOOK_URL not configured, skipping webhook notification")
+
+            except Exception as e:
+                # Log error but don't block blocker creation
+                logger.warning(f"Failed to send webhook notification for blocker {blocker_id}: {e}")
+
+        return blocker_id
+
+    async def wait_for_blocker_resolution(
+        self,
+        blocker_id: int,
+        poll_interval: float = 5.0,
+        timeout: float = 600.0
+    ) -> str:
+        """
+        Wait for a blocker to be resolved by polling the database (049-human-in-loop, T030).
+
+        Polls the database at regular intervals until the blocker status changes to RESOLVED
+        or the timeout is reached. When resolved, broadcasts an agent_resumed event and returns
+        the answer.
+
+        Args:
+            blocker_id: ID of the blocker to wait for
+            poll_interval: Seconds between database polls (default: 5.0)
+            timeout: Maximum seconds to wait before raising TimeoutError (default: 600.0)
+
+        Returns:
+            The answer provided by the user when the blocker was resolved
+
+        Raises:
+            TimeoutError: If blocker not resolved within timeout period
+            ValueError: If blocker not found
+            RuntimeError: If db or project_id not configured
+
+        Example:
+            blocker_id = await agent.create_blocker("Should I use pytest or unittest?")
+            answer = await agent.wait_for_blocker_resolution(blocker_id)
+            # answer = "Use pytest for consistency"
+        """
+        # Defensive checks for required dependencies
+        if self.db is None:
+            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+
+        if self.project_id is None:
+            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+
+        import time
+
+        start_time = time.time()
+        elapsed = 0.0
+
+        logger.info(f"Waiting for blocker {blocker_id} resolution (timeout: {timeout}s)")
+
+        while elapsed < timeout:
+            # Poll database for blocker status
+            blocker = self.db.get_blocker(blocker_id)
+
+            if not blocker:
+                raise ValueError(f"Blocker {blocker_id} not found")
+
+            # Check if resolved
+            if blocker.get("status") == "RESOLVED" and blocker.get("answer"):
+                answer = blocker["answer"]
+                logger.info(f"Blocker {blocker_id} resolved: {answer[:50]}...")
+
+                # Broadcast agent_resumed event via WebSocket (if manager available)
+                if self.websocket_manager:
+                    try:
+                        from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
+                        await broadcast_agent_resumed(
+                            manager=self.websocket_manager,
+                            project_id=self.project_id,
+                            agent_id=self.agent_id,
+                            task_id=(self.current_task.id if hasattr(self, 'current_task') and self.current_task else None) or blocker.get("task_id"),
+                            blocker_id=blocker_id
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to broadcast agent_resumed: {e}")
+
+                return answer
+
+            # Sleep for poll interval
+            await asyncio.sleep(poll_interval)
+            elapsed = time.time() - start_time
+
+        # Timeout reached
+        raise TimeoutError(f"Blocker {blocker_id} not resolved within {timeout} seconds")
+
+    async def create_blocker_and_wait(
+        self,
+        question: str,
+        context: Dict[str, Any],
+        blocker_type: str = "ASYNC",
+        task_id: Optional[int] = None,
+        poll_interval: float = 5.0,
+        timeout: float = 600.0
+    ) -> Dict[str, Any]:
+        """
+        Create blocker, wait for resolution, and inject answer into context (049-human-in-loop, T031).
+
+        This is a convenience method that orchestrates the full blocker workflow:
+        1. Create blocker with question
+        2. Wait for user to provide answer
+        3. Inject answer into execution context
+        4. Return enriched context for continued execution
+
+        The answer is appended to the task context following the pattern from research.md:
+        "Previous blocker question: {question}\nUser answer: {answer}\nContinue task execution with this answer."
+
+        Args:
+            question: Question for user (max 2000 chars)
+            context: Current execution context
+            blocker_type: SYNC (critical) or ASYNC (clarification)
+            task_id: Associated task (defaults to context['task']['id'])
+            poll_interval: Seconds between database polls (default: 5.0)
+            timeout: Maximum seconds to wait (default: 600.0)
+
+        Returns:
+            Enriched context dictionary with blocker_answer field:
+            {
+                **context,  # Original context fields
+                "blocker_answer": str,  # The answer from user
+                "blocker_question": str,  # The original question
+                "blocker_id": int  # The blocker ID
+            }
+
+        Raises:
+            TimeoutError: If blocker not resolved within timeout
+            ValueError: If question invalid or blocker not found
+
+        Example:
+            # During task execution, agent encounters uncertainty
+            context = {"task": task, "test_requirements": requirements}
+
+            # Ask user for guidance
+            enriched_context = await agent.create_blocker_and_wait(
+                question="Should I use pytest or unittest for this test suite?",
+                context=context,
+                blocker_type="ASYNC"
+            )
+
+            # Continue execution with user's answer in context
+            result = await self.generate_tests(enriched_context)
+            # The answer "Use pytest for consistency" is now part of context
+        """
+        # Extract task_id from context if not provided
+        if task_id is None:
+            task_id = context.get("task", {}).get("id")
+
+        # 1. Create blocker
+        blocker_id = await self.create_blocker(
+            question=question,
+            blocker_type=blocker_type,
+            task_id=task_id
+        )
+
+        logger.info(f"Created blocker {blocker_id}, waiting for resolution...")
+
+        # 2. Wait for user to resolve blocker
+        answer = await self.wait_for_blocker_resolution(
+            blocker_id=blocker_id,
+            poll_interval=poll_interval,
+            timeout=timeout
+        )
+
+        logger.info(f"Blocker {blocker_id} resolved with answer: {answer[:50]}...")
+
+        # 3. Inject answer into context
+        enriched_context = {
+            **context,
+            "blocker_answer": answer,
+            "blocker_question": question,
+            "blocker_id": blocker_id
+        }
+
+        return enriched_context
