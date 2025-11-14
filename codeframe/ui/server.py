@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from enum import Enum
 import asyncio
 import json
@@ -15,7 +15,10 @@ import os
 import sqlite3
 
 from codeframe.core.project import Project
-from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus, BlockerResolve
+from codeframe.core.models import (
+    TaskStatus, AgentMaturity, ProjectStatus, BlockerResolve,
+    ContextItemCreateModel, ContextItemResponse
+)
 from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
 from codeframe.agents.lead_agent import LeadAgent
@@ -990,6 +993,188 @@ async def get_blocker_metrics_endpoint(project_id: int):
     # Get metrics
     metrics = app.state.db.get_blocker_metrics(project_id)
     return metrics
+
+
+# Context Management endpoints (007-context-management)
+
+@app.post("/api/agents/{agent_id}/context", status_code=201, response_model=ContextItemResponse, tags=["context"])
+async def create_context_item(agent_id: str, request: ContextItemCreateModel):
+    """Create a new context item for an agent (T019).
+
+    Args:
+        agent_id: Agent ID to create context item for
+        request: ContextItemCreateModel with item_type and content
+
+    Returns:
+        201 Created: ContextItemResponse with created context item
+
+    Raises:
+        HTTPException:
+            - 422: Invalid request (validation error)
+    """
+    from datetime import datetime, UTC
+
+    # Auto-calculate importance_score (placeholder: 0.5)
+    importance_score = 0.5
+
+    # Auto-assign tier (placeholder: WARM)
+    tier = "WARM"
+
+    # Create context item
+    item_id = app.state.db.create_context_item(
+        agent_id=agent_id,
+        item_type=request.item_type.value,
+        content=request.content,
+        importance_score=importance_score,
+        tier=tier
+    )
+
+    # Get created item for response
+    item = app.state.db.get_context_item(item_id)
+
+    return ContextItemResponse(
+        id=item["id"],
+        agent_id=item["agent_id"],
+        item_type=item["item_type"],
+        content=item["content"],
+        importance_score=item["importance_score"],
+        tier=item["tier"],
+        access_count=item["access_count"],
+        created_at=item["created_at"],
+        last_accessed=item["last_accessed"]
+    )
+
+
+@app.get("/api/agents/{agent_id}/context/{item_id}", response_model=ContextItemResponse, tags=["context"])
+async def get_context_item(agent_id: str, item_id: int):
+    """Get a single context item and update access tracking (T020).
+
+    Args:
+        agent_id: Agent ID (used for path consistency)
+        item_id: Context item ID to retrieve
+
+    Returns:
+        200 OK: ContextItemResponse with context item details
+
+    Raises:
+        HTTPException:
+            - 404: Context item not found
+    """
+    # Get context item
+    item = app.state.db.get_context_item(item_id)
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Context item {item_id} not found"
+        )
+
+    # Update access tracking
+    app.state.db.update_context_item_access(item_id)
+
+    # Get updated item for response
+    item = app.state.db.get_context_item(item_id)
+
+    return ContextItemResponse(
+        id=item["id"],
+        agent_id=item["agent_id"],
+        item_type=item["item_type"],
+        content=item["content"],
+        importance_score=item["importance_score"],
+        tier=item["tier"],
+        access_count=item["access_count"],
+        created_at=item["created_at"],
+        last_accessed=item["last_accessed"]
+    )
+
+
+@app.get("/api/agents/{agent_id}/context", tags=["context"])
+async def list_context_items(
+    agent_id: str,
+    tier: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """List context items for an agent with optional filters (T021).
+
+    Args:
+        agent_id: Agent ID to list context items for
+        tier: Optional filter by tier (HOT, WARM, COLD)
+        limit: Maximum items to return (default: 100)
+        offset: Number of items to skip (default: 0)
+
+    Returns:
+        200 OK: Dictionary with:
+            - items: List[ContextItemResponse]
+            - total: int (total items matching filter)
+            - offset: int
+            - limit: int
+
+    Raises:
+        HTTPException:
+            - 422: Invalid request (validation error)
+    """
+    # Get context items from database
+    items_dict = app.state.db.list_context_items(
+        agent_id=agent_id,
+        tier=tier,
+        limit=limit,
+        offset=offset
+    )
+
+    # Convert items to ContextItemResponse models
+    items = [
+        ContextItemResponse(
+            id=item["id"],
+            agent_id=item["agent_id"],
+            item_type=item["item_type"],
+            content=item["content"],
+            importance_score=item["importance_score"],
+            tier=item["tier"],
+            access_count=item["access_count"],
+            created_at=item["created_at"],
+            last_accessed=item["last_accessed"]
+        )
+        for item in items_dict["items"]
+    ]
+
+    return {
+        "items": items,
+        "total": items_dict["total"],
+        "offset": offset,
+        "limit": limit
+    }
+
+
+@app.delete("/api/agents/{agent_id}/context/{item_id}", status_code=204, tags=["context"])
+async def delete_context_item(agent_id: str, item_id: int):
+    """Delete a context item (T022).
+
+    Args:
+        agent_id: Agent ID (used for path consistency)
+        item_id: Context item ID to delete
+
+    Returns:
+        204 No Content: Successful deletion
+
+    Raises:
+        HTTPException:
+            - 404: Context item not found
+    """
+    # Check if item exists before deletion
+    item = app.state.db.get_context_item(item_id)
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Context item {item_id} not found"
+        )
+
+    # Delete context item
+    app.state.db.delete_context_item(item_id)
+
+    # Return 204 No Content (no response body)
+    return None
 
 
 @app.post("/api/projects/{project_id}/pause")

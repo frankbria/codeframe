@@ -167,25 +167,25 @@ Tasks are organized into phases that align with user stories:
 
 #### Implementation
 
-- [ ] T019 [US1] Add API endpoint in `codeframe/ui/server.py`:
+- [X] T019 [US1] Add API endpoint in `codeframe/ui/server.py`:
   - `POST /api/agents/{agent_id}/context` - Create context item
   - Request validation using `ContextItemCreate`
   - Auto-calculate initial importance_score (use placeholder 0.5 for now)
   - Auto-assign initial tier (WARM for now)
   - Return `ContextItemResponse`
 
-- [ ] T020 [P] [US1] Add API endpoint in `codeframe/ui/server.py`:
+- [X] T020 [P] [US1] Add API endpoint in `codeframe/ui/server.py`:
   - `GET /api/agents/{agent_id}/context/{item_id}` - Get single item
   - Update `last_accessed` and `access_count` on read
   - Return 404 if not found
 
-- [ ] T021 [P] [US1] Add API endpoint in `codeframe/ui/server.py`:
+- [X] T021 [P] [US1] Add API endpoint in `codeframe/ui/server.py`:
   - `GET /api/agents/{agent_id}/context` - List items with filters
   - Support `tier` query param (optional)
   - Support `limit` and `offset` for pagination
   - Return total count + items
 
-- [ ] T022 [P] [US1] Add API endpoint in `codeframe/ui/server.py`:
+- [X] T022 [P] [US1] Add API endpoint in `codeframe/ui/server.py`:
   - `DELETE /api/agents/{agent_id}/context/{item_id}` - Delete item
   - Return 204 on success, 404 if not found
 
