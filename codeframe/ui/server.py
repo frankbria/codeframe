@@ -1000,6 +1000,51 @@ async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
     }
 
 
+@app.get("/api/projects/{project_id}/blockers/metrics")
+async def get_blocker_metrics_endpoint(project_id: int):
+    """Get blocker metrics for a project (049-human-in-loop, Phase 10/T062).
+
+    Provides analytics on blocker resolution times and expiration rates.
+
+    Args:
+        project_id: Project ID to get metrics for
+
+    Returns:
+        200 OK: Blocker metrics
+        {
+            "avg_resolution_time_seconds": float | null,
+            "expiration_rate_percent": float,
+            "total_blockers": int,
+            "resolved_count": int,
+            "expired_count": int,
+            "pending_count": int,
+            "sync_count": int,
+            "async_count": int
+        }
+
+        404 Not Found: Project doesn't exist
+        {
+            "error": "Project not found",
+            "project_id": int
+        }
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+    """
+    # Verify project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Project not found", "project_id": project_id}
+        )
+
+    # Get metrics
+    metrics = app.state.db.get_blocker_metrics(project_id)
+    return metrics
+
+
 @app.post("/api/projects/{project_id}/pause")
 async def pause_project(project_id: int):
     """Pause project execution."""
