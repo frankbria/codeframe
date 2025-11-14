@@ -1,6 +1,6 @@
 # codeframe Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2025-11-08
+Auto-generated from all feature plans. Last updated: 2025-11-14
 
 ## Documentation Navigation
 
@@ -50,6 +50,7 @@ cd web-ui && npm test  # Frontend tests
 - **Conventions**: Follow existing patterns in codebase
 
 ## Recent Changes
+- 2025-11-14: 007-context-management - Implemented T012 and T013 database methods for context items and checkpoints
 - 007-context-management: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting)
 - 049-human-in-loop: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets
 - 2025-11-08: Restructured documentation (SPRINTS.md, AGENTS.md, sprints/ directory)
