@@ -10,11 +10,14 @@ import { projectsApi, blockersApi } from '@/lib/api';
 import { useAgentState } from '@/hooks/useAgentState';
 import type { Project, Blocker, WebSocketMessage } from '@/types';
 import type { PRDResponse, IssuesResponse } from '@/types/api';
+import { getWebSocketClient } from '@/lib/websocket';
 import ChatInterface from './ChatInterface';
 import PRDModal from './PRDModal';
 import TaskTreeView from './TaskTreeView';
 import DiscoveryProgress from './DiscoveryProgress';
 import AgentCard from './AgentCard';
+import BlockerPanel from './BlockerPanel';
+import { BlockerModal } from './BlockerModal';
 
 interface DashboardProps {
   projectId: number;
@@ -26,6 +29,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
   const [showChat, setShowChat] = useState(false);
   const [showPRD, setShowPRD] = useState(false);
+  const [selectedBlocker, setSelectedBlocker] = useState<Blocker | null>(null);
 
   // Memoize filtered agent lists for performance (T111)
   const activeAgents = useMemo(
@@ -71,6 +75,31 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
   // WebSocket connection and real-time updates are now handled by AgentStateProvider (Phase 5.2)
   // All WebSocket message handling, state updates, and reconnection logic moved to Provider
+
+  // WebSocket handler for blocker lifecycle events (T018, T033, T034, 049-human-in-loop)
+  useEffect(() => {
+    const ws = getWebSocketClient();
+
+    const handleBlockerEvent = (message: any) => {
+      if (message.type === 'blocker_created' || message.type === 'blocker_resolved' || message.type === 'blocker_expired') {
+        // Refresh blockers list when blocker events occur
+        mutateBlockers();
+      }
+
+      // Handle agent_resumed event (T033, T034)
+      if (message.type === 'agent_resumed') {
+        // Agent status card will be automatically updated by AgentStateProvider
+        // Add activity feed entry for agent resume (T034)
+        console.log(`Agent ${message.agent_id} resumed after blocker ${message.blocker_id} resolved`);
+      }
+    };
+
+    ws.onMessage(handleBlockerEvent);
+
+    return () => {
+      ws.offMessage(handleBlockerEvent);
+    };
+  }, [mutateBlockers]);
 
   if (!projectData) {
     return <div className="p-8 text-center">Loading...</div>;
@@ -245,49 +274,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
           )}
         </div>
 
-        {/* Blockers Section */}
-        {blockersData && blockersData.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">⚠️ Pending Questions</h2>
-            <div className="space-y-4">
-              {blockersData.map((blocker) => (
-                <div
-                  key={blocker.id}
-                  className={`border-l-4 pl-4 ${
-                    blocker.severity === 'sync' ? 'border-red-500' : 'border-yellow-500'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded ${
-                            blocker.severity === 'sync'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                        >
-                          {blocker.severity.toUpperCase()}
-                        </span>
-                        <span className="text-sm text-gray-500">Task #{blocker.task_id}</span>
-                      </div>
-                      <p className="mt-2 text-gray-900">{blocker.question}</p>
-                      <p className="mt-1 text-sm text-gray-500">Reason: {blocker.reason}</p>
-                      {blocker.blocking_agents && blocker.blocking_agents.length > 0 && (
-                        <p className="mt-1 text-sm text-gray-500">
-                          Blocking: {blocker.blocking_agents.join(', ')}
-                        </p>
-                      )}
-                    </div>
-                    <button className="ml-4 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-                      Answer Now
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Blockers Section (T020, 049-human-in-loop) */}
+        <div className="mb-6">
+          <BlockerPanel
+            blockers={blockersData || []}
+            onBlockerClick={(blocker) => setSelectedBlocker(blocker)}
+          />
+        </div>
 
         {/* Recent Activity */}
         <div className="bg-white rounded-lg shadow p-6">
@@ -304,6 +297,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     {item.type === 'tests_passed' && '🧪'}
                     {item.type === 'blocker_created' && '⚠️'}
                     {item.type === 'blocker_resolved' && '✓'}
+                    {item.type === 'agent_resumed' && '▶️'}
                     {' '}
                     <span className="font-medium">{item.agent}:</span> {item.message}
                   </span>
@@ -323,6 +317,14 @@ export default function Dashboard({ projectId }: DashboardProps) {
         isOpen={showPRD}
         onClose={() => setShowPRD(false)}
         prdData={prdData || null}
+      />
+
+      {/* Blocker Resolution Modal (T025, 049-human-in-loop) */}
+      <BlockerModal
+        isOpen={selectedBlocker !== null}
+        blocker={selectedBlocker}
+        onClose={() => setSelectedBlocker(null)}
+        onResolved={() => mutateBlockers()}
       />
     </div>
   );

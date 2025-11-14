@@ -137,18 +137,36 @@ class Database:
             )
         """)
 
-        # Blockers table
+        # Blockers table (updated schema from migration 003)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS blockers (
-                id INTEGER PRIMARY KEY,
-                task_id INTEGER REFERENCES tasks(id),
-                severity TEXT CHECK(severity IN ('sync', 'async')),
-                reason TEXT,
-                question TEXT,
-                resolution TEXT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                project_id INTEGER NOT NULL,
+                task_id INTEGER,
+                blocker_type TEXT NOT NULL CHECK(blocker_type IN ('SYNC', 'ASYNC')),
+                question TEXT NOT NULL,
+                answer TEXT,
+                status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'RESOLVED', 'EXPIRED')),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                resolved_at TIMESTAMP
+                resolved_at TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
+        """)
+
+        # Blocker indexes (from migration 003)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blockers_status_created
+            ON blockers(status, created_at)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blockers_agent_status
+            ON blockers(agent_id, status)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blockers_task_id
+            ON blockers(task_id)
         """)
 
         # Memory table
@@ -580,26 +598,52 @@ class Database:
     def create_blocker(
         self,
         agent_id: str,
+        project_id: int,
         task_id: Optional[int],
         blocker_type: str,
         question: str
     ) -> int:
-        """Create a new blocker.
+        """Create a new blocker with rate limiting.
+
+        Rate limit: 10 blockers per minute per agent (T063).
 
         Args:
             agent_id: ID of the agent creating the blocker
-            task_id: Associated task ID (nullable)
+            project_id: ID of the project this blocker belongs to
+            task_id: Associated task ID (nullable for agent-level blockers)
             blocker_type: Type of blocker ('SYNC' or 'ASYNC')
             question: Question for the user (max 2000 chars)
 
         Returns:
             Blocker ID of the created blocker
+
+        Raises:
+            ValueError: If agent exceeds rate limit (10 blockers/minute)
         """
         cursor = self.conn.cursor()
+
+        # Check rate limit: 10 blockers per minute per agent
         cursor.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status)
-               VALUES (?, ?, ?, ?, 'PENDING')""",
-            (agent_id, task_id, blocker_type, question)
+            """SELECT COUNT(*) as count
+               FROM blockers
+               WHERE agent_id = ?
+                 AND datetime(created_at) > datetime('now', '-60 seconds')""",
+            (agent_id,)
+        )
+        row = cursor.fetchone()
+        recent_blocker_count = row["count"]
+
+        if recent_blocker_count >= 10:
+            raise ValueError(
+                f"Rate limit exceeded: Agent {agent_id} has created {recent_blocker_count} "
+                f"blockers in the last minute (limit: 10/minute)"
+            )
+
+        # Create the blocker
+        cursor.execute(
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status)
+               VALUES (?, ?, ?, ?, ?, 'PENDING')""",
+            (agent_id, project_id, task_id, blocker_type, question)
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -674,7 +718,7 @@ class Database:
             FROM blockers b
             LEFT JOIN agents a ON b.agent_id = a.id
             LEFT JOIN tasks t ON b.task_id = t.id
-            WHERE t.project_id = ?
+            WHERE b.project_id = ?
         """
         params = [project_id]
 
@@ -731,8 +775,118 @@ class Database:
                  AND datetime(created_at) < datetime('now', '-{hours} hours')
                RETURNING id"""
         )
+        # Fetch results BEFORE commit (SQLite requirement for RETURNING clause)
+        expired_ids = [row[0] for row in cursor.fetchall()]
         self.conn.commit()
-        return [row[0] for row in cursor.fetchall()]
+        return expired_ids
+
+    def get_blocker_metrics(self, project_id: int) -> Dict[str, Any]:
+        """Calculate blocker metrics for a project.
+
+        Tracks:
+        - Average resolution time (seconds from created_at to resolved_at for RESOLVED blockers)
+        - Expiration rate (percentage of blockers that expired vs resolved)
+        - Total blocker counts by status and type
+
+        Args:
+            project_id: Project ID to calculate metrics for
+
+        Returns:
+            Dictionary with metrics:
+            - avg_resolution_time_seconds: Average time to resolve (None if no resolved blockers)
+            - expiration_rate_percent: Percentage of blockers that expired (0-100)
+            - total_blockers: Total count of all blockers
+            - resolved_count: Count of RESOLVED blockers
+            - expired_count: Count of EXPIRED blockers
+            - pending_count: Count of PENDING blockers
+            - sync_count: Count of SYNC blockers
+            - async_count: Count of ASYNC blockers
+        """
+        cursor = self.conn.cursor()
+
+        # Get all blockers for tasks in this project
+        cursor.execute("""
+            SELECT
+                b.status,
+                b.blocker_type,
+                b.created_at,
+                b.resolved_at
+            FROM blockers b
+            INNER JOIN tasks t ON b.task_id = t.id
+            WHERE t.project_id = ?
+        """, (project_id,))
+
+        rows = cursor.fetchall()
+
+        if not rows:
+            return {
+                "avg_resolution_time_seconds": None,
+                "expiration_rate_percent": 0.0,
+                "total_blockers": 0,
+                "resolved_count": 0,
+                "expired_count": 0,
+                "pending_count": 0,
+                "sync_count": 0,
+                "async_count": 0
+            }
+
+        # Calculate metrics
+        total_blockers = len(rows)
+        resolved_count = 0
+        expired_count = 0
+        pending_count = 0
+        sync_count = 0
+        async_count = 0
+        resolution_times = []
+
+        for row in rows:
+            status = row["status"]
+            blocker_type = row["blocker_type"]
+            created_at = row["created_at"]
+            resolved_at = row["resolved_at"]
+
+            # Count by status
+            if status == "RESOLVED":
+                resolved_count += 1
+                # Calculate resolution time
+                if created_at and resolved_at:
+                    from datetime import datetime
+                    created = datetime.fromisoformat(created_at)
+                    resolved = datetime.fromisoformat(resolved_at)
+                    resolution_time_seconds = (resolved - created).total_seconds()
+                    resolution_times.append(resolution_time_seconds)
+            elif status == "EXPIRED":
+                expired_count += 1
+            elif status == "PENDING":
+                pending_count += 1
+
+            # Count by type
+            if blocker_type == "SYNC":
+                sync_count += 1
+            elif blocker_type == "ASYNC":
+                async_count += 1
+
+        # Calculate average resolution time
+        avg_resolution_time = None
+        if resolution_times:
+            avg_resolution_time = sum(resolution_times) / len(resolution_times)
+
+        # Calculate expiration rate
+        completed_blockers = resolved_count + expired_count
+        expiration_rate = 0.0
+        if completed_blockers > 0:
+            expiration_rate = (expired_count / completed_blockers) * 100.0
+
+        return {
+            "avg_resolution_time_seconds": avg_resolution_time,
+            "expiration_rate_percent": expiration_rate,
+            "total_blockers": total_blockers,
+            "resolved_count": resolved_count,
+            "expired_count": expired_count,
+            "pending_count": pending_count,
+            "sync_count": sync_count,
+            "async_count": async_count
+        }
 
     def list_projects(self) -> List[Dict[str, Any]]:
         """List all projects with progress metrics.
@@ -1890,34 +2044,6 @@ class Database:
         
         self.conn.commit()
 
-    def get_blockers(self, project_id: int) -> List[Dict[str, Any]]:
-        """
-        Get all unresolved blockers for a project.
-
-        Args:
-            project_id: Project ID to filter blockers
-
-        Returns:
-            List of blocker dictionaries with task info
-        """
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT 
-                b.id,
-                b.task_id,
-                b.severity,
-                b.question,
-                b.reason,
-                b.created_at
-            FROM blockers b
-            JOIN tasks t ON b.task_id = t.id
-            WHERE t.project_id = ?
-                AND b.resolved_at IS NULL
-            ORDER BY b.created_at DESC
-        """, (project_id,))
-
-        columns = [desc[0] for desc in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
     def get_recent_activity(self, project_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         """

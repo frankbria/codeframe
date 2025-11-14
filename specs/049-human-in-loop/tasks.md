@@ -53,16 +53,16 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Add create_blocker() method to BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
-- [ ] T012 [P] [US1] Add create_blocker() method to FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
-- [ ] T013 [P] [US1] Add create_blocker() method to TestWorkerAgent in codeframe/agents/test_worker_agent.py
-- [ ] T014 [US1] Add GET /api/projects/:project_id/blockers endpoint to codeframe/ui/server.py
-- [ ] T015 [US1] Add GET /api/blockers/:blocker_id endpoint to codeframe/ui/server.py
-- [ ] T016 [P] [US1] Create BlockerBadge component in web-ui/src/components/BlockerBadge.tsx
-- [ ] T017 [P] [US1] Create BlockerPanel component in web-ui/src/components/BlockerPanel.tsx
-- [ ] T018 [US1] Add WebSocket handler for blocker_created event in BlockerPanel component
-- [ ] T019 [US1] Add API client methods for blockers in web-ui/src/lib/api.ts (fetchBlockers, fetchBlocker)
-- [ ] T020 [US1] Integrate BlockerPanel into Dashboard component in web-ui/src/components/Dashboard.tsx
+- [X] T011 [P] [US1] Add create_blocker() method to BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
+- [X] T012 [P] [US1] Add create_blocker() method to FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
+- [X] T013 [P] [US1] Add create_blocker() method to TestWorkerAgent in codeframe/agents/test_worker_agent.py
+- [X] T014 [US1] Add GET /api/projects/:project_id/blockers endpoint to codeframe/ui/server.py
+- [X] T015 [US1] Add GET /api/blockers/:blocker_id endpoint to codeframe/ui/server.py
+- [X] T016 [P] [US1] Create BlockerBadge component in web-ui/src/components/BlockerBadge.tsx
+- [X] T017 [P] [US1] Create BlockerPanel component in web-ui/src/components/BlockerPanel.tsx
+- [X] T018 [US1] Add WebSocket handler for blocker_created event in BlockerPanel component
+- [X] T019 [US1] Add API client methods for blockers in web-ui/src/lib/api.ts (fetchBlockers, fetchBlocker)
+- [X] T020 [US1] Integrate BlockerPanel into Dashboard component in web-ui/src/components/Dashboard.tsx
 
 **Checkpoint**: At this point, agents can create blockers and they appear in the dashboard blocker panel
 
@@ -76,13 +76,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Add POST /api/blockers/:blocker_id/resolve endpoint to codeframe/ui/server.py
-- [ ] T022 [P] [US2] Create BlockerModal component in web-ui/src/components/BlockerModal.tsx
-- [ ] T023 [US2] Add resolveBlocker() API client method in web-ui/src/lib/api.ts
-- [ ] T024 [US2] Add WebSocket handler for blocker_resolved event in BlockerPanel component
-- [ ] T025 [US2] Wire BlockerModal to BlockerPanel (click blocker → open modal) in web-ui/src/components/BlockerPanel.tsx
-- [ ] T026 [US2] Add answer validation (non-empty, max 5000 chars) to BlockerModal submit handler
-- [ ] T027 [US2] Add success/error toast notifications to BlockerModal (resolved, conflict, validation errors)
+- [X] T021 [US2] Add POST /api/blockers/:blocker_id/resolve endpoint to codeframe/ui/server.py
+- [X] T022 [P] [US2] Create BlockerModal component in web-ui/src/components/BlockerModal.tsx
+- [X] T023 [US2] Add resolveBlocker() API client method in web-ui/src/lib/api.ts
+- [X] T024 [US2] Add WebSocket handler for blocker_resolved event in BlockerPanel component
+- [X] T025 [US2] Wire BlockerModal to BlockerPanel (click blocker → open modal) in web-ui/src/components/BlockerPanel.tsx
+- [X] T026 [US2] Add answer validation (non-empty, max 5000 chars) to BlockerModal submit handler
+- [X] T027 [US2] Add success/error toast notifications to BlockerModal (resolved, conflict, validation errors)
 
 **Checkpoint**: At this point, users can resolve blockers through the dashboard and see real-time updates
 
@@ -96,13 +96,13 @@
 
 ### Implementation for User Story 3
 
-- [ ] T028 [P] [US3] Implement wait_for_blocker_resolution() method in BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
-- [ ] T029 [P] [US3] Implement wait_for_blocker_resolution() method in FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
-- [ ] T030 [P] [US3] Implement wait_for_blocker_resolution() method in TestWorkerAgent in codeframe/agents/test_worker_agent.py
-- [ ] T031 [US3] Add answer injection logic to agent execution loop (append answer to task context) in agent base class or individual agents
-- [ ] T032 [US3] Add WebSocket broadcast for agent_resumed event after blocker resolution in codeframe/ui/websocket_broadcasts.py
-- [ ] T033 [US3] Add WebSocket handler for agent_resumed event in Dashboard component (update agent status card)
-- [ ] T034 [US3] Add activity feed entry for agent resume in web-ui/src/components/Dashboard.tsx
+- [X] T028 [P] [US3] Implement wait_for_blocker_resolution() method in BackendWorkerAgent in codeframe/agents/backend_worker_agent.py
+- [X] T029 [P] [US3] Implement wait_for_blocker_resolution() method in FrontendWorkerAgent in codeframe/agents/frontend_worker_agent.py
+- [X] T030 [P] [US3] Implement wait_for_blocker_resolution() method in TestWorkerAgent in codeframe/agents/test_worker_agent.py
+- [X] T031 [US3] Add answer injection logic to agent execution loop (append answer to task context) in agent base class or individual agents
+- [X] T032 [US3] Add WebSocket broadcast for agent_resumed event after blocker resolution in codeframe/ui/websocket_broadcasts.py
+- [X] T033 [US3] Add WebSocket handler for agent_resumed event in Dashboard component (update agent status card)
+- [X] T034 [US3] Add activity feed entry for agent resume in web-ui/src/components/Dashboard.tsx
 
 **Checkpoint**: At this point, the full blocker creation → resolution → agent resume workflow works end-to-end
 
@@ -116,11 +116,11 @@
 
 ### Implementation for User Story 4
 
-- [ ] T035 [US4] Add blocker type classification logic to create_blocker() method (agents determine SYNC vs ASYNC)
-- [ ] T036 [US4] Add SYNC blocker dependency handling to LeadAgent in codeframe/agents/lead_agent.py (pause dependent tasks)
-- [ ] T037 [US4] Add ASYNC blocker handling to LeadAgent (allow independent work to continue)
-- [ ] T038 [US4] Update BlockerPanel to show different badges for SYNC (red/CRITICAL) vs ASYNC (yellow/INFO)
-- [ ] T039 [US4] Update BlockerModal to display blocker type indicator
+- [X] T035 [US4] Add blocker type classification logic to create_blocker() method (agents determine SYNC vs ASYNC)
+- [X] T036 [US4] Add SYNC blocker dependency handling to LeadAgent in codeframe/agents/lead_agent.py (pause dependent tasks)
+- [X] T037 [US4] Add ASYNC blocker handling to LeadAgent (allow independent work to continue)
+- [X] T038 [US4] Update BlockerPanel to show different badges for SYNC (red/CRITICAL) vs ASYNC (yellow/INFO)
+- [X] T039 [US4] Update BlockerModal to display blocker type indicator
 
 **Checkpoint**: SYNC and ASYNC blockers are handled differently by the system
 
@@ -134,11 +134,11 @@
 
 ### Implementation for User Story 5
 
-- [ ] T040 [P] [US5] Create webhook notification service in codeframe/notifications/webhook.py (send_blocker_notification method)
-- [ ] T041 [US5] Add webhook configuration support (BLOCKER_WEBHOOK_URL environment variable) in codeframe/config or settings
-- [ ] T042 [US5] Integrate webhook notification into create_blocker() flow (SYNC blockers only)
-- [ ] T043 [US5] Add webhook payload formatting (blocker details + dashboard_url) in codeframe/notifications/webhook.py
-- [ ] T044 [US5] Add async fire-and-forget delivery with 5s timeout and error logging
+- [X] T040 [P] [US5] Create webhook notification service in codeframe/notifications/webhook.py (send_blocker_notification method)
+- [X] T041 [US5] Add webhook configuration support (BLOCKER_WEBHOOK_URL environment variable) in codeframe/config or settings
+- [X] T042 [US5] Integrate webhook notification into create_blocker() flow (SYNC blockers only)
+- [X] T043 [US5] Add webhook payload formatting (blocker details + dashboard_url) in codeframe/notifications/webhook.py
+- [X] T044 [US5] Add async fire-and-forget delivery with 5s timeout and error logging
 
 **Checkpoint**: SYNC blockers trigger webhook notifications for external alerting
 
@@ -148,11 +148,11 @@
 
 **Purpose**: Prevent indefinite blocking with automatic 24-hour expiration
 
-- [ ] T045 Implement expire_stale_blockers() database method in codeframe/persistence/database.py
-- [ ] T046 Create stale blocker cron job script in codeframe/tasks/expire_blockers.py (runs hourly)
-- [ ] T047 Add blocker_expired WebSocket broadcast in cron job
-- [ ] T048 Add WebSocket handler for blocker_expired event in Dashboard (remove from panel, update task status)
-- [ ] T049 Add task failure logic when blocker expires (update task status to FAILED with reason)
+- [X] T045 Implement expire_stale_blockers() database method in codeframe/persistence/database.py
+- [X] T046 Create stale blocker cron job script in codeframe/tasks/expire_blockers.py (runs hourly)
+- [X] T047 Add blocker_expired WebSocket broadcast in cron job
+- [X] T048 Add WebSocket handler for blocker_expired event in Dashboard (remove from panel, update task status)
+- [X] T049 Add task failure logic when blocker expires (update task status to FAILED with reason)
 
 ---
 
@@ -160,18 +160,18 @@
 
 **Purpose**: Comprehensive testing of blocker workflow
 
-- [ ] T050 [P] Unit test for create_blocker() database method in tests/test_blockers.py
-- [ ] T051 [P] Unit test for resolve_blocker() database method in tests/test_blockers.py
-- [ ] T052 [P] Unit test for resolve_blocker() twice (duplicate resolution) in tests/test_blockers.py
-- [ ] T053 [P] Unit test for get_pending_blocker() agent polling in tests/test_blockers.py
-- [ ] T054 [P] Unit test for expire_stale_blockers() in tests/test_blockers.py
-- [ ] T055 Integration test for complete blocker workflow (create → display → resolve → resume) in tests/integration/test_blocker_workflow.py
-- [ ] T056 [P] Integration test for SYNC blocker pausing dependent tasks in tests/integration/test_blocker_workflow.py
-- [ ] T057 [P] Integration test for ASYNC blocker allowing parallel work in tests/integration/test_blocker_workflow.py
-- [ ] T058 [P] Frontend component test for BlockerPanel in web-ui/__tests__/components/BlockerPanel.test.tsx
+- [X] T050 ✅ [P] Unit test for create_blocker() database method in tests/test_blockers.py
+- [X] T051 ✅ [P] Unit test for resolve_blocker() database method in tests/test_blockers.py
+- [X] T052 ✅ [P] Unit test for resolve_blocker() twice (duplicate resolution) in tests/test_blockers.py
+- [X] T053 ✅ [P] Unit test for get_pending_blocker() agent polling in tests/test_blockers.py
+- [X] T054 ✅ [P] Unit test for expire_stale_blockers() in tests/test_blockers.py
+- [X] T055 ✅ Integration test for complete blocker workflow (create → display → resolve → resume) in tests/integration/test_blocker_workflow.py
+- [X] T056 ✅ [P] Integration test for SYNC blocker pausing dependent tasks in tests/integration/test_blocker_workflow.py
+- [X] T057 ✅ [P] Integration test for ASYNC blocker allowing parallel work in tests/integration/test_blocker_workflow.py
+- [X] T058 [P] Frontend component test for BlockerPanel in web-ui/__tests__/components/BlockerPanel.test.tsx
 - [ ] T059 [P] Frontend component test for BlockerModal in web-ui/__tests__/components/BlockerModal.test.tsx
-- [ ] T060 [P] Frontend component test for BlockerBadge in web-ui/__tests__/components/BlockerBadge.test.tsx
-- [ ] T061 Frontend integration test for blocker WebSocket events in web-ui/__tests__/integration/blocker-websocket.test.ts
+- [X] T060 [P] Frontend component test for BlockerBadge in web-ui/__tests__/components/BlockerBadge.test.tsx
+- [X] T061 ✅ Frontend integration test for blocker WebSocket events in web-ui/__tests__/integration/blocker-websocket.test.ts
 
 ---
 
@@ -179,15 +179,17 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T062 [P] Add blocker metrics tracking (resolution time, expiration rate) in codeframe/persistence/database.py
-- [ ] T063 [P] Add blocker rate limiting (10 blockers/minute per agent) to prevent spam
-- [ ] T064 [P] Add comprehensive error handling for blocker API endpoints (404, 409, 422 status codes)
-- [ ] T065 [P] Add blocker answer character counter to BlockerModal (show 4500/5000)
-- [ ] T066 Add blocker resolution conflict handling (409 → show "Already resolved by another user")
-- [ ] T067 [P] Add blocker panel sorting (SYNC first, then by created_at DESC)
-- [ ] T068 [P] Add blocker panel filtering (show only SYNC, only ASYNC, or all)
-- [ ] T069 Run quickstart.md validation scenarios (5-minute tutorial, common patterns, troubleshooting)
-- [ ] T070 Add blocker documentation comments and docstrings to all new methods
+- [X] T062 [P] Add blocker metrics tracking (resolution time, expiration rate) in codeframe/persistence/database.py (get_blocker_metrics method + GET /api/projects/{project_id}/blockers/metrics endpoint)
+- [X] T063 [P] Add blocker rate limiting (10 blockers/minute per agent) to prevent spam (implemented in create_blocker with ValueError on limit exceeded)
+- [X] T064 [P] Add comprehensive error handling for blocker API endpoints (404, 409, 422 status codes) (implemented in codeframe/ui/server.py)
+- [X] T065 [P] Add blocker answer character counter to BlockerModal (show 4500/5000) (implemented in web-ui/src/components/BlockerModal.tsx)
+- [X] T066 Add blocker resolution conflict handling (409 → show "Already resolved by another user") (409 responses implemented)
+- [X] T067 [P] Add blocker panel sorting (SYNC first, then by created_at DESC) (useMemo sorting in BlockerPanel.tsx)
+- [X] T068 [P] Add blocker panel filtering (show only SYNC, only ASYNC, or all) (filter state + buttons in BlockerPanel.tsx)
+- [X] T069 Run quickstart.md validation scenarios (5-minute tutorial, common patterns, troubleshooting) (12 tests in tests/integration/test_quickstart_validation.py, all passing)
+- [X] T070 Add blocker documentation comments and docstrings to all new methods (all blocker methods have comprehensive docstrings)
+
+**Phase 10 Summary**: ALL tasks complete. Metrics tracking, rate limiting, panel filtering/sorting, quickstart validation, error handling, and documentation fully implemented.
 
 ---
 

@@ -15,7 +15,7 @@ import os
 import sqlite3
 
 from codeframe.core.project import Project
-from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus
+from codeframe.core.models import TaskStatus, AgentMaturity, ProjectStatus, BlockerResolve
 from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
 from codeframe.agents.lead_agent import LeadAgent
@@ -456,59 +456,6 @@ async def get_tasks(
     }
 
 
-@app.get("/api/projects/{project_id}/blockers")
-async def get_blockers(project_id: int):
-    """Get pending blockers requiring user input."""
-    try:
-        # Query database for unresolved blockers
-        blockers = app.state.db.get_blockers(project_id)
-
-        # Format blockers for API response
-        formatted_blockers = []
-        for blocker in blockers:
-            # Parse blocking_agents from JSON if present
-            blocking_agents = []
-            if blocker.get("blocking_agents"):
-                import json
-                try:
-                    blocking_agents = json.loads(blocker["blocking_agents"])
-                except (json.JSONDecodeError, TypeError):
-                    blocking_agents = []
-
-            formatted_blockers.append({
-                "id": blocker["id"],
-                "task_id": blocker["task_id"],
-                "severity": blocker["severity"],
-                "question": blocker["question"],
-                "reason": blocker["reason"],
-                "created_at": blocker["created_at"],
-                "blocking_agents": blocking_agents
-            })
-
-        return {"blockers": formatted_blockers}
-    except Exception as e:
-        logger.error(f"Error fetching blockers: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error fetching blockers: {str(e)}")
-
-
-@app.post("/api/projects/{project_id}/blockers/{blocker_id}/resolve")
-async def resolve_blocker(project_id: int, blocker_id: int, resolution: Dict[str, str]):
-    """Resolve a blocker with user's answer."""
-    # TODO: Update database and notify Lead Agent
-    answer = resolution.get("answer")
-
-    # Broadcast update to WebSocket clients
-    await manager.broadcast({
-        "type": "blocker_resolved",
-        "blocker_id": blocker_id,
-        "answer": answer
-    })
-
-    return {
-        "success": True,
-        "blocker_id": blocker_id,
-        "message": "Blocker resolved, agents resuming work"
-    }
 
 
 @app.get("/api/projects/{project_id}/activity")
@@ -851,6 +798,198 @@ async def get_project_issues(project_id: int, include: str = None):
 
     # Return according to API contract
     return issues_data
+
+
+# Blocker endpoints (049-human-in-loop)
+
+@app.get("/api/projects/{project_id}/blockers")
+async def get_project_blockers(
+    project_id: int,
+    status: str = None
+):
+    """Get blockers for a project (049-human-in-loop).
+
+    Args:
+        project_id: Project ID
+        status: Optional filter by status ('PENDING', 'RESOLVED', 'EXPIRED')
+
+    Returns:
+        BlockerListResponse dictionary with:
+        - blockers: List of blocker dictionaries
+        - total: Total number of blockers
+        - pending_count: Number of pending blockers
+        - sync_count: Number of SYNC blockers
+        - async_count: Number of ASYNC blockers
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+    """
+    # Check if project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Get blockers from database
+    blockers_data = app.state.db.list_blockers(project_id, status)
+
+    return blockers_data
+
+
+@app.get("/api/blockers/{blocker_id}")
+async def get_blocker(blocker_id: int):
+    """Get details of a specific blocker (049-human-in-loop).
+
+    Args:
+        blocker_id: Blocker ID
+
+    Returns:
+        Blocker dictionary
+
+    Raises:
+        HTTPException:
+            - 404: Blocker not found
+    """
+    blocker = app.state.db.get_blocker(blocker_id)
+
+    if not blocker:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Blocker {blocker_id} not found"
+        )
+
+    return blocker
+
+
+@app.post("/api/blockers/{blocker_id}/resolve")
+async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
+    """Resolve a blocker with user's answer (049-human-in-loop, Phase 4/US2).
+
+    Args:
+        blocker_id: Blocker ID to resolve
+        request: BlockerResolve containing the answer
+
+    Returns:
+        200 OK: Blocker resolution successful
+        {
+            "blocker_id": int,
+            "status": "RESOLVED",
+            "resolved_at": ISODate (RFC 3339)
+        }
+
+        409 Conflict: Blocker already resolved
+        {
+            "error": "Blocker already resolved",
+            "blocker_id": int,
+            "resolved_at": ISODate (RFC 3339)
+        }
+
+        404 Not Found: Blocker doesn't exist
+        {
+            "error": "Blocker not found",
+            "blocker_id": int
+        }
+
+    Raises:
+        HTTPException:
+            - 404: Blocker not found
+            - 409: Blocker already resolved (duplicate resolution)
+            - 422: Invalid request (validation error)
+    """
+    from datetime import datetime, UTC
+
+    # Check if blocker exists
+    blocker = app.state.db.get_blocker(blocker_id)
+    if not blocker:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Blocker not found", "blocker_id": blocker_id}
+        )
+
+    # Attempt to resolve blocker (returns False if already resolved)
+    success = app.state.db.resolve_blocker(blocker_id, request.answer)
+
+    if not success:
+        # Blocker already resolved - return 409 Conflict
+        blocker = app.state.db.get_blocker(blocker_id)
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "Blocker already resolved",
+                "blocker_id": blocker_id,
+                "resolved_at": blocker["resolved_at"]
+            }
+        )
+
+    # Get updated blocker for response
+    blocker = app.state.db.get_blocker(blocker_id)
+
+    # Broadcast blocker_resolved event via WebSocket
+    try:
+        await manager.broadcast({
+            "type": "blocker_resolved",
+            "blocker_id": blocker_id,
+            "answer": request.answer,
+            "resolved_at": blocker["resolved_at"]
+        })
+    except Exception as e:
+        # Log error but don't fail the request
+        logger.error(f"Failed to broadcast blocker_resolved event: {e}")
+
+    # Return success response
+    return {
+        "blocker_id": blocker_id,
+        "status": "RESOLVED",
+        "resolved_at": blocker["resolved_at"]
+    }
+
+
+@app.get("/api/projects/{project_id}/blockers/metrics")
+async def get_blocker_metrics_endpoint(project_id: int):
+    """Get blocker metrics for a project (049-human-in-loop, Phase 10/T062).
+
+    Provides analytics on blocker resolution times and expiration rates.
+
+    Args:
+        project_id: Project ID to get metrics for
+
+    Returns:
+        200 OK: Blocker metrics
+        {
+            "avg_resolution_time_seconds": float | null,
+            "expiration_rate_percent": float,
+            "total_blockers": int,
+            "resolved_count": int,
+            "expired_count": int,
+            "pending_count": int,
+            "sync_count": int,
+            "async_count": int
+        }
+
+        404 Not Found: Project doesn't exist
+        {
+            "error": "Project not found",
+            "project_id": int
+        }
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+    """
+    # Verify project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Project not found", "project_id": project_id}
+        )
+
+    # Get metrics
+    metrics = app.state.db.get_blocker_metrics(project_id)
+    return metrics
 
 
 @app.post("/api/projects/{project_id}/pause")

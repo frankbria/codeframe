@@ -28,7 +28,7 @@ jest.mock('axios', () => {
 });
 
 // Now import the API module after mocking axios
-import { projectsApi } from '../api';
+import { projectsApi, blockersApi } from '../api';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -191,5 +191,223 @@ describe('projectsApi.startProject', () => {
     mockPost.mockRejectedValueOnce(errorResponse);
 
     await expect(projectsApi.startProject(1)).rejects.toMatchObject(errorResponse);
+  });
+});
+
+describe('blockersApi (T019 - 049-human-in-loop)', () => {
+  describe('list() method', () => {
+    it('should call correct endpoint with projectId', async () => {
+      const mockResponse = {
+        data: {
+          blockers: [
+            {
+              id: 1,
+              agent_id: 'test-agent',
+              task_id: 123,
+              blocker_type: 'SYNC',
+              question: 'Test question?',
+              status: 'PENDING',
+            },
+          ],
+        },
+      };
+
+      mockGet.mockResolvedValue(mockResponse);
+
+      const result = await blockersApi.list(1);
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/api/projects/1/blockers',
+        { params: {} }
+      );
+      expect(result.data.blockers).toHaveLength(1);
+    });
+
+    it('should include status parameter when provided', async () => {
+      const mockResponse = { data: { blockers: [] } };
+      mockGet.mockResolvedValue(mockResponse);
+
+      await blockersApi.list(1, 'PENDING');
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/api/projects/1/blockers',
+        { params: { status: 'PENDING' } }
+      );
+    });
+
+    it('should omit status parameter when not provided', async () => {
+      const mockResponse = { data: { blockers: [] } };
+      mockGet.mockResolvedValue(mockResponse);
+
+      await blockersApi.list(1);
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/api/projects/1/blockers',
+        { params: {} }
+      );
+    });
+
+    it('should work with different project IDs', async () => {
+      const mockResponse = { data: { blockers: [] } };
+      mockGet.mockResolvedValue(mockResponse);
+
+      await blockersApi.list(42);
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/api/projects/42/blockers',
+        { params: {} }
+      );
+    });
+
+    it('should work with different status values', async () => {
+      const mockResponse = { data: { blockers: [] } };
+      mockGet.mockResolvedValue(mockResponse);
+
+      await blockersApi.list(1, 'RESOLVED');
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/api/projects/1/blockers',
+        { params: { status: 'RESOLVED' } }
+      );
+    });
+  });
+
+  describe('get() method', () => {
+    it('should call correct endpoint with blockerId', async () => {
+      const mockResponse = {
+        data: {
+          id: 1,
+          agent_id: 'test-agent',
+          task_id: 123,
+          blocker_type: 'SYNC',
+          question: 'Test question?',
+          status: 'PENDING',
+        },
+      };
+
+      mockGet.mockResolvedValue(mockResponse);
+
+      const result = await blockersApi.get(1);
+
+      expect(mockGet).toHaveBeenCalledWith('/api/blockers/1');
+      expect(result.data.id).toBe(1);
+    });
+
+    it('should work with different blocker IDs', async () => {
+      const mockResponse = {
+        data: {
+          id: 999,
+          agent_id: 'test-agent',
+          task_id: 123,
+          blocker_type: 'ASYNC',
+          question: 'Another question?',
+          status: 'PENDING',
+        },
+      };
+
+      mockGet.mockResolvedValue(mockResponse);
+
+      const result = await blockersApi.get(999);
+
+      expect(mockGet).toHaveBeenCalledWith('/api/blockers/999');
+      expect(result.data.id).toBe(999);
+    });
+  });
+
+  describe('fetchBlockers() alias method', () => {
+    it('should work as alias for list()', async () => {
+      const mockResponse = { data: { blockers: [] } };
+      mockGet.mockResolvedValue(mockResponse);
+
+      await blockersApi.fetchBlockers(1);
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/api/projects/1/blockers',
+        { params: {} }
+      );
+    });
+
+    it('should support status parameter', async () => {
+      const mockResponse = { data: { blockers: [] } };
+      mockGet.mockResolvedValue(mockResponse);
+
+      await blockersApi.fetchBlockers(1, 'PENDING');
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/api/projects/1/blockers',
+        { params: { status: 'PENDING' } }
+      );
+    });
+  });
+
+  describe('fetchBlocker() alias method', () => {
+    it('should work as alias for get()', async () => {
+      const mockResponse = {
+        data: {
+          id: 1,
+          agent_id: 'test-agent',
+          task_id: 123,
+          blocker_type: 'SYNC',
+          question: 'Test question?',
+          status: 'PENDING',
+        },
+      };
+
+      mockGet.mockResolvedValue(mockResponse);
+
+      const result = await blockersApi.fetchBlocker(1);
+
+      expect(mockGet).toHaveBeenCalledWith('/api/blockers/1');
+      expect(result.data.id).toBe(1);
+    });
+  });
+
+  describe('resolve() method', () => {
+    it('should call correct endpoint with answer', async () => {
+      const mockResponse = { data: { success: true } };
+      mockPost.mockResolvedValue(mockResponse);
+
+      await blockersApi.resolve(1, 123, 'Use SQLite');
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/api/projects/1/blockers/123/resolve',
+        { answer: 'Use SQLite' }
+      );
+    });
+
+    it('should work with different project and blocker IDs', async () => {
+      const mockResponse = { data: { success: true } };
+      mockPost.mockResolvedValue(mockResponse);
+
+      await blockersApi.resolve(42, 999, 'Test answer');
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/api/projects/42/blockers/999/resolve',
+        { answer: 'Test answer' }
+      );
+    });
+  });
+
+  describe('error handling', () => {
+    it('should propagate errors from list()', async () => {
+      const mockError = new Error('Network error');
+      mockGet.mockRejectedValue(mockError);
+
+      await expect(blockersApi.list(1)).rejects.toThrow('Network error');
+    });
+
+    it('should propagate errors from get()', async () => {
+      const mockError = new Error('Not found');
+      mockGet.mockRejectedValue(mockError);
+
+      await expect(blockersApi.get(1)).rejects.toThrow('Not found');
+    });
+
+    it('should propagate errors from resolve()', async () => {
+      const mockError = new Error('Unauthorized');
+      mockPost.mockRejectedValue(mockError);
+
+      await expect(blockersApi.resolve(1, 123, 'answer')).rejects.toThrow('Unauthorized');
+    });
   });
 });

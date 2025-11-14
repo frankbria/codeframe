@@ -87,6 +87,9 @@ class GlobalConfig(BaseSettings):
     twilio_account_sid: Optional[str] = Field(None, alias="TWILIO_ACCOUNT_SID")
     twilio_auth_token: Optional[str] = Field(None, alias="TWILIO_AUTH_TOKEN")
 
+    # Blocker webhook notifications (Sprint 6 - Human in the Loop)
+    blocker_webhook_url: Optional[str] = Field(None, alias="BLOCKER_WEBHOOK_URL")
+
     # Database configuration
     database_path: str = Field(".codeframe/state.db", alias="DATABASE_PATH")
 
