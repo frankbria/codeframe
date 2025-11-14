@@ -37,7 +37,9 @@ class FrontendWorkerAgent(WorkerAgent):
         provider: str = "anthropic",
         maturity: AgentMaturity = AgentMaturity.D1,
         api_key: Optional[str] = None,
-        websocket_manager=None
+        websocket_manager=None,
+        db=None,
+        project_id: Optional[int] = None
     ):
         """
         Initialize Frontend Worker Agent.
@@ -48,6 +50,8 @@ class FrontendWorkerAgent(WorkerAgent):
             maturity: Agent maturity level
             api_key: API key for LLM provider (uses ANTHROPIC_API_KEY env var if not provided)
             websocket_manager: WebSocket connection manager for broadcasts
+            db: Database instance for blocker management (optional)
+            project_id: Project ID for blocker context (optional)
         """
         super().__init__(
             agent_id=agent_id,
@@ -59,6 +63,8 @@ class FrontendWorkerAgent(WorkerAgent):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.websocket_manager = websocket_manager
+        self.db = db
+        self.project_id = project_id
         self.project_root = Path(__file__).parent.parent.parent  # codeframe/
         self.web_ui_root = self.project_root / "web-ui"
         self.components_dir = self.web_ui_root / "src" / "components"
@@ -455,28 +461,25 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         # Use provided task_id or fall back to current task
         blocker_task_id = task_id if task_id is not None else getattr(self, 'current_task_id', None)
 
-        # Get agent ID from self or use class name
-        agent_id = getattr(self, 'id', None) or f"frontend-worker-{self.project_id}"
-
         # Create blocker in database
         blocker_id = self.db.create_blocker(
-            agent_id=agent_id,
+            agent_id=self.agent_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
             question=question.strip()
         )
 
-        logger.info(f"Blocker {blocker_id} created by {agent_id}: {question[:50]}...")
+        logger.info(f"Blocker {blocker_id} created by {self.agent_id}: {question[:50]}...")
 
         # Broadcast blocker creation via WebSocket (if manager available)
-        if self.ws_manager:
+        if self.websocket_manager:
             try:
                 from codeframe.ui.websocket_broadcasts import broadcast_blocker_created
                 await broadcast_blocker_created(
-                    manager=self.ws_manager,
+                    manager=self.websocket_manager,
                     project_id=self.project_id,
                     blocker_id=blocker_id,
-                    agent_id=agent_id,
+                    agent_id=self.agent_id,
                     task_id=blocker_task_id,
                     blocker_type=blocker_type,
                     question=question.strip()
@@ -509,7 +512,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                     webhook_service.send_blocker_notification_background(
                         blocker_id=blocker_id,
                         question=question.strip(),
-                        agent_id=agent_id,
+                        agent_id=self.agent_id,
                         task_id=blocker_task_id or 0,
                         blocker_type=BlockerType.SYNC,
                         created_at=datetime.now()
@@ -574,13 +577,13 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                 logger.info(f"Blocker {blocker_id} resolved: {answer[:50]}...")
 
                 # Broadcast agent_resumed event via WebSocket (if manager available)
-                if self.ws_manager:
+                if self.websocket_manager:
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
                         await broadcast_agent_resumed(
-                            manager=self.ws_manager,
+                            manager=self.websocket_manager,
                             project_id=self.project_id,
-                            agent_id=getattr(self, 'id', None) or f"frontend-worker-{self.project_id}",
+                            agent_id=self.agent_id,
                             task_id=getattr(self, 'current_task_id', None) or blocker.get("task_id"),
                             blocker_id=blocker_id
                         )
