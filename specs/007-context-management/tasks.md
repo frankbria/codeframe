@@ -47,14 +47,14 @@ Tasks are organized into phases that align with user stories:
 
 ### Tasks
 
-- [ ] T001 Install tiktoken library for token counting: `pip install tiktoken`
-- [ ] T002 [P] Create `codeframe/lib/` directory for new library modules
-- [ ] T003 [P] Create `codeframe/persistence/migrations/` directory if not exists
-- [ ] T004 [P] Create tests directory structure: `tests/context/` for context-specific tests
-- [ ] T005 [P] Create frontend directory structure: `web-ui/src/components/context/`, `web-ui/src/api/`, `web-ui/src/types/`, `web-ui/src/hooks/`
-- [ ] T006 [P] Create OpenAPI contract validation setup in `tests/contract/test_context_api_contract.py`
-- [ ] T007 Update `.gitignore` to exclude `*.pyc` and `__pycache__` in new directories
-- [ ] T008 Create feature flag in `codeframe/core/config.py`: `CONTEXT_MANAGEMENT_ENABLED = True`
+- [X] T001 Install tiktoken library for token counting: `pip install tiktoken`
+- [X] T002 [P] Create `codeframe/lib/` directory for new library modules
+- [X] T003 [P] Create `codeframe/persistence/migrations/` directory if not exists
+- [X] T004 [P] Create tests directory structure: `tests/context/` for context-specific tests
+- [X] T005 [P] Create frontend directory structure: `web-ui/src/components/context/`, `web-ui/src/api/`, `web-ui/src/types/`, `web-ui/src/hooks/`
+- [X] T006 [P] Create OpenAPI contract validation setup in `tests/contract/test_context_api_contract.py`
+- [X] T007 Update `.gitignore` to exclude `*.pyc` and `__pycache__` in new directories
+- [X] T008 Create feature flag in `codeframe/core/config.py`: `CONTEXT_MANAGEMENT_ENABLED = True`
 
 **Completion Criteria**:
 - All directories created
@@ -73,11 +73,11 @@ Tasks are organized into phases that align with user stories:
 
 ### Tasks
 
-- [ ] T009 [P] Create Pydantic models in `codeframe/core/models.py`:
+- [X] T009 [P] Create Pydantic models in `codeframe/core/models.py`:
   - `ContextItemType` enum (TASK, CODE, ERROR, TEST_RESULT, PRD_SECTION)
-  - `ContextTier` enum (HOT, WARM, COLD)
-  - `ContextItem` model with all fields from data-model.md
-  - `ContextItemCreate` request model
+  - `ContextTier` enum (HOT, WARM, COLD) - Already exists in models.py
+  - `ContextItemModel` model with all fields from data-model.md
+  - `ContextItemCreateModel` request model
   - `ContextItemResponse` response model
   - `ContextStats` response model
   - `FlashSaveRequest` request model
