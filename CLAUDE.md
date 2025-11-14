@@ -50,6 +50,7 @@ cd web-ui && npm test  # Frontend tests
 - **Conventions**: Follow existing patterns in codebase
 
 ## Recent Changes
+- 2025-11-14: 007-context-management Phase 5 complete - Automatic tier assignment (HOT/WARM/COLD) based on importance scores (T037-T043, T046, 8/10 tasks, 26/26 algorithm tests passing)
 - 2025-11-14: 007-context-management Phase 4 complete - Importance scoring with hybrid exponential decay (T027-T036, 9/10 tasks)
 - 2025-11-14: 007-context-management - Implemented T012 and T013 database methods for context items and checkpoints
 - 007-context-management: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting)
