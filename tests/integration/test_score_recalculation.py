@@ -36,8 +36,21 @@ def temp_db():
     Path(db_path).unlink(missing_ok=True)
 
 
+
+
 @pytest.fixture
-def context_manager(temp_db):
+def test_project(temp_db):
+    """Create a test project for context items."""
+    project_id = temp_db.create_project(
+        name="test-project",
+        description="Test project for context management",
+        workspace_path=""
+    )
+    return project_id
+
+
+@pytest.fixture
+def context_manager(temp_db, test_project):
     """Create context manager with test database."""
     return ContextManager(db=temp_db)
 
@@ -45,7 +58,7 @@ def context_manager(temp_db):
 class TestScoreRecalculationIntegration:
     """Integration tests for score recalculation workflow."""
 
-    def test_score_recalculation_with_aged_item(self, temp_db, context_manager):
+    def test_score_recalculation_with_aged_item(self, temp_db, test_project, context_manager):
         """Test that score decreases when item ages.
 
         Workflow:
@@ -57,8 +70,7 @@ class TestScoreRecalculationIntegration:
         agent_id = "test-agent-recalc-001"
 
         # STEP 1: Create a TASK item (high initial score)
-        item_id = temp_db.create_context_item(
-            agent_id=agent_id,
+        item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
             item_type=ContextItemType.TASK.value,
             content="Implement user authentication"
         )
@@ -82,7 +94,7 @@ class TestScoreRecalculationIntegration:
         temp_db.conn.commit()
 
         # STEP 3: Trigger score recalculation
-        updated_count = context_manager.recalculate_scores_for_agent(agent_id)
+        updated_count = context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # ASSERT: Recalculation updated 1 item
         assert updated_count == 1
@@ -96,13 +108,12 @@ class TestScoreRecalculationIntegration:
         assert recalculated_score < initial_score  # Score decreased
         assert recalculated_score < 0.5  # Significantly decayed
 
-    def test_score_recalculation_with_high_access_count(self, temp_db, context_manager):
+    def test_score_recalculation_with_high_access_count(self, temp_db, test_project, context_manager):
         """Test that high access count boosts score even for older items."""
         agent_id = "test-agent-recalc-002"
 
         # Create item
-        item_id = temp_db.create_context_item(
-            agent_id=agent_id,
+        item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
             item_type=ContextItemType.CODE.value,
             content="def authenticate_user(): ..."
         )
@@ -121,7 +132,7 @@ class TestScoreRecalculationIntegration:
         initial_score = item_before['importance_score']
 
         # Recalculate
-        context_manager.recalculate_scores_for_agent(agent_id)
+        context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # Get recalculated score
         item_after = temp_db.get_context_item(item_id)
@@ -133,32 +144,31 @@ class TestScoreRecalculationIntegration:
         assert recalculated_score >= 0.45  # Access boost compensates for age
         assert recalculated_score < 0.7
 
-    def test_recalculation_with_no_items(self, context_manager):
+    def test_recalculation_with_no_items(self, test_project, context_manager):
         """Test recalculation with no context items."""
         agent_id = "nonexistent-agent"
 
         # Recalculate for agent with no items
-        updated_count = context_manager.recalculate_scores_for_agent(agent_id)
+        updated_count = context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # Should return 0 (no items updated)
         assert updated_count == 0
 
-    def test_recalculation_with_multiple_items(self, temp_db, context_manager):
+    def test_recalculation_with_multiple_items(self, temp_db, test_project, context_manager):
         """Test recalculation updates all items for an agent."""
         agent_id = "test-agent-recalc-003"
 
         # Create multiple items
         item_ids = []
         for i in range(5):
-            item_id = temp_db.create_context_item(
-                agent_id=agent_id,
+            item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
                 content=f"Task {i}"
             )
             item_ids.append(item_id)
 
         # Recalculate all items
-        updated_count = context_manager.recalculate_scores_for_agent(agent_id)
+        updated_count = context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # Should update all 5 items
         assert updated_count == 5

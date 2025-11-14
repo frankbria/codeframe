@@ -187,6 +187,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS context_items (
                 id TEXT PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
+                agent_id TEXT NOT NULL,
                 item_type TEXT,
                 content TEXT,
                 importance_score FLOAT,
@@ -2090,42 +2091,9 @@ class Database:
 
     # Context Management Methods (007-context-management)
 
-    def _get_or_create_project_for_agent(self, agent_id: str) -> int:
-        """Get or create a project for an agent.
-
-        Maps agent_id to project_id. Creates a default project if none exists.
-        This is a temporary mapping until schema migration adds agent_id column.
-
-        Args:
-            agent_id: Agent ID to map to project
-
-        Returns:
-            project_id: Project ID for this agent
-        """
-        cursor = self.conn.cursor()
-
-        # Try to find existing project for this agent (using name pattern)
-        project_name = f"agent-{agent_id}"
-        cursor.execute(
-            "SELECT id FROM projects WHERE name = ?",
-            (project_name,)
-        )
-        row = cursor.fetchone()
-
-        if row:
-            return row[0]
-
-        # Create new project for this agent using create_project method
-        project_id = self.create_project(
-            name=project_name,
-            description=f"Auto-created project for agent {agent_id}",
-            source_type="empty",
-            workspace_path=""  # Empty workspace for agent-scoped context
-        )
-        return project_id
-
     def create_context_item(
         self,
+        project_id: int,
         agent_id: str,
         item_type: str,
         content: str
@@ -2138,7 +2106,8 @@ class Database:
         - Access boost (20%): Log-normalized frequency (new items get 0.0)
 
         Args:
-            agent_id: Agent ID that owns this context
+            project_id: Project ID this context belongs to
+            agent_id: Agent ID that created this context
             item_type: Type of context (TASK, CODE, ERROR, TEST_RESULT, PRD_SECTION)
             content: The actual context content
 
@@ -2148,9 +2117,6 @@ class Database:
         import uuid
         from datetime import datetime, UTC
         from codeframe.lib.importance_scorer import calculate_importance_score, assign_tier
-
-        # Map agent_id to project_id using helper method
-        project_id = self._get_or_create_project_for_agent(agent_id)
 
         # Auto-calculate importance score for new item
         created_at = datetime.now(UTC)
@@ -2172,11 +2138,11 @@ class Database:
         cursor.execute(
             """
             INSERT INTO context_items (
-                id, project_id, item_type, content, importance_score,
+                id, project_id, agent_id, item_type, content, importance_score,
                 current_tier, created_at, last_accessed, access_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (item_id, project_id, item_type, content, importance_score,
+            (item_id, project_id, agent_id, item_type, content, importance_score,
              tier, created_at.isoformat(), created_at.isoformat(), 0)
         )
         self.conn.commit()
@@ -2198,14 +2164,16 @@ class Database:
 
     def list_context_items(
         self,
+        project_id: int,
         agent_id: str,
         tier: Optional[str] = None,
         limit: int = 100,
         offset: int = 0
     ) -> List[Dict[str, Any]]:
-        """List context items for an agent, optionally filtered by tier.
+        """List context items for an agent on a project, optionally filtered by tier.
 
         Args:
+            project_id: Project ID to filter by
             agent_id: Agent ID to filter by
             tier: Optional tier filter (HOT, WARM, COLD)
             limit: Maximum number of items to return
@@ -2214,9 +2182,6 @@ class Database:
         Returns:
             List of context item dictionaries
         """
-        # Map agent_id to project_id
-        project_id = self._get_or_create_project_for_agent(agent_id)
-
         cursor = self.conn.cursor()
 
         if tier:
@@ -2224,19 +2189,19 @@ class Database:
             tier_lower = tier.lower()
             query = """
                 SELECT * FROM context_items
-                WHERE project_id = ? AND current_tier = ?
+                WHERE project_id = ? AND agent_id = ? AND current_tier = ?
                 ORDER BY importance_score DESC, last_accessed DESC
                 LIMIT ? OFFSET ?
             """
-            cursor.execute(query, (project_id, tier_lower, limit, offset))
+            cursor.execute(query, (project_id, agent_id, tier_lower, limit, offset))
         else:
             query = """
                 SELECT * FROM context_items
-                WHERE project_id = ?
+                WHERE project_id = ? AND agent_id = ?
                 ORDER BY importance_score DESC, last_accessed DESC
                 LIMIT ? OFFSET ?
             """
-            cursor.execute(query, (project_id, limit, offset))
+            cursor.execute(query, (project_id, agent_id, limit, offset))
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]

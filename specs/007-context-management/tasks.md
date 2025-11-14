@@ -63,6 +63,24 @@ Tasks are organized into phases that align with user stories:
 
 ---
 
+## Multi-Agent Architecture Update (2025-11-14)
+
+**CRITICAL ARCHITECTURAL FIX**: Added support for multiple agents working on the same project
+
+**Changes Made**:
+- Added `agent_id` column to `context_items` table schema
+- Updated all database methods to accept `(project_id, agent_id)` scoping
+- Added `project_id` parameter to `WorkerAgent.__init__()` and all context methods
+- Updated `ContextManager` methods to accept `(project_id, agent_id)`
+- Updated API endpoints to accept `project_id` query parameter
+- Fixed all 59 tests to pass `project_id` parameter
+- **Result**: 100% test pass rate (59/59) with proper multi-agent collaboration
+
+**Before**: One project per agent (broken architecture)
+**After**: Multiple agents (orchestrator, backend, frontend, test, review) can collaborate on same project with isolated context
+
+---
+
 ## Phase 2: Foundational Layer
 
 **Goal**: Implement core infrastructure needed by all user stories
