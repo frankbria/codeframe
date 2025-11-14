@@ -600,7 +600,9 @@ class Database:
         blocker_type: str,
         question: str
     ) -> int:
-        """Create a new blocker.
+        """Create a new blocker with rate limiting.
+
+        Rate limit: 10 blockers per minute per agent (T063).
 
         Args:
             agent_id: ID of the agent creating the blocker
@@ -610,8 +612,30 @@ class Database:
 
         Returns:
             Blocker ID of the created blocker
+
+        Raises:
+            ValueError: If agent exceeds rate limit (10 blockers/minute)
         """
         cursor = self.conn.cursor()
+
+        # Check rate limit: 10 blockers per minute per agent
+        cursor.execute(
+            """SELECT COUNT(*) as count
+               FROM blockers
+               WHERE agent_id = ?
+                 AND datetime(created_at) > datetime('now', '-60 seconds')""",
+            (agent_id,)
+        )
+        row = cursor.fetchone()
+        recent_blocker_count = row["count"]
+
+        if recent_blocker_count >= 10:
+            raise ValueError(
+                f"Rate limit exceeded: Agent {agent_id} has created {recent_blocker_count} "
+                f"blockers in the last minute (limit: 10/minute)"
+            )
+
+        # Create the blocker
         cursor.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status)
                VALUES (?, ?, ?, ?, 'PENDING')""",
@@ -751,6 +775,114 @@ class Database:
         expired_ids = [row[0] for row in cursor.fetchall()]
         self.conn.commit()
         return expired_ids
+
+    def get_blocker_metrics(self, project_id: int) -> Dict[str, Any]:
+        """Calculate blocker metrics for a project.
+
+        Tracks:
+        - Average resolution time (seconds from created_at to resolved_at for RESOLVED blockers)
+        - Expiration rate (percentage of blockers that expired vs resolved)
+        - Total blocker counts by status and type
+
+        Args:
+            project_id: Project ID to calculate metrics for
+
+        Returns:
+            Dictionary with metrics:
+            - avg_resolution_time_seconds: Average time to resolve (None if no resolved blockers)
+            - expiration_rate_percent: Percentage of blockers that expired (0-100)
+            - total_blockers: Total count of all blockers
+            - resolved_count: Count of RESOLVED blockers
+            - expired_count: Count of EXPIRED blockers
+            - pending_count: Count of PENDING blockers
+            - sync_count: Count of SYNC blockers
+            - async_count: Count of ASYNC blockers
+        """
+        cursor = self.conn.cursor()
+
+        # Get all blockers for tasks in this project
+        cursor.execute("""
+            SELECT
+                b.status,
+                b.blocker_type,
+                b.created_at,
+                b.resolved_at
+            FROM blockers b
+            INNER JOIN tasks t ON b.task_id = t.id
+            WHERE t.project_id = ?
+        """, (project_id,))
+
+        rows = cursor.fetchall()
+
+        if not rows:
+            return {
+                "avg_resolution_time_seconds": None,
+                "expiration_rate_percent": 0.0,
+                "total_blockers": 0,
+                "resolved_count": 0,
+                "expired_count": 0,
+                "pending_count": 0,
+                "sync_count": 0,
+                "async_count": 0
+            }
+
+        # Calculate metrics
+        total_blockers = len(rows)
+        resolved_count = 0
+        expired_count = 0
+        pending_count = 0
+        sync_count = 0
+        async_count = 0
+        resolution_times = []
+
+        for row in rows:
+            status = row["status"]
+            blocker_type = row["blocker_type"]
+            created_at = row["created_at"]
+            resolved_at = row["resolved_at"]
+
+            # Count by status
+            if status == "RESOLVED":
+                resolved_count += 1
+                # Calculate resolution time
+                if created_at and resolved_at:
+                    from datetime import datetime
+                    created = datetime.fromisoformat(created_at)
+                    resolved = datetime.fromisoformat(resolved_at)
+                    resolution_time_seconds = (resolved - created).total_seconds()
+                    resolution_times.append(resolution_time_seconds)
+            elif status == "EXPIRED":
+                expired_count += 1
+            elif status == "PENDING":
+                pending_count += 1
+
+            # Count by type
+            if blocker_type == "SYNC":
+                sync_count += 1
+            elif blocker_type == "ASYNC":
+                async_count += 1
+
+        # Calculate average resolution time
+        avg_resolution_time = None
+        if resolution_times:
+            avg_resolution_time = sum(resolution_times) / len(resolution_times)
+
+        # Calculate expiration rate
+        completed_blockers = resolved_count + expired_count
+        expiration_rate = 0.0
+        if completed_blockers > 0:
+            expiration_rate = (expired_count / completed_blockers) * 100.0
+
+        return {
+            "avg_resolution_time_seconds": avg_resolution_time,
+            "expiration_rate_percent": expiration_rate,
+            "total_blockers": total_blockers,
+            "resolved_count": resolved_count,
+            "expired_count": expired_count,
+            "pending_count": pending_count,
+            "sync_count": sync_count,
+            "async_count": async_count
+        }
 
     def list_projects(self) -> List[Dict[str, Any]]:
         """List all projects with progress metrics.

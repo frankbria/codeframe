@@ -1,13 +1,16 @@
 /**
  * BlockerPanel Component (049-human-in-loop, T017)
  * Displays list of blockers with real-time updates
+ * Supports filtering (T068) and sorting (T067)
  */
 
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Blocker } from '../types/blocker';
 import { BlockerBadge } from './BlockerBadge';
+
+type BlockerFilter = 'all' | 'sync' | 'async';
 
 interface BlockerPanelProps {
   blockers: Blocker[];
@@ -32,6 +35,9 @@ function truncateText(text: string, maxLength: number): string {
 }
 
 export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelProps) {
+  // Filter state (T068)
+  const [filter, setFilter] = useState<BlockerFilter>('all');
+
   // Sort blockers: SYNC first, then by created_at DESC (T067)
   const sortedBlockers = useMemo(() => {
     return [...blockers].sort((a, b) => {
@@ -44,10 +50,20 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
     });
   }, [blockers]);
 
-  // Filter for pending blockers only
-  const pendingBlockers = useMemo(() => {
-    return sortedBlockers.filter(b => b.status === 'PENDING');
-  }, [sortedBlockers]);
+  // Filter for pending blockers only, then apply type filter (T068)
+  const filteredBlockers = useMemo(() => {
+    const pending = sortedBlockers.filter(b => b.status === 'PENDING');
+
+    if (filter === 'sync') {
+      return pending.filter(b => b.blocker_type === 'SYNC');
+    } else if (filter === 'async') {
+      return pending.filter(b => b.blocker_type === 'ASYNC');
+    }
+    return pending;
+  }, [sortedBlockers, filter]);
+
+  // Alias for backwards compatibility
+  const pendingBlockers = filteredBlockers;
 
   if (pendingBlockers.length === 0) {
     return (
@@ -66,12 +82,48 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">
-          Blockers{' '}
-          <span className="text-sm font-normal text-gray-500">
-            ({pendingBlockers.length})
-          </span>
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-800">
+            Blockers{' '}
+            <span className="text-sm font-normal text-gray-500">
+              ({pendingBlockers.length})
+            </span>
+          </h2>
+        </div>
+
+        {/* Filter buttons (T068) */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+              filter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setFilter('sync')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+              filter === 'sync'
+                ? 'bg-red-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            SYNC
+          </button>
+          <button
+            onClick={() => setFilter('async')}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+              filter === 'async'
+                ? 'bg-yellow-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            ASYNC
+          </button>
+        </div>
       </div>
 
       <div className="divide-y divide-gray-200">
