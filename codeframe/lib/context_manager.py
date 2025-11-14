@@ -67,9 +67,11 @@ class ContextManager:
             )
 
             # Update score in database (keep tier unchanged for now - Phase 5 will update)
+            # Convert current_tier from db (lowercase) to API tier format (uppercase)
+            current_tier = item.get('current_tier', 'warm').upper()
             self.db.update_context_item_tier(
                 item_id=item['id'],
-                tier=item['tier'],
+                tier=current_tier,
                 importance_score=new_score
             )
 

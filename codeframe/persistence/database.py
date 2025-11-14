@@ -2090,12 +2090,46 @@ class Database:
 
     # Context Management Methods (007-context-management)
 
+    def _get_or_create_project_for_agent(self, agent_id: str) -> int:
+        """Get or create a project for an agent.
+
+        Maps agent_id to project_id. Creates a default project if none exists.
+        This is a temporary mapping until schema migration adds agent_id column.
+
+        Args:
+            agent_id: Agent ID to map to project
+
+        Returns:
+            project_id: Project ID for this agent
+        """
+        cursor = self.conn.cursor()
+
+        # Try to find existing project for this agent (using name pattern)
+        project_name = f"agent-{agent_id}"
+        cursor.execute(
+            "SELECT id FROM projects WHERE name = ?",
+            (project_name,)
+        )
+        row = cursor.fetchone()
+
+        if row:
+            return row[0]
+
+        # Create new project for this agent using create_project method
+        project_id = self.create_project(
+            name=project_name,
+            description=f"Auto-created project for agent {agent_id}",
+            source_type="empty",
+            workspace_path=""  # Empty workspace for agent-scoped context
+        )
+        return project_id
+
     def create_context_item(
         self,
         agent_id: str,
         item_type: str,
         content: str
-    ) -> int:
+    ) -> str:
         """Create a new context item with auto-calculated importance score.
 
         Auto-calculates importance score using hybrid exponential decay algorithm:
@@ -2109,10 +2143,14 @@ class Database:
             content: The actual context content
 
         Returns:
-            Created context item ID
+            Created context item ID (UUID string)
         """
+        import uuid
         from datetime import datetime, UTC
         from codeframe.lib.importance_scorer import calculate_importance_score, assign_tier
+
+        # Map agent_id to project_id using helper method
+        project_id = self._get_or_create_project_for_agent(agent_id)
 
         # Auto-calculate importance score for new item
         created_at = datetime.now(UTC)
@@ -2124,25 +2162,31 @@ class Database:
         )
 
         # Auto-assign tier based on importance score (T040)
-        tier = assign_tier(importance_score)
+        # Convert to lowercase for current_tier column
+        tier = assign_tier(importance_score).lower()
+
+        # Generate UUID for id (actual schema uses TEXT PRIMARY KEY)
+        item_id = str(uuid.uuid4())
 
         cursor = self.conn.cursor()
         cursor.execute(
             """
             INSERT INTO context_items (
-                agent_id, item_type, content, importance_score, tier
-            ) VALUES (?, ?, ?, ?, ?)
+                id, project_id, item_type, content, importance_score,
+                current_tier, created_at, last_accessed, access_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (agent_id, item_type, content, importance_score, tier)
+            (item_id, project_id, item_type, content, importance_score,
+             tier, created_at.isoformat(), created_at.isoformat(), 0)
         )
         self.conn.commit()
-        return cursor.lastrowid
+        return item_id
 
-    def get_context_item(self, item_id: int) -> Optional[Dict[str, Any]]:
+    def get_context_item(self, item_id: str) -> Optional[Dict[str, Any]]:
         """Get a context item by ID.
 
         Args:
-            item_id: Context item ID
+            item_id: Context item ID (UUID string)
 
         Returns:
             Context item dictionary or None if not found
@@ -2170,67 +2214,75 @@ class Database:
         Returns:
             List of context item dictionaries
         """
+        # Map agent_id to project_id
+        project_id = self._get_or_create_project_for_agent(agent_id)
+
         cursor = self.conn.cursor()
 
         if tier:
+            # Convert tier to lowercase for current_tier column
+            tier_lower = tier.lower()
             query = """
                 SELECT * FROM context_items
-                WHERE agent_id = ? AND tier = ?
+                WHERE project_id = ? AND current_tier = ?
                 ORDER BY importance_score DESC, last_accessed DESC
                 LIMIT ? OFFSET ?
             """
-            cursor.execute(query, (agent_id, tier, limit, offset))
+            cursor.execute(query, (project_id, tier_lower, limit, offset))
         else:
             query = """
                 SELECT * FROM context_items
-                WHERE agent_id = ?
+                WHERE project_id = ?
                 ORDER BY importance_score DESC, last_accessed DESC
                 LIMIT ? OFFSET ?
             """
-            cursor.execute(query, (agent_id, limit, offset))
+            cursor.execute(query, (project_id, limit, offset))
 
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
     def update_context_item_tier(
         self,
-        item_id: int,
+        item_id: str,
         tier: str,
         importance_score: float
     ) -> None:
         """Update a context item's tier and importance score.
 
         Args:
-            item_id: Context item ID
+            item_id: Context item ID (UUID string)
             tier: New tier (HOT, WARM, COLD)
             importance_score: Updated importance score
         """
+        # Convert tier to lowercase for current_tier column
+        tier_lower = tier.lower()
+
         cursor = self.conn.cursor()
         cursor.execute(
             """
             UPDATE context_items
-            SET tier = ?, importance_score = ?
+            SET current_tier = ?, importance_score = ?
             WHERE id = ?
             """,
-            (tier, importance_score, item_id)
+            (tier_lower, importance_score, item_id)
         )
         self.conn.commit()
 
-    def delete_context_item(self, item_id: int) -> None:
+    def delete_context_item(self, item_id: str) -> None:
         """Delete a context item.
 
         Args:
-            item_id: Context item ID to delete
+            item_id: Context item ID to delete (UUID string)
         """
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM context_items WHERE id = ?", (item_id,))
         self.conn.commit()
 
-    def update_context_item_access(self, item_id: int) -> None:
+    def update_context_item_access(self, item_id: str) -> None:
         """Update last_accessed timestamp and increment access_count.
 
         Args:
-            item_id: Context item ID
+            item_id: Context item ID (UUID string)
         """
         cursor = self.conn.cursor()
         cursor.execute(
