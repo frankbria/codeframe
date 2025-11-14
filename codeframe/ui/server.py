@@ -1248,6 +1248,231 @@ async def update_context_tiers(agent_id: str, project_id: int):
     return {"updated_count": updated_count}
 
 
+@app.post("/api/agents/{agent_id}/flash-save")
+async def flash_save_context(agent_id: str, project_id: int, force: bool = False):
+    """Trigger flash save for an agent's context (T054).
+
+    Creates a checkpoint with full context state and archives COLD tier items
+    to reduce memory footprint. Only triggers if context exceeds 80% of 180k token limit
+    (144k tokens) unless force=True.
+
+    Args:
+        agent_id: Agent ID to flash save
+        project_id: Project ID the agent is working on (query parameter)
+        force: Force flash save even if below threshold (default: False)
+
+    Returns:
+        200 OK: FlashSaveResponse with checkpoint_id, tokens_before, tokens_after, reduction_percentage
+        400 Bad Request: If below threshold and force=False
+
+    Example:
+        POST /api/agents/backend-worker-001/flash-save?project_id=123&force=false
+        Response: {
+            "checkpoint_id": 42,
+            "tokens_before": 150000,
+            "tokens_after": 50000,
+            "reduction_percentage": 66.67,
+            "items_archived": 20,
+            "hot_items_retained": 10,
+            "warm_items_retained": 15
+        }
+    """
+    from codeframe.lib.context_manager import ContextManager
+
+    # Create context manager
+    context_mgr = ContextManager(db=app.state.db)
+
+    # Check if flash save should be triggered
+    should_save = context_mgr.should_flash_save(project_id, agent_id, force=force)
+
+    if not should_save:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Context below threshold. Use force=true to override."}
+        )
+
+    # Execute flash save
+    result = context_mgr.flash_save(project_id, agent_id)
+
+    # Emit WebSocket event (T059)
+    await manager.broadcast_json({
+        "type": "flash_save_completed",
+        "agent_id": agent_id,
+        "project_id": project_id,
+        "checkpoint_id": result["checkpoint_id"],
+        "reduction_percentage": result["reduction_percentage"]
+    })
+
+    return result
+
+
+@app.get("/api/agents/{agent_id}/flash-save/checkpoints")
+async def list_checkpoints(agent_id: str, limit: int = 10):
+    """List checkpoints for an agent (T055).
+
+    Returns metadata about flash save checkpoints, sorted by creation time (most recent first).
+    Does not include the full checkpoint_data JSON to keep response lightweight.
+
+    Args:
+        agent_id: Agent ID to list checkpoints for
+        limit: Maximum number of checkpoints to return (default: 10, max: 100)
+
+    Returns:
+        200 OK: List of checkpoint metadata objects
+
+    Example:
+        GET /api/agents/backend-worker-001/flash-save/checkpoints?limit=5
+        Response: [
+            {
+                "id": 42,
+                "agent_id": "backend-worker-001",
+                "items_count": 50,
+                "items_archived": 20,
+                "hot_items_retained": 15,
+                "token_count": 150000,
+                "created_at": "2025-11-14T10:30:00Z"
+            },
+            ...
+        ]
+    """
+    # Clamp limit to reasonable range
+    limit = min(max(limit, 1), 100)
+
+    # Get checkpoints from database
+    checkpoints = app.state.db.list_checkpoints(agent_id, limit=limit)
+
+    # Remove checkpoint_data from response (too large)
+    for checkpoint in checkpoints:
+        checkpoint.pop("checkpoint_data", None)
+
+    return checkpoints
+
+
+@app.get("/api/agents/{agent_id}/context/stats")
+async def get_context_stats(agent_id: str, project_id: int):
+    """Get context statistics for an agent (T067).
+
+    Returns tier counts and token usage breakdown for an agent's context.
+
+    Args:
+        agent_id: Agent ID to get stats for
+        project_id: Project ID the agent is working on
+
+    Returns:
+        200 OK: ContextStats object with tier counts and token usage
+
+    Example:
+        GET /api/agents/backend-worker-001/context/stats?project_id=123
+        Response: {
+            "agent_id": "backend-worker-001",
+            "project_id": 123,
+            "hot_count": 20,
+            "warm_count": 50,
+            "cold_count": 30,
+            "total_count": 100,
+            "hot_tokens": 15000,
+            "warm_tokens": 25000,
+            "cold_tokens": 10000,
+            "total_tokens": 50000,
+            "token_usage_percentage": 27.8,
+            "calculated_at": "2025-11-14T10:30:00Z"
+        }
+    """
+    from codeframe.lib.token_counter import TokenCounter
+    from datetime import datetime, UTC
+
+    # Get all context items for this agent
+    hot_items = app.state.db.list_context_items(
+        project_id=project_id,
+        agent_id=agent_id,
+        tier="hot",
+        limit=10000
+    )
+
+    warm_items = app.state.db.list_context_items(
+        project_id=project_id,
+        agent_id=agent_id,
+        tier="warm",
+        limit=10000
+    )
+
+    cold_items = app.state.db.list_context_items(
+        project_id=project_id,
+        agent_id=agent_id,
+        tier="cold",
+        limit=10000
+    )
+
+    # Calculate token counts per tier
+    token_counter = TokenCounter(cache_enabled=True)
+
+    hot_tokens = token_counter.count_context_tokens(hot_items)
+    warm_tokens = token_counter.count_context_tokens(warm_items)
+    cold_tokens = token_counter.count_context_tokens(cold_items)
+
+    total_tokens = hot_tokens + warm_tokens + cold_tokens
+
+    # Calculate token usage percentage (out of 180k limit)
+    TOKEN_LIMIT = 180000
+    token_usage_percentage = (total_tokens / TOKEN_LIMIT) * 100 if TOKEN_LIMIT > 0 else 0.0
+
+    return {
+        "agent_id": agent_id,
+        "project_id": project_id,
+        "hot_count": len(hot_items),
+        "warm_count": len(warm_items),
+        "cold_count": len(cold_items),
+        "total_count": len(hot_items) + len(warm_items) + len(cold_items),
+        "hot_tokens": hot_tokens,
+        "warm_tokens": warm_tokens,
+        "cold_tokens": cold_tokens,
+        "total_tokens": total_tokens,
+        "token_usage_percentage": round(token_usage_percentage, 2),
+        "calculated_at": datetime.now(UTC).isoformat()
+    }
+
+
+@app.get("/api/agents/{agent_id}/context/items")
+async def get_context_items(
+    agent_id: str,
+    project_id: int,
+    tier: Optional[str] = None,
+    limit: int = 100
+):
+    """Get context items for an agent, optionally filtered by tier.
+
+    Returns a list of context items with their content and metadata.
+
+    Args:
+        agent_id: Agent ID to get items for
+        project_id: Project ID the agent is working on
+        tier: Optional tier filter ('hot', 'warm', 'cold')
+        limit: Maximum number of items to return (default: 100, max: 1000)
+
+    Returns:
+        200 OK: List of ContextItem objects
+
+    Example:
+        GET /api/agents/backend-worker-001/context/items?project_id=123&tier=hot&limit=20
+    """
+    # Clamp limit to reasonable range
+    limit = min(max(limit, 1), 1000)
+
+    # Validate tier if provided
+    if tier and tier not in ["hot", "warm", "cold"]:
+        raise HTTPException(status_code=400, detail="Invalid tier. Must be 'hot', 'warm', or 'cold'")
+
+    # Get items from database
+    items = app.state.db.list_context_items(
+        project_id=project_id,
+        agent_id=agent_id,
+        tier=tier,
+        limit=limit
+    )
+
+    return items
+
+
 @app.post("/api/projects/{project_id}/pause")
 async def pause_project(project_id: int):
     """Pause project execution."""

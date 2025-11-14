@@ -213,6 +213,26 @@ class Database:
             )
         """)
 
+        # Context checkpoints table (for flash save)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS context_checkpoints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                checkpoint_data TEXT NOT NULL,
+                items_count INTEGER NOT NULL,
+                items_archived INTEGER NOT NULL,
+                hot_items_retained INTEGER NOT NULL,
+                token_count INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Index for context checkpoints
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_checkpoints_agent_created
+            ON context_checkpoints(agent_id, created_at DESC)
+        """)
+
         # Changelog table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS changelog (
@@ -2260,6 +2280,39 @@ class Database:
             (item_id,)
         )
         self.conn.commit()
+
+    def archive_cold_items(self, project_id: int, agent_id: str) -> int:
+        """Archive (delete) all COLD tier items for an agent (T053).
+
+        This method is called during flash save to reduce memory footprint.
+        COLD tier items are fully archived in the checkpoint before deletion.
+
+        Args:
+            project_id: Project ID the agent is working on
+            agent_id: Agent ID to archive COLD items for
+
+        Returns:
+            int: Number of items archived (deleted)
+
+        Example:
+            >>> db.archive_cold_items(123, "backend-worker-001")
+            15  # 15 COLD items deleted
+        """
+        cursor = self.conn.cursor()
+
+        # Delete all COLD tier items for this agent on this project
+        cursor.execute(
+            """DELETE FROM context_items
+               WHERE project_id = ?
+                 AND agent_id = ?
+                 AND current_tier = 'cold'""",
+            (project_id, agent_id)
+        )
+
+        deleted_count = cursor.rowcount
+        self.conn.commit()
+
+        return deleted_count
 
     def create_checkpoint(
         self,
