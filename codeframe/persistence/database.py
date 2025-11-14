@@ -2094,22 +2094,39 @@ class Database:
         self,
         agent_id: str,
         item_type: str,
-        content: str,
-        importance_score: float,
-        tier: str
+        content: str
     ) -> int:
-        """Create a new context item.
+        """Create a new context item with auto-calculated importance score.
+
+        Auto-calculates importance score using hybrid exponential decay algorithm:
+        - Type weight (40%): Based on item_type
+        - Age decay (40%): Exponential decay (new items get 1.0)
+        - Access boost (20%): Log-normalized frequency (new items get 0.0)
 
         Args:
             agent_id: Agent ID that owns this context
             item_type: Type of context (TASK, CODE, ERROR, TEST_RESULT, PRD_SECTION)
             content: The actual context content
-            importance_score: Calculated importance score (0.0-1.0)
-            tier: Tier assignment (HOT, WARM, COLD)
 
         Returns:
             Created context item ID
         """
+        from datetime import datetime, UTC
+        from codeframe.lib.importance_scorer import calculate_importance_score
+
+        # Auto-calculate importance score for new item
+        created_at = datetime.now(UTC)
+        importance_score = calculate_importance_score(
+            item_type=item_type,
+            created_at=created_at,
+            access_count=0,  # New item has no accesses yet
+            last_accessed=created_at
+        )
+
+        # Auto-assign tier based on importance score (placeholder - will be Phase 5)
+        # For now, default to WARM
+        tier = "WARM"
+
         cursor = self.conn.cursor()
         cursor.execute(
             """

@@ -72,18 +72,11 @@ class WorkerAgent:
         if not content or not content.strip():
             raise ValueError("Content cannot be empty")
 
-        # Call database create_context_item with:
-        # - agent_id=self.agent_id
-        # - item_type=item_type.value
-        # - content=content
-        # - importance_score=0.5 (placeholder, will be calculated later in Phase 4)
-        # - tier="WARM" (placeholder, will be assigned later in Phase 5)
+        # Call database create_context_item - score is auto-calculated (Phase 4)
         item_id = self.db.create_context_item(
             agent_id=self.agent_id,
             item_type=item_type.value,
-            content=content,
-            importance_score=0.5,
-            tier="WARM"
+            content=content
         )
 
         return item_id

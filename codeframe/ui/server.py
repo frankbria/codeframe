@@ -1012,21 +1012,11 @@ async def create_context_item(agent_id: str, request: ContextItemCreateModel):
         HTTPException:
             - 422: Invalid request (validation error)
     """
-    from datetime import datetime, UTC
-
-    # Auto-calculate importance_score (placeholder: 0.5)
-    importance_score = 0.5
-
-    # Auto-assign tier (placeholder: WARM)
-    tier = "WARM"
-
-    # Create context item
+    # Create context item - score auto-calculated by database layer (Phase 4)
     item_id = app.state.db.create_context_item(
         agent_id=agent_id,
         item_type=request.item_type.value,
-        content=request.content,
-        importance_score=importance_score,
-        tier=tier
+        content=request.content
     )
 
     # Get created item for response
@@ -1175,6 +1165,46 @@ async def delete_context_item(agent_id: str, item_id: int):
 
     # Return 204 No Content (no response body)
     return None
+
+
+@app.post(
+    "/api/agents/{agent_id}/context/update-scores",
+    tags=["context"],
+    response_model=dict
+)
+async def update_context_scores(agent_id: str):
+    """Recalculate importance scores for all context items (T033).
+
+    Triggers batch recalculation of importance scores for all context items
+    belonging to the specified agent. Scores are recalculated based on:
+    - Current age (time since creation)
+    - Access patterns (access_count)
+    - Item type weights
+
+    Use cases:
+    - Periodic batch updates (cron job)
+    - Manual trigger after time passage
+    - Debugging/testing score calculations
+
+    Args:
+        agent_id: Agent ID to recalculate scores for
+
+    Returns:
+        200 OK: {updated_count: int} - Number of items updated
+
+    Example:
+        POST /api/agents/backend-worker-001/context/update-scores
+        Response: {"updated_count": 150}
+    """
+    from codeframe.lib.context_manager import ContextManager
+
+    # Create context manager
+    context_mgr = ContextManager(db=app.state.db)
+
+    # Recalculate scores for all agent context items
+    updated_count = context_mgr.recalculate_scores_for_agent(agent_id)
+
+    return {"updated_count": updated_count}
 
 
 @app.post("/api/projects/{project_id}/pause")
