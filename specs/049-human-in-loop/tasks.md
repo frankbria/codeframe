@@ -179,15 +179,17 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T062 [P] Add blocker metrics tracking (resolution time, expiration rate) in codeframe/persistence/database.py
-- [ ] T063 [P] Add blocker rate limiting (10 blockers/minute per agent) to prevent spam
-- [ ] T064 [P] Add comprehensive error handling for blocker API endpoints (404, 409, 422 status codes)
-- [ ] T065 [P] Add blocker answer character counter to BlockerModal (show 4500/5000)
-- [ ] T066 Add blocker resolution conflict handling (409 → show "Already resolved by another user")
-- [ ] T067 [P] Add blocker panel sorting (SYNC first, then by created_at DESC)
-- [ ] T068 [P] Add blocker panel filtering (show only SYNC, only ASYNC, or all)
-- [ ] T069 Run quickstart.md validation scenarios (5-minute tutorial, common patterns, troubleshooting)
-- [ ] T070 Add blocker documentation comments and docstrings to all new methods
+- [ ] T062 [P] Add blocker metrics tracking (resolution time, expiration rate) in codeframe/persistence/database.py - DEFERRED (post-MVP)
+- [ ] T063 [P] Add blocker rate limiting (10 blockers/minute per agent) to prevent spam - DEFERRED (post-MVP)
+- [X] T064 [P] Add comprehensive error handling for blocker API endpoints (404, 409, 422 status codes) - COMPLETE (implemented in codeframe/ui/server.py)
+- [X] T065 [P] Add blocker answer character counter to BlockerModal (show 4500/5000) - COMPLETE (implemented in web-ui/src/components/BlockerModal.tsx)
+- [X] T066 Add blocker resolution conflict handling (409 → show "Already resolved by another user") - COMPLETE (409 responses implemented)
+- [ ] T067 [P] Add blocker panel sorting (SYNC first, then by created_at DESC) - DEFERRED (post-MVP, current default sort acceptable)
+- [ ] T068 [P] Add blocker panel filtering (show only SYNC, only ASYNC, or all) - DEFERRED (post-MVP, list_blockers API supports status filter)
+- [ ] T069 Run quickstart.md validation scenarios (5-minute tutorial, common patterns, troubleshooting) - DEFERRED (validation in future sprint)
+- [X] T070 Add blocker documentation comments and docstrings to all new methods - COMPLETE (all blocker methods have comprehensive docstrings)
+
+**Phase 10 Summary**: Critical error handling, validation, and documentation complete. Metrics tracking, rate limiting, and advanced filtering deferred to post-MVP.
 
 ---
 
