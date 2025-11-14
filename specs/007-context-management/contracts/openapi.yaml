@@ -1,0 +1,516 @@
+openapi: 3.0.3
+info:
+  title: Context Management API
+  description: API for Virtual Project context management system with tiered memory (HOT/WARM/COLD)
+  version: 1.0.0
+  contact:
+    name: CodeFRAME Development Team
+
+servers:
+  - url: http://localhost:8000/api
+    description: Local development server
+
+tags:
+  - name: context
+    description: Context item management operations
+  - name: flash-save
+    description: Flash save checkpoint operations
+  - name: stats
+    description: Context statistics and metrics
+
+paths:
+  /agents/{agent_id}/context:
+    get:
+      summary: List context items for an agent
+      description: Retrieve context items filtered by tier, with pagination
+      tags: [context]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Agent identifier
+        - name: tier
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [HOT, WARM, COLD]
+          description: Filter by tier (omit for all tiers)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Maximum number of items to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of items to skip (for pagination)
+      responses:
+        '200':
+          description: Context items retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ContextItem'
+                  total:
+                    type: integer
+                    description: Total count of items matching filters
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new context item
+      description: Save a new context item with automatic importance scoring and tier assignment
+      tags: [context]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContextItemCreate'
+      responses:
+        '201':
+          description: Context item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextItem'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{agent_id}/context/{item_id}:
+    get:
+      summary: Get a specific context item
+      description: Retrieve a context item by ID, updates last_accessed timestamp
+      tags: [context]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Context item retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextItem'
+        '404':
+          description: Context item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a context item
+      description: Permanently remove a context item from storage
+      tags: [context]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Context item deleted successfully
+        '404':
+          description: Context item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{agent_id}/context/stats:
+    get:
+      summary: Get context statistics
+      description: Retrieve aggregate statistics about agent's context (tier counts, token usage)
+      tags: [stats]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Context statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContextStats'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{agent_id}/context/update-tiers:
+    post:
+      summary: Recalculate tiers for all context items
+      description: Recalculate importance scores and reassign tiers for all items
+      tags: [context]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tiers updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated_count:
+                    type: integer
+                    description: Number of items with tier changes
+                  tier_changes:
+                    type: object
+                    properties:
+                      hot_count:
+                        type: integer
+                      warm_count:
+                        type: integer
+                      cold_count:
+                        type: integer
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{agent_id}/flash-save:
+    post:
+      summary: Initiate flash save operation
+      description: Checkpoint current context, archive COLD items, clear working memory
+      tags: [flash-save]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlashSaveRequest'
+      responses:
+        '200':
+          description: Flash save completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlashSaveResponse'
+        '400':
+          description: Flash save not needed (below threshold)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /agents/{agent_id}/flash-save/checkpoints:
+    get:
+      summary: List flash save checkpoints
+      description: Retrieve historical flash save checkpoints for an agent
+      tags: [flash-save]
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Checkpoints retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkpoints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FlashSaveCheckpoint'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    ContextItem:
+      type: object
+      required:
+        - id
+        - agent_id
+        - item_type
+        - content
+        - importance_score
+        - tier
+        - access_count
+        - created_at
+        - last_accessed
+      properties:
+        id:
+          type: integer
+          description: Unique identifier
+        agent_id:
+          type: string
+          description: Agent that owns this context
+        item_type:
+          type: string
+          enum: [TASK, CODE, ERROR, TEST_RESULT, PRD_SECTION]
+          description: Type of context item
+        content:
+          type: string
+          minLength: 1
+          maxLength: 100000
+          description: The actual context content
+        importance_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Calculated importance score (0.0-1.0)
+        tier:
+          type: string
+          enum: [HOT, WARM, COLD]
+          description: Current tier assignment
+        access_count:
+          type: integer
+          minimum: 0
+          description: Number of times accessed
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601)
+        last_accessed:
+          type: string
+          format: date-time
+          description: Last access timestamp (ISO 8601)
+
+    ContextItemCreate:
+      type: object
+      required:
+        - item_type
+        - content
+      properties:
+        item_type:
+          type: string
+          enum: [TASK, CODE, ERROR, TEST_RESULT, PRD_SECTION]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 100000
+
+    ContextStats:
+      type: object
+      required:
+        - agent_id
+        - total_items
+        - hot_count
+        - warm_count
+        - cold_count
+        - total_tokens
+        - hot_tokens
+        - warm_tokens
+        - cold_tokens
+        - last_updated
+      properties:
+        agent_id:
+          type: string
+        total_items:
+          type: integer
+          description: Total number of context items
+        hot_count:
+          type: integer
+          description: Number of HOT tier items
+        warm_count:
+          type: integer
+          description: Number of WARM tier items
+        cold_count:
+          type: integer
+          description: Number of COLD tier items
+        total_tokens:
+          type: integer
+          description: Total token count across all tiers
+        hot_tokens:
+          type: integer
+          description: Token count in HOT tier
+        warm_tokens:
+          type: integer
+          description: Token count in WARM tier
+        cold_tokens:
+          type: integer
+          description: Token count in COLD tier
+        last_updated:
+          type: string
+          format: date-time
+
+    FlashSaveRequest:
+      type: object
+      properties:
+        force:
+          type: boolean
+          default: false
+          description: Force flash save even if below threshold
+
+    FlashSaveResponse:
+      type: object
+      required:
+        - checkpoint_id
+        - agent_id
+        - items_count
+        - items_archived
+        - hot_items_retained
+        - token_count_before
+        - token_count_after
+        - reduction_percentage
+        - created_at
+      properties:
+        checkpoint_id:
+          type: integer
+          description: ID of created checkpoint
+        agent_id:
+          type: string
+        items_count:
+          type: integer
+          description: Total items before flash save
+        items_archived:
+          type: integer
+          description: Number of COLD items archived
+        hot_items_retained:
+          type: integer
+          description: Number of HOT items kept in memory
+        token_count_before:
+          type: integer
+          description: Token count before flash save
+        token_count_after:
+          type: integer
+          description: Token count after flash save
+        reduction_percentage:
+          type: float
+          description: Percentage reduction in token usage
+        created_at:
+          type: string
+          format: date-time
+
+    FlashSaveCheckpoint:
+      type: object
+      required:
+        - id
+        - agent_id
+        - items_count
+        - items_archived
+        - hot_items_retained
+        - token_count
+        - created_at
+      properties:
+        id:
+          type: integer
+        agent_id:
+          type: string
+        checkpoint_data:
+          type: string
+          description: JSON serialized context state (omitted for brevity in list view)
+        items_count:
+          type: integer
+        items_archived:
+          type: integer
+        hot_items_retained:
+          type: integer
+        token_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code or type
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error context (optional)
