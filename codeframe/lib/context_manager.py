@@ -26,10 +26,10 @@ class ContextManager:
         """
         self.db = db
 
-    def recalculate_scores_for_agent(self, agent_id: str) -> int:
+    def recalculate_scores_for_agent(self, project_id: int, agent_id: str) -> int:
         """Recalculate importance scores for all context items belonging to an agent.
 
-        Loads all context items for the agent, recalculates their importance scores
+        Loads all context items for the agent on a project, recalculates their importance scores
         based on current age/access patterns, and updates the database.
 
         Use cases:
@@ -38,6 +38,7 @@ class ContextManager:
         - Manual trigger from API endpoint
 
         Args:
+            project_id: Project ID the agent is working on
             agent_id: Agent ID to recalculate scores for
 
         Returns:
@@ -45,12 +46,12 @@ class ContextManager:
 
         Example:
             >>> manager = ContextManager(db)
-            >>> updated_count = manager.recalculate_scores_for_agent("backend-worker-001")
+            >>> updated_count = manager.recalculate_scores_for_agent(123, "backend-worker-001")
             >>> print(f"Updated {updated_count} items")
             Updated 150 items
         """
-        # Load all context items for this agent (all tiers)
-        context_items = self.db.list_context_items(agent_id=agent_id, tier=None, limit=10000)
+        # Load all context items for this agent on this project (all tiers)
+        context_items = self.db.list_context_items(project_id=project_id, agent_id=agent_id, tier=None, limit=10000)
 
         if not context_items:
             return 0
@@ -79,7 +80,7 @@ class ContextManager:
 
         return updated_count
 
-    def update_tiers_for_agent(self, agent_id: str) -> int:
+    def update_tiers_for_agent(self, project_id: int, agent_id: str) -> int:
         """Recalculate importance scores and reassign tiers for all context items (T041).
 
         This is a combined operation that:
@@ -92,6 +93,7 @@ class ContextManager:
         - Manual trigger to move aged items to lower tiers
 
         Args:
+            project_id: Project ID the agent is working on
             agent_id: Agent ID to update tiers for
 
         Returns:
@@ -99,12 +101,12 @@ class ContextManager:
 
         Example:
             >>> manager = ContextManager(db)
-            >>> updated_count = manager.update_tiers_for_agent("backend-worker-001")
+            >>> updated_count = manager.update_tiers_for_agent(123, "backend-worker-001")
             >>> print(f"Updated {updated_count} items with new tiers")
             Updated 150 items with new tiers
         """
-        # Load all context items for this agent (all tiers)
-        context_items = self.db.list_context_items(agent_id=agent_id, tier=None, limit=10000)
+        # Load all context items for this agent on this project (all tiers)
+        context_items = self.db.list_context_items(project_id=project_id, agent_id=agent_id, tier=None, limit=10000)
 
         if not context_items:
             return 0

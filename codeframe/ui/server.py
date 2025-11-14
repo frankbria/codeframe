@@ -1172,11 +1172,11 @@ async def delete_context_item(agent_id: str, item_id: int):
     tags=["context"],
     response_model=dict
 )
-async def update_context_scores(agent_id: str):
+async def update_context_scores(agent_id: str, project_id: int):
     """Recalculate importance scores for all context items (T033).
 
     Triggers batch recalculation of importance scores for all context items
-    belonging to the specified agent. Scores are recalculated based on:
+    belonging to the specified agent on a project. Scores are recalculated based on:
     - Current age (time since creation)
     - Access patterns (access_count)
     - Item type weights
@@ -1188,12 +1188,13 @@ async def update_context_scores(agent_id: str):
 
     Args:
         agent_id: Agent ID to recalculate scores for
+        project_id: Project ID the agent is working on (query parameter)
 
     Returns:
         200 OK: {updated_count: int} - Number of items updated
 
     Example:
-        POST /api/agents/backend-worker-001/context/update-scores
+        POST /api/agents/backend-worker-001/context/update-scores?project_id=123
         Response: {"updated_count": 150}
     """
     from codeframe.lib.context_manager import ContextManager
@@ -1201,8 +1202,8 @@ async def update_context_scores(agent_id: str):
     # Create context manager
     context_mgr = ContextManager(db=app.state.db)
 
-    # Recalculate scores for all agent context items
-    updated_count = context_mgr.recalculate_scores_for_agent(agent_id)
+    # Recalculate scores for all agent context items on this project
+    updated_count = context_mgr.recalculate_scores_for_agent(project_id, agent_id)
 
     return {"updated_count": updated_count}
 
@@ -1212,11 +1213,11 @@ async def update_context_scores(agent_id: str):
     tags=["context"],
     response_model=dict
 )
-async def update_context_tiers(agent_id: str):
+async def update_context_tiers(agent_id: str, project_id: int):
     """Recalculate scores and reassign tiers for all context items (T042).
 
     Triggers batch recalculation of importance scores AND tier reassignment
-    for all context items belonging to the specified agent. This operation:
+    for all context items belonging to the specified agent on a project. This operation:
     1. Recalculates importance scores based on current age/access patterns
     2. Reassigns tiers (HOT >= 0.8, WARM 0.4-0.8, COLD < 0.4)
 
@@ -1227,12 +1228,13 @@ async def update_context_tiers(agent_id: str):
 
     Args:
         agent_id: Agent ID to update tiers for
+        project_id: Project ID the agent is working on (query parameter)
 
     Returns:
         200 OK: {updated_count: int} - Number of items updated with new tiers
 
     Example:
-        POST /api/agents/backend-worker-001/context/update-tiers
+        POST /api/agents/backend-worker-001/context/update-tiers?project_id=123
         Response: {"updated_count": 150}
     """
     from codeframe.lib.context_manager import ContextManager
@@ -1240,8 +1242,8 @@ async def update_context_tiers(agent_id: str):
     # Create context manager
     context_mgr = ContextManager(db=app.state.db)
 
-    # Recalculate scores AND reassign tiers for all agent context items
-    updated_count = context_mgr.update_tiers_for_agent(agent_id)
+    # Recalculate scores AND reassign tiers for all agent context items on this project
+    updated_count = context_mgr.update_tiers_for_agent(project_id, agent_id)
 
     return {"updated_count": updated_count}
 

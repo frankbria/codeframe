@@ -14,12 +14,14 @@ class WorkerAgent:
         agent_id: str,
         agent_type: str,
         provider: str,
+        project_id: int,
         maturity: AgentMaturity = AgentMaturity.D1,
         system_prompt: str | None = None,
         db: Optional[Any] = None
     ):
         self.agent_id = agent_id
         self.agent_type = agent_type
+        self.project_id = project_id
         self.provider = provider
         self.maturity = maturity
         self.system_prompt = system_prompt
@@ -74,6 +76,7 @@ class WorkerAgent:
 
         # Call database create_context_item - score is auto-calculated (Phase 4)
         item_id = self.db.create_context_item(
+            project_id=self.project_id,
             agent_id=self.agent_id,
             item_type=item_type.value,
             content=content
@@ -97,11 +100,13 @@ class WorkerAgent:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
         # Call database list_context_items with:
+        # - project_id=self.project_id
         # - agent_id=self.agent_id
         # - tier=tier.value if tier else None
         # - limit=100
         tier_value = tier.value if tier else None
         items = self.db.list_context_items(
+            project_id=self.project_id,
             agent_id=self.agent_id,
             tier=tier_value,
             limit=100
@@ -169,6 +174,6 @@ class WorkerAgent:
 
         # Create context manager and trigger tier updates
         context_mgr = ContextManager(db=self.db)
-        updated_count = context_mgr.update_tiers_for_agent(self.agent_id)
+        updated_count = context_mgr.update_tiers_for_agent(self.project_id, self.agent_id)
 
         return updated_count

@@ -32,8 +32,21 @@ def temp_db():
     Path(db_path).unlink(missing_ok=True)
 
 
+
+
 @pytest.fixture
-def context_manager(temp_db):
+def test_project(temp_db):
+    """Create a test project for context items."""
+    project_id = temp_db.create_project(
+        name="test-project",
+        description="Test project for context management",
+        workspace_path=""
+    )
+    return project_id
+
+
+@pytest.fixture
+def context_manager(temp_db, test_project):
     """Create context manager with test database."""
     return ContextManager(db=temp_db)
 
@@ -41,15 +54,14 @@ def context_manager(temp_db):
 class TestContextManager:
     """Unit tests for ContextManager class."""
 
-    def test_recalculate_scores_updates_all_items(self, temp_db, context_manager):
+    def test_recalculate_scores_updates_all_items(self, temp_db, test_project, context_manager):
         """Test that recalculate_scores_for_agent updates all agent items."""
         agent_id = "test-agent-001"
 
         # Create 3 context items
         item_ids = []
         for i in range(3):
-            item_id = temp_db.create_context_item(
-                agent_id=agent_id,
+            item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
                 content=f"Task {i}"
             )
@@ -71,7 +83,7 @@ class TestContextManager:
         temp_db.conn.commit()
 
         # ACT: Recalculate scores
-        updated_count = context_manager.recalculate_scores_for_agent(agent_id)
+        updated_count = context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # ASSERT: All 3 items updated
         assert updated_count == 3
@@ -80,47 +92,44 @@ class TestContextManager:
         item_0_after = temp_db.get_context_item(item_ids[0])
         assert item_0_after['importance_score'] < initial_scores[0]
 
-    def test_recalculate_scores_returns_count(self, temp_db, context_manager):
+    def test_recalculate_scores_returns_count(self, temp_db, test_project, context_manager):
         """Test that recalculate_scores_for_agent returns correct count."""
         agent_id = "test-agent-002"
 
         # Create 5 items
         for i in range(5):
-            temp_db.create_context_item(
-                agent_id=agent_id,
+            temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
                 item_type=ContextItemType.CODE.value,
                 content=f"def function_{i}(): pass"
             )
 
         # ACT: Recalculate
-        updated_count = context_manager.recalculate_scores_for_agent(agent_id)
+        updated_count = context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # ASSERT: Returns count of 5
         assert updated_count == 5
 
-    def test_recalculate_scores_with_empty_agent(self, context_manager):
+    def test_recalculate_scores_with_empty_agent(self, test_project, context_manager):
         """Test recalculation with agent that has no context items."""
         agent_id = "nonexistent-agent"
 
         # ACT: Recalculate for empty agent
-        updated_count = context_manager.recalculate_scores_for_agent(agent_id)
+        updated_count = context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # ASSERT: Returns 0
         assert updated_count == 0
 
-    def test_recalculate_scores_only_affects_target_agent(self, temp_db, context_manager):
+    def test_recalculate_scores_only_affects_target_agent(self, temp_db, test_project, context_manager):
         """Test that recalculation only updates items for specified agent."""
         agent_1 = "agent-001"
         agent_2 = "agent-002"
 
         # Create items for both agents
-        agent_1_item_id = temp_db.create_context_item(
-            agent_id=agent_1,
+        agent_1_item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_1,
             item_type=ContextItemType.TASK.value,
             content="Agent 1 task"
         )
-        agent_2_item_id = temp_db.create_context_item(
-            agent_id=agent_2,
+        agent_2_item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_2,
             item_type=ContextItemType.TASK.value,
             content="Agent 2 task"
         )
@@ -139,7 +148,7 @@ class TestContextManager:
         temp_db.conn.commit()
 
         # ACT: Recalculate only for agent_1
-        updated_count = context_manager.recalculate_scores_for_agent(agent_1)
+        updated_count = context_manager.recalculate_scores_for_agent(test_project, agent_1)
 
         # ASSERT: Only 1 item updated
         assert updated_count == 1

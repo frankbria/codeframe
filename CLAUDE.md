@@ -50,11 +50,23 @@ cd web-ui && npm test  # Frontend tests
 - **Conventions**: Follow existing patterns in codebase
 
 ## Recent Changes
-- 2025-11-14: 007-context-management Phase 4 & 5 complete - 100% test pass rate (59/59 tests) ✅
-  * Phase 4: Importance scoring with hybrid exponential decay (T027-T036)
+- 2025-11-14: 007-context-management - **CRITICAL ARCHITECTURAL FIX** 🎯
+  * **Multi-Agent Support**: Multiple agents can now collaborate on same project
+  * Added `agent_id` column to `context_items` schema
+  * Updated all database methods to accept `(project_id, agent_id)` scoping
+  * Added `project_id` parameter to `WorkerAgent.__init__()` and all context methods
+  * Updated `ContextManager` methods for multi-project support
+  * Updated API endpoints to accept `project_id` query parameter
+  * **Before**: One project per agent (broken architecture)
+  * **After**: Multiple agents (orchestrator, backend, frontend, test, review) collaborate on same project
+  * **Tests**: 59/59 passing (100%) - Full multi-agent test coverage
+- 2025-11-14: 007-context-management Phase 2-5 complete - Context storage, scoring, and tier assignment ✅
+  * Phase 2: Foundational layer (Pydantic models, migrations, database methods, TokenCounter)
+  * Phase 3: Context item storage (save/load/get context with persistence)
+  * Phase 4: Importance scoring with hybrid exponential decay algorithm (T027-T036)
   * Phase 5: Automatic tier assignment HOT/WARM/COLD (T037-T043, T046)
-  * Fixed schema mismatch (agent_id→project_id, tier→current_tier, UUID ids)
-- 2025-11-14: 007-context-management - Implemented T012 and T013 database methods for context items and checkpoints
+  * **Formula**: score = 0.4 × type_weight + 0.4 × age_decay + 0.2 × access_boost
+  * **Tiers**: HOT (≥0.8), WARM (0.4-0.8), COLD (<0.4)
 - 2025-11-14: 007-context-management - Implemented T012 and T013 database methods for context items and checkpoints
 - 007-context-management: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting)
 - 049-human-in-loop: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets
