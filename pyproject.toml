@@ -91,7 +91,7 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 addopts = """
     --strict-markers
-    --cov=src
+    --cov=codeframe
     --cov-report=term-missing:skip-covered
     --cov-fail-under=80
     -v
@@ -99,7 +99,7 @@ addopts = """
 
 [tool.coverage.run]
 branch = true
-source = ["src"]
+source = ["codeframe"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -107,5 +107,5 @@ exclude_lines = [
     "def __repr__",
     "raise AssertionError",
     "raise NotImplementedError",
-    "if __name__ == .__main__.:",
+    "if __name__ == \"__main__\":",
 ]

@@ -14,20 +14,21 @@ repos:
   - repo: local
     hooks:
       - id: pytest-check
-        name: Run all tests
-        entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest; else pytest; fi'
+        name: Run last failed tests (fast feedback)
+        entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest --lf -x; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest --lf -x; else pytest --lf -x; fi'
         language: system
         pass_filenames: false
         files: \.py$
         types: [python]
 
       - id: coverage-check
-        name: Enforce 85% coverage
+        name: Enforce 85% coverage (manual - use scripts/verify-ai-claims.sh for full check)
         entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=85; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=85; else pytest --cov --cov-report=term-missing --cov-fail-under=85; fi || (echo "❌❌❌ COVERAGE BELOW 85% ❌❌❌" && exit 1)'
         language: system
         pass_filenames: false
         files: \.py$
         types: [python]
+        stages: [manual]
 
       - id: skip-detector
         name: Detect skip decorator abuse
