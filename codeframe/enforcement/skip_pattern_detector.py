@@ -84,9 +84,23 @@ class SkipPatternDetector:
 
         for pattern in self.language_info.test_patterns:
             # Handle glob patterns
-            if "**" in pattern:
-                test_files.extend(self.project_path.rglob(pattern.replace("**", "*")))
+            if "**/" in pattern:
+                # For patterns like "tests/**/*.rs" or "**/*.test.js"
+                # Split on **/ and use the part after it with rglob
+                parts = pattern.split("**/", 1)
+                if len(parts) == 2:
+                    base_dir = parts[0] if parts[0] else "."
+                    file_pattern = parts[1]
+
+                    # If base_dir is specified, search within it, otherwise search from project root
+                    if base_dir and base_dir != ".":
+                        search_path = self.project_path / base_dir
+                        if search_path.exists():
+                            test_files.extend(search_path.rglob(file_pattern))
+                    else:
+                        test_files.extend(self.project_path.rglob(file_pattern))
             else:
+                # Simple glob pattern without **
                 test_files.extend(self.project_path.glob(pattern))
 
         return test_files
@@ -382,7 +396,8 @@ class SkipPatternDetector:
             with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
-            patterns = [r"\[Ignore\]", r"\[Skip\]"]
+            # Match [Ignore] or [Ignore("reason")] and [Skip] or [Skip("reason")]
+            patterns = [r"\[Ignore(?:\]|\()", r"\[Skip(?:\]|\()"]
 
             for line_num, line in enumerate(lines, start=1):
                 for pattern in patterns:

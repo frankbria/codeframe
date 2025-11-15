@@ -350,7 +350,7 @@ public class TestExample
         violations = detector.detect_all()
 
         assert len(violations) >= 1
-        assert any("[Ignore]" in v.pattern for v in violations)
+        assert any("Ignore" in v.pattern for v in violations)
 
 
 class TestSkipPatternDetectorEdgeCases:
