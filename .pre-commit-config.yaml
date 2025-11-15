@@ -4,12 +4,14 @@ repos:
     hooks:
       - id: black
         language_version: python3.11
+        types: [python]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.2.0
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
+        types: [python]
 
   - repo: local
     hooks:
