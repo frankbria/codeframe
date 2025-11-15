@@ -1,11 +1,9 @@
 # CodeFRAME
 
-**Fully Remote Autonomous Multiagent Environment** for coding
-
-![Status](https://img.shields.io/badge/status-Sprint%205%20Complete-green)
+![Status](https://img.shields.io/badge/status-Sprint%207%20Complete-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-93%2F93%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-430%2B%20passing-brightgreen)
 
 > AI coding agents that work autonomously while you sleep. Check in like a coworker, answer questions when needed, ship features continuously.
 
@@ -20,20 +18,56 @@ CodeFRAME is an autonomous AI development system where multiple specialized agen
 ### Key Features
 
 🤖 **Multi-Agent Swarm** - Specialized agents (Backend, Frontend, Test, Review) work in parallel with **true async concurrency**
-🧠 **Virtual Project Memory** - React-like context diffing keeps agents efficient and focused
-📊 **Situational Leadership** - Agents mature from directive → coaching → supporting → delegating
-🔔 **Smart Interruptions** - Two-level notifications (SYNC: urgent, ASYNC: batch for later)
-💾 **Flash Saves** - Automatic checkpointing before context compactification
+🧠 **Intelligent Context Management** - Tiered memory system (HOT/WARM/COLD) with importance scoring reduces token usage 30-50%
+📊 **Flash Save Checkpoints** - Automatic context pruning before token limits, with full restoration capability
+🔔 **Human-in-the-Loop** - Two-level blocker notifications (SYNC: urgent, ASYNC: batch for later)
+💾 **Context Preservation** - Multi-agent support with project-level context scoping
 🎯 **15-Step Workflow** - From Socratic discovery to deployment
-🌐 **Status Dashboard** - Chat with your Lead Agent: "Hey, how's it going?"
-⚡ **Async/Await Architecture** - Non-blocking agent execution with true concurrency (NEW)
+🌐 **Real-time Dashboard** - WebSocket-powered UI with agent status, blockers, and progress tracking
+⚡ **Async/Await Architecture** - Non-blocking agent execution with true concurrency
 🔄 **Self-Correction Loops** - Agents automatically fix failing tests (up to 3 attempts)
 
 ---
 
-## What's New (Updated: 2025-11-08)
+## What's New (Updated: 2025-11-14)
 
-### 🚀 Sprint 5 Complete: Async Worker Agents (cf-48)
+### 🚀 Sprint 7 Complete: Context Management (007-context-management)
+
+**Intelligent Memory System** - Context management with tiered importance scoring enables long-running autonomous sessions.
+
+#### Key Improvements
+- ✅ **Tiered Memory System**: HOT (≥0.8), WARM (0.4-0.8), COLD (<0.4) importance tiers
+- ✅ **Flash Save Mechanism**: Automatic context pruning when approaching token limits (80% of 180k)
+- ✅ **Hybrid Exponential Decay**: `score = 0.4 × type_weight + 0.4 × age_decay + 0.2 × access_boost`
+- ✅ **Multi-Agent Support**: Full `(project_id, agent_id)` scoping for collaborative work
+- ✅ **Token Counting**: Accurate token usage tracking with tiktoken
+- ✅ **Dashboard Visualization**: Context panel with tier charts and item filtering
+- ✅ **31 Tests Passing**: 25 backend + 6 frontend (100% coverage)
+
+**Result**: 30-50% token reduction, 4+ hour autonomous sessions, intelligent context archival/restoration.
+
+**Full PR**: [#19 - Context Management System](https://github.com/frankbria/codeframe/pull/19)
+
+---
+
+### 🚀 Sprint 6 Complete: Human in the Loop (049-human-in-loop)
+
+**Blocker Management** - Agents can ask for help when stuck and automatically resume after receiving answers.
+
+#### Key Improvements
+- ✅ **Blocker Creation**: All worker agents can create blockers with priority levels
+- ✅ **Dashboard UI**: BlockerPanel, BlockerModal, BlockerBadge components with real-time updates
+- ✅ **WebSocket Notifications**: Real-time blocker creation, resolution, and agent resume events
+- ✅ **SYNC vs ASYNC Blockers**: Critical blockers pause work, async blockers batch for later
+- ✅ **Webhook Integration**: Zapier-compatible webhook notifications for critical blockers
+- ✅ **Blocker Expiration**: Automatic 24-hour timeout with cron job cleanup
+- ✅ **100+ Tests**: Comprehensive backend, frontend, and integration test coverage
+
+**Full PR**: [#18 - Human in the Loop](https://github.com/frankbria/codeframe/pull/18)
+
+---
+
+### 🚀 Sprint 5 Complete: Async Worker Agents (048-async-worker-agents)
 
 **Major Performance & Architecture Upgrade** - All worker agents now use Python's async/await pattern for true concurrent execution.
 
@@ -45,32 +79,7 @@ CodeFRAME is an autonomous AI development system where multiple specialized agen
 - ✅ **Zero Deadlocks**: Eliminated event loop conflicts in WebSocket broadcasts
 - ✅ **100% Test Coverage**: 93/93 tests passing with complete async migration
 
-#### Breaking Changes
-
-⚠️ **All worker agent methods are now async**
-
-```python
-# Before (synchronous)
-def execute_task(task: Dict) -> Dict:
-    result = agent.execute_task(task)
-    return result
-
-# After (asynchronous)
-async def execute_task(task: Dict) -> Dict:
-    result = await agent.execute_task(task)
-    return result
-```
-
-**See [CHANGELOG.md](CHANGELOG.md) for complete migration guide.**
-
-#### Technical Details
-- **Converted to Async**: `BackendWorkerAgent`, `FrontendWorkerAgent`, `TestWorkerAgent`
-- **Updated**: `LeadAgent` now uses direct `await` (removed `run_in_executor()`)
-- **Net Change**: -115 lines of code (simpler, cleaner architecture)
-- **Performance**: 30-50% improvement in concurrent task execution
-- **Files Modified**: 19 files, +3,463 insertions, -397 deletions
-
-**Full PR**: [#11 - Convert worker agents to async/await pattern](https://github.com/frankbria/codeframe/pull/11)
+**Full PR**: [#11 - Async Worker Agents](https://github.com/frankbria/codeframe/pull/11)
 
 ---
 
@@ -88,6 +97,7 @@ async def execute_task(task: Dict) -> Dict:
 │  • Task decomposition & dependency resolution                │
 │  • Async agent coordination (await pattern)                  │
 │  • Blocker escalation (sync/async)                           │
+│  • Context management coordination                           │
 └─────────────┬──────────────┬──────────────┬─────────────────┘
               │              │              │
       ┌───────▼───┐   ┌──────▼──────┐  ┌───▼────────┐
@@ -103,10 +113,10 @@ async def execute_task(task: Dict) -> Dict:
 │                                                              │
 │  📁 Filesystem           🗄️ SQLite Database                  │
 │  ├── .codeframe/         ├── tasks & dependencies           │
-│  │   ├── state.db        ├── agent maturity tracking        │
+│  │   ├── state.db        ├── context items (tiered)         │
 │  │   ├── checkpoints/    ├── blockers & resolutions         │
-│  │   ├── memory/         ├── context items (hot/warm/cold)  │
-│  │   └── logs/           └── changelog & metrics            │
+│  │   ├── memory/         ├── changelog & metrics            │
+│  │   └── logs/           └── flash save history             │
 │  └── src/                                                    │
 └─────────────────────────┬───────────────────────────────────┘
                           │
@@ -122,29 +132,29 @@ async def execute_task(task: Dict) -> Dict:
 
 ---
 
-## Virtual Project Context System
+## Context Management System
 
-**The Innovation**: Like React's Virtual DOM, but for AI agent memory.
+**The Innovation**: Intelligent tiered memory with importance scoring for long-running autonomous sessions.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│      AGENT'S CONTEXT WINDOW                     │
+│      AGENT'S CONTEXT WINDOW (180K tokens)       │
 ├─────────────────────────────────────────────────┤
 │                                                 │
-│  🔥 HOT TIER (~20K tokens, always loaded)      │
+│  🔥 HOT TIER (importance ≥ 0.8, always loaded) │
 │  ├─ Current task spec                          │
 │  ├─ Files being edited (3-5 max)              │
 │  ├─ Latest test results only                   │
 │  ├─ Active blockers                            │
 │  └─ High-importance decisions                  │
 │                                                 │
-│  ♨️ WARM TIER (~40K tokens, on-demand)         │
+│  ♨️ WARM TIER (0.4 ≤ importance < 0.8)         │
 │  ├─ Related files (imports, deps)              │
 │  ├─ Project structure                          │
 │  ├─ Relevant PRD sections                      │
 │  └─ Code patterns/conventions                  │
 │                                                 │
-│  ❄️ COLD TIER (archived, queryable)            │
+│  ❄️ COLD TIER (importance < 0.4, archived)     │
 │  ├─ Completed tasks                            │
 │  ├─ Resolved test failures                     │
 │  ├─ Old code versions                          │
@@ -153,9 +163,18 @@ async def execute_task(task: Dict) -> Dict:
 └─────────────────────────────────────────────────┘
 ```
 
-**How it works**: Every piece of context gets an importance score (0.0-1.0). Scores decay over time, boost with access frequency. Agents hot-swap context before each invocation - only loading what matters now.
+**How it works**: Every context item gets an importance score (0.0-1.0) based on:
+- **Type Weight** (40%): TASK (1.0), CODE (0.9), ERROR (0.8), PRD_SECTION (0.7), etc.
+- **Age Decay** (40%): Exponential decay with 24-hour half-life
+- **Access Boost** (20%): 0.1 per access, capped at 0.5
 
-**Result**: 30-50% token reduction, no context pollution, long-running autonomous execution.
+**Flash Save**: When context approaches 80% of token limit (144k tokens):
+1. Create checkpoint with full context state
+2. Archive COLD tier items (delete from active context)
+3. Retain HOT and WARM tier items
+4. Achieve 30-50% token reduction
+
+**Result**: 4+ hour autonomous sessions, intelligent context pruning, full recovery from checkpoints.
 
 ---
 
@@ -507,24 +526,23 @@ See [SPRINTS.md](./SPRINTS.md) for complete sprint timeline and planning.
 
 ### Recent Milestones
 
+**✅ Sprint 7: Context Management (Complete - Nov 2025)**
+- Intelligent tiered memory system with importance scoring
+- Flash save mechanism for context pruning
+- 30-50% token reduction, 4+ hour autonomous sessions
+- [See PR #19](https://github.com/frankbria/codeframe/pull/19)
+
+**✅ Sprint 6: Human in the Loop (Complete - Nov 2025)**
+- Blocker management with real-time notifications
+- Dashboard UI for answering agent questions
+- Agent resume after blocker resolution
+- [See PR #18](https://github.com/frankbria/codeframe/pull/18)
+
 **✅ Sprint 5: Async Worker Agents (Complete - Nov 2025)**
 - Converted all worker agents to async/await pattern
 - 30-50% performance improvement in concurrent execution
 - 93/93 tests passing (100% coverage)
 - [See PR #11](https://github.com/frankbria/codeframe/pull/11)
-
-**✅ Sprint 3: Single Agent Execution (Complete - Oct 2025)**
-- Backend Worker Agent with self-correction loop
-- Test automation integration (pytest)
-- Git auto-commit with conventional commits
-- Real-time WebSocket dashboard updates
-
-**✅ Sprint 1: Hello CodeFRAME (Complete - Oct 2025)**
-- Lead Agent with Anthropic SDK integration
-- FastAPI Status Server + Next.js dashboard
-- CLI with project initialization
-
-### Next Up
 
 **✅ Sprint 4: Multi-Agent Coordination (Complete - Oct 2025)**
 - Parallel task execution across multiple agents
@@ -718,9 +736,9 @@ Built on the shoulders of giants:
 
 ## Status
 
-✅ **Sprint 5 Complete** - Async worker agents with true concurrency
+✅ **Sprint 7 Complete** - Context management with tiered importance scoring
 
-Current focus: Multi-agent coordination and Human-in-the-Loop notifications.
+Current focus: Human-in-the-Loop notifications and agent maturity.
 
 **Star** ⭐ to follow development | **Watch** 👀 for updates | **Fork** 🍴 to contribute
 

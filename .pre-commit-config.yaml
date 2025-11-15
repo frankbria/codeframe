@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: Run all tests
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: coverage-check
+        name: Enforce 80% coverage
+        entry: bash -c 'uv run pytest --cov --cov-report=term-missing --cov-fail-under=80 || (echo "❌❌❌ COVERAGE BELOW 80% ❌❌❌" && exit 1)'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: no-skip-decorators
+        name: Check for @skip abuse
+        entry: bash -c 'if grep -r "@pytest.mark.skip\|@skip" tests/; then echo "❌ @skip decorator found in tests"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
