@@ -208,16 +208,16 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 
 ### Implementation for User Story 5
 
-- [ ] T075 [US5] Expand `scripts/verify-ai-claims.sh` with shebang, color codes, exit code constants (issue #16)
-- [ ] T076 [US5] Add configuration variables to `scripts/verify-ai-claims.sh`: `COVERAGE_THRESHOLD=85`, `ARTIFACTS_DIR="artifacts/verify/$(date +%Y%m%d_%H%M%S)"` (issue #16)
-- [ ] T077 [US5] Implement Step 1 in verification script: Run test suite with pytest verbose output and JSON report to artifacts directory (issue #16)
-- [ ] T078 [US5] Implement Step 2 in verification script: Check coverage with pytest-cov, compare against 85% threshold, save HTML report to artifacts (issue #16)
-- [ ] T079 [US5] Implement Step 3 in verification script: Detect skip decorator abuse by calling `scripts/detect-skip-abuse.py` (issue #16)
-- [ ] T080 [US5] Implement Step 4 in verification script: Run code quality checks (black --check, ruff check, mypy) and save results (issue #16)
-- [ ] T081 [US5] Implement Step 5 in verification script: Generate comprehensive verification report in markdown format with emoji indicators (issue #16)
-- [ ] T082 [US5] Add command-line options to `scripts/verify-ai-claims.sh`: `--no-fail-fast`, `--skip-tests`, `--skip-coverage`, `--skip-quality`, `--help` (issue #16)
-- [ ] T083 [US5] Add performance optimizations to verification script: parallel pytest execution, caching, progress indicators (issue #16)
-- [ ] T084 [US5] Create `.gitmessage` template with AI verification checklist using Conventional Commits format (issue #16)
+- [X] T075 [US5] Expand `scripts/verify-ai-claims.sh` with shebang, color codes, exit code constants (issue #16)
+- [X] T076 [US5] Add configuration variables to `scripts/verify-ai-claims.sh`: `COVERAGE_THRESHOLD=85`, `ARTIFACTS_DIR="artifacts/verify/$(date +%Y%m%d_%H%M%S)"` (issue #16)
+- [X] T077 [US5] Implement Step 1 in verification script: Run test suite with pytest verbose output and JSON report to artifacts directory (issue #16)
+- [X] T078 [US5] Implement Step 2 in verification script: Check coverage with pytest-cov, compare against 85% threshold, save HTML report to artifacts (issue #16)
+- [X] T079 [US5] Implement Step 3 in verification script: Detect skip decorator abuse by calling `scripts/detect-skip-abuse.py` (issue #16)
+- [X] T080 [US5] Implement Step 4 in verification script: Run code quality checks (black --check, ruff check, mypy) and save results (issue #16)
+- [X] T081 [US5] Implement Step 5 in verification script: Generate comprehensive verification report in markdown format with emoji indicators (issue #16)
+- [X] T082 [US5] Add command-line options to `scripts/verify-ai-claims.sh`: `--no-fail-fast`, `--skip-tests`, `--skip-coverage`, `--skip-quality`, `--help` (issue #16)
+- [X] T083 [US5] Add performance optimizations to verification script: parallel pytest execution, caching, progress indicators (issue #16)
+- [X] T084 [US5] Create `.gitmessage` template with AI verification checklist using Conventional Commits format (issue #16)
 - [ ] T085 [US5] Add git config command to `scripts/verify-ai-claims.sh`: `git config commit.template .gitmessage` (issue #16)
 - [ ] T086 [US5] Update README.md with "AI Verification Workflow" section referencing `scripts/verify-ai-claims.sh` (issue #16)
 - [ ] T087 [US5] Update TESTING.md with "AI Verification Workflow" section with detailed steps and examples (issue #16)
@@ -239,16 +239,16 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 
 ### Implementation for User Story 6
 
-- [ ] T089 [P] [US6] Document context rules in `.claude/rules.md`: token budget (~50k), checkpoint frequency (every 5 responses) (issue #17)
-- [ ] T090 [P] [US6] Document reset triggers in `.claude/rules.md`: quality drop >10%, response count >15-20, token budget >45k, AI laziness signs (issue #17)
-- [ ] T091 [US6] Create context handoff template section in `.claude/rules.md` with all fields from issue #17: completed features, current state, next tasks, test evidence, architecture notes
-- [ ] T092 [US6] Add checkpoint system section to `.claude/rules.md` with required actions: full test run, coverage report, "continue or reset?" (issue #17)
-- [ ] T093 [US6] Integrate quality-ratchet check into `.claude/rules.md` checkpoint workflow: reference `scripts/quality-ratchet.py check` (issue #17)
-- [ ] T094 [US6] Add auto-suggestion logic to `scripts/quality-ratchet.py` check command: recommend reset when degradation detected (issue #17)
-- [ ] T095 [US6] Update CLAUDE.md "Context Management for AI Conversations" section with references to rules.md and scripts/quality-ratchet.py (issue #17)
-- [ ] T096 [US6] Create example context handoff in `.claude/rules.md` demonstrating template usage (issue #17)
-- [ ] T097 [US6] Create `scripts/quality-ratchet-example.json` with example metrics for testing (issue #17)
-- [ ] T098 [US6] Test context handoff template workflow manually (simulate long conversation with checkpoints)
+- [X] T089 [P] [US6] Document context rules in `.claude/rules.md`: token budget (~50k), checkpoint frequency (every 5 responses) (issue #17)
+- [X] T090 [P] [US6] Document reset triggers in `.claude/rules.md`: quality drop >10%, response count >15-20, token budget >45k, AI laziness signs (issue #17)
+- [X] T091 [US6] Create context handoff template section in `.claude/rules.md` with all fields from issue #17: completed features, current state, next tasks, test evidence, architecture notes
+- [X] T092 [US6] Add checkpoint system section to `.claude/rules.md` with required actions: full test run, coverage report, "continue or reset?" (issue #17)
+- [X] T093 [US6] Integrate quality-ratchet check into `.claude/rules.md` checkpoint workflow: reference `scripts/quality-ratchet.py check` (issue #17)
+- [X] T094 [US6] Add auto-suggestion logic to `scripts/quality-ratchet.py` check command: recommend reset when degradation detected (issue #17)
+- [X] T095 [US6] Update CLAUDE.md "Context Management for AI Conversations" section with references to rules.md and scripts/quality-ratchet.py (issue #17)
+- [X] T096 [US6] Create example context handoff in `.claude/rules.md` demonstrating template usage (issue #17)
+- [X] T097 [US6] Create `scripts/quality-ratchet-example.json` with example metrics for testing (issue #17)
+- [X] T098 [US6] Test context handoff template workflow manually (simulate long conversation with checkpoints)
 
 **Checkpoint**: Context management should enable smooth quality maintenance across conversation resets
 

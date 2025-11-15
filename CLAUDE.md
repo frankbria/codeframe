@@ -49,6 +49,30 @@ cd web-ui && npm test  # Frontend tests
 - **Frontend**: TypeScript 5.3+ with React, strict mode, 85%+ test coverage
 - **Conventions**: Follow existing patterns in codebase
 
+## Context Management for AI Conversations
+
+### Quality-First Development
+See `.claude/rules.md` for comprehensive context management guidelines including:
+- **Token budget**: ~50,000 tokens per conversation (warning at 45k)
+- **Checkpoint system**: Every 5 AI responses
+- **Auto-reset triggers**: Quality degradation >10%, response count >15-20, token budget >45k
+- **Context handoff template**: For smooth conversation resets
+
+### Quality Monitoring
+Use `scripts/quality-ratchet.py` to track quality metrics:
+```bash
+# Check current quality (auto-suggests reset if degradation detected)
+python scripts/quality-ratchet.py check
+
+# Record baseline metrics
+python scripts/quality-ratchet.py record --coverage 87.5 --pass-rate 100.0 --response-count 5
+
+# View quality trends
+python scripts/quality-ratchet.py show
+```
+
+**Auto-suggestion**: When quality degrades >10%, the tool recommends context reset with handoff template from `.claude/rules.md`.
+
 ## Recent Changes
 - 2025-11-14: 007-context-management - **CRITICAL ARCHITECTURAL FIX** 🎯
   * **Multi-Agent Support**: Multiple agents can now collaborate on same project
