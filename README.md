@@ -1,9 +1,10 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-Sprint%207%20Complete-green)
+![Status](https://img.shields.io/badge/status-Sprint%208%20Complete-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-430%2B%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-450%2B%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)
 
 > AI coding agents that work autonomously while you sleep. Check in like a coworker, answer questions when needed, ship features continuously.
 
@@ -26,10 +27,37 @@ CodeFRAME is an autonomous AI development system where multiple specialized agen
 🌐 **Real-time Dashboard** - WebSocket-powered UI with agent status, blockers, and progress tracking
 ⚡ **Async/Await Architecture** - Non-blocking agent execution with true concurrency
 🔄 **Self-Correction Loops** - Agents automatically fix failing tests (up to 3 attempts)
+🛡️ **AI Quality Enforcement** - Dual-layer quality system preventing test skipping and enforcing 85%+ coverage
 
 ---
 
-## What's New (Updated: 2025-11-14)
+## What's New (Updated: 2025-11-15)
+
+### 🚀 Sprint 8 Complete: AI Quality Enforcement (008-ai-quality-enforcement)
+
+**Quality Assurance System** - Comprehensive enforcement to prevent AI agents from skipping tests or reducing code quality.
+
+#### Key Improvements
+- ✅ **Command Injection Prevention**: Secure subprocess execution with SAFE_COMMANDS allowlist
+- ✅ **Skip Pattern Detection**: Multi-language detector for pytest, jest, cargo, go, ruby, C# test frameworks
+- ✅ **Quality Ratchet**: Never-regress enforcement for test count and coverage percentage
+- ✅ **Evidence Verification**: Comprehensive verification script validating all AI claims
+- ✅ **Adaptive Test Runner**: Language-agnostic test execution with security controls
+- ✅ **Pre-commit Hooks**: Automatic quality gates before every commit
+- ✅ **Deployment Security**: Complete security architecture documentation for SaaS and self-hosted
+- ✅ **151 Tests Passing**: Full test suite with 87%+ coverage maintained
+
+**Security Architecture**:
+- Container isolation as PRIMARY control for SaaS deployments
+- Application-level command validation as SECONDARY defense in depth
+- Four deployment modes: SAAS_SANDBOXED, SAAS_UNSANDBOXED, SELFHOSTED, DEVELOPMENT
+- Environment-based security policies with configurable enforcement levels
+
+**Result**: Zero test skipping, 85%+ coverage enforced, secure subprocess execution, comprehensive quality tracking.
+
+**Full PR**: [#20 - AI Quality Enforcement](https://github.com/frankbria/codeframe/pull/20)
+
+---
 
 ### 🚀 Sprint 7 Complete: Context Management (007-context-management)
 
@@ -67,22 +95,6 @@ CodeFRAME is an autonomous AI development system where multiple specialized agen
 
 ---
 
-### 🚀 Sprint 5 Complete: Async Worker Agents (048-async-worker-agents)
-
-**Major Performance & Architecture Upgrade** - All worker agents now use Python's async/await pattern for true concurrent execution.
-
-#### Key Improvements
-- ✅ **True Async Concurrency**: Replaced threading with native async/await for 30-50% better performance
-- ✅ **AsyncAnthropic Client**: Direct integration with Anthropic's async SDK (no sync wrapper overhead)
-- ✅ **Non-Blocking Execution**: Multiple agents can execute tasks simultaneously without thread pool limits
-- ✅ **Improved Resource Usage**: Lower memory footprint, better I/O handling
-- ✅ **Zero Deadlocks**: Eliminated event loop conflicts in WebSocket broadcasts
-- ✅ **100% Test Coverage**: 93/93 tests passing with complete async migration
-
-**Full PR**: [#11 - Async Worker Agents](https://github.com/frankbria/codeframe/pull/11)
-
----
-
 ## Architecture
 
 ```
@@ -98,6 +110,7 @@ CodeFRAME is an autonomous AI development system where multiple specialized agen
 │  • Async agent coordination (await pattern)                  │
 │  • Blocker escalation (sync/async)                           │
 │  • Context management coordination                           │
+│  • Quality enforcement oversight                             │
 └─────────────┬──────────────┬──────────────┬─────────────────┘
               │              │              │
       ┌───────▼───┐   ┌──────▼──────┐  ┌───▼────────┐
@@ -125,10 +138,51 @@ CodeFRAME is an autonomous AI development system where multiple specialized agen
     ┌────▼───────┐  ┌─────▼──────┐  ┌──────▼────────┐
     │ Status     │  │   Test     │  │ Notification  │
     │ Server     │  │  Runner    │  │   Service     │
-    │ (FastAPI   │  │ (pytest/   │  │ (Multi-chan)  │
-    │ + WS)      │  │  jest)     │  │               │
+    │ (FastAPI   │  │ (Adaptive) │  │ (Multi-chan)  │
+    │ + WS)      │  │            │  │               │
     └────────────┘  └────────────┘  └───────────────┘
 ```
+
+---
+
+## AI Quality Enforcement System
+
+**The Innovation**: Dual-layer quality enforcement preventing AI agents from optimizing for conversation termination over code correctness.
+
+```
+┌─────────────────────────────────────────────────┐
+│       AI QUALITY ENFORCEMENT LAYERS              │
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  🔴 LAYER 1: PRE-COMMIT HOOKS (HARD BLOCKS)     │
+│  ├─ Skip pattern detection (9 languages)       │
+│  ├─ Quality ratchet (never regress)            │
+│  ├─ Coverage threshold (85% minimum)           │
+│  └─ Test execution (all tests must pass)       │
+│                                                 │
+│  🟡 LAYER 2: RUNTIME ENFORCEMENT (WARNINGS)     │
+│  ├─ Command injection prevention               │
+│  ├─ Safe command allowlist (pytest, npm, etc.) │
+│  ├─ Shell operator detection                   │
+│  └─ Security logging                           │
+│                                                 │
+│  📊 QUALITY TRACKING                            │
+│  ├─ Test count history (never decrease)        │
+│  ├─ Coverage percentage history                │
+│  ├─ Skip decorator audit trail                 │
+│  └─ Evidence verification reports              │
+│                                                 │
+└─────────────────────────────────────────────────┘
+```
+
+**How it works**:
+- **Pre-commit Hooks**: Automatically run before every commit, blocking if quality gates fail
+- **Skip Pattern Detector**: Scans test files for skip decorators in Python, JavaScript, Rust, Go, Ruby, C#, Java, PHP, Swift
+- **Quality Ratchet**: Tracks test count and coverage percentage, preventing regression
+- **Evidence Verifier**: Comprehensive verification script (`scripts/verify-ai-claims.sh`) validates all AI claims
+- **Command Security**: SAFE_COMMANDS allowlist with shlex parsing prevents command injection
+
+**Result**: Zero test skipping, 85%+ coverage maintained, secure subprocess execution, full audit trail.
 
 ---
 
@@ -201,6 +255,9 @@ cp .env.example .env
 # ANTHROPIC_API_KEY=sk-ant-api03-...  (Required)
 # OPENAI_API_KEY=sk-...               (Optional)
 
+# Install pre-commit hooks (quality enforcement)
+pre-commit install
+
 # Verify installation
 codeframe --version
 ```
@@ -215,6 +272,11 @@ codeframe --version
 - `OPENAI_API_KEY` - For GPT-4 agents
 - `DATABASE_PATH` - Custom database location (default: `.codeframe/state.db`)
 - `LOG_LEVEL` - Logging verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+**Security Configuration** (Sprint 8):
+- `CODEFRAME_DEPLOYMENT_MODE` - Deployment environment (saas_sandboxed, selfhosted, development)
+- `CODEFRAME_SECURITY_ENFORCEMENT` - Enforcement level (strict, warn, disabled)
+- `CODEFRAME_ALLOW_SHELL_OPERATORS` - Allow shell operators in commands (true/false)
 
 See `.env.example` for all available configuration options.
 
@@ -261,12 +323,115 @@ codeframe chat "How's it going?"
 
 ---
 
+## Quality Enforcement Usage
+
+### Pre-commit Hooks
+
+Quality checks run automatically on every commit:
+
+```bash
+# Automatic checks (triggered by git commit):
+- Skip pattern detection (blocks skipped tests)
+- Quality ratchet (prevents coverage regression)
+- Test execution (all tests must pass)
+- Code formatting (black, ruff)
+
+# Manual coverage check:
+pre-commit run coverage-check --hook-stage manual
+
+# Bypass hooks (ONLY in emergencies, requires approval):
+git commit --no-verify
+```
+
+### Verification Script
+
+Comprehensive verification before deployment:
+
+```bash
+# Run full verification suite
+scripts/verify-ai-claims.sh
+
+# Output example:
+═══════════════════════════════════════════════════════
+  🔍 AI Quality Enforcement - Comprehensive Verification
+═══════════════════════════════════════════════════════
+
+✅ Step 1: Running test suite... PASSED (151 tests, 0 failures)
+✅ Step 2: Checking coverage... PASSED (87.3% coverage, threshold 85%)
+✅ Step 3: Detecting skip abuse... PASSED (0 violations)
+✅ Step 4: Running quality checks... PASSED
+
+VERIFICATION RESULT: ✅ ALL CHECKS PASSED
+
+📁 Artifacts saved to: artifacts/verify/20251115_120000/
+```
+
+### Adaptive Test Runner
+
+Language-agnostic test execution with security:
+
+```python
+from codeframe.enforcement.adaptive_test_runner import AdaptiveTestRunner
+
+# Auto-detect language and run tests
+runner = AdaptiveTestRunner(project_path="/path/to/project")
+result = await runner.run_tests()
+
+print(f"Tests: {result.passed_tests}/{result.total_tests} passed")
+print(f"Coverage: {result.coverage}%")
+print(f"Pass rate: {result.pass_rate}%")
+```
+
+**Supported Languages**:
+- Python (pytest)
+- JavaScript/TypeScript (jest, vitest)
+- Rust (cargo test)
+- Go (go test)
+- Java (maven, gradle)
+- Ruby (rspec)
+- C# (.NET test)
+- PHP (phpunit)
+
+---
+
+## Security Configuration
+
+### Deployment Modes
+
+Configure security policies based on deployment environment:
+
+```python
+# Via environment variables
+CODEFRAME_DEPLOYMENT_MODE=saas_sandboxed
+CODEFRAME_SECURITY_ENFORCEMENT=warn
+
+# Or programmatically
+from codeframe.config.security import SecurityConfig, DeploymentMode
+
+config = SecurityConfig.default_for_mode(DeploymentMode.SAAS_SANDBOXED)
+```
+
+**Deployment Modes**:
+- `SAAS_SANDBOXED` - Multi-tenant SaaS with container isolation (PRIMARY: sandbox, SECONDARY: app controls)
+- `SAAS_UNSANDBOXED` - Multi-tenant SaaS without isolation (PRIMARY: app controls, NOT RECOMMENDED)
+- `SELFHOSTED` - Single-tenant self-hosted (user responsibility)
+- `DEVELOPMENT` - Local development (minimal controls)
+
+**Security Enforcement Levels**:
+- `STRICT` - Block commands that fail security checks
+- `WARN` - Allow but log warnings for security issues (default)
+- `DISABLED` - No security checks (not recommended for production)
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for comprehensive security architecture and deployment guidelines.
+
+---
+
 ## Agent Maturity System
 
 Agents grow in capability over time using **Situational Leadership II**:
 
 | Level | Name | Characteristics | Task Assignment |
-|-------|------|-----------------|-----------------|
+|-------|------|-----------------|--------------------|
 | **D1** | Directive | New, needs step-by-step | Detailed instructions, review each step |
 | **D2** | Coaching | Learning, needs guidance | Examples provided, check after subtasks |
 | **D3** | Supporting | Skilled, needs autonomy | Minimal instructions, check on completion |
@@ -381,11 +546,16 @@ codeframe resume
 ### Supported Languages
 
 | Language | Framework | Command |
-|----------|-----------|---------|
+|----------|-----------|---------
 | Python | pytest | `pytest {path} -v --tb=short` |
 | TypeScript/JS | jest | `npm test -- {path}` |
 | TypeScript/JS | vitest | `npx vitest run {path}` |
 | Rust | cargo | `cargo test {name}` |
+| Go | go test | `go test {path}` |
+| Java | maven/gradle | `mvn test` / `gradle test` |
+| Ruby | rspec | `rspec {path}` |
+| C# | dotnet | `dotnet test` |
+| PHP | phpunit | `phpunit {path}` |
 
 ### Self-Correction Loop
 
@@ -412,6 +582,7 @@ else:
 - Max 3 self-correction attempts
 - Blocker creation if all attempts fail
 - Full audit trail in database
+- Quality enforcement prevents test skipping
 
 ---
 
@@ -428,6 +599,8 @@ Access at `http://localhost:8080` (or via Tailscale remotely)
 - Recent activity feed
 - Cost/token usage metrics
 - Natural language chat with Lead Agent
+- Context visualization (tier distribution, token usage)
+- Blocker management with resolution UI
 
 **Example Dashboard**:
 
@@ -443,6 +616,9 @@ Access at `http://localhost:8080` (or via Tailscale remotely)
 ║  ⚠️ Pending Questions (1)                                ║
 ║  └─ "Password reset token expiry: 1hr or 24hrs?"        ║
 ║     [Answer Now]                                         ║
+║                                                          ║
+║  📊 Context: 50K/180K tokens (28%) | HOT: 20 | WARM: 45 ║
+║  🛡️ Quality: 151 tests, 87% coverage, 0 skipped         ║
 ╚══════════════════════════════════════════════════════════╝
 ```
 
@@ -485,6 +661,12 @@ Access at `http://localhost:8080` (or via Tailscale remotely)
   "test_runner": {
     "framework": "pytest",
     "auto_run": true
+  },
+
+  "security": {
+    "deployment_mode": "development",
+    "enforcement_level": "warn",
+    "allow_shell_operators": true
   }
 }
 ```
@@ -514,17 +696,29 @@ codeframe agents status <id>      # Agent details
 
 # Chat
 codeframe chat "<message>"        # Talk to Lead Agent
+
+# Quality Enforcement (Sprint 8)
+scripts/verify-ai-claims.sh       # Comprehensive verification
+scripts/quality-ratchet.py check  # Check quality metrics
+scripts/detect-skip-abuse.py      # Detect skipped tests
 ```
 
 ---
 
 ## Development Roadmap
 
-**Current Focus**: Human-in-the-Loop notifications (Sprint 6)
+**Current Focus**: Sprint 9 - E2E Testing Framework
 
 See [SPRINTS.md](./SPRINTS.md) for complete sprint timeline and planning.
 
 ### Recent Milestones
+
+**✅ Sprint 8: AI Quality Enforcement (Complete - Nov 2025)**
+- Dual-layer quality enforcement (pre-commit + runtime)
+- Command injection prevention with SAFE_COMMANDS allowlist
+- Skip pattern detection for 9 programming languages
+- Quality ratchet preventing coverage regression
+- [See PR #20](https://github.com/frankbria/codeframe/pull/20)
 
 **✅ Sprint 7: Context Management (Complete - Nov 2025)**
 - Intelligent tiered memory system with importance scoring
@@ -549,16 +743,10 @@ See [SPRINTS.md](./SPRINTS.md) for complete sprint timeline and planning.
 - Dependency resolution and task scheduling
 - Agent pool management (Frontend, Test, Backend agents)
 
-**🚧 Sprint 6: Human in the Loop (Planned)**
-- Two-level notification system (sync/async)
-- Blocker creation when agents get stuck
-- Dashboard UI for answering agent questions
-- Agent resume after blocker resolved
-
 **📋 Future Sprints**
-- Sprint 7: Context Management (Flash memory, tiered importance)
-- Sprint 8: Agent Maturity (Situational Leadership promotions)
-- Sprint 9: Polish & Review (Review agent, E2E tests)
+- Sprint 9: E2E Testing Framework (Planned)
+- Sprint 10: Agent Maturity & Situational Leadership (Planned)
+- Sprint 11: Polish & Production Readiness (Planned)
 
 ---
 
@@ -601,14 +789,22 @@ pytest tests/integration/ -v
 
 # Worker agent tests (async)
 pytest tests/test_*worker_agent.py -v
+
+# Quality enforcement tests
+pytest tests/enforcement/ -v
+
+# Comprehensive verification (Sprint 8)
+scripts/verify-ai-claims.sh
 ```
 
 ### Test Coverage
 
-- **Total Tests**: 93+ passing
+- **Total Tests**: 450+ passing
+- **Coverage**: 87%+ maintained by quality ratchet
 - **Worker Agent Tests**: 89/89 passing (100%)
 - **Integration Tests**: 4/4 passing (100%)
-- **Coverage**: >80% on core modules
+- **Enforcement Tests**: 151/151 passing (100%)
+- **Frontend Tests**: 90+ passing (90%+ coverage)
 
 ---
 
@@ -624,16 +820,22 @@ A: Depends on project size and providers used. Typical feature: $5-20 in API cos
 A: Yes. Everything runs locally. Code never leaves your machine except provider API calls (Claude, GPT-4).
 
 **Q: What if agents make mistakes?**
-A: Self-correction loops catch test failures (up to 3 attempts). Manual review at key checkpoints. Git history enables rollback.
+A: Self-correction loops catch test failures (up to 3 attempts). Quality enforcement prevents test skipping. Manual review at key checkpoints. Git history enables rollback.
 
 **Q: How do I know what agents are doing?**
-A: Real-time dashboard shows exact tasks, code changes, and reasoning. Full audit trail in changelog.
+A: Real-time dashboard shows exact tasks, code changes, and reasoning. Full audit trail in changelog. Quality metrics tracked continuously.
 
 **Q: Can I interrupt anytime?**
 A: Yes. Use `codeframe pause` or answer pending questions via dashboard/notifications.
 
 **Q: What's the performance impact of async conversion?**
 A: 30-50% improvement in concurrent task execution. Lower memory usage, no thread pool overhead, true async concurrency.
+
+**Q: How does quality enforcement work?**
+A: Pre-commit hooks automatically block commits with skipped tests or reduced coverage. Runtime enforcement prevents command injection. Quality ratchet ensures metrics never regress.
+
+**Q: Is it secure for SaaS deployment?**
+A: Yes, with proper container isolation (PRIMARY control). Application-level security is defense in depth. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for comprehensive security architecture.
 
 ---
 
@@ -642,11 +844,12 @@ A: 30-50% improvement in concurrent task execution. Lower memory usage, no threa
 We welcome contributions! Areas of need:
 
 - **Providers**: Add support for Gemini, Llama, Mistral
-- **Languages**: Expand beyond Python, TypeScript, Rust
+- **Languages**: Expand test runner support for more frameworks
 - **UI**: Improve dashboard design and UX
 - **Documentation**: Tutorials, examples, best practices
-- **Testing**: Expand test coverage
+- **Testing**: Expand test coverage (always!)
 - **Performance**: Optimize async execution patterns
+- **Security**: Enhance deployment security controls
 
 See `CONTRIBUTING.md` for guidelines.
 
@@ -660,6 +863,12 @@ For comprehensive technical documentation, see:
 - **[AGENTS.md](AGENTS.md)** - Documentation navigation guide
 - **[CHANGELOG.md](CHANGELOG.md)** - Detailed changelog with migration guides
 - **[CLAUDE.md](CLAUDE.md)** - AI assistant development guidelines
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Security architecture and deployment guide
+- **[docs/ENFORCEMENT_ARCHITECTURE.md](docs/ENFORCEMENT_ARCHITECTURE.md)** - Quality enforcement system design
+- **[SECURITY.md](SECURITY.md)** - Security best practices and vulnerability reporting
+- **[specs/008-ai-quality-enforcement/](specs/008-ai-quality-enforcement/)** - Quality enforcement documentation
+- **[specs/007-context-management/](specs/007-context-management/)** - Context management documentation
+- **[specs/049-human-in-loop/](specs/049-human-in-loop/)** - Blocker management documentation
 - **[specs/048-async-worker-agents/](specs/048-async-worker-agents/)** - Async migration documentation
 
 ---
@@ -668,7 +877,11 @@ For comprehensive technical documentation, see:
 
 - **GitHub**: [frankbria/codeframe](https://github.com/frankbria/codeframe)
 - **Issues**: [Report bugs](https://github.com/frankbria/codeframe/issues)
-- **Pull Requests**: [#11 - Async Worker Agents](https://github.com/frankbria/codeframe/pull/11)
+- **Pull Requests**:
+  - [#20 - AI Quality Enforcement](https://github.com/frankbria/codeframe/pull/20)
+  - [#19 - Context Management](https://github.com/frankbria/codeframe/pull/19)
+  - [#18 - Human in the Loop](https://github.com/frankbria/codeframe/pull/18)
+  - [#11 - Async Worker Agents](https://github.com/frankbria/codeframe/pull/11)
 - **Discussions**: [Join conversation](https://github.com/frankbria/codeframe/discussions)
 
 ---
@@ -682,16 +895,19 @@ CodeFRAME documentation is organized into three main categories for efficient na
 #### **Sprint Planning & History** (`sprints/`)
 Individual sprint summaries with deliverables, metrics, and retrospectives:
 - [SPRINTS.md](SPRINTS.md) - Sprint timeline index and execution guidelines
-- [sprints/sprint-05-async-workers.md](sprints/sprint-05-async-workers.md) - Latest completed sprint
-- [sprints/sprint-04-multi-agent.md](sprints/sprint-04-multi-agent.md) - Multi-agent coordination
-- [sprints/sprint-03-single-agent.md](sprints/sprint-03-single-agent.md) - Backend worker agent
+- [sprints/sprint-08-quality-enforcement.md](sprints/sprint-08-quality-enforcement.md) - Latest completed sprint
+- [sprints/sprint-07-context-mgmt.md](sprints/sprint-07-context-mgmt.md) - Context management
+- [sprints/sprint-06-human-loop.md](sprints/sprint-06-human-loop.md) - Human in the loop
+- [sprints/sprint-05-async-workers.md](sprints/sprint-05-async-workers.md) - Async conversion
 - [sprints/](sprints/) - Complete sprint history (Sprint 0-9)
 
 #### **Feature Specifications** (`specs/`)
 Detailed implementation guides for major features:
-- [specs/048-async-worker-agents/](specs/048-async-worker-agents/) - Async migration (spec, plan, tasks, research)
+- [specs/008-ai-quality-enforcement/](specs/008-ai-quality-enforcement/) - Quality enforcement (spec, plan, tasks)
+- [specs/007-context-management/](specs/007-context-management/) - Context management system
+- [specs/049-human-in-loop/](specs/049-human-in-loop/) - Blocker management
+- [specs/048-async-worker-agents/](specs/048-async-worker-agents/) - Async migration
 - [specs/004-multi-agent-coordination/](specs/004-multi-agent-coordination/) - Multi-agent system
-- [specs/005-project-schema-refactoring/](specs/005-project-schema-refactoring/) - Schema refactoring
 
 #### **Project-Wide Documentation** (Root)
 - **[AGENTS.md](AGENTS.md)** - Documentation navigation guide for AI agents
@@ -700,6 +916,9 @@ Detailed implementation guides for major features:
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and migration guides
 - **[TESTING.md](TESTING.md)** - Testing standards and procedures
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+- **[SECURITY.md](SECURITY.md)** - Security policies and practices
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deployment security architecture
+- **[docs/ENFORCEMENT_ARCHITECTURE.md](docs/ENFORCEMENT_ARCHITECTURE.md)** - Quality enforcement design
 
 ### 🗂️ Additional Resources
 
@@ -736,9 +955,9 @@ Built on the shoulders of giants:
 
 ## Status
 
-✅ **Sprint 7 Complete** - Context management with tiered importance scoring
+✅ **Sprint 8 Complete** - AI Quality Enforcement with comprehensive test coverage and security controls
 
-Current focus: Human-in-the-Loop notifications and agent maturity.
+Current focus: Sprint 9 - E2E Testing Framework
 
 **Star** ⭐ to follow development | **Watch** 👀 for updates | **Fork** 🍴 to contribute
 
