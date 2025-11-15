@@ -1,7 +1,7 @@
 # CodeFRAME Sprint Planning
 
-**Current Sprint**: [Sprint 9: E2E Testing Framework](#sprint-9-e2e-testing-framework--next) 📋 Next
-**Project Status**: Sprint 8 Complete - AI Quality Enforcement Delivered
+**Current Sprint**: [Sprint 9: MVP Completion](#sprint-9-mvp-completion--next) 📋 Next
+**Project Status**: Sprint 8 Complete - Moving to MVP Completion (Sprint 9)
 
 ---
 
@@ -19,8 +19,9 @@
 | 6 | Human in the Loop | ✅ Complete | Week 6 | Blocker creation, Resolution UI, Agent resume | PR #18 |
 | 7 | Context Management | ✅ Complete | Week 7 | Flash memory, Tier assignment, Context pruning | PR #19 |
 | 8 | AI Quality Enforcement | ✅ Complete | Week 8 | Dual-layer architecture, multi-language enforcement, quality tracking | PR #20 |
-| 9 | E2E Testing Framework | 📋 Planned | Week 9 | Playwright setup, user workflow tests, CI integration | Planned |
-| 10 | Final Polish | 📋 Planned | Week 10 | Review agent, Documentation, Performance tuning | Planned |
+| 9 | MVP Completion | 📋 Current | Week 9 | Review Agent, Auto-commit, Linting, Desktop notifications, Index fix | Planned |
+| 10 | E2E Testing Framework | 📋 Planned | Week 10 | Playwright setup, user workflow tests, CI integration | Planned |
+| 11 | Final Polish | 📋 Planned | Week 11 | Documentation, Performance tuning, Production readiness | Planned |
 | ∞ | Agent Maturity | 🔮 Future | TBD | Maturity levels, Promotion logic, Checkpoints | Future |
 
 ---
@@ -28,7 +29,7 @@
 ## Quick Links
 
 ### Active Development
-- 📍 [Current Sprint: Sprint 9](#sprint-9-e2e-testing-framework--next) - E2E Testing Framework (Planned)
+- 📍 [Current Sprint: Sprint 9](#sprint-9-mvp-completion--next) - MVP Completion (Planned)
 - 🔍 [Beads Issue Tracker](.beads/) - Run `bd list` for current tasks
 - 📚 [Documentation Guide](AGENTS.md) - How to navigate project docs
 
@@ -44,9 +45,10 @@
 - [Sprint 0: Foundation](sprints/sprint-00-foundation.md)
 
 ### Planning & Architecture
-- [Future Roadmap](#future-sprints) - Sprints 8-10 overview
-- [Architecture Spec](CODEFRAME_SPEC.md) - Overall system design
+- [Future Roadmap](#future-sprints) - Sprints 9-11 overview
+- [Architecture Spec](CODEFRAME_SPEC.md) - Overall system design (9 corrections pending)
 - [Feature Specifications](specs/) - Detailed feature implementation guides
+- [Spec Audit 2025-11-15](docs/spec-audit-2025-11-15.md) - Implementation vs design analysis
 
 ### Development Standards
 - [Agent Documentation Guide](AGENTS.md) - How to navigate docs
@@ -311,7 +313,34 @@
 
 ## Future Sprints
 
-### Sprint 9: E2E Testing Framework 📋 (Next)
+### Sprint 9: MVP Completion 📋 (Next)
+
+**Goal**: Complete critical MVP features before comprehensive E2E testing
+
+**Planned Features**:
+- **Review Agent**: Code quality checks and security scanning
+- **Auto-Commit Integration**: Automatic git commits after task completion
+- **Linting Integration**: ruff (Python) and eslint (TypeScript) quality gates
+- **Desktop Notifications**: Native notifications for SYNC blockers
+- **Composite Index Fix**: Performance optimization for context queries
+
+**Success Criteria**:
+- Review Agent integrated into workflow step 11
+- Every completed task creates a git commit
+- Linting runs as quality gate before task completion
+- Desktop notifications work on macOS/Linux/Windows
+- Context query performance improves by 50%+
+- All features have ≥85% test coverage
+
+**Status**: Planned
+
+**Estimated Effort**: 5.5-7.5 days
+
+**Links**: [Sprint Plan](sprints/sprint-09-mvp-completion.md)
+
+---
+
+### Sprint 10: E2E Testing Framework 📋
 
 **Goal**: Comprehensive end-to-end testing with Playwright
 
@@ -320,9 +349,10 @@
 - User workflow tests:
   - New project creation flow
   - Socratic discovery conversation
-  - Agent task execution
+  - Agent task execution with review
   - Blocker creation and resolution
   - Context management operations
+  - Auto-commit and linting workflow
 - CI/CD integration
 - Visual regression testing
 - Performance benchmarking
@@ -340,22 +370,22 @@
 
 ---
 
-### Sprint 10: Final Polish 📋
+### Sprint 11: Final Polish 📋
 
 **Goal**: Production readiness with comprehensive quality checks
 
 **Planned Features**:
-- Review Agent for code quality checks
 - Documentation completeness audit
 - Cost tracking and optimization
 - Performance tuning and benchmarking
 - Security audit
 - User experience polish
 - Production deployment guide
+- Final bug fixes and edge cases
 
 **Status**: Planned
 
-**Links**: [Sprint Plan](sprints/sprint-10-final-polish.md)
+**Links**: [Sprint Plan](sprints/sprint-11-final-polish.md)
 
 ---
 
@@ -486,7 +516,7 @@ Add retrospective to sprint file in `sprints/sprint-NN-name.md`
 ## Project Metrics
 
 ### Cumulative Progress
-- **Sprints Completed**: 8 of 11 (73%) - Sprints 0-8 complete
+- **Sprints Completed**: 8 of 12 (67%) - Sprints 0-8 complete
 - **Features Delivered**: 50+ major features
 - **Tests Written**: 450+ tests (151 enforcement + 300+ core)
 - **Code Coverage**: 87%+ average (enforced by quality ratchet)
@@ -529,14 +559,27 @@ For detailed navigation guidance, see [AGENTS.md](AGENTS.md).
 
 ## Change Log
 
-### 2025-11-15
+### 2025-11-15 (PM)
+- **Sprint Planning Update**: Restructured sprint roadmap based on spec audit
+  - Created Sprint 9: MVP Completion (5 critical features)
+  - Moved E2E Testing to Sprint 10 (was Sprint 9)
+  - Moved Final Polish to Sprint 11 (was Sprint 10)
+  - Updated cumulative progress: 8 of 12 sprints (67%)
+- **Sprint 9 Features**:
+  - Review Agent implementation
+  - Auto-commit integration
+  - Linting enforcement (ruff, eslint)
+  - Desktop notifications
+  - Composite index performance fix
+- **Documentation**: Created comprehensive sprint plan in `sprints/sprint-09-mvp-completion.md`
+
+### 2025-11-15 (AM)
 - Updated Sprint 8 status to Complete (merged PR #20)
 - Added security enhancements to Sprint 8 deliverables:
   - Command injection prevention
   - Deployment mode configuration
   - Security architecture documentation
 - Updated test metrics: 450+ total tests (151 enforcement + 300+ core)
-- Updated cumulative progress: 8 sprints complete (73%)
 - Added security metrics to quality tracking
 
 ### 2025-11-08
