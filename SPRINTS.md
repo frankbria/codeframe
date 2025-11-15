@@ -1,6 +1,6 @@
 # CodeFRAME Sprint Planning
 
-**Current Sprint**: [Sprint 9: E2E Testing Framework](#sprint-9-e2e-testing-framework-) 📋 Next
+**Current Sprint**: [Sprint 9: E2E Testing Framework](#sprint-9-e2e-testing-framework--next) 📋 Next
 **Project Status**: Sprint 8 Complete - AI Quality Enforcement Delivered
 
 ---
@@ -28,7 +28,7 @@
 ## Quick Links
 
 ### Active Development
-- 📍 [Current Sprint: Sprint 9](#sprint-9-e2e-testing-framework-) - E2E Testing Framework (Planned)
+- 📍 [Current Sprint: Sprint 9](#sprint-9-e2e-testing-framework--next) - E2E Testing Framework (Planned)
 - 🔍 [Beads Issue Tracker](.beads/) - Run `bd list` for current tasks
 - 📚 [Documentation Guide](AGENTS.md) - How to navigate project docs
 
