@@ -182,8 +182,8 @@ pre-commit install
 ### Step 4: Create Verification Script (5 min)
 
 ```bash
-mkdir -p tools
-cat > tools/verify-ai-claims.sh << 'EOF'
+mkdir -p scripts
+cat > scripts/verify-ai-claims.sh << 'EOF'
 #!/bin/bash
 # Run this after AI claims task is complete
 
@@ -218,7 +218,7 @@ echo ""
 echo "✅ All verifications passed"
 EOF
 
-chmod +x tools/verify-ai-claims.sh
+chmod +x scripts/verify-ai-claims.sh
 ```
 
 ### Step 5: Usage Pattern (5 min)
@@ -230,7 +230,7 @@ chmod +x tools/verify-ai-claims.sh
 claude-code "Read .claude/rules.md FIRST. Then implement [feature] using TDD."
 
 # 2. After AI claims done:
-./tools/verify-ai-claims.sh
+./scripts/verify-ai-claims.sh
 
 # 3. If verification fails:
 claude-code "Verification failed. Here's the actual output: [paste]. Fix it."
@@ -266,7 +266,7 @@ my-project/
 ├── tests/                          # Your tests
 │   ├── __init__.py
 │   └── test_template.py            # Template for AI
-├── tools/
+├── scripts/
 │   ├── verify-ai-claims.sh         # Post-completion check
 │   ├── detect-skip-abuse.py        # Skip decorator detector
 │   └── quality-ratchet.py          # Context degradation detector
@@ -279,7 +279,7 @@ my-project/
 
 ```bash
 # Create project structure
-mkdir -p my-project/{src,tests,tools,.claude/prompt_templates}
+mkdir -p my-project/{src,tests,scripts,.claude/prompt_templates}
 cd my-project
 
 # Initialize git
@@ -403,14 +403,12 @@ If you attempt the same fix 3 times:
 4. Suggest alternative approaches
 
 Don't spin in loops.
-EOF
-```
 
-#### 3. Create Detection Scripts
+### 3. Create Detection Scripts
 
-```bash
-# Skip Abuse Detector
-cat > tools/detect-skip-abuse.py << 'EOF'
+#### Skip Abuse Detector
+``` bash
+cat > scripts/detect-skip-abuse.py << 'EOF'
 #!/usr/bin/env python3
 """
 Detect @skip decorator abuse in test files.
@@ -497,10 +495,12 @@ if __name__ == "__main__":
     main()
 EOF
 
-chmod +x tools/detect-skip-abuse.py
+chmod +x scripts/detect-skip-abuse.py
+```
 
-# Quality Ratchet
-cat > tools/quality-ratchet.py << 'EOF'
+#### Quality Ratchet
+```bash
+cat > scripts/quality-ratchet.py << 'EOF'
 #!/usr/bin/env python3
 """
 Track code quality metrics across AI conversation.
@@ -687,7 +687,7 @@ if __name__ == "__main__":
     main()
 EOF
 
-chmod +x tools/quality-ratchet.py
+chmod +x scripts/quality-ratchet.py
 ```
 
 #### 4. Enhanced Pre-commit Configuration
@@ -716,7 +716,7 @@ repos:
       # Skip decorator detection
       - id: no-skip-abuse
         name: Detect @skip decorator abuse
-        entry: python tools/detect-skip-abuse.py
+        entry: python scripts/detect-skip-abuse.py
         language: system
         pass_filenames: false
         always_run: true
@@ -916,7 +916,7 @@ EOF
 #### 7. Verification Script (Enhanced)
 
 ```bash
-cat > tools/verify-ai-claims.sh << 'EOF'
+cat > scripts/verify-ai-claims.sh << 'EOF'
 #!/bin/bash
 # Enhanced verification script
 # Run this after AI claims task is complete
@@ -959,7 +959,7 @@ echo ""
 
 # 3. Check for skip decorators
 echo "🔍 Step 3: Checking for @skip abuse..."
-python tools/detect-skip-abuse.py
+python scripts/detect-skip-abuse.py
 SKIP_EXIT_CODE=$?
 
 if [ $SKIP_EXIT_CODE -ne 0 ]; then
@@ -993,7 +993,7 @@ echo ""
 cat /tmp/test_output.txt
 EOF
 
-chmod +x tools/verify-ai-claims.sh
+chmod +x scripts/verify-ai-claims.sh
 ```
 
 #### 8. Create README
@@ -1029,7 +1029,7 @@ This project uses AI-assisted development with strict quality controls.
 claude-code "Read .claude/rules.md. Implement [feature] using TDD."
 
 # 2. After AI claims completion
-./tools/verify-ai-claims.sh
+./scripts/verify-ai-claims.sh
 
 # 3. If issues found
 claude-code "Verification failed: [paste output]. Fix these issues."
@@ -1043,12 +1043,12 @@ git commit
 
 Check code quality trends:
 ```bash
-python tools/quality-ratchet.py stats
+python scripts/quality-ratchet.py stats
 ```
 
 Record quality checkpoint:
 ```bash
-python tools/quality-ratchet.py record --response-count 5
+python scripts/quality-ratchet.py record --response-count 5
 ```
 
 ## Testing
@@ -1169,7 +1169,7 @@ pytest --cov --cov-report=term-missing
 # 5. Add full enforcement (from Complete Implementation)
 
 # 6. Test that it works
-./tools/verify-ai-claims.sh
+./scripts/verify-ai-claims.sh
 
 # 7. Merge to main
 git checkout main
@@ -1191,7 +1191,7 @@ git merge add-ai-enforcement
 - [ ] Create .claude/rules.md
 - [ ] Add pyproject.toml (with appropriate threshold)
 - [ ] Create .pre-commit-config.yaml
-- [ ] Add tools/verify-ai-claims.sh
+- [ ] Add scripts/verify-ai-claims.sh
 - [ ] Create .gitmessage
 
 ### Phase 3: Fix Existing Issues (if using Option B)
@@ -1253,7 +1253,7 @@ AI agents commonly:
 - [ ] Add skip decorator detection
 
 ### 4. Create Verification Scripts
-- [ ] Create `tools/verify-ai-claims.sh`
+- [ ] Create `scripts/verify-ai-claims.sh`
 - [ ] Make executable with proper permissions
 - [ ] Test script with current codebase
 
@@ -1288,7 +1288,7 @@ AI agents sometimes add @skip decorators to failing tests instead of fixing them
 ## Tasks
 
 ### 1. Create Detection Script
-- [ ] Create `tools/detect-skip-abuse.py`
+- [ ] Create `scripts/detect-skip-abuse.py`
 - [ ] Parse Python AST to find skip decorators
 - [ ] Check for justification comments
 - [ ] Report file, line, and function name
@@ -1345,7 +1345,7 @@ As AI conversations grow longer:
 ## Tasks
 
 ### 1. Quality Tracking Script
-- [ ] Create `tools/quality-ratchet.py`
+- [ ] Create `scripts/quality-ratchet.py`
 - [ ] Track metrics: coverage %, test pass rate, response count
 - [ ] Store history in `.claude/quality_history.json`
 - [ ] Implement degradation detection algorithm
@@ -1471,7 +1471,7 @@ Create comprehensive verification scripts that validate AI claims with detailed 
 ## Tasks
 
 ### 1. Enhanced Verification Script
-- [ ] Expand `tools/verify-ai-claims.sh`
+- [ ] Expand `scripts/verify-ai-claims.sh`
 - [ ] Add multi-step verification process
 - [ ] Generate detailed reports
 - [ ] Save artifacts for review
@@ -1505,7 +1505,7 @@ Create comprehensive verification scripts that validate AI claims with detailed 
 ## Verification Flow
 
 ```bash
-./tools/verify-ai-claims.sh
+./scripts/verify-ai-claims.sh
   → Run tests
   → Check coverage
   → Detect skip abuse
@@ -1667,7 +1667,7 @@ git commit -m "Add skipped test"
 echo "Tests pass!" > /tmp/ai_claim.txt
 
 # Run verification
-./tools/verify-ai-claims.sh
+./scripts/verify-ai-claims.sh
 # Should show actual test results, not just claim
 ```
 
@@ -1747,11 +1747,11 @@ jobs:
       
       - name: Run verification
         run: |
-          ./tools/verify-ai-claims.sh
+          ./scripts/verify-ai-claims.sh
       
       - name: Check quality trends
         run: |
-          python tools/quality-ratchet.py check
+          python scripts/quality-ratchet.py check
       
       - name: Upload coverage report
         uses: codecov/codecov-action@v3
@@ -1799,7 +1799,7 @@ omit = [
 claude-code "Before claiming done:
 1. Run: pytest -v --cov --cov-report=term-missing
 2. Paste FULL output
-3. Run: ./tools/verify-ai-claims.sh
+3. Run: ./scripts/verify-ai-claims.sh
 4. Paste FULL output
 5. Only then can you claim completion"
 
@@ -1810,14 +1810,14 @@ claude-code "Before claiming done:
 
 ```bash
 # Check history
-python tools/quality-ratchet.py stats
+python scripts/quality-ratchet.py stats
 
 # If baseline is wrong, reset
-python tools/quality-ratchet.py reset
+python scripts/quality-ratchet.py reset
 
 # Record new baseline
 pytest --cov
-python tools/quality-ratchet.py record --response-count 1
+python scripts/quality-ratchet.py record --response-count 1
 ```
 
 ---

@@ -1,0 +1,60 @@
+{
+  "metrics": [
+    {
+      "timestamp": "2025-11-15T10:00:00",
+      "coverage_percentage": 87.5,
+      "test_pass_rate": 100.0,
+      "response_count": 5,
+      "context_token_usage": 12000
+    },
+    {
+      "timestamp": "2025-11-15T10:30:00",
+      "coverage_percentage": 89.2,
+      "test_pass_rate": 100.0,
+      "response_count": 10,
+      "context_token_usage": 25000
+    },
+    {
+      "timestamp": "2025-11-15T11:00:00",
+      "coverage_percentage": 91.8,
+      "test_pass_rate": 100.0,
+      "response_count": 15,
+      "context_token_usage": 38000
+    },
+    {
+      "timestamp": "2025-11-15T11:30:00",
+      "coverage_percentage": 88.3,
+      "test_pass_rate": 97.5,
+      "response_count": 20,
+      "context_token_usage": 47000
+    }
+  ],
+  "baseline": {
+    "coverage_percentage": 87.5,
+    "test_pass_rate": 100.0,
+    "response_count": 5
+  },
+  "thresholds": {
+    "coverage_degradation_percentage": 10.0,
+    "test_pass_rate_degradation_percentage": 10.0,
+    "max_response_count": 20,
+    "token_usage_warning_threshold": 45000,
+    "token_usage_max": 50000
+  },
+  "analysis": {
+    "description": "Example quality metrics showing gradual improvement followed by slight degradation",
+    "notes": [
+      "Metrics 1-3 show healthy improvement: coverage increases from 87.5% to 91.8%",
+      "Metric 4 shows degradation triggers: response_count reaches max (20), token usage near limit (47k/50k), test pass rate drops to 97.5%",
+      "This example demonstrates when quality-ratchet.py should recommend context reset"
+    ],
+    "expected_degradation_detection": {
+      "at_metric_4": true,
+      "reasons": [
+        "Response count reached threshold (20 >= 20)",
+        "Token usage approaching limit (47k/50k = 94%)",
+        "Test pass rate degraded 2.5% (still within 10% threshold but declining)"
+      ]
+    }
+  }
+}

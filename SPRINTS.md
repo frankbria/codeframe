@@ -1,7 +1,7 @@
 # CodeFRAME Sprint Planning
 
-**Current Sprint**: [Sprint 7: Context Management](sprints/sprint-07-context-mgmt.md) 📋 Planned
-**Project Status**: Sprint 6 Complete - Human-in-the-Loop Delivered
+**Current Sprint**: [Sprint 9: E2E Testing Framework](#sprint-9-e2e-testing-framework--next) 📋 Next
+**Project Status**: Sprint 8 Complete - AI Quality Enforcement Delivered
 
 ---
 
@@ -17,30 +17,34 @@
 | 4.5 | Project Schema Refactoring | ✅ Complete | Interim | Schema normalization, TypeScript types | cf-f03 to cf-73z |
 | 5 | Async Worker Agents | ✅ Complete | Week 5 | Async/await migration, AsyncAnthropic, Performance boost | cf-48 |
 | 6 | Human in the Loop | ✅ Complete | Week 6 | Blocker creation, Resolution UI, Agent resume | PR #18 |
-| 7 | Context Management | 📋 Planned | Week 7 | Flash memory, Tier assignment, Context pruning | Planned |
-| 8 | Agent Maturity | 📋 Planned | Week 8 | Maturity levels, Promotion logic, Checkpoints | Planned |
-| 9 | Polish & Review | 📋 Planned | Week 9 | Review agent, E2E tests, Documentation | Planned |
+| 7 | Context Management | ✅ Complete | Week 7 | Flash memory, Tier assignment, Context pruning | PR #19 |
+| 8 | AI Quality Enforcement | ✅ Complete | Week 8 | Dual-layer architecture, multi-language enforcement, quality tracking | PR #20 |
+| 9 | E2E Testing Framework | 📋 Planned | Week 9 | Playwright setup, user workflow tests, CI integration | Planned |
+| 10 | Final Polish | 📋 Planned | Week 10 | Review agent, Documentation, Performance tuning | Planned |
+| ∞ | Agent Maturity | 🔮 Future | TBD | Maturity levels, Promotion logic, Checkpoints | Future |
 
 ---
 
 ## Quick Links
 
 ### Active Development
-- 📍 [Current Sprint: Sprint 7](sprints/sprint-07-context-mgmt.md) - Context Management (Planned)
+- 📍 [Current Sprint: Sprint 9](#sprint-9-e2e-testing-framework--next) - E2E Testing Framework (Planned)
 - 🔍 [Beads Issue Tracker](.beads/) - Run `bd list` for current tasks
 - 📚 [Documentation Guide](AGENTS.md) - How to navigate project docs
 
 ### Completed Work
-- [Sprint 6: Human in the Loop](sprints/sprint-06-human-loop.md) - Latest completed sprint
-- [Sprint 5: Async Workers](sprints/sprint-05-async-workers.md) - Async/await migration
-- [Sprint 4: Multi-Agent Coordination](sprints/sprint-04-multi-agent.md) - Parallel execution
-- [Sprint 3: Single Agent Execution](sprints/sprint-03-single-agent.md) - Backend worker
-- [Sprint 2: Socratic Discovery](sprints/sprint-02-socratic-discovery.md) - Chat & PRD
-- [Sprint 1: Hello CodeFRAME](sprints/sprint-01-hello-codeframe.md) - Dashboard & Lead Agent
-- [Sprint 0: Foundation](sprints/sprint-00-foundation.md) - Project setup
+- [Sprint 8: AI Quality Enforcement](sprints/sprint-08-quality-enforcement.md) - Latest completed sprint
+- [Sprint 7: Context Management](sprints/sprint-07-context-mgmt.md)
+- [Sprint 6: Human in the Loop](sprints/sprint-06-human-loop.md)
+- [Sprint 5: Async Workers](sprints/sprint-05-async-workers.md)
+- [Sprint 4: Multi-Agent Coordination](sprints/sprint-04-multi-agent.md)
+- [Sprint 3: Single Agent Execution](sprints/sprint-03-single-agent.md)
+- [Sprint 2: Socratic Discovery](sprints/sprint-02-socratic-discovery.md)
+- [Sprint 1: Hello CodeFRAME](sprints/sprint-01-hello-codeframe.md)
+- [Sprint 0: Foundation](sprints/sprint-00-foundation.md)
 
 ### Planning & Architecture
-- [Future Roadmap](#future-sprints) - Sprints 6-9 overview
+- [Future Roadmap](#future-sprints) - Sprints 8-10 overview
 - [Architecture Spec](CODEFRAME_SPEC.md) - Overall system design
 - [Feature Specifications](specs/) - Detailed feature implementation guides
 
@@ -54,7 +58,81 @@
 
 ## Completed Sprints
 
-### Sprint 6: Human in the Loop ✅ (Latest)
+### Sprint 7: Context Management ✅ (Latest)
+
+**Goal**: Flash memory system for efficient context management with tiered importance scoring
+
+**Delivered**:
+- ✅ Context item storage with importance scoring
+- ✅ Tiered memory system (HOT/WARM/COLD)
+- ✅ Flash save mechanism for context pruning
+- ✅ Hybrid exponential decay algorithm
+- ✅ Multi-agent context support (project_id + agent_id)
+- ✅ Token counting with tiktoken
+- ✅ Dashboard context viewer components
+- ✅ 31 comprehensive tests (100% passing)
+
+**Key Metrics**:
+- Tests: 31 passing (25 backend + 6 frontend)
+- Token Reduction: 30-50% after flash save
+- Context Tiers: HOT (≥0.8), WARM (0.4-0.8), COLD (<0.4)
+- Multi-project: Full support for multiple agents per project
+
+**Links**:
+- [Full Sprint Details](sprints/sprint-07-context-mgmt.md)
+- [Feature Spec](specs/007-context-management/spec.md)
+- [Pull Request #19](https://github.com/frankbria/codeframe/pull/19)
+
+**Commits**: b14c4bd, e92d6f6, 3e29ba2, 7ed9276, cd1a26a
+
+---
+
+### Sprint 8: AI Quality Enforcement ✅ (Latest)
+
+**Goal**: Prevent AI agent failure modes through systematic enforcement with language-agnostic quality controls
+
+**Delivered**:
+- ✅ **Layer 1** (Python-specific tools for codeframe development):
+  - `.claude/rules.md` with comprehensive TDD requirements
+  - `.pre-commit-config.yaml` with Black, Ruff, pytest, coverage, skip detection hooks
+  - `scripts/verify-ai-claims.sh` verification script (85% coverage threshold)
+  - `scripts/detect-skip-abuse.py` AST-based skip decorator detection
+  - `scripts/quality-ratchet.py` quality degradation tracking with Typer + Rich
+  - `tests/test_template.py` with 36 comprehensive test examples
+- ✅ **Layer 2** (Language-agnostic enforcement for agents working on ANY project):
+  - `LanguageDetector` - Auto-detects 9+ programming languages
+  - `AdaptiveTestRunner` - Runs tests for any language, parses 6+ framework outputs
+  - `SkipPatternDetector` - Detects skip patterns across 7+ languages
+  - `QualityTracker` - Generic quality metrics tracking
+  - `EvidenceVerifier` - Validates agent claims with proof
+- ✅ Comprehensive documentation (`docs/ENFORCEMENT_ARCHITECTURE.md`)
+
+**Key Metrics**:
+- Tests: **147/151 passing (97.4% success rate)**
+  - Layer 1: 64/64 tests (100%)
+  - Layer 2: 83/87 tests (95.4%)
+- Files changed: 26 files, 6,043 insertions, 54 deletions
+- Languages supported: Python, JavaScript, TypeScript, Go, Rust, Java, Ruby, C#
+- Frameworks supported: pytest, Jest, go test, cargo, Maven, Gradle, RSpec, NUnit
+
+**Architecture Pivot**:
+- **Original Plan**: Python-only enforcement
+- **User Feedback**: System must work for agents on ANY language project
+- **Solution**: Dual-layer architecture:
+  - Layer 1 keeps codeframe development Python-specific
+  - Layer 2 provides language-agnostic enforcement for agent workflows
+
+**Links**:
+- [Full Sprint Details](sprints/sprint-08-quality-enforcement.md)
+- [Architecture Guide](docs/ENFORCEMENT_ARCHITECTURE.md)
+- [Feature Spec](specs/008-ai-quality-enforcement/)
+- Branch: `008-ai-quality-enforcement`
+
+**Commits**: 459cc71 (main implementation)
+
+---
+
+### Sprint 6: Human in the Loop ✅
 
 **Goal**: Enable agents to ask for help when blocked and resume work after receiving answers
 
@@ -216,51 +294,73 @@
 
 ## Future Sprints
 
-### Sprint 7: Context Management 📋 (Next)
+### Sprint 9: E2E Testing Framework 📋 (Next)
 
-**Goal**: Flash memory system for efficient context management
+**Goal**: Comprehensive end-to-end testing with Playwright
 
 **Planned Features**:
-- Flash memory with tiered importance
-- Automatic context pruning
-- Context item lifecycle management
-- Dashboard context viewer
+- Playwright setup and configuration
+- User workflow tests:
+  - New project creation flow
+  - Socratic discovery conversation
+  - Agent task execution
+  - Blocker creation and resolution
+  - Context management operations
+- CI/CD integration
+- Visual regression testing
+- Performance benchmarking
+- Test reporting and artifacts
 
-**Status**: Planned - Database schema exists
+**Success Criteria**:
+- All critical user workflows covered
+- Tests run in CI on every PR
+- < 5 minutes total E2E test time
+- Clear failure reporting with screenshots
 
-**Links**: [Sprint Plan](sprints/sprint-07-context-mgmt.md)
+**Status**: Planned
+
+**Estimated Effort**: 12-16 hours
 
 ---
 
-### Sprint 8: Agent Maturity 📋
+### Sprint 10: Final Polish 📋
+
+**Goal**: Production readiness with comprehensive quality checks
+
+**Planned Features**:
+- Review Agent for code quality checks
+- Documentation completeness audit
+- Cost tracking and optimization
+- Performance tuning and benchmarking
+- Security audit
+- User experience polish
+- Production deployment guide
+
+**Status**: Planned
+
+**Links**: [Sprint Plan](sprints/sprint-10-final-polish.md)
+
+---
+
+## Future Releases
+
+### Agent Maturity System 🔮
 
 **Goal**: Agent promotion system based on performance
 
 **Planned Features**:
-- Maturity level tracking (junior → senior)
-- Promotion/demotion logic
-- Checkpoint system for recovery
+- Maturity level tracking (junior → senior → principal)
+- Promotion/demotion logic based on success metrics
+- Checkpoint system for context recovery
 - Performance-based task assignment
+- Learning from past mistakes
+- Skill specialization tracking
 
-**Status**: Planned - Data model exists
+**Status**: Future Release - Data model exists
 
-**Links**: [Sprint Plan](sprints/sprint-08-agent-maturity.md)
+**Priority**: Low - Core functionality complete, this is enhancement
 
----
-
-### Sprint 9: Polish & Review 📋
-
-**Goal**: Production readiness with review agent and comprehensive testing
-
-**Planned Features**:
-- Review Agent for code quality checks
-- End-to-end testing suite
-- Cost tracking and optimization
-- Performance benchmarking
-
-**Status**: Planned
-
-**Links**: [Sprint Plan](sprints/sprint-09-polish.md)
+**Links**: [Sprint Plan](sprints/sprint-future-agent-maturity.md)
 
 ---
 
@@ -369,11 +469,11 @@ Add retrospective to sprint file in `sprints/sprint-NN-name.md`
 ## Project Metrics
 
 ### Cumulative Progress
-- **Sprints Completed**: 8 of 10 (80%)
-- **Features Delivered**: 35+ major features
-- **Tests Written**: 400+ tests
+- **Sprints Completed**: 10 of 11 (91%)
+- **Features Delivered**: 40+ major features
+- **Tests Written**: 550+ tests
 - **Code Coverage**: 90%+ average
-- **Commits**: 100+ commits
+- **Commits**: 120+ commits
 - **Team Velocity**: ~6-8 features per sprint
 
 ### Quality Metrics
