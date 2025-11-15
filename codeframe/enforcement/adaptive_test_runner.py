@@ -9,11 +9,34 @@ language they're working on.
 """
 
 import subprocess
+import shlex
+import logging
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Union
 from pathlib import Path
 
 from .language_detector import LanguageDetector, LanguageInfo
+
+logger = logging.getLogger(__name__)
+
+# Safe commands that can run without shell=True
+# These are common test commands that don't require shell features
+SAFE_COMMANDS = {
+    "pytest",
+    "python",
+    "python3",
+    "npm",
+    "node",
+    "yarn",
+    "pnpm",
+    "go",
+    "cargo",
+    "mvn",
+    "gradle",
+    "ruby",
+    "rspec",
+    "dotnet",
+}
 
 
 @dataclass
@@ -50,6 +73,67 @@ class AdaptiveTestRunner:
         self.detector = LanguageDetector(project_path)
         self.language_info: Optional[LanguageInfo] = None
 
+    def _parse_command_safely(
+        self, command: str
+    ) -> tuple[Union[str, List[str]], bool]:
+        """
+        Parse command and determine if shell=True is needed.
+
+        Args:
+            command: Command string to parse
+
+        Returns:
+            Tuple of (parsed_command, use_shell)
+            - parsed_command: List of args for shell=False, or str for shell=True
+            - use_shell: Boolean indicating if shell=True is needed
+
+        Security:
+            - Commands starting with SAFE_COMMANDS are parsed with shlex.split()
+              and run with shell=False (secure)
+            - Commands containing shell operators require shell=True (less secure,
+              logged as warning)
+            - Simple commands without operators use shell=False when possible
+        """
+        # Check for dangerous shell operators
+        dangerous_operators = [";", "&&", "||", "|", "`", "$(",  "$()", ">", "<", ">>"]
+        has_shell_operators = any(op in command for op in dangerous_operators)
+
+        # Parse command to get the base command
+        try:
+            parts = shlex.split(command)
+        except ValueError as e:
+            logger.warning(
+                f"Failed to parse command safely: {command}. "
+                f"Error: {e}. Using shell=True as fallback."
+            )
+            return command, True
+
+        if not parts:
+            logger.warning(f"Empty command after parsing: {command}")
+            return command, True
+
+        base_command = parts[0]
+
+        # If command contains shell operators, we need shell=True
+        if has_shell_operators:
+            logger.warning(
+                f"Command contains shell operators and will run with shell=True: {command}. "
+                f"This may pose a security risk if the command comes from untrusted input."
+            )
+            return command, True
+
+        # If base command is in SAFE_COMMANDS, use shell=False
+        if base_command in SAFE_COMMANDS:
+            logger.debug(f"Running safe command without shell: {parts}")
+            return parts, False
+
+        # For other simple commands, try without shell
+        logger.info(
+            f"Command '{base_command}' not in SAFE_COMMANDS list. "
+            f"Running without shell, but consider adding to SAFE_COMMANDS if legitimate."
+        )
+        return parts, False
+
     async def run_tests(
         self, with_coverage: bool = False
     ) -> TestResult:
@@ -73,10 +157,13 @@ class AdaptiveTestRunner:
             else self.language_info.test_command
         )
 
-        # Run tests
+        # Parse command safely
+        parsed_command, use_shell = self._parse_command_safely(command)
+
+        # Run tests with appropriate shell setting
         result = subprocess.run(
-            command,
-            shell=True,
+            parsed_command,
+            shell=use_shell,
             cwd=self.project_path,
             capture_output=True,
             text=True,
