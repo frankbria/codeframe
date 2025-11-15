@@ -1,7 +1,7 @@
 # CodeFRAME
 
 ![Status](https://img.shields.io/badge/status-Sprint%208%20Complete-green)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-450%2B%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)
@@ -942,7 +942,9 @@ Detailed implementation guides for major features:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+AGPL-3.0 License - see [LICENSE](LICENSE) for details.
+
+CodeFRAME is licensed under the GNU Affero General Public License v3.0. This ensures that all modifications, including those used to provide network services, remain open source and benefit the community.
 
 ---
 
