@@ -20,22 +20,42 @@ from .language_detector import LanguageDetector, LanguageInfo
 logger = logging.getLogger(__name__)
 
 # Safe commands that can run without shell=True
-# These are common test commands that don't require shell features
+# These are common test commands and package managers that don't require shell features
 SAFE_COMMANDS = {
+    # Python
     "pytest",
     "python",
     "python3",
+    "uv",  # UV package manager
+    "poetry",
+    "pipenv",
+    "pip",
+    "pip3",
+    # JavaScript/TypeScript
     "npm",
     "node",
     "yarn",
     "pnpm",
+    "bun",
+    "deno",
+    # Go
     "go",
+    # Rust
     "cargo",
+    # Java
     "mvn",
     "gradle",
+    "java",
+    # Ruby
     "ruby",
     "rspec",
+    "bundle",
+    "rake",
+    # .NET
     "dotnet",
+    # PHP
+    "composer",
+    "phpunit",
 }
 
 
