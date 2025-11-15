@@ -106,7 +106,7 @@ class WorkerAgent:
         context_mgr = ContextManager(db=self.db)
         return context_mgr.should_flash_save(self.project_id, self.agent_id, force=False)
 
-    async def save_context_item(self, item_type: ContextItemType, content: str) -> int:
+    async def save_context_item(self, item_type: ContextItemType, content: str) -> str:
         """Save a context item for this agent.
 
         Args:
@@ -114,7 +114,7 @@ class WorkerAgent:
             content: The context content to save
 
         Returns:
-            int: The created context item ID
+            str: The created context item ID (UUID)
 
         Raises:
             ValueError: If db is not initialized or content is empty
@@ -169,11 +169,11 @@ class WorkerAgent:
 
         return items
 
-    async def get_context_item(self, item_id: int) -> Optional[Dict[str, Any]]:
+    async def get_context_item(self, item_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific context item by ID.
 
         Args:
-            item_id: The context item ID
+            item_id: The context item ID (UUID string)
 
         Returns:
             dict | None: The context item, or None if not found
