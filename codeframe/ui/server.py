@@ -1036,7 +1036,7 @@ async def create_context_item(agent_id: str, request: ContextItemCreateModel):
 
 
 @app.get("/api/agents/{agent_id}/context/{item_id}", response_model=ContextItemResponse, tags=["context"])
-async def get_context_item(agent_id: str, item_id: int):
+async def get_context_item(agent_id: str, item_id: str):
     """Get a single context item and update access tracking (T020).
 
     Args:
