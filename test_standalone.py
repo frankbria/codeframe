@@ -25,16 +25,16 @@ def create_test_task(db, project_id, task_number, title, description, status=Non
         title=title,
         description=description,
         status=status,
-        depends_on=""
+        depends_on="",
     )
     return db.create_task(task)
 
 
 async def main():
     """Run test without pytest."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("🔬 STANDALONE TEST (NO PYTEST)")
-    print("="*80)
+    print("=" * 80)
 
     # Create database
     print("\n1. Creating database...")
@@ -61,32 +61,26 @@ async def main():
         # Create LeadAgent
         print("\n5. Creating LeadAgent...")
         lead_agent = LeadAgent(
-            project_id=project_id,
-            db=db,
-            api_key="test-key",
-            ws_manager=None,
-            max_agents=10
+            project_id=project_id, db=db, api_key="test-key", ws_manager=None, max_agents=10
         )
         print("✅ LeadAgent created")
 
         # Create task
         print("\n6. Creating task...")
         task_id = create_test_task(
-            db, project_id, "T-001",
-            "Simple task", "Test description",
-            status="pending"
+            db, project_id, "T-001", "Simple task", "Test description", status="pending"
         )
         print(f"✅ Task created: {task_id}")
 
         # Mock TestWorkerAgent (task will be assigned to test-engineer)
         print("\n7. Setting up mock...")
-        with patch('codeframe.agents.agent_pool_manager.TestWorkerAgent') as MockAgent:
+        with patch("codeframe.agents.agent_pool_manager.TestWorkerAgent") as MockAgent:
             mock_instance = Mock()
             mock_instance.execute_task.return_value = {
                 "status": "completed",
                 "files_modified": [],
                 "output": "Done",
-                "error": None
+                "error": None,
             }
             MockAgent.return_value = mock_instance
             print("✅ Mock configured")
@@ -97,8 +91,7 @@ async def main():
 
             try:
                 summary = await asyncio.wait_for(
-                    lead_agent.start_multi_agent_execution(max_concurrent=1),
-                    timeout=5.0
+                    lead_agent.start_multi_agent_execution(max_concurrent=1), timeout=5.0
                 )
                 print(f"\n✅ EXECUTION COMPLETE!")
                 print(f"Summary: {summary}")
@@ -108,14 +101,15 @@ async def main():
             except Exception as e:
                 print(f"\n❌ ERROR: {type(e).__name__}: {e}")
                 import traceback
+
                 traceback.print_exc()
 
         # Cleanup
         db.close()
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("🏁 STANDALONE TEST COMPLETE")
-    print("="*80)
+    print("=" * 80)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,7 @@ def parse_prd_features(prd_content: str) -> List[Dict[str, Any]]:
 
     # Find the Features & Requirements section
     # Look for ## Features & Requirements, then capture everything until next ## or end
-    features_section_pattern = r'##\s+Features\s*&\s*Requirements(.*?)(?=\n##[^#]|\Z)'
+    features_section_pattern = r"##\s+Features\s*&\s*Requirements(.*?)(?=\n##[^#]|\Z)"
     features_match = re.search(features_section_pattern, prd_content, re.IGNORECASE | re.DOTALL)
 
     if not features_match:
@@ -53,7 +53,7 @@ def parse_prd_features(prd_content: str) -> List[Dict[str, Any]]:
     # Extract individual features using ### headers (but not #### or deeper)
     # Match ### followed by title, then capture everything until next ### or end of section
     # Use negative lookahead to ensure we don't match #### or more
-    feature_pattern = r'###(?!#)\s+([^\n]+)\n(.*?)(?=\n###(?!#)|\Z)'
+    feature_pattern = r"###(?!#)\s+([^\n]+)\n(.*?)(?=\n###(?!#)|\Z)"
     feature_matches = re.finditer(feature_pattern, features_section, re.DOTALL)
 
     for match in feature_matches:
@@ -61,13 +61,15 @@ def parse_prd_features(prd_content: str) -> List[Dict[str, Any]]:
         description = match.group(2).strip()
 
         # Remove priority keywords from title (Critical:, High:, etc.)
-        title = re.sub(r'^(Critical|High|Medium|Low)\s*:\s*', '', raw_title, flags=re.IGNORECASE)
+        title = re.sub(r"^(Critical|High|Medium|Low)\s*:\s*", "", raw_title, flags=re.IGNORECASE)
 
-        features.append({
-            'title': title.strip(),
-            'description': description.strip(),
-            'raw_text': raw_title + '\n' + description,  # Keep original for priority detection
-        })
+        features.append(
+            {
+                "title": title.strip(),
+                "description": description.strip(),
+                "raw_text": raw_title + "\n" + description,  # Keep original for priority detection
+            }
+        )
 
     logger.info(f"Extracted {len(features)} features from PRD")
     return features
@@ -92,13 +94,13 @@ def assign_priority(text: str) -> int:
     text_lower = text.lower()
 
     # Check for priority keywords (case-insensitive, first match wins)
-    if 'critical' in text_lower or 'urgent' in text_lower or 'must have' in text_lower:
+    if "critical" in text_lower or "urgent" in text_lower or "must have" in text_lower:
         return 0
-    elif 'high' in text_lower or 'important' in text_lower:
+    elif "high" in text_lower or "important" in text_lower:
         return 1
-    elif 'low' in text_lower or 'optional' in text_lower:
+    elif "low" in text_lower or "optional" in text_lower:
         return 3
-    elif 'nice to have' in text_lower or 'nice-to-have' in text_lower:
+    elif "nice to have" in text_lower or "nice-to-have" in text_lower:
         return 4
     else:
         # Default to medium priority
@@ -161,13 +163,13 @@ class IssueGenerator:
             issue_number = f"{sprint_number}.{idx}"
 
             # Assign priority based on raw text (includes keywords)
-            priority = assign_priority(feature['raw_text'])
+            priority = assign_priority(feature["raw_text"])
 
             # Create issue
             issue = Issue(
                 issue_number=issue_number,
-                title=feature['title'],
-                description=feature['description'],
+                title=feature["title"],
+                description=feature["description"],
                 priority=priority,
                 status=TaskStatus.PENDING,
                 workflow_step=0,
@@ -194,7 +196,7 @@ class IssueGenerator:
             raise ValueError(f"Issue {issue.issue_number} must have a title")
 
         # Validate issue number format (X.Y)
-        issue_number_pattern = r'^\d+\.\d+$'
+        issue_number_pattern = r"^\d+\.\d+$"
         if not re.match(issue_number_pattern, issue.issue_number):
             raise ValueError(
                 f"Issue number '{issue.issue_number}' must match format X.Y "

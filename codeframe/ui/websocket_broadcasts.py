@@ -39,7 +39,7 @@ async def broadcast_task_status(
     task_id: int,
     status: str,
     agent_id: Optional[str] = None,
-    progress: Optional[int] = None
+    progress: Optional[int] = None,
 ) -> None:
     """
     Broadcast task status change to connected clients.
@@ -57,7 +57,7 @@ async def broadcast_task_status(
         "project_id": project_id,
         "task_id": task_id,
         "status": status,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if agent_id:
@@ -80,7 +80,7 @@ async def broadcast_agent_status(
     status: str,
     current_task_id: Optional[int] = None,
     current_task_title: Optional[str] = None,
-    progress: Optional[int] = None
+    progress: Optional[int] = None,
 ) -> None:
     """
     Broadcast agent status change to connected clients.
@@ -99,13 +99,13 @@ async def broadcast_agent_status(
         "project_id": project_id,
         "agent_id": agent_id,
         "status": status,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if current_task_id:
         message["current_task"] = {
             "id": current_task_id,
-            "title": current_task_title if current_task_title else f"Task #{current_task_id}"
+            "title": current_task_title if current_task_title else f"Task #{current_task_id}",
         }
 
     if progress is not None:
@@ -127,7 +127,7 @@ async def broadcast_test_result(
     failed: int = 0,
     errors: int = 0,
     skipped: int = 0,
-    duration: float = 0.0
+    duration: float = 0.0,
 ) -> None:
     """
     Broadcast test execution results to connected clients.
@@ -153,7 +153,7 @@ async def broadcast_test_result(
         "errors": errors,
         "skipped": skipped,
         "duration": duration,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     try:
@@ -172,7 +172,7 @@ async def broadcast_commit_created(
     task_id: int,
     commit_hash: str,
     commit_message: str,
-    files_changed: Optional[int] = None
+    files_changed: Optional[int] = None,
 ) -> None:
     """
     Broadcast git commit creation to connected clients.
@@ -191,7 +191,7 @@ async def broadcast_commit_created(
         "task_id": task_id,
         "commit_hash": commit_hash,
         "commit_message": commit_message,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if files_changed is not None:
@@ -210,7 +210,7 @@ async def broadcast_activity_update(
     activity_type: str,
     message_text: str,
     task_id: Optional[int] = None,
-    agent_id: Optional[str] = None
+    agent_id: Optional[str] = None,
 ) -> None:
     """
     Broadcast activity feed update to connected clients.
@@ -228,7 +228,7 @@ async def broadcast_activity_update(
         "project_id": project_id,
         "activity_type": activity_type,
         "message": message_text,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if task_id:
@@ -245,11 +245,7 @@ async def broadcast_activity_update(
 
 
 async def broadcast_progress_update(
-    manager,
-    project_id: int,
-    completed: int,
-    total: int,
-    percentage: Optional[int] = None
+    manager, project_id: int, completed: int, total: int, percentage: Optional[int] = None
 ) -> None:
     """
     Broadcast project progress update to connected clients.
@@ -270,7 +266,7 @@ async def broadcast_progress_update(
         "completed": completed,
         "total": total,
         "percentage": percentage if percentage is not None else 0,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     try:
@@ -287,7 +283,7 @@ async def broadcast_correction_attempt(
     attempt_number: int,
     max_attempts: int,
     status: str,
-    error_summary: Optional[str] = None
+    error_summary: Optional[str] = None,
 ) -> None:
     """
     Broadcast self-correction attempt to connected clients.
@@ -308,7 +304,7 @@ async def broadcast_correction_attempt(
         "attempt_number": attempt_number,
         "max_attempts": max_attempts,
         "status": status,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if error_summary:
@@ -328,12 +324,9 @@ async def broadcast_correction_attempt(
 # Sprint 4: Multi-Agent Coordination Broadcasts
 # ============================================================================
 
+
 async def broadcast_agent_created(
-    manager,
-    project_id: int,
-    agent_id: str,
-    agent_type: str,
-    tasks_completed: int = 0
+    manager, project_id: int, agent_id: str, agent_type: str, tasks_completed: int = 0
 ) -> None:
     """
     Broadcast agent creation to connected clients (Sprint 4).
@@ -352,7 +345,7 @@ async def broadcast_agent_created(
         "agent_type": agent_type,
         "status": "idle",
         "tasks_completed": tasks_completed,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     try:
@@ -363,10 +356,7 @@ async def broadcast_agent_created(
 
 
 async def broadcast_agent_retired(
-    manager,
-    project_id: int,
-    agent_id: str,
-    tasks_completed: int = 0
+    manager, project_id: int, agent_id: str, tasks_completed: int = 0
 ) -> None:
     """
     Broadcast agent retirement to connected clients (Sprint 4).
@@ -382,7 +372,7 @@ async def broadcast_agent_retired(
         "project_id": project_id,
         "agent_id": agent_id,
         "tasks_completed": tasks_completed,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     try:
@@ -393,11 +383,7 @@ async def broadcast_agent_retired(
 
 
 async def broadcast_task_assigned(
-    manager,
-    project_id: int,
-    task_id: int,
-    agent_id: str,
-    task_title: Optional[str] = None
+    manager, project_id: int, task_id: int, agent_id: str, task_title: Optional[str] = None
 ) -> None:
     """
     Broadcast task assignment to agent (Sprint 4).
@@ -414,7 +400,7 @@ async def broadcast_task_assigned(
         "project_id": project_id,
         "task_id": task_id,
         "agent_id": agent_id,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if task_title:
@@ -428,11 +414,7 @@ async def broadcast_task_assigned(
 
 
 async def broadcast_task_blocked(
-    manager,
-    project_id: int,
-    task_id: int,
-    blocked_by: List[int],
-    task_title: Optional[str] = None
+    manager, project_id: int, task_id: int, blocked_by: List[int], task_title: Optional[str] = None
 ) -> None:
     """
     Broadcast task blocked by dependencies (Sprint 4).
@@ -450,7 +432,7 @@ async def broadcast_task_blocked(
         "task_id": task_id,
         "blocked_by": blocked_by,
         "blocked_count": len(blocked_by),
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if task_title:
@@ -459,8 +441,7 @@ async def broadcast_task_blocked(
     try:
         await manager.broadcast(message)
         logger.debug(
-            f"Broadcast task_blocked: task {task_id} blocked by "
-            f"{len(blocked_by)} tasks"
+            f"Broadcast task_blocked: task {task_id} blocked by " f"{len(blocked_by)} tasks"
         )
     except Exception as e:
         logger.error(f"Failed to broadcast task blocked: {e}")
@@ -471,7 +452,7 @@ async def broadcast_task_unblocked(
     project_id: int,
     task_id: int,
     unblocked_by: Optional[int] = None,
-    task_title: Optional[str] = None
+    task_title: Optional[str] = None,
 ) -> None:
     """
     Broadcast task unblocked (Sprint 4).
@@ -487,7 +468,7 @@ async def broadcast_task_unblocked(
         "type": "task_unblocked",
         "project_id": project_id,
         "task_id": task_id,
-        "timestamp": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     if unblocked_by:
@@ -505,6 +486,7 @@ async def broadcast_task_unblocked(
 
 # Blocker broadcast functions (049-human-in-loop)
 
+
 async def broadcast_blocker_created(
     manager,
     project_id: int,
@@ -514,7 +496,7 @@ async def broadcast_blocker_created(
     blocker_type: str,
     question: str,
     agent_name: Optional[str] = None,
-    task_title: Optional[str] = None
+    task_title: Optional[str] = None,
 ) -> None:
     """
     Broadcast blocker creation to connected clients.
@@ -540,8 +522,8 @@ async def broadcast_blocker_created(
             "blocker_type": blocker_type,
             "question": question,
             "status": "PENDING",
-            "created_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
-        }
+            "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        },
     }
 
     if agent_name:
@@ -558,10 +540,7 @@ async def broadcast_blocker_created(
 
 
 async def broadcast_blocker_resolved(
-    manager,
-    project_id: int,
-    blocker_id: int,
-    answer: str
+    manager, project_id: int, blocker_id: int, answer: str
 ) -> None:
     """
     Broadcast blocker resolution to connected clients.
@@ -577,7 +556,7 @@ async def broadcast_blocker_resolved(
         "project_id": project_id,
         "blocker_id": blocker_id,
         "answer": answer,
-        "resolved_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "resolved_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     try:
@@ -588,11 +567,7 @@ async def broadcast_blocker_resolved(
 
 
 async def broadcast_agent_resumed(
-    manager,
-    project_id: int,
-    agent_id: str,
-    task_id: int,
-    blocker_id: int
+    manager, project_id: int, agent_id: str, task_id: int, blocker_id: int
 ) -> None:
     """
     Broadcast agent resume after blocker resolution.
@@ -610,7 +585,7 @@ async def broadcast_agent_resumed(
         "agent_id": agent_id,
         "task_id": task_id,
         "blocker_id": blocker_id,
-        "resumed_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "resumed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     try:
@@ -621,12 +596,7 @@ async def broadcast_agent_resumed(
 
 
 async def broadcast_blocker_expired(
-    manager,
-    project_id: int,
-    blocker_id: int,
-    agent_id: str,
-    task_id: Optional[int],
-    question: str
+    manager, project_id: int, blocker_id: int, agent_id: str, task_id: Optional[int], question: str
 ) -> None:
     """
     Broadcast blocker expiration (>24h pending) to connected clients (T047).
@@ -646,7 +616,7 @@ async def broadcast_blocker_expired(
         "agent_id": agent_id,
         "task_id": task_id,
         "question": question,
-        "expired_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        "expired_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
     try:

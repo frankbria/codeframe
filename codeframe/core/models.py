@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class TaskStatus(Enum):
     """Task execution status."""
+
     PENDING = "pending"
     ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
@@ -19,6 +20,7 @@ class TaskStatus(Enum):
 
 class AgentMaturity(Enum):
     """Agent maturity levels based on Situational Leadership II."""
+
     D1 = "directive"  # Low skill, needs step-by-step
     D2 = "coaching"  # Some skill, needs guidance
     D3 = "supporting"  # High skill, needs autonomy
@@ -27,6 +29,7 @@ class AgentMaturity(Enum):
 
 class ProjectStatus(Enum):
     """Project lifecycle status."""
+
     INIT = "init"
     PLANNING = "planning"
     RUNNING = "running"  # cf-10: Agent actively working on project
@@ -37,25 +40,29 @@ class ProjectStatus(Enum):
 
 class BlockerSeverity(Enum):
     """Blocker severity for escalation (deprecated, use BlockerType)."""
+
     SYNC = "sync"  # Urgent, needs immediate response
     ASYNC = "async"  # Can wait, stack for later
 
 
 class BlockerType(str, Enum):
     """Type of blocker requiring human intervention."""
-    SYNC = "SYNC"      # Critical blocker - agent pauses immediately
-    ASYNC = "ASYNC"    # Clarification request - agent continues work
+
+    SYNC = "SYNC"  # Critical blocker - agent pauses immediately
+    ASYNC = "ASYNC"  # Clarification request - agent continues work
 
 
 class BlockerStatus(str, Enum):
     """Current status of a blocker."""
-    PENDING = "PENDING"      # Awaiting user response
-    RESOLVED = "RESOLVED"    # User has provided answer
-    EXPIRED = "EXPIRED"      # Blocker timed out (24h default)
+
+    PENDING = "PENDING"  # Awaiting user response
+    RESOLVED = "RESOLVED"  # User has provided answer
+    EXPIRED = "EXPIRED"  # Blocker timed out (24h default)
 
 
 class ContextTier(Enum):
     """Virtual Project context tiers."""
+
     HOT = "hot"  # Always loaded, ~20K tokens
     WARM = "warm"  # On-demand, ~40K tokens
     COLD = "cold"  # Archived, queryable
@@ -68,6 +75,7 @@ class Issue:
     Issues are numbered hierarchically (e.g., "1.5", "2.3") and can parallelize
     with other issues at the same level. Each issue contains sequential tasks.
     """
+
     id: Optional[int] = None
     project_id: Optional[int] = None
     issue_number: str = ""  # e.g., "1.5" or "2.1"
@@ -88,6 +96,7 @@ class Task:
     always sequential within their parent issue (cannot parallelize).
     Each task depends on the previous task in the sequence.
     """
+
     id: Optional[int] = None
     project_id: Optional[int] = None
     issue_id: Optional[int] = None  # Foreign key to parent issue
@@ -111,6 +120,7 @@ class Task:
 @dataclass
 class Blocker:
     """Represents a task blocker requiring human input."""
+
     id: int
     task_id: int
     severity: BlockerSeverity
@@ -124,6 +134,7 @@ class Blocker:
 @dataclass
 class ContextItem:
     """Item in Virtual Project context system."""
+
     id: str
     project_id: int
     item_type: str  # 'current_task', 'active_file', 'recent_test', etc.
@@ -140,6 +151,7 @@ class ContextItem:
 @dataclass
 class AgentMetrics:
     """Performance metrics for agent maturity assessment."""
+
     task_success_rate: float
     blocker_frequency: float
     test_pass_rate: float
@@ -150,6 +162,7 @@ class AgentMetrics:
 @dataclass
 class Checkpoint:
     """State snapshot for recovery."""
+
     id: str
     project_id: int
     trigger: str  # 'manual', 'pre_compactification', 'task_complete'
@@ -162,6 +175,7 @@ class Checkpoint:
 @dataclass
 class Notification:
     """Multi-channel notification."""
+
     id: str
     project_id: int
     severity: BlockerSeverity
@@ -176,8 +190,10 @@ class Notification:
 
 # Pydantic models for API validation and serialization
 
+
 class BlockerModel(BaseModel):
     """Pydantic model for blocker database records."""
+
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     id: int
@@ -193,6 +209,7 @@ class BlockerModel(BaseModel):
 
 class BlockerCreate(BaseModel):
     """Request model for creating a blocker."""
+
     agent_id: str
     task_id: Optional[int] = None
     blocker_type: BlockerType = BlockerType.ASYNC
@@ -201,11 +218,13 @@ class BlockerCreate(BaseModel):
 
 class BlockerResolve(BaseModel):
     """Request model for resolving a blocker."""
+
     answer: str = Field(..., min_length=1, max_length=5000)
 
 
 class BlockerListResponse(BaseModel):
     """Response model for listing blockers."""
+
     blockers: List[BlockerModel]
     total: int
     pending_count: int
@@ -215,8 +234,10 @@ class BlockerListResponse(BaseModel):
 
 # Context Management Models (007-context-management)
 
+
 class ContextItemType(str, Enum):
     """Type of context item stored in the Virtual Project system."""
+
     TASK = "TASK"
     CODE = "CODE"
     ERROR = "ERROR"
@@ -226,6 +247,7 @@ class ContextItemType(str, Enum):
 
 class ContextItemModel(BaseModel):
     """Pydantic model for context item database records."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -241,6 +263,7 @@ class ContextItemModel(BaseModel):
 
 class ContextItemCreateModel(BaseModel):
     """Request model for creating a context item."""
+
     item_type: ContextItemType
     content: str = Field(..., min_length=1, max_length=100000)
 
@@ -253,6 +276,7 @@ class ContextItemCreateModel(BaseModel):
 
 class ContextItemResponse(BaseModel):
     """Response model for a single context item."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -268,6 +292,7 @@ class ContextItemResponse(BaseModel):
 
 class ContextStats(BaseModel):
     """Response model for context statistics."""
+
     agent_id: str
     total_items: int
     hot_count: int
@@ -282,11 +307,13 @@ class ContextStats(BaseModel):
 
 class FlashSaveRequest(BaseModel):
     """Request model for initiating flash save."""
+
     force: bool = False  # Force flash save even if below 80% threshold
 
 
 class FlashSaveResponse(BaseModel):
     """Response model for flash save operation."""
+
     checkpoint_id: int
     agent_id: str
     items_count: int
@@ -324,6 +351,7 @@ class ContextTierUpdated(BaseModel):
             "timestamp": "2025-01-14T10:30:00Z"
         }
     """
+
     event_type: str = "context_tier_updated"
     agent_id: str
     item_count: int
@@ -356,6 +384,7 @@ class FlashSaveCompleted(BaseModel):
             "timestamp": "2025-01-14T10:35:00Z"
         }
     """
+
     event_type: str = "flash_save_completed"
     agent_id: str
     checkpoint_id: int

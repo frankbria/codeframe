@@ -93,9 +93,7 @@ class AdaptiveTestRunner:
         self.detector = LanguageDetector(project_path)
         self.language_info: Optional[LanguageInfo] = None
 
-    def _parse_command_safely(
-        self, command: str
-    ) -> tuple[Union[str, List[str]], bool]:
+    def _parse_command_safely(self, command: str) -> tuple[Union[str, List[str]], bool]:
         """
         Parse command and determine if shell=True is needed.
 
@@ -115,7 +113,7 @@ class AdaptiveTestRunner:
             - Simple commands without operators use shell=False when possible
         """
         # Check for dangerous shell operators
-        dangerous_operators = [";", "&&", "||", "|", "`", "$(",  "$()", ">", "<", ">>"]
+        dangerous_operators = [";", "&&", "||", "|", "`", "$(", "$()", ">", "<", ">>"]
         has_shell_operators = any(op in command for op in dangerous_operators)
 
         # Parse command to get the base command
@@ -154,9 +152,7 @@ class AdaptiveTestRunner:
         )
         return parts, False
 
-    async def run_tests(
-        self, with_coverage: bool = False
-    ) -> TestResult:
+    async def run_tests(self, with_coverage: bool = False) -> TestResult:
         """
         Run tests for the project.
 
@@ -209,9 +205,7 @@ class AdaptiveTestRunner:
             duration=0.0,  # Would need timing logic
         )
 
-    def _parse_output(
-        self, output: str, language: str, framework: Optional[str]
-    ) -> Dict[str, Any]:
+    def _parse_output(self, output: str, language: str, framework: Optional[str]) -> Dict[str, Any]:
         """
         Parse test output to extract metrics.
 
@@ -257,9 +251,7 @@ class AdaptiveTestRunner:
         result = {"total": 0, "passed": 0, "failed": 0, "skipped": 0}
 
         # Look for summary line like "5 passed, 2 failed, 1 skipped in 1.23s"
-        summary_match = re.search(
-            r"(\d+)\s+passed|(\d+)\s+failed|(\d+)\s+skipped", output
-        )
+        summary_match = re.search(r"(\d+)\s+passed|(\d+)\s+failed|(\d+)\s+skipped", output)
 
         if summary_match:
             # Extract numbers

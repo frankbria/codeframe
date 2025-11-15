@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 class ProviderConfig(BaseModel):
     """LLM provider configuration."""
+
     lead_agent: str = "claude"
     backend_agent: str = "claude"
     frontend_agent: str = "gpt4"
@@ -21,12 +22,14 @@ class ProviderConfig(BaseModel):
 
 class AgentPolicyConfig(BaseModel):
     """Global agent management policies."""
+
     require_review_below_maturity: str = "supporting"
     allow_full_autonomy: bool = False
 
 
 class InterruptionConfig(BaseModel):
     """Interruption mode configuration."""
+
     enabled: bool = True
     sync_blockers: list[str] = Field(default_factory=lambda: ["requirement", "security"])
     async_blockers: list[str] = Field(default_factory=lambda: ["technical", "external"])
@@ -35,6 +38,7 @@ class InterruptionConfig(BaseModel):
 
 class NotificationChannelConfig(BaseModel):
     """Notification channel configuration."""
+
     enabled: bool = True
     channels: list[str] = Field(default_factory=list)
     webhook_url: Optional[str] = None
@@ -43,12 +47,14 @@ class NotificationChannelConfig(BaseModel):
 
 class NotificationsConfig(BaseModel):
     """Multi-channel notification configuration."""
+
     sync_blockers: NotificationChannelConfig = Field(default_factory=NotificationChannelConfig)
     async_blockers: NotificationChannelConfig = Field(default_factory=NotificationChannelConfig)
 
 
 class ContextManagementConfig(BaseModel):
     """Virtual Project context configuration."""
+
     enabled: bool = True  # Feature flag for context management
     hot_tier_max_tokens: int = 20000
     warm_tier_max_tokens: int = 40000
@@ -58,6 +64,7 @@ class ContextManagementConfig(BaseModel):
 
 class CheckpointConfig(BaseModel):
     """Checkpoint configuration."""
+
     auto_save_interval: int = 1800  # seconds
     pre_compactification: bool = True
     per_task_completion: bool = True
@@ -65,15 +72,14 @@ class CheckpointConfig(BaseModel):
 
 class ProjectConfig(BaseModel):
     """Project-specific configuration."""
+
     project_name: str
     project_type: str = "python"
     providers: ProviderConfig = Field(default_factory=ProviderConfig)
     agent_policy: AgentPolicyConfig = Field(default_factory=AgentPolicyConfig)
     interruption_mode: InterruptionConfig = Field(default_factory=InterruptionConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
-    context_management: ContextManagementConfig = Field(
-        default_factory=ContextManagementConfig
-    )
+    context_management: ContextManagementConfig = Field(default_factory=ContextManagementConfig)
     checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
 
 
@@ -112,10 +118,7 @@ class GlobalConfig(BaseSettings):
     default_model: str = "claude-sonnet-4"
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
     @field_validator("log_level")
@@ -174,7 +177,9 @@ class GlobalConfig(BaseSettings):
 
         if errors:
             error_msg = "\n\n".join(errors)
-            raise ValueError(f"\n{'='*70}\nCONFIGURATION ERROR\n{'='*70}\n\n{error_msg}\n\n{'='*70}\n")
+            raise ValueError(
+                f"\n{'='*70}\nCONFIGURATION ERROR\n{'='*70}\n\n{error_msg}\n\n{'='*70}\n"
+            )
 
     def ensure_directories(self) -> None:
         """Ensure required directories exist."""

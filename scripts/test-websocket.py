@@ -37,15 +37,16 @@ except ImportError:
 
 class Colors:
     """ANSI color codes for terminal output."""
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKCYAN = "\033[96m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
 
 
 def print_header(message: str):
@@ -75,11 +76,7 @@ def print_info(message: str):
     print(f"{Colors.OKCYAN}ℹ️  {message}{Colors.ENDC}")
 
 
-def test_websocket_connection(
-    ws_url: str,
-    connection_name: str,
-    timeout: int = 10
-) -> bool:
+def test_websocket_connection(ws_url: str, connection_name: str, timeout: int = 10) -> bool:
     """
     Test WebSocket connection to a given URL.
 
@@ -155,11 +152,7 @@ def test_websocket_connection(
     return True
 
 
-def test_connection_stability(
-    ws_url: str,
-    connection_name: str,
-    duration: int = 60
-) -> bool:
+def test_connection_stability(ws_url: str, connection_name: str, duration: int = 60) -> bool:
     """
     Test WebSocket connection stability over time.
 
@@ -190,7 +183,7 @@ def test_connection_stability(
     try:
         while time.time() - start_time < duration:
             elapsed = int(time.time() - start_time)
-            print(f"  {elapsed}s elapsed... ", end='', flush=True)
+            print(f"  {elapsed}s elapsed... ", end="", flush=True)
 
             # Send ping
             ws.send(json.dumps({"type": "ping"}))
@@ -238,32 +231,32 @@ Examples:
 
   # Skip stability test (faster)
   python scripts/test-websocket.py --no-stability
-        """
+        """,
     )
 
     parser.add_argument(
-        '--proxy-url',
-        default='ws://api.codeframe.home.frankbria.net/ws',
-        help='WebSocket URL through proxy (default: ws://api.codeframe.home.frankbria.net/ws)'
+        "--proxy-url",
+        default="ws://api.codeframe.home.frankbria.net/ws",
+        help="WebSocket URL through proxy (default: ws://api.codeframe.home.frankbria.net/ws)",
     )
 
     parser.add_argument(
-        '--direct-url',
-        default='ws://localhost:14200/ws',
-        help='WebSocket URL direct to backend (default: ws://localhost:14200/ws)'
+        "--direct-url",
+        default="ws://localhost:14200/ws",
+        help="WebSocket URL direct to backend (default: ws://localhost:14200/ws)",
     )
 
     parser.add_argument(
-        '--no-stability',
-        action='store_true',
-        help='Skip stability test (faster, only tests connection/ping/pong)'
+        "--no-stability",
+        action="store_true",
+        help="Skip stability test (faster, only tests connection/ping/pong)",
     )
 
     parser.add_argument(
-        '--stability-duration',
+        "--stability-duration",
         type=int,
         default=60,
-        help='How long to test stability in seconds (default: 60)'
+        help="How long to test stability in seconds (default: 60)",
     )
 
     args = parser.parse_args()
@@ -278,42 +271,34 @@ Examples:
     print_info("This tests the backend WebSocket endpoint without nginx proxy")
     print_info("This should ALWAYS work if the backend is running")
 
-    results['direct'] = test_websocket_connection(
-        args.direct_url,
-        "Direct Backend"
-    )
+    results["direct"] = test_websocket_connection(args.direct_url, "Direct Backend")
 
     # Test 2: Proxy connection (the actual deployment)
     print_header("Test 2: Nginx Proxy Connection")
     print_info("This tests the WebSocket through nginx reverse proxy")
     print_info("This requires proper nginx WebSocket configuration")
 
-    results['proxy'] = test_websocket_connection(
-        args.proxy_url,
-        "Nginx Proxy"
-    )
+    results["proxy"] = test_websocket_connection(args.proxy_url, "Nginx Proxy")
 
     # Test 3: Connection stability (optional)
-    if not args.no_stability and results['proxy']:
+    if not args.no_stability and results["proxy"]:
         print_header("Test 3: Connection Stability")
         print_info("This tests if WebSocket stays alive over time")
         print_info("Ensures nginx timeout configuration is correct")
 
-        results['stability'] = test_connection_stability(
-            args.proxy_url,
-            "Nginx Proxy",
-            duration=args.stability_duration
+        results["stability"] = test_connection_stability(
+            args.proxy_url, "Nginx Proxy", duration=args.stability_duration
         )
     elif args.no_stability:
-        results['stability'] = None  # Skipped
+        results["stability"] = None  # Skipped
     else:
-        results['stability'] = False  # Proxy failed, can't test stability
+        results["stability"] = False  # Proxy failed, can't test stability
 
     # Print summary
     print_header("Test Summary")
 
     # Direct connection
-    if results['direct']:
+    if results["direct"]:
         print_success("Direct Backend Connection: PASSED")
     else:
         print_error("Direct Backend Connection: FAILED")
@@ -322,11 +307,11 @@ Examples:
         print_info("  → Start: pm2 restart codeframe-staging-backend")
 
     # Proxy connection
-    if results['proxy']:
+    if results["proxy"]:
         print_success("Nginx Proxy Connection: PASSED")
     else:
         print_error("Nginx Proxy Connection: FAILED")
-        if results['direct']:
+        if results["direct"]:
             print_info("  → Backend works but proxy doesn't")
             print_info("  → Nginx WebSocket configuration missing")
             print_info("  → See: docs/nginx-websocket-config.md")
@@ -334,11 +319,11 @@ Examples:
             print_info("  → Backend is not running (see above)")
 
     # Stability
-    if results['stability'] is None:
+    if results["stability"] is None:
         print_warning("Connection Stability: SKIPPED")
-    elif results['stability']:
+    elif results["stability"]:
         print_success("Connection Stability: PASSED")
-    elif results['proxy']:
+    elif results["proxy"]:
         print_error("Connection Stability: FAILED")
         print_info("  → Connection closes prematurely")
         print_info("  → Nginx timeout too short")
@@ -346,7 +331,7 @@ Examples:
 
     # Exit code
     print()
-    if results['proxy']:
+    if results["proxy"]:
         print_success("ALL CRITICAL TESTS PASSED ✓")
         print_info("WebSocket is working correctly through nginx proxy")
         sys.exit(0)
@@ -357,5 +342,5 @@ Examples:
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

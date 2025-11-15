@@ -17,10 +17,12 @@ class TestLanguageDetector:
     def test_detects_python_with_pyproject_toml(self, tmp_path):
         """Test detection of Python project via pyproject.toml"""
         # Create a minimal Python project
-        (tmp_path / "pyproject.toml").write_text("""
+        (tmp_path / "pyproject.toml").write_text(
+            """
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-""")
+"""
+        )
 
         detector = LanguageDetector(str(tmp_path))
         info = detector.detect()
@@ -31,12 +33,7 @@ testpaths = ["tests"]
 
     def test_detects_javascript_with_package_json(self, tmp_path):
         """Test detection of JavaScript project via package.json"""
-        package_json = {
-            "name": "test-project",
-            "devDependencies": {
-                "jest": "^29.0.0"
-            }
-        }
+        package_json = {"name": "test-project", "devDependencies": {"jest": "^29.0.0"}}
         (tmp_path / "package.json").write_text(json.dumps(package_json))
 
         detector = LanguageDetector(str(tmp_path))
@@ -71,11 +68,13 @@ testpaths = ["tests"]
 
     def test_detects_rust_with_cargo_toml(self, tmp_path):
         """Test detection of Rust project"""
-        (tmp_path / "Cargo.toml").write_text("""
+        (tmp_path / "Cargo.toml").write_text(
+            """
 [package]
 name = "myapp"
 version = "0.1.0"
-""")
+"""
+        )
 
         detector = LanguageDetector(str(tmp_path))
         info = detector.detect()
@@ -120,7 +119,7 @@ version = "0.1.0"
 
     def test_detects_csharp_with_csproj(self, tmp_path):
         """Test detection of C# .NET project"""
-        (tmp_path / "MyApp.csproj").write_text("<Project Sdk=\"Microsoft.NET.Sdk\"></Project>")
+        (tmp_path / "MyApp.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>')
 
         detector = LanguageDetector(str(tmp_path))
         info = detector.detect()
@@ -140,13 +139,15 @@ version = "0.1.0"
 
     def test_python_with_pytest_in_pyproject(self, tmp_path):
         """Test Python detection prefers pytest when configured"""
-        (tmp_path / "pyproject.toml").write_text("""
+        (tmp_path / "pyproject.toml").write_text(
+            """
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
-""")
+"""
+        )
 
         detector = LanguageDetector(str(tmp_path))
         info = detector.detect()
@@ -190,7 +191,13 @@ class TestLanguageDetectorSkipPatterns:
         detector = LanguageDetector(str(tmp_path))
         info = detector.detect()
 
-        expected_patterns = ["@skip", "@skipif", "@pytest.mark.skip", "@pytest.mark.skipif", "@unittest.skip"]
+        expected_patterns = [
+            "@skip",
+            "@skipif",
+            "@pytest.mark.skip",
+            "@pytest.mark.skipif",
+            "@unittest.skip",
+        ]
 
         for pattern in expected_patterns:
             assert pattern in info.skip_patterns, f"Missing skip pattern: {pattern}"

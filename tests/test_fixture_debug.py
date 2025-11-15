@@ -32,6 +32,7 @@ def temp_project_dir_debug():
         # Initialize git repo
         print("🟡 FIXTURE DEBUG: Running git init...")
         import subprocess
+
         subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True)
         print("🟡 FIXTURE DEBUG: Git init complete ✅")
         yield tmpdir

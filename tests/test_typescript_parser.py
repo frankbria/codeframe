@@ -42,9 +42,9 @@ class TestTypeScriptParser:
 
     def test_parse_simple_class(self, parser, temp_ts_file):
         """Test parsing a simple TypeScript class."""
-        code = '''class User {
+        code = """class User {
 }
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -56,7 +56,7 @@ class TestTypeScriptParser:
 
     def test_parse_class_with_methods(self, parser, temp_ts_file):
         """Test parsing a TypeScript class with methods."""
-        code = '''class UserService {
+        code = """class UserService {
   constructor(private db: Database) {}
 
   async getUser(id: string): Promise<User> {
@@ -67,7 +67,7 @@ class TestTypeScriptParser:
     this.db.save(user);
   }
 }
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -91,12 +91,12 @@ class TestTypeScriptParser:
 
     def test_parse_interface(self, parser, temp_ts_file):
         """Test parsing TypeScript interface."""
-        code = '''interface User {
+        code = """interface User {
   id: string;
   name: string;
   email: string;
 }
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -107,10 +107,10 @@ class TestTypeScriptParser:
 
     def test_parse_type_alias(self, parser, temp_ts_file):
         """Test parsing TypeScript type alias."""
-        code = '''type UserId = string;
+        code = """type UserId = string;
 
 type UserRole = 'admin' | 'user' | 'guest';
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -121,14 +121,14 @@ type UserRole = 'admin' | 'user' | 'guest';
 
     def test_parse_function(self, parser, temp_ts_file):
         """Test parsing TypeScript functions."""
-        code = '''function getUserById(id: string): User {
+        code = """function getUserById(id: string): User {
   return users.find(u => u.id === id);
 }
 
 async function fetchUser(id: string): Promise<User> {
   return await api.get(`/users/${id}`);
 }
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -143,14 +143,14 @@ async function fetchUser(id: string): Promise<User> {
 
     def test_parse_arrow_function(self, parser, temp_ts_file):
         """Test parsing arrow functions."""
-        code = '''const getUser = (id: string): User => {
+        code = """const getUser = (id: string): User => {
   return users.find(u => u.id === id);
 };
 
 const saveUser = async (user: User): Promise<void> => {
   await db.save(user);
 };
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -160,14 +160,14 @@ const saveUser = async (user: User): Promise<void> => {
 
     def test_parse_react_component(self, parser, temp_ts_file):
         """Test parsing React component function."""
-        code = '''export function UserProfile({ user }: { user: User }) {
+        code = """export function UserProfile({ user }: { user: User }) {
   return <div>{user.name}</div>;
 }
 
 export const Avatar = ({ url }: { url: string }) => {
   return <img src={url} />;
 };
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -177,7 +177,7 @@ export const Avatar = ({ url }: { url: string }) => {
 
     def test_parse_exported_class(self, parser, temp_ts_file):
         """Test parsing exported classes."""
-        code = '''export class UserService {
+        code = """export class UserService {
   getUser() {
     return null;
   }
@@ -188,7 +188,7 @@ export default class AdminService {
     return null;
   }
 }
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -199,7 +199,7 @@ export default class AdminService {
 
     def test_parse_javascript_file(self, parser, temp_js_file):
         """Test parsing JavaScript (.js) file."""
-        code = '''class User {
+        code = """class User {
   constructor(name) {
     this.name = name;
   }
@@ -212,7 +212,7 @@ export default class AdminService {
 function createUser(name) {
   return new User(name);
 }
-'''
+"""
         temp_js_file.write_text(code)
         symbols = parser.parse_file(temp_js_file)
 
@@ -229,7 +229,7 @@ function createUser(name) {
 
     def test_parse_mixed_interfaces_and_classes(self, parser, temp_ts_file):
         """Test parsing file with both interfaces and classes."""
-        code = '''interface IUser {
+        code = """interface IUser {
   id: string;
   name: string;
 }
@@ -239,7 +239,7 @@ class User implements IUser {
 }
 
 type UserData = Partial<IUser>;
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -257,7 +257,7 @@ type UserData = Partial<IUser>;
 
     def test_line_numbers_are_accurate(self, parser, temp_ts_file):
         """Test that line numbers are accurately reported."""
-        code = '''// Comment line 1
+        code = """// Comment line 1
 // Comment line 2
 
 function firstFunction() {  // line 4
@@ -277,7 +277,7 @@ class MyClass {  // line 8
 interface MyInterface {  // line 18
   prop: string;
 }
-'''
+"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 
@@ -292,7 +292,7 @@ interface MyInterface {  // line 18
 
     def test_parser_preserves_file_path(self, parser, temp_ts_file):
         """Test that parser preserves the file path in symbols."""
-        code = '''class User {}'''
+        code = """class User {}"""
         temp_ts_file.write_text(code)
         symbols = parser.parse_file(temp_ts_file)
 

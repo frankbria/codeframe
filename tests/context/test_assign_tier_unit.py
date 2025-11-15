@@ -108,8 +108,9 @@ class TestAssignTierUnit:
             current_tier_rank = tiers_order[current_tier]
 
             # Higher score should have >= tier rank
-            assert current_tier_rank >= prev_tier_rank, \
-                f"Score {score} (tier {current_tier}) should not have lower tier than {prev_score} (tier rank {prev_tier_rank})"
+            assert (
+                current_tier_rank >= prev_tier_rank
+            ), f"Score {score} (tier {current_tier}) should not have lower tier than {prev_score} (tier rank {prev_tier_rank})"
 
             prev_score = score
             prev_tier_rank = current_tier_rank

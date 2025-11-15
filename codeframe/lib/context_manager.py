@@ -60,7 +60,9 @@ class ContextManager:
             Updated 150 items
         """
         # Load all context items for this agent on this project (all tiers)
-        context_items = self.db.list_context_items(project_id=project_id, agent_id=agent_id, tier=None, limit=10000)
+        context_items = self.db.list_context_items(
+            project_id=project_id, agent_id=agent_id, tier=None, limit=10000
+        )
 
         if not context_items:
             return 0
@@ -70,19 +72,17 @@ class ContextManager:
         for item in context_items:
             # Recalculate importance score
             new_score = calculate_importance_score(
-                item_type=item['item_type'],
-                created_at=datetime.fromisoformat(item['created_at'].replace('Z', '+00:00')),
-                access_count=item['access_count'],
-                last_accessed=datetime.fromisoformat(item['last_accessed'].replace('Z', '+00:00'))
+                item_type=item["item_type"],
+                created_at=datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")),
+                access_count=item["access_count"],
+                last_accessed=datetime.fromisoformat(item["last_accessed"].replace("Z", "+00:00")),
             )
 
             # Update score in database (keep tier unchanged for now - Phase 5 will update)
             # Convert current_tier from db (lowercase) to API tier format (uppercase)
-            current_tier = item.get('current_tier', 'warm').upper()
+            current_tier = item.get("current_tier", "warm").upper()
             self.db.update_context_item_tier(
-                item_id=item['id'],
-                tier=current_tier,
-                importance_score=new_score
+                item_id=item["id"], tier=current_tier, importance_score=new_score
             )
 
             updated_count += 1
@@ -115,7 +115,9 @@ class ContextManager:
             Updated 150 items with new tiers
         """
         # Load all context items for this agent on this project (all tiers)
-        context_items = self.db.list_context_items(project_id=project_id, agent_id=agent_id, tier=None, limit=10000)
+        context_items = self.db.list_context_items(
+            project_id=project_id, agent_id=agent_id, tier=None, limit=10000
+        )
 
         if not context_items:
             return 0
@@ -125,10 +127,10 @@ class ContextManager:
         for item in context_items:
             # Recalculate importance score
             new_score = calculate_importance_score(
-                item_type=item['item_type'],
-                created_at=datetime.fromisoformat(item['created_at'].replace('Z', '+00:00')),
-                access_count=item['access_count'],
-                last_accessed=datetime.fromisoformat(item['last_accessed'].replace('Z', '+00:00'))
+                item_type=item["item_type"],
+                created_at=datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")),
+                access_count=item["access_count"],
+                last_accessed=datetime.fromisoformat(item["last_accessed"].replace("Z", "+00:00")),
             )
 
             # Reassign tier based on new score
@@ -136,9 +138,7 @@ class ContextManager:
 
             # Update both score and tier in database
             self.db.update_context_item_tier(
-                item_id=item['id'],
-                tier=new_tier,
-                importance_score=new_score
+                item_id=item["id"], tier=new_tier, importance_score=new_score
             )
 
             updated_count += 1
@@ -170,10 +170,7 @@ class ContextManager:
 
         # Get current context items
         context_items = self.db.list_context_items(
-            project_id=project_id,
-            agent_id=agent_id,
-            tier=None,
-            limit=10000
+            project_id=project_id, agent_id=agent_id, tier=None, limit=10000
         )
 
         if not context_items:
@@ -215,10 +212,7 @@ class ContextManager:
         """
         # STEP 1: Load all context items
         context_items = self.db.list_context_items(
-            project_id=project_id,
-            agent_id=agent_id,
-            tier=None,
-            limit=10000
+            project_id=project_id, agent_id=agent_id, tier=None, limit=10000
         )
 
         # STEP 2: Count tokens before archival
@@ -239,10 +233,10 @@ class ContextManager:
                     "tier": item.get("current_tier", "warm"),
                     "access_count": item["access_count"],
                     "created_at": item["created_at"],
-                    "last_accessed": item["last_accessed"]
+                    "last_accessed": item["last_accessed"],
                 }
                 for item in context_items
-            ]
+            ],
         }
 
         # Count items by tier
@@ -261,7 +255,7 @@ class ContextManager:
             items_count=items_count,
             items_archived=items_archived,
             hot_items_retained=hot_items_retained,
-            token_count=tokens_before
+            token_count=tokens_before,
         )
 
         # STEP 4: Archive COLD tier items (delete from active context)
@@ -269,10 +263,7 @@ class ContextManager:
 
         # STEP 5: Count tokens after archival (only HOT and WARM remain)
         remaining_items = self.db.list_context_items(
-            project_id=project_id,
-            agent_id=agent_id,
-            tier=None,
-            limit=10000
+            project_id=project_id, agent_id=agent_id, tier=None, limit=10000
         )
         tokens_after = self.token_counter.count_context_tokens(remaining_items)
 
@@ -290,5 +281,5 @@ class ContextManager:
             "reduction_percentage": round(reduction_percentage, 2),
             "items_archived": items_archived,
             "hot_items_retained": hot_items_retained,
-            "warm_items_retained": len(warm_items)
+            "warm_items_retained": len(warm_items),
         }

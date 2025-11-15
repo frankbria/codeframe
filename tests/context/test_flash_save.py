@@ -40,9 +40,7 @@ def temp_db():
 def test_project(temp_db):
     """Create a test project for context items."""
     project_id = temp_db.create_project(
-        name="test-project",
-        description="Test project for flash save",
-        workspace_path=""
+        name="test-project", description="Test project for flash save", workspace_path=""
     )
     return project_id
 
@@ -66,7 +64,7 @@ class TestFlashSave:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content=f"Task {i} " * 100  # Make it long enough
+                content=f"Task {i} " * 100,  # Make it long enough
             )
 
         # ACT: Trigger flash save
@@ -91,13 +89,13 @@ class TestFlashSave:
             project_id=test_project,
             agent_id=agent_id,
             item_type=ContextItemType.TASK.value,
-            content="Critical task " * 50
+            content="Critical task " * 50,
         )
         # Manually set to HOT tier
         cursor = temp_db.conn.cursor()
         cursor.execute(
             "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
-            (hot_item_id,)
+            (hot_item_id,),
         )
 
         # Create COLD item
@@ -105,12 +103,12 @@ class TestFlashSave:
             project_id=test_project,
             agent_id=agent_id,
             item_type=ContextItemType.PRD_SECTION.value,
-            content="Old PRD section " * 50
+            content="Old PRD section " * 50,
         )
         # Manually set to COLD tier
         cursor.execute(
             "UPDATE context_items SET importance_score = 0.2, current_tier = 'cold' WHERE id = ?",
-            (cold_item_id,)
+            (cold_item_id,),
         )
         temp_db.conn.commit()
 
@@ -136,7 +134,7 @@ class TestFlashSave:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content=f"Critical task {i} " * 50
+                content=f"Critical task {i} " * 50,
             )
             hot_item_ids.append(item_id)
 
@@ -144,7 +142,7 @@ class TestFlashSave:
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
@@ -153,9 +151,7 @@ class TestFlashSave:
 
         # ASSERT: All HOT items still accessible
         hot_items_after = temp_db.list_context_items(
-            project_id=test_project,
-            agent_id=agent_id,
-            tier="hot"
+            project_id=test_project, agent_id=agent_id, tier="hot"
         )
         assert len(hot_items_after) == 5
         hot_ids_after = [item["id"] for item in hot_items_after]
@@ -172,7 +168,7 @@ class TestFlashSave:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content=f"Task {i} " * 100
+                content=f"Task {i} " * 100,
             )
 
             # Set half to HOT, half to COLD
@@ -180,12 +176,12 @@ class TestFlashSave:
             if i < 5:
                 cursor.execute(
                     "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
-                    (item_id,)
+                    (item_id,),
                 )
             else:
                 cursor.execute(
                     "UPDATE context_items SET importance_score = 0.2, current_tier = 'cold' WHERE id = ?",
-                    (item_id,)
+                    (item_id,),
                 )
             temp_db.conn.commit()
 
@@ -210,7 +206,7 @@ class TestFlashSave:
             project_id=test_project,
             agent_id=agent_id,
             item_type=ContextItemType.TASK.value,
-            content="Small task"
+            content="Small task",
         )
 
         # ACT: Try flash save without force (should not trigger)

@@ -194,7 +194,10 @@ class TestPropertyBasedTests:
         """Property: Reversing preserves string length."""
         assert len(reverse_string(s)) == len(s)
 
-    @given(st.floats(allow_nan=False, allow_infinity=False), st.floats(allow_nan=False, allow_infinity=False))
+    @given(
+        st.floats(allow_nan=False, allow_infinity=False),
+        st.floats(allow_nan=False, allow_infinity=False),
+    )
     def test_addition_is_commutative(self, a, b):
         """Property: Addition is commutative (a + b == b + a)."""
         assert add_numbers(a, b) == pytest.approx(add_numbers(b, a))

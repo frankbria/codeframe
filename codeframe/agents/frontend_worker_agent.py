@@ -39,7 +39,7 @@ class FrontendWorkerAgent(WorkerAgent):
         api_key: Optional[str] = None,
         websocket_manager=None,
         db=None,
-        project_id: Optional[int] = None
+        project_id: Optional[int] = None,
     ):
         """
         Initialize Frontend Worker Agent.
@@ -58,7 +58,7 @@ class FrontendWorkerAgent(WorkerAgent):
             agent_type="frontend",
             provider=provider,
             maturity=maturity,
-            system_prompt=self._build_system_prompt()
+            system_prompt=self._build_system_prompt(),
         )
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
@@ -109,13 +109,14 @@ Output format:
             if self.websocket_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_task_status
+
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
                         task.id,
                         "in_progress",
                         agent_id=self.agent_id,
-                        progress=0
+                        progress=0,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
@@ -136,9 +137,7 @@ Output format:
 
             # Create files in correct location
             file_paths = self._create_component_files(
-                component_spec["name"],
-                component_code,
-                types_code
+                component_spec["name"], component_code, types_code
             )
 
             # Update imports/exports
@@ -148,13 +147,14 @@ Output format:
             if self.websocket_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_task_status
+
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
                         task.id,
                         "completed",
                         agent_id=self.agent_id,
-                        progress=100
+                        progress=100,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
@@ -165,7 +165,7 @@ Output format:
                 "status": "completed",
                 "output": f"Generated component: {component_spec['name']}",
                 "files_created": file_paths,
-                "component_name": component_spec["name"]
+                "component_name": component_spec["name"],
             }
 
         except Exception as e:
@@ -175,21 +175,18 @@ Output format:
             if self.websocket_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_task_status
+
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
                         task.id,
                         "failed",
-                        agent_id=self.agent_id
+                        agent_id=self.agent_id,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
 
-            return {
-                "status": "failed",
-                "output": str(e),
-                "error": str(e)
-            }
+            return {"status": "failed", "output": str(e), "error": str(e)}
 
     def _parse_component_spec(self, description: str) -> Dict[str, Any]:
         """
@@ -224,9 +221,11 @@ Output format:
                 words = line.split()
                 for i, word in enumerate(words):
                     # Skip keywords and find PascalCase component name
-                    if (word[0].isupper() and
-                        word.lower() not in ['create', 'component', 'a', 'the'] and
-                        "component" not in word.lower()):
+                    if (
+                        word[0].isupper()
+                        and word.lower() not in ["create", "component", "a", "the"]
+                        and "component" not in word.lower()
+                    ):
                         name = word
                         break
 
@@ -234,7 +233,7 @@ Output format:
             "name": name,
             "description": description,
             "generate_types": True,
-            "use_tailwind": True
+            "use_tailwind": True,
         }
 
     async def _generate_react_component(self, spec: Dict[str, Any]) -> str:
@@ -269,9 +268,7 @@ Provide ONLY the component code, no explanations."""
             response = await self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=2000,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                messages=[{"role": "user", "content": prompt}],
             )
 
             # Extract code from response
@@ -336,10 +333,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         return None
 
     def _create_component_files(
-        self,
-        component_name: str,
-        component_code: str,
-        types_code: Optional[str] = None
+        self, component_name: str, component_code: str, types_code: Optional[str] = None
     ) -> Dict[str, str]:
         """
         Create component files in correct directory structure.
@@ -375,9 +369,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             # In testing with tmp directories
             relative_path = component_file.relative_to(self.web_ui_root.parent)
 
-        file_paths = {
-            "component": str(relative_path)
-        }
+        file_paths = {"component": str(relative_path)}
 
         # Write types file if provided
         if types_code:
@@ -393,11 +385,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
 
         return file_paths
 
-    def _update_imports_exports(
-        self,
-        component_name: str,
-        file_paths: Dict[str, str]
-    ) -> None:
+    def _update_imports_exports(self, component_name: str, file_paths: Dict[str, str]) -> None:
         """
         Update import/export statements in index files.
 
@@ -411,8 +399,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         if not index_file.exists():
             # Create index file
             index_file.write_text(
-                f"export {{ {component_name} }} from './{component_name}';\n",
-                encoding="utf-8"
+                f"export {{ {component_name} }} from './{component_name}';\n", encoding="utf-8"
             )
         else:
             # Append export
@@ -420,14 +407,11 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             if f"export {{ {component_name} }}" not in current_content:
                 index_file.write_text(
                     current_content + f"export {{ {component_name} }} from './{component_name}';\n",
-                    encoding="utf-8"
+                    encoding="utf-8",
                 )
 
     async def create_blocker(
-        self,
-        question: str,
-        blocker_type: str = "ASYNC",
-        task_id: Optional[int] = None
+        self, question: str, blocker_type: str = "ASYNC", task_id: Optional[int] = None
     ) -> int:
         """
         Create a blocker when agent needs human input (049-human-in-loop, T035).
@@ -450,10 +434,14 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         """
         # Defensive checks for required dependencies
         if self.db is None:
-            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+            raise RuntimeError(
+                "Database instance required for blocker workflow. Pass db parameter to __init__."
+            )
 
         if self.project_id is None:
-            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+            raise RuntimeError(
+                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+            )
 
         if not question or len(question.strip()) == 0:
             raise ValueError("Question cannot be empty")
@@ -467,7 +455,15 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             raise ValueError(f"Invalid blocker_type '{blocker_type}'. Must be 'SYNC' or 'ASYNC'")
 
         # Use provided task_id or fall back to current task
-        blocker_task_id = task_id if task_id is not None else (self.current_task.id if hasattr(self, 'current_task') and self.current_task else None)
+        blocker_task_id = (
+            task_id
+            if task_id is not None
+            else (
+                self.current_task.id
+                if hasattr(self, "current_task") and self.current_task
+                else None
+            )
+        )
 
         # Create blocker in database
         blocker_id = self.db.create_blocker(
@@ -475,7 +471,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             project_id=self.project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
-            question=question.strip()
+            question=question.strip(),
         )
 
         logger.info(f"Blocker {blocker_id} created by {self.agent_id}: {question[:50]}...")
@@ -484,6 +480,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         if self.websocket_manager:
             try:
                 from codeframe.ui.websocket_broadcasts import broadcast_blocker_created
+
                 await broadcast_blocker_created(
                     manager=self.websocket_manager,
                     project_id=self.project_id,
@@ -491,7 +488,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                     agent_id=self.agent_id,
                     task_id=blocker_task_id,
                     blocker_type=blocker_type,
-                    question=question.strip()
+                    question=question.strip(),
                 )
             except Exception as e:
                 logger.warning(f"Failed to broadcast blocker creation: {e}")
@@ -514,7 +511,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                     webhook_service = WebhookNotificationService(
                         webhook_url=webhook_url,
                         timeout=5,
-                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}"
+                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}",
                     )
 
                     # Send notification (fire-and-forget)
@@ -524,11 +521,13 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                         agent_id=self.agent_id,
                         task_id=blocker_task_id or 0,
                         blocker_type=BlockerType.SYNC,
-                        created_at=datetime.now()
+                        created_at=datetime.now(),
                     )
                     logger.debug(f"Webhook notification queued for SYNC blocker {blocker_id}")
                 else:
-                    logger.debug("BLOCKER_WEBHOOK_URL not configured, skipping webhook notification")
+                    logger.debug(
+                        "BLOCKER_WEBHOOK_URL not configured, skipping webhook notification"
+                    )
 
             except Exception as e:
                 # Log error but don't block blocker creation
@@ -537,10 +536,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         return blocker_id
 
     async def wait_for_blocker_resolution(
-        self,
-        blocker_id: int,
-        poll_interval: float = 5.0,
-        timeout: float = 600.0
+        self, blocker_id: int, poll_interval: float = 5.0, timeout: float = 600.0
     ) -> str:
         """
         Wait for a blocker to be resolved by polling the database (049-human-in-loop, T029).
@@ -569,10 +565,14 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         """
         # Defensive checks for required dependencies
         if self.db is None:
-            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+            raise RuntimeError(
+                "Database instance required for blocker workflow. Pass db parameter to __init__."
+            )
 
         if self.project_id is None:
-            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+            raise RuntimeError(
+                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+            )
 
         import time
 
@@ -597,12 +597,18 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                 if self.websocket_manager:
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
+
                         await broadcast_agent_resumed(
                             manager=self.websocket_manager,
                             project_id=self.project_id,
                             agent_id=self.agent_id,
-                            task_id=(self.current_task.id if hasattr(self, 'current_task') and self.current_task else None) or blocker.get("task_id"),
-                            blocker_id=blocker_id
+                            task_id=(
+                                self.current_task.id
+                                if hasattr(self, "current_task") and self.current_task
+                                else None
+                            )
+                            or blocker.get("task_id"),
+                            blocker_id=blocker_id,
                         )
                     except Exception as e:
                         logger.warning(f"Failed to broadcast agent_resumed: {e}")
@@ -623,7 +629,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         blocker_type: str = "ASYNC",
         task_id: Optional[int] = None,
         poll_interval: float = 5.0,
-        timeout: float = 600.0
+        timeout: float = 600.0,
     ) -> Dict[str, Any]:
         """
         Create blocker, wait for resolution, and inject answer into context (049-human-in-loop, T031).
@@ -679,18 +685,14 @@ export const {name}: React.FC<{name}Props> = (props) => {{
 
         # 1. Create blocker
         blocker_id = await self.create_blocker(
-            question=question,
-            blocker_type=blocker_type,
-            task_id=task_id
+            question=question, blocker_type=blocker_type, task_id=task_id
         )
 
         logger.info(f"Created blocker {blocker_id}, waiting for resolution...")
 
         # 2. Wait for user to resolve blocker
         answer = await self.wait_for_blocker_resolution(
-            blocker_id=blocker_id,
-            poll_interval=poll_interval,
-            timeout=timeout
+            blocker_id=blocker_id, poll_interval=poll_interval, timeout=timeout
         )
 
         logger.info(f"Blocker {blocker_id} resolved with answer: {answer[:50]}...")
@@ -700,7 +702,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             **context,
             "blocker_answer": answer,
             "blocker_question": question,
-            "blocker_id": blocker_id
+            "blocker_id": blocker_id,
         }
 
         return enriched_context

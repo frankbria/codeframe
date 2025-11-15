@@ -30,8 +30,7 @@ class AddContextCheckpoints(Migration):
 
     def __init__(self):
         super().__init__(
-            version="004",
-            description="Add context_checkpoints table for flash save feature"
+            version="004", description="Add context_checkpoints table for flash save feature"
         )
 
     def can_apply(self, conn: sqlite3.Connection) -> bool:
@@ -62,7 +61,8 @@ class AddContextCheckpoints(Migration):
         cursor = conn.cursor()
 
         # Create context_checkpoints table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE context_checkpoints (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id TEXT NOT NULL,
@@ -74,14 +74,17 @@ class AddContextCheckpoints(Migration):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (agent_id) REFERENCES agents(agent_id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
         logger.info("Created context_checkpoints table")
 
         # Create performance index
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX idx_checkpoints_agent_created
             ON context_checkpoints(agent_id, created_at DESC)
-        """)
+        """
+        )
         logger.info("Created index: idx_checkpoints_agent_created")
 
         conn.commit()

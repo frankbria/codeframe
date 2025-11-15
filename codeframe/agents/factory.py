@@ -50,19 +50,14 @@ class AgentFactory:
             logger.info(f"AgentFactory initialized with {loaded} agent definitions")
         except FileNotFoundError:
             logger.warning(
-                f"Definitions directory not found: {self.definitions_dir}. "
-                "No agents loaded."
+                f"Definitions directory not found: {self.definitions_dir}. " "No agents loaded."
             )
         except Exception as e:
             logger.error(f"Failed to load agent definitions: {e}")
             raise
 
     def create_agent(
-        self,
-        agent_type: str,
-        agent_id: str,
-        provider: str = "claude",
-        **kwargs: Any
+        self, agent_type: str, agent_id: str, provider: str = "claude", **kwargs: Any
     ) -> WorkerAgent:
         """
         Create a WorkerAgent instance from a definition.
@@ -92,12 +87,11 @@ class AgentFactory:
         except KeyError as e:
             available = self.list_available_agents()
             raise KeyError(
-                f"Agent type '{agent_type}' not found. "
-                f"Available agents: {available}"
+                f"Agent type '{agent_type}' not found. " f"Available agents: {available}"
             ) from e
 
         # Extract maturity if not provided in kwargs
-        maturity = kwargs.pop('maturity', definition.maturity)
+        maturity = kwargs.pop("maturity", definition.maturity)
 
         # Create WorkerAgent with system_prompt
         agent = WorkerAgent(
@@ -106,7 +100,7 @@ class AgentFactory:
             provider=provider,
             maturity=maturity,
             system_prompt=definition.system_prompt,
-            **kwargs
+            **kwargs,
         )
 
         # Store additional definition metadata on agent for reference
@@ -115,9 +109,7 @@ class AgentFactory:
         agent.tools = definition.tools  # type: ignore
         agent.constraints = definition.constraints  # type: ignore
 
-        logger.debug(
-            f"Created agent: {agent_id} (type={agent_type}, provider={provider})"
-        )
+        logger.debug(f"Created agent: {agent_id} (type={agent_type}, provider={provider})")
 
         return agent
 
@@ -157,8 +149,7 @@ class AgentFactory:
         except KeyError as e:
             available = self.list_available_agents()
             raise KeyError(
-                f"Agent type '{agent_type}' not found. "
-                f"Available agents: {available}"
+                f"Agent type '{agent_type}' not found. " f"Available agents: {available}"
             ) from e
 
     def get_agent_definition(self, agent_type: str) -> AgentDefinition:

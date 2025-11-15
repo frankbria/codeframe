@@ -18,10 +18,12 @@ class TestProjectsEndpoint:
         """Test listing projects when database is empty."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -40,10 +42,12 @@ class TestProjectsEndpoint:
         """Test listing projects with actual database data."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -74,10 +78,12 @@ class TestProjectsEndpoint:
         """Test that list_projects returns all expected fields."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -109,10 +115,12 @@ class TestProjectStatusEndpoint:
         """Test getting project status for existing project."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -135,10 +143,12 @@ class TestProjectStatusEndpoint:
         """Test getting status for non-existent project returns 404."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -157,10 +167,12 @@ class TestProjectStatusEndpoint:
         """Test that project status returns all expected fields."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -193,10 +205,12 @@ class TestAgentsEndpoint:
         """Test getting agents when no agents exist for project."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -218,10 +232,12 @@ class TestAgentsEndpoint:
         """Test getting agents with actual database data."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -254,10 +270,12 @@ class TestAgentsEndpoint:
         """Test that agents endpoint returns all expected fields."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -291,10 +309,12 @@ class TestEndpointDatabaseIntegration:
         """Test complete workflow: create project, get status, verify agents."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -331,10 +351,12 @@ class TestEndpointDatabaseIntegration:
         """Test that endpoints work consistently across multiple requests."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app

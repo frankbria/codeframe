@@ -35,12 +35,7 @@ class TestBackendWorkerAgentBlockerResolution:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
         agent.id = "backend-worker-001"
 
         # Mock blocker that transitions from PENDING to RESOLVED
@@ -53,14 +48,14 @@ class TestBackendWorkerAgentBlockerResolution:
             "answer": None,
             "status": "PENDING",
             "created_at": "2025-11-08T12:00:00Z",
-            "resolved_at": None
+            "resolved_at": None,
         }
 
         resolved_blocker = {
             **pending_blocker,
             "answer": "Use SQLite to match existing codebase",
             "status": "RESOLVED",
-            "resolved_at": "2025-11-08T12:00:05Z"
+            "resolved_at": "2025-11-08T12:00:05Z",
         }
 
         # First call returns pending, second call returns resolved
@@ -68,9 +63,7 @@ class TestBackendWorkerAgentBlockerResolution:
 
         # Wait for blocker resolution (should return answer)
         answer = await agent.wait_for_blocker_resolution(
-            blocker_id=1,
-            poll_interval=0.05,
-            timeout=5.0
+            blocker_id=1, poll_interval=0.05, timeout=5.0
         )
 
         assert answer == "Use SQLite to match existing codebase"
@@ -83,12 +76,7 @@ class TestBackendWorkerAgentBlockerResolution:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
         agent.id = "backend-worker-001"
 
         # Blocker remains pending
@@ -101,18 +89,14 @@ class TestBackendWorkerAgentBlockerResolution:
             "answer": None,
             "status": "PENDING",
             "created_at": "2025-11-08T12:00:00Z",
-            "resolved_at": None
+            "resolved_at": None,
         }
 
         db.get_blocker.return_value = pending_blocker
 
         # Wait for blocker resolution (should timeout)
         with pytest.raises(TimeoutError) as exc_info:
-            await agent.wait_for_blocker_resolution(
-                blocker_id=1,
-                poll_interval=0.05,
-                timeout=0.2
-            )
+            await agent.wait_for_blocker_resolution(blocker_id=1, poll_interval=0.05, timeout=0.2)
 
         assert "Blocker 1 not resolved within" in str(exc_info.value)
 
@@ -123,12 +107,7 @@ class TestBackendWorkerAgentBlockerResolution:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
         agent.id = "backend-worker-001"
 
         # Track number of polls
@@ -149,7 +128,7 @@ class TestBackendWorkerAgentBlockerResolution:
                     "answer": "Answer",
                     "status": "RESOLVED",
                     "created_at": "2025-11-08T12:00:00Z",
-                    "resolved_at": "2025-11-08T12:00:05Z"
+                    "resolved_at": "2025-11-08T12:00:05Z",
                 }
             else:
                 return {
@@ -161,33 +140,28 @@ class TestBackendWorkerAgentBlockerResolution:
                     "answer": None,
                     "status": "PENDING",
                     "created_at": "2025-11-08T12:00:00Z",
-                    "resolved_at": None
+                    "resolved_at": None,
                 }
 
         db.get_blocker.side_effect = get_blocker_side_effect
 
         answer = await agent.wait_for_blocker_resolution(
-            blocker_id=1,
-            poll_interval=0.05,
-            timeout=5.0
+            blocker_id=1, poll_interval=0.05, timeout=5.0
         )
 
         assert answer == "Answer"
         assert poll_count == 3  # Should have polled 3 times
 
     @pytest.mark.asyncio
-    async def test_wait_for_blocker_resolution_returns_immediately_if_already_resolved(self, tmp_path):
+    async def test_wait_for_blocker_resolution_returns_immediately_if_already_resolved(
+        self, tmp_path
+    ):
         """Test wait_for_blocker_resolution returns immediately if blocker already resolved."""
         # Setup mocked database
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
         agent.id = "backend-worker-001"
 
         # Blocker already resolved
@@ -200,7 +174,7 @@ class TestBackendWorkerAgentBlockerResolution:
             "answer": "Pre-resolved answer",
             "status": "RESOLVED",
             "created_at": "2025-11-08T12:00:00Z",
-            "resolved_at": "2025-11-08T12:00:01Z"
+            "resolved_at": "2025-11-08T12:00:01Z",
         }
 
         db.get_blocker.return_value = resolved_blocker
@@ -208,9 +182,7 @@ class TestBackendWorkerAgentBlockerResolution:
         # Wait should return immediately
         start_time = time.time()
         answer = await agent.wait_for_blocker_resolution(
-            blocker_id=1,
-            poll_interval=0.1,
-            timeout=5.0
+            blocker_id=1, poll_interval=0.1, timeout=5.0
         )
         elapsed = time.time() - start_time
 
@@ -227,11 +199,7 @@ class TestBackendWorkerAgentBlockerResolution:
         ws_manager = AsyncMock()
 
         agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path,
-            ws_manager=ws_manager
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, ws_manager=ws_manager
         )
         agent.id = "backend-worker-001"
         agent.current_task_id = 1
@@ -246,27 +214,27 @@ class TestBackendWorkerAgentBlockerResolution:
             "answer": "Answer",
             "status": "RESOLVED",
             "created_at": "2025-11-08T12:00:00Z",
-            "resolved_at": "2025-11-08T12:00:05Z"
+            "resolved_at": "2025-11-08T12:00:05Z",
         }
 
         db.get_blocker.return_value = resolved_blocker
 
         # Wait for resolution
-        with patch('codeframe.ui.websocket_broadcasts.broadcast_agent_resumed', new_callable=AsyncMock) as mock_broadcast:
+        with patch(
+            "codeframe.ui.websocket_broadcasts.broadcast_agent_resumed", new_callable=AsyncMock
+        ) as mock_broadcast:
             answer = await agent.wait_for_blocker_resolution(
-                blocker_id=1,
-                poll_interval=0.05,
-                timeout=5.0
+                blocker_id=1, poll_interval=0.05, timeout=5.0
             )
 
             # Verify broadcast was called
             mock_broadcast.assert_called_once()
             call_args = mock_broadcast.call_args
-            assert call_args[1]['manager'] == ws_manager
-            assert call_args[1]['project_id'] == 1
-            assert call_args[1]['agent_id'] == "backend-worker-001"
-            assert call_args[1]['task_id'] == 1
-            assert call_args[1]['blocker_id'] == 1
+            assert call_args[1]["manager"] == ws_manager
+            assert call_args[1]["project_id"] == 1
+            assert call_args[1]["agent_id"] == "backend-worker-001"
+            assert call_args[1]["task_id"] == 1
+            assert call_args[1]["blocker_id"] == 1
 
 
 class TestFrontendWorkerAgentBlockerResolution:
@@ -278,31 +246,23 @@ class TestFrontendWorkerAgentBlockerResolution:
         # Setup mocked database
         db = Mock(spec=Database)
 
-        agent = FrontendWorkerAgent(
-            agent_id="frontend-worker-001"
-        )
+        agent = FrontendWorkerAgent(agent_id="frontend-worker-001")
         agent.db = db
         agent.project_id = 1
         agent.ws_manager = None
 
         # Mock blocker transition
-        pending_blocker = {
-            "id": 1,
-            "answer": None,
-            "status": "PENDING"
-        }
+        pending_blocker = {"id": 1, "answer": None, "status": "PENDING"}
         resolved_blocker = {
             "id": 1,
             "answer": "Use React to match existing stack",
-            "status": "RESOLVED"
+            "status": "RESOLVED",
         }
 
         db.get_blocker.side_effect = [pending_blocker, resolved_blocker]
 
         answer = await agent.wait_for_blocker_resolution(
-            blocker_id=1,
-            poll_interval=0.05,
-            timeout=5.0
+            blocker_id=1, poll_interval=0.05, timeout=5.0
         )
 
         assert answer == "Use React to match existing stack"
@@ -317,31 +277,19 @@ class TestTestWorkerAgentBlockerResolution:
         # Setup mocked database
         db = Mock(spec=Database)
 
-        agent = TestWorkerAgent(
-            agent_id="test-worker-001"
-        )
+        agent = TestWorkerAgent(agent_id="test-worker-001")
         agent.db = db
         agent.project_id = 1
         agent.ws_manager = None
 
         # Mock blocker transition
-        pending_blocker = {
-            "id": 1,
-            "answer": None,
-            "status": "PENDING"
-        }
-        resolved_blocker = {
-            "id": 1,
-            "answer": "Use pytest for consistency",
-            "status": "RESOLVED"
-        }
+        pending_blocker = {"id": 1, "answer": None, "status": "PENDING"}
+        resolved_blocker = {"id": 1, "answer": "Use pytest for consistency", "status": "RESOLVED"}
 
         db.get_blocker.side_effect = [pending_blocker, resolved_blocker]
 
         answer = await agent.wait_for_blocker_resolution(
-            blocker_id=1,
-            poll_interval=0.05,
-            timeout=5.0
+            blocker_id=1, poll_interval=0.05, timeout=5.0
         )
 
         assert answer == "Use pytest for consistency"

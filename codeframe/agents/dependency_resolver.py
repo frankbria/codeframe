@@ -75,22 +75,29 @@ class DependencyResolver:
                 if depends_on_str.startswith("[") and depends_on_str.endswith("]"):
                     # JSON array format
                     import json
+
                     try:
                         dep_ids = json.loads(depends_on_str)
                     except json.JSONDecodeError:
-                        logger.warning(f"Invalid JSON in depends_on for task {task_id}: {depends_on_str}")
+                        logger.warning(
+                            f"Invalid JSON in depends_on for task {task_id}: {depends_on_str}"
+                        )
                         dep_ids = []
                 else:
                     # Comma-separated format
                     try:
                         dep_ids = [int(x.strip()) for x in depends_on_str.split(",") if x.strip()]
                     except ValueError:
-                        logger.warning(f"Invalid depends_on format for task {task_id}: {depends_on_str}")
+                        logger.warning(
+                            f"Invalid depends_on format for task {task_id}: {depends_on_str}"
+                        )
                         dep_ids = []
 
                 for dep_id in dep_ids:
                     if dep_id == task_id:
-                        raise ValueError(f"Task {task_id} cannot depend on itself (self-dependency)")
+                        raise ValueError(
+                            f"Task {task_id} cannot depend on itself (self-dependency)"
+                        )
 
                     if dep_id not in self.all_tasks:
                         logger.warning(
@@ -235,8 +242,7 @@ class DependencyResolver:
 
         if has_cycle:
             logger.warning(
-                f"Cannot add dependency: task {task_id} → {depends_on_id} "
-                "would create a cycle"
+                f"Cannot add dependency: task {task_id} → {depends_on_id} " "would create a cycle"
             )
             return False
 
@@ -250,8 +256,9 @@ class DependencyResolver:
             List of task IDs in topological order, or None if cycle exists
         """
         # Compute in-degree for each task
-        in_degree = {task_id: len(self.dependencies.get(task_id, set()))
-                     for task_id in self.all_tasks}
+        in_degree = {
+            task_id: len(self.dependencies.get(task_id, set())) for task_id in self.all_tasks
+        }
 
         # Queue of tasks with no dependencies
         queue = deque([task_id for task_id in self.all_tasks if in_degree[task_id] == 0])

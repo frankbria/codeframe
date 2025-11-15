@@ -37,26 +37,81 @@ class SimpleAgentAssigner:
     # Keyword patterns for each agent type
     AGENT_KEYWORDS = {
         "frontend-specialist": [
-            "frontend", "ui", "ux", "component", "react", "vue", "angular",
-            "css", "html", "tailwind", "styled", "responsive", "layout",
-            "button", "form", "modal", "navigation", "dashboard", "chart",
-            "accessibility", "a11y", "wcag"
+            "frontend",
+            "ui",
+            "ux",
+            "component",
+            "react",
+            "vue",
+            "angular",
+            "css",
+            "html",
+            "tailwind",
+            "styled",
+            "responsive",
+            "layout",
+            "button",
+            "form",
+            "modal",
+            "navigation",
+            "dashboard",
+            "chart",
+            "accessibility",
+            "a11y",
+            "wcag",
         ],
         "test-engineer": [
-            "test", "testing", "spec", "unittest", "integration test",
-            "e2e", "end-to-end", "pytest", "jest", "vitest", "coverage",
-            "tdd", "test-driven", "assertion", "mock", "fixture"
+            "test",
+            "testing",
+            "spec",
+            "unittest",
+            "integration test",
+            "e2e",
+            "end-to-end",
+            "pytest",
+            "jest",
+            "vitest",
+            "coverage",
+            "tdd",
+            "test-driven",
+            "assertion",
+            "mock",
+            "fixture",
         ],
         "code-reviewer": [
-            "review", "refactor", "quality", "lint", "format", "optimize",
-            "performance", "security", "vulnerability", "audit", "clean up",
-            "code smell", "technical debt", "best practice"
+            "review",
+            "refactor",
+            "quality",
+            "lint",
+            "format",
+            "optimize",
+            "performance",
+            "security",
+            "vulnerability",
+            "audit",
+            "clean up",
+            "code smell",
+            "technical debt",
+            "best practice",
         ],
         "backend-worker": [
-            "backend", "api", "endpoint", "database", "sql", "orm",
-            "migration", "schema", "middleware", "authentication", "auth",
-            "server", "service", "controller", "model", "repository"
-        ]
+            "backend",
+            "api",
+            "endpoint",
+            "database",
+            "sql",
+            "orm",
+            "migration",
+            "schema",
+            "middleware",
+            "authentication",
+            "auth",
+            "server",
+            "service",
+            "controller",
+            "model",
+            "repository",
+        ],
     }
 
     def __init__(self):
@@ -109,8 +164,7 @@ class SimpleAgentAssigner:
             return "backend-worker"
 
         logger.info(
-            f"Assigned task {task.get('id', 'unknown')} to {best_agent} "
-            f"(score: {best_score})"
+            f"Assigned task {task.get('id', 'unknown')} to {best_agent} " f"(score: {best_score})"
         )
         return best_agent
 

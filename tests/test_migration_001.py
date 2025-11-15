@@ -51,7 +51,8 @@ class TestMigration001:
             conn.execute("PRAGMA foreign_keys = ON")
 
             # Create old agents table with constraint
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE agents (
                     id TEXT PRIMARY KEY,
                     type TEXT CHECK(type IN ('lead', 'backend', 'frontend', 'test', 'review')),
@@ -62,17 +63,22 @@ class TestMigration001:
                     last_heartbeat TIMESTAMP,
                     metrics JSON
                 )
-            """)
+            """
+            )
 
             # Insert test data
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO agents (id, type, provider, maturity_level, status)
                 VALUES ('agent-1', 'lead', 'claude', 'delegating', 'idle')
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 INSERT INTO agents (id, type, provider, maturity_level, status)
                 VALUES ('agent-2', 'backend', 'gpt4', 'coaching', 'working')
-            """)
+            """
+            )
             conn.commit()
             conn.close()
 
@@ -84,38 +90,38 @@ class TestMigration001:
             agents = db.list_agents()
             assert len(agents) == 2
 
-            agent_1 = next(a for a in agents if a['id'] == 'agent-1')
-            assert agent_1['type'] == 'lead'
-            assert agent_1['provider'] == 'claude'
+            agent_1 = next(a for a in agents if a["id"] == "agent-1")
+            assert agent_1["type"] == "lead"
+            assert agent_1["provider"] == "claude"
 
-            agent_2 = next(a for a in agents if a['id'] == 'agent-2')
-            assert agent_2['type'] == 'backend'
-            assert agent_2['provider'] == 'gpt4'
+            agent_2 = next(a for a in agents if a["id"] == "agent-2")
+            assert agent_2["type"] == "backend"
+            assert agent_2["provider"] == "gpt4"
 
             # 4. Verify constraint removed - can insert arbitrary types
             db.create_agent(
-                agent_id='agent-3',
-                agent_type='security',  # Not in old constraint list
-                provider='claude',
-                maturity_level=AgentMaturity.DIRECTIVE
+                agent_id="agent-3",
+                agent_type="security",  # Not in old constraint list
+                provider="claude",
+                maturity_level=AgentMaturity.DIRECTIVE,
             )
 
             db.create_agent(
-                agent_id='agent-4',
-                agent_type='accessibility',  # Not in old constraint list
-                provider='gpt4',
-                maturity_level=AgentMaturity.SUPPORTING
+                agent_id="agent-4",
+                agent_type="accessibility",  # Not in old constraint list
+                provider="gpt4",
+                maturity_level=AgentMaturity.SUPPORTING,
             )
 
             # Verify new agents stored
             agents = db.list_agents()
             assert len(agents) == 4
 
-            agent_3 = next(a for a in agents if a['id'] == 'agent-3')
-            assert agent_3['type'] == 'security'
+            agent_3 = next(a for a in agents if a["id"] == "agent-3")
+            assert agent_3["type"] == "security"
 
-            agent_4 = next(a for a in agents if a['id'] == 'agent-4')
-            assert agent_4['type'] == 'accessibility'
+            agent_4 = next(a for a in agents if a["id"] == "agent-4")
+            assert agent_4["type"] == "accessibility"
 
             db.close()
 
@@ -128,24 +134,33 @@ class TestMigration001:
 
             # Test various agent types
             test_types = [
-                'lead', 'backend', 'frontend', 'test', 'review',  # Original types
-                'security', 'accessibility', 'docs', 'performance',  # New types
-                'custom-agent', 'ml-specialist', 'devops-engineer'  # Custom types
+                "lead",
+                "backend",
+                "frontend",
+                "test",
+                "review",  # Original types
+                "security",
+                "accessibility",
+                "docs",
+                "performance",  # New types
+                "custom-agent",
+                "ml-specialist",
+                "devops-engineer",  # Custom types
             ]
 
             for i, agent_type in enumerate(test_types):
                 db.create_agent(
-                    agent_id=f'agent-{i}',
+                    agent_id=f"agent-{i}",
                     agent_type=agent_type,
-                    provider='claude',
-                    maturity_level=AgentMaturity.DIRECTIVE
+                    provider="claude",
+                    maturity_level=AgentMaturity.DIRECTIVE,
                 )
 
             # Verify all agents stored
             agents = db.list_agents()
             assert len(agents) == len(test_types)
 
-            stored_types = {agent['type'] for agent in agents}
+            stored_types = {agent["type"] for agent in agents}
             assert stored_types == set(test_types)
 
             db.close()
@@ -157,7 +172,8 @@ class TestMigration001:
 
             # Create old schema
             conn = sqlite3.connect(str(db_path))
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE agents (
                     id TEXT PRIMARY KEY,
                     type TEXT CHECK(type IN ('lead', 'backend', 'frontend', 'test', 'review')),
@@ -168,7 +184,8 @@ class TestMigration001:
                     last_heartbeat TIMESTAMP,
                     metrics JSON
                 )
-            """)
+            """
+            )
             conn.commit()
             conn.close()
 
@@ -183,8 +200,8 @@ class TestMigration001:
             row = cursor.fetchone()
 
             assert row is not None
-            assert row['version'] == '001'
-            assert 'agent type' in row['description'].lower()
+            assert row["version"] == "001"
+            assert "agent type" in row["description"].lower()
 
             db.close()
 
@@ -195,7 +212,8 @@ class TestMigration001:
 
             # Create old schema
             conn = sqlite3.connect(str(db_path))
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE agents (
                     id TEXT PRIMARY KEY,
                     type TEXT CHECK(type IN ('lead', 'backend', 'frontend', 'test', 'review')),
@@ -206,11 +224,14 @@ class TestMigration001:
                     last_heartbeat TIMESTAMP,
                     metrics JSON
                 )
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 INSERT INTO agents (id, type, provider, maturity_level, status)
                 VALUES ('agent-1', 'lead', 'claude', 'delegating', 'idle')
-            """)
+            """
+            )
             conn.commit()
             conn.close()
 
@@ -226,12 +247,10 @@ class TestMigration001:
             # Verify data still intact
             agents = db.list_agents()
             assert len(agents) == 1
-            assert agents[0]['id'] == 'agent-1'
+            assert agents[0]["id"] == "agent-1"
 
             # Check migration only recorded once
-            cursor = db.conn.execute(
-                "SELECT COUNT(*) FROM schema_migrations WHERE version = '001'"
-            )
+            cursor = db.conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = '001'")
             count = cursor.fetchone()[0]
             assert count == 1
 
@@ -244,7 +263,8 @@ class TestMigration001:
 
             # Create old schema with data
             conn = sqlite3.connect(str(db_path))
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE agents (
                     id TEXT PRIMARY KEY,
                     type TEXT CHECK(type IN ('lead', 'backend', 'frontend', 'test', 'review')),
@@ -255,11 +275,14 @@ class TestMigration001:
                     last_heartbeat TIMESTAMP,
                     metrics JSON
                 )
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 INSERT INTO agents (id, type, provider, maturity_level, status)
                 VALUES ('agent-1', 'lead', 'claude', 'delegating', 'idle')
-            """)
+            """
+            )
             conn.commit()
             conn.close()
 
@@ -270,10 +293,12 @@ class TestMigration001:
 
             # Rollback migration
             from codeframe.persistence.migrations import MigrationRunner
+
             runner = MigrationRunner(str(db_path))
             from codeframe.persistence.migrations import migration_001_remove_agent_type_constraint
+
             runner.register(migration_001_remove_agent_type_constraint.migration)
-            runner.rollback('001')
+            runner.rollback("001")
 
             # Verify constraint restored
             conn = sqlite3.connect(str(db_path))
@@ -298,7 +323,8 @@ class TestMigration001:
 
             # Create old schema
             conn = sqlite3.connect(str(db_path))
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE agents (
                     id TEXT PRIMARY KEY,
                     type TEXT CHECK(type IN ('lead', 'backend', 'frontend', 'test', 'review')),
@@ -309,7 +335,8 @@ class TestMigration001:
                     last_heartbeat TIMESTAMP,
                     metrics JSON
                 )
-            """)
+            """
+            )
             conn.commit()
             conn.close()
 
@@ -319,18 +346,20 @@ class TestMigration001:
 
             # Add custom agent type
             db.create_agent(
-                agent_id='agent-security',
-                agent_type='security',
-                provider='claude',
-                maturity_level=AgentMaturity.DIRECTIVE
+                agent_id="agent-security",
+                agent_type="security",
+                provider="claude",
+                maturity_level=AgentMaturity.DIRECTIVE,
             )
             db.close()
 
             # Try to rollback - should fail
             from codeframe.persistence.migrations import MigrationRunner
+
             runner = MigrationRunner(str(db_path))
             from codeframe.persistence.migrations import migration_001_remove_agent_type_constraint
+
             runner.register(migration_001_remove_agent_type_constraint.migration)
 
             with pytest.raises(ValueError, match="Cannot rollback migration"):
-                runner.rollback('001')
+                runner.rollback("001")

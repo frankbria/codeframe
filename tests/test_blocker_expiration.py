@@ -26,7 +26,7 @@ def temp_db():
         """INSERT INTO projects (name, description, workspace_path, status)
            VALUES (?, ?, ?, ?)
            RETURNING id""",
-        ("test-project", "Test project", "/tmp/test-workspace", "active")
+        ("test-project", "Test project", "/tmp/test-workspace", "active"),
     )
     project_id = cursor.fetchone()[0]
 
@@ -34,7 +34,7 @@ def temp_db():
     db.conn.execute(
         """INSERT INTO tasks (id, project_id, title, description, status, priority)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (1, project_id, "Test Task", "Test task for blocker tests", "pending", 0)
+        (1, project_id, "Test Task", "Test task for blocker tests", "pending", 0),
     )
     db.conn.commit()
 
@@ -58,7 +58,7 @@ def temp_db_file():
         """INSERT INTO projects (name, description, workspace_path, status)
            VALUES (?, ?, ?, ?)
            RETURNING id""",
-        ("test-project", "Test project", "/tmp/test-workspace", "active")
+        ("test-project", "Test project", "/tmp/test-workspace", "active"),
     )
     project_id = cursor.fetchone()[0]
 
@@ -66,7 +66,7 @@ def temp_db_file():
     db.conn.execute(
         """INSERT INTO tasks (id, project_id, title, description, status, priority)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (1, project_id, "Test Task", "Test task for blocker tests", "pending", 0)
+        (1, project_id, "Test Task", "Test task for blocker tests", "pending", 0),
     )
     db.conn.commit()
 
@@ -94,7 +94,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Test question?", "PENDING", recent_time)
+            ("backend-worker-1", 1, "SYNC", "Test question?", "PENDING", recent_time),
         )
         temp_db.conn.commit()
 
@@ -111,7 +111,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Stale question?", "PENDING", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Stale question?", "PENDING", stale_time),
         )
         blocker_id = cursor.fetchone()[0]
         temp_db.conn.commit()
@@ -123,7 +123,7 @@ class TestExpireStaleBlockers:
 
         # Verify status was updated to EXPIRED
         blocker = temp_db.get_blocker(blocker_id)
-        assert blocker['status'] == 'EXPIRED'
+        assert blocker["status"] == "EXPIRED"
 
     def test_expire_stale_blockers_custom_threshold(self, temp_db):
         """Test expire_stale_blockers with custom hour threshold."""
@@ -134,7 +134,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "PENDING", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Question?", "PENDING", stale_time),
         )
         blocker_id = cursor.fetchone()[0]
         temp_db.conn.commit()
@@ -153,7 +153,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at, answer)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "RESOLVED", stale_time, "Answer")
+            ("backend-worker-1", 1, "SYNC", "Question?", "RESOLVED", stale_time, "Answer"),
         )
         temp_db.conn.commit()
 
@@ -169,7 +169,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "EXPIRED", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Question?", "EXPIRED", stale_time),
         )
         temp_db.conn.commit()
 
@@ -187,7 +187,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Stale 1?", "PENDING", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Stale 1?", "PENDING", stale_time),
         )
         stale_id_1 = cursor1.fetchone()[0]
 
@@ -195,7 +195,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-2", 1, "ASYNC", "Stale 2?", "PENDING", stale_time)
+            ("backend-worker-2", 1, "ASYNC", "Stale 2?", "PENDING", stale_time),
         )
         stale_id_2 = cursor2.fetchone()[0]
 
@@ -203,7 +203,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-3", 1, "SYNC", "Recent?", "PENDING", recent_time)
+            ("backend-worker-3", 1, "SYNC", "Recent?", "PENDING", recent_time),
         )
         temp_db.conn.commit()
 
@@ -220,10 +220,7 @@ class TestExpireStaleBlockersJob:
     @pytest.mark.asyncio
     async def test_expire_stale_blockers_job_no_blockers(self, temp_db_file):
         """Test cron job with no blockers."""
-        expired_count = await expire_stale_blockers_job(
-            db_path=str(temp_db_file.db_path),
-            hours=24
-        )
+        expired_count = await expire_stale_blockers_job(db_path=str(temp_db_file.db_path), hours=24)
 
         assert expired_count == 0
 
@@ -235,7 +232,7 @@ class TestExpireStaleBlockersJob:
             """INSERT INTO tasks (project_id, title, description, status, priority)
                VALUES (?, ?, ?, ?, ?)
                RETURNING id""",
-            (1, "Test Task", "Test description", "in_progress", 0)
+            (1, "Test Task", "Test description", "in_progress", 0),
         )
         task_id = cursor_task.fetchone()[0]
 
@@ -245,24 +242,21 @@ class TestExpireStaleBlockersJob:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", task_id, "SYNC", "Stale question?", "PENDING", stale_time)
+            ("backend-worker-1", task_id, "SYNC", "Stale question?", "PENDING", stale_time),
         )
         blocker_id = cursor_blocker.fetchone()[0]
         temp_db_file.conn.commit()
 
         # Run expiration job
-        expired_count = await expire_stale_blockers_job(
-            db_path=str(temp_db_file.db_path),
-            hours=24
-        )
+        expired_count = await expire_stale_blockers_job(db_path=str(temp_db_file.db_path), hours=24)
 
         assert expired_count == 1
 
         # Verify task was failed
         task = temp_db_file.get_task(task_id)
-        assert task['status'] == TaskStatus.FAILED.value
-        assert "blocker" in task['output'].lower()
-        assert str(blocker_id) in task['output']
+        assert task["status"] == TaskStatus.FAILED.value
+        assert "blocker" in task["output"].lower()
+        assert str(blocker_id) in task["output"]
 
     @pytest.mark.asyncio
     async def test_expire_stale_blockers_job_with_websocket_broadcast(self, temp_db_file):
@@ -273,7 +267,7 @@ class TestExpireStaleBlockersJob:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Stale question?", "PENDING", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Stale question?", "PENDING", stale_time),
         )
         blocker_id = cursor.fetchone()[0]
         temp_db_file.conn.commit()
@@ -281,12 +275,12 @@ class TestExpireStaleBlockersJob:
         # Mock WebSocket manager
         mock_ws_manager = MagicMock()
 
-        with patch("codeframe.tasks.expire_blockers.broadcast_blocker_expired", new_callable=AsyncMock) as mock_broadcast:
+        with patch(
+            "codeframe.tasks.expire_blockers.broadcast_blocker_expired", new_callable=AsyncMock
+        ) as mock_broadcast:
             # Run expiration job with WebSocket
             expired_count = await expire_stale_blockers_job(
-                db_path=str(temp_db_file.db_path),
-                hours=24,
-                ws_manager=mock_ws_manager
+                db_path=str(temp_db_file.db_path), hours=24, ws_manager=mock_ws_manager
             )
 
             assert expired_count == 1
@@ -294,9 +288,9 @@ class TestExpireStaleBlockersJob:
             # Verify broadcast was called
             mock_broadcast.assert_called_once()
             call_kwargs = mock_broadcast.call_args.kwargs
-            assert call_kwargs['blocker_id'] == blocker_id
-            assert call_kwargs['agent_id'] == "backend-worker-1"
-            assert call_kwargs['task_id'] == 1
+            assert call_kwargs["blocker_id"] == blocker_id
+            assert call_kwargs["agent_id"] == "backend-worker-1"
+            assert call_kwargs["task_id"] == 1
 
     @pytest.mark.asyncio
     async def test_expire_stale_blockers_job_no_task_associated(self, temp_db_file):
@@ -306,15 +300,12 @@ class TestExpireStaleBlockersJob:
         temp_db_file.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", None, "ASYNC", "Stale question?", "PENDING", stale_time)
+            ("backend-worker-1", None, "ASYNC", "Stale question?", "PENDING", stale_time),
         )
         temp_db_file.conn.commit()
 
         # Should not fail when task_id is None
-        expired_count = await expire_stale_blockers_job(
-            db_path=str(temp_db_file.db_path),
-            hours=24
-        )
+        expired_count = await expire_stale_blockers_job(db_path=str(temp_db_file.db_path), hours=24)
 
         assert expired_count == 1
 
@@ -326,7 +317,7 @@ class TestExpireStaleBlockersJob:
             """INSERT INTO tasks (project_id, title, description, status, priority)
                VALUES (?, ?, ?, ?, ?)
                RETURNING id""",
-            (1, "Failed Task", "Test description", TaskStatus.FAILED.value, 0)
+            (1, "Failed Task", "Test description", TaskStatus.FAILED.value, 0),
         )
         task_id = cursor_task.fetchone()[0]
 
@@ -335,18 +326,15 @@ class TestExpireStaleBlockersJob:
         temp_db_file.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", task_id, "SYNC", "Stale question?", "PENDING", stale_time)
+            ("backend-worker-1", task_id, "SYNC", "Stale question?", "PENDING", stale_time),
         )
         temp_db_file.conn.commit()
 
         # Run expiration job
-        expired_count = await expire_stale_blockers_job(
-            db_path=str(temp_db_file.db_path),
-            hours=24
-        )
+        expired_count = await expire_stale_blockers_job(db_path=str(temp_db_file.db_path), hours=24)
 
         assert expired_count == 1
 
         # Task should still be failed (no status update)
         task = temp_db_file.get_task(task_id)
-        assert task['status'] == TaskStatus.FAILED.value
+        assert task["status"] == TaskStatus.FAILED.value

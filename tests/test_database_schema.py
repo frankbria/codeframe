@@ -1,4 +1,5 @@
 """Tests for database schema changes (project refactoring)."""
+
 import pytest
 from pathlib import Path
 from codeframe.persistence.database import Database
@@ -37,10 +38,12 @@ def test_source_type_check_constraint():
     # Try to insert invalid source_type
     cursor = db.conn.cursor()
     with pytest.raises(Exception) as exc_info:
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO projects (name, description, source_type, workspace_path)
             VALUES ('test', 'desc', 'invalid_type', '/tmp/test')
-        """)
+        """
+        )
         db.conn.commit()
 
     assert "CHECK constraint failed" in str(exc_info.value)
@@ -54,10 +57,12 @@ def test_description_not_null():
 
     cursor = db.conn.cursor()
     with pytest.raises(Exception) as exc_info:
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO projects (name, workspace_path)
             VALUES ('test', '/tmp/test')
-        """)
+        """
+        )
         db.conn.commit()
 
     assert "NOT NULL constraint failed" in str(exc_info.value)

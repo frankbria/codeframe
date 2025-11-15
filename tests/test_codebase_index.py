@@ -22,17 +22,20 @@ class TestCodebaseIndex:
         project_root = Path(temp_dir)
 
         # Create Python file
-        (project_root / "models.py").write_text('''
+        (project_root / "models.py").write_text(
+            """
 class User:
     def save(self):
         pass
 
 def get_user(user_id):
     return User()
-''')
+"""
+        )
 
         # Create TypeScript file
-        (project_root / "api.ts").write_text('''
+        (project_root / "api.ts").write_text(
+            """
 interface UserData {
     id: string;
     name: string;
@@ -47,12 +50,14 @@ class ApiClient {
 function createClient(): ApiClient {
     return new ApiClient();
 }
-''')
+"""
+        )
 
         yield project_root
 
         # Cleanup
         import shutil
+
         shutil.rmtree(temp_dir)
 
     def test_build_index(self, temp_project):
@@ -145,4 +150,5 @@ function createClient(): ApiClient {
             assert index.symbols == []
         finally:
             import shutil
+
             shutil.rmtree(temp_dir)

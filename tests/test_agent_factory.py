@@ -39,9 +39,7 @@ class TestAgentFactory:
     def test_create_backend_worker_agent(self, factory):
         """Test creating a backend worker agent."""
         agent = factory.create_agent(
-            agent_type="backend-worker",
-            agent_id="test-backend-001",
-            provider="claude"
+            agent_type="backend-worker", agent_id="test-backend-001", provider="claude"
         )
 
         assert isinstance(agent, WorkerAgent)
@@ -53,16 +51,14 @@ class TestAgentFactory:
         assert len(agent.system_prompt) > 0
 
         # Check that definition metadata is attached
-        assert hasattr(agent, 'definition')
-        assert hasattr(agent, 'capabilities')
+        assert hasattr(agent, "definition")
+        assert hasattr(agent, "capabilities")
         assert isinstance(agent.capabilities, list)
 
     def test_create_backend_architect_agent(self, factory):
         """Test creating a backend architect agent."""
         agent = factory.create_agent(
-            agent_type="backend-architect",
-            agent_id="test-architect-001",
-            provider="claude"
+            agent_type="backend-architect", agent_id="test-architect-001", provider="claude"
         )
 
         assert isinstance(agent, WorkerAgent)
@@ -78,9 +74,7 @@ class TestAgentFactory:
     def test_create_frontend_specialist_agent(self, factory):
         """Test creating a frontend specialist agent."""
         agent = factory.create_agent(
-            agent_type="frontend-specialist",
-            agent_id="test-frontend-001",
-            provider="claude"
+            agent_type="frontend-specialist", agent_id="test-frontend-001", provider="claude"
         )
 
         assert isinstance(agent, WorkerAgent)
@@ -94,9 +88,7 @@ class TestAgentFactory:
     def test_create_test_engineer_agent(self, factory):
         """Test creating a test engineer agent."""
         agent = factory.create_agent(
-            agent_type="test-engineer",
-            agent_id="test-tester-001",
-            provider="claude"
+            agent_type="test-engineer", agent_id="test-tester-001", provider="claude"
         )
 
         assert isinstance(agent, WorkerAgent)
@@ -110,9 +102,7 @@ class TestAgentFactory:
     def test_create_code_reviewer_agent(self, factory):
         """Test creating a code reviewer agent."""
         agent = factory.create_agent(
-            agent_type="code-reviewer",
-            agent_id="test-reviewer-001",
-            provider="claude"
+            agent_type="code-reviewer", agent_id="test-reviewer-001", provider="claude"
         )
 
         assert isinstance(agent, WorkerAgent)
@@ -144,9 +134,7 @@ class TestAgentFactory:
         """Test creating agent with unknown type raises KeyError."""
         with pytest.raises(KeyError) as exc_info:
             factory.create_agent(
-                agent_type="nonexistent-agent",
-                agent_id="test-001",
-                provider="claude"
+                agent_type="nonexistent-agent", agent_id="test-001", provider="claude"
             )
 
         assert "not found" in str(exc_info.value)
@@ -157,7 +145,7 @@ class TestAgentFactory:
             agent_type="backend-worker",
             agent_id="test-001",
             provider="claude",
-            maturity=AgentMaturity.D4  # Override default D1
+            maturity=AgentMaturity.D4,  # Override default D1
         )
 
         assert agent.maturity == AgentMaturity.D4
@@ -200,10 +188,7 @@ class TestAgentFactory:
 
         # BackendWorkerAgent should still work as before
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            provider="claude"
+            project_id=project_id, db=db, codebase_index=index, provider="claude"
         )
 
         assert agent is not None
@@ -214,36 +199,30 @@ class TestAgentFactory:
     def test_agent_has_system_prompt(self, factory):
         """Test that created agents have system_prompt attribute."""
         agent = factory.create_agent(
-            agent_type="backend-worker",
-            agent_id="test-001",
-            provider="claude"
+            agent_type="backend-worker", agent_id="test-001", provider="claude"
         )
 
-        assert hasattr(agent, 'system_prompt')
+        assert hasattr(agent, "system_prompt")
         assert agent.system_prompt is not None
         assert len(agent.system_prompt) > 50  # Should be substantial
 
     def test_agent_has_capabilities_attribute(self, factory):
         """Test that created agents have capabilities attribute."""
         agent = factory.create_agent(
-            agent_type="test-engineer",
-            agent_id="test-001",
-            provider="claude"
+            agent_type="test-engineer", agent_id="test-001", provider="claude"
         )
 
-        assert hasattr(agent, 'capabilities')
+        assert hasattr(agent, "capabilities")
         assert isinstance(agent.capabilities, list)
         assert len(agent.capabilities) > 0
 
     def test_agent_has_tools_attribute(self, factory):
         """Test that created agents have tools attribute."""
         agent = factory.create_agent(
-            agent_type="backend-architect",
-            agent_id="test-001",
-            provider="claude"
+            agent_type="backend-architect", agent_id="test-001", provider="claude"
         )
 
-        assert hasattr(agent, 'tools')
+        assert hasattr(agent, "tools")
         assert isinstance(agent.tools, list)
         # Backend-architect should have tools defined
         assert len(agent.tools) > 0
@@ -252,12 +231,10 @@ class TestAgentFactory:
     def test_agent_has_constraints_attribute(self, factory):
         """Test that created agents have constraints attribute."""
         agent = factory.create_agent(
-            agent_type="code-reviewer",
-            agent_id="test-001",
-            provider="claude"
+            agent_type="code-reviewer", agent_id="test-001", provider="claude"
         )
 
-        assert hasattr(agent, 'constraints')
+        assert hasattr(agent, "constraints")
         assert isinstance(agent.constraints, dict)
         # Code-reviewer should have constraints defined
         assert "max_tokens" in agent.constraints
@@ -281,7 +258,7 @@ class TestAgentFactory:
             agent_id="old-style-001",
             agent_type="backend",
             provider="claude",
-            maturity=AgentMaturity.D1
+            maturity=AgentMaturity.D1,
         )
 
         assert agent.agent_id == "old-style-001"
@@ -300,7 +277,7 @@ class TestAgentFactory:
             agent_type="custom",
             provider="claude",
             maturity=AgentMaturity.D2,
-            system_prompt=custom_prompt
+            system_prompt=custom_prompt,
         )
 
         assert agent.system_prompt == custom_prompt

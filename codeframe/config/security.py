@@ -22,6 +22,7 @@ class DeploymentMode(Enum):
     - SELFHOSTED: Single-tenant self-hosted (user responsibility)
     - DEVELOPMENT: Local development (minimal controls)
     """
+
     SAAS_SANDBOXED = "saas_sandboxed"
     SAAS_UNSANDBOXED = "saas_unsandboxed"
     SELFHOSTED = "selfhosted"
@@ -36,6 +37,7 @@ class SecurityEnforcement(Enum):
     - WARN: Allow but log warnings for security issues
     - DISABLED: No security checks (not recommended for production)
     """
+
     STRICT = "strict"
     WARN = "warn"
     DISABLED = "disabled"
@@ -54,6 +56,7 @@ class SecurityPolicy:
         blocked_commands: Commands to explicitly block
         max_command_length: Maximum allowed command length
     """
+
     enforcement_level: SecurityEnforcement = SecurityEnforcement.WARN
     allow_shell_operators: bool = True
     safe_commands_only: bool = False
@@ -77,6 +80,7 @@ class SecurityConfig:
         deployment_mode: The deployment environment type
         policy: Security policy settings
     """
+
     deployment_mode: DeploymentMode
     policy: SecurityPolicy
 
@@ -119,7 +123,9 @@ class SecurityConfig:
             enforcement = SecurityEnforcement.WARN
 
         # Get boolean settings
-        allow_shell_operators = os.getenv("CODEFRAME_ALLOW_SHELL_OPERATORS", "true").lower() == "true"
+        allow_shell_operators = (
+            os.getenv("CODEFRAME_ALLOW_SHELL_OPERATORS", "true").lower() == "true"
+        )
         safe_commands_only = os.getenv("CODEFRAME_SAFE_COMMANDS_ONLY", "false").lower() == "true"
 
         # Create policy

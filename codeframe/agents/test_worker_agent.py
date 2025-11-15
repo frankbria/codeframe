@@ -44,7 +44,7 @@ class TestWorkerAgent(WorkerAgent):
         websocket_manager=None,
         max_correction_attempts: int = 3,
         db=None,
-        project_id: Optional[int] = None
+        project_id: Optional[int] = None,
     ):
         """
         Initialize Test Worker Agent.
@@ -64,7 +64,7 @@ class TestWorkerAgent(WorkerAgent):
             agent_type="test",
             provider=provider,
             maturity=maturity,
-            system_prompt=self._build_system_prompt()
+            system_prompt=self._build_system_prompt(),
         )
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
@@ -117,13 +117,14 @@ Output format:
             if self.websocket_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_task_status
+
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
                         task.id,
                         "in_progress",
                         agent_id=self.agent_id,
-                        progress=0
+                        progress=0,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
@@ -144,11 +145,7 @@ Output format:
 
             # Execute tests and self-correct if needed
             test_result = await self._execute_and_correct_tests(
-                test_file,
-                test_spec,
-                code_analysis,
-                project_id,
-                task.id
+                test_file, test_spec, code_analysis, project_id, task.id
             )
 
             # Broadcast completion or failure
@@ -156,13 +153,14 @@ Output format:
             if self.websocket_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_task_status
+
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
                         task.id,
                         final_status,
                         agent_id=self.agent_id,
-                        progress=100
+                        progress=100,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
@@ -175,9 +173,9 @@ Output format:
             return {
                 "status": final_status,
                 "output": f"Generated {test_result['total_count']} tests, "
-                         f"{test_result['passed_count']} passed",
+                f"{test_result['passed_count']} passed",
                 "test_file": str(test_file),
-                "test_results": test_result
+                "test_results": test_result,
             }
 
         except Exception as e:
@@ -186,21 +184,18 @@ Output format:
             if self.websocket_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_task_status
+
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
                         task.id,
                         "failed",
-                        agent_id=self.agent_id
+                        agent_id=self.agent_id,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
 
-            return {
-                "status": "failed",
-                "output": str(e),
-                "error": str(e)
-            }
+            return {"status": "failed", "output": str(e), "error": str(e)}
 
     def _parse_test_spec(self, description: str) -> Dict[str, Any]:
         """
@@ -230,11 +225,7 @@ Output format:
             elif "target:" in line.lower() or "code:" in line.lower():
                 target_file = line.split(":")[-1].strip()
 
-        return {
-            "test_name": test_name,
-            "target_file": target_file,
-            "description": description
-        }
+        return {"test_name": test_name, "target_file": target_file, "description": description}
 
     def _analyze_target_code(self, target_file: Optional[str]) -> Dict[str, Any]:
         """
@@ -258,15 +249,15 @@ Output format:
             code = file_path.read_text(encoding="utf-8")
 
             # Simple regex-based extraction (could be improved with AST)
-            functions = re.findall(r'^(?:async )?def (\w+)\(', code, re.MULTILINE)
-            classes = re.findall(r'^class (\w+)', code, re.MULTILINE)
-            imports = re.findall(r'^(?:from .+ )?import .+', code, re.MULTILINE)
+            functions = re.findall(r"^(?:async )?def (\w+)\(", code, re.MULTILINE)
+            classes = re.findall(r"^class (\w+)", code, re.MULTILINE)
+            imports = re.findall(r"^(?:from .+ )?import .+", code, re.MULTILINE)
 
             return {
                 "functions": functions,
                 "classes": classes,
                 "imports": imports[:10],  # Limit imports
-                "code_snippet": code[:2000]  # First 2000 chars for context
+                "code_snippet": code[:2000],  # First 2000 chars for context
             }
 
         except Exception as e:
@@ -274,9 +265,7 @@ Output format:
             return {"functions": [], "classes": [], "imports": []}
 
     async def _generate_pytest_tests(
-        self,
-        spec: Dict[str, Any],
-        code_analysis: Dict[str, Any]
+        self, spec: Dict[str, Any], code_analysis: Dict[str, Any]
     ) -> str:
         """
         Generate pytest test code.
@@ -321,7 +310,7 @@ Provide ONLY the test code, no explanations."""
             response = await self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=3000,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
             )
 
             code = response.content[0].text
@@ -339,9 +328,7 @@ Provide ONLY the test code, no explanations."""
             return self._generate_basic_test_template(spec, code_analysis)
 
     def _generate_basic_test_template(
-        self,
-        spec: Dict[str, Any],
-        code_analysis: Dict[str, Any]
+        self, spec: Dict[str, Any], code_analysis: Dict[str, Any]
     ) -> str:
         """Generate basic test template as fallback."""
         test_name = spec.get("test_name", "test_feature")
@@ -411,21 +398,21 @@ def {test_name}():
                 [sys.executable, "-m", "pytest", str(test_file), "-v", "--tb=short"],
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=60,
             )
 
             output = result.stdout + result.stderr
 
             # Parse pytest output for counts
-            passed = len(re.findall(r'PASSED', output))
-            failed = len(re.findall(r'FAILED', output))
-            errors = len(re.findall(r'ERROR', output))
+            passed = len(re.findall(r"PASSED", output))
+            failed = len(re.findall(r"FAILED", output))
+            errors = len(re.findall(r"ERROR", output))
 
             counts = {
                 "passed": passed,
                 "failed": failed,
                 "errors": errors,
-                "total": passed + failed + errors
+                "total": passed + failed + errors,
             }
 
             all_passed = result.returncode == 0
@@ -433,7 +420,11 @@ def {test_name}():
             return all_passed, output, counts
 
         except subprocess.TimeoutExpired:
-            return False, "Test execution timeout", {"passed": 0, "failed": 0, "errors": 1, "total": 1}
+            return (
+                False,
+                "Test execution timeout",
+                {"passed": 0, "failed": 0, "errors": 1, "total": 1},
+            )
         except Exception as e:
             return False, str(e), {"passed": 0, "failed": 0, "errors": 1, "total": 1}
 
@@ -443,7 +434,7 @@ def {test_name}():
         test_spec: Dict[str, Any],
         code_analysis: Dict[str, Any],
         project_id: int,
-        task_id: int
+        task_id: int,
     ) -> Dict[str, Any]:
         """
         Execute tests and self-correct if they fail.
@@ -466,12 +457,7 @@ def {test_name}():
 
             # Broadcast test results
             if self.websocket_manager:
-                await self._broadcast_test_result(
-                    project_id,
-                    task_id,
-                    counts,
-                    all_passed
-                )
+                await self._broadcast_test_result(project_id, task_id, counts, all_passed)
 
             if all_passed:
                 return {
@@ -481,7 +467,7 @@ def {test_name}():
                     "failed_count": counts["failed"],
                     "errors_count": counts["errors"],
                     "total_count": counts["total"],
-                    "output": output
+                    "output": output,
                 }
 
             # If tests failed and we have attempts remaining, try to correct
@@ -489,10 +475,7 @@ def {test_name}():
                 logger.info(f"Attempting to fix failing tests (attempt {attempt})")
 
                 corrected_code = await self._correct_failing_tests(
-                    test_file.read_text(),
-                    output,
-                    test_spec,
-                    code_analysis
+                    test_file.read_text(), output, test_spec, code_analysis
                 )
 
                 if corrected_code:
@@ -509,7 +492,7 @@ def {test_name}():
             "failed_count": counts["failed"],
             "errors_count": counts["errors"],
             "total_count": counts["total"],
-            "output": output
+            "output": output,
         }
 
     async def _correct_failing_tests(
@@ -517,7 +500,7 @@ def {test_name}():
         original_code: str,
         error_output: str,
         test_spec: Dict[str, Any],
-        code_analysis: Dict[str, Any]
+        code_analysis: Dict[str, Any],
     ) -> Optional[str]:
         """
         Attempt to correct failing tests using Claude API.
@@ -559,7 +542,7 @@ Provide ONLY the corrected test code, no explanations."""
             response = await self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=3000,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
             )
 
             code = response.content[0].text
@@ -577,11 +560,7 @@ Provide ONLY the corrected test code, no explanations."""
             return None
 
     async def _broadcast_test_result(
-        self,
-        project_id: int,
-        task_id: int,
-        counts: Dict[str, int],
-        all_passed: bool
+        self, project_id: int, task_id: int, counts: Dict[str, int], all_passed: bool
     ) -> None:
         """Broadcast test result via WebSocket."""
         if not self.websocket_manager:
@@ -599,16 +578,13 @@ Provide ONLY the corrected test code, no explanations."""
                 status,
                 passed=counts.get("passed", 0),
                 failed=counts.get("failed", 0),
-                errors=counts.get("errors", 0)
+                errors=counts.get("errors", 0),
             )
         except Exception as e:
             logger.debug(f"Failed to broadcast test result: {e}")
 
     async def create_blocker(
-        self,
-        question: str,
-        blocker_type: str = "ASYNC",
-        task_id: Optional[int] = None
+        self, question: str, blocker_type: str = "ASYNC", task_id: Optional[int] = None
     ) -> int:
         """
         Create a blocker when agent needs human input (049-human-in-loop, T035).
@@ -631,10 +607,14 @@ Provide ONLY the corrected test code, no explanations."""
         """
         # Defensive checks for required dependencies
         if self.db is None:
-            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+            raise RuntimeError(
+                "Database instance required for blocker workflow. Pass db parameter to __init__."
+            )
 
         if self.project_id is None:
-            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+            raise RuntimeError(
+                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+            )
 
         if not question or len(question.strip()) == 0:
             raise ValueError("Question cannot be empty")
@@ -648,7 +628,15 @@ Provide ONLY the corrected test code, no explanations."""
             raise ValueError(f"Invalid blocker_type '{blocker_type}'. Must be 'SYNC' or 'ASYNC'")
 
         # Use provided task_id or fall back to current task
-        blocker_task_id = task_id if task_id is not None else (self.current_task.id if hasattr(self, 'current_task') and self.current_task else None)
+        blocker_task_id = (
+            task_id
+            if task_id is not None
+            else (
+                self.current_task.id
+                if hasattr(self, "current_task") and self.current_task
+                else None
+            )
+        )
 
         # Create blocker in database
         blocker_id = self.db.create_blocker(
@@ -656,7 +644,7 @@ Provide ONLY the corrected test code, no explanations."""
             project_id=self.project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
-            question=question.strip()
+            question=question.strip(),
         )
 
         logger.info(f"Blocker {blocker_id} created by {self.agent_id}: {question[:50]}...")
@@ -665,6 +653,7 @@ Provide ONLY the corrected test code, no explanations."""
         if self.websocket_manager:
             try:
                 from codeframe.ui.websocket_broadcasts import broadcast_blocker_created
+
                 await broadcast_blocker_created(
                     manager=self.websocket_manager,
                     project_id=self.project_id,
@@ -672,7 +661,7 @@ Provide ONLY the corrected test code, no explanations."""
                     agent_id=self.agent_id,
                     task_id=blocker_task_id,
                     blocker_type=blocker_type,
-                    question=question.strip()
+                    question=question.strip(),
                 )
             except Exception as e:
                 logger.warning(f"Failed to broadcast blocker creation: {e}")
@@ -696,7 +685,7 @@ Provide ONLY the corrected test code, no explanations."""
                     webhook_service = WebhookNotificationService(
                         webhook_url=webhook_url,
                         timeout=5,
-                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}"
+                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}",
                     )
 
                     # Send notification (fire-and-forget)
@@ -706,11 +695,13 @@ Provide ONLY the corrected test code, no explanations."""
                         agent_id=self.agent_id,
                         task_id=blocker_task_id or 0,
                         blocker_type=BlockerType.SYNC,
-                        created_at=datetime.now()
+                        created_at=datetime.now(),
                     )
                     logger.debug(f"Webhook notification queued for SYNC blocker {blocker_id}")
                 else:
-                    logger.debug("BLOCKER_WEBHOOK_URL not configured, skipping webhook notification")
+                    logger.debug(
+                        "BLOCKER_WEBHOOK_URL not configured, skipping webhook notification"
+                    )
 
             except Exception as e:
                 # Log error but don't block blocker creation
@@ -719,10 +710,7 @@ Provide ONLY the corrected test code, no explanations."""
         return blocker_id
 
     async def wait_for_blocker_resolution(
-        self,
-        blocker_id: int,
-        poll_interval: float = 5.0,
-        timeout: float = 600.0
+        self, blocker_id: int, poll_interval: float = 5.0, timeout: float = 600.0
     ) -> str:
         """
         Wait for a blocker to be resolved by polling the database (049-human-in-loop, T030).
@@ -751,10 +739,14 @@ Provide ONLY the corrected test code, no explanations."""
         """
         # Defensive checks for required dependencies
         if self.db is None:
-            raise RuntimeError("Database instance required for blocker workflow. Pass db parameter to __init__.")
+            raise RuntimeError(
+                "Database instance required for blocker workflow. Pass db parameter to __init__."
+            )
 
         if self.project_id is None:
-            raise RuntimeError("Project ID required for blocker workflow. Pass project_id parameter to __init__.")
+            raise RuntimeError(
+                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+            )
 
         import time
 
@@ -779,12 +771,18 @@ Provide ONLY the corrected test code, no explanations."""
                 if self.websocket_manager:
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
+
                         await broadcast_agent_resumed(
                             manager=self.websocket_manager,
                             project_id=self.project_id,
                             agent_id=self.agent_id,
-                            task_id=(self.current_task.id if hasattr(self, 'current_task') and self.current_task else None) or blocker.get("task_id"),
-                            blocker_id=blocker_id
+                            task_id=(
+                                self.current_task.id
+                                if hasattr(self, "current_task") and self.current_task
+                                else None
+                            )
+                            or blocker.get("task_id"),
+                            blocker_id=blocker_id,
                         )
                     except Exception as e:
                         logger.warning(f"Failed to broadcast agent_resumed: {e}")
@@ -805,7 +803,7 @@ Provide ONLY the corrected test code, no explanations."""
         blocker_type: str = "ASYNC",
         task_id: Optional[int] = None,
         poll_interval: float = 5.0,
-        timeout: float = 600.0
+        timeout: float = 600.0,
     ) -> Dict[str, Any]:
         """
         Create blocker, wait for resolution, and inject answer into context (049-human-in-loop, T031).
@@ -861,18 +859,14 @@ Provide ONLY the corrected test code, no explanations."""
 
         # 1. Create blocker
         blocker_id = await self.create_blocker(
-            question=question,
-            blocker_type=blocker_type,
-            task_id=task_id
+            question=question, blocker_type=blocker_type, task_id=task_id
         )
 
         logger.info(f"Created blocker {blocker_id}, waiting for resolution...")
 
         # 2. Wait for user to resolve blocker
         answer = await self.wait_for_blocker_resolution(
-            blocker_id=blocker_id,
-            poll_interval=poll_interval,
-            timeout=timeout
+            blocker_id=blocker_id, poll_interval=poll_interval, timeout=timeout
         )
 
         logger.info(f"Blocker {blocker_id} resolved with answer: {answer[:50]}...")
@@ -882,7 +876,7 @@ Provide ONLY the corrected test code, no explanations."""
             **context,
             "blocker_answer": answer,
             "blocker_question": question,
-            "blocker_id": blocker_id
+            "blocker_id": blocker_id,
         }
 
         return enriched_context

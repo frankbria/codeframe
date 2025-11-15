@@ -32,12 +32,7 @@ class TestBackendWorkerAgentInitialization:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         assert agent.project_id == 1
         assert agent.db == db
@@ -49,12 +44,7 @@ class TestBackendWorkerAgentInitialization:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         assert agent.provider == "claude"
 
@@ -64,11 +54,7 @@ class TestBackendWorkerAgentInitialization:
         index = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            provider="gpt4",
-            project_root=tmp_path
+            project_id=1, db=db, codebase_index=index, provider="gpt4", project_root=tmp_path
         )
 
         assert agent.provider == "gpt4"
@@ -79,11 +65,7 @@ class TestBackendWorkerAgentInitialization:
         index = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            api_key="test-api-key",
-            project_root=tmp_path
+            project_id=1, db=db, codebase_index=index, api_key="test-api-key", project_root=tmp_path
         )
 
         assert agent.api_key == "test-api-key"
@@ -101,14 +83,16 @@ class TestBackendWorkerAgentTaskFetching:
         project_id = db.create_project("test", "Test project")
 
         # Create issue
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         # Create pending task
         task_id = db.create_task_with_issue(
@@ -121,15 +105,12 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         task = agent.fetch_next_task()
@@ -148,10 +129,7 @@ class TestBackendWorkerAgentTaskFetching:
 
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         task = agent.fetch_next_task()
@@ -165,14 +143,16 @@ class TestBackendWorkerAgentTaskFetching:
 
         project_id = db.create_project("test", "Test project")
 
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         # Create low priority task (priority=2)
         db.create_task_with_issue(
@@ -185,7 +165,7 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.PENDING,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create high priority task (priority=0)
@@ -199,15 +179,12 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         task = agent.fetch_next_task()
@@ -223,14 +200,16 @@ class TestBackendWorkerAgentTaskFetching:
 
         project_id = db.create_project("test", "Test project")
 
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         # Create task with same priority but higher workflow step
         db.create_task_with_issue(
@@ -243,7 +222,7 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=5,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create task with same priority but lower workflow step
@@ -257,15 +236,12 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         task = agent.fetch_next_task()
@@ -284,14 +260,16 @@ class TestBackendWorkerAgentTaskFetching:
         project2_id = db.create_project("project2", "Test project 2")
 
         # Create issue for project 2
-        issue2_id = db.create_issue({
-            "project_id": project2_id,
-            "issue_number": "1.0",
-            "title": "Project 2 Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue2_id = db.create_issue(
+            {
+                "project_id": project2_id,
+                "issue_number": "1.0",
+                "title": "Project 2 Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         # Create task for project 2
         db.create_task_with_issue(
@@ -304,16 +282,13 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
         # Agent for project 1 (should not see project 2's tasks)
         agent = BackendWorkerAgent(
-            project_id=project1_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project1_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         task = agent.fetch_next_task()
@@ -327,14 +302,16 @@ class TestBackendWorkerAgentTaskFetching:
 
         project_id = db.create_project("test", "Test project")
 
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         # Create completed task
         db.create_task_with_issue(
@@ -347,7 +324,7 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create in_progress task
@@ -361,15 +338,12 @@ class TestBackendWorkerAgentTaskFetching:
             status=TaskStatus.IN_PROGRESS,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         task = agent.fetch_next_task()
@@ -395,7 +369,7 @@ class TestBackendWorkerAgentContextBuilding:
                 file_path="codeframe/models/user.py",
                 line_number=10,
                 language="python",
-                parent=None
+                parent=None,
             ),
             Symbol(
                 name="authenticate",
@@ -403,17 +377,12 @@ class TestBackendWorkerAgentContextBuilding:
                 file_path="codeframe/auth/user_auth.py",
                 line_number=25,
                 language="python",
-                parent=None
-            )
+                parent=None,
+            ),
         ]
         index.search_pattern.return_value = mock_symbols
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         task = {
             "id": 1,
@@ -423,7 +392,7 @@ class TestBackendWorkerAgentContextBuilding:
             "issue_id": 1,
             "parent_issue_number": "1.5",
             "status": "pending",
-            "priority": 0
+            "priority": 0,
         }
 
         context = agent.build_context(task)
@@ -447,18 +416,13 @@ class TestBackendWorkerAgentContextBuilding:
             "title": "User Authentication System",
             "description": "Complete authentication system",
             "status": "in_progress",
-            "priority": 0
+            "priority": 0,
         }
         db.get_issue.return_value = mock_issue
 
         index.search_pattern.return_value = []
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         task = {
             "id": 1,
@@ -468,7 +432,7 @@ class TestBackendWorkerAgentContextBuilding:
             "issue_id": 1,
             "parent_issue_number": "1.5",
             "status": "pending",
-            "priority": 0
+            "priority": 0,
         }
 
         context = agent.build_context(task)
@@ -493,7 +457,7 @@ class TestBackendWorkerAgentContextBuilding:
                 file_path="codeframe/models/user.py",
                 line_number=10,
                 language="python",
-                parent=None
+                parent=None,
             ),
             Symbol(
                 name="UserAuth",
@@ -501,18 +465,13 @@ class TestBackendWorkerAgentContextBuilding:
                 file_path="codeframe/auth/user_auth.py",
                 line_number=15,
                 language="python",
-                parent=None
-            )
+                parent=None,
+            ),
         ]
         index.search_pattern.return_value = mock_symbols
         db.get_issue.return_value = None
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         task = {
             "id": 1,
@@ -522,7 +481,7 @@ class TestBackendWorkerAgentContextBuilding:
             "issue_id": 1,
             "parent_issue_number": "1.5",
             "status": "pending",
-            "priority": 0
+            "priority": 0,
         }
 
         context = agent.build_context(task)
@@ -542,12 +501,7 @@ class TestBackendWorkerAgentContextBuilding:
         index.search_pattern.return_value = []
         db.get_issue.return_value = None
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         task = {
             "id": 1,
@@ -557,7 +511,7 @@ class TestBackendWorkerAgentContextBuilding:
             "issue_id": 1,
             "parent_issue_number": "1.0",
             "status": "pending",
-            "priority": 0
+            "priority": 0,
         }
 
         context = agent.build_context(task)
@@ -575,12 +529,7 @@ class TestBackendWorkerAgentContextBuilding:
 
         index.search_pattern.return_value = []
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         task = {
             "id": 1,
@@ -590,7 +539,7 @@ class TestBackendWorkerAgentContextBuilding:
             "issue_id": None,
             "parent_issue_number": None,
             "status": "pending",
-            "priority": 0
+            "priority": 0,
         }
 
         context = agent.build_context(task)
@@ -603,7 +552,7 @@ class TestBackendWorkerAgentContextBuilding:
 class TestBackendWorkerAgentCodeGeneration:
     """Test code generation using LLM API."""
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_generate_code_creates_single_file(self, mock_anthropic_class, tmp_path):
         """Test generate_code returns single file creation."""
@@ -615,34 +564,33 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [
-                {
-                    "path": "codeframe/models/user.py",
-                    "action": "create",
-                    "content": "class User:\n    pass"
-                }
-            ],
-            "explanation": "Created User model"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "create",
+                                "content": "class User:\n    pass",
+                            }
+                        ],
+                        "explanation": "Created User model",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            api_key="test-key",
-            project_root=tmp_path
+            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
         )
 
         context = {
-            "task": {
-                "title": "Create User model",
-                "description": "Create basic User class"
-            },
+            "task": {"title": "Create User model", "description": "Create basic User class"},
             "related_files": [],
             "related_symbols": [],
-            "issue_context": None
+            "issue_context": None,
         }
 
         result = await agent.generate_code(context)
@@ -655,7 +603,7 @@ class TestBackendWorkerAgentCodeGeneration:
         assert "class User" in result["files"][0]["content"]
         assert result["explanation"] == "Created User model"
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_generate_code_modifies_multiple_files(self, mock_anthropic_class, tmp_path):
         """Test generate_code returns multiple file modifications."""
@@ -666,39 +614,38 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [
-                {
-                    "path": "codeframe/models/user.py",
-                    "action": "modify",
-                    "content": "# Updated User model"
-                },
-                {
-                    "path": "tests/test_user.py",
-                    "action": "create",
-                    "content": "# User tests"
-                }
-            ],
-            "explanation": "Updated User model and added tests"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "modify",
+                                "content": "# Updated User model",
+                            },
+                            {
+                                "path": "tests/test_user.py",
+                                "action": "create",
+                                "content": "# User tests",
+                            },
+                        ],
+                        "explanation": "Updated User model and added tests",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            api_key="test-key",
-            project_root=tmp_path
+            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
         )
 
         context = {
-            "task": {
-                "title": "Add User tests",
-                "description": "Create tests for User model"
-            },
+            "task": {"title": "Add User tests", "description": "Create tests for User model"},
             "related_files": ["codeframe/models/user.py"],
             "related_symbols": [],
-            "issue_context": None
+            "issue_context": None,
         }
 
         result = await agent.generate_code(context)
@@ -707,7 +654,7 @@ class TestBackendWorkerAgentCodeGeneration:
         assert result["files"][0]["action"] == "modify"
         assert result["files"][1]["action"] == "create"
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_generate_code_handles_api_error(self, mock_anthropic_class, tmp_path):
         """Test generate_code handles API errors gracefully."""
@@ -721,18 +668,14 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_client.messages.create.side_effect = Exception("API timeout")
 
         agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            api_key="test-key",
-            project_root=tmp_path
+            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
         )
 
         context = {
             "task": {"title": "Test", "description": "Test"},
             "related_files": [],
             "related_symbols": [],
-            "issue_context": None
+            "issue_context": None,
         }
 
         with pytest.raises(Exception) as exc_info:
@@ -740,7 +683,7 @@ class TestBackendWorkerAgentCodeGeneration:
 
         assert "API timeout" in str(exc_info.value)
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_generate_code_handles_malformed_response(self, mock_anthropic_class, tmp_path):
         """Test generate_code handles invalid JSON response."""
@@ -755,18 +698,14 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            api_key="test-key",
-            project_root=tmp_path
+            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
         )
 
         context = {
             "task": {"title": "Test", "description": "Test"},
             "related_files": [],
             "related_symbols": [],
-            "issue_context": None
+            "issue_context": None,
         }
 
         with pytest.raises(json.JSONDecodeError):
@@ -781,18 +720,13 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         files = [
             {
                 "path": "codeframe/models/user.py",
                 "action": "create",
-                "content": "class User:\n    pass\n"
+                "content": "class User:\n    pass\n",
             }
         ]
 
@@ -814,18 +748,13 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         files = [
             {
                 "path": "codeframe/models/user.py",
                 "action": "modify",
-                "content": "class User:\n    def __init__(self):\n        pass\n"
+                "content": "class User:\n    def __init__(self):\n        pass\n",
             }
         ]
 
@@ -845,19 +774,9 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
-        files = [
-            {
-                "path": "codeframe/models/user.py",
-                "action": "delete"
-            }
-        ]
+        files = [{"path": "codeframe/models/user.py", "action": "delete"}]
 
         modified_paths = agent.apply_file_changes(files)
 
@@ -870,18 +789,13 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         files = [
             {
                 "path": "codeframe/deep/nested/path/file.py",
                 "action": "create",
-                "content": "# Nested file\n"
+                "content": "# Nested file\n",
             }
         ]
 
@@ -903,29 +817,16 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         files = [
-            {
-                "path": "codeframe/models/user.py",
-                "action": "modify",
-                "content": "# Updated User\n"
-            },
+            {"path": "codeframe/models/user.py", "action": "modify", "content": "# Updated User\n"},
             {
                 "path": "codeframe/models/task.py",
                 "action": "create",
-                "content": "class Task:\n    pass\n"
+                "content": "class Task:\n    pass\n",
             },
-            {
-                "path": "tests/test_user.py",
-                "action": "create",
-                "content": "# Tests\n"
-            }
+            {"path": "tests/test_user.py", "action": "create", "content": "# Tests\n"},
         ]
 
         modified_paths = agent.apply_file_changes(files)
@@ -938,7 +839,9 @@ class TestBackendWorkerAgentFileOperations:
 
         # Verify file contents
         assert existing_file.read_text() == "# Updated User\n"
-        assert (tmp_path / "codeframe" / "models" / "task.py").read_text() == "class Task:\n    pass\n"
+        assert (
+            tmp_path / "codeframe" / "models" / "task.py"
+        ).read_text() == "class Task:\n    pass\n"
         assert (tmp_path / "tests" / "test_user.py").read_text() == "# Tests\n"
 
     def test_apply_file_changes_prevents_path_traversal(self, tmp_path):
@@ -946,20 +849,11 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         # Attempt path traversal
         files = [
-            {
-                "path": "../../../etc/passwd",
-                "action": "create",
-                "content": "malicious content"
-            }
+            {"path": "../../../etc/passwd", "action": "create", "content": "malicious content"}
         ]
 
         with pytest.raises(ValueError) as exc_info:
@@ -972,21 +866,10 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         # Attempt absolute path
-        files = [
-            {
-                "path": "/etc/passwd",
-                "action": "create",
-                "content": "malicious content"
-            }
-        ]
+        files = [{"path": "/etc/passwd", "action": "create", "content": "malicious content"}]
 
         with pytest.raises(ValueError) as exc_info:
             agent.apply_file_changes(files)
@@ -998,20 +881,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
-        files = [
-            {
-                "path": "nonexistent.py",
-                "action": "modify",
-                "content": "new content"
-            }
-        ]
+        files = [{"path": "nonexistent.py", "action": "modify", "content": "new content"}]
 
         with pytest.raises(FileNotFoundError):
             agent.apply_file_changes(files)
@@ -1021,19 +893,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
-        files = [
-            {
-                "path": "nonexistent.py",
-                "action": "delete"
-            }
-        ]
+        files = [{"path": "nonexistent.py", "action": "delete"}]
 
         with pytest.raises(FileNotFoundError):
             agent.apply_file_changes(files)
@@ -1049,14 +911,16 @@ class TestBackendWorkerAgentTaskStatus:
         index = Mock(spec=CodebaseIndex)
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1068,14 +932,11 @@ class TestBackendWorkerAgentTaskStatus:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         agent.update_task_status(task_id, TaskStatus.IN_PROGRESS.value)
@@ -1094,14 +955,16 @@ class TestBackendWorkerAgentTaskStatus:
         index = Mock(spec=CodebaseIndex)
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1113,14 +976,11 @@ class TestBackendWorkerAgentTaskStatus:
             status=TaskStatus.IN_PROGRESS,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         output = "Successfully created User model"
@@ -1141,14 +1001,16 @@ class TestBackendWorkerAgentTaskStatus:
         index = Mock(spec=CodebaseIndex)
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1160,14 +1022,11 @@ class TestBackendWorkerAgentTaskStatus:
             status=TaskStatus.IN_PROGRESS,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         output = "Error: API timeout"
@@ -1183,7 +1042,7 @@ class TestBackendWorkerAgentTaskStatus:
 class TestBackendWorkerAgentExecution:
     """Test end-to-end task execution orchestration."""
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_execute_task_success(self, mock_anthropic_class, tmp_path):
         """Test execute_task completes successfully."""
@@ -1194,14 +1053,16 @@ class TestBackendWorkerAgentExecution:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1213,7 +1074,7 @@ class TestBackendWorkerAgentExecution:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -1223,16 +1084,22 @@ class TestBackendWorkerAgentExecution:
         mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [
-                {
-                    "path": "codeframe/models/user.py",
-                    "action": "create",
-                    "content": "class User:\n    pass\n"
-                }
-            ],
-            "explanation": "Created User model"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "create",
+                                "content": "class User:\n    pass\n",
+                            }
+                        ],
+                        "explanation": "Created User model",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
@@ -1240,19 +1107,13 @@ class TestBackendWorkerAgentExecution:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner to return passing tests (cf-43: prevents self-correction loop)
-        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+        with patch.object(TestRunner, "run_tests") as mock_run_tests:
             mock_run_tests.return_value = TestResult(
-                status="passed",
-                total=5,
-                passed=5,
-                failed=0,
-                errors=0,
-                skipped=0,
-                duration=1.0
+                status="passed", total=5, passed=5, failed=0, errors=0, skipped=0, duration=1.0
             )
 
             # Get task from database
@@ -1277,7 +1138,7 @@ class TestBackendWorkerAgentExecution:
             updated_task = cursor.fetchone()
             assert updated_task["status"] == "completed"
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_execute_task_handles_api_failure(self, mock_anthropic_class, tmp_path):
         """Test execute_task handles API failures."""
@@ -1285,14 +1146,16 @@ class TestBackendWorkerAgentExecution:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1304,7 +1167,7 @@ class TestBackendWorkerAgentExecution:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -1320,7 +1183,7 @@ class TestBackendWorkerAgentExecution:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Get task from database
@@ -1340,22 +1203,26 @@ class TestBackendWorkerAgentExecution:
         updated_task = cursor.fetchone()
         assert updated_task["status"] == "failed"
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_handles_file_operation_failure(self, mock_anthropic_class, tmp_path):
+    async def test_execute_task_handles_file_operation_failure(
+        self, mock_anthropic_class, tmp_path
+    ):
         """Test execute_task handles file operation failures."""
         db = Database(":memory:")
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1367,7 +1234,7 @@ class TestBackendWorkerAgentExecution:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -1377,16 +1244,22 @@ class TestBackendWorkerAgentExecution:
         mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [
-                {
-                    "path": "codeframe/models/user.py",
-                    "action": "modify",
-                    "content": "class User:\n    def __init__(self):\n        pass\n"
-                }
-            ],
-            "explanation": "Updated User model"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "modify",
+                                "content": "class User:\n    def __init__(self):\n        pass\n",
+                            }
+                        ],
+                        "explanation": "Updated User model",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
@@ -1394,7 +1267,7 @@ class TestBackendWorkerAgentExecution:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Get task from database
@@ -1418,9 +1291,11 @@ class TestBackendWorkerAgentExecution:
 class TestBackendWorkerAgentTestRunnerIntegration:
     """Test integration with TestRunner (cf-42 Phase 3)."""
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_execute_task_runs_tests_after_code_generation(self, mock_anthropic_class, tmp_path):
+    async def test_execute_task_runs_tests_after_code_generation(
+        self, mock_anthropic_class, tmp_path
+    ):
         """Test execute_task runs tests after generating code (Phase 3)."""
         from codeframe.testing.test_runner import TestRunner
         from codeframe.testing.models import TestResult
@@ -1429,14 +1304,16 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1448,7 +1325,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -1458,16 +1335,22 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [
-                {
-                    "path": "codeframe/models/user.py",
-                    "action": "create",
-                    "content": "class User:\n    pass\n"
-                }
-            ],
-            "explanation": "Created User model"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "create",
+                                "content": "class User:\n    pass\n",
+                            }
+                        ],
+                        "explanation": "Created User model",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
@@ -1475,19 +1358,13 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner
-        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+        with patch.object(TestRunner, "run_tests") as mock_run_tests:
             mock_run_tests.return_value = TestResult(
-                status="passed",
-                total=5,
-                passed=5,
-                failed=0,
-                errors=0,
-                skipped=0,
-                duration=1.2
+                status="passed", total=5, passed=5, failed=0, errors=0, skipped=0, duration=1.2
             )
 
             # Get task from database
@@ -1512,7 +1389,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             assert test_results[0]["failed"] == 0
             assert test_results[0]["errors"] == 0
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_execute_task_handles_test_failures(self, mock_anthropic_class, tmp_path):
         """Test execute_task handles test failures (Phase 3)."""
@@ -1523,14 +1400,16 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1542,7 +1421,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -1552,21 +1431,27 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [
-                {
-                    "path": "codeframe/models/user.py",
-                    "action": "create",
-                    "content": "class User:\n    pass\n"
-                },
-                {
-                    "path": "tests/test_user.py",
-                    "action": "create",
-                    "content": "def test_user():\n    assert False  # Failing test\n"
-                }
-            ],
-            "explanation": "Created User model with tests"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "create",
+                                "content": "class User:\n    pass\n",
+                            },
+                            {
+                                "path": "tests/test_user.py",
+                                "action": "create",
+                                "content": "def test_user():\n    assert False  # Failing test\n",
+                            },
+                        ],
+                        "explanation": "Created User model with tests",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
@@ -1574,34 +1459,36 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner with failures (always returns failed)
         # cf-43: This will trigger self-correction loop (3 attempts)
-        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+        with patch.object(TestRunner, "run_tests") as mock_run_tests:
             mock_run_tests.return_value = TestResult(
-                status="failed",
-                total=5,
-                passed=3,
-                failed=2,
-                errors=0,
-                skipped=0,
-                duration=1.5
+                status="failed", total=5, passed=3, failed=2, errors=0, skipped=0, duration=1.5
             )
 
             # Need to mock multiple API calls for correction attempts
             correction_responses = []
             for i in range(3):  # 3 correction attempts
                 response = Mock()
-                response.content = [Mock(text=json.dumps({
-                    "files": [{
-                        "path": "codeframe/models/user.py",
-                        "action": "modify",
-                        "content": f"# Correction attempt {i+1}\nclass User:\n    pass\n"
-                    }],
-                    "explanation": f"Correction attempt {i+1}"
-                }))]
+                response.content = [
+                    Mock(
+                        text=json.dumps(
+                            {
+                                "files": [
+                                    {
+                                        "path": "codeframe/models/user.py",
+                                        "action": "modify",
+                                        "content": f"# Correction attempt {i+1}\nclass User:\n    pass\n",
+                                    }
+                                ],
+                                "explanation": f"Correction attempt {i+1}",
+                            }
+                        )
+                    )
+                ]
                 correction_responses.append(response)
 
             mock_client.messages.create.side_effect = [mock_response] + correction_responses
@@ -1633,7 +1520,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             assert blocker is not None
             assert blocker["severity"] == "sync"
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_execute_task_handles_test_runner_errors(self, mock_anthropic_class, tmp_path):
         """Test execute_task handles test runner errors gracefully (Phase 3)."""
@@ -1644,14 +1531,16 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -1663,7 +1552,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -1673,16 +1562,22 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [
-                {
-                    "path": "codeframe/models/user.py",
-                    "action": "create",
-                    "content": "class User:\n    pass\n"
-                }
-            ],
-            "explanation": "Created User model"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "create",
+                                "content": "class User:\n    pass\n",
+                            }
+                        ],
+                        "explanation": "Created User model",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
@@ -1690,12 +1585,12 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner with error (always returns error)
         # cf-43: This will trigger self-correction loop (3 attempts)
-        with patch.object(TestRunner, 'run_tests') as mock_run_tests:
+        with patch.object(TestRunner, "run_tests") as mock_run_tests:
             mock_run_tests.return_value = TestResult(
                 status="error",
                 total=0,
@@ -1704,21 +1599,29 @@ class TestBackendWorkerAgentTestRunnerIntegration:
                 errors=1,
                 skipped=0,
                 duration=0.1,
-                output="pytest not found"
+                output="pytest not found",
             )
 
             # Need to mock multiple API calls for correction attempts
             correction_responses = []
             for i in range(3):  # 3 correction attempts
                 response = Mock()
-                response.content = [Mock(text=json.dumps({
-                    "files": [{
-                        "path": "codeframe/models/user.py",
-                        "action": "modify",
-                        "content": f"# Error correction attempt {i+1}\nclass User:\n    pass\n"
-                    }],
-                    "explanation": f"Error correction attempt {i+1}"
-                }))]
+                response.content = [
+                    Mock(
+                        text=json.dumps(
+                            {
+                                "files": [
+                                    {
+                                        "path": "codeframe/models/user.py",
+                                        "action": "modify",
+                                        "content": f"# Error correction attempt {i+1}\nclass User:\n    pass\n",
+                                    }
+                                ],
+                                "explanation": f"Error correction attempt {i+1}",
+                            }
+                        )
+                    )
+                ]
                 correction_responses.append(response)
 
             mock_client.messages.create.side_effect = [mock_response] + correction_responses

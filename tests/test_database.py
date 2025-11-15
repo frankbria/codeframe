@@ -574,14 +574,16 @@ class TestTestResults:
 
         # Create project and task
         project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
         task_id = db.create_task_with_issue(
             project_id=project_id,
             issue_id=issue_id,
@@ -592,7 +594,7 @@ class TestTestResults:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create test result
@@ -604,7 +606,7 @@ class TestTestResults:
             errors=0,
             skipped=0,
             duration=1.5,
-            output='{"summary": "all passed"}'
+            output='{"summary": "all passed"}',
         )
 
         assert result_id is not None
@@ -617,14 +619,16 @@ class TestTestResults:
 
         # Create project and task
         project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
         task_id = db.create_task_with_issue(
             project_id=project_id,
             issue_id=issue_id,
@@ -635,7 +639,7 @@ class TestTestResults:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create test result
@@ -647,7 +651,7 @@ class TestTestResults:
             errors=0,
             skipped=0,
             duration=1.5,
-            output='{"summary": "all passed"}'
+            output='{"summary": "all passed"}',
         )
 
         # Retrieve results
@@ -678,14 +682,16 @@ class TestTestResults:
 
         # Create task
         project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
         task_id = db.create_task_with_issue(
             project_id=project_id,
             issue_id=issue_id,
@@ -696,7 +702,7 @@ class TestTestResults:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # First run: failed
@@ -708,7 +714,7 @@ class TestTestResults:
             errors=0,
             skipped=0,
             duration=2.0,
-            output='{"summary": "some failed"}'
+            output='{"summary": "some failed"}',
         )
 
         # Second run: passed
@@ -720,7 +726,7 @@ class TestTestResults:
             errors=0,
             skipped=0,
             duration=1.8,
-            output='{"summary": "all passed"}'
+            output='{"summary": "all passed"}',
         )
 
         # Get all results

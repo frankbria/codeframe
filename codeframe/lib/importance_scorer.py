@@ -19,11 +19,11 @@ from typing import Dict
 # Content type weights for importance scoring
 # Higher weight = more important
 ITEM_TYPE_WEIGHTS: Dict[str, float] = {
-    'TASK': 1.0,        # Highest priority - current work
-    'CODE': 0.8,        # High priority - implementation details
-    'ERROR': 0.7,       # High priority - must track failures
-    'TEST_RESULT': 0.6, # Medium priority - validation results
-    'PRD_SECTION': 0.5  # Medium priority - requirements context
+    "TASK": 1.0,  # Highest priority - current work
+    "CODE": 0.8,  # High priority - implementation details
+    "ERROR": 0.7,  # High priority - must track failures
+    "TEST_RESULT": 0.6,  # Medium priority - validation results
+    "PRD_SECTION": 0.5,  # Medium priority - requirements context
 }
 
 # Decay rate for age component (λ in exponential decay formula)
@@ -31,9 +31,9 @@ ITEM_TYPE_WEIGHTS: Dict[str, float] = {
 DECAY_RATE = 0.5
 
 # Weights for score components (must sum to 1.0)
-WEIGHT_TYPE = 0.4      # 40% weight on content type
-WEIGHT_AGE = 0.4       # 40% weight on recency
-WEIGHT_ACCESS = 0.2    # 20% weight on access frequency
+WEIGHT_TYPE = 0.4  # 40% weight on content type
+WEIGHT_AGE = 0.4  # 40% weight on recency
+WEIGHT_ACCESS = 0.2  # 20% weight on access frequency
 
 
 def calculate_age_decay(created_at: datetime) -> float:
@@ -93,10 +93,7 @@ def calculate_access_boost(access_count: int) -> float:
 
 
 def calculate_importance_score(
-    item_type: str,
-    created_at: datetime,
-    access_count: int,
-    last_accessed: datetime
+    item_type: str, created_at: datetime, access_count: int, last_accessed: datetime
 ) -> float:
     """Calculate importance score for a context item.
 
@@ -145,11 +142,7 @@ def calculate_importance_score(
     access_boost = calculate_access_boost(access_count)
 
     # Weighted combination
-    score = (
-        WEIGHT_TYPE * type_weight +
-        WEIGHT_AGE * age_decay +
-        WEIGHT_ACCESS * access_boost
-    )
+    score = WEIGHT_TYPE * type_weight + WEIGHT_AGE * age_decay + WEIGHT_ACCESS * access_boost
 
     # Clamp to [0.0, 1.0] range (should already be in range, but be defensive)
     return max(0.0, min(score, 1.0))

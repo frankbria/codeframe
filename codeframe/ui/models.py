@@ -10,6 +10,7 @@ from typing import Optional
 
 class SourceType(str, Enum):
     """Supported project source types."""
+
     GIT_REMOTE = "git_remote"
     LOCAL_PATH = "local_path"
     UPLOAD = "upload"
@@ -21,17 +22,27 @@ class ProjectCreateRequest(BaseModel):
 
     # Required
     name: str = Field(..., min_length=1, max_length=100, description="Project name")
-    description: str = Field(..., min_length=1, max_length=500, description="Project description/purpose")
+    description: str = Field(
+        ..., min_length=1, max_length=500, description="Project description/purpose"
+    )
 
     # Optional - source configuration
-    source_type: Optional[SourceType] = Field(default=SourceType.EMPTY, description="Source type for project initialization")
-    source_location: Optional[str] = Field(default=None, description="Git URL, local path, or upload filename")
-    source_branch: Optional[str] = Field(default="main", description="Git branch to clone (for git_remote)")
+    source_type: Optional[SourceType] = Field(
+        default=SourceType.EMPTY, description="Source type for project initialization"
+    )
+    source_location: Optional[str] = Field(
+        default=None, description="Git URL, local path, or upload filename"
+    )
+    source_branch: Optional[str] = Field(
+        default="main", description="Git branch to clone (for git_remote)"
+    )
 
     # Optional - workspace naming (auto-generated if not provided)
-    workspace_name: Optional[str] = Field(default=None, description="Custom workspace directory name")
+    workspace_name: Optional[str] = Field(
+        default=None, description="Custom workspace directory name"
+    )
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_source(self):
         """Validate source_location is provided when source_type requires it."""
         if self.source_type != SourceType.EMPTY and not self.source_location:
@@ -45,11 +56,15 @@ class ProjectResponse(BaseModel):
     Task: cf-11.1 - Create ProjectResponse model
     Updated cf-17.1: Added phase field for project phase tracking
     """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="Unique project ID")
     name: str = Field(..., description="Project name")
     status: str = Field(..., description="Project status (init, planning, active, etc.)")
-    phase: str = Field(default="discovery", description="Project phase (discovery, planning, active, review, complete)")
+    phase: str = Field(
+        default="discovery",
+        description="Project phase (discovery, planning, active, review, complete)",
+    )
     created_at: str = Field(..., description="ISO timestamp of project creation")
     config: Optional[dict] = Field(default=None, description="Optional project configuration")

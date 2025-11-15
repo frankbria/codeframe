@@ -61,9 +61,7 @@ class SkipDetectorVisitor(ast.NodeVisitor):
 
         self.generic_visit(node)
 
-    def _check_decorator_for_skip(
-        self, decorator: ast.expr
-    ) -> Optional[Dict[str, any]]:
+    def _check_decorator_for_skip(self, decorator: ast.expr) -> Optional[Dict[str, any]]:
         """
         Check if a decorator is a skip decorator.
 
@@ -203,15 +201,11 @@ def print_summary(violations: List[Dict[str, any]]) -> None:
     for violation in violations:
         print(f"  {format_violation(violation)}")
 
-    print(
-        "\n⚠️  Skip decorators prevent tests from running and hide failures."
-    )
+    print("\n⚠️  Skip decorators prevent tests from running and hide failures.")
     print("   Instead of skipping tests:")
     print("   1. Fix the failing test")
     print("   2. Remove the test if it's no longer needed")
-    print(
-        "   3. If blocked by external issue, document thoroughly with issue number"
-    )
+    print("   3. If blocked by external issue, document thoroughly with issue number")
 
 
 def main() -> int:

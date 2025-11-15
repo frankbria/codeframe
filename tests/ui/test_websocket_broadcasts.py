@@ -32,12 +32,7 @@ def mock_manager():
 @pytest.mark.asyncio
 async def test_broadcast_task_status_basic(mock_manager):
     """Test broadcasting basic task status change."""
-    await broadcast_task_status(
-        mock_manager,
-        project_id=1,
-        task_id=42,
-        status="in_progress"
-    )
+    await broadcast_task_status(mock_manager, project_id=1, task_id=42, status="in_progress")
 
     mock_manager.broadcast.assert_called_once()
     message = mock_manager.broadcast.call_args[0][0]
@@ -60,7 +55,7 @@ async def test_broadcast_task_status_with_agent_and_progress(mock_manager):
         task_id=42,
         status="in_progress",
         agent_id="backend-worker",
-        progress=75
+        progress=75,
     )
 
     message = mock_manager.broadcast.call_args[0][0]
@@ -72,12 +67,7 @@ async def test_broadcast_task_status_with_agent_and_progress(mock_manager):
 @pytest.mark.asyncio
 async def test_broadcast_agent_status_basic(mock_manager):
     """Test broadcasting basic agent status change."""
-    await broadcast_agent_status(
-        mock_manager,
-        project_id=1,
-        agent_id="backend-1",
-        status="working"
-    )
+    await broadcast_agent_status(mock_manager, project_id=1, agent_id="backend-1", status="working")
 
     mock_manager.broadcast.assert_called_once()
     message = mock_manager.broadcast.call_args[0][0]
@@ -100,7 +90,7 @@ async def test_broadcast_agent_status_with_task(mock_manager):
         status="working",
         current_task_id=42,
         current_task_title="Implement login endpoint",
-        progress=50
+        progress=50,
     )
 
     message = mock_manager.broadcast.call_args[0][0]
@@ -122,7 +112,7 @@ async def test_broadcast_test_result(mock_manager):
         failed=0,
         errors=0,
         total=15,
-        duration=3.5
+        duration=3.5,
     )
 
     mock_manager.broadcast.assert_called_once()
@@ -147,7 +137,7 @@ async def test_broadcast_commit_created_basic(mock_manager):
         project_id=1,
         task_id=42,
         commit_hash="abc123def456",
-        commit_message="feat: Implement login endpoint"
+        commit_message="feat: Implement login endpoint",
     )
 
     mock_manager.broadcast.assert_called_once()
@@ -170,7 +160,7 @@ async def test_broadcast_commit_created_with_files(mock_manager):
         task_id=42,
         commit_hash="abc123",
         commit_message="feat: Add auth",
-        files_changed=["auth.py", "test_auth.py"]
+        files_changed=["auth.py", "test_auth.py"],
     )
 
     message = mock_manager.broadcast.call_args[0][0]
@@ -186,7 +176,7 @@ async def test_broadcast_activity_update(mock_manager):
         activity_type="task_completed",
         agent_id="backend-worker",
         message_text="Completed task #42: Implement login",
-        task_id=42
+        task_id=42,
     )
 
     mock_manager.broadcast.assert_called_once()
@@ -204,11 +194,7 @@ async def test_broadcast_activity_update(mock_manager):
 async def test_broadcast_progress_update(mock_manager):
     """Test broadcasting project progress update."""
     await broadcast_progress_update(
-        mock_manager,
-        project_id=1,
-        completed_tasks=25,
-        total_tasks=100,
-        percentage=25.0
+        mock_manager, project_id=1, completed_tasks=25, total_tasks=100, percentage=25.0
     )
 
     mock_manager.broadcast.assert_called_once()
@@ -230,7 +216,7 @@ async def test_broadcast_correction_attempt_in_progress(mock_manager):
         task_id=42,
         attempt_number=1,
         max_attempts=3,
-        status="in_progress"
+        status="in_progress",
     )
 
     mock_manager.broadcast.assert_called_once()
@@ -255,7 +241,7 @@ async def test_broadcast_correction_attempt_failed(mock_manager):
         attempt_number=2,
         max_attempts=3,
         status="failed",
-        error_summary="Tests still failing: 3 errors"
+        error_summary="Tests still failing: 3 errors",
     )
 
     message = mock_manager.broadcast.call_args[0][0]
@@ -270,12 +256,7 @@ async def test_broadcast_handles_exceptions(mock_manager, caplog):
     mock_manager.broadcast.side_effect = Exception("Connection lost")
 
     # Should not raise, just log
-    await broadcast_task_status(
-        mock_manager,
-        project_id=1,
-        task_id=42,
-        status="completed"
-    )
+    await broadcast_task_status(mock_manager, project_id=1, task_id=42, status="completed")
 
     # Check error was logged
     assert "Failed to broadcast task status" in caplog.text
@@ -284,12 +265,7 @@ async def test_broadcast_handles_exceptions(mock_manager, caplog):
 @pytest.mark.asyncio
 async def test_timestamp_format(mock_manager):
     """Test that timestamps are in correct ISO format with Z suffix."""
-    await broadcast_task_status(
-        mock_manager,
-        project_id=1,
-        task_id=42,
-        status="completed"
-    )
+    await broadcast_task_status(mock_manager, project_id=1, task_id=42, status="completed")
 
     message = mock_manager.broadcast.call_args[0][0]
     timestamp = message["timestamp"]

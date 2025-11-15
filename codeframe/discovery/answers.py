@@ -61,7 +61,7 @@ class AnswerCapture:
                 parts = [part.strip() for part in text.split(",")]
                 for part in parts:
                     # Remove "and" at the beginning
-                    part = re.sub(r'^\s*and\s+', '', part, flags=re.IGNORECASE)
+                    part = re.sub(r"^\s*and\s+", "", part, flags=re.IGNORECASE)
                     # Remove common prefixes/suffixes
                     cleaned = self._clean_feature_text(part)
                     if cleaned and len(cleaned) > 2:
@@ -71,7 +71,7 @@ class AnswerCapture:
             elif " and " in text.lower():
                 # Match patterns like "X and Y" with better context
                 # Use word boundaries to capture full phrases
-                pattern = r'\b([\w\s]+?)\s+and\s+([\w\s]+?)(?:\.|,|$|\s+(?:for|with|in|to)\b)'
+                pattern = r"\b([\w\s]+?)\s+and\s+([\w\s]+?)(?:\.|,|$|\s+(?:for|with|in|to)\b)"
                 matches = re.finditer(pattern, text, re.IGNORECASE)
                 for match in matches:
                     for group in match.groups():
@@ -81,10 +81,10 @@ class AnswerCapture:
 
             # Extract features from action verbs (can login, can logout, etc.)
             action_patterns = [
-                r'can\s+([\w\s]+?)(?:\.|,|and|$)',
-                r'able to\s+([\w\s]+?)(?:\.|,|and|$)',
-                r'needs?\s+([\w\s]+?)(?:\.|,|and|$)',
-                r'requires?\s+([\w\s]+?)(?:\.|,|and|$)',
+                r"can\s+([\w\s]+?)(?:\.|,|and|$)",
+                r"able to\s+([\w\s]+?)(?:\.|,|and|$)",
+                r"needs?\s+([\w\s]+?)(?:\.|,|and|$)",
+                r"requires?\s+([\w\s]+?)(?:\.|,|and|$)",
             ]
             for pattern in action_patterns:
                 matches = re.finditer(pattern, text, re.IGNORECASE)
@@ -97,9 +97,9 @@ class AnswerCapture:
             # Extract single-word or multi-word features from key sentences
             # Look for key technical terms and phrases
             tech_patterns = [
-                r'\b(authentication|authorization|login|logout|signup|sign\s*up|dashboard|'
-                r'reporting|profile|settings|admin|user\s+profile(?:\s+management)?|'
-                r'password\s+\w+|saas|app)\b'
+                r"\b(authentication|authorization|login|logout|signup|sign\s*up|dashboard|"
+                r"reporting|profile|settings|admin|user\s+profile(?:\s+management)?|"
+                r"password\s+\w+|saas|app)\b"
             ]
             for pattern in tech_patterns:
                 matches = re.finditer(pattern, text, re.IGNORECASE)
@@ -140,18 +140,18 @@ class AnswerCapture:
             # Common user/role patterns
             user_patterns = [
                 # Direct mentions
-                r'\b(developers?|engineers?|programmers?)\b',
-                r'\b(end\s+users?|users?)\b',
-                r'\b(administrators?|admins?)\b',
-                r'\b(managers?|project\s+managers?)\b',
-                r'\b(creators?|content\s+creators?)\b',
-                r'\b(viewers?|readers?)\b',
-                r'\b(clients?|customers?)\b',
-                r'\b(team\s+members?)\b',
+                r"\b(developers?|engineers?|programmers?)\b",
+                r"\b(end\s+users?|users?)\b",
+                r"\b(administrators?|admins?)\b",
+                r"\b(managers?|project\s+managers?)\b",
+                r"\b(creators?|content\s+creators?)\b",
+                r"\b(viewers?|readers?)\b",
+                r"\b(clients?|customers?)\b",
+                r"\b(team\s+members?)\b",
                 # Role-based patterns
-                r'for\s+(\w+(?:\s+\w+)?)\s+(?:and|,)',
-                r'users?\s+are\s+(\w+(?:\s+\w+)?)',
-                r'(?:primary|secondary)\s+users?\s+(?:are|include)\s+(\w+(?:\s+\w+)?)',
+                r"for\s+(\w+(?:\s+\w+)?)\s+(?:and|,)",
+                r"users?\s+are\s+(\w+(?:\s+\w+)?)",
+                r"(?:primary|secondary)\s+users?\s+(?:are|include)\s+(\w+(?:\s+\w+)?)",
             ]
 
             for pattern in user_patterns:
@@ -160,23 +160,29 @@ class AnswerCapture:
                     user = match.group(1) if len(match.groups()) > 0 else match.group(0)
                     user = user.strip()
                     # Clean up common articles and prepositions
-                    user = re.sub(r'^(the|a|an)\s+', '', user, flags=re.IGNORECASE)
+                    user = re.sub(r"^(the|a|an)\s+", "", user, flags=re.IGNORECASE)
                     if user and len(user) > 2:
                         users.append(user)
 
             # Extract from lists with "and"
             if " and " in text:
                 # Check for user context words before/after
-                user_context_words = ['users', 'for', 'are', 'include']
+                user_context_words = ["users", "for", "are", "include"]
                 for word in user_context_words:
                     if word in text.lower():
-                        pattern = r'(\w+(?:\s+\w+)?)\s+and\s+(\w+(?:\s+\w+)?)'
+                        pattern = r"(\w+(?:\s+\w+)?)\s+and\s+(\w+(?:\s+\w+)?)"
                         matches = re.finditer(pattern, text, re.IGNORECASE)
                         for match in matches:
                             for group in match.groups():
                                 cleaned = group.strip()
-                                cleaned = re.sub(r'^(the|a|an)\s+', '', cleaned, flags=re.IGNORECASE)
-                                if cleaned and len(cleaned) > 2 and not cleaned.lower() in ['system', 'app']:
+                                cleaned = re.sub(
+                                    r"^(the|a|an)\s+", "", cleaned, flags=re.IGNORECASE
+                                )
+                                if (
+                                    cleaned
+                                    and len(cleaned) > 2
+                                    and not cleaned.lower() in ["system", "app"]
+                                ):
                                     users.append(cleaned)
                         break
 
@@ -186,7 +192,7 @@ class AnswerCapture:
         for user in users:
             user_lower = user.lower()
             # Skip common non-user words
-            if user_lower in ['system', 'app', 'application', 'software']:
+            if user_lower in ["system", "app", "application", "software"]:
                 continue
             if user_lower not in seen:
                 seen.add(user_lower)
@@ -213,10 +219,10 @@ class AnswerCapture:
 
             # Technology constraints
             tech_patterns = [
-                (r'\b(PostgreSQL|MySQL|MongoDB|Redis|SQLite)\b', 'database'),
-                (r'\b(React|Vue|Angular|Svelte)\b', 'frontend'),
-                (r'\b(Node\.js|Python|Ruby|Java|Go)\b', 'backend'),
-                (r'\b(AWS|Azure|GCP|Google Cloud)\b', 'cloud'),
+                (r"\b(PostgreSQL|MySQL|MongoDB|Redis|SQLite)\b", "database"),
+                (r"\b(React|Vue|Angular|Svelte)\b", "frontend"),
+                (r"\b(Node\.js|Python|Ruby|Java|Go)\b", "backend"),
+                (r"\b(AWS|Azure|GCP|Google Cloud)\b", "cloud"),
             ]
 
             for pattern, constraint_type in tech_patterns:
@@ -232,22 +238,22 @@ class AnswerCapture:
 
             # Performance constraints
             perf_patterns = [
-                r'response\s+time.*?(\d+)\s*ms',
-                r'under\s+(\d+)\s*ms',
-                r'latency.*?(\d+)\s*ms',
+                r"response\s+time.*?(\d+)\s*ms",
+                r"under\s+(\d+)\s*ms",
+                r"latency.*?(\d+)\s*ms",
             ]
 
             for pattern in perf_patterns:
                 match = re.search(pattern, text, re.IGNORECASE)
                 if match:
-                    constraints['performance'] = f"response_time_ms: {match.group(1)}"
+                    constraints["performance"] = f"response_time_ms: {match.group(1)}"
                     break
 
             # Security/Compliance constraints
             security_patterns = [
-                r'\b(GDPR|HIPAA|SOC2|PCI DSS)\b',
-                r'\b(encrypted?|encryption)\b',
-                r'\bcomply\s+with\s+(\w+)\b',
+                r"\b(GDPR|HIPAA|SOC2|PCI DSS)\b",
+                r"\b(encrypted?|encryption)\b",
+                r"\bcomply\s+with\s+(\w+)\b",
             ]
 
             security_items = []
@@ -257,7 +263,7 @@ class AnswerCapture:
                     security_items.append(match.group(0))
 
             if security_items:
-                constraints['security'] = security_items
+                constraints["security"] = security_items
 
         # Flatten single-item lists for cleaner output
         for key, value in constraints.items():
@@ -307,13 +313,13 @@ class AnswerCapture:
             Cleaned feature text
         """
         # Remove common prefixes and articles
-        text = re.sub(r'^(the|a|an)\s+', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'^(system|needs?|requires?)\s+', '', text, flags=re.IGNORECASE)
+        text = re.sub(r"^(the|a|an)\s+", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"^(system|needs?|requires?)\s+", "", text, flags=re.IGNORECASE)
 
         # Remove trailing punctuation
-        text = re.sub(r'[.,;:!?]+$', '', text)
+        text = re.sub(r"[.,;:!?]+$", "", text)
 
         # Normalize whitespace
-        text = ' '.join(text.split())
+        text = " ".join(text.split())
 
         return text.strip()

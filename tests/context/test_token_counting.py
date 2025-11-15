@@ -40,7 +40,7 @@ class TestTokenCounting:
         contents = [
             "First message for batch counting.",
             "Second message with different content.",
-            "Third message to test batch processing."
+            "Third message to test batch processing.",
         ]
 
         # ACT: Count tokens in batch
@@ -82,7 +82,7 @@ class TestTokenCounting:
         context_items = [
             {"id": 1, "content": "Task description: Implement user authentication."},
             {"id": 2, "content": "Code snippet: def authenticate_user(): pass"},
-            {"id": 3, "content": "Error: Invalid credentials provided by user."}
+            {"id": 3, "content": "Error: Invalid credentials provided by user."},
         ]
 
         # ACT: Count total tokens across all items
@@ -117,9 +117,7 @@ class TestTokenCounting:
         # Create large content item (simulate PRD section)
         large_content = "This is a very long PRD section. " * 500  # ~3500 words
 
-        context_items = [
-            {"id": 1, "content": large_content}
-        ]
+        context_items = [{"id": 1, "content": large_content}]
 
         # ACT: Count tokens
         total_tokens = counter.count_context_tokens(context_items)

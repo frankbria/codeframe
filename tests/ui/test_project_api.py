@@ -1,4 +1,5 @@
 """Tests for project API endpoints."""
+
 import pytest
 import tempfile
 import shutil
@@ -24,6 +25,7 @@ def test_client():
 
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
+
     app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     client = TestClient(app)
@@ -38,11 +40,7 @@ def test_client():
 def test_create_project_minimal(test_client):
     """Test creating project with minimal required fields."""
     response = test_client.post(
-        "/api/projects",
-        json={
-            "name": "Test Project",
-            "description": "A test project"
-        }
+        "/api/projects", json={"name": "Test Project", "description": "A test project"}
     )
 
     assert response.status_code == 201
@@ -59,8 +57,8 @@ def test_create_project_git_remote(test_client):
             "name": "Git Project",
             "description": "From git",
             "source_type": "git_remote",
-            "source_location": "https://github.com/user/repo.git"
-        }
+            "source_location": "https://github.com/user/repo.git",
+        },
     )
 
     # This will fail with 500 because the git URL is fake
@@ -75,9 +73,9 @@ def test_create_project_validation_error(test_client):
         json={
             "name": "Test",
             "description": "Test",
-            "source_type": "git_remote"
+            "source_type": "git_remote",
             # Missing source_location
-        }
+        },
     )
 
     assert response.status_code == 422
@@ -85,9 +83,6 @@ def test_create_project_validation_error(test_client):
 
 def test_create_project_missing_description(test_client):
     """Test validation error for missing description."""
-    response = test_client.post(
-        "/api/projects",
-        json={"name": "Test"}
-    )
+    response = test_client.post("/api/projects", json={"name": "Test"})
 
     assert response.status_code == 422

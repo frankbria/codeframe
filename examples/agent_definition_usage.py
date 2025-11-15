@@ -42,9 +42,7 @@ def main() -> None:
 
     # Create an agent from definition
     agent = loader.create_agent(
-        agent_type="backend-architect",
-        agent_id="backend-001",
-        provider="anthropic"
+        agent_type="backend-architect", agent_id="backend-001", provider="anthropic"
     )
 
     print(f"Created agent: {agent.agent_id}")
@@ -53,7 +51,7 @@ def main() -> None:
     print(f"Has definition: {hasattr(agent, 'definition')}")
 
     # Access definition through agent
-    if hasattr(agent, 'definition'):
+    if hasattr(agent, "definition"):
         print(f"\nSystem prompt (first 200 chars):")
         print(f"{agent.definition.system_prompt[:200]}...\n")
 
@@ -67,10 +65,7 @@ def main() -> None:
     # Example: Creating multiple agents
     print("\n--- Creating Multiple Agents ---")
     for agent_type in available:
-        agent = loader.create_agent(
-            agent_type=agent_type,
-            agent_id=f"{agent_type}-instance-001"
-        )
+        agent = loader.create_agent(agent_type=agent_type, agent_id=f"{agent_type}-instance-001")
         print(f"Created {agent.agent_id} (type: {agent.agent_type})")
 
 

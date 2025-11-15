@@ -91,12 +91,13 @@ class TestDiscoveryProgressEndpoint:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
         # Start discovery and answer 3 questions
         from codeframe.agents.lead_agent import LeadAgent
+
         agent = LeadAgent(project_id=project_id, db=app.state.db, api_key="test-key")
         agent.start_discovery()
         agent.process_discovery_answer("Answer 1 with sufficient content")
@@ -136,12 +137,13 @@ class TestDiscoveryProgressEndpoint:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
         # Complete discovery
         from codeframe.agents.lead_agent import LeadAgent
+
         agent = LeadAgent(project_id=project_id, db=app.state.db, api_key="test-key")
         agent.start_discovery()
 
@@ -167,9 +169,7 @@ class TestDiscoveryProgressEndpoint:
         assert "structured_data" in discovery
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
-    def test_get_discovery_progress_matches_project_phase(
-        self, mock_provider_class, test_client
-    ):
+    def test_get_discovery_progress_matches_project_phase(self, mock_provider_class, test_client):
         """Test endpoint returns correct phase field matching project.phase."""
         # ARRANGE
         # Create project with specific phase
@@ -192,9 +192,7 @@ class TestDiscoveryProgressEndpoint:
         assert data["project_id"] == project_id
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
-    def test_get_discovery_progress_excludes_answers_field(
-        self, mock_provider_class, test_client
-    ):
+    def test_get_discovery_progress_excludes_answers_field(self, mock_provider_class, test_client):
         """Test endpoint does not include the raw answers field for security."""
         # ARRANGE
         # Create project
@@ -204,12 +202,13 @@ class TestDiscoveryProgressEndpoint:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
         # Start discovery
         from codeframe.agents.lead_agent import LeadAgent
+
         agent = LeadAgent(project_id=project_id, db=app.state.db, api_key="test-key")
         agent.start_discovery()
         agent.process_discovery_answer("Answer 1 with sufficient content")

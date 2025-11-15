@@ -17,7 +17,7 @@ from codeframe.lib.importance_scorer import (
     calculate_importance_score,
     calculate_age_decay,
     calculate_access_boost,
-    ITEM_TYPE_WEIGHTS
+    ITEM_TYPE_WEIGHTS,
 )
 from codeframe.core.models import ContextItemType
 
@@ -37,7 +37,7 @@ class TestImportanceScoring:
             item_type=item_type.value,
             created_at=created_at,
             access_count=access_count,
-            last_accessed=created_at
+            last_accessed=created_at,
         )
 
         # ASSERT: New TASK has high score
@@ -60,7 +60,7 @@ class TestImportanceScoring:
             item_type=item_type.value,
             created_at=created_at,
             access_count=access_count,
-            last_accessed=created_at
+            last_accessed=created_at,
         )
 
         # ASSERT: 7-day-old item has decayed score
@@ -81,7 +81,7 @@ class TestImportanceScoring:
             item_type=item_type.value,
             created_at=created_at,
             access_count=access_count,
-            last_accessed=datetime.now(UTC)
+            last_accessed=datetime.now(UTC),
         )
 
         # ASSERT: High access count boosts score
@@ -104,7 +104,7 @@ class TestImportanceScoring:
                 item_type=item_type.value,
                 created_at=created_at,
                 access_count=access_count,
-                last_accessed=created_at
+                last_accessed=created_at,
             )
 
         # ASSERT: Scores ordered by type weight
@@ -131,7 +131,7 @@ class TestImportanceScoring:
                 item_type=ContextItemType.TASK.value,
                 created_at=created_at,
                 access_count=access_count,
-                last_accessed=datetime.now(UTC)
+                last_accessed=datetime.now(UTC),
             )
 
             # ASSERT: Always within range
@@ -149,7 +149,7 @@ class TestImportanceScoring:
             item_type=item_type.value,
             created_at=created_at,
             access_count=access_count,
-            last_accessed=created_at
+            last_accessed=created_at,
         )
 
         # ASSERT: Verify formula
@@ -169,7 +169,7 @@ class TestAgeDecay:
 
         # Test specific decay values
         test_cases = [
-            (0, 1.0),           # New item: decay = 1.0
+            (0, 1.0),  # New item: decay = 1.0
             (1, math.exp(-0.5)),  # 1 day: e^(-0.5) ≈ 0.606
             (7, math.exp(-3.5)),  # 7 days: e^(-3.5) ≈ 0.03
             (30, math.exp(-15)),  # 30 days: e^(-15) ≈ 0.000000306
@@ -217,11 +217,11 @@ class TestAccessBoost:
         import math
 
         test_cases = [
-            (0, 0.0),                           # No access
-            (9, math.log(10) / 10),            # log(10) / 10 ≈ 0.23
-            (99, math.log(100) / 10),          # log(100) / 10 ≈ 0.46
-            (999, math.log(1000) / 10),        # log(1000) / 10 ≈ 0.69
-            (10000, math.log(10001) / 10),     # High access
+            (0, 0.0),  # No access
+            (9, math.log(10) / 10),  # log(10) / 10 ≈ 0.23
+            (99, math.log(100) / 10),  # log(100) / 10 ≈ 0.46
+            (999, math.log(1000) / 10),  # log(1000) / 10 ≈ 0.69
+            (10000, math.log(10001) / 10),  # High access
         ]
 
         for access_count, expected_boost in test_cases:
@@ -244,8 +244,8 @@ class TestAccessBoost:
 
     def test_type_weights_constant(self):
         """Verify ITEM_TYPE_WEIGHTS constant values."""
-        assert ITEM_TYPE_WEIGHTS['TASK'] == 1.0
-        assert ITEM_TYPE_WEIGHTS['CODE'] == 0.8
-        assert ITEM_TYPE_WEIGHTS['ERROR'] == 0.7
-        assert ITEM_TYPE_WEIGHTS['TEST_RESULT'] == 0.6
-        assert ITEM_TYPE_WEIGHTS['PRD_SECTION'] == 0.5
+        assert ITEM_TYPE_WEIGHTS["TASK"] == 1.0
+        assert ITEM_TYPE_WEIGHTS["CODE"] == 0.8
+        assert ITEM_TYPE_WEIGHTS["ERROR"] == 0.7
+        assert ITEM_TYPE_WEIGHTS["TEST_RESULT"] == 0.6
+        assert ITEM_TYPE_WEIGHTS["PRD_SECTION"] == 0.5

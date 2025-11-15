@@ -21,7 +21,7 @@ def temp_db():
         """INSERT INTO projects (name, description, workspace_path, status)
            VALUES (?, ?, ?, ?)
            RETURNING id""",
-        ("test-project", "Test project", "/tmp/test-workspace", "active")
+        ("test-project", "Test project", "/tmp/test-workspace", "active"),
     )
     project_id = cursor.fetchone()[0]
 
@@ -29,7 +29,7 @@ def temp_db():
     db.conn.execute(
         """INSERT INTO tasks (id, project_id, title, description, status, priority)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (1, project_id, "Test Task", "Test task for blocker tests", "pending", 0)
+        (1, project_id, "Test Task", "Test task for blocker tests", "pending", 0),
     )
     db.conn.commit()
 
@@ -56,7 +56,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Test question?", "PENDING", recent_time)
+            ("backend-worker-1", 1, "SYNC", "Test question?", "PENDING", recent_time),
         )
         temp_db.conn.commit()
 
@@ -73,7 +73,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Stale question?", "PENDING", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Stale question?", "PENDING", stale_time),
         )
         blocker_id = cursor.fetchone()[0]
         temp_db.conn.commit()
@@ -85,7 +85,7 @@ class TestExpireStaleBlockers:
 
         # Verify status was updated to EXPIRED
         blocker = temp_db.get_blocker(blocker_id)
-        assert blocker['status'] == 'EXPIRED'
+        assert blocker["status"] == "EXPIRED"
 
     def test_expire_stale_blockers_custom_threshold(self, temp_db):
         """Test expire_stale_blockers with custom hour threshold."""
@@ -96,7 +96,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "PENDING", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Question?", "PENDING", stale_time),
         )
         blocker_id = cursor.fetchone()[0]
         temp_db.conn.commit()
@@ -115,7 +115,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at, answer)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "RESOLVED", stale_time, "Answer")
+            ("backend-worker-1", 1, "SYNC", "Question?", "RESOLVED", stale_time, "Answer"),
         )
         temp_db.conn.commit()
 
@@ -131,7 +131,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "EXPIRED", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Question?", "EXPIRED", stale_time),
         )
         temp_db.conn.commit()
 
@@ -149,7 +149,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Stale 1?", "PENDING", stale_time)
+            ("backend-worker-1", 1, "SYNC", "Stale 1?", "PENDING", stale_time),
         )
         stale_id_1 = cursor1.fetchone()[0]
 
@@ -157,7 +157,7 @@ class TestExpireStaleBlockers:
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-2", 1, "ASYNC", "Stale 2?", "PENDING", stale_time)
+            ("backend-worker-2", 1, "ASYNC", "Stale 2?", "PENDING", stale_time),
         )
         stale_id_2 = cursor2.fetchone()[0]
 
@@ -165,7 +165,7 @@ class TestExpireStaleBlockers:
         temp_db.conn.execute(
             """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-3", 1, "SYNC", "Recent?", "PENDING", recent_time)
+            ("backend-worker-3", 1, "SYNC", "Recent?", "PENDING", recent_time),
         )
         temp_db.conn.commit()
 

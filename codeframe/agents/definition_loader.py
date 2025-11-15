@@ -116,6 +116,7 @@ class AgentDefinition:
         constraints: Execution constraints (tokens, temperature, timeout)
         metadata: Additional metadata (version, author, tags)
     """
+
     name: str
     type: str
     system_prompt: str
@@ -237,7 +238,7 @@ class AgentDefinitionLoader:
             yaml.YAMLError: If YAML parsing fails
             ValueError: If validation fails
         """
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         if not data:
@@ -245,8 +246,8 @@ class AgentDefinitionLoader:
 
         # Parse maturity level if provided
         maturity = AgentMaturity.D1
-        if 'maturity' in data:
-            maturity_str = data['maturity']
+        if "maturity" in data:
+            maturity_str = data["maturity"]
             try:
                 maturity = AgentMaturity[maturity_str]
             except KeyError:
@@ -257,15 +258,15 @@ class AgentDefinitionLoader:
 
         # Create definition
         definition = AgentDefinition(
-            name=data.get('name', ''),
-            type=data.get('type', ''),
-            system_prompt=data.get('system_prompt', ''),
+            name=data.get("name", ""),
+            type=data.get("type", ""),
+            system_prompt=data.get("system_prompt", ""),
             maturity=maturity,
-            description=data.get('description', ''),
-            capabilities=data.get('capabilities', []),
-            tools=data.get('tools', []),
-            constraints=data.get('constraints', {}),
-            metadata=data.get('metadata', {})
+            description=data.get("description", ""),
+            capabilities=data.get("capabilities", []),
+            tools=data.get("tools", []),
+            constraints=data.get("constraints", {}),
+            metadata=data.get("metadata", {}),
         )
 
         # Validate definition
@@ -296,11 +297,7 @@ class AgentDefinitionLoader:
         return self._definitions[agent_type]
 
     def create_agent(
-        self,
-        agent_type: str,
-        agent_id: str,
-        provider: str = "anthropic",
-        **kwargs: Any
+        self, agent_type: str, agent_id: str, provider: str = "anthropic", **kwargs: Any
     ) -> WorkerAgent:
         """
         Create a WorkerAgent instance from a definition.
@@ -325,7 +322,7 @@ class AgentDefinitionLoader:
             agent_type=definition.type,
             provider=provider,
             maturity=definition.maturity,
-            **kwargs
+            **kwargs,
         )
 
         # Store definition reference on agent for access to system_prompt, tools, etc.
@@ -353,8 +350,7 @@ class AgentDefinitionLoader:
             List of matching AgentDefinition objects
         """
         return [
-            definition for definition in self._definitions.values()
-            if definition.type == agent_type
+            definition for definition in self._definitions.values() if definition.type == agent_type
         ]
 
     def reload_definitions(self, path: Path) -> Dict[str, AgentDefinition]:

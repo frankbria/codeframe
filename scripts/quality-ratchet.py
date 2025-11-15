@@ -60,9 +60,7 @@ def load_history(history_file: str = None) -> List[Dict]:
         with open(path, "r") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError):
-        console.print(
-            f"[yellow]Warning: Could not read history file {history_file}[/yellow]"
-        )
+        console.print(f"[yellow]Warning: Could not read history file {history_file}[/yellow]")
         return []
 
 
@@ -101,9 +99,7 @@ def run_tests() -> Dict[str, float]:
     )
 
     if not report_file.exists():
-        console.print(
-            "[yellow]Warning: pytest JSON report not found, using defaults[/yellow]"
-        )
+        console.print("[yellow]Warning: pytest JSON report not found, using defaults[/yellow]")
         return {
             "test_count": 0,
             "passed_count": 0,
@@ -152,14 +148,10 @@ def get_coverage() -> float:
 
     if not coverage_file.exists():
         # Try to generate coverage
-        subprocess.run(
-            ["pytest", "--cov", "--cov-report=json"], capture_output=True, text=True
-        )
+        subprocess.run(["pytest", "--cov", "--cov-report=json"], capture_output=True, text=True)
 
     if not coverage_file.exists():
-        console.print(
-            "[yellow]Warning: coverage.json not found, using default[/yellow]"
-        )
+        console.print("[yellow]Warning: coverage.json not found, using default[/yellow]")
         return 0.0
 
     try:
@@ -174,9 +166,7 @@ def get_coverage() -> float:
         return 0.0
 
 
-def calculate_moving_average(
-    history: List[Dict], window: int = 3
-) -> Optional[Dict[str, float]]:
+def calculate_moving_average(history: List[Dict], window: int = 3) -> Optional[Dict[str, float]]:
     """
     Calculate moving average of quality metrics.
 
@@ -218,9 +208,7 @@ def find_peak_quality(history: List[Dict]) -> Optional[Dict]:
         return None
 
     def score(checkpoint: Dict) -> float:
-        return (
-            checkpoint["test_pass_rate"] + checkpoint["coverage_percentage"]
-        ) / 2
+        return (checkpoint["test_pass_rate"] + checkpoint["coverage_percentage"]) / 2
 
     return max(history, key=score)
 
@@ -289,9 +277,7 @@ def record(
     response_count: int = typer.Option(
         ..., "--response-count", help="Number of AI responses in current session"
     ),
-    history_file: str = typer.Option(
-        None, "--history-file", help="Path to history file"
-    ),
+    history_file: str = typer.Option(None, "--history-file", help="Path to history file"),
 ) -> None:
     """
     Record current quality metrics to history.
@@ -330,9 +316,7 @@ def record(
 
 @app.command()
 def check(
-    history_file: str = typer.Option(
-        None, "--history-file", help="Path to history file"
-    ),
+    history_file: str = typer.Option(None, "--history-file", help="Path to history file"),
 ) -> None:
     """
     Check for quality degradation.
@@ -355,25 +339,19 @@ def check(
         for issue in degradation["issues"]:
             console.print(f"  • {issue}")
 
-        console.print(
-            "\n[bold yellow]RECOMMENDATION: Consider context reset[/bold yellow]"
-        )
+        console.print("\n[bold yellow]RECOMMENDATION: Consider context reset[/bold yellow]")
         console.print("  1. Save current state")
         console.print("  2. Create context handoff using template in .claude/rules.md")
         console.print("  3. Start fresh conversation with handoff context")
 
         raise typer.Exit(1)
     else:
-        console.print(
-            f"[green]✓ Quality stable[/green] - {degradation['message']}"
-        )
+        console.print(f"[green]✓ Quality stable[/green] - {degradation['message']}")
 
 
 @app.command()
 def stats(
-    history_file: str = typer.Option(
-        None, "--history-file", help="Path to history file"
-    ),
+    history_file: str = typer.Option(None, "--history-file", help="Path to history file"),
 ) -> None:
     """
     Display quality statistics with Rich table.
@@ -416,9 +394,7 @@ def stats(
 @app.command()
 def reset(
     yes: bool = typer.Option(False, "--yes", help="Skip confirmation"),
-    history_file: str = typer.Option(
-        None, "--history-file", help="Path to history file"
-    ),
+    history_file: str = typer.Option(None, "--history-file", help="Path to history file"),
 ) -> None:
     """
     Reset quality history (clear all checkpoints).

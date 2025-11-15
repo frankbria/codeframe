@@ -12,9 +12,7 @@ try:
         APIConnectionError,
     )
 except ImportError:
-    raise ImportError(
-        "anthropic package not found. Install with: pip install anthropic"
-    )
+    raise ImportError("anthropic package not found. Install with: pip install anthropic")
 
 
 logger = logging.getLogger(__name__)
@@ -85,8 +83,7 @@ class AnthropicProvider:
         for msg in conversation:
             if msg.get("role") not in ["user", "assistant"]:
                 raise ValueError(
-                    f"Invalid message role: {msg.get('role')}. "
-                    "Must be 'user' or 'assistant'"
+                    f"Invalid message role: {msg.get('role')}. " "Must be 'user' or 'assistant'"
                 )
 
         try:

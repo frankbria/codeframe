@@ -17,9 +17,33 @@ def resolver():
 def simple_tasks():
     """Create simple task list with linear dependencies."""
     return [
-        Task(id=1, title="Task 1", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-        Task(id=2, title="Task 2", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
-        Task(id=3, title="Task 3", description="", status="pending", priority=1, workflow_step=1, depends_on="[2]"),
+        Task(
+            id=1,
+            title="Task 1",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="",
+        ),
+        Task(
+            id=2,
+            title="Task 2",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="[1]",
+        ),
+        Task(
+            id=3,
+            title="Task 3",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="[2]",
+        ),
     ]
 
 
@@ -27,11 +51,51 @@ def simple_tasks():
 def complex_tasks():
     """Create complex task graph with multiple dependency paths."""
     return [
-        Task(id=1, title="Task 1", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-        Task(id=2, title="Task 2", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-        Task(id=3, title="Task 3", description="", status="pending", priority=1, workflow_step=1, depends_on="[1,2]"),
-        Task(id=4, title="Task 4", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
-        Task(id=5, title="Task 5", description="", status="pending", priority=1, workflow_step=1, depends_on="[3,4]"),
+        Task(
+            id=1,
+            title="Task 1",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="",
+        ),
+        Task(
+            id=2,
+            title="Task 2",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="",
+        ),
+        Task(
+            id=3,
+            title="Task 3",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="[1,2]",
+        ),
+        Task(
+            id=4,
+            title="Task 4",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="[1]",
+        ),
+        Task(
+            id=5,
+            title="Task 5",
+            description="",
+            status="pending",
+            priority=1,
+            workflow_step=1,
+            depends_on="[3,4]",
+        ),
     ]
 
 
@@ -68,8 +132,24 @@ class TestDAGConstruction:
     def test_build_graph_with_completed_tasks(self, resolver):
         """Test building graph tracks completed tasks."""
         tasks = [
-            Task(id=1, title="T1", description="", status="completed", priority=1, workflow_step=1, depends_on=""),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="completed",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
         ]
 
         resolver.build_dependency_graph(tasks)
@@ -80,9 +160,33 @@ class TestDAGConstruction:
     def test_build_graph_comma_separated_format(self, resolver):
         """Test parsing comma-separated depends_on format."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-            Task(id=3, title="T3", description="", status="pending", priority=1, workflow_step=1, depends_on="1,2"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=3,
+                title="T3",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="1,2",
+            ),
         ]
 
         # Should parse comma-separated format correctly
@@ -108,8 +212,24 @@ class TestCycleDetection:
     def test_detect_direct_cycle(self, resolver):
         """Test detection of direct cycle (A→B→A)."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="[2]"),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[2]",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
         ]
 
         with pytest.raises(ValueError, match="Circular dependencies"):
@@ -118,9 +238,33 @@ class TestCycleDetection:
     def test_detect_indirect_cycle(self, resolver):
         """Test detection of indirect cycle (A→B→C→A)."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="[3]"),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
-            Task(id=3, title="T3", description="", status="pending", priority=1, workflow_step=1, depends_on="[2]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[3]",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
+            Task(
+                id=3,
+                title="T3",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[2]",
+            ),
         ]
 
         with pytest.raises(ValueError, match="Circular dependencies"):
@@ -129,7 +273,15 @@ class TestCycleDetection:
     def test_detect_self_dependency(self, resolver):
         """Test detection of self-dependency."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
         ]
 
         with pytest.raises(ValueError, match="cannot depend on itself"):
@@ -142,8 +294,24 @@ class TestReadyTasks:
     def test_get_ready_tasks_no_dependencies(self, resolver):
         """Test tasks with no dependencies are ready."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
         ]
 
         resolver.build_dependency_graph(tasks)
@@ -154,9 +322,33 @@ class TestReadyTasks:
     def test_get_ready_tasks_some_completed(self, resolver):
         """Test ready tasks when some dependencies completed."""
         tasks = [
-            Task(id=1, title="T1", description="", status="completed", priority=1, workflow_step=1, depends_on=""),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
-            Task(id=3, title="T3", description="", status="pending", priority=1, workflow_step=1, depends_on="[2]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="completed",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
+            Task(
+                id=3,
+                title="T3",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[2]",
+            ),
         ]
 
         resolver.build_dependency_graph(tasks)
@@ -210,10 +402,42 @@ class TestUnblocking:
     def test_unblock_multiple_tasks(self, resolver):
         """Test unblocking multiple dependent tasks."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
-            Task(id=3, title="T3", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
-            Task(id=4, title="T4", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
+            Task(
+                id=3,
+                title="T3",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
+            Task(
+                id=4,
+                title="T4",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
         ]
 
         resolver.build_dependency_graph(tasks)
@@ -268,7 +492,17 @@ class TestDependencyValidation:
 
     def test_validate_self_dependency(self, resolver):
         """Test rejecting self-dependency."""
-        tasks = [Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="")]
+        tasks = [
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            )
+        ]
         resolver.build_dependency_graph(tasks)
 
         with pytest.raises(ValueError, match="cannot depend on itself"):
@@ -277,9 +511,33 @@ class TestDependencyValidation:
     def test_validate_safe_new_dependency(self, resolver):
         """Test allowing safe new dependency."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-            Task(id=3, title="T3", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=3,
+                title="T3",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
         ]
         resolver.build_dependency_graph(tasks)
 
@@ -318,8 +576,24 @@ class TestTopologicalSort:
     def test_topological_sort_with_cycle(self, resolver):
         """Test topological sort returns None for cyclic graph."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="[2]"),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on="[1]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[2]",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[1]",
+            ),
         ]
 
         # This should raise during build due to cycle detection
@@ -332,7 +606,17 @@ class TestDependencyDepth:
 
     def test_depth_no_dependencies(self, resolver):
         """Test depth is 0 for tasks with no dependencies."""
-        tasks = [Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="")]
+        tasks = [
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            )
+        ]
         resolver.build_dependency_graph(tasks)
 
         assert resolver.get_dependency_depth(1) == 0
@@ -362,8 +646,24 @@ class TestBlockedTasks:
     def test_get_blocked_tasks_none(self, resolver):
         """Test no blocked tasks when all are independent."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
-            Task(id=2, title="T2", description="", status="pending", priority=1, workflow_step=1, depends_on=""),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
+            Task(
+                id=2,
+                title="T2",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="",
+            ),
         ]
 
         resolver.build_dependency_graph(tasks)
@@ -410,7 +710,15 @@ class TestEdgeCases:
     def test_missing_task_reference(self, resolver):
         """Test handling of missing task references."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="[999]"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="[999]",
+            ),
         ]
 
         # Should build graph but log warning
@@ -423,7 +731,15 @@ class TestEdgeCases:
     def test_invalid_depends_on_format(self, resolver):
         """Test handling of invalid depends_on format."""
         tasks = [
-            Task(id=1, title="T1", description="", status="pending", priority=1, workflow_step=1, depends_on="invalid"),
+            Task(
+                id=1,
+                title="T1",
+                description="",
+                status="pending",
+                priority=1,
+                workflow_step=1,
+                depends_on="invalid",
+            ),
         ]
 
         # Should handle gracefully

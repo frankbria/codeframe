@@ -66,8 +66,7 @@ class TestQuestionGeneration:
 
         # Should have the main problem question
         problem_texts = [q["text"] for q in problem_questions]
-        assert any("problem" in text.lower() and "solve" in text.lower()
-                  for text in problem_texts)
+        assert any("problem" in text.lower() and "solve" in text.lower() for text in problem_texts)
 
 
 class TestContextAwareQuestionProgression:
@@ -119,10 +118,7 @@ class TestContextAwareQuestionProgression:
         framework = DiscoveryQuestionFramework()
 
         # Answer initial questions
-        context = {
-            "problem_1": "Building a web application",
-            "users_1": "Developers and designers"
-        }
+        context = {"problem_1": "Building a web application", "users_1": "Developers and designers"}
 
         next_question = framework.get_next_question(context=context)
 
@@ -147,10 +143,7 @@ class TestDiscoveryCompletionDetection:
         framework = DiscoveryQuestionFramework()
 
         # Only answer some required questions
-        answers = {
-            "problem_1": "Building a web app",
-            "users_1": "Developers"
-        }
+        answers = {"problem_1": "Building a web app", "users_1": "Developers"}
 
         is_complete = framework.is_discovery_complete(answers=answers)
 

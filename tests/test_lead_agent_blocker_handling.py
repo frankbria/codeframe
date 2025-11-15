@@ -18,8 +18,17 @@ from codeframe.core.models import ProjectStatus, Task, BlockerType, BlockerStatu
 @pytest.mark.unit
 class TestLeadAgentSyncBlockerHandling:
     """Test SYNC blocker dependency handling (T036)."""
-    
-    def _create_test_task(self, db, project_id, issue_id, task_number, title, status=TaskStatus.PENDING, depends_on=None):
+
+    def _create_test_task(
+        self,
+        db,
+        project_id,
+        issue_id,
+        task_number,
+        title,
+        status=TaskStatus.PENDING,
+        depends_on=None,
+    ):
         """Helper to create a test task."""
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -32,16 +41,13 @@ class TestLeadAgentSyncBlockerHandling:
             priority=1,
             workflow_step=1,
             can_parallelize=False,
-            requires_mcp=False
+            requires_mcp=False,
         )
-        
+
         if depends_on:
-            db.conn.execute(
-                "UPDATE tasks SET depends_on = ? WHERE id = ?",
-                (depends_on, task_id)
-            )
+            db.conn.execute("UPDATE tasks SET depends_on = ? WHERE id = ?", (depends_on, task_id))
             db.conn.commit()
-        
+
         return task_id
 
     @pytest.mark.asyncio
@@ -60,7 +66,7 @@ class TestLeadAgentSyncBlockerHandling:
         db = Database(temp_db_path)
         db.initialize()
         project_id = db.create_project("test-project", "Test project description")
-        
+
         # Create an issue first
         issue = Issue(
             project_id=project_id,
@@ -68,13 +74,23 @@ class TestLeadAgentSyncBlockerHandling:
             title="Test Issue",
             description="Test issue for blocker handling",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
         # Create Task A and Task B
-        task_a_id = self._create_test_task(db, project_id, issue_id, "1.1", "Implement auth", TaskStatus.IN_PROGRESS)
-        task_b_id = self._create_test_task(db, project_id, issue_id, "1.2", "Add user profile", TaskStatus.PENDING, depends_on="1.1")
+        task_a_id = self._create_test_task(
+            db, project_id, issue_id, "1.1", "Implement auth", TaskStatus.IN_PROGRESS
+        )
+        task_b_id = self._create_test_task(
+            db,
+            project_id,
+            issue_id,
+            "1.2",
+            "Add user profile",
+            TaskStatus.PENDING,
+            depends_on="1.1",
+        )
 
         # Create SYNC blocker for Task A
         blocker_id = db.create_blocker(
@@ -82,7 +98,7 @@ class TestLeadAgentSyncBlockerHandling:
             project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.SYNC,
-            question="Should we use JWT or session-based auth?"
+            question="Should we use JWT or session-based auth?",
         )
 
         # ACT
@@ -116,7 +132,7 @@ class TestLeadAgentSyncBlockerHandling:
         db = Database(temp_db_path)
         db.initialize()
         project_id = db.create_project("test-project", "Test project description")
-        
+
         # Create issue
         issue = Issue(
             project_id=project_id,
@@ -124,15 +140,35 @@ class TestLeadAgentSyncBlockerHandling:
             title="Test Issue",
             description="Test issue for blocker handling",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
         # Create tasks with dependencies
-        task_a_id = self._create_test_task(db, project_id, issue_id, "1.1", "Setup database", TaskStatus.IN_PROGRESS)
-        task_b_id = self._create_test_task(db, project_id, issue_id, "1.2", "Add users table", TaskStatus.PENDING, depends_on="1.1")
-        task_c_id = self._create_test_task(db, project_id, issue_id, "1.3", "Add user migration", TaskStatus.PENDING, depends_on="1.2")
-        task_d_id = self._create_test_task(db, project_id, issue_id, "1.4", "Add sessions table", TaskStatus.PENDING, depends_on="1.1")
+        task_a_id = self._create_test_task(
+            db, project_id, issue_id, "1.1", "Setup database", TaskStatus.IN_PROGRESS
+        )
+        task_b_id = self._create_test_task(
+            db, project_id, issue_id, "1.2", "Add users table", TaskStatus.PENDING, depends_on="1.1"
+        )
+        task_c_id = self._create_test_task(
+            db,
+            project_id,
+            issue_id,
+            "1.3",
+            "Add user migration",
+            TaskStatus.PENDING,
+            depends_on="1.2",
+        )
+        task_d_id = self._create_test_task(
+            db,
+            project_id,
+            issue_id,
+            "1.4",
+            "Add sessions table",
+            TaskStatus.PENDING,
+            depends_on="1.1",
+        )
 
         # Create SYNC blocker for Task A
         db.create_blocker(
@@ -140,7 +176,7 @@ class TestLeadAgentSyncBlockerHandling:
             project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.SYNC,
-            question="Which database should we use?"
+            question="Which database should we use?",
         )
 
         # ACT
@@ -169,7 +205,7 @@ class TestLeadAgentSyncBlockerHandling:
         db = Database(temp_db_path)
         db.initialize()
         project_id = db.create_project("test-project", "Test project description")
-        
+
         # Create issue
         issue = Issue(
             project_id=project_id,
@@ -177,14 +213,20 @@ class TestLeadAgentSyncBlockerHandling:
             title="Test Issue",
             description="Test issue for blocker handling",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
         # Create tasks
-        task_a_id = self._create_test_task(db, project_id, issue_id, "1.1", "Backend auth", TaskStatus.IN_PROGRESS)
-        task_b_id = self._create_test_task(db, project_id, issue_id, "1.2", "User profile", TaskStatus.PENDING, depends_on="1.1")
-        task_c_id = self._create_test_task(db, project_id, issue_id, "2.1", "Frontend styling", TaskStatus.PENDING)
+        task_a_id = self._create_test_task(
+            db, project_id, issue_id, "1.1", "Backend auth", TaskStatus.IN_PROGRESS
+        )
+        task_b_id = self._create_test_task(
+            db, project_id, issue_id, "1.2", "User profile", TaskStatus.PENDING, depends_on="1.1"
+        )
+        task_c_id = self._create_test_task(
+            db, project_id, issue_id, "2.1", "Frontend styling", TaskStatus.PENDING
+        )
 
         # Create SYNC blocker for Task A
         db.create_blocker(
@@ -192,7 +234,7 @@ class TestLeadAgentSyncBlockerHandling:
             project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.SYNC,
-            question="JWT or session auth?"
+            question="JWT or session auth?",
         )
 
         # ACT
@@ -209,8 +251,17 @@ class TestLeadAgentSyncBlockerHandling:
 @pytest.mark.unit
 class TestLeadAgentAsyncBlockerHandling:
     """Test ASYNC blocker handling (T037)."""
-    
-    def _create_test_task(self, db, project_id, issue_id, task_number, title, status=TaskStatus.PENDING, depends_on=None):
+
+    def _create_test_task(
+        self,
+        db,
+        project_id,
+        issue_id,
+        task_number,
+        title,
+        status=TaskStatus.PENDING,
+        depends_on=None,
+    ):
         """Helper to create a test task."""
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -223,16 +274,13 @@ class TestLeadAgentAsyncBlockerHandling:
             priority=1,
             workflow_step=1,
             can_parallelize=False,
-            requires_mcp=False
+            requires_mcp=False,
         )
-        
+
         if depends_on:
-            db.conn.execute(
-                "UPDATE tasks SET depends_on = ? WHERE id = ?",
-                (depends_on, task_id)
-            )
+            db.conn.execute("UPDATE tasks SET depends_on = ? WHERE id = ?", (depends_on, task_id))
             db.conn.commit()
-        
+
         return task_id
 
     @pytest.mark.asyncio
@@ -248,7 +296,7 @@ class TestLeadAgentAsyncBlockerHandling:
         db = Database(temp_db_path)
         db.initialize()
         project_id = db.create_project("test-project", "Test project description")
-        
+
         # Create issue
         issue = Issue(
             project_id=project_id,
@@ -256,13 +304,23 @@ class TestLeadAgentAsyncBlockerHandling:
             title="Test Issue",
             description="Test issue for blocker handling",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
         # Create tasks
-        task_a_id = self._create_test_task(db, project_id, issue_id, "1.1", "Implement search", TaskStatus.IN_PROGRESS)
-        task_b_id = self._create_test_task(db, project_id, issue_id, "1.2", "Add search filters", TaskStatus.PENDING, depends_on="1.1")
+        task_a_id = self._create_test_task(
+            db, project_id, issue_id, "1.1", "Implement search", TaskStatus.IN_PROGRESS
+        )
+        task_b_id = self._create_test_task(
+            db,
+            project_id,
+            issue_id,
+            "1.2",
+            "Add search filters",
+            TaskStatus.PENDING,
+            depends_on="1.1",
+        )
 
         # Create ASYNC blocker for Task A (informational question)
         db.create_blocker(
@@ -270,7 +328,7 @@ class TestLeadAgentAsyncBlockerHandling:
             project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.ASYNC,
-            question="Do you prefer full-text search or simple keyword matching?"
+            question="Do you prefer full-text search or simple keyword matching?",
         )
 
         # ACT
@@ -294,7 +352,7 @@ class TestLeadAgentAsyncBlockerHandling:
         db = Database(temp_db_path)
         db.initialize()
         project_id = db.create_project("test-project", "Test project description")
-        
+
         # Create issue
         issue = Issue(
             project_id=project_id,
@@ -302,14 +360,20 @@ class TestLeadAgentAsyncBlockerHandling:
             title="Test Issue",
             description="Test issue for blocker handling",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
         # Create tasks
-        task_a_id = self._create_test_task(db, project_id, issue_id, "1.1", "Implement API endpoint", TaskStatus.IN_PROGRESS)
-        task_b_id = self._create_test_task(db, project_id, issue_id, "1.2", "Add API tests", TaskStatus.PENDING, depends_on="1.1")
-        task_c_id = self._create_test_task(db, project_id, issue_id, "1.3", "Add API docs", TaskStatus.PENDING, depends_on="1.1")
+        task_a_id = self._create_test_task(
+            db, project_id, issue_id, "1.1", "Implement API endpoint", TaskStatus.IN_PROGRESS
+        )
+        task_b_id = self._create_test_task(
+            db, project_id, issue_id, "1.2", "Add API tests", TaskStatus.PENDING, depends_on="1.1"
+        )
+        task_c_id = self._create_test_task(
+            db, project_id, issue_id, "1.3", "Add API docs", TaskStatus.PENDING, depends_on="1.1"
+        )
 
         # Create ASYNC blocker for Task A
         db.create_blocker(
@@ -317,7 +381,7 @@ class TestLeadAgentAsyncBlockerHandling:
             project_id=1,
             task_id=task_a_id,
             blocker_type=BlockerType.ASYNC,
-            question="Should we add rate limiting to this endpoint?"
+            question="Should we add rate limiting to this endpoint?",
         )
 
         # ACT
@@ -358,7 +422,7 @@ class TestLeadAgentBlockerHandlingIntegration:
             task_number="1.1",
             title="Task A",
             description="Will create SYNC blocker",
-            status="pending"
+            status="pending",
         )
 
         task_b_id = db.create_task(
@@ -367,7 +431,7 @@ class TestLeadAgentBlockerHandlingIntegration:
             title="Task B",
             description="Depends on A",
             status="pending",
-            depends_on="1.1"
+            depends_on="1.1",
         )
 
         task_c_id = db.create_task(
@@ -375,34 +439,37 @@ class TestLeadAgentBlockerHandlingIntegration:
             task_number="2.1",
             title="Task C",
             description="Independent task",
-            status="pending"
+            status="pending",
         )
 
         # ACT
         agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
 
         # Mock agent execution to create blocker
-        with patch.object(agent.agent_pool_manager, 'get_or_create_agent') as mock_get_agent, \
-             patch.object(agent.agent_pool_manager, 'mark_agent_busy'), \
-             patch.object(agent.agent_pool_manager, 'mark_agent_idle'), \
-             patch.object(agent.agent_pool_manager, 'get_agent_instance') as mock_get_instance:
+        with (
+            patch.object(agent.agent_pool_manager, "get_or_create_agent") as mock_get_agent,
+            patch.object(agent.agent_pool_manager, "mark_agent_busy"),
+            patch.object(agent.agent_pool_manager, "mark_agent_idle"),
+            patch.object(agent.agent_pool_manager, "get_agent_instance") as mock_get_instance,
+        ):
 
             # Mock worker agent that creates blocker for Task A
             mock_worker = MagicMock()
+
             async def mock_execute_task_a(task_dict):
-                if task_dict['id'] == task_a_id:
+                if task_dict["id"] == task_a_id:
                     # Create SYNC blocker during Task A execution
                     db.create_blocker(
                         agent_id="backend-worker-001",
                         project_id=1,
                         task_id=task_a_id,
                         blocker_type=BlockerType.SYNC,
-                        question="Critical decision needed"
+                        question="Critical decision needed",
                     )
                     db.update_task(task_a_id, {"status": "blocked"})
                     raise Exception("Blocker created, task paused")
                 else:
-                    db.update_task(task_dict['id'], {"status": "completed"})
+                    db.update_task(task_dict["id"], {"status": "completed"})
 
             mock_worker.execute_task = mock_execute_task_a
             mock_get_instance.return_value = mock_worker
@@ -420,10 +487,13 @@ class TestLeadAgentBlockerHandlingIntegration:
             task_c = db.get_task(task_c_id)
 
             # Task A should be blocked
-            assert task_a['status'] in ['blocked', 'in_progress'], "Task A should be blocked or in_progress"
+            assert task_a["status"] in [
+                "blocked",
+                "in_progress",
+            ], "Task A should be blocked or in_progress"
 
             # Task B should NOT be started (dependent on blocked Task A)
-            assert task_b['status'] == 'pending', "Task B should remain pending (blocked by Task A)"
+            assert task_b["status"] == "pending", "Task B should remain pending (blocked by Task A)"
 
             # Task C should have completed (independent)
-            assert task_c['status'] == 'completed', "Task C should complete (independent)"
+            assert task_c["status"] == "completed", "Task C should complete (independent)"

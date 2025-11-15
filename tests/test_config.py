@@ -73,10 +73,7 @@ class TestGlobalConfig:
         db_path = tmp_path / "test_db" / "state.db"
         log_path = tmp_path / "logs" / "test.log"
 
-        config = GlobalConfig(
-            database_path=str(db_path),
-            log_file=str(log_path)
-        )
+        config = GlobalConfig(database_path=str(db_path), log_file=str(log_path))
         config.ensure_directories()
 
         assert db_path.parent.exists()

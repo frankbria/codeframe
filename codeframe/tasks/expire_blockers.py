@@ -29,9 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 async def expire_stale_blockers_job(
-    db_path: str = ".codeframe/state.db",
-    hours: int = 24,
-    ws_manager=None
+    db_path: str = ".codeframe/state.db", hours: int = 24, ws_manager=None
 ) -> int:
     """Expire stale blockers and update affected tasks.
 
@@ -64,19 +62,19 @@ async def expire_stale_blockers_job(
                 logger.warning(f"Blocker {blocker_id} not found after expiration")
                 continue
 
-            task_id = blocker.get('task_id')
-            agent_id = blocker.get('agent_id')
-            question = blocker.get('question', '')[:100]  # Truncate for logging
+            task_id = blocker.get("task_id")
+            agent_id = blocker.get("agent_id")
+            question = blocker.get("question", "")[:100]  # Truncate for logging
 
             # Fail associated task (T049)
             if task_id:
                 try:
                     task = db.get_task(task_id)
-                    if task and task.get('status') != TaskStatus.FAILED.value:
+                    if task and task.get("status") != TaskStatus.FAILED.value:
                         db.update_task_status(
                             task_id=task_id,
                             status=TaskStatus.FAILED.value,
-                            output=f"Task failed: blocker {blocker_id} expired after {hours}h without resolution. Question: {blocker.get('question', 'N/A')}"
+                            output=f"Task failed: blocker {blocker_id} expired after {hours}h without resolution. Question: {blocker.get('question', 'N/A')}",
                         )
                         logger.info(f"Failed task {task_id} due to expired blocker {blocker_id}")
                 except Exception as e:
@@ -86,13 +84,14 @@ async def expire_stale_blockers_job(
             if ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_blocker_expired
+
                     await broadcast_blocker_expired(
                         manager=ws_manager,
-                        project_id=blocker.get('project_id', 1),  # Default to project 1
+                        project_id=blocker.get("project_id", 1),  # Default to project 1
                         blocker_id=blocker_id,
-                        agent_id=agent_id or 'unknown',
+                        agent_id=agent_id or "unknown",
                         task_id=task_id,
-                        question=blocker.get('question', '')
+                        question=blocker.get("question", ""),
                     )
                     logger.debug(f"Broadcast blocker_expired event for blocker {blocker_id}")
                 except Exception as e:
@@ -108,25 +107,23 @@ def main():
     """CLI entry point for cron job."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Expire stale blockers (pending >24h)"
-    )
+    parser = argparse.ArgumentParser(description="Expire stale blockers (pending >24h)")
     parser.add_argument(
         "--db-path",
         default=".codeframe/state.db",
-        help="Path to SQLite database (default: .codeframe/state.db)"
+        help="Path to SQLite database (default: .codeframe/state.db)",
     )
     parser.add_argument(
         "--hours",
         type=int,
         default=24,
-        help="Hours before blocker is considered stale (default: 24)"
+        help="Hours before blocker is considered stale (default: 24)",
     )
     parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Log level (default: INFO)"
+        help="Log level (default: INFO)",
     )
 
     args = parser.parse_args()
@@ -135,16 +132,14 @@ def main():
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Run expiration job
     try:
         expired_count = asyncio.run(
             expire_stale_blockers_job(
-                db_path=args.db_path,
-                hours=args.hours,
-                ws_manager=None  # No WebSocket in cron mode
+                db_path=args.db_path, hours=args.hours, ws_manager=None  # No WebSocket in cron mode
             )
         )
 

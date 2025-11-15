@@ -27,11 +27,7 @@ class TestAdaptiveTestRunner:
 
         # Mock subprocess to avoid actually running tests
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
-            mock_run.return_value = Mock(
-                returncode=0,
-                stdout="5 passed in 1.23s",
-                stderr=""
-            )
+            mock_run.return_value = Mock(returncode=0, stdout="5 passed in 1.23s", stderr="")
 
             result = await runner.run_tests()
 
@@ -49,7 +45,7 @@ class TestAdaptiveTestRunner:
             mock_run.return_value = Mock(
                 returncode=1,  # Non-zero for failures
                 stdout="===== 8 passed, 2 failed in 2.34s =====",
-                stderr=""
+                stderr="",
             )
 
             result = await runner.run_tests()
@@ -69,9 +65,7 @@ class TestAdaptiveTestRunner:
 
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=0,
-                stdout="Tests: 2 failed, 8 passed, 10 total",
-                stderr=""
+                returncode=0, stdout="Tests: 2 failed, 8 passed, 10 total", stderr=""
             )
 
             result = await runner.run_tests()
@@ -96,7 +90,7 @@ PASS: TestDataValidation (0.02s)
 FAIL: TestEdgeCase (0.01s)
 PASS
                 """,
-                stderr=""
+                stderr="",
             )
 
             result = await runner.run_tests()
@@ -107,7 +101,7 @@ PASS
     @pytest.mark.asyncio
     async def test_parses_rust_cargo_output(self, tmp_path):
         """Test parsing Rust cargo test output"""
-        (tmp_path / "Cargo.toml").write_text("[package]\nname = \"myapp\"")
+        (tmp_path / "Cargo.toml").write_text('[package]\nname = "myapp"')
 
         runner = AdaptiveTestRunner(str(tmp_path))
 
@@ -115,7 +109,7 @@ PASS
             mock_run.return_value = Mock(
                 returncode=0,
                 stdout="test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured",
-                stderr=""
+                stderr="",
             )
 
             result = await runner.run_tests()
@@ -138,7 +132,7 @@ PASS
 ===== 10 passed in 1.23s =====
 TOTAL                                                    87%
                 """,
-                stderr=""
+                stderr="",
             )
 
             result = await runner.run_tests(with_coverage=True)
@@ -160,7 +154,7 @@ TOTAL                                                    87%
 Tests: 10 passed, 10 total
 All files    | 92.5 | 91.2 | 95.0 | 92.5 |
                 """,
-                stderr=""
+                stderr="",
             )
 
             result = await runner.run_tests(with_coverage=True)
@@ -176,9 +170,7 @@ All files    | 92.5 | 91.2 | 95.0 | 92.5 |
 
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=1,  # Failure exit code
-                stdout="5 passed, 5 failed in 2.34s",
-                stderr=""
+                returncode=1, stdout="5 passed, 5 failed in 2.34s", stderr=""  # Failure exit code
             )
 
             result = await runner.run_tests()
@@ -195,9 +187,7 @@ All files    | 92.5 | 91.2 | 95.0 | 92.5 |
 
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=0,
-                stdout="8 passed, 2 skipped in 1.23s",
-                stderr=""
+                returncode=0, stdout="8 passed, 2 skipped in 1.23s", stderr=""
             )
 
             result = await runner.run_tests()
@@ -213,9 +203,7 @@ All files    | 92.5 | 91.2 | 95.0 | 92.5 |
 
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=0,
-                stdout="8 passed, 2 failed in 1.23s",
-                stderr=""
+                returncode=0, stdout="8 passed, 2 failed in 1.23s", stderr=""
             )
 
             result = await runner.run_tests()
@@ -249,9 +237,7 @@ class TestAdaptiveTestRunnerOutputParsing:
 
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=0,
-                stdout="Tests run: 15, Failures: 2, Errors: 0, Skipped: 1",
-                stderr=""
+                returncode=0, stdout="Tests run: 15, Failures: 2, Errors: 0, Skipped: 1", stderr=""
             )
 
             result = await runner.run_tests()
@@ -271,7 +257,7 @@ class TestAdaptiveTestRunnerOutputParsing:
             mock_run.return_value = Mock(
                 returncode=5,  # pytest exit code for no tests
                 stdout="no tests ran in 0.01s",
-                stderr=""
+                stderr="",
             )
 
             result = await runner.run_tests()
@@ -287,9 +273,7 @@ class TestAdaptiveTestRunnerOutputParsing:
 
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
             mock_run.return_value = Mock(
-                returncode=0,
-                stdout="Tests passed",
-                stderr="WARNING: Deprecation"
+                returncode=0, stdout="Tests passed", stderr="WARNING: Deprecation"
             )
 
             result = await runner.run_tests()

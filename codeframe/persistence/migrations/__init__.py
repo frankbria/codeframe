@@ -47,13 +47,15 @@ class MigrationRunner:
 
         try:
             # Create migrations tracking table if needed
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version TEXT PRIMARY KEY,
                     description TEXT,
                     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
             conn.commit()
 
             # Apply each migration
@@ -72,7 +74,7 @@ class MigrationRunner:
                 # Record migration
                 conn.execute(
                     "INSERT INTO schema_migrations (version, description) VALUES (?, ?)",
-                    (migration.version, migration.description)
+                    (migration.version, migration.description),
                 )
                 conn.commit()
                 logger.info(f"Migration {migration.version} applied successfully")
@@ -115,10 +117,7 @@ class MigrationRunner:
 
     def _is_applied(self, conn: sqlite3.Connection, version: str) -> bool:
         """Check if migration has been applied."""
-        cursor = conn.execute(
-            "SELECT 1 FROM schema_migrations WHERE version = ?",
-            (version,)
-        )
+        cursor = conn.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (version,))
         return cursor.fetchone() is not None
 
     def list_applied(self) -> List[dict]:
@@ -127,9 +126,7 @@ class MigrationRunner:
         conn.row_factory = sqlite3.Row
 
         try:
-            cursor = conn.execute(
-                "SELECT * FROM schema_migrations ORDER BY applied_at"
-            )
+            cursor = conn.execute("SELECT * FROM schema_migrations ORDER BY applied_at")
             return [dict(row) for row in cursor.fetchall()]
         finally:
             conn.close()

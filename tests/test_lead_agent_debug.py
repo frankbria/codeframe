@@ -29,6 +29,7 @@ def temp_project_dir_debug():
     with tempfile.TemporaryDirectory() as tmpdir:
         print(f"🟡 FIXTURE: Temp dir: {tmpdir}")
         import subprocess
+
         subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True)
         print("🟡 FIXTURE: Git init complete ✅")
         yield tmpdir
@@ -66,7 +67,7 @@ def lead_agent_debug(db_debug, project_id_debug, api_key_debug):
         db=db_debug,
         api_key=api_key_debug,
         ws_manager=None,
-        max_agents=10
+        max_agents=10,
     )
 
     print("🟣 FIXTURE: LeadAgent created ✅")

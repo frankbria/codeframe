@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, mock_open
 import json
 import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from codeframe.agents.lead_agent import LeadAgent
@@ -26,6 +27,7 @@ def db():
 def project_id(db):
     """Create test project."""
     from codeframe.core.models import ProjectStatus
+
     project_id = db.create_project(
         name="Test PRD Project",
         status=ProjectStatus.ACTIVE,
@@ -41,7 +43,7 @@ def discovery_answers(db, project_id):
         "users_1": "Legal professionals and enterprise compliance teams",
         "features_1": "Document upload, AI analysis, compliance checking, report generation",
         "tech_stack_1": "Python backend, React frontend, PostgreSQL database",
-        "constraints_1": "Must handle 1000 concurrent users, HIPAA compliant"
+        "constraints_1": "Must handle 1000 concurrent users, HIPAA compliant",
     }
 
     for question_id, answer in answers.items():
@@ -75,9 +77,7 @@ class TestPRDGenerationBasics:
         assert callable(lead_agent.generate_prd)
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_generate_prd_loads_discovery_answers(
-        self, mock_send, lead_agent, discovery_answers
-    ):
+    def test_generate_prd_loads_discovery_answers(self, mock_send, lead_agent, discovery_answers):
         """Test that PRD generation loads discovery answers."""
         # Mock Claude response
         mock_send.return_value = {
@@ -96,9 +96,7 @@ class TestPRDGenerationBasics:
         assert len(prd_content) > 0
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_generate_prd_sends_structured_prompt(
-        self, mock_send, lead_agent, discovery_answers
-    ):
+    def test_generate_prd_sends_structured_prompt(self, mock_send, lead_agent, discovery_answers):
         """Test that PRD generation sends structured prompt to Claude."""
         # Mock Claude response
         mock_send.return_value = {
@@ -213,9 +211,7 @@ class TestPRDPersistence:
         assert "prd.md" in file_path_str or mock_file.called
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_prd_stored_in_database(
-        self, mock_send, lead_agent, discovery_answers, db, project_id
-    ):
+    def test_prd_stored_in_database(self, mock_send, lead_agent, discovery_answers, db, project_id):
         """Test that PRD metadata is stored in database."""
         # Mock Claude response
         mock_prd = "# PRD Content"
@@ -278,9 +274,7 @@ class TestPRDTokenUsageTracking:
     """Test token usage tracking for PRD generation."""
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_prd_generation_logs_token_usage(
-        self, mock_send, lead_agent, discovery_answers
-    ):
+    def test_prd_generation_logs_token_usage(self, mock_send, lead_agent, discovery_answers):
         """Test that token usage is logged during PRD generation."""
         # Mock Claude response with token usage
         mock_send.return_value = {

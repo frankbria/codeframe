@@ -27,7 +27,7 @@ class WebhookNotificationService:
         self,
         webhook_url: Optional[str] = None,
         timeout: int = 5,
-        dashboard_base_url: str = "http://localhost:3000"
+        dashboard_base_url: str = "http://localhost:3000",
     ):
         """Initialize webhook notification service.
 
@@ -55,7 +55,7 @@ class WebhookNotificationService:
         agent_id: str,
         task_id: int,
         blocker_type: BlockerType,
-        created_at: datetime
+        created_at: datetime,
     ) -> dict:
         """Format webhook payload with blocker details.
 
@@ -79,7 +79,7 @@ class WebhookNotificationService:
             "task_id": task_id,
             "type": blocker_type.value,
             "created_at": created_at.isoformat(),
-            "dashboard_url": dashboard_url
+            "dashboard_url": dashboard_url,
         }
 
     async def send_blocker_notification(
@@ -89,7 +89,7 @@ class WebhookNotificationService:
         agent_id: str,
         task_id: int,
         blocker_type: BlockerType,
-        created_at: datetime
+        created_at: datetime,
     ) -> bool:
         """Send async webhook notification for a blocker.
 
@@ -109,16 +109,12 @@ class WebhookNotificationService:
         """
         # Only send notifications for SYNC blockers
         if blocker_type != BlockerType.SYNC:
-            logger.debug(
-                f"Skipping webhook notification for ASYNC blocker {blocker_id}"
-            )
+            logger.debug(f"Skipping webhook notification for ASYNC blocker {blocker_id}")
             return False
 
         # Check if webhooks are enabled
         if not self.is_enabled():
-            logger.debug(
-                f"Webhook notifications disabled, skipping blocker {blocker_id}"
-            )
+            logger.debug(f"Webhook notifications disabled, skipping blocker {blocker_id}")
             return False
 
         # Format payload
@@ -128,7 +124,7 @@ class WebhookNotificationService:
             agent_id=agent_id,
             task_id=task_id,
             blocker_type=blocker_type,
-            created_at=created_at
+            created_at=created_at,
         )
 
         try:
@@ -137,7 +133,7 @@ class WebhookNotificationService:
                 async with session.post(
                     self.webhook_url,
                     json=payload,
-                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+                    timeout=aiohttp.ClientTimeout(total=self.timeout),
                 ) as response:
                     response.raise_for_status()
 
@@ -155,15 +151,12 @@ class WebhookNotificationService:
             return False
 
         except aiohttp.ClientError as e:
-            logger.error(
-                f"Webhook notification failed for blocker {blocker_id}: {e}"
-            )
+            logger.error(f"Webhook notification failed for blocker {blocker_id}: {e}")
             return False
 
         except Exception as e:
             logger.error(
-                f"Unexpected error sending webhook for blocker {blocker_id}: {e}",
-                exc_info=True
+                f"Unexpected error sending webhook for blocker {blocker_id}: {e}", exc_info=True
             )
             return False
 
@@ -174,7 +167,7 @@ class WebhookNotificationService:
         agent_id: str,
         task_id: int,
         blocker_type: BlockerType,
-        created_at: datetime
+        created_at: datetime,
     ) -> None:
         """Fire-and-forget wrapper for send_blocker_notification.
 
@@ -197,6 +190,6 @@ class WebhookNotificationService:
                 agent_id=agent_id,
                 task_id=task_id,
                 blocker_type=blocker_type,
-                created_at=created_at
+                created_at=created_at,
             )
         )

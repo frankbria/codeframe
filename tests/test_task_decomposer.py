@@ -32,7 +32,7 @@ def sample_issue():
         description="Implement a complete user authentication system with login, logout, and session management.",
         status=TaskStatus.PENDING,
         priority=1,
-        workflow_step=1
+        workflow_step=1,
     )
 
 
@@ -54,7 +54,7 @@ def complex_issue():
         """,
         status=TaskStatus.PENDING,
         priority=0,
-        workflow_step=2
+        workflow_step=2,
     )
 
 
@@ -69,7 +69,7 @@ def simple_issue():
         description="Add structured logging to the application.",
         status=TaskStatus.PENDING,
         priority=3,
-        workflow_step=1
+        workflow_step=1,
     )
 
 
@@ -99,7 +99,9 @@ class TestTaskDecomposition:
     """Test task decomposition from issues."""
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_returns_list_of_tasks(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_returns_list_of_tasks(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that decompose_issue returns a list of Task objects."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -111,7 +113,7 @@ class TestTaskDecomposition:
             4. Create logout endpoint with token invalidation
             5. Add session management middleware
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -126,7 +128,9 @@ class TestTaskDecomposition:
         assert all(isinstance(task, Task) for task in tasks)
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_creates_sequential_task_numbers(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_creates_sequential_task_numbers(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that tasks are numbered sequentially (2.1.1, 2.1.2, 2.1.3)."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -137,7 +141,7 @@ class TestTaskDecomposition:
             3. Create login endpoint
             4. Create logout endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -152,7 +156,9 @@ class TestTaskDecomposition:
         assert tasks[3].task_number == "2.1.4"
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_sets_parent_issue_number(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_sets_parent_issue_number(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that all tasks have correct parent_issue_number."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -162,7 +168,7 @@ class TestTaskDecomposition:
             2. Implement password hashing
             3. Create login endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -174,7 +180,9 @@ class TestTaskDecomposition:
         assert all(task.parent_issue_number == "2.1" for task in tasks)
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_creates_dependency_chain(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_creates_dependency_chain(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that tasks have correct dependency chain (2.1.2 depends on 2.1.1)."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -185,7 +193,7 @@ class TestTaskDecomposition:
             3. Create login endpoint
             4. Create logout endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -200,7 +208,9 @@ class TestTaskDecomposition:
         assert tasks[3].depends_on == "2.1.3"  # Fourth depends on third
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_sets_can_parallelize_to_false(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_sets_can_parallelize_to_false(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that all tasks have can_parallelize=False."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -210,7 +220,7 @@ class TestTaskDecomposition:
             2. Implement password hashing
             3. Create login endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -222,7 +232,9 @@ class TestTaskDecomposition:
         assert all(task.can_parallelize is False for task in tasks)
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_inherits_priority_from_issue(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_inherits_priority_from_issue(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that tasks inherit priority from parent issue."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -232,7 +244,7 @@ class TestTaskDecomposition:
             2. Implement password hashing
             3. Create login endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -254,7 +266,7 @@ class TestTaskDecomposition:
             2. Implement password hashing
             3. Create login endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -266,7 +278,9 @@ class TestTaskDecomposition:
         assert all(task.issue_id == sample_issue.id for task in tasks)
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_sets_project_id(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_sets_project_id(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that tasks have correct project_id."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -276,7 +290,7 @@ class TestTaskDecomposition:
             2. Implement password hashing
             3. Create login endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -293,7 +307,9 @@ class TestTaskValidation:
     """Test task validation and error handling."""
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_validates_task_has_title(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_validates_task_has_title(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that all generated tasks have non-empty titles."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -303,7 +319,7 @@ class TestTaskValidation:
             2. Implement password hashing
             3. Create login endpoint
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -316,7 +332,9 @@ class TestTaskValidation:
         assert all(len(task.title) > 0 for task in tasks)
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_validates_task_has_description(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_validates_task_has_description(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that all generated tasks have descriptions."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -326,7 +344,7 @@ class TestTaskValidation:
             2. Implement password hashing using bcrypt library
             3. Create login endpoint with JWT token generation
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()
@@ -348,7 +366,9 @@ class TestTaskValidation:
         with pytest.raises(ValueError) as exc_info:
             decomposer.decompose_issue(invalid_issue, mock_provider)
 
-        assert "issue_number" in str(exc_info.value).lower() or "title" in str(exc_info.value).lower()
+        assert (
+            "issue_number" in str(exc_info.value).lower() or "title" in str(exc_info.value).lower()
+        )
 
 
 @pytest.mark.unit
@@ -356,7 +376,9 @@ class TestAdaptiveTaskCount:
     """Test adaptive task count based on issue complexity."""
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_simple_issue_generates_fewer_tasks(self, mock_provider_class, simple_issue, mock_provider):
+    def test_simple_issue_generates_fewer_tasks(
+        self, mock_provider_class, simple_issue, mock_provider
+    ):
         """Test that simple issues generate 3-4 tasks."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -366,7 +388,7 @@ class TestAdaptiveTaskCount:
             2. Implement structured logger class
             3. Add logging to existing modules
             """,
-            "usage": {"input_tokens": 50, "output_tokens": 40}
+            "usage": {"input_tokens": 50, "output_tokens": 40},
         }
 
         decomposer = TaskDecomposer()
@@ -379,7 +401,9 @@ class TestAdaptiveTaskCount:
         assert len(tasks) <= 5  # Simple issues should have fewer tasks
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_complex_issue_generates_more_tasks(self, mock_provider_class, complex_issue, mock_provider):
+    def test_complex_issue_generates_more_tasks(
+        self, mock_provider_class, complex_issue, mock_provider
+    ):
         """Test that complex issues generate 6-8 tasks."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -394,7 +418,7 @@ class TestAdaptiveTaskCount:
             7. Create receipt generation service
             8. Add error handling for payment failures
             """,
-            "usage": {"input_tokens": 150, "output_tokens": 120}
+            "usage": {"input_tokens": 150, "output_tokens": 120},
         }
 
         decomposer = TaskDecomposer()
@@ -584,7 +608,9 @@ class TestErrorHandling:
     """Test error handling and edge cases."""
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_decompose_issue_handles_provider_exception(self, mock_provider_class, sample_issue, mock_provider):
+    def test_decompose_issue_handles_provider_exception(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test that decompose_issue handles provider exceptions gracefully."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -647,7 +673,7 @@ class TestTaskCountEstimation:
             issue_number="1.1",
             title="Simple Task",
             description="Short description here",  # < 100 chars
-            priority=2
+            priority=2,
         )
 
         # ACT
@@ -663,8 +689,9 @@ class TestTaskCountEstimation:
         issue = Issue(
             issue_number="1.1",
             title="Medium Task",
-            description="This is a medium length description that goes into more detail about what needs to be done. " * 2,  # 100-300 chars
-            priority=2
+            description="This is a medium length description that goes into more detail about what needs to be done. "
+            * 2,  # 100-300 chars
+            priority=2,
         )
 
         # ACT
@@ -680,8 +707,9 @@ class TestTaskCountEstimation:
         issue = Issue(
             issue_number="1.1",
             title="Complex Task",
-            description="This is a very long and detailed description that explains the complex requirements. " * 10,  # > 300 chars
-            priority=2
+            description="This is a very long and detailed description that explains the complex requirements. "
+            * 10,  # > 300 chars
+            priority=2,
         )
 
         # ACT
@@ -694,12 +722,7 @@ class TestTaskCountEstimation:
         """Test that issues with no description default to 3-4 tasks."""
         # ARRANGE
         decomposer = TaskDecomposer()
-        issue = Issue(
-            issue_number="1.1",
-            title="Simple Task",
-            description=None,
-            priority=2
-        )
+        issue = Issue(issue_number="1.1", title="Simple Task", description=None, priority=2)
 
         # ACT
         count = decomposer._estimate_task_count(issue)
@@ -713,7 +736,9 @@ class TestTaskDecomposerIntegration:
     """Integration tests for task decomposition."""
 
     @patch("codeframe.planning.task_decomposer.AnthropicProvider")
-    def test_complete_decomposition_workflow(self, mock_provider_class, sample_issue, mock_provider):
+    def test_complete_decomposition_workflow(
+        self, mock_provider_class, sample_issue, mock_provider
+    ):
         """Test complete workflow from issue to tasks."""
         # ARRANGE
         mock_provider_class.return_value = mock_provider
@@ -725,7 +750,7 @@ class TestTaskDecomposerIntegration:
             4. Create logout endpoint with token invalidation
             5. Add session management middleware
             """,
-            "usage": {"input_tokens": 100, "output_tokens": 80}
+            "usage": {"input_tokens": 100, "output_tokens": 80},
         }
 
         decomposer = TaskDecomposer()

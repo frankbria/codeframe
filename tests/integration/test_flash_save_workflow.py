@@ -40,9 +40,7 @@ def temp_db():
 def test_project(temp_db):
     """Create a test project for context items."""
     project_id = temp_db.create_project(
-        name="test-project",
-        description="Test project for flash save workflow",
-        workspace_path=""
+        name="test-project", description="Test project for flash save workflow", workspace_path=""
     )
     return project_id
 
@@ -79,7 +77,7 @@ class TestFlashSaveWorkflow:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content=f"Critical task {i}: " + ("Important details " * 50)  # ~500 tokens each
+                content=f"Critical task {i}: " + ("Important details " * 50),  # ~500 tokens each
             )
             item_ids.append(item_id)
 
@@ -87,7 +85,7 @@ class TestFlashSaveWorkflow:
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
@@ -97,7 +95,7 @@ class TestFlashSaveWorkflow:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.CODE.value,
-                content=f"Code snippet {i}: " + ("def function(): pass; " * 30)  # ~300 tokens each
+                content=f"Code snippet {i}: " + ("def function(): pass; " * 30),  # ~300 tokens each
             )
             item_ids.append(item_id)
 
@@ -105,7 +103,7 @@ class TestFlashSaveWorkflow:
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.6, current_tier = 'warm' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
@@ -115,7 +113,8 @@ class TestFlashSaveWorkflow:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.PRD_SECTION.value,
-                content=f"Old PRD section {i}: " + ("Old requirements text " * 40)  # ~400 tokens each
+                content=f"Old PRD section {i}: "
+                + ("Old requirements text " * 40),  # ~400 tokens each
             )
             item_ids.append(item_id)
 
@@ -123,16 +122,13 @@ class TestFlashSaveWorkflow:
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.2, current_tier = 'cold' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
         # STEP 2: Verify token count is substantial
         all_items_before = temp_db.list_context_items(
-            project_id=test_project,
-            agent_id=agent_id,
-            tier=None,
-            limit=200
+            project_id=test_project, agent_id=agent_id, tier=None, limit=200
         )
         assert len(all_items_before) == 150
 
@@ -148,36 +144,24 @@ class TestFlashSaveWorkflow:
 
         # STEP 4: Verify COLD items archived (deleted)
         cold_items_after = temp_db.list_context_items(
-            project_id=test_project,
-            agent_id=agent_id,
-            tier="cold",
-            limit=100
+            project_id=test_project, agent_id=agent_id, tier="cold", limit=100
         )
         assert len(cold_items_after) == 0  # All COLD items deleted
 
         # STEP 5: Verify HOT and WARM items still loadable
         hot_items_after = temp_db.list_context_items(
-            project_id=test_project,
-            agent_id=agent_id,
-            tier="hot",
-            limit=100
+            project_id=test_project, agent_id=agent_id, tier="hot", limit=100
         )
         assert len(hot_items_after) == 30  # All HOT items retained
 
         warm_items_after = temp_db.list_context_items(
-            project_id=test_project,
-            agent_id=agent_id,
-            tier="warm",
-            limit=100
+            project_id=test_project, agent_id=agent_id, tier="warm", limit=100
         )
         assert len(warm_items_after) == 70  # All WARM items retained
 
         # Total remaining items = 30 HOT + 70 WARM = 100
         all_items_after = temp_db.list_context_items(
-            project_id=test_project,
-            agent_id=agent_id,
-            tier=None,
-            limit=200
+            project_id=test_project, agent_id=agent_id, tier=None, limit=200
         )
         assert len(all_items_after) == 100
 
@@ -195,7 +179,9 @@ class TestFlashSaveWorkflow:
         assert result["hot_items_retained"] == 30
         assert result["warm_items_retained"] == 70
 
-    def test_flash_save_creates_recoverable_checkpoint(self, temp_db, test_project, context_manager):
+    def test_flash_save_creates_recoverable_checkpoint(
+        self, temp_db, test_project, context_manager
+    ):
         """Test that checkpoint contains full context state and is recoverable."""
         agent_id = "test-agent-workflow-002"
 
@@ -205,7 +191,7 @@ class TestFlashSaveWorkflow:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content=f"Task {i} " * 100
+                content=f"Task {i} " * 100,
             )
 
             # Set different tiers
@@ -213,17 +199,17 @@ class TestFlashSaveWorkflow:
             if i < 3:
                 cursor.execute(
                     "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
-                    (item_id,)
+                    (item_id,),
                 )
             elif i < 7:
                 cursor.execute(
                     "UPDATE context_items SET importance_score = 0.6, current_tier = 'warm' WHERE id = ?",
-                    (item_id,)
+                    (item_id,),
                 )
             else:
                 cursor.execute(
                     "UPDATE context_items SET importance_score = 0.2, current_tier = 'cold' WHERE id = ?",
-                    (item_id,)
+                    (item_id,),
                 )
             temp_db.conn.commit()
 
@@ -237,6 +223,7 @@ class TestFlashSaveWorkflow:
 
         # Verify checkpoint data is not empty
         import json
+
         checkpoint_data = json.loads(checkpoint["checkpoint_data"])
         assert "context_items" in checkpoint_data
         assert len(checkpoint_data["context_items"]) == 10  # All items before archival

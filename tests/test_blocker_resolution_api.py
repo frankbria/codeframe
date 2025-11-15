@@ -47,8 +47,7 @@ def project_with_blocker(client):
     """
     # Create project
     project_id = app.state.db.create_project(
-        name="Test Blocker Project",
-        description="Test project for blocker resolution API tests"
+        name="Test Blocker Project", description="Test project for blocker resolution API tests"
     )
 
     # Create a blocker
@@ -59,7 +58,7 @@ def project_with_blocker(client):
         project_id=project_id,
         task_id=None,
         blocker_type=BlockerType.SYNC,
-        question=question
+        question=question,
     )
 
     return project_id, blocker_id, agent_id, question
@@ -73,7 +72,7 @@ class TestBlockerResolveEndpointBasics:
         _, blocker_id, _, _ = project_with_blocker
         response = client.post(
             f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT for stateless API authentication"}
+            json={"answer": "Use JWT for stateless API authentication"},
         )
 
         # Should not return 404
@@ -84,7 +83,7 @@ class TestBlockerResolveEndpointBasics:
         _, blocker_id, _, _ = project_with_blocker
         response = client.post(
             f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT for stateless API authentication"}
+            json={"answer": "Use JWT for stateless API authentication"},
         )
 
         assert response.headers["content-type"] == "application/json"
@@ -94,7 +93,7 @@ class TestBlockerResolveEndpointBasics:
         _, blocker_id, _, _ = project_with_blocker
         response = client.post(
             f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT for stateless API authentication"}
+            json={"answer": "Use JWT for stateless API authentication"},
         )
 
         assert response.status_code == 200
@@ -112,10 +111,7 @@ class TestBlockerResolveResponseStructure:
         - resolved_at: ISODate (RFC 3339)
         """
         _, blocker_id, _, _ = project_with_blocker
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT"}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Use JWT"})
         data = response.json()
 
         # Verify all required fields present
@@ -126,10 +122,7 @@ class TestBlockerResolveResponseStructure:
     def test_resolve_response_blocker_id_is_int(self, client, project_with_blocker):
         """Test that blocker_id is returned as int."""
         _, blocker_id, _, _ = project_with_blocker
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT"}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Use JWT"})
         data = response.json()
 
         assert isinstance(data["blocker_id"], int)
@@ -138,10 +131,7 @@ class TestBlockerResolveResponseStructure:
     def test_resolve_response_status_is_resolved(self, client, project_with_blocker):
         """Test that status is 'RESOLVED' after successful resolution."""
         _, blocker_id, _, _ = project_with_blocker
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT"}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Use JWT"})
         data = response.json()
 
         assert data["status"] == "RESOLVED"
@@ -149,17 +139,14 @@ class TestBlockerResolveResponseStructure:
     def test_resolve_response_timestamp_is_rfc3339(self, client, project_with_blocker):
         """Test that resolved_at follows RFC 3339 format with timezone."""
         _, blocker_id, _, _ = project_with_blocker
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT"}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Use JWT"})
         data = response.json()
 
         # Verify resolved_at is valid RFC 3339
         resolved_at = data["resolved_at"]
         assert isinstance(resolved_at, str)
         # Should be parseable as ISO format with timezone
-        dt = datetime.fromisoformat(resolved_at.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(resolved_at.replace("Z", "+00:00"))
         assert dt.tzinfo is not None  # Must have timezone
 
 
@@ -175,10 +162,7 @@ class TestBlockerResolutionPersistence:
         assert blocker_before["status"] == BlockerStatus.PENDING.value
 
         # Resolve blocker
-        client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT"}
-        )
+        client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Use JWT"})
 
         # Verify status updated to RESOLVED
         blocker_after = app.state.db.get_blocker(blocker_id)
@@ -189,10 +173,7 @@ class TestBlockerResolutionPersistence:
         _, blocker_id, _, _ = project_with_blocker
 
         answer = "Use JWT for stateless API authentication"
-        client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": answer}
-        )
+        client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": answer})
 
         # Verify answer stored
         blocker = app.state.db.get_blocker(blocker_id)
@@ -207,10 +188,7 @@ class TestBlockerResolutionPersistence:
         assert blocker_before["resolved_at"] is None
 
         # Resolve blocker
-        client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Use JWT"}
-        )
+        client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Use JWT"})
 
         # Verify resolved_at is now set
         blocker_after = app.state.db.get_blocker(blocker_id)
@@ -223,10 +201,7 @@ class TestBlockerResolutionValidation:
     def test_resolve_requires_answer_field(self, client, project_with_blocker):
         """Test that answer field is required."""
         _, blocker_id, _, _ = project_with_blocker
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={})
 
         # Should return 422 (validation error)
         assert response.status_code == 422
@@ -234,10 +209,7 @@ class TestBlockerResolutionValidation:
     def test_resolve_rejects_empty_answer(self, client, project_with_blocker):
         """Test that empty answer is rejected."""
         _, blocker_id, _, _ = project_with_blocker
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": ""}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": ""})
 
         # Should return 422 (validation error)
         assert response.status_code == 422
@@ -245,10 +217,7 @@ class TestBlockerResolutionValidation:
     def test_resolve_rejects_whitespace_only_answer(self, client, project_with_blocker):
         """Test that whitespace-only answer is rejected."""
         _, blocker_id, _, _ = project_with_blocker
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "   \n\t  "}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "   \n\t  "})
 
         # Should return 422 (validation error)
         assert response.status_code == 422
@@ -260,10 +229,7 @@ class TestBlockerResolutionValidation:
         # Create answer with 5001 characters
         long_answer = "A" * 5001
 
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": long_answer}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": long_answer})
 
         # Should return 422 (validation error)
         assert response.status_code == 422
@@ -275,10 +241,7 @@ class TestBlockerResolutionValidation:
         # Create answer with exactly 5000 characters
         max_answer = "A" * 5000
 
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": max_answer}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": max_answer})
 
         # Should succeed
         assert response.status_code == 200
@@ -292,17 +255,11 @@ class TestBlockerResolutionConflicts:
         _, blocker_id, _, _ = project_with_blocker
 
         # First resolution - should succeed
-        response1 = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 1"}
-        )
+        response1 = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 1"})
         assert response1.status_code == 200
 
         # Second resolution - should fail with 409
-        response2 = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 2"}
-        )
+        response2 = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 2"})
         assert response2.status_code == 409
 
     def test_duplicate_resolution_preserves_first_answer(self, client, project_with_blocker):
@@ -310,16 +267,10 @@ class TestBlockerResolutionConflicts:
         _, blocker_id, _, _ = project_with_blocker
 
         # First resolution
-        client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 1"}
-        )
+        client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 1"})
 
         # Second resolution (should fail)
-        client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 2"}
-        )
+        client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 2"})
 
         # Verify first answer preserved
         blocker = app.state.db.get_blocker(blocker_id)
@@ -330,16 +281,10 @@ class TestBlockerResolutionConflicts:
         _, blocker_id, _, _ = project_with_blocker
 
         # First resolution
-        client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 1"}
-        )
+        client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 1"})
 
         # Second resolution
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 2"}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 2"})
         data = response.json()
 
         assert "blocker_id" in data
@@ -350,16 +295,10 @@ class TestBlockerResolutionConflicts:
         _, blocker_id, _, _ = project_with_blocker
 
         # First resolution
-        client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 1"}
-        )
+        client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 1"})
 
         # Second resolution
-        response = client.post(
-            f"/api/blockers/{blocker_id}/resolve",
-            json={"answer": "Answer 2"}
-        )
+        response = client.post(f"/api/blockers/{blocker_id}/resolve", json={"answer": "Answer 2"})
         data = response.json()
 
         assert "error" in data
@@ -371,29 +310,20 @@ class TestBlockerResolutionNotFound:
 
     def test_nonexistent_blocker_returns_404(self, client):
         """Test that resolving non-existent blocker returns 404."""
-        response = client.post(
-            "/api/blockers/99999/resolve",
-            json={"answer": "Some answer"}
-        )
+        response = client.post("/api/blockers/99999/resolve", json={"answer": "Some answer"})
 
         assert response.status_code == 404
 
     def test_404_response_includes_blocker_id(self, client):
         """Test that 404 response includes blocker_id."""
-        response = client.post(
-            "/api/blockers/99999/resolve",
-            json={"answer": "Some answer"}
-        )
+        response = client.post("/api/blockers/99999/resolve", json={"answer": "Some answer"})
         data = response.json()
 
         assert "blocker_id" in data or "detail" in data
 
     def test_invalid_blocker_id_returns_422(self, client):
         """Test that invalid blocker ID format returns 422."""
-        response = client.post(
-            "/api/blockers/invalid/resolve",
-            json={"answer": "Some answer"}
-        )
+        response = client.post("/api/blockers/invalid/resolve", json={"answer": "Some answer"})
 
         # Should return 422 (validation error)
         assert response.status_code == 422

@@ -33,7 +33,7 @@ class RefactorProjectsSchema(Migration):
     def __init__(self):
         super().__init__(
             version="002",
-            description="Refactor projects schema with source types and workspace management"
+            description="Refactor projects schema with source types and workspace management",
         )
 
     def can_apply(self, conn: sqlite3.Connection) -> bool:
@@ -91,7 +91,8 @@ class RefactorProjectsSchema(Migration):
         logger.info("Dropped old projects table")
 
         # 2. Create new projects table with expanded schema
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -116,7 +117,8 @@ class RefactorProjectsSchema(Migration):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )
-        """)
+        """
+        )
         logger.info("Created new projects table with expanded schema")
 
         conn.commit()
@@ -138,7 +140,8 @@ class RefactorProjectsSchema(Migration):
         logger.info("Dropped new projects table")
 
         # Create old projects table with original schema
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -148,7 +151,8 @@ class RefactorProjectsSchema(Migration):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )
-        """)
+        """
+        )
         logger.info("Recreated projects table with original schema")
 
         conn.commit()

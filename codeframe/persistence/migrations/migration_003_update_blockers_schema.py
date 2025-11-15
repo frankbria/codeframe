@@ -29,8 +29,7 @@ class UpdateBlockersSchema(Migration):
 
     def __init__(self):
         super().__init__(
-            version="003",
-            description="Update blockers schema for human-in-the-loop feature"
+            version="003", description="Update blockers schema for human-in-the-loop feature"
         )
 
     def can_apply(self, conn: sqlite3.Connection) -> bool:
@@ -78,7 +77,8 @@ class UpdateBlockersSchema(Migration):
             logger.info("No existing blockers table found")
 
         # 1. Create new blockers table with updated schema
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE blockers_new (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id TEXT NOT NULL,
@@ -93,12 +93,14 @@ class UpdateBlockersSchema(Migration):
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
         logger.info("Created new blockers table with updated schema")
 
         # 2. Migrate existing data (if any) with field mapping
         if blocker_count > 0:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO blockers_new
                     (id, agent_id, project_id, task_id, blocker_type, question, answer, status, created_at, resolved_at)
                 SELECT
@@ -122,7 +124,8 @@ class UpdateBlockersSchema(Migration):
                     b.created_at,
                     b.resolved_at
                 FROM blockers b
-            """)
+            """
+            )
             logger.info(f"Migrated {blocker_count} existing blockers")
 
         # 3. Drop old blockers table
@@ -134,28 +137,36 @@ class UpdateBlockersSchema(Migration):
         logger.info("Renamed blockers_new to blockers")
 
         # 5. Create performance indexes
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_blockers_status_created
             ON blockers(status, created_at)
-        """)
+        """
+        )
         logger.info("Created index: idx_blockers_status_created")
 
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_blockers_agent_status
             ON blockers(agent_id, status)
-        """)
+        """
+        )
         logger.info("Created index: idx_blockers_agent_status")
 
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_blockers_task_id
             ON blockers(task_id)
-        """)
+        """
+        )
         logger.info("Created index: idx_blockers_task_id")
 
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_blockers_project_status
             ON blockers(project_id, status)
-        """)
+        """
+        )
         logger.info("Created index: idx_blockers_project_status")
 
         conn.commit()
@@ -184,7 +195,8 @@ class UpdateBlockersSchema(Migration):
         logger.info("Dropped new blockers table and indexes")
 
         # Create old blockers table with original schema
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE blockers (
                 id INTEGER PRIMARY KEY,
                 task_id INTEGER REFERENCES tasks(id),
@@ -195,7 +207,8 @@ class UpdateBlockersSchema(Migration):
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 resolved_at TIMESTAMP
             )
-        """)
+        """
+        )
         logger.info("Recreated blockers table with original schema")
 
         conn.commit()

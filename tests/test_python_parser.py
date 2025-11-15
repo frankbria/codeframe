@@ -36,9 +36,9 @@ class TestPythonParser:
 
     def test_parse_simple_class(self, parser, temp_file):
         """Test parsing a simple Python class."""
-        code = '''class User:
+        code = """class User:
     pass
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -51,13 +51,13 @@ class TestPythonParser:
 
     def test_parse_class_with_methods(self, parser, temp_file):
         """Test parsing a class with methods."""
-        code = '''class User:
+        code = """class User:
     def __init__(self, name):
         self.name = name
 
     def greet(self):
         return f"Hello, {self.name}"
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -81,7 +81,7 @@ class TestPythonParser:
 
     def test_parse_multiple_classes(self, parser, temp_file):
         """Test parsing multiple classes in one file."""
-        code = '''class User:
+        code = """class User:
     pass
 
 class Admin:
@@ -89,7 +89,7 @@ class Admin:
 
 class Guest:
     pass
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -100,12 +100,12 @@ class Guest:
 
     def test_parse_top_level_function(self, parser, temp_file):
         """Test parsing top-level functions."""
-        code = '''def get_user(user_id):
+        code = """def get_user(user_id):
     return User.get(user_id)
 
 def save_user(user):
     user.save()
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -121,7 +121,7 @@ def save_user(user):
 
     def test_parse_mixed_classes_and_functions(self, parser, temp_file):
         """Test parsing file with both classes and functions."""
-        code = '''def helper_function():
+        code = """def helper_function():
     pass
 
 class User:
@@ -130,7 +130,7 @@ class User:
 
 def another_helper():
     pass
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -152,14 +152,14 @@ def another_helper():
 
     def test_parse_nested_classes(self, parser, temp_file):
         """Test parsing nested classes."""
-        code = '''class Outer:
+        code = """class Outer:
     class Inner:
         def inner_method(self):
             pass
 
     def outer_method(self):
         pass
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -193,14 +193,14 @@ def another_helper():
 
     def test_parse_function_with_decorators(self, parser, temp_file):
         """Test parsing functions with decorators."""
-        code = '''@property
+        code = """@property
 def name(self):
     return self._name
 
 @staticmethod
 def create():
     return User()
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -213,12 +213,12 @@ def create():
 
     def test_parse_file_with_imports(self, parser, temp_file):
         """Test parsing file with import statements."""
-        code = '''import os
+        code = """import os
 from typing import List
 
 class User:
     pass
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -229,13 +229,13 @@ class User:
 
     def test_parse_async_functions(self, parser, temp_file):
         """Test parsing async functions."""
-        code = '''async def fetch_user(user_id):
+        code = """async def fetch_user(user_id):
     return await db.get(user_id)
 
 class UserService:
     async def save(self, user):
         await db.save(user)
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -253,10 +253,10 @@ class UserService:
 
     def test_parse_class_variables(self, parser, temp_file):
         """Test parsing class-level variables."""
-        code = '''class Config:
+        code = """class Config:
     DEBUG = True
     PORT = 8000
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -267,10 +267,10 @@ class UserService:
 
     def test_parse_syntax_error_file(self, parser, temp_file):
         """Test parsing file with syntax errors - should not crash."""
-        code = '''class User:
+        code = """class User:
     def broken method():  # syntax error
         pass
-'''
+"""
         temp_file.write_text(code)
 
         # Should handle gracefully, possibly returning partial results
@@ -280,7 +280,7 @@ class UserService:
 
     def test_line_numbers_are_accurate(self, parser, temp_file):
         """Test that line numbers are accurately reported."""
-        code = '''# Comment line 1
+        code = """# Comment line 1
 # Comment line 2
 
 def first_function():  # line 4
@@ -292,7 +292,7 @@ class MyClass:  # line 7
 
     def method_two(self):  # line 11
         pass
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
@@ -311,9 +311,9 @@ class MyClass:  # line 7
 
     def test_parser_preserves_file_path(self, parser, temp_file):
         """Test that parser preserves the file path in symbols."""
-        code = '''class User:
+        code = """class User:
     pass
-'''
+"""
         temp_file.write_text(code)
         symbols = parser.parse_file(temp_file)
 
