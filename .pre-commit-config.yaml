@@ -1,0 +1,38 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.1.0
+    hooks:
+      - id: black
+        language_version: python3.11
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.2.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: Run last failed tests (fast feedback)
+        entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest --lf -x; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest --lf -x; else pytest --lf -x; fi'
+        language: system
+        pass_filenames: false
+        files: \.py$
+        types: [python]
+
+      - id: coverage-check
+        name: Enforce 85% coverage (manual - use scripts/verify-ai-claims.sh for full check)
+        entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=85; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=85; else pytest --cov --cov-report=term-missing --cov-fail-under=85; fi || (echo "❌❌❌ COVERAGE BELOW 85% ❌❌❌" && exit 1)'
+        language: system
+        pass_filenames: false
+        files: \.py$
+        types: [python]
+        stages: [manual]
+
+      - id: skip-detector
+        name: Detect skip decorator abuse
+        entry: python scripts/detect-skip-abuse.py
+        language: system
+        files: ^tests/.*\.py$
+        pass_filenames: false

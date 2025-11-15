@@ -54,6 +54,8 @@ dev = [
     "black>=24.1.0",
     "ruff>=0.2.0",
     "mypy>=1.8.0",
+    "pre-commit>=3.5.0",
+    "hypothesis>=6.0.0",
 ]
 
 [project.scripts]
@@ -87,3 +89,23 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+addopts = """
+    --strict-markers
+    --cov=codeframe
+    --cov-report=term-missing:skip-covered
+    --cov-fail-under=80
+    -v
+"""
+
+[tool.coverage.run]
+branch = true
+source = ["codeframe"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == \"__main__\":",
+]

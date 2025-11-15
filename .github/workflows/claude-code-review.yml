@@ -3,21 +3,15 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    # Skip review for documentation and config-only changes
+    paths-ignore:
+      - "**/*.md"
+      - ".github/**"
+      - ".gitignore"
+      - "pyproject.toml"
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,12 +20,28 @@ jobs:
       id-token: write
 
     steps:
+      - name: Calculate total changes
+        id: calc
+        run: |
+          additions=${{ github.event.pull_request.additions }}
+          deletions=${{ github.event.pull_request.deletions }}
+          total=$((additions + deletions))
+          echo "total=$total" >> $GITHUB_OUTPUT
+
       - name: Checkout repository
+        # Only review substantial changes (5+ files OR 20+ lines changed)
+        if: |
+          github.event.pull_request.changed_files >= 5 ||
+          steps.calc.outputs.total >= 20
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
       - name: Run Claude Code Review
+        # Only review substantial changes (5+ files OR 20+ lines changed)
+        if: |
+          github.event.pull_request.changed_files >= 5 ||
+          steps.calc.outputs.total >= 20
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:

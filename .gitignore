@@ -34,11 +34,14 @@ ENV/
 *.swp
 *.swo
 *~
+.claude/settings.local.json
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
+artifacts/
 
 # CodeFRAME specific
 .codeframe/state.db
