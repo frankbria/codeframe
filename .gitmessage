@@ -1,0 +1,31 @@
+# <type>(<scope>): <subject>
+#
+# <type> = feat|fix|docs|style|refactor|test|chore
+# <scope> = optional context (e.g., sprint-8, enforcement, api)
+# <subject> = imperative mood summary (50 chars max)
+#
+# Example: feat(enforcement): Add multi-language skip pattern detection
+
+# Body (optional): Explain WHAT and WHY, not HOW (72 chars per line)
+#
+
+
+# AI Verification Checklist ✅
+#
+# Before committing, verify:
+# [ ] All tests pass (run: pytest -v)
+# [ ] Coverage ≥ 85% (run: pytest --cov)
+# [ ] No skip decorators without strong justification
+# [ ] Code formatted (run: black .)
+# [ ] Linting passes (run: ruff check .)
+# [ ] Quality verification passed (run: scripts/verify-ai-claims.sh)
+#
+# Full verification: scripts/verify-ai-claims.sh
+#
+
+# Footer (optional): Reference issues, breaking changes
+#
+# Closes: #123
+# Refs: #456
+# BREAKING CHANGE: description
+#
