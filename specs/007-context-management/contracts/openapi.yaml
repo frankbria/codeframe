@@ -463,7 +463,8 @@ components:
           type: integer
           description: Token count after flash save
         reduction_percentage:
-          type: float
+          type: number
+          format: float
           description: Percentage reduction in token usage
         created_at:
           type: string
