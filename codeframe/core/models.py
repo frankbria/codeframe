@@ -211,3 +211,154 @@ class BlockerListResponse(BaseModel):
     pending_count: int
     sync_count: int
     async_count: int = 0
+
+
+# Context Management Models (007-context-management)
+
+class ContextItemType(str, Enum):
+    """Type of context item stored in the Virtual Project system."""
+    TASK = "TASK"
+    CODE = "CODE"
+    ERROR = "ERROR"
+    TEST_RESULT = "TEST_RESULT"
+    PRD_SECTION = "PRD_SECTION"
+
+
+class ContextItemModel(BaseModel):
+    """Pydantic model for context item database records."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: str
+    item_type: ContextItemType
+    content: str
+    importance_score: float = Field(..., ge=0.0, le=1.0)
+    tier: str  # References ContextTier enum (HOT/WARM/COLD)
+    access_count: int = 0
+    created_at: datetime
+    last_accessed: datetime
+
+
+class ContextItemCreateModel(BaseModel):
+    """Request model for creating a context item."""
+    item_type: ContextItemType
+    content: str = Field(..., min_length=1, max_length=100000)
+
+    def validate_content(self) -> str:
+        """Validate content is not empty or whitespace-only."""
+        if not self.content.strip():
+            raise ValueError("Content cannot be empty or whitespace-only")
+        return self.content.strip()
+
+
+class ContextItemResponse(BaseModel):
+    """Response model for a single context item."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: str
+    item_type: str
+    content: str
+    importance_score: float
+    tier: str
+    access_count: int
+    created_at: datetime
+    last_accessed: datetime
+
+
+class ContextStats(BaseModel):
+    """Response model for context statistics."""
+    agent_id: str
+    total_items: int
+    hot_count: int
+    warm_count: int
+    cold_count: int
+    total_tokens: int
+    hot_tokens: int
+    warm_tokens: int
+    cold_tokens: int
+    last_updated: datetime
+
+
+class FlashSaveRequest(BaseModel):
+    """Request model for initiating flash save."""
+    force: bool = False  # Force flash save even if below 80% threshold
+
+
+class FlashSaveResponse(BaseModel):
+    """Response model for flash save operation."""
+    checkpoint_id: int
+    agent_id: str
+    items_count: int
+    items_archived: int
+    hot_items_retained: int
+    token_count_before: int
+    token_count_after: int
+    reduction_percentage: float
+    created_at: datetime
+
+
+# WebSocket Event Models (007-context-management)
+
+
+class ContextTierUpdated(BaseModel):
+    """WebSocket event when context tiers are updated.
+
+    Emitted when the context tier algorithm redistributes items across
+    HOT/WARM/COLD tiers based on importance scores, access patterns, and
+    manual pins. This allows real-time monitoring of context evolution.
+
+    Attributes:
+        event_type: Always "context_tier_updated" for this event.
+        agent_id: ID of the agent whose context was updated.
+        item_count: Total number of context items after update.
+        tier_changes: Count of items in each tier after redistribution.
+        timestamp: UTC timestamp when tier update completed.
+
+    Example WebSocket message:
+        {
+            "event_type": "context_tier_updated",
+            "agent_id": "agent-123",
+            "item_count": 30,
+            "tier_changes": {"hot": 5, "warm": 10, "cold": 15},
+            "timestamp": "2025-01-14T10:30:00Z"
+        }
+    """
+    event_type: str = "context_tier_updated"
+    agent_id: str
+    item_count: int
+    tier_changes: Dict[str, int]  # {"hot": 5, "warm": 10, "cold": 15}
+    timestamp: datetime = Field(default_factory=lambda: datetime.now())
+
+
+class FlashSaveCompleted(BaseModel):
+    """WebSocket event when flash save completes.
+
+    Emitted when a flash save operation successfully creates a checkpoint
+    and archives WARM/COLD context items. This event provides metrics on
+    context reduction effectiveness.
+
+    Attributes:
+        event_type: Always "flash_save_completed" for this event.
+        agent_id: ID of the agent whose context was flash-saved.
+        checkpoint_id: Database ID of the created checkpoint record.
+        reduction_percentage: Percentage reduction in token count (0-100).
+        items_archived: Number of context items moved to checkpoint.
+        timestamp: UTC timestamp when flash save completed.
+
+    Example WebSocket message:
+        {
+            "event_type": "flash_save_completed",
+            "agent_id": "agent-123",
+            "checkpoint_id": 42,
+            "reduction_percentage": 65.5,
+            "items_archived": 25,
+            "timestamp": "2025-01-14T10:35:00Z"
+        }
+    """
+    event_type: str = "flash_save_completed"
+    agent_id: str
+    checkpoint_id: int
+    reduction_percentage: float
+    items_archived: int
+    timestamp: datetime = Field(default_factory=lambda: datetime.now())
