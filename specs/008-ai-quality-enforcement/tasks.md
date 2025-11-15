@@ -30,8 +30,8 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 
 **Purpose**: Project initialization and dependency setup
 
-- [ ] T001 Install pre-commit package via `pip install -e ".[dev]"` after adding to pyproject.toml
-- [ ] T002 [P] Create `.claude/` directory if it doesn't exist
+- [X] T001 Install pre-commit package via `pip install -e ".[dev]"` after adding to pyproject.toml
+- [X] T002 [P] Create `.claude/` directory if it doesn't exist
 
 ---
 
@@ -41,9 +41,9 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Add `pre-commit>=3.5.0` to `[project.optional-dependencies]` dev section in pyproject.toml
-- [ ] T005 [P] Add `hypothesis>=6.0.0` to dev dependencies in pyproject.toml (issue #15: version >=6.0.0)
-- [ ] T006 [P] Enable branch coverage in pyproject.toml: add `[tool.coverage.run]` with `branch = true`
+- [X] T004 Add `pre-commit>=3.5.0` to `[project.optional-dependencies]` dev section in pyproject.toml
+- [X] T005 [P] Add `hypothesis>=6.0.0` to dev dependencies in pyproject.toml (issue #15: version >=6.0.0)
+- [X] T006 [P] Enable branch coverage in pyproject.toml: add `[tool.coverage.run]` with `branch = true`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -59,11 +59,11 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Create `.claude/rules.md` with TDD requirements (test-first workflow), forbidden actions (skip decorators, false claims), and context management guidelines (issue #12)
-- [ ] T008 [US1] Create `.pre-commit-config.yaml` with pytest hook, coverage check hook, black formatter hook, ruff linter hook, and local custom hooks section (issue #12)
-- [ ] T009 [US1] Create basic `scripts/verify-ai-claims.sh` that runs pytest, checks coverage ≥85%, and displays summary with exit codes (issue #12, #16)
-- [ ] T010 [US1] Make `scripts/verify-ai-claims.sh` executable with `chmod +x`
-- [ ] T011 [US1] Update `.claude/rules.md` to reference `scripts/verify-ai-claims.sh` in verification process section
+- [X] T007 [US1] Create `.claude/rules.md` with TDD requirements (test-first workflow), forbidden actions (skip decorators, false claims), and context management guidelines (issue #12)
+- [X] T008 [US1] Create `.pre-commit-config.yaml` with pytest hook, coverage check hook, black formatter hook, ruff linter hook, and local custom hooks section (issue #12)
+- [X] T009 [US1] Create basic `scripts/verify-ai-claims.sh` that runs pytest, checks coverage ≥85%, and displays summary with exit codes (issue #12, #16)
+- [X] T010 [US1] Make `scripts/verify-ai-claims.sh` executable with `chmod +x`
+- [X] T011 [US1] Update `.claude/rules.md` to reference `scripts/verify-ai-claims.sh` in verification process section
 
 **Checkpoint**: At this point, basic enforcement should block commits with failing tests and low coverage
 
@@ -83,29 +83,29 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T012 [P] [US2] Unit test for skip detector in tests/enforcement/test_skip_detector.py - test `@skip` detection
-- [ ] T013 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test `@skipif` detection
-- [ ] T014 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test `@pytest.mark.skip` detection
-- [ ] T015 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test skip with no reason (violation)
-- [ ] T016 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test skip with strong justification (allowed if policy changes)
-- [ ] T017 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test nested decorators handling
-- [ ] T018 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test non-test file handling (no false positives)
-- [ ] T019 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test performance <100ms on large files
+- [X] T012 [P] [US2] Unit test for skip detector in tests/enforcement/test_skip_detector.py - test `@skip` detection
+- [X] T013 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test `@skipif` detection
+- [X] T014 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test `@pytest.mark.skip` detection
+- [X] T015 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test skip with no reason (violation)
+- [X] T016 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test skip with strong justification (allowed if policy changes)
+- [X] T017 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test nested decorators handling
+- [X] T018 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test non-test file handling (no false positives)
+- [X] T019 [P] [US2] Unit test in tests/enforcement/test_skip_detector.py - test performance <100ms on large files
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Create `tests/enforcement/` directory for enforcement tool tests
-- [ ] T021 [US2] Create `scripts/detect-skip-abuse.py` with shebang, docstring, and CLI using argparse (issue #13)
-- [ ] T022 [US2] Implement `SkipDetectorVisitor` class using `ast.NodeVisitor` to walk AST and find skip decorators in `scripts/detect-skip-abuse.py` (issue #13)
-- [ ] T023 [US2] Add skip pattern detection: `@skip`, `@skipif`, `@pytest.mark.skip`, `@pytest.mark.skipif` to `scripts/detect-skip-abuse.py` (issue #13)
-- [ ] T024 [US2] Add justification checking to `scripts/detect-skip-abuse.py`: extract reason argument and check for weak justifications (TODO, fix later, etc.) (issue #13)
-- [ ] T025 [US2] Add helper functions to `scripts/detect-skip-abuse.py`: `check_file()`, `is_test_file()`, `format_violation()`, `print_summary()` following `scripts/verify_migration_001.py` patterns (issue #13)
-- [ ] T026 [US2] Make `scripts/detect-skip-abuse.py` executable with `chmod +x`
-- [ ] T027 [US2] Add local hook to `.pre-commit-config.yaml` for skip detection with entry `python scripts/detect-skip-abuse.py` and `files: ^tests/.*\.py$` pattern (issue #13)
-- [ ] T028 [US2] Update TESTING.md with new "Test Skip Policy & Enforcement" section explaining why skips are forbidden and what to do instead (issue #13)
-- [ ] T029 [US2] Update CONTRIBUTING.md to reference skip policy and add "Fixing Failing Tests" subsection (issue #13)
-- [ ] T030 [US2] Update docs/process/TDD_WORKFLOW.md with "Fixing Failing Tests" section (issue #13)
-- [ ] T031 [US2] Test all 8 unit tests pass for skip detector
+- [X] T020 [US2] Create `tests/enforcement/` directory for enforcement tool tests
+- [X] T021 [US2] Create `scripts/detect-skip-abuse.py` with shebang, docstring, and CLI using argparse (issue #13)
+- [X] T022 [US2] Implement `SkipDetectorVisitor` class using `ast.NodeVisitor` to walk AST and find skip decorators in `scripts/detect-skip-abuse.py` (issue #13)
+- [X] T023 [US2] Add skip pattern detection: `@skip`, `@skipif`, `@pytest.mark.skip`, `@pytest.mark.skipif` to `scripts/detect-skip-abuse.py` (issue #13)
+- [X] T024 [US2] Add justification checking to `scripts/detect-skip-abuse.py`: extract reason argument and check for weak justifications (TODO, fix later, etc.) (issue #13)
+- [X] T025 [US2] Add helper functions to `scripts/detect-skip-abuse.py`: `check_file()`, `is_test_file()`, `format_violation()`, `print_summary()` following `scripts/verify_migration_001.py` patterns (issue #13)
+- [X] T026 [US2] Make `scripts/detect-skip-abuse.py` executable with `chmod +x`
+- [X] T027 [US2] Add local hook to `.pre-commit-config.yaml` for skip detection with entry `python scripts/detect-skip-abuse.py` and `files: ^tests/.*\.py$` pattern (issue #13)
+- [X] T028 [US2] Update TESTING.md with new "Test Skip Policy & Enforcement" section explaining why skips are forbidden and what to do instead (issue #13)
+- [X] T029 [US2] Update CONTRIBUTING.md to reference skip policy and add "Fixing Failing Tests" subsection (issue #13)
+- [X] T030 [US2] Update docs/process/TDD_WORKFLOW.md with "Fixing Failing Tests" section (issue #13)
+- [X] T031 [US2] Test all 8 unit tests pass for skip detector
 
 **Checkpoint**: Skip decorator detection should now prevent test circumvention via pre-commit hooks
 
@@ -136,21 +136,21 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 
 ### Implementation for User Story 3
 
-- [ ] T040 [US3] Create `scripts/quality-ratchet.py` with Typer app and Rich Console (NOT argparse - see issue #14)
-- [ ] T041 [US3] Implement core functions in `scripts/quality-ratchet.py`: `load_history()`, `save_history()`, `run_tests()`, `get_coverage()` (issue #14)
-- [ ] T042 [US3] Add `run_tests()` to execute pytest with `--json-report --json-report-file` and parse `.report.json` for metrics (issue #14)
-- [ ] T043 [US3] Add `get_coverage()` to read `coverage.json` and extract `totals.percent_covered` (issue #14)
-- [ ] T044 [US3] Implement `detect_degradation()` with algorithm: recent_avg < peak - 10% for coverage and pass rate (issue #14)
-- [ ] T045 [US3] Implement `record` command using `@app.command()` decorator with `--response-count` option (issue #14)
-- [ ] T046 [US3] Implement `check` command to load history and call `detect_degradation()` (issue #14)
-- [ ] T047 [US3] Implement `stats` command with Rich Table displaying current/peak/average metrics (issue #14)
-- [ ] T048 [US3] Implement `reset` command with `--yes` confirmation flag (issue #14)
-- [ ] T049 [US3] Create `.claude/quality_history.json` with empty history array (issue #14)
-- [ ] T050 [US3] Make `scripts/quality-ratchet.py` executable with `chmod +x`
-- [ ] T051 [US3] Update CLAUDE.md with "Quality Ratchet Checkpoints" section after Commands section (issue #14)
-- [ ] T052 [US3] Update TESTING.md with "Quality Ratchet Integration" section and Test 11 subsections (issue #14)
-- [ ] T053 [US3] Create `.github/workflows/quality-check.yml` for automated quality tracking in CI/CD, reference `scripts/quality-ratchet.py` (issue #14)
-- [ ] T054 [US3] Test all 8 unit tests pass for quality ratchet
+- [X] T040 [US3] Create `scripts/quality-ratchet.py` with Typer app and Rich Console (NOT argparse - see issue #14)
+- [X] T041 [US3] Implement core functions in `scripts/quality-ratchet.py`: `load_history()`, `save_history()`, `run_tests()`, `get_coverage()` (issue #14)
+- [X] T042 [US3] Add `run_tests()` to execute pytest with `--json-report --json-report-file` and parse `.report.json` for metrics (issue #14)
+- [X] T043 [US3] Add `get_coverage()` to read `coverage.json` and extract `totals.percent_covered` (issue #14)
+- [X] T044 [US3] Implement `detect_degradation()` with algorithm: recent_avg < peak - 10% for coverage and pass rate (issue #14)
+- [X] T045 [US3] Implement `record` command using `@app.command()` decorator with `--response-count` option (issue #14)
+- [X] T046 [US3] Implement `check` command to load history and call `detect_degradation()` (issue #14)
+- [X] T047 [US3] Implement `stats` command with Rich Table displaying current/peak/average metrics (issue #14)
+- [X] T048 [US3] Implement `reset` command with `--yes` confirmation flag (issue #14)
+- [X] T049 [US3] Create `.claude/quality_history.json` with empty history array (issue #14)
+- [X] T050 [US3] Make `scripts/quality-ratchet.py` executable with `chmod +x`
+- [X] T051 [US3] Update CLAUDE.md with "Quality Ratchet Checkpoints" section after Commands section (issue #14)
+- [X] T052 [US3] Update TESTING.md with "Quality Ratchet Integration" section and Test 11 subsections (issue #14)
+- [X] T053 [US3] Create `.github/workflows/quality-check.yml` for automated quality tracking in CI/CD, reference `scripts/quality-ratchet.py` (issue #14)
+- [X] T054 [US3] Test all 8 unit tests pass for quality ratchet
 
 **Checkpoint**: Quality tracking should now detect degradation and recommend context resets
 
@@ -177,11 +177,11 @@ description: "Task list for AI Quality Enforcement feature - incorporating ALL G
 - [ ] T063 [P] [US4] Add `TestAsyncPatterns` class with `@pytest.mark.asyncio` for async function testing (issue #15)
 - [ ] T064 [P] [US4] Add helper functions: `reverse_string()`, `add_numbers()`, `normalize_data()` for testing examples (issue #15)
 - [ ] T065 [P] [US4] Add pattern coverage matrix docstring with table showing when to use each pattern (issue #15)
-- [ ] T066 [US4] Update AGENTS.md with "Writing Tests" section referencing test_template.py (issue #15)
-- [ ] T067 [US4] Update TESTING.md with "Test Pattern Reference" section at beginning (issue #15)
-- [ ] T068 [US4] Update CLAUDE.md with "Testing Standards" section after Code Style (issue #15)
-- [ ] T069 [US4] Create `.claude/rules.md` testing standards section if not already created in US1 (issue #15)
-- [ ] T070 [US4] Verify all template examples execute successfully with `pytest tests/test_template.py -v`
+- [X] T066 [US4] Update AGENTS.md with "Writing Tests" section referencing test_template.py (issue #15)
+- [X] T067 [US4] Update TESTING.md with "Test Pattern Reference" section at beginning (issue #15)
+- [X] T068 [US4] Update CLAUDE.md with "Testing Standards" section after Code Style (issue #15)
+- [X] T069 [US4] Create `.claude/rules.md` testing standards section if not already created in US1 (issue #15)
+- [X] T070 [US4] Verify all template examples execute successfully with `pytest tests/test_template.py -v`
 
 **Checkpoint**: Test template should provide comprehensive examples for AI agents to follow
 

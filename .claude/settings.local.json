@@ -178,7 +178,19 @@
       "Bash(__NEW_LINE__ bd dep add codeframe-xdn codeframe-xfe --type parent-child)",
       "Bash(__NEW_LINE__ bd dep add codeframe-lns codeframe-xfe --type parent-child)",
       "Bash(__NEW_LINE__ bd dep add codeframe-b2m codeframe-xfe --type parent-child)",
-      "Bash(__NEW_LINE__ bd dep add codeframe-9kf codeframe-xfe --type parent-child)"
+      "Bash(__NEW_LINE__ bd dep add codeframe-9kf codeframe-xfe --type parent-child)",
+      "Bash(if [ -d /home/frankbria/projects/codeframe/specs/008-ai-quality-enforcement/checklists ])",
+      "Bash(then find /home/frankbria/projects/codeframe/specs/008-ai-quality-enforcement/checklists -name \"*.md\")",
+      "Bash(else echo \"No venv found, installing globally\")",
+      "Bash(else timeout 20 python -m pytest tests/enforcement/test_skip_detector.py -v)",
+      "Bash(else timeout 20 python -m pytest tests/enforcement/test_quality_ratchet.py -v)",
+      "Bash(=6.0.0)",
+      "Bash(else timeout 30 python -m pytest tests/enforcement/test_language_detector.py -v)",
+      "Bash(else timeout 30 python -m pytest tests/enforcement/test_adaptive_test_runner.py -v)",
+      "Bash(else timeout 30 python -m pytest tests/enforcement/test_skip_pattern_detector.py -v)",
+      "Bash(else timeout 30 python -m pytest tests/enforcement/test_skip_pattern_detector.py -v --tb=short)",
+      "Bash(else timeout 60 python -m pytest tests/enforcement/ -v --tb=short)",
+      "Bash(else timeout 60 python -m pytest tests/enforcement/ -q)"
     ],
     "deny": [],
     "ask": []
