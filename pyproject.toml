@@ -87,3 +87,23 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+addopts = """
+    --strict-markers
+    --cov=src
+    --cov-reoprt=term-missing:skip-covered
+    --cov-fail-under=80
+    -v
+"""
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__mazin__.:",
+]
