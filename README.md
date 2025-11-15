@@ -302,6 +302,9 @@ codeframe status
 
 # Or open web dashboard
 # → http://localhost:8080
+
+# Tip: Use 'cf' as a shortcut for all commands
+# cf init, cf start, cf status, etc.
 ```
 
 ### Chat with Your Lead Agent
@@ -674,6 +677,8 @@ Access at `http://localhost:8080` (or via Tailscale remotely)
 ---
 
 ## CLI Reference
+
+**Tip**: Use `cf` as a shortcut for any `codeframe` command (e.g., `cf init`, `cf start`, `cf status`)
 
 ```bash
 # Project Management
