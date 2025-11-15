@@ -998,11 +998,12 @@ async def get_blocker_metrics_endpoint(project_id: int):
 # Context Management endpoints (007-context-management)
 
 @app.post("/api/agents/{agent_id}/context", status_code=201, response_model=ContextItemResponse, tags=["context"])
-async def create_context_item(agent_id: str, request: ContextItemCreateModel):
+async def create_context_item(agent_id: str, project_id: int, request: ContextItemCreateModel):
     """Create a new context item for an agent (T019).
 
     Args:
         agent_id: Agent ID to create context item for
+        project_id: Project ID for the context item
         request: ContextItemCreateModel with item_type and content
 
     Returns:
@@ -1014,6 +1015,7 @@ async def create_context_item(agent_id: str, request: ContextItemCreateModel):
     """
     # Create context item - score auto-calculated by database layer (Phase 4)
     item_id = app.state.db.create_context_item(
+        project_id=project_id,
         agent_id=agent_id,
         item_type=request.item_type.value,
         content=request.content
@@ -1028,7 +1030,7 @@ async def create_context_item(agent_id: str, request: ContextItemCreateModel):
         item_type=item["item_type"],
         content=item["content"],
         importance_score=item["importance_score"],
-        tier=item["tier"],
+        tier=item["current_tier"],
         access_count=item["access_count"],
         created_at=item["created_at"],
         last_accessed=item["last_accessed"]
@@ -1041,7 +1043,7 @@ async def get_context_item(agent_id: str, item_id: str):
 
     Args:
         agent_id: Agent ID (used for path consistency)
-        item_id: Context item ID to retrieve
+        item_id: Context item ID to retrieve (UUID string)
 
     Returns:
         200 OK: ContextItemResponse with context item details
@@ -1071,7 +1073,7 @@ async def get_context_item(agent_id: str, item_id: str):
         item_type=item["item_type"],
         content=item["content"],
         importance_score=item["importance_score"],
-        tier=item["tier"],
+        tier=item["current_tier"],
         access_count=item["access_count"],
         created_at=item["created_at"],
         last_accessed=item["last_accessed"]
@@ -1081,6 +1083,7 @@ async def get_context_item(agent_id: str, item_id: str):
 @app.get("/api/agents/{agent_id}/context", tags=["context"])
 async def list_context_items(
     agent_id: str,
+    project_id: int,
     tier: Optional[str] = None,
     limit: int = 100,
     offset: int = 0
@@ -1089,6 +1092,7 @@ async def list_context_items(
 
     Args:
         agent_id: Agent ID to list context items for
+        project_id: Project ID for the context items
         tier: Optional filter by tier (HOT, WARM, COLD)
         limit: Maximum items to return (default: 100)
         offset: Number of items to skip (default: 0)
@@ -1104,8 +1108,9 @@ async def list_context_items(
         HTTPException:
             - 422: Invalid request (validation error)
     """
-    # Get context items from database
-    items_dict = app.state.db.list_context_items(
+    # Get context items from database (returns a list, not a dict)
+    items_list = app.state.db.list_context_items(
+        project_id=project_id,
         agent_id=agent_id,
         tier=tier,
         limit=limit,
@@ -1120,29 +1125,29 @@ async def list_context_items(
             item_type=item["item_type"],
             content=item["content"],
             importance_score=item["importance_score"],
-            tier=item["tier"],
+            tier=item["current_tier"],
             access_count=item["access_count"],
             created_at=item["created_at"],
             last_accessed=item["last_accessed"]
         )
-        for item in items_dict["items"]
+        for item in items_list
     ]
 
     return {
         "items": items,
-        "total": items_dict["total"],
+        "total": len(items),
         "offset": offset,
         "limit": limit
     }
 
 
 @app.delete("/api/agents/{agent_id}/context/{item_id}", status_code=204, tags=["context"])
-async def delete_context_item(agent_id: str, item_id: int):
+async def delete_context_item(agent_id: str, item_id: str):
     """Delete a context item (T022).
 
     Args:
         agent_id: Agent ID (used for path consistency)
-        item_id: Context item ID to delete
+        item_id: Context item ID to delete (UUID string)
 
     Returns:
         204 No Content: Successful deletion
