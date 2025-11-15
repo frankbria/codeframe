@@ -98,21 +98,21 @@ export function ContextTierChart({ stats }: ContextTierChartProps): JSX.Element 
             <ul>
               <li className="hot">
                 HOT: {stats.hot_tokens.toLocaleString()} tokens (
-                {totalItems > 0
+                {stats.total_tokens > 0
                   ? ((stats.hot_tokens / stats.total_tokens) * 100).toFixed(1)
                   : 0}
                 %)
               </li>
               <li className="warm">
                 WARM: {stats.warm_tokens.toLocaleString()} tokens (
-                {totalItems > 0
+                {stats.total_tokens > 0
                   ? ((stats.warm_tokens / stats.total_tokens) * 100).toFixed(1)
                   : 0}
                 %)
               </li>
               <li className="cold">
                 COLD: {stats.cold_tokens.toLocaleString()} tokens (
-                {totalItems > 0
+                {stats.total_tokens > 0
                   ? ((stats.cold_tokens / stats.total_tokens) * 100).toFixed(1)
                   : 0}
                 %)
