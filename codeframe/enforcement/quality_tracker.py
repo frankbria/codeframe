@@ -108,9 +108,7 @@ class QualityTracker:
         with open(self.history_file, "w") as f:
             json.dump(history, f, indent=2)
 
-    def check_degradation(
-        self, threshold_percent: float = 10.0
-    ) -> Dict:
+    def check_degradation(self, threshold_percent: float = 10.0) -> Dict:
         """
         Check if quality has degraded from peak.
 
@@ -224,10 +222,10 @@ class QualityTracker:
         Returns:
             Peak checkpoint dictionary
         """
+
         def score(checkpoint: Dict) -> float:
             return (
-                checkpoint.get("test_pass_rate", 0) +
-                checkpoint.get("coverage_percentage", 0)
+                checkpoint.get("test_pass_rate", 0) + checkpoint.get("coverage_percentage", 0)
             ) / 2
 
         return max(history, key=score)
@@ -274,8 +272,7 @@ class QualityTracker:
 
         recent_3 = history[-3:]
         scores = [
-            (c.get("test_pass_rate", 0) + c.get("coverage_percentage", 0)) / 2
-            for c in recent_3
+            (c.get("test_pass_rate", 0) + c.get("coverage_percentage", 0)) / 2 for c in recent_3
         ]
 
         # Simple trend: compare first and last
@@ -312,9 +309,7 @@ class QualityTracker:
 
         # Check response count
         if response_count >= max_responses:
-            reasons.append(
-                f"Response count ({response_count}) exceeds maximum ({max_responses})"
-            )
+            reasons.append(f"Response count ({response_count}) exceeds maximum ({max_responses})")
 
         # Check quality degradation
         if check_degradation:
@@ -325,9 +320,5 @@ class QualityTracker:
         return {
             "should_reset": len(reasons) > 0,
             "reasons": reasons,
-            "recommendation": (
-                "Context reset recommended"
-                if reasons
-                else "Context can continue"
-            ),
+            "recommendation": ("Context reset recommended" if reasons else "Context can continue"),
         }

@@ -78,7 +78,7 @@ class LeadAgent:
             db=db,
             ws_manager=ws_manager,
             max_agents=max_agents,
-            api_key=api_key
+            api_key=api_key,
         )
         self.dependency_resolver = DependencyResolver()
         self.agent_assigner = SimpleAgentAssigner()
@@ -98,9 +98,13 @@ class LeadAgent:
                 project_root = Path(project_root_str)
                 self.git_workflow = GitWorkflowManager(project_root, db)
             except (git.InvalidGitRepositoryError, git.NoSuchPathError) as e:
-                logger.warning(f"Could not initialize GitWorkflowManager: {e}. Git features will be disabled.")
+                logger.warning(
+                    f"Could not initialize GitWorkflowManager: {e}. Git features will be disabled."
+                )
             except Exception as e:
-                logger.warning(f"Unexpected error initializing GitWorkflowManager: {e}. Git features will be disabled.")
+                logger.warning(
+                    f"Unexpected error initializing GitWorkflowManager: {e}. Git features will be disabled."
+                )
 
         # Load discovery state from database
         self._load_discovery_state()
@@ -119,10 +123,12 @@ class LeadAgent:
         # Convert database format to provider format
         conversation = []
         for msg in db_messages:
-            conversation.append({
-                "role": msg["key"],  # 'user' or 'assistant'
-                "content": msg["value"],
-            })
+            conversation.append(
+                {
+                    "role": msg["key"],  # 'user' or 'assistant'
+                    "content": msg["value"],
+                }
+            )
 
         logger.debug(f"Loaded {len(conversation)} messages from conversation history")
         return conversation
@@ -149,10 +155,12 @@ class LeadAgent:
             conversation = self.get_conversation_history()
 
             # Append user message to conversation
-            conversation.append({
-                "role": "user",
-                "content": message,
-            })
+            conversation.append(
+                {
+                    "role": "user",
+                    "content": message,
+                }
+            )
 
             # Save user message to database
             self.db.create_memory(
@@ -302,9 +310,7 @@ class LeadAgent:
             Next question or completion message
         """
         if self._discovery_state != "discovering":
-            logger.warning(
-                f"process_discovery_answer called in state: {self._discovery_state}"
-            )
+            logger.warning(f"process_discovery_answer called in state: {self._discovery_state}")
             return "Discovery is not active. Call start_discovery() first."
 
         # Save current answer
@@ -383,10 +389,7 @@ class LeadAgent:
             status["remaining_count"] = total_required - len(self._discovery_answers)
 
             # Find current question details
-            current_q = next(
-                (q for q in questions if q["id"] == self._current_question_id),
-                None
-            )
+            current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
             if current_q:
                 status["current_question"] = current_q
 
@@ -440,10 +443,12 @@ class LeadAgent:
 
         try:
             # Send to Claude for PRD generation
-            conversation = [{
-                "role": "user",
-                "content": prd_prompt,
-            }]
+            conversation = [
+                {
+                    "role": "user",
+                    "content": prd_prompt,
+                }
+            ]
 
             response = self.provider.send_message(conversation)
             prd_content = response["content"]
@@ -614,9 +619,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 issue.id = issue_id
                 saved_issues.append(issue)
 
-                logger.debug(
-                    f"Saved issue {issue.issue_number}: {issue.title} (id={issue_id})"
-                )
+                logger.debug(f"Saved issue {issue.issue_number}: {issue.title} (id={issue_id})")
 
             logger.info(f"Successfully generated and saved {len(saved_issues)} issues")
             return saved_issues
@@ -720,9 +723,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             tasks_by_issue = {}
 
             for issue in issues:
-                logger.info(
-                    f"Decomposing issue {issue.issue_number}: {issue.title}"
-                )
+                logger.info(f"Decomposing issue {issue.issue_number}: {issue.title}")
 
                 try:
                     # Decompose issue into tasks
@@ -745,9 +746,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                             requires_mcp=task.requires_mcp,
                         )
 
-                        logger.debug(
-                            f"Saved task {task.task_number}: {task.title} (id={task_id})"
-                        )
+                        logger.debug(f"Saved task {task.task_number}: {task.title} (id={task_id})")
                         saved_task_count += 1
 
                     # Update statistics
@@ -762,8 +761,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 except Exception as e:
                     logger.error(
-                        f"Failed to decompose issue {issue.issue_number}: {e}",
-                        exc_info=True
+                        f"Failed to decompose issue {issue.issue_number}: {e}", exc_info=True
                     )
                     # Continue with next issue instead of failing completely
                     continue
@@ -891,7 +889,9 @@ Generate the PRD in markdown format with clear sections and professional languag
         """
         # Check if git workflow is available
         if not self.git_workflow:
-            raise RuntimeError("Git workflow is not available. Please ensure project has a valid git repository.")
+            raise RuntimeError(
+                "Git workflow is not available. Please ensure project has a valid git repository."
+            )
 
         # 1. Get issue from database
         issue = self.db.get_issue(issue_id)
@@ -907,10 +907,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             )
 
         # 3. Create feature branch via GitWorkflowManager
-        branch_name = self.git_workflow.create_feature_branch(
-            issue['issue_number'],
-            issue['title']
-        )
+        branch_name = self.git_workflow.create_feature_branch(issue["issue_number"], issue["title"])
 
         # 4. Record in git_branches table (already done by GitWorkflowManager)
         # GitWorkflowManager.create_feature_branch() already stores in database
@@ -920,7 +917,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         return {
             "branch_name": branch_name,
-            "issue_number": issue['issue_number'],
+            "issue_number": issue["issue_number"],
             "status": "created",
         }
 
@@ -947,7 +944,9 @@ Generate the PRD in markdown format with clear sections and professional languag
         """
         # Check if git workflow is available
         if not self.git_workflow:
-            raise RuntimeError("Git workflow is not available. Please ensure project has a valid git repository.")
+            raise RuntimeError(
+                "Git workflow is not available. Please ensure project has a valid git repository."
+            )
 
         # 1. Get issue from database
         issue = self.db.get_issue(issue_id)
@@ -966,7 +965,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             raise ValueError(f"No active branch found for issue {issue['issue_number']}")
 
         # 4. Merge to main via GitWorkflowManager
-        merge_result = self.git_workflow.merge_to_main(issue['issue_number'])
+        merge_result = self.git_workflow.merge_to_main(issue["issue_number"])
 
         # 5. Update issue status to 'completed'
         self.db.update_issue(issue_id, {"status": "completed"})
@@ -980,8 +979,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         deployer = Deployer(self.git_workflow.project_root, self.db)
         deployment_result = deployer.trigger_deployment(
-            commit_hash=merge_result["merge_commit"],
-            environment="staging"
+            commit_hash=merge_result["merge_commit"], environment="staging"
         )
 
         logger.info(
@@ -998,10 +996,7 @@ Generate the PRD in markdown format with clear sections and professional languag
         }
 
     async def start_multi_agent_execution(
-        self,
-        max_retries: int = 3,
-        max_concurrent: int = 5,
-        timeout: int = 300
+        self, max_retries: int = 3, max_concurrent: int = 5, timeout: int = 300
     ) -> Dict[str, Any]:
         """
         Start multi-agent parallel task execution with timeout protection.
@@ -1045,13 +1040,14 @@ Generate the PRD in markdown format with clear sections and professional languag
             raise
 
     async def _execute_coordination_loop(
-        self,
-        max_retries: int = 3,
-        max_concurrent: int = 5
+        self, max_retries: int = 3, max_concurrent: int = 5
     ) -> Dict[str, Any]:
         """Internal coordination loop extracted for timeout wrapping."""
-        print(f"\n🔄 DEBUG: _execute_coordination_loop ENTERED (max_retries={max_retries}, max_concurrent={max_concurrent})")
+        print(
+            f"\n🔄 DEBUG: _execute_coordination_loop ENTERED (max_retries={max_retries}, max_concurrent={max_concurrent})"
+        )
         import time
+
         print("🔄 DEBUG: Imported time module")
         start_time = time.time()
         print(f"🔄 DEBUG: Start time: {start_time}")
@@ -1080,7 +1076,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 workflow_step=task_dict.get("workflow_step"),
                 can_parallelize=task_dict.get("can_parallelize", False),
                 requires_mcp=task_dict.get("requires_mcp", False),
-                depends_on=task_dict.get("depends_on", "[]")
+                depends_on=task_dict.get("depends_on", "[]"),
             )
             tasks.append(task)
         print(f"🔄 DEBUG: Converted {len(tasks)} Task objects")
@@ -1109,7 +1105,9 @@ Generate the PRD in markdown format with clear sections and professional languag
             while not self._all_tasks_complete():
                 print(f"🔄 DEBUG: While loop iteration {iteration_count}")
                 iteration_count += 1
-                print(f"🔄 DEBUG: Checking watchdog (iteration={iteration_count}, max={max_iterations})...")
+                print(
+                    f"🔄 DEBUG: Checking watchdog (iteration={iteration_count}, max={max_iterations})..."
+                )
                 if iteration_count > max_iterations:
                     logger.error(f"❌ WATCHDOG: Hit max iterations {max_iterations}")
                     logger.error(f"Running tasks: {len(running_tasks)}")
@@ -1121,16 +1119,22 @@ Generate the PRD in markdown format with clear sections and professional languag
                 print(f"🔄 DEBUG: Getting ready tasks from dependency_resolver...")
                 ready_task_ids = self.dependency_resolver.get_ready_tasks(exclude_completed=True)
                 print(f"🔄 DEBUG: Got {len(ready_task_ids)} ready task IDs: {ready_task_ids}")
-                
+
                 # Filter out already running tasks
-                print(f"🔄 DEBUG: Filtering out running tasks (currently {len(running_tasks)} running)...")
+                print(
+                    f"🔄 DEBUG: Filtering out running tasks (currently {len(running_tasks)} running)..."
+                )
                 ready_task_ids = [tid for tid in ready_task_ids if tid not in running_tasks]
                 print(f"🔄 DEBUG: After filtering: {len(ready_task_ids)} ready tasks")
 
                 # Log loop state
                 print(f"🔄 DEBUG: Calculating loop state...")
-                completed_count = len([t for t in tasks if t.id in self.dependency_resolver.completed_tasks])
-                print(f"🔄 DEBUG: Loop state: ready={len(ready_task_ids)}, running={len(running_tasks)}, completed={completed_count}/{len(tasks)}")
+                completed_count = len(
+                    [t for t in tasks if t.id in self.dependency_resolver.completed_tasks]
+                )
+                print(
+                    f"🔄 DEBUG: Loop state: ready={len(ready_task_ids)}, running={len(running_tasks)}, completed={completed_count}/{len(tasks)}"
+                )
                 logger.debug(
                     f"🔄 Loop {iteration_count}: {len(ready_task_ids)} ready, "
                     f"{len(running_tasks)} running, {completed_count}/{len(tasks)} complete"
@@ -1138,7 +1142,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 # Assign and execute ready tasks (up to max_concurrent)
                 print(f"🔄 DEBUG: About to assign tasks (max_concurrent={max_concurrent})...")
-                for task_id in ready_task_ids[:max_concurrent - len(running_tasks)]:
+                for task_id in ready_task_ids[: max_concurrent - len(running_tasks)]:
                     print(f"🔄 DEBUG: Processing task {task_id}...")
                     task = next((t for t in tasks if t.id == task_id), None)
                     if not task:
@@ -1147,7 +1151,9 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                     # Check retry limit
                     if retry_counts.get(task_id, 0) >= max_retries:
-                        logger.warning(f"Task {task_id} exceeded max retries ({max_retries}), marking as failed")
+                        logger.warning(
+                            f"Task {task_id} exceeded max retries ({max_retries}), marking as failed"
+                        )
                         self.db.update_task(task_id, {"status": "failed"})
                         self.dependency_resolver.completed_tasks.add(task_id)
                         continue
@@ -1169,8 +1175,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 if running_tasks:
                     print(f"🔄 DEBUG: About to wait for tasks...")
                     done, _ = await asyncio.wait(
-                        running_tasks.values(),
-                        return_when=asyncio.FIRST_COMPLETED
+                        running_tasks.values(), return_when=asyncio.FIRST_COMPLETED
                     )
 
                     # Process completed tasks
@@ -1179,9 +1184,9 @@ Generate the PRD in markdown format with clear sections and professional languag
                         # Find which task this was
                         task_id = next(
                             (tid for tid, fut in running_tasks.items() if fut == completed_future),
-                            None
+                            None,
                         )
-                        
+
                         if task_id:
                             # Remove from running tasks
                             running_tasks.pop(task_id, None)
@@ -1192,14 +1197,18 @@ Generate the PRD in markdown format with clear sections and professional languag
                                 if success:
                                     print(f"🔄 DEBUG: Task {task_id} completed successfully")
                                     # Unblock dependent tasks
-                                    unblocked = self.dependency_resolver.unblock_dependent_tasks(task_id)
+                                    unblocked = self.dependency_resolver.unblock_dependent_tasks(
+                                        task_id
+                                    )
                                     if unblocked:
                                         print(f"🔄 DEBUG: Task {task_id} unblocked: {unblocked}")
                                 else:
                                     # Task failed - increment retry count
                                     retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                     total_retries += 1
-                                    print(f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}")
+                                    print(
+                                        f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
+                                    )
                             except Exception as e:
                                 logger.exception(f"Error processing task {task_id}")
                                 retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
@@ -1222,7 +1231,9 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         # Calculate summary statistics
         execution_time = time.time() - start_time
-        completed_count = len([t for t in tasks if t.id in self.dependency_resolver.completed_tasks])
+        completed_count = len(
+            [t for t in tasks if t.id in self.dependency_resolver.completed_tasks]
+        )
         failed_count = len([t for t in tasks if self.db.get_task(t.id).get("status") == "failed"])
 
         summary = {
@@ -1231,7 +1242,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             "failed": failed_count,
             "retries": total_retries,
             "execution_time": execution_time,
-            "iterations": iteration_count
+            "iterations": iteration_count,
         }
 
         logger.info(
@@ -1246,7 +1257,7 @@ Generate the PRD in markdown format with clear sections and professional languag
         logger.warning("🚨 Emergency shutdown initiated")
         try:
             # Retire all active agents
-            if hasattr(self, 'agent_pool'):
+            if hasattr(self, "agent_pool"):
                 agent_status = self.agent_pool.get_agent_status()
                 for agent_id in list(agent_status.keys()):
                     try:
@@ -1254,16 +1265,12 @@ Generate the PRD in markdown format with clear sections and professional languag
                         logger.debug(f"Retired agent {agent_id}")
                     except Exception as e:
                         logger.warning(f"Failed to retire agent {agent_id}: {e}")
-            
+
             logger.info("Emergency shutdown complete")
         except Exception as e:
             logger.error(f"Error during emergency shutdown: {e}")
 
-    async def _assign_and_execute_task(
-        self,
-        task: Task,
-        retry_counts: Dict[int, int]
-    ) -> bool:
+    async def _assign_and_execute_task(self, task: Task, retry_counts: Dict[int, int]) -> bool:
         """
         Assign task to agent and execute asynchronously.
 
@@ -1285,11 +1292,7 @@ Generate the PRD in markdown format with clear sections and professional languag
         """
         try:
             # Determine agent type
-            task_dict = {
-                "id": task.id,
-                "title": task.title,
-                "description": task.description
-            }
+            task_dict = {"id": task.id, "title": task.title, "description": task.description}
             agent_type = self.agent_assigner.assign_agent_type(task_dict)
 
             logger.info(f"Assigning task {task.id} ({task.title}) to {agent_type}")
@@ -1329,7 +1332,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             # Mark agent idle if it was assigned
             try:
-                if 'agent_id' in locals():
+                if "agent_id" in locals():
                     self.agent_pool_manager.mark_agent_idle(agent_id)
             except Exception:
                 pass
@@ -1339,17 +1342,17 @@ Generate the PRD in markdown format with clear sections and professional languag
     async def can_assign_task(self, task_id: int) -> bool:
         """
         Check if a task can be assigned to an agent (T036, T037).
-        
+
         Implements SYNC blocker dependency handling:
         - SYNC blockers: Block all dependent tasks until resolved
         - ASYNC blockers: Allow dependent tasks to continue (informational only)
-        
+
         Args:
             task_id: Database ID of the task
-            
+
         Returns:
             True if task can be assigned, False if blocked
-            
+
         Blocking Conditions:
         1. Task has pending SYNC blocker (direct block)
         2. Task depends on another task with pending SYNC blocker (transitive block)
@@ -1359,51 +1362,52 @@ Generate the PRD in markdown format with clear sections and professional languag
         task = self.db.get_task(task_id)
         if not task:
             return False
-            
+
         # Check if this task itself has a pending SYNC blocker
-        blockers = self.db.list_blockers(
-            project_id=self.project_id,
-            status="PENDING"
-        )
-        
-        for blocker in blockers.get('blockers', []):
-            if blocker.get('task_id') == task_id and blocker.get('blocker_type') == 'SYNC':
-                logger.debug(f"Task {task_id} blocked: has pending SYNC blocker {blocker.get('id')}")
+        blockers = self.db.list_blockers(project_id=self.project_id, status="PENDING")
+
+        for blocker in blockers.get("blockers", []):
+            if blocker.get("task_id") == task_id and blocker.get("blocker_type") == "SYNC":
+                logger.debug(
+                    f"Task {task_id} blocked: has pending SYNC blocker {blocker.get('id')}"
+                )
                 return False
-        
+
         # Check if task depends on tasks with pending SYNC blockers
-        depends_on = task.get('depends_on', '')
+        depends_on = task.get("depends_on", "")
         if depends_on:
             # Get all project tasks to resolve dependencies
             all_tasks = self.db.get_project_tasks(self.project_id)
-            
+
             # Find the task this depends on
             dependency_task = None
             for t in all_tasks:
-                if t['task_number'] == depends_on:
+                if t["task_number"] == depends_on:
                     dependency_task = t
                     break
-            
+
             if dependency_task:
                 # Recursively check if dependency is blocked
-                can_assign_dependency = await self.can_assign_task(dependency_task['id'])
+                can_assign_dependency = await self.can_assign_task(dependency_task["id"])
                 if not can_assign_dependency:
                     logger.debug(
                         f"Task {task_id} blocked: depends on task {dependency_task['id']} "
                         f"which has SYNC blocker"
                     )
                     return False
-                
+
                 # Also check if dependency task has pending SYNC blocker
-                for blocker in blockers.get('blockers', []):
-                    if (blocker.get('task_id') == dependency_task['id'] and 
-                        blocker.get('blocker_type') == 'SYNC'):
+                for blocker in blockers.get("blockers", []):
+                    if (
+                        blocker.get("task_id") == dependency_task["id"]
+                        and blocker.get("blocker_type") == "SYNC"
+                    ):
                         logger.debug(
                             f"Task {task_id} blocked: dependency task {dependency_task['id']} "
                             f"has SYNC blocker {blocker.get('id')}"
                         )
                         return False
-        
+
         # No blocking conditions found
         return True
 
@@ -1419,10 +1423,10 @@ Generate the PRD in markdown format with clear sections and professional languag
         print(f"🔍 DEBUG: Getting tasks for project {self.project_id}...")
         task_dicts = self.db.get_project_tasks(self.project_id)
         print(f"🔍 DEBUG: Got {len(task_dicts)} tasks")
-        
+
         incomplete = []
         blocked = []
-        
+
         print("🔍 DEBUG: Iterating through tasks...")
         for task_dict in task_dicts:
             status = task_dict.get("status", "pending")
@@ -1431,14 +1435,14 @@ Generate the PRD in markdown format with clear sections and professional languag
                 incomplete.append(task_dict["id"])
                 if status == "blocked":
                     blocked.append(task_dict["id"])
-        
+
         print(f"🔍 DEBUG: incomplete={incomplete}, blocked={blocked}")
-        
+
         # No incomplete tasks means all done
         if not incomplete:
             print("🔍 DEBUG: All tasks complete!")
             return True
-        
+
         # Deadlock detection: if all remaining tasks are blocked, we're stuck
         if incomplete and len(blocked) == len(incomplete):
             print(f"🔍 DEBUG: DEADLOCK DETECTED!")
@@ -1446,6 +1450,6 @@ Generate the PRD in markdown format with clear sections and professional languag
                 f"❌ DEADLOCK DETECTED: All {len(incomplete)} remaining tasks are blocked: {blocked}"
             )
             return True  # Force exit to prevent infinite loop
-        
+
         logger.debug(f"Tasks remaining: {len(incomplete)} ({len(blocked)} blocked)")
         return False

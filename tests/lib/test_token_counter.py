@@ -195,14 +195,12 @@ class TestTokenCounterContext:
         items = [
             {"content": "First task description"},
             {"content": "Second task description"},
-            {"content": "Third task description"}
+            {"content": "Third task description"},
         ]
         total = counter.count_context_tokens(items)
 
         # Total should be sum of individual counts
-        individual_sum = sum(
-            counter.count_tokens(item["content"]) for item in items
-        )
+        individual_sum = sum(counter.count_tokens(item["content"]) for item in items)
         assert total == individual_sum
 
     def test_context_missing_content_key(self):
@@ -211,15 +209,15 @@ class TestTokenCounterContext:
         items = [
             {"content": "Valid content"},
             {"other_key": "No content key"},
-            {"content": "More valid content"}
+            {"content": "More valid content"},
         ]
         total = counter.count_context_tokens(items)
 
         # Should handle missing keys gracefully (empty string = 0 tokens)
         expected = (
-            counter.count_tokens("Valid content") +
-            counter.count_tokens("") +
-            counter.count_tokens("More valid content")
+            counter.count_tokens("Valid content")
+            + counter.count_tokens("")
+            + counter.count_tokens("More valid content")
         )
         assert total == expected
 
@@ -227,40 +225,23 @@ class TestTokenCounterContext:
         """Test context counting ignores extra metadata."""
         counter = TokenCounter()
         items = [
-            {
-                "content": "Task content",
-                "tier": "hot",
-                "importance": 0.9,
-                "extra_field": "ignored"
-            },
-            {
-                "content": "More content",
-                "tier": "warm"
-            }
+            {"content": "Task content", "tier": "hot", "importance": 0.9, "extra_field": "ignored"},
+            {"content": "More content", "tier": "warm"},
         ]
         total = counter.count_context_tokens(items)
 
         # Should only count content field
-        expected = (
-            counter.count_tokens("Task content") +
-            counter.count_tokens("More content")
-        )
+        expected = counter.count_tokens("Task content") + counter.count_tokens("More content")
         assert total == expected
 
     def test_context_empty_content(self):
         """Test context counting with empty content values."""
         counter = TokenCounter()
-        items = [
-            {"content": "Real content"},
-            {"content": ""},
-            {"content": "More real content"}
-        ]
+        items = [{"content": "Real content"}, {"content": ""}, {"content": "More real content"}]
         total = counter.count_context_tokens(items)
 
         expected = (
-            counter.count_tokens("Real content") +
-            0 +
-            counter.count_tokens("More real content")
+            counter.count_tokens("Real content") + 0 + counter.count_tokens("More real content")
         )
         assert total == expected
 
@@ -327,7 +308,7 @@ class TestTokenCounterPerformance:
         contents = [
             "Short text",
             "A much longer text with many more words to count",
-            "Medium length text here"
+            "Medium length text here",
         ]
 
         # Get batch counts

@@ -37,9 +37,7 @@ def temp_db():
 def test_project(temp_db):
     """Create a test project for context items."""
     project_id = temp_db.create_project(
-        name="test-project",
-        description="Test project for checkpoint restore",
-        workspace_path=""
+        name="test-project", description="Test project for checkpoint restore", workspace_path=""
     )
     return project_id
 
@@ -56,12 +54,12 @@ class TestCheckpointRestore:
             "context_items": [
                 {"id": 1, "content": "Task 1", "tier": "HOT"},
                 {"id": 2, "content": "Task 2", "tier": "WARM"},
-                {"id": 3, "content": "Task 3", "tier": "COLD"}
+                {"id": 3, "content": "Task 3", "tier": "COLD"},
             ],
             "metadata": {
                 "timestamp": datetime.now(UTC).isoformat(),
-                "reason": "flash_save_triggered"
-            }
+                "reason": "flash_save_triggered",
+            },
         }
 
         # ACT: Create checkpoint
@@ -71,7 +69,7 @@ class TestCheckpointRestore:
             items_count=10,
             items_archived=5,
             hot_items_retained=3,
-            token_count=5000
+            token_count=5000,
         )
 
         # ASSERT: Checkpoint created
@@ -95,10 +93,7 @@ class TestCheckpointRestore:
         # Create multiple checkpoints
         checkpoint_ids = []
         for i in range(15):
-            checkpoint_data = {
-                "checkpoint_number": i,
-                "items": []
-            }
+            checkpoint_data = {"checkpoint_number": i, "items": []}
 
             checkpoint_id = temp_db.create_checkpoint(
                 agent_id=agent_id,
@@ -106,7 +101,7 @@ class TestCheckpointRestore:
                 items_count=10 + i,
                 items_archived=5 + i,
                 hot_items_retained=3,
-                token_count=5000 + (i * 100)
+                token_count=5000 + (i * 100),
             )
             checkpoint_ids.append(checkpoint_id)
 
@@ -141,7 +136,7 @@ class TestCheckpointRestore:
             items_count=50,
             items_archived=20,
             hot_items_retained=15,
-            token_count=12000
+            token_count=12000,
         )
 
         # ACT: Retrieve checkpoint

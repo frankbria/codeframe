@@ -49,30 +49,33 @@ def project_with_issues(client):
     """
     # Create project
     project_id = app.state.db.create_project(
-        name="Test Issues Project",
-        status=ProjectStatus.PLANNING
+        name="Test Issues Project", status=ProjectStatus.PLANNING
     )
 
     # Create issues
-    issue1_id = app.state.db.create_issue(Issue(
-        project_id=project_id,
-        issue_number="1.1",
-        title="Implement authentication",
-        description="Add user login and JWT",
-        status=TaskStatus.IN_PROGRESS,
-        priority=0,
-        workflow_step=5
-    ))
+    issue1_id = app.state.db.create_issue(
+        Issue(
+            project_id=project_id,
+            issue_number="1.1",
+            title="Implement authentication",
+            description="Add user login and JWT",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=5,
+        )
+    )
 
-    issue2_id = app.state.db.create_issue(Issue(
-        project_id=project_id,
-        issue_number="1.2",
-        title="Setup database schema",
-        description="Create initial migrations",
-        status=TaskStatus.COMPLETED,
-        priority=0,
-        workflow_step=3
-    ))
+    issue2_id = app.state.db.create_issue(
+        Issue(
+            project_id=project_id,
+            issue_number="1.2",
+            title="Setup database schema",
+            description="Create initial migrations",
+            status=TaskStatus.COMPLETED,
+            priority=0,
+            workflow_step=3,
+        )
+    )
 
     # Create tasks for issue 1
     task1_id = app.state.db.create_task_with_issue(
@@ -86,7 +89,7 @@ def project_with_issues(client):
         priority=0,
         workflow_step=5,
         can_parallelize=False,
-        requires_mcp=False
+        requires_mcp=False,
     )
 
     task2_id = app.state.db.create_task_with_issue(
@@ -100,7 +103,7 @@ def project_with_issues(client):
         priority=0,
         workflow_step=5,
         can_parallelize=False,
-        requires_mcp=False
+        requires_mcp=False,
     )
 
     return project_id, [issue1_id, issue2_id], [task1_id, task2_id]
@@ -252,13 +255,13 @@ class TestIssueStructure:
         # Verify created_at is valid RFC 3339
         created_at = issue["created_at"]
         assert isinstance(created_at, str)
-        dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
         assert dt.tzinfo is not None
 
         # Verify updated_at is valid RFC 3339
         updated_at = issue["updated_at"]
         assert isinstance(updated_at, str)
-        dt = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
         assert dt.tzinfo is not None
 
 
@@ -366,10 +369,7 @@ class TestIssuesEndpointEdgeCases:
     def test_empty_issues_list(self, client):
         """Test that empty project returns empty issues array."""
         # Create project without issues
-        project_id = app.state.db.create_project(
-            name="Empty Project",
-            status=ProjectStatus.INIT
-        )
+        project_id = app.state.db.create_project(name="Empty Project", status=ProjectStatus.INIT)
 
         response = client.get(f"/api/projects/{project_id}/issues")
         data = response.json()

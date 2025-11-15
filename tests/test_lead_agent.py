@@ -83,7 +83,7 @@ class TestLeadAgentChat:
         mock_provider.send_message.return_value = {
             "content": "Hello! How can I help you?",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -108,7 +108,7 @@ class TestLeadAgentChat:
         mock_provider.send_message.return_value = {
             "content": "Response",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -135,7 +135,7 @@ class TestLeadAgentChat:
         mock_provider.send_message.return_value = {
             "content": "Hello! How can I help?",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -163,13 +163,13 @@ class TestLeadAgentChat:
             {
                 "content": "Hello! How can I help?",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 10, "output_tokens": 8}
+                "usage": {"input_tokens": 10, "output_tokens": 8},
             },
             {
                 "content": "Sure, I can help with that.",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 30, "output_tokens": 12}
-            }
+                "usage": {"input_tokens": 30, "output_tokens": 12},
+            },
         ]
         mock_provider_class.return_value = mock_provider
 
@@ -251,7 +251,7 @@ class TestLeadAgentConversationPersistence:
         mock_provider.send_message.return_value = {
             "content": "Hello!",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -279,7 +279,7 @@ class TestLeadAgentConversationPersistence:
         mock_provider.send_message.return_value = {
             "content": "Response",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -321,7 +321,7 @@ class TestLeadAgentTokenUsageTracking:
         mock_provider.send_message.return_value = {
             "content": "Response",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 100, "output_tokens": 50}
+            "usage": {"input_tokens": 100, "output_tokens": 50},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -329,6 +329,7 @@ class TestLeadAgentTokenUsageTracking:
 
         # ACT
         import logging
+
         caplog.set_level(logging.INFO)
         agent.chat("Test message")
 
@@ -350,13 +351,13 @@ class TestLeadAgentTokenUsageTracking:
             {
                 "content": "Response 1",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 100, "output_tokens": 50}
+                "usage": {"input_tokens": 100, "output_tokens": 50},
             },
             {
                 "content": "Response 2",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 120, "output_tokens": 60}
-            }
+                "usage": {"input_tokens": 120, "output_tokens": 60},
+            },
         ]
         mock_provider_class.return_value = mock_provider
 
@@ -388,7 +389,7 @@ class TestLeadAgentErrorHandling:
         mock_provider.send_message.return_value = {
             "content": "Response",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -417,6 +418,7 @@ class TestLeadAgentErrorHandling:
 
         # ACT
         import logging
+
         caplog.set_level(logging.ERROR)
 
         with pytest.raises(Exception):
@@ -444,18 +446,18 @@ class TestLeadAgentIntegration:
             {
                 "content": "Hello! I'm your Lead Agent.",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 10, "output_tokens": 8}
+                "usage": {"input_tokens": 10, "output_tokens": 8},
             },
             {
                 "content": "I can help you build software.",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 30, "output_tokens": 12}
+                "usage": {"input_tokens": 30, "output_tokens": 12},
             },
             {
                 "content": "Let's start with requirements.",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 50, "output_tokens": 15}
-            }
+                "usage": {"input_tokens": 50, "output_tokens": 15},
+            },
         ]
         mock_provider_class.return_value = mock_provider
 
@@ -494,13 +496,13 @@ class TestLeadAgentIntegration:
             {
                 "content": "First response",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 10, "output_tokens": 8}
+                "usage": {"input_tokens": 10, "output_tokens": 8},
             },
             {
                 "content": "Second response with context",
                 "stop_reason": "end_turn",
-                "usage": {"input_tokens": 30, "output_tokens": 12}
-            }
+                "usage": {"input_tokens": 30, "output_tokens": 12},
+            },
         ]
         mock_provider_class.return_value = mock_provider
 

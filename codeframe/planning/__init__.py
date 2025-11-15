@@ -13,7 +13,7 @@ from codeframe.planning.issue_generator import (
 )
 
 __all__ = [
-    'IssueGenerator',
-    'parse_prd_features',
-    'assign_priority',
+    "IssueGenerator",
+    "parse_prd_features",
+    "assign_priority",
 ]

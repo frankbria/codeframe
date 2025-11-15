@@ -37,9 +37,7 @@ def temp_db():
 def test_project(temp_db):
     """Create a test project for context items."""
     project_id = temp_db.create_project(
-        name="test-project",
-        description="Test project for context stats",
-        workspace_path=""
+        name="test-project", description="Test project for context stats", workspace_path=""
     )
     return project_id
 
@@ -58,13 +56,13 @@ class TestContextStats:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content=f"HOT task {i}: " + ("Critical details " * 10)
+                content=f"HOT task {i}: " + ("Critical details " * 10),
             )
             # Set to HOT tier
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
@@ -74,13 +72,13 @@ class TestContextStats:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.CODE.value,
-                content=f"WARM code {i}: " + ("def function(): pass; " * 5)
+                content=f"WARM code {i}: " + ("def function(): pass; " * 5),
             )
             # Set to WARM tier
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.6, current_tier = 'warm' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
@@ -90,24 +88,31 @@ class TestContextStats:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.PRD_SECTION.value,
-                content=f"COLD prd {i}: " + ("Old requirements " * 8)
+                content=f"COLD prd {i}: " + ("Old requirements " * 8),
             )
             # Set to COLD tier
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.2, current_tier = 'cold' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
         # ACT: Get context stats
         from codeframe.lib.context_manager import ContextManager
+
         context_mgr = ContextManager(db=temp_db)
 
         # Calculate stats manually for now (implementation will be in T067)
-        hot_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="hot", limit=100)
-        warm_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="warm", limit=100)
-        cold_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="cold", limit=100)
+        hot_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="hot", limit=100
+        )
+        warm_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="warm", limit=100
+        )
+        cold_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="cold", limit=100
+        )
 
         # ASSERT: Tier counts are correct
         assert len(hot_items) == 5
@@ -115,7 +120,9 @@ class TestContextStats:
         assert len(cold_items) == 3
 
         # Total items
-        all_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier=None, limit=100)
+        all_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier=None, limit=100
+        )
         assert len(all_items) == 18
 
     def test_context_stats_calculates_tokens(self, temp_db, test_project):
@@ -129,12 +136,12 @@ class TestContextStats:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content="Critical task: " + ("word " * 10)  # ~50 tokens
+                content="Critical task: " + ("word " * 10),  # ~50 tokens
             )
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.9, current_tier = 'hot' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
@@ -144,21 +151,26 @@ class TestContextStats:
                 project_id=test_project,
                 agent_id=agent_id,
                 item_type=ContextItemType.CODE.value,
-                content="def function(): " + ("pass; " * 5)  # ~30 tokens
+                content="def function(): " + ("pass; " * 5),  # ~30 tokens
             )
             cursor = temp_db.conn.cursor()
             cursor.execute(
                 "UPDATE context_items SET importance_score = 0.6, current_tier = 'warm' WHERE id = ?",
-                (item_id,)
+                (item_id,),
             )
             temp_db.conn.commit()
 
         # ACT: Calculate tokens per tier
         from codeframe.lib.token_counter import TokenCounter
+
         token_counter = TokenCounter(cache_enabled=True)
 
-        hot_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="hot", limit=100)
-        warm_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="warm", limit=100)
+        hot_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="hot", limit=100
+        )
+        warm_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="warm", limit=100
+        )
 
         hot_tokens = token_counter.count_context_tokens(hot_items)
         warm_tokens = token_counter.count_context_tokens(warm_items)
@@ -169,7 +181,9 @@ class TestContextStats:
         assert hot_tokens + warm_tokens > 0  # Total should be positive
 
         # Verify we can get total tokens
-        all_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier=None, limit=100)
+        all_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier=None, limit=100
+        )
         total_tokens = token_counter.count_context_tokens(all_items)
         assert total_tokens == hot_tokens + warm_tokens
 
@@ -178,9 +192,15 @@ class TestContextStats:
         agent_id = "test-agent-stats-empty"
 
         # ACT: Get stats for empty agent
-        hot_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="hot", limit=100)
-        warm_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="warm", limit=100)
-        cold_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier="cold", limit=100)
+        hot_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="hot", limit=100
+        )
+        warm_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="warm", limit=100
+        )
+        cold_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier="cold", limit=100
+        )
 
         # ASSERT: All counts are zero
         assert len(hot_items) == 0
@@ -189,7 +209,10 @@ class TestContextStats:
 
         # Total tokens should be zero
         from codeframe.lib.token_counter import TokenCounter
+
         token_counter = TokenCounter(cache_enabled=True)
-        all_items = temp_db.list_context_items(project_id=test_project, agent_id=agent_id, tier=None, limit=100)
+        all_items = temp_db.list_context_items(
+            project_id=test_project, agent_id=agent_id, tier=None, limit=100
+        )
         total_tokens = token_counter.count_context_tokens(all_items)
         assert total_tokens == 0

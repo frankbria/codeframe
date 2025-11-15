@@ -22,7 +22,7 @@ class TestCorrectionAttemptModel:
             fix_description="Added missing edge case handling",
             code_changes="+ if n == 0: return 1",
             test_result_id=42,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
 
         assert attempt.task_id == "task-123"
@@ -39,7 +39,7 @@ class TestCorrectionAttemptModel:
             task_id="task-456",
             attempt_number=2,
             error_analysis="ValueError: invalid input",
-            fix_description="Added input validation"
+            fix_description="Added input validation",
         )
 
         assert attempt.task_id == "task-456"
@@ -54,46 +54,31 @@ class TestCorrectionAttemptModel:
         """Test CorrectionAttempt validates attempt_number range."""
         # Valid: 1-3
         attempt1 = CorrectionAttempt(
-            task_id="task-1",
-            attempt_number=1,
-            error_analysis="error",
-            fix_description="fix"
+            task_id="task-1", attempt_number=1, error_analysis="error", fix_description="fix"
         )
         assert attempt1.attempt_number == 1
 
         attempt3 = CorrectionAttempt(
-            task_id="task-3",
-            attempt_number=3,
-            error_analysis="error",
-            fix_description="fix"
+            task_id="task-3", attempt_number=3, error_analysis="error", fix_description="fix"
         )
         assert attempt3.attempt_number == 3
 
         # Invalid: 0 or > 3
         with pytest.raises(ValueError, match="attempt_number must be between 1 and 3"):
             CorrectionAttempt(
-                task_id="task-0",
-                attempt_number=0,
-                error_analysis="error",
-                fix_description="fix"
+                task_id="task-0", attempt_number=0, error_analysis="error", fix_description="fix"
             )
 
         with pytest.raises(ValueError, match="attempt_number must be between 1 and 3"):
             CorrectionAttempt(
-                task_id="task-4",
-                attempt_number=4,
-                error_analysis="error",
-                fix_description="fix"
+                task_id="task-4", attempt_number=4, error_analysis="error", fix_description="fix"
             )
 
     def test_correction_attempt_auto_timestamp(self):
         """Test CorrectionAttempt auto-generates timestamp if not provided."""
         before = datetime.now()
         attempt = CorrectionAttempt(
-            task_id="task-789",
-            attempt_number=1,
-            error_analysis="error",
-            fix_description="fix"
+            task_id="task-789", attempt_number=1, error_analysis="error", fix_description="fix"
         )
         after = datetime.now()
 
@@ -102,10 +87,7 @@ class TestCorrectionAttemptModel:
     def test_correction_attempt_empty_strings(self):
         """Test CorrectionAttempt handles empty strings correctly."""
         attempt = CorrectionAttempt(
-            task_id="task-empty",
-            attempt_number=1,
-            error_analysis="",
-            fix_description=""
+            task_id="task-empty", attempt_number=1, error_analysis="", fix_description=""
         )
 
         assert attempt.error_analysis == ""

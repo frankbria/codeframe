@@ -45,8 +45,7 @@ class Project:
 
         # Create default config
         default_config = ProjectConfig(
-            project_name=project_name,
-            project_type="python"  # Auto-detect in future
+            project_name=project_name, project_type="python"  # Auto-detect in future
         )
         project.config.save(default_config)
 
@@ -93,6 +92,7 @@ class Project:
         """Get Lead Agent instance for interaction."""
         # TODO: Implement Lead Agent retrieval
         from codeframe.agents.lead_agent import LeadAgent
+
         return LeadAgent(self)
 
     def chat(self, message: str) -> str:

@@ -25,7 +25,7 @@ class TestCorrectionAttemptDatabase:
         cursor = db.conn.cursor()
         cursor.execute(
             "INSERT INTO tasks (project_id, title, description, status, priority, workflow_step) VALUES (?, ?, ?, ?, ?, ?)",
-            (project_id, "Test Task", "Test Description", "in_progress", 2, 1)
+            (project_id, "Test Task", "Test Description", "in_progress", 2, 1),
         )
         db.conn.commit()
         task_id = cursor.lastrowid
@@ -41,7 +41,7 @@ class TestCorrectionAttemptDatabase:
             error_analysis="AssertionError: expected 5, got 3",
             fix_description="Added edge case handling",
             code_changes="+ if n == 0: return 1",
-            test_result_id=None
+            test_result_id=None,
         )
 
         assert attempt_id is not None
@@ -53,7 +53,7 @@ class TestCorrectionAttemptDatabase:
             task_id=db._test_task_id,
             attempt_number=2,
             error_analysis="ValueError: invalid input",
-            fix_description="Added validation"
+            fix_description="Added validation",
         )
 
         assert attempt_id is not None
@@ -65,13 +65,13 @@ class TestCorrectionAttemptDatabase:
             task_id=db._test_task_id,
             attempt_number=1,
             error_analysis="Error 1",
-            fix_description="Fix 1"
+            fix_description="Fix 1",
         )
         db.create_correction_attempt(
             task_id=db._test_task_id,
             attempt_number=2,
             error_analysis="Error 2",
-            fix_description="Fix 2"
+            fix_description="Fix 2",
         )
 
         attempts = db.get_correction_attempts_by_task(db._test_task_id)
@@ -87,19 +87,19 @@ class TestCorrectionAttemptDatabase:
             task_id=db._test_task_id,
             attempt_number=1,
             error_analysis="Error 1",
-            fix_description="Fix 1"
+            fix_description="Fix 1",
         )
         db.create_correction_attempt(
             task_id=db._test_task_id,
             attempt_number=2,
             error_analysis="Error 2",
-            fix_description="Fix 2"
+            fix_description="Fix 2",
         )
         db.create_correction_attempt(
             task_id=db._test_task_id,
             attempt_number=3,
             error_analysis="Error 3",
-            fix_description="Fix 3"
+            fix_description="Fix 3",
         )
 
         latest = db.get_latest_correction_attempt(db._test_task_id)
@@ -123,13 +123,13 @@ class TestCorrectionAttemptDatabase:
             task_id=db._test_task_id,
             attempt_number=1,
             error_analysis="Error 1",
-            fix_description="Fix 1"
+            fix_description="Fix 1",
         )
         db.create_correction_attempt(
             task_id=db._test_task_id,
             attempt_number=2,
             error_analysis="Error 2",
-            fix_description="Fix 2"
+            fix_description="Fix 2",
         )
 
         assert db.count_correction_attempts(db._test_task_id) == 2
@@ -138,11 +138,7 @@ class TestCorrectionAttemptDatabase:
         """Test creating correction attempt linked to test result."""
         # Create a test result first
         test_result_id = db.create_test_result(
-            task_id=db._test_task_id,
-            status="failed",
-            passed=5,
-            failed=2,
-            errors=0
+            task_id=db._test_task_id, status="failed", passed=5, failed=2, errors=0
         )
 
         # Create correction attempt referencing test result
@@ -151,7 +147,7 @@ class TestCorrectionAttemptDatabase:
             attempt_number=1,
             error_analysis="Tests failed",
             fix_description="Fixed assertions",
-            test_result_id=test_result_id
+            test_result_id=test_result_id,
         )
 
         attempts = db.get_correction_attempts_by_task(db._test_task_id)
@@ -165,19 +161,19 @@ class TestCorrectionAttemptDatabase:
             task_id=db._test_task_id,
             attempt_number=3,
             error_analysis="Error 3",
-            fix_description="Fix 3"
+            fix_description="Fix 3",
         )
         db.create_correction_attempt(
             task_id=db._test_task_id,
             attempt_number=1,
             error_analysis="Error 1",
-            fix_description="Fix 1"
+            fix_description="Fix 1",
         )
         db.create_correction_attempt(
             task_id=db._test_task_id,
             attempt_number=2,
             error_analysis="Error 2",
-            fix_description="Fix 2"
+            fix_description="Fix 2",
         )
 
         attempts = db.get_correction_attempts_by_task(db._test_task_id)

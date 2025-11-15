@@ -36,7 +36,7 @@ class AgentPoolManager:
         db,
         ws_manager=None,
         max_agents: int = 10,
-        api_key: Optional[str] = None
+        api_key: Optional[str] = None,
     ):
         """
         Initialize Agent Pool Manager.
@@ -63,7 +63,9 @@ class AgentPoolManager:
         # Thread lock for pool operations (using RLock for reentrancy)
         self.lock = RLock()
 
-        logger.info(f"Agent Pool Manager initialized: project_id={project_id}, max_agents={max_agents}")
+        logger.info(
+            f"Agent Pool Manager initialized: project_id={project_id}, max_agents={max_agents}"
+        )
 
     def create_agent(self, agent_type: str) -> str:
         """
@@ -104,14 +106,14 @@ class AgentPoolManager:
                     db=self.db,
                     codebase_index=None,  # Optional for workers
                     provider="anthropic",
-                    api_key=self.api_key
+                    api_key=self.api_key,
                 )
             elif agent_type == "frontend" or agent_type == "frontend-specialist":
                 agent_instance = FrontendWorkerAgent(
                     agent_id=agent_id,
                     provider="anthropic",
                     api_key=self.api_key,
-                    websocket_manager=self.ws_manager
+                    websocket_manager=self.ws_manager,
                 )
             elif agent_type == "test" or agent_type == "test-engineer":
                 print(f"🏭 DEBUG: Calling TestWorkerAgent constructor...")
@@ -119,7 +121,7 @@ class AgentPoolManager:
                     agent_id=agent_id,
                     provider="anthropic",
                     api_key=self.api_key,
-                    websocket_manager=self.ws_manager
+                    websocket_manager=self.ws_manager,
                 )
                 print(f"🏭 DEBUG: TestWorkerAgent created successfully")
             else:
@@ -135,18 +137,13 @@ class AgentPoolManager:
                 "current_task": None,
                 "agent_type": agent_type,
                 "tasks_completed": 0,
-                "blocked_by": None
+                "blocked_by": None,
             }
 
             logger.info(f"Created agent: {agent_id} (type: {agent_type})")
 
             # Broadcast agent creation
-            self._broadcast_async(
-                self.project_id,
-                agent_id,
-                agent_type,
-                event_type="agent_created"
-            )
+            self._broadcast_async(self.project_id, agent_id, agent_type, event_type="agent_created")
 
             return agent_id
 
@@ -166,10 +163,11 @@ class AgentPoolManager:
         with self.lock:
             print(f"🔧 DEBUG: Acquired lock in get_or_create_agent")
             # Look for idle agent of this type
-            print(f"🔧 DEBUG: Looking for idle {agent_type} agents in pool (pool size: {len(self.agent_pool)})")
+            print(
+                f"🔧 DEBUG: Looking for idle {agent_type} agents in pool (pool size: {len(self.agent_pool)})"
+            )
             for agent_id, agent_info in self.agent_pool.items():
-                if (agent_info["agent_type"] == agent_type and
-                    agent_info["status"] == "idle"):
+                if agent_info["agent_type"] == agent_type and agent_info["status"] == "idle":
                     logger.debug(f"Reusing idle agent: {agent_id}")
                     print(f"🔧 DEBUG: Found idle agent: {agent_id}")
                     return agent_id
@@ -259,16 +257,12 @@ class AgentPoolManager:
             agent_info = self.agent_pool.pop(agent_id)
 
             logger.info(
-                f"Retired agent: {agent_id} "
-                f"(completed {agent_info['tasks_completed']} tasks)"
+                f"Retired agent: {agent_id} " f"(completed {agent_info['tasks_completed']} tasks)"
             )
 
             # Broadcast agent retirement
             self._broadcast_async(
-                self.project_id,
-                agent_id,
-                agent_info["agent_type"],
-                event_type="agent_retired"
+                self.project_id, agent_id, agent_info["agent_type"], event_type="agent_retired"
             )
 
     def get_agent_status(self) -> Dict[str, Dict[str, Any]]:
@@ -287,7 +281,7 @@ class AgentPoolManager:
                     "status": agent_info["status"],
                     "current_task": agent_info["current_task"],
                     "tasks_completed": agent_info["tasks_completed"],
-                    "blocked_by": agent_info.get("blocked_by")
+                    "blocked_by": agent_info.get("blocked_by"),
                 }
 
             return status
@@ -312,11 +306,7 @@ class AgentPoolManager:
             return self.agent_pool[agent_id]["instance"]
 
     def _broadcast_async(
-        self,
-        project_id: int,
-        agent_id: str,
-        agent_type: str,
-        event_type: str
+        self, project_id: int, agent_id: str, agent_type: str, event_type: str
     ) -> None:
         """
         Helper to broadcast agent lifecycle events (handles async safely).
@@ -337,21 +327,11 @@ class AgentPoolManager:
                 tasks_completed = self.agent_pool.get(agent_id, {}).get("tasks_completed", 0)
                 loop.create_task(
                     broadcast_agent_created(
-                        self.ws_manager,
-                        project_id,
-                        agent_id,
-                        agent_type,
-                        tasks_completed
+                        self.ws_manager, project_id, agent_id, agent_type, tasks_completed
                     )
                 )
             elif event_type == "agent_retired":
-                loop.create_task(
-                    broadcast_agent_retired(
-                        self.ws_manager,
-                        project_id,
-                        agent_id
-                    )
-                )
+                loop.create_task(broadcast_agent_retired(self.ws_manager, project_id, agent_id))
 
         except RuntimeError:
             # No event loop running (sync context, testing)

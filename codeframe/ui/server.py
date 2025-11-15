@@ -16,8 +16,12 @@ import sqlite3
 
 from codeframe.core.project import Project
 from codeframe.core.models import (
-    TaskStatus, AgentMaturity, ProjectStatus, BlockerResolve,
-    ContextItemCreateModel, ContextItemResponse
+    TaskStatus,
+    AgentMaturity,
+    ProjectStatus,
+    BlockerResolve,
+    ContextItemCreateModel,
+    ContextItemResponse,
 )
 from codeframe.persistence.database import Database
 from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
@@ -27,6 +31,7 @@ from codeframe.workspace import WorkspaceManager
 
 class DeploymentMode(str, Enum):
     """Deployment mode for CodeFRAME."""
+
     SELF_HOSTED = "self_hosted"
     HOSTED = "hosted"
 
@@ -51,6 +56,8 @@ def is_hosted_mode() -> bool:
         True if hosted mode, False if self-hosted
     """
     return get_deployment_mode() == DeploymentMode.HOSTED
+
+
 # Module logger
 logger = logging.getLogger(__name__)
 
@@ -80,7 +87,7 @@ app = FastAPI(
     title="CodeFRAME Status Server",
     description="Real-time monitoring and control for CodeFRAME projects",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS configuration from environment variables
@@ -93,8 +100,8 @@ if cors_origins_env:
 else:
     # Fallback to development defaults if not configured
     allowed_origins = [
-        "http://localhost:3000",      # Next.js dev server
-        "http://localhost:5173",      # Vite dev server
+        "http://localhost:3000",  # Next.js dev server
+        "http://localhost:5173",  # Vite dev server
     ]
 
 # Log CORS configuration for debugging
@@ -141,19 +148,16 @@ running_agents: Dict[int, LeadAgent] = {}
 
 
 async def start_agent(
-    project_id: int,
-    db: Database,
-    agents_dict: Dict[int, LeadAgent],
-    api_key: str
+    project_id: int, db: Database, agents_dict: Dict[int, LeadAgent], api_key: str
 ) -> None:
     """Start Lead Agent for a project (cf-10.1).
-    
+
     Args:
         project_id: Project ID to start agent for
         db: Database connection
         agents_dict: Dictionary to store running agents
         api_key: Anthropic API key for Lead Agent
-        
+
     This function:
     - Creates LeadAgent instance
     - Updates project status to RUNNING
@@ -162,68 +166,64 @@ async def start_agent(
     """
     try:
         # cf-10.1: Create Lead Agent instance
-        agent = LeadAgent(
-            project_id=project_id,
-            db=db,
-            api_key=api_key
-        )
-        
+        agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+
         # cf-10.1: Store agent reference
         agents_dict[project_id] = agent
-        
+
         # cf-10.1: Update project status to RUNNING
         db.update_project(project_id, {"status": ProjectStatus.RUNNING})
-        
+
         # cf-10.4: Broadcast agent_started message
         try:
-            await manager.broadcast({
-                "type": "agent_started",
-                "project_id": project_id,
-                "agent_type": "lead",
-                "timestamp": asyncio.get_event_loop().time()
-            })
+            await manager.broadcast(
+                {
+                    "type": "agent_started",
+                    "project_id": project_id,
+                    "agent_type": "lead",
+                    "timestamp": asyncio.get_event_loop().time(),
+                }
+            )
         except Exception:
             # Continue even if broadcast fails
             pass
-        
+
         # cf-10.4: Broadcast status_update message
         try:
-            await manager.broadcast({
-                "type": "status_update",
-                "project_id": project_id,
-                "status": "running"
-            })
+            await manager.broadcast(
+                {"type": "status_update", "project_id": project_id, "status": "running"}
+            )
         except Exception:
             pass
-        
+
         # cf-10.3: Send greeting message
         greeting = "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
-        
+
         # cf-10.3: Save greeting to database
         db.create_memory(
-            project_id=project_id,
-            category="conversation",
-            key="assistant",
-            value=greeting
+            project_id=project_id, category="conversation", key="assistant", value=greeting
         )
-        
+
         # cf-10.4: Broadcast greeting via WebSocket
         try:
-            await manager.broadcast({
-                "type": "chat_message",
-                "project_id": project_id,
-                "role": "assistant",
-                "content": greeting
-            })
+            await manager.broadcast(
+                {
+                    "type": "chat_message",
+                    "project_id": project_id,
+                    "role": "assistant",
+                    "content": greeting,
+                }
+            )
         except Exception:
             pass
-            
+
     except Exception as e:
         # Log error but let it propagate
         raise
 
 
 # API Routes
+
 
 @app.get("/")
 async def root():
@@ -247,11 +247,15 @@ async def health_check():
 
     # Get git commit hash
     try:
-        git_commit = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=Path(__file__).parent.parent.parent,
-            stderr=subprocess.DEVNULL
-        ).decode().strip()
+        git_commit = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=Path(__file__).parent.parent.parent,
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
     except Exception:
         git_commit = "unknown"
 
@@ -263,8 +267,8 @@ async def health_check():
         "service": "CodeFRAME Status Server",
         "version": app.version,
         "commit": git_commit,
-        "deployed_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
-        "database": db_status
+        "deployed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "database": db_status,
     }
 
 
@@ -292,8 +296,7 @@ async def create_project(request: ProjectCreateRequest):
     # Security: Hosted mode cannot access user's local filesystem
     if is_hosted_mode() and request.source_type == SourceType.LOCAL_PATH:
         raise HTTPException(
-            status_code=403,
-            detail="source_type='local_path' not available in hosted mode"
+            status_code=403, detail="source_type='local_path' not available in hosted mode"
         )
 
     # Create project record first (to get ID)
@@ -303,7 +306,7 @@ async def create_project(request: ProjectCreateRequest):
         source_type=request.source_type.value,
         source_location=request.source_location,
         source_branch=request.source_branch,
-        workspace_path=""  # Will be updated after workspace creation
+        workspace_path="",  # Will be updated after workspace creation
     )
 
     # Create workspace
@@ -312,16 +315,12 @@ async def create_project(request: ProjectCreateRequest):
             project_id=project_id,
             source_type=request.source_type,
             source_location=request.source_location,
-            source_branch=request.source_branch
+            source_branch=request.source_branch,
         )
 
         # Update project with workspace path and git status
         app.state.db.update_project(
-            project_id,
-            {
-                "workspace_path": str(workspace_path),
-                "git_initialized": True
-            }
+            project_id, {"workspace_path": str(workspace_path), "git_initialized": True}
         )
 
     except Exception as e:
@@ -338,69 +337,51 @@ async def create_project(request: ProjectCreateRequest):
         status=project.get("status", "init"),
         phase=project.get("phase", "discovery"),
         created_at=project["created_at"],
-        config=project.get("config")
+        config=project.get("config"),
     )
 
 
 @app.post("/api/projects/{project_id}/start", status_code=202)
 async def start_project_agent(project_id: int, background_tasks: BackgroundTasks):
     """Start Lead Agent for a project (cf-10.2).
-    
+
     Returns 202 Accepted immediately and starts agent in background.
-    
+
     Args:
         project_id: Project ID to start agent for
         background_tasks: FastAPI background tasks
-        
+
     Returns:
         202 Accepted with message
         200 OK if already running
         404 Not Found if project doesn't exist
-        
+
     Raises:
         HTTPException: 404 if project not found
     """
     # cf-10.2: Check if project exists
     project = app.state.db.get_project(project_id)
-    
+
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project {project_id} not found"
-        )
-    
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
     # cf-10.2: Handle idempotent behavior - already running
     if project["status"] == ProjectStatus.RUNNING.value:
         return JSONResponse(
             status_code=200,
-            content={
-                "message": f"Project {project_id} is already running",
-                "status": "running"
-            }
+            content={"message": f"Project {project_id} is already running", "status": "running"},
         )
-    
+
     # cf-10.2: Get API key from environment
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY not configured"
-        )
-    
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
+
     # cf-10.2: Start agent in background task (non-blocking)
-    background_tasks.add_task(
-        start_agent,
-        project_id,
-        app.state.db,
-        running_agents,
-        api_key
-    )
-    
+    background_tasks.add_task(start_agent, project_id, app.state.db, running_agents, api_key)
+
     # cf-10.2: Return 202 Accepted immediately
-    return {
-        "message": f"Starting Lead Agent for project {project_id}",
-        "status": "starting"
-    }
+    return {"message": f"Starting Lead Agent for project {project_id}", "status": "starting"}
 
 
 @app.get("/api/projects/{project_id}/status")
@@ -421,7 +402,7 @@ async def get_project_status(project_id: int):
         "status": project["status"],
         "phase": project.get("phase", "discovery"),
         "workflow_step": project.get("workflow_step", 1),
-        "progress": progress
+        "progress": progress,
     }
 
 
@@ -435,11 +416,7 @@ async def get_agent_status(project_id: int):
 
 
 @app.get("/api/projects/{project_id}/tasks")
-async def get_tasks(
-    project_id: int,
-    status: str | None = None,
-    limit: int = 50
-):
+async def get_tasks(project_id: int, status: str | None = None, limit: int = 50):
     """Get project tasks."""
     # TODO: Query database with filters
     return {
@@ -452,13 +429,11 @@ async def get_tasks(
                 "assigned_to": "backend-1",
                 "priority": 0,
                 "workflow_step": 7,
-                "progress": 45
+                "progress": 45,
             }
         ],
-        "total": 40
+        "total": 40,
     }
-
-
 
 
 @app.get("/api/projects/{project_id}/activity")
@@ -499,25 +474,19 @@ async def chat_with_lead(project_id: int, message: Dict[str, str]):
     # Validate input
     user_message = message.get("message", "").strip()
     if not user_message:
-        raise HTTPException(
-            status_code=400,
-            detail="Message cannot be empty"
-        )
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
 
     # Check if project exists
     project = app.state.db.get_project(project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project {project_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
     # Check if Lead Agent is running
     agent = running_agents.get(project_id)
     if not agent:
         raise HTTPException(
             status_code=400,
-            detail="Lead Agent not started for this project. Start the agent first."
+            detail="Lead Agent not started for this project. Start the agent first.",
         )
 
     try:
@@ -525,40 +494,34 @@ async def chat_with_lead(project_id: int, message: Dict[str, str]):
         response_text = agent.chat(user_message)
 
         # Get current timestamp
-        timestamp = datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
         # Broadcast assistant response via WebSocket
         try:
-            await manager.broadcast({
-                "type": "chat_message",
-                "project_id": project_id,
-                "role": "assistant",
-                "content": response_text,
-                "timestamp": timestamp
-            })
+            await manager.broadcast(
+                {
+                    "type": "chat_message",
+                    "project_id": project_id,
+                    "role": "assistant",
+                    "content": response_text,
+                    "timestamp": timestamp,
+                }
+            )
         except Exception:
             # Continue even if broadcast fails
             pass
 
-        return {
-            "response": response_text,
-            "timestamp": timestamp
-        }
+        return {"response": response_text, "timestamp": timestamp}
 
     except Exception as e:
         # Log error and return 500
         raise HTTPException(
-            status_code=500,
-            detail=f"Error communicating with Lead Agent: {str(e)}"
+            status_code=500, detail=f"Error communicating with Lead Agent: {str(e)}"
         )
 
 
 @app.get("/api/projects/{project_id}/chat/history")
-async def get_chat_history(
-    project_id: int,
-    limit: int = 100,
-    offset: int = 0
-):
+async def get_chat_history(project_id: int, limit: int = 100, offset: int = 0):
     """Get conversation history for a project (cf-14.1).
 
     Args:
@@ -576,10 +539,7 @@ async def get_chat_history(
     # Check if project exists
     project = app.state.db.get_project(project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project {project_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
     # Get conversation history from database
     db_messages = app.state.db.get_conversation(project_id)
@@ -592,11 +552,13 @@ async def get_chat_history(
     # Format messages for API response
     messages = []
     for msg in paginated_messages:
-        messages.append({
-            "role": msg["key"],  # 'user' or 'assistant'
-            "content": msg["value"],
-            "timestamp": msg["created_at"]
-        })
+        messages.append(
+            {
+                "role": msg["key"],  # 'user' or 'assistant'
+                "content": msg["value"],
+                "timestamp": msg["created_at"],
+            }
+        )
 
     return {"messages": messages}
 
@@ -628,10 +590,7 @@ async def get_project_prd(project_id: int):
     # Check if project exists
     project = app.state.db.get_project(project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project {project_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
     # Get PRD from database
     prd_data = app.state.db.get_prd(project_id)
@@ -641,9 +600,9 @@ async def get_project_prd(project_id: int):
         return {
             "project_id": str(project_id),
             "prd_content": "",
-            "generated_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
-            "updated_at": datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
-            "status": "not_found"
+            "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "status": "not_found",
         }
 
     # PRD exists - return it
@@ -652,7 +611,7 @@ async def get_project_prd(project_id: int):
         "prd_content": prd_data["prd_content"],
         "generated_at": prd_data["generated_at"],
         "updated_at": prd_data["updated_at"],
-        "status": "available"
+        "status": "available",
     }
 
 
@@ -690,10 +649,7 @@ async def get_discovery_progress(project_id: int):
     # Check if project exists
     project = app.state.db.get_project(project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project {project_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
     # Get project phase (default to "discovery" if not set)
     project_phase = project.get("phase", "discovery")
@@ -703,11 +659,7 @@ async def get_discovery_progress(project_id: int):
     try:
         from codeframe.agents.lead_agent import LeadAgent
 
-        agent = LeadAgent(
-            project_id=project_id,
-            db=app.state.db,
-            api_key="dummy-key-for-status"
-        )
+        agent = LeadAgent(project_id=project_id, db=app.state.db, api_key="dummy-key-for-status")
 
         # Get discovery status
         status = agent.get_discovery_status()
@@ -734,17 +686,12 @@ async def get_discovery_progress(project_id: int):
 
             # Exclude "answers" field for security (contains raw user input)
 
-        return {
-            "project_id": project_id,
-            "phase": project_phase,
-            "discovery": discovery_data
-        }
+        return {"project_id": project_id, "phase": project_phase, "discovery": discovery_data}
 
     except Exception as e:
         # Log error but don't expose internals
         raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving discovery progress: {str(e)}"
+            status_code=500, detail=f"Error retrieving discovery progress: {str(e)}"
         )
 
 
@@ -788,10 +735,7 @@ async def get_project_issues(project_id: int, include: str = None):
     # Check if project exists
     project = app.state.db.get_project(project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project {project_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
     # Determine if tasks should be included
     include_tasks = include == "tasks"
@@ -805,11 +749,9 @@ async def get_project_issues(project_id: int, include: str = None):
 
 # Blocker endpoints (049-human-in-loop)
 
+
 @app.get("/api/projects/{project_id}/blockers")
-async def get_project_blockers(
-    project_id: int,
-    status: str = None
-):
+async def get_project_blockers(project_id: int, status: str = None):
     """Get blockers for a project (049-human-in-loop).
 
     Args:
@@ -831,10 +773,7 @@ async def get_project_blockers(
     # Check if project exists
     project = app.state.db.get_project(project_id)
     if not project:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Project {project_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
     # Get blockers from database
     blockers_data = app.state.db.list_blockers(project_id, status)
@@ -859,10 +798,7 @@ async def get_blocker(blocker_id: int):
     blocker = app.state.db.get_blocker(blocker_id)
 
     if not blocker:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Blocker {blocker_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Blocker {blocker_id} not found")
 
     return blocker
 
@@ -908,8 +844,7 @@ async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
     blocker = app.state.db.get_blocker(blocker_id)
     if not blocker:
         raise HTTPException(
-            status_code=404,
-            detail={"error": "Blocker not found", "blocker_id": blocker_id}
+            status_code=404, detail={"error": "Blocker not found", "blocker_id": blocker_id}
         )
 
     # Attempt to resolve blocker (returns False if already resolved)
@@ -923,8 +858,8 @@ async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
             content={
                 "error": "Blocker already resolved",
                 "blocker_id": blocker_id,
-                "resolved_at": blocker["resolved_at"]
-            }
+                "resolved_at": blocker["resolved_at"],
+            },
         )
 
     # Get updated blocker for response
@@ -932,22 +867,20 @@ async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
 
     # Broadcast blocker_resolved event via WebSocket
     try:
-        await manager.broadcast({
-            "type": "blocker_resolved",
-            "blocker_id": blocker_id,
-            "answer": request.answer,
-            "resolved_at": blocker["resolved_at"]
-        })
+        await manager.broadcast(
+            {
+                "type": "blocker_resolved",
+                "blocker_id": blocker_id,
+                "answer": request.answer,
+                "resolved_at": blocker["resolved_at"],
+            }
+        )
     except Exception as e:
         # Log error but don't fail the request
         logger.error(f"Failed to broadcast blocker_resolved event: {e}")
 
     # Return success response
-    return {
-        "blocker_id": blocker_id,
-        "status": "RESOLVED",
-        "resolved_at": blocker["resolved_at"]
-    }
+    return {"blocker_id": blocker_id, "status": "RESOLVED", "resolved_at": blocker["resolved_at"]}
 
 
 @app.get("/api/projects/{project_id}/blockers/metrics")
@@ -986,8 +919,7 @@ async def get_blocker_metrics_endpoint(project_id: int):
     project = app.state.db.get_project(project_id)
     if not project:
         raise HTTPException(
-            status_code=404,
-            detail={"error": "Project not found", "project_id": project_id}
+            status_code=404, detail={"error": "Project not found", "project_id": project_id}
         )
 
     # Get metrics
@@ -997,7 +929,13 @@ async def get_blocker_metrics_endpoint(project_id: int):
 
 # Context Management endpoints (007-context-management)
 
-@app.post("/api/agents/{agent_id}/context", status_code=201, response_model=ContextItemResponse, tags=["context"])
+
+@app.post(
+    "/api/agents/{agent_id}/context",
+    status_code=201,
+    response_model=ContextItemResponse,
+    tags=["context"],
+)
 async def create_context_item(agent_id: str, project_id: int, request: ContextItemCreateModel):
     """Create a new context item for an agent (T019).
 
@@ -1018,7 +956,7 @@ async def create_context_item(agent_id: str, project_id: int, request: ContextIt
         project_id=project_id,
         agent_id=agent_id,
         item_type=request.item_type.value,
-        content=request.content
+        content=request.content,
     )
 
     # Get created item for response
@@ -1033,11 +971,13 @@ async def create_context_item(agent_id: str, project_id: int, request: ContextIt
         tier=item["current_tier"],
         access_count=item["access_count"],
         created_at=item["created_at"],
-        last_accessed=item["last_accessed"]
+        last_accessed=item["last_accessed"],
     )
 
 
-@app.get("/api/agents/{agent_id}/context/{item_id}", response_model=ContextItemResponse, tags=["context"])
+@app.get(
+    "/api/agents/{agent_id}/context/{item_id}", response_model=ContextItemResponse, tags=["context"]
+)
 async def get_context_item(agent_id: str, item_id: str):
     """Get a single context item and update access tracking (T020).
 
@@ -1056,10 +996,7 @@ async def get_context_item(agent_id: str, item_id: str):
     item = app.state.db.get_context_item(item_id)
 
     if not item:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Context item {item_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Context item {item_id} not found")
 
     # Update access tracking
     app.state.db.update_context_item_access(item_id)
@@ -1076,17 +1013,13 @@ async def get_context_item(agent_id: str, item_id: str):
         tier=item["current_tier"],
         access_count=item["access_count"],
         created_at=item["created_at"],
-        last_accessed=item["last_accessed"]
+        last_accessed=item["last_accessed"],
     )
 
 
 @app.get("/api/agents/{agent_id}/context", tags=["context"])
 async def list_context_items(
-    agent_id: str,
-    project_id: int,
-    tier: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0
+    agent_id: str, project_id: int, tier: Optional[str] = None, limit: int = 100, offset: int = 0
 ):
     """List context items for an agent with optional filters (T021).
 
@@ -1110,11 +1043,7 @@ async def list_context_items(
     """
     # Get context items from database (returns a list, not a dict)
     items_list = app.state.db.list_context_items(
-        project_id=project_id,
-        agent_id=agent_id,
-        tier=tier,
-        limit=limit,
-        offset=offset
+        project_id=project_id, agent_id=agent_id, tier=tier, limit=limit, offset=offset
     )
 
     # Convert items to ContextItemResponse models
@@ -1128,17 +1057,12 @@ async def list_context_items(
             tier=item["current_tier"],
             access_count=item["access_count"],
             created_at=item["created_at"],
-            last_accessed=item["last_accessed"]
+            last_accessed=item["last_accessed"],
         )
         for item in items_list
     ]
 
-    return {
-        "items": items,
-        "total": len(items),
-        "offset": offset,
-        "limit": limit
-    }
+    return {"items": items, "total": len(items), "offset": offset, "limit": limit}
 
 
 @app.delete("/api/agents/{agent_id}/context/{item_id}", status_code=204, tags=["context"])
@@ -1160,10 +1084,7 @@ async def delete_context_item(agent_id: str, item_id: str):
     item = app.state.db.get_context_item(item_id)
 
     if not item:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Context item {item_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Context item {item_id} not found")
 
     # Delete context item
     app.state.db.delete_context_item(item_id)
@@ -1172,11 +1093,7 @@ async def delete_context_item(agent_id: str, item_id: str):
     return None
 
 
-@app.post(
-    "/api/agents/{agent_id}/context/update-scores",
-    tags=["context"],
-    response_model=dict
-)
+@app.post("/api/agents/{agent_id}/context/update-scores", tags=["context"], response_model=dict)
 async def update_context_scores(agent_id: str, project_id: int):
     """Recalculate importance scores for all context items (T033).
 
@@ -1213,11 +1130,7 @@ async def update_context_scores(agent_id: str, project_id: int):
     return {"updated_count": updated_count}
 
 
-@app.post(
-    "/api/agents/{agent_id}/context/update-tiers",
-    tags=["context"],
-    response_model=dict
-)
+@app.post("/api/agents/{agent_id}/context/update-tiers", tags=["context"], response_model=dict)
 async def update_context_tiers(agent_id: str, project_id: int):
     """Recalculate scores and reassign tiers for all context items (T042).
 
@@ -1293,20 +1206,22 @@ async def flash_save_context(agent_id: str, project_id: int, force: bool = False
     if not should_save:
         return JSONResponse(
             status_code=400,
-            content={"error": "Context below threshold. Use force=true to override."}
+            content={"error": "Context below threshold. Use force=true to override."},
         )
 
     # Execute flash save
     result = context_mgr.flash_save(project_id, agent_id)
 
     # Emit WebSocket event (T059)
-    await manager.broadcast_json({
-        "type": "flash_save_completed",
-        "agent_id": agent_id,
-        "project_id": project_id,
-        "checkpoint_id": result["checkpoint_id"],
-        "reduction_percentage": result["reduction_percentage"]
-    })
+    await manager.broadcast_json(
+        {
+            "type": "flash_save_completed",
+            "agent_id": agent_id,
+            "project_id": project_id,
+            "checkpoint_id": result["checkpoint_id"],
+            "reduction_percentage": result["reduction_percentage"],
+        }
+    )
 
     return result
 
@@ -1388,24 +1303,15 @@ async def get_context_stats(agent_id: str, project_id: int):
 
     # Get all context items for this agent
     hot_items = app.state.db.list_context_items(
-        project_id=project_id,
-        agent_id=agent_id,
-        tier="hot",
-        limit=10000
+        project_id=project_id, agent_id=agent_id, tier="hot", limit=10000
     )
 
     warm_items = app.state.db.list_context_items(
-        project_id=project_id,
-        agent_id=agent_id,
-        tier="warm",
-        limit=10000
+        project_id=project_id, agent_id=agent_id, tier="warm", limit=10000
     )
 
     cold_items = app.state.db.list_context_items(
-        project_id=project_id,
-        agent_id=agent_id,
-        tier="cold",
-        limit=10000
+        project_id=project_id, agent_id=agent_id, tier="cold", limit=10000
     )
 
     # Calculate token counts per tier
@@ -1433,16 +1339,13 @@ async def get_context_stats(agent_id: str, project_id: int):
         "cold_tokens": cold_tokens,
         "total_tokens": total_tokens,
         "token_usage_percentage": round(token_usage_percentage, 2),
-        "calculated_at": datetime.now(UTC).isoformat()
+        "calculated_at": datetime.now(UTC).isoformat(),
     }
 
 
 @app.get("/api/agents/{agent_id}/context/items")
 async def get_context_items(
-    agent_id: str,
-    project_id: int,
-    tier: Optional[str] = None,
-    limit: int = 100
+    agent_id: str, project_id: int, tier: Optional[str] = None, limit: int = 100
 ):
     """Get context items for an agent, optionally filtered by tier.
 
@@ -1465,14 +1368,13 @@ async def get_context_items(
 
     # Validate tier if provided
     if tier and tier not in ["hot", "warm", "cold"]:
-        raise HTTPException(status_code=400, detail="Invalid tier. Must be 'hot', 'warm', or 'cold'")
+        raise HTTPException(
+            status_code=400, detail="Invalid tier. Must be 'hot', 'warm', or 'cold'"
+        )
 
     # Get items from database
     items = app.state.db.list_context_items(
-        project_id=project_id,
-        agent_id=agent_id,
-        tier=tier,
-        limit=limit
+        project_id=project_id, agent_id=agent_id, tier=tier, limit=limit
     )
 
     return items
@@ -1494,6 +1396,7 @@ async def resume_project(project_id: int):
 
 # WebSocket for real-time updates
 
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket connection for real-time updates."""
@@ -1511,10 +1414,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Subscribe to specific project updates
                 project_id = message.get("project_id")
                 # TODO: Track subscriptions
-                await websocket.send_json({
-                    "type": "subscribed",
-                    "project_id": project_id
-                })
+                await websocket.send_json({"type": "subscribed", "project_id": project_id})
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -1530,11 +1430,7 @@ async def broadcast_updates():
         update = {
             "type": "status_update",
             "timestamp": "2025-01-15T14:35:00Z",
-            "data": {
-                "progress": 65,
-                "active_agents": 3,
-                "completed_tasks": 26
-            }
+            "data": {"progress": 65, "active_agents": 3, "completed_tasks": 26},
         }
 
         await manager.broadcast(update)
@@ -1543,6 +1439,7 @@ async def broadcast_updates():
 def run_server(host: str = "0.0.0.0", port: int = 8080):
     """Run the Status Server."""
     import uvicorn
+
     uvicorn.run(app, host=host, port=port)
 
 
@@ -1555,13 +1452,13 @@ if __name__ == "__main__":
         "--host",
         type=str,
         default=os.environ.get("HOST", "0.0.0.0"),
-        help="Host to bind to (default: 0.0.0.0 or HOST env var)"
+        help="Host to bind to (default: 0.0.0.0 or HOST env var)",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=int(os.environ.get("BACKEND_PORT", os.environ.get("PORT", "8080"))),
-        help="Port to bind to (default: 8080 or BACKEND_PORT/PORT env var)"
+        help="Port to bind to (default: 8080 or BACKEND_PORT/PORT env var)",
     )
 
     args = parser.parse_args()

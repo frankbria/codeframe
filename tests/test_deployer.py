@@ -38,11 +38,13 @@ def project_root(tmp_path):
 
     # Create deploy script
     deploy_script = scripts_dir / "deploy.sh"
-    deploy_script.write_text("""#!/bin/bash
+    deploy_script.write_text(
+        """#!/bin/bash
 echo "Deploying commit $1 to $2"
 echo "Deployment successful"
 exit 0
-""")
+"""
+    )
     deploy_script.chmod(0o755)
 
     yield tmp_path
@@ -96,10 +98,12 @@ class TestTriggerDeployment:
         """Test that deployment handles script errors."""
         # Create failing script
         deploy_script = project_root / "scripts" / "deploy.sh"
-        deploy_script.write_text("""#!/bin/bash
+        deploy_script.write_text(
+            """#!/bin/bash
 echo "Deployment failed"
 exit 1
-""")
+"""
+        )
 
         deployer = Deployer(project_root, test_db)
         result = deployer.trigger_deployment("fail123", "staging")
@@ -198,12 +202,14 @@ class TestDeploymentEdgeCases:
         """Test deployment captures long output."""
         # Create script with lots of output
         deploy_script = project_root / "scripts" / "deploy.sh"
-        deploy_script.write_text("""#!/bin/bash
+        deploy_script.write_text(
+            """#!/bin/bash
 for i in {1..50}; do
     echo "Deployment step $i"
 done
 exit 0
-""")
+"""
+        )
 
         deployer = Deployer(project_root, test_db)
         result = deployer.trigger_deployment("abc123", "staging")
@@ -215,11 +221,13 @@ exit 0
         """Test deployment captures stderr as well as stdout."""
         # Create script that outputs to both stdout and stderr
         deploy_script = project_root / "scripts" / "deploy.sh"
-        deploy_script.write_text("""#!/bin/bash
+        deploy_script.write_text(
+            """#!/bin/bash
 echo "Standard output"
 echo "Error output" >&2
 exit 0
-""")
+"""
+        )
 
         deployer = Deployer(project_root, test_db)
         result = deployer.trigger_deployment("abc123", "staging")

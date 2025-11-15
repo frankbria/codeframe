@@ -24,7 +24,7 @@ def print_section(title: str):
     """Print a section header."""
     print(f"\n{'=' * 70}")
     print(f"  {title}")
-    print('=' * 70)
+    print("=" * 70)
 
 
 def verify_old_schema_behavior():
@@ -32,12 +32,13 @@ def verify_old_schema_behavior():
     print_section("Test 1: Old Schema Behavior")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'old_schema.db'
+        db_path = Path(tmpdir) / "old_schema.db"
         conn = sqlite3.connect(str(db_path))
 
         # Create old schema with constraint
         print("Creating old schema with CHECK constraint...")
-        conn.execute('''
+        conn.execute(
+            """
             CREATE TABLE agents (
                 id TEXT PRIMARY KEY,
                 type TEXT CHECK(type IN ("lead", "backend", "frontend", "test", "review")),
@@ -45,7 +46,8 @@ def verify_old_schema_behavior():
                 maturity_level TEXT,
                 status TEXT
             )
-        ''')
+        """
+        )
 
         # Insert valid type
         print("✓ Inserting agent with type 'lead' (valid type)")
@@ -55,7 +57,9 @@ def verify_old_schema_behavior():
         # Try to insert custom type - should fail
         print("✗ Attempting to insert agent with type 'security' (custom type)...")
         try:
-            conn.execute('INSERT INTO agents VALUES ("a2", "security", "claude", "directive", "idle")')
+            conn.execute(
+                'INSERT INTO agents VALUES ("a2", "security", "claude", "directive", "idle")'
+            )
             conn.commit()
             print("  ❌ FAIL: Old schema allowed custom type (unexpected!)")
             return False
@@ -72,12 +76,13 @@ def verify_new_schema_behavior():
     print_section("Test 2: New Schema Behavior")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'new_schema.db'
+        db_path = Path(tmpdir) / "new_schema.db"
         conn = sqlite3.connect(str(db_path))
 
         # Create new schema without constraint
         print("Creating new schema without CHECK constraint...")
-        conn.execute('''
+        conn.execute(
+            """
             CREATE TABLE agents (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -85,22 +90,23 @@ def verify_new_schema_behavior():
                 maturity_level TEXT,
                 status TEXT
             )
-        ''')
+        """
+        )
 
         # Test various agent types
         test_types = [
-            ('lead', 'claude', 'Original type'),
-            ('security', 'claude', 'Custom type'),
-            ('accessibility', 'gpt4', 'Custom type'),
-            ('ml-specialist', 'claude', 'Custom type'),
+            ("lead", "claude", "Original type"),
+            ("security", "claude", "Custom type"),
+            ("accessibility", "gpt4", "Custom type"),
+            ("ml-specialist", "claude", "Custom type"),
         ]
 
         print("Inserting agents with various types...")
         for agent_type, provider, description in test_types:
             try:
                 conn.execute(
-                    'INSERT INTO agents VALUES (?, ?, ?, ?, ?)',
-                    (f'agent-{agent_type}', agent_type, provider, 'directive', 'idle')
+                    "INSERT INTO agents VALUES (?, ?, ?, ?, ?)",
+                    (f"agent-{agent_type}", agent_type, provider, "directive", "idle"),
                 )
                 print(f"  ✓ {agent_type:20} - {description}")
             except sqlite3.IntegrityError as e:
@@ -110,7 +116,7 @@ def verify_new_schema_behavior():
         conn.commit()
 
         # Verify all stored
-        cursor = conn.execute('SELECT COUNT(*) FROM agents')
+        cursor = conn.execute("SELECT COUNT(*) FROM agents")
         count = cursor.fetchone()[0]
         print(f"\n✅ PASS: Successfully stored {count} agents with arbitrary types")
 
@@ -127,14 +133,26 @@ def verify_migration_execution():
         import importlib.util
 
         # Load migration module
-        migration_init_path = Path(__file__).parent.parent / 'codeframe' / 'persistence' / 'migrations' / '__init__.py'
+        migration_init_path = (
+            Path(__file__).parent.parent
+            / "codeframe"
+            / "persistence"
+            / "migrations"
+            / "__init__.py"
+        )
         spec = importlib.util.spec_from_file_location("migrations", migration_init_path)
         migrations = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(migrations)
 
-        migration_001_path = Path(__file__).parent.parent / 'codeframe' / 'persistence' / 'migrations' / 'migration_001_remove_agent_type_constraint.py'
+        migration_001_path = (
+            Path(__file__).parent.parent
+            / "codeframe"
+            / "persistence"
+            / "migrations"
+            / "migration_001_remove_agent_type_constraint.py"
+        )
         spec001 = importlib.util.spec_from_file_location("migration_001", migration_001_path)
-        sys.modules['codeframe.persistence.migrations'] = migrations
+        sys.modules["codeframe.persistence.migrations"] = migrations
         migration_001_module = importlib.util.module_from_spec(spec001)
         spec001.loader.exec_module(migration_001_module)
 
@@ -146,12 +164,13 @@ def verify_migration_execution():
         return False
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'migrate.db'
+        db_path = Path(tmpdir) / "migrate.db"
         conn = sqlite3.connect(str(db_path))
 
         # 1. Create old schema with test data
         print("Step 1: Creating old schema with constraint...")
-        conn.execute('''
+        conn.execute(
+            """
             CREATE TABLE agents (
                 id TEXT PRIMARY KEY,
                 type TEXT CHECK(type IN ("lead", "backend", "frontend", "test", "review")),
@@ -162,17 +181,21 @@ def verify_migration_execution():
                 last_heartbeat TIMESTAMP,
                 metrics JSON
             )
-        ''')
+        """
+        )
 
         print("Step 2: Inserting test data...")
         test_agents = [
-            ('agent-1', 'lead', 'claude', 'delegating', 'idle'),
-            ('agent-2', 'backend', 'gpt4', 'coaching', 'working'),
-            ('agent-3', 'frontend', 'claude', 'supporting', 'idle'),
+            ("agent-1", "lead", "claude", "delegating", "idle"),
+            ("agent-2", "backend", "gpt4", "coaching", "working"),
+            ("agent-3", "frontend", "claude", "supporting", "idle"),
         ]
 
         for agent_data in test_agents:
-            conn.execute('INSERT INTO agents (id, type, provider, maturity_level, status) VALUES (?, ?, ?, ?, ?)', agent_data)
+            conn.execute(
+                "INSERT INTO agents (id, type, provider, maturity_level, status) VALUES (?, ?, ?, ?, ?)",
+                agent_data,
+            )
             print(f"  ✓ Created {agent_data[0]} ({agent_data[1]})")
 
         conn.commit()
@@ -190,7 +213,7 @@ def verify_migration_execution():
         conn = sqlite3.connect(str(db_path))
 
         # Check data preserved
-        cursor = conn.execute('SELECT COUNT(*) FROM agents')
+        cursor = conn.execute("SELECT COUNT(*) FROM agents")
         count = cursor.fetchone()[0]
         if count != len(test_agents):
             print(f"  ❌ FAIL: Expected {len(test_agents)} agents, found {count}")
@@ -209,7 +232,9 @@ def verify_migration_execution():
         print("  ✓ Schema updated correctly (constraint removed)")
 
         # Check migration tracked
-        cursor = conn.execute('SELECT version, description FROM schema_migrations WHERE version = "001"')
+        cursor = conn.execute(
+            'SELECT version, description FROM schema_migrations WHERE version = "001"'
+        )
         row = cursor.fetchone()
         if not row:
             print("  ❌ FAIL: Migration not tracked in schema_migrations")
@@ -219,16 +244,16 @@ def verify_migration_execution():
         # Try inserting custom types
         print("\nStep 5: Testing custom agent types...")
         custom_types = [
-            ('security-agent', 'security'),
-            ('accessibility-agent', 'accessibility'),
-            ('ml-agent', 'machine-learning'),
+            ("security-agent", "security"),
+            ("accessibility-agent", "accessibility"),
+            ("ml-agent", "machine-learning"),
         ]
 
         for agent_id, agent_type in custom_types:
             try:
                 conn.execute(
-                    'INSERT INTO agents (id, type, provider, maturity_level, status) VALUES (?, ?, ?, ?, ?)',
-                    (agent_id, agent_type, 'claude', 'directive', 'idle')
+                    "INSERT INTO agents (id, type, provider, maturity_level, status) VALUES (?, ?, ?, ?, ?)",
+                    (agent_id, agent_type, "claude", "directive", "idle"),
                 )
                 print(f"  ✓ Created {agent_id} with custom type '{agent_type}'")
             except sqlite3.IntegrityError as e:
@@ -238,7 +263,7 @@ def verify_migration_execution():
         conn.commit()
 
         # Final verification
-        cursor = conn.execute('SELECT id, type FROM agents ORDER BY id')
+        cursor = conn.execute("SELECT id, type FROM agents ORDER BY id")
         all_agents = cursor.fetchall()
         print(f"\n  ✅ PASS: Migration successful!")
         print(f"\n  Final agent roster ({len(all_agents)} agents):")
@@ -251,18 +276,20 @@ def verify_migration_execution():
 
 def main():
     """Run all verification tests."""
-    print("""
+    print(
+        """
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                                                                      ║
 ║    Migration 001 Verification: Remove Agent Type Constraint         ║
 ║                                                                      ║
 ╚══════════════════════════════════════════════════════════════════════╝
-""")
+"""
+    )
 
     results = {
-        'Old Schema Behavior': verify_old_schema_behavior(),
-        'New Schema Behavior': verify_new_schema_behavior(),
-        'Migration Execution': verify_migration_execution(),
+        "Old Schema Behavior": verify_old_schema_behavior(),
+        "New Schema Behavior": verify_new_schema_behavior(),
+        "Migration Execution": verify_migration_execution(),
     }
 
     # Print summary
@@ -288,5 +315,5 @@ def main():
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

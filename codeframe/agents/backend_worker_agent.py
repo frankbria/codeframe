@@ -59,7 +59,7 @@ class BackendWorkerAgent:
         provider: str = "claude",
         api_key: Optional[str] = None,
         project_root: Path = Path("."),
-        ws_manager = None
+        ws_manager=None,
     ):
         """
         Initialize Backend Worker Agent.
@@ -193,7 +193,7 @@ class BackendWorkerAgent:
             "task": task,
             "related_files": related_files,
             "related_symbols": related_symbols,
-            "issue_context": issue_context
+            "issue_context": issue_context,
         }
 
     async def generate_code(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -260,8 +260,8 @@ Guidelines:
             f"Task: {task.get('title', 'Untitled task')}",
             "",
             "Description:",
-            task.get('description', 'No description provided'),
-            ""
+            task.get("description", "No description provided"),
+            "",
         ]
 
         if related_files:
@@ -281,7 +281,9 @@ Guidelines:
         if issue_context:
             user_prompt_parts.append("Issue Context:")
             user_prompt_parts.append(f"- Issue: {issue_context.get('title', 'Unknown')}")
-            user_prompt_parts.append(f"- Description: {issue_context.get('description', 'No description')}")
+            user_prompt_parts.append(
+                f"- Description: {issue_context.get('description', 'No description')}"
+            )
             user_prompt_parts.append("")
 
         user_prompt_parts.append("Please implement this task following TDD methodology.")
@@ -296,9 +298,7 @@ Guidelines:
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             system=system_prompt,
-            messages=[
-                {"role": "user", "content": user_prompt}
-            ]
+            messages=[{"role": "user", "content": user_prompt}],
         )
 
         # Parse response
@@ -375,7 +375,7 @@ Guidelines:
         task_id: int,
         status: str,
         output: Optional[str] = None,
-        agent_id: str = "backend-worker"
+        agent_id: str = "backend-worker",
     ) -> None:
         """
         Update task status in database and broadcast via WebSocket (cf-45).
@@ -394,13 +394,10 @@ Guidelines:
         if status == TaskStatus.COMPLETED.value:
             cursor.execute(
                 "UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?",
-                (status, datetime.now().isoformat(), task_id)
+                (status, datetime.now().isoformat(), task_id),
             )
         else:
-            cursor.execute(
-                "UPDATE tasks SET status = ? WHERE id = ?",
-                (status, task_id)
-            )
+            cursor.execute("UPDATE tasks SET status = ? WHERE id = ?", (status, task_id))
 
         self.db.conn.commit()
         logger.info(f"Updated task {task_id} to status: {status}")
@@ -450,7 +447,7 @@ Guidelines:
             errors=test_result.errors,
             skipped=test_result.skipped,
             duration=test_result.duration,
-            output=output_str
+            output=output_str,
         )
 
         logger.info(
@@ -464,7 +461,7 @@ Guidelines:
             try:
                 from codeframe.ui.websocket_broadcasts import (
                     broadcast_test_result,
-                    broadcast_activity_update
+                    broadcast_activity_update,
                 )
 
                 # Broadcast test result
@@ -477,7 +474,7 @@ Guidelines:
                     test_result.failed,
                     test_result.errors,
                     test_result.total,
-                    test_result.duration
+                    test_result.duration,
                 )
 
                 # Broadcast activity update
@@ -492,16 +489,13 @@ Guidelines:
                     "tests_completed",
                     "backend-worker",
                     activity_message,
-                    task_id=task_id
+                    task_id=task_id,
                 )
             except Exception as e:
                 logger.debug(f"Failed to broadcast test result: {e}")
 
     async def _attempt_self_correction(
-        self,
-        task: Dict[str, Any],
-        test_result_id: int,
-        attempt_number: int
+        self, task: Dict[str, Any], test_result_id: int, attempt_number: int
     ) -> Dict[str, Any]:
         """
         Attempt to fix failing tests by analyzing errors and regenerating code.
@@ -529,7 +523,7 @@ Guidelines:
         # Get the test result to analyze
         test_results = self.db.get_test_results_by_task(task_id)
         latest_result = test_results[-1] if test_results else None
-        
+
         if not latest_result:
             raise RuntimeError(f"No test results found for task {task_id}")
 
@@ -539,7 +533,7 @@ Guidelines:
             "status": latest_result["status"],
             "failed": latest_result["failed"],
             "errors": latest_result["errors"],
-            "output": latest_result["output"]
+            "output": latest_result["output"],
         }
         context["attempt_number"] = attempt_number
 
@@ -566,34 +560,40 @@ Please:
 
 Focus ONLY on fixing the test failures. Do not make unrelated changes.
 """
-        
+
         # Generate code with correction context
         try:
             # Add correction context to the generation
             context["correction_mode"] = True
             context["correction_prompt"] = correction_prompt
-            
+
             generation_result = await self.generate_code(context)
-            
+
             # Extract analysis from generation output
-            error_analysis = latest_result['output'][:500] if latest_result['output'] else "Test failures detected"
+            error_analysis = (
+                latest_result["output"][:500]
+                if latest_result["output"]
+                else "Test failures detected"
+            )
             fix_description = generation_result.get("explanation", "Applied code corrections")
-            
+
             return {
                 "error_analysis": error_analysis,
                 "fix_description": fix_description,
-                "code_changes": generation_result["files"]
+                "code_changes": generation_result["files"],
             }
-            
+
         except Exception as e:
             logger.error(f"Self-correction attempt {attempt_number} failed: {e}")
             return {
                 "error_analysis": str(e),
                 "fix_description": f"Correction attempt failed: {e}",
-                "code_changes": []
+                "code_changes": [],
             }
 
-    async def _self_correction_loop(self, task: Dict[str, Any], initial_test_result_id: int) -> bool:
+    async def _self_correction_loop(
+        self, task: Dict[str, Any], initial_test_result_id: int
+    ) -> bool:
         """
         Execute self-correction loop to fix failing tests (cf-43).
 
@@ -624,19 +624,22 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             if self.ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
+
                     await broadcast_correction_attempt(
                         self.ws_manager,
                         self.project_id,
                         task_id,
                         attempt_num,
                         max_attempts,
-                        "in_progress"
+                        "in_progress",
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast correction attempt: {e}")
 
             # Attempt correction
-            correction = await self._attempt_self_correction(task, initial_test_result_id, attempt_num)
+            correction = await self._attempt_self_correction(
+                task, initial_test_result_id, attempt_num
+            )
 
             # Record the correction attempt
             attempt_id = self.db.create_correction_attempt(
@@ -645,7 +648,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 error_analysis=correction["error_analysis"],
                 fix_description=correction["fix_description"],
                 code_changes=str(correction.get("code_changes", [])),
-                test_result_id=initial_test_result_id
+                test_result_id=initial_test_result_id,
             )
             logger.info(f"Recorded correction attempt {attempt_id}")
 
@@ -673,15 +676,16 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     try:
                         from codeframe.ui.websocket_broadcasts import (
                             broadcast_correction_attempt,
-                            broadcast_activity_update
+                            broadcast_activity_update,
                         )
+
                         await broadcast_correction_attempt(
                             self.ws_manager,
                             self.project_id,
                             task_id,
                             attempt_num,
                             max_attempts,
-                            "success"
+                            "success",
                         )
                         await broadcast_activity_update(
                             self.ws_manager,
@@ -689,7 +693,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                             "correction_success",
                             "backend-worker",
                             f"Self-correction successful after {attempt_num} attempt(s) for task #{task_id}",
-                            task_id=task_id
+                            task_id=task_id,
                         )
                     except Exception as e:
                         logger.debug(f"Failed to broadcast correction success: {e}")
@@ -705,7 +709,10 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             if self.ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
-                    error_summary = f"Status: {latest_result['status'] if latest_result else 'unknown'}"
+
+                    error_summary = (
+                        f"Status: {latest_result['status'] if latest_result else 'unknown'}"
+                    )
                     await broadcast_correction_attempt(
                         self.ws_manager,
                         self.project_id,
@@ -713,7 +720,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                         attempt_num,
                         max_attempts,
                         "failed",
-                        error_summary=error_summary
+                        error_summary=error_summary,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast correction failure: {e}")
@@ -723,7 +730,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             f"Self-correction failed after {max_attempts} attempts for task {task_id}. "
             f"Escalating to blocker."
         )
-        
+
         # Create blocker for manual intervention
         cursor = self.db.conn.cursor()
         cursor.execute(
@@ -735,11 +742,11 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 task_id,
                 "sync",
                 f"Tests still failing after {max_attempts} self-correction attempts",
-                "Please review the test failures and correction attempts, then provide manual fix."
-            )
+                "Please review the test failures and correction attempts, then provide manual fix.",
+            ),
         )
         self.db.conn.commit()
-        
+
         return False
 
     async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -791,29 +798,29 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             # 6. Check test results and self-correct if needed (cf-43)
             test_results = self.db.get_test_results_by_task(task_id)
             latest_test = test_results[-1] if test_results else None
-            
+
             if latest_test and latest_test["status"] != "passed":
                 logger.warning(
                     f"Tests failed for task {task_id}. Status: {latest_test['status']}. "
                     f"Starting self-correction loop..."
                 )
-                
+
                 # Attempt self-correction (up to 3 attempts)
                 correction_successful = await self._self_correction_loop(task, latest_test["id"])
-                
+
                 if not correction_successful:
                     # Self-correction failed - mark task as blocked
                     self.update_task_status(
                         task_id,
                         TaskStatus.BLOCKED.value,
-                        output="Tests still failing after 3 correction attempts. Manual intervention required."
+                        output="Tests still failing after 3 correction attempts. Manual intervention required.",
                     )
-                    
+
                     return {
                         "status": "blocked",
                         "files_modified": files_modified,
                         "output": "Self-correction exhausted. See blocker for details.",
-                        "error": "Tests failed after 3 correction attempts"
+                        "error": "Tests failed after 3 correction attempts",
                     }
 
             # 7. Update status to completed
@@ -824,13 +831,14 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             if self.ws_manager:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_activity_update
+
                     await broadcast_activity_update(
                         self.ws_manager,
                         self.project_id,
                         "task_completed",
                         "backend-worker",
                         f"Completed task #{task_id}: {task['title']}",
-                        task_id=task_id
+                        task_id=task_id,
                     )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task completion: {e}")
@@ -840,7 +848,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 "status": "completed",
                 "files_modified": files_modified,
                 "output": output,
-                "error": None
+                "error": None,
             }
 
         except Exception as e:
@@ -853,14 +861,11 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 "status": "failed",
                 "files_modified": files_modified,
                 "output": "",
-                "error": error
+                "error": error,
             }
 
     async def create_blocker(
-        self,
-        question: str,
-        blocker_type: str = "ASYNC",
-        task_id: Optional[int] = None
+        self, question: str, blocker_type: str = "ASYNC", task_id: Optional[int] = None
     ) -> int:
         """
         Create a blocker when agent needs human input (049-human-in-loop, T035).
@@ -892,10 +897,10 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             raise ValueError(f"Invalid blocker_type '{blocker_type}'. Must be 'SYNC' or 'ASYNC'")
 
         # Use provided task_id or fall back to current task
-        blocker_task_id = task_id if task_id is not None else getattr(self, 'current_task_id', None)
+        blocker_task_id = task_id if task_id is not None else getattr(self, "current_task_id", None)
 
         # Get agent ID from self or use class name
-        agent_id = getattr(self, 'id', None) or f"backend-worker-{self.project_id}"
+        agent_id = getattr(self, "id", None) or f"backend-worker-{self.project_id}"
 
         # Create blocker in database
         blocker_id = self.db.create_blocker(
@@ -903,7 +908,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             project_id=self.project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
-            question=question.strip()
+            question=question.strip(),
         )
 
         logger.info(f"Blocker {blocker_id} created by {agent_id}: {question[:50]}...")
@@ -912,6 +917,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         if self.ws_manager:
             try:
                 from codeframe.ui.websocket_broadcasts import broadcast_blocker_created
+
                 await broadcast_blocker_created(
                     manager=self.ws_manager,
                     project_id=self.project_id,
@@ -919,7 +925,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     agent_id=agent_id,
                     task_id=blocker_task_id,
                     blocker_type=blocker_type,
-                    question=question.strip()
+                    question=question.strip(),
                 )
             except Exception as e:
                 logger.warning(f"Failed to broadcast blocker creation: {e}")
@@ -942,7 +948,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     webhook_service = WebhookNotificationService(
                         webhook_url=webhook_url,
                         timeout=5,
-                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}"
+                        dashboard_base_url=f"http://{global_config.api_host}:{global_config.api_port}",
                     )
 
                     # Send notification (fire-and-forget)
@@ -952,11 +958,13 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                         agent_id=agent_id,
                         task_id=blocker_task_id or 0,
                         blocker_type=BlockerType.SYNC,
-                        created_at=datetime.now()
+                        created_at=datetime.now(),
                     )
                     logger.debug(f"Webhook notification queued for SYNC blocker {blocker_id}")
                 else:
-                    logger.debug("BLOCKER_WEBHOOK_URL not configured, skipping webhook notification")
+                    logger.debug(
+                        "BLOCKER_WEBHOOK_URL not configured, skipping webhook notification"
+                    )
 
             except Exception as e:
                 # Log error but don't block blocker creation
@@ -965,10 +973,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         return blocker_id
 
     async def wait_for_blocker_resolution(
-        self,
-        blocker_id: int,
-        poll_interval: float = 5.0,
-        timeout: float = 600.0
+        self, blocker_id: int, poll_interval: float = 5.0, timeout: float = 600.0
     ) -> str:
         """
         Wait for a blocker to be resolved by polling the database (049-human-in-loop, T028).
@@ -1017,12 +1022,15 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 if self.ws_manager:
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
+
                         await broadcast_agent_resumed(
                             manager=self.ws_manager,
                             project_id=self.project_id,
-                            agent_id=getattr(self, 'id', None) or f"backend-worker-{self.project_id}",
-                            task_id=getattr(self, 'current_task_id', None) or blocker.get("task_id"),
-                            blocker_id=blocker_id
+                            agent_id=getattr(self, "id", None)
+                            or f"backend-worker-{self.project_id}",
+                            task_id=getattr(self, "current_task_id", None)
+                            or blocker.get("task_id"),
+                            blocker_id=blocker_id,
                         )
                     except Exception as e:
                         logger.warning(f"Failed to broadcast agent_resumed: {e}")
@@ -1043,7 +1051,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         blocker_type: str = "ASYNC",
         task_id: Optional[int] = None,
         poll_interval: float = 5.0,
-        timeout: float = 600.0
+        timeout: float = 600.0,
     ) -> Dict[str, Any]:
         """
         Create blocker, wait for resolution, and inject answer into context (049-human-in-loop, T031).
@@ -1099,18 +1107,14 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
 
         # 1. Create blocker
         blocker_id = await self.create_blocker(
-            question=question,
-            blocker_type=blocker_type,
-            task_id=task_id
+            question=question, blocker_type=blocker_type, task_id=task_id
         )
 
         logger.info(f"Created blocker {blocker_id}, waiting for resolution...")
 
         # 2. Wait for user to resolve blocker
         answer = await self.wait_for_blocker_resolution(
-            blocker_id=blocker_id,
-            poll_interval=poll_interval,
-            timeout=timeout
+            blocker_id=blocker_id, poll_interval=poll_interval, timeout=timeout
         )
 
         logger.info(f"Blocker {blocker_id} resolved with answer: {answer[:50]}...")
@@ -1120,7 +1124,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             **context,
             "blocker_answer": answer,
             "blocker_question": question,
-            "blocker_id": blocker_id
+            "blocker_id": blocker_id,
         }
 
         return enriched_context

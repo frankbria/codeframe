@@ -23,11 +23,7 @@ class Deployer:
         self.db = db
         self.deploy_script = project_root / "scripts" / "deploy.sh"
 
-    def trigger_deployment(
-        self,
-        commit_hash: str,
-        environment: str = "staging"
-    ) -> Dict[str, Any]:
+    def trigger_deployment(self, commit_hash: str, environment: str = "staging") -> Dict[str, Any]:
         """
         Trigger deployment for a commit.
 
@@ -76,8 +72,7 @@ class Deployer:
             duration = (end_time - start_time).total_seconds()
 
             logger.info(
-                f"Deployment {status}: {commit_hash} to {environment} "
-                f"in {duration:.2f}s"
+                f"Deployment {status}: {commit_hash} to {environment} " f"in {duration:.2f}s"
             )
 
             # 4. Record deployment in database (if table exists)
@@ -153,9 +148,7 @@ class Deployer:
         """
         # Check if deployments table exists
         cursor = self.db.conn.cursor()
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='deployments'"
-        )
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='deployments'")
         if not cursor.fetchone():
             logger.debug("Deployments table does not exist, skipping database recording")
             return None

@@ -96,7 +96,9 @@ class TestDiscoveryStateTransitions:
     """Test discovery state machine transitions."""
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
-    def test_discovery_transitions_from_idle_to_discovering(self, mock_provider_class, temp_db_path):
+    def test_discovery_transitions_from_idle_to_discovering(
+        self, mock_provider_class, temp_db_path
+    ):
         """Test state transition from idle to discovering."""
         # ARRANGE
         db = Database(temp_db_path)
@@ -120,7 +122,9 @@ class TestDiscoveryStateTransitions:
         assert final_status["state"] == "discovering"
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
-    def test_discovery_stays_in_discovering_while_questions_remain(self, mock_provider_class, temp_db_path):
+    def test_discovery_stays_in_discovering_while_questions_remain(
+        self, mock_provider_class, temp_db_path
+    ):
         """Test state stays in 'discovering' while questions remain."""
         # ARRANGE
         db = Database(temp_db_path)
@@ -131,7 +135,7 @@ class TestDiscoveryStateTransitions:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -161,7 +165,7 @@ class TestDiscoveryStateTransitions:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -199,7 +203,7 @@ class TestDiscoveryAnswerProcessing:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -227,7 +231,7 @@ class TestDiscoveryAnswerProcessing:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -258,7 +262,7 @@ class TestDiscoveryAnswerProcessing:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -292,7 +296,7 @@ class TestDiscoveryDatabasePersistence:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -322,7 +326,7 @@ class TestDiscoveryDatabasePersistence:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -359,7 +363,7 @@ class TestDiscoveryCompletionDetection:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -402,7 +406,7 @@ class TestDiscoveryCompletionDetection:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -470,7 +474,7 @@ class TestDiscoveryProgressIndicators:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -504,7 +508,7 @@ class TestDiscoveryProgressIndicators:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -584,7 +588,7 @@ class TestDiscoveryProgressIndicators:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -620,7 +624,7 @@ class TestDiscoveryEndToEndFlow:
         mock_provider.send_message.return_value = {
             "content": "Next question...",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 
@@ -670,7 +674,7 @@ class TestDiscoveryEndToEndFlow:
         mock_provider.send_message.return_value = {
             "content": "I understand. Let me help you with that.",
             "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8}
+            "usage": {"input_tokens": 10, "output_tokens": 8},
         }
         mock_provider_class.return_value = mock_provider
 

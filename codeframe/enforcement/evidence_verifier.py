@@ -167,9 +167,7 @@ class EvidenceVerifier:
 
         # Check 1: Tests must pass
         if not evidence.test_result.success:
-            errors.append(
-                f"Tests failed: {evidence.test_result.failed_tests} failures"
-            )
+            errors.append(f"Tests failed: {evidence.test_result.failed_tests} failures")
 
         # Check 2: Pass rate must meet threshold
         if evidence.test_result.pass_rate < self.min_pass_rate:
@@ -185,15 +183,12 @@ class EvidenceVerifier:
                 errors.append("Coverage data missing (required)")
             elif coverage < self.min_coverage:
                 errors.append(
-                    f"Coverage too low: {coverage:.1f}% "
-                    f"(minimum: {self.min_coverage:.1f}%)"
+                    f"Coverage too low: {coverage:.1f}% " f"(minimum: {self.min_coverage:.1f}%)"
                 )
 
         # Check 4: No skip violations (unless allowed)
         if not self.allow_skipped_tests and not evidence.skip_check_passed:
-            errors.append(
-                f"Skip violations detected: {len(evidence.skip_violations)} violations"
-            )
+            errors.append(f"Skip violations detected: {len(evidence.skip_violations)} violations")
 
         # Check 5: Must have test output
         if not evidence.test_output or len(evidence.test_output) < 10:
@@ -242,20 +237,24 @@ class EvidenceVerifier:
         ]
 
         if evidence.test_result.coverage is not None:
-            report_lines.extend([
-                "Coverage:",
-                f"  • Coverage: {evidence.test_result.coverage:.1f}%",
-                f"  • Threshold: {self.min_coverage:.1f}%",
-                f"  • Status: {'✓ PASS' if evidence.test_result.coverage >= self.min_coverage else '✗ FAIL'}",
-                "",
-            ])
+            report_lines.extend(
+                [
+                    "Coverage:",
+                    f"  • Coverage: {evidence.test_result.coverage:.1f}%",
+                    f"  • Threshold: {self.min_coverage:.1f}%",
+                    f"  • Status: {'✓ PASS' if evidence.test_result.coverage >= self.min_coverage else '✗ FAIL'}",
+                    "",
+                ]
+            )
 
-        report_lines.extend([
-            "Skip Pattern Check:",
-            f"  • Violations found: {len(evidence.skip_violations)}",
-            f"  • Status: {'✓ PASS' if evidence.skip_check_passed else '✗ FAIL'}",
-            "",
-        ])
+        report_lines.extend(
+            [
+                "Skip Pattern Check:",
+                f"  • Violations found: {len(evidence.skip_violations)}",
+                f"  • Status: {'✓ PASS' if evidence.skip_check_passed else '✗ FAIL'}",
+                "",
+            ]
+        )
 
         if evidence.skip_violations:
             report_lines.append("  Skip violations:")
@@ -265,17 +264,21 @@ class EvidenceVerifier:
                 report_lines.append(f"    ... and {len(evidence.skip_violations) - 5} more")
             report_lines.append("")
 
-        report_lines.extend([
-            "=" * 70,
-            f"VERIFICATION RESULT: {'✓ PASSED' if evidence.verified else '✗ FAILED'}",
-            "=" * 70,
-        ])
+        report_lines.extend(
+            [
+                "=" * 70,
+                f"VERIFICATION RESULT: {'✓ PASSED' if evidence.verified else '✗ FAILED'}",
+                "=" * 70,
+            ]
+        )
 
         if not evidence.verified:
-            report_lines.extend([
-                "",
-                "Errors:",
-            ])
+            report_lines.extend(
+                [
+                    "",
+                    "Errors:",
+                ]
+            )
             for error in evidence.verification_errors:
                 report_lines.append(f"  ✗ {error}")
 
@@ -301,7 +304,9 @@ class EvidenceVerifier:
         claim_lower = claim.lower()
 
         # Parse claim
-        claims_tests_pass = "test" in claim_lower and ("pass" in claim_lower or "passing" in claim_lower)
+        claims_tests_pass = "test" in claim_lower and (
+            "pass" in claim_lower or "passing" in claim_lower
+        )
         claims_coverage = "coverage" in claim_lower
         claims_complete = "complete" in claim_lower or "done" in claim_lower
 

@@ -96,8 +96,7 @@ class TestCreateFeatureBranch:
         repo_path, repo = temp_git_repo
 
         branch_name = workflow_manager.create_feature_branch(
-            "3.5",
-            "Add User's Profile & Settings (V2)"
+            "3.5", "Add User's Profile & Settings (V2)"
         )
 
         assert branch_name == "issue-3.5-add-users-profile-settings-v2"
@@ -151,7 +150,7 @@ class TestCreateFeatureBranch:
             title="User Authentication",
             status=TaskStatus.PENDING,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 
@@ -182,7 +181,7 @@ class TestMergeToMain:
             title="User Auth",
             status=TaskStatus.IN_PROGRESS,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 
@@ -197,7 +196,7 @@ class TestMergeToMain:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
         test_db.create_task_with_issue(
             project_id=project_id,
@@ -209,7 +208,7 @@ class TestMergeToMain:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create feature branch
@@ -250,7 +249,7 @@ class TestMergeToMain:
             title="User Auth",
             status=TaskStatus.IN_PROGRESS,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 
@@ -265,7 +264,7 @@ class TestMergeToMain:
             status=TaskStatus.IN_PROGRESS,  # NOT COMPLETED
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create feature branch
@@ -294,7 +293,7 @@ class TestMergeToMain:
             title="Conflict Test",
             status=TaskStatus.IN_PROGRESS,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 
@@ -308,7 +307,7 @@ class TestMergeToMain:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create conflicting changes in main
@@ -348,7 +347,7 @@ class TestMergeToMain:
             title="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 
@@ -362,7 +361,7 @@ class TestMergeToMain:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create and merge branch
@@ -398,7 +397,7 @@ class TestIsIssueComplete:
             title="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 
@@ -414,7 +413,7 @@ class TestIsIssueComplete:
                 status=TaskStatus.COMPLETED,
                 priority=0,
                 workflow_step=1,
-                can_parallelize=False
+                can_parallelize=False,
             )
 
         assert workflow_manager.is_issue_complete(issue_id) is True
@@ -430,7 +429,7 @@ class TestIsIssueComplete:
             title="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 
@@ -445,7 +444,7 @@ class TestIsIssueComplete:
             status=TaskStatus.COMPLETED,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
         test_db.create_task_with_issue(
             project_id=project_id,
@@ -457,7 +456,7 @@ class TestIsIssueComplete:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         assert workflow_manager.is_issue_complete(issue_id) is False
@@ -473,7 +472,7 @@ class TestIsIssueComplete:
             title="Test",
             status=TaskStatus.PENDING,
             priority=0,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = test_db.create_issue(issue)
 

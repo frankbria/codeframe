@@ -99,9 +99,9 @@ class LanguageDetector:
         if confidence > 0.0:
             # Check if pytest is available
             has_pytest = (
-                self._file_contains("pyproject.toml", "pytest") or
-                (self.project_path / "pytest.ini").exists() or
-                (self.project_path / ".pytest.ini").exists()
+                self._file_contains("pyproject.toml", "pytest")
+                or (self.project_path / "pytest.ini").exists()
+                or (self.project_path / ".pytest.ini").exists()
             )
 
             return LanguageInfo(

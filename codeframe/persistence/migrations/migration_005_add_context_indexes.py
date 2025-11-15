@@ -26,8 +26,7 @@ class AddContextIndexes(Migration):
 
     def __init__(self):
         super().__init__(
-            version="005",
-            description="Add performance indexes to context_items table"
+            version="005", description="Add performance indexes to context_items table"
         )
 
     def can_apply(self, conn: sqlite3.Connection) -> bool:
@@ -75,24 +74,30 @@ class AddContextIndexes(Migration):
         cursor = conn.cursor()
 
         # Create composite index on agent_id and tier
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_context_agent_tier
             ON context_items(agent_id, tier)
-        """)
+        """
+        )
         logger.info("Created index: idx_context_agent_tier")
 
         # Create index on importance_score for sorting
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_context_importance
             ON context_items(importance_score DESC)
-        """)
+        """
+        )
         logger.info("Created index: idx_context_importance")
 
         # Create index on last_accessed for age-based queries
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_context_last_accessed
             ON context_items(last_accessed DESC)
-        """)
+        """
+        )
         logger.info("Created index: idx_context_last_accessed")
 
         conn.commit()

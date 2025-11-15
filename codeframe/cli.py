@@ -168,6 +168,7 @@ def agents(
 def version():
     """Show CodeFRAME version."""
     from codeframe import __version__
+
     console.print(f"CodeFRAME version: [bold green]{__version__}[/bold green]")
 
 

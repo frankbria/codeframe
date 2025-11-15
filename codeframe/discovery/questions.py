@@ -38,11 +38,7 @@ class DiscoveryQuestionFramework:
         logger.debug("Initialized DiscoveryQuestionFramework")
 
     def _create_question(
-        self,
-        question_id: str,
-        category: str,
-        text: str,
-        importance: str = "required"
+        self, question_id: str, category: str, text: str, importance: str = "required"
     ) -> Dict[str, Any]:
         """Create a question dictionary with consistent structure.
 
@@ -86,84 +82,85 @@ class DiscoveryQuestionFramework:
         questions = []
 
         # Problem category questions
-        questions.extend([
-            self._create_question(
-                "problem_1",
-                "problem",
-                "What problem does this application solve?",
-                "required"
-            ),
-            self._create_question(
-                "problem_2",
-                "problem",
-                "Why does this problem need to be solved now?",
-                "optional"
-            ),
-        ])
+        questions.extend(
+            [
+                self._create_question(
+                    "problem_1", "problem", "What problem does this application solve?", "required"
+                ),
+                self._create_question(
+                    "problem_2",
+                    "problem",
+                    "Why does this problem need to be solved now?",
+                    "optional",
+                ),
+            ]
+        )
 
         # Users category questions
-        questions.extend([
-            self._create_question(
-                "users_1",
-                "users",
-                "Who are the primary users of this application?",
-                "required"
-            ),
-            self._create_question(
-                "users_2",
-                "users",
-                "What is the expected number of users?",
-                "optional"
-            ),
-        ])
+        questions.extend(
+            [
+                self._create_question(
+                    "users_1", "users", "Who are the primary users of this application?", "required"
+                ),
+                self._create_question(
+                    "users_2", "users", "What is the expected number of users?", "optional"
+                ),
+            ]
+        )
 
         # Features category questions
-        questions.extend([
-            self._create_question(
-                "features_1",
-                "features",
-                "What are the core features you need? (Please list the top 3)",
-                "required"
-            ),
-            self._create_question(
-                "features_2",
-                "features",
-                "Are there any nice-to-have features for future iterations?",
-                "optional"
-            ),
-        ])
+        questions.extend(
+            [
+                self._create_question(
+                    "features_1",
+                    "features",
+                    "What are the core features you need? (Please list the top 3)",
+                    "required",
+                ),
+                self._create_question(
+                    "features_2",
+                    "features",
+                    "Are there any nice-to-have features for future iterations?",
+                    "optional",
+                ),
+            ]
+        )
 
         # Constraints category questions
-        questions.extend([
-            self._create_question(
-                "constraints_1",
-                "constraints",
-                "Are there any technical constraints we should be aware of?",
-                "required"
-            ),
-            self._create_question(
-                "constraints_2",
-                "constraints",
-                "What is the timeline for this project?",
-                "optional"
-            ),
-        ])
+        questions.extend(
+            [
+                self._create_question(
+                    "constraints_1",
+                    "constraints",
+                    "Are there any technical constraints we should be aware of?",
+                    "required",
+                ),
+                self._create_question(
+                    "constraints_2",
+                    "constraints",
+                    "What is the timeline for this project?",
+                    "optional",
+                ),
+            ]
+        )
 
         # Tech stack category questions
-        questions.extend([
-            self._create_question(
-                "tech_stack_1",
-                "tech_stack",
-                "Do you have a preferred tech stack or programming language?",
-                "required"
-            ),
-            self._create_question(
-                "tech_stack_2",
-                "tech_stack",
-                "Are there any existing systems this needs to integrate with?",
-                "optional"
-            ),
-        ])
+        questions.extend(
+            [
+                self._create_question(
+                    "tech_stack_1",
+                    "tech_stack",
+                    "Do you have a preferred tech stack or programming language?",
+                    "required",
+                ),
+                self._create_question(
+                    "tech_stack_2",
+                    "tech_stack",
+                    "Are there any existing systems this needs to integrate with?",
+                    "optional",
+                ),
+            ]
+        )
 
         # Sort questions: required first, then optional, maintaining category order
         required_questions = [q for q in questions if q["importance"] == "required"]
@@ -219,10 +216,7 @@ class DiscoveryQuestionFramework:
             True if answer is valid and substantive, False otherwise
         """
         answer = answer.strip()
-        return (
-            len(answer) >= MIN_ANSWER_LENGTH
-            and answer.lower() not in INVALID_ANSWERS
-        )
+        return len(answer) >= MIN_ANSWER_LENGTH and answer.lower() not in INVALID_ANSWERS
 
     def is_discovery_complete(self, answers: Dict[str, str]) -> bool:
         """Check if discovery phase is complete.

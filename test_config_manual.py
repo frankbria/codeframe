@@ -101,10 +101,7 @@ def test_ensure_directories():
         db_path = tmp_path / "test_db" / "state.db"
         log_path = tmp_path / "logs" / "test.log"
 
-        config = GlobalConfig(
-            database_path=str(db_path),
-            log_file=str(log_path)
-        )
+        config = GlobalConfig(database_path=str(db_path), log_file=str(log_path))
         config.ensure_directories()
 
         assert db_path.parent.exists()
@@ -157,9 +154,9 @@ def test_environment_loading():
 
 def main():
     """Run all tests."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("CONFIGURATION TESTS")
-    print("="*70 + "\n")
+    print("=" * 70 + "\n")
 
     try:
         test_default_values()
@@ -171,16 +168,17 @@ def main():
         test_config_manager()
         test_environment_loading()
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("✅ ALL TESTS PASSED")
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
         return 0
 
     except Exception as e:
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print(f"❌ TEST FAILED: {e}")
-        print("="*70 + "\n")
+        print("=" * 70 + "\n")
         import traceback
+
         traceback.print_exc()
         return 1
 

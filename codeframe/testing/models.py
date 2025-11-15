@@ -38,9 +38,7 @@ class TestResult:
         """Validate status values."""
         valid_statuses = {"passed", "failed", "error", "timeout", "no_tests"}
         if self.status not in valid_statuses:
-            raise ValueError(
-                f"Invalid status '{self.status}'. Must be one of: {valid_statuses}"
-            )
+            raise ValueError(f"Invalid status '{self.status}'. Must be one of: {valid_statuses}")
 
 
 @dataclass
@@ -69,6 +67,4 @@ class CorrectionAttempt:
     def __post_init__(self):
         """Validate attempt_number is in valid range (1-3)."""
         if not 1 <= self.attempt_number <= 3:
-            raise ValueError(
-                f"attempt_number must be between 1 and 3, got {self.attempt_number}"
-            )
+            raise ValueError(f"attempt_number must be between 1 and 3, got {self.attempt_number}")

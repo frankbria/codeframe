@@ -1,4 +1,5 @@
 """Tests for API models (project refactoring)."""
+
 import pytest
 from pydantic import ValidationError
 from codeframe.ui.models import (
@@ -17,10 +18,7 @@ def test_source_type_enum_values():
 
 def test_project_create_request_minimal():
     """Verify minimal valid request (name + description only)."""
-    request = ProjectCreateRequest(
-        name="Test Project",
-        description="A test project"
-    )
+    request = ProjectCreateRequest(name="Test Project", description="A test project")
 
     assert request.name == "Test Project"
     assert request.description == "A test project"
@@ -35,7 +33,7 @@ def test_project_create_request_git_remote():
         name="Test",
         description="Test",
         source_type=SourceType.GIT_REMOTE,
-        source_location="https://github.com/user/repo.git"
+        source_location="https://github.com/user/repo.git",
     )
 
     assert request.source_type == SourceType.GIT_REMOTE

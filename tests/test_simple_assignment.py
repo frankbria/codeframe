@@ -14,7 +14,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 1,
             "title": "Create login form component",
-            "description": "Build a React component for user authentication with Tailwind CSS"
+            "description": "Build a React component for user authentication with Tailwind CSS",
         }
 
         agent_type = assigner.assign_agent_type(task)
@@ -27,7 +27,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 2,
             "title": "Implement JWT authentication middleware",
-            "description": "Create Express.js middleware for JWT token validation"
+            "description": "Create Express.js middleware for JWT token validation",
         }
 
         agent_type = assigner.assign_agent_type(task)
@@ -40,7 +40,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 3,
             "title": "Write unit tests for auth service",
-            "description": "Add pytest tests with 90% coverage for authentication"
+            "description": "Add pytest tests with 90% coverage for authentication",
         }
 
         agent_type = assigner.assign_agent_type(task)
@@ -53,7 +53,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 4,
             "title": "Refactor authentication code",
-            "description": "Clean up auth module, improve code quality and security"
+            "description": "Clean up auth module, improve code quality and security",
         }
 
         agent_type = assigner.assign_agent_type(task)
@@ -63,11 +63,7 @@ class TestSimpleAgentAssigner:
         """Test default assignment when no keywords match."""
         assigner = SimpleAgentAssigner()
 
-        task = {
-            "id": 5,
-            "title": "Do something",
-            "description": "This is vague"
-        }
+        task = {"id": 5, "title": "Do something", "description": "This is vague"}
 
         agent_type = assigner.assign_agent_type(task)
         assert agent_type == "backend-worker"  # Default
@@ -79,7 +75,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 6,
             "title": "Build dashboard UI with API integration",
-            "description": "Create React dashboard component that fetches data from backend API"
+            "description": "Create React dashboard component that fetches data from backend API",
         }
 
         # "dashboard", "ui", "component", "react" = 4 frontend keywords
@@ -91,10 +87,7 @@ class TestSimpleAgentAssigner:
         """Test handling of missing title field."""
         assigner = SimpleAgentAssigner()
 
-        task = {
-            "id": 7,
-            "description": "Build an API endpoint"
-        }
+        task = {"id": 7, "description": "Build an API endpoint"}
 
         agent_type = assigner.assign_agent_type(task)
         assert agent_type == "backend-worker"
@@ -103,10 +96,7 @@ class TestSimpleAgentAssigner:
         """Test handling of missing description field."""
         assigner = SimpleAgentAssigner()
 
-        task = {
-            "id": 8,
-            "title": "Create React component"
-        }
+        task = {"id": 8, "title": "Create React component"}
 
         agent_type = assigner.assign_agent_type(task)
         assert agent_type == "frontend-specialist"
@@ -124,11 +114,7 @@ class TestSimpleAgentAssigner:
         """Test that keyword matching is case-insensitive."""
         assigner = SimpleAgentAssigner()
 
-        task = {
-            "id": 9,
-            "title": "CREATE FRONTEND COMPONENT",
-            "description": "BUILD REACT UI"
-        }
+        task = {"id": 9, "title": "CREATE FRONTEND COMPONENT", "description": "BUILD REACT UI"}
 
         agent_type = assigner.assign_agent_type(task)
         assert agent_type == "frontend-specialist"
@@ -140,7 +126,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 10,
             "title": "Write end-to-end tests",
-            "description": "Create e2e test suite with jest, add integration tests and unit tests"
+            "description": "Create e2e test suite with jest, add integration tests and unit tests",
         }
 
         # e2e, test (2x), jest, integration test, unit test = high score
@@ -154,7 +140,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 11,
             "title": "Build React dashboard",
-            "description": "Create responsive UI with components"
+            "description": "Create responsive UI with components",
         }
 
         agent_type = assigner.assign_agent_type(task)
@@ -165,11 +151,7 @@ class TestSimpleAgentAssigner:
 
     def test_convenience_function(self):
         """Test the convenience wrapper function."""
-        task = {
-            "id": 12,
-            "title": "Create API endpoint",
-            "description": "Build REST API"
-        }
+        task = {"id": 12, "title": "Create API endpoint", "description": "Build REST API"}
 
         agent_type = assign_task_to_agent(task)
         assert agent_type == "backend-worker"
@@ -181,7 +163,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 13,
             "title": "Improve WCAG compliance",
-            "description": "Add a11y features and aria labels to UI"
+            "description": "Add a11y features and aria labels to UI",
         }
 
         agent_type = assigner.assign_agent_type(task)
@@ -194,7 +176,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 14,
             "title": "Security audit",
-            "description": "Review code for vulnerabilities and security best practices"
+            "description": "Review code for vulnerabilities and security best practices",
         }
 
         agent_type = assigner.assign_agent_type(task)
@@ -207,7 +189,7 @@ class TestSimpleAgentAssigner:
         task = {
             "id": 15,
             "title": "Create database migration",
-            "description": "Add new SQL schema and ORM models"
+            "description": "Add new SQL schema and ORM models",
         }
 
         agent_type = assigner.assign_agent_type(task)

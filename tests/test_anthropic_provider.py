@@ -38,10 +38,7 @@ class TestAnthropicProviderInitialization:
 
     def test_provider_initialization_with_custom_model(self):
         """Test that provider accepts custom model."""
-        provider = AnthropicProvider(
-            api_key="sk-ant-test-key",
-            model="claude-3-opus-20240229"
-        )
+        provider = AnthropicProvider(api_key="sk-ant-test-key", model="claude-3-opus-20240229")
 
         assert provider.model == "claude-3-opus-20240229"
 
@@ -50,7 +47,11 @@ class TestAnthropicProviderInitialization:
         provider = AnthropicProvider(api_key="sk-ant-test-key")
 
         # Default should be claude-sonnet-4 or similar
-        assert provider.model in ["claude-sonnet-4", "claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"]
+        assert provider.model in [
+            "claude-sonnet-4",
+            "claude-sonnet-4-20250514",
+            "claude-3-5-sonnet-20241022",
+        ]
 
 
 @pytest.mark.unit
@@ -74,9 +75,7 @@ class TestAnthropicProviderMessageSending:
         provider = AnthropicProvider(api_key="sk-ant-test-key")
 
         # ACT: Send message
-        conversation = [
-            {"role": "user", "content": "Hello!"}
-        ]
+        conversation = [{"role": "user", "content": "Hello!"}]
         response = provider.send_message(conversation)
 
         # ASSERT: Verify response
@@ -105,7 +104,7 @@ class TestAnthropicProviderMessageSending:
         conversation = [
             {"role": "user", "content": "What is 2+2?"},
             {"role": "assistant", "content": "2+2 equals 4."},
-            {"role": "user", "content": "Can you explain that?"}
+            {"role": "user", "content": "Can you explain that?"},
         ]
         response = provider.send_message(conversation)
 
@@ -161,7 +160,9 @@ class TestAnthropicProviderMessageSending:
         with pytest.raises(ValueError) as exc_info:
             provider.send_message([])
 
-        assert "empty" in str(exc_info.value).lower() or "conversation" in str(exc_info.value).lower()
+        assert (
+            "empty" in str(exc_info.value).lower() or "conversation" in str(exc_info.value).lower()
+        )
 
     @patch("codeframe.providers.anthropic.Anthropic")
     def test_send_message_with_invalid_role_raises_error(self, mock_anthropic_class):

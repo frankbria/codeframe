@@ -37,11 +37,7 @@ def temp_db():
 @pytest.fixture
 def worker_agent(temp_db):
     """Create worker agent with test database."""
-    agent = WorkerAgent(
-        agent_id="test-worker-001",
-        agent_type="backend",
-        db=temp_db
-    )
+    agent = WorkerAgent(agent_id="test-worker-001", agent_type="backend", db=temp_db)
     return agent
 
 
@@ -59,18 +55,9 @@ class TestWorkerContextStorageIntegration:
         error_content = "AuthenticationError: Invalid credentials"
 
         # ACT: Save context items
-        task_id = worker_agent.save_context_item(
-            ContextItemType.TASK,
-            task_content
-        )
-        code_id = worker_agent.save_context_item(
-            ContextItemType.CODE,
-            code_content
-        )
-        error_id = worker_agent.save_context_item(
-            ContextItemType.ERROR,
-            error_content
-        )
+        task_id = worker_agent.save_context_item(ContextItemType.TASK, task_content)
+        code_id = worker_agent.save_context_item(ContextItemType.CODE, code_content)
+        error_id = worker_agent.save_context_item(ContextItemType.ERROR, error_content)
 
         # ASSERT: Items were created with IDs
         assert task_id > 0
@@ -97,20 +84,14 @@ class TestWorkerContextStorageIntegration:
     def test_context_persists_across_sessions(self, temp_db):
         """Test that context survives agent restart (database persistence)."""
         # ARRANGE: Create first agent and save context
-        agent1 = WorkerAgent(
-            agent_id="test-worker-002",
-            agent_type="backend",
-            db=temp_db
-        )
+        agent1 = WorkerAgent(agent_id="test-worker-002", agent_type="backend", db=temp_db)
 
         content = "This is persistent context"
         item_id = agent1.save_context_item(ContextItemType.TASK, content)
 
         # ACT: Create new agent instance (simulates restart)
         agent2 = WorkerAgent(
-            agent_id="test-worker-002",  # Same agent ID
-            agent_type="backend",
-            db=temp_db
+            agent_id="test-worker-002", agent_type="backend", db=temp_db  # Same agent ID
         )
 
         # Load context with new agent instance
@@ -125,10 +106,7 @@ class TestWorkerContextStorageIntegration:
         """Test retrieving specific context item by ID."""
         # ARRANGE: Save a context item
         content = "Specific item to retrieve"
-        item_id = worker_agent.save_context_item(
-            ContextItemType.CODE,
-            content
-        )
+        item_id = worker_agent.save_context_item(ContextItemType.CODE, content)
 
         # ACT: Retrieve by ID
         item = worker_agent.get_context_item(item_id)
@@ -151,10 +129,7 @@ class TestWorkerContextStorageIntegration:
     def test_access_tracking_updates(self, worker_agent):
         """Test that access_count increments on each load."""
         # ARRANGE: Save a context item
-        item_id = worker_agent.save_context_item(
-            ContextItemType.TASK,
-            "Test access tracking"
-        )
+        item_id = worker_agent.save_context_item(ContextItemType.TASK, "Test access tracking")
 
         # ACT: Load context multiple times
         worker_agent.load_context(tier=None)  # First load
@@ -225,16 +200,8 @@ class TestWorkerContextStorageIntegration:
     def test_multiple_agents_isolated_context(self, temp_db):
         """Test that different agents have isolated context."""
         # ARRANGE: Create two different agents
-        agent1 = WorkerAgent(
-            agent_id="agent-001",
-            agent_type="backend",
-            db=temp_db
-        )
-        agent2 = WorkerAgent(
-            agent_id="agent-002",
-            agent_type="frontend",
-            db=temp_db
-        )
+        agent1 = WorkerAgent(agent_id="agent-001", agent_type="backend", db=temp_db)
+        agent2 = WorkerAgent(agent_id="agent-002", agent_type="frontend", db=temp_db)
 
         # ACT: Each agent saves context
         agent1.save_context_item(ContextItemType.TASK, "Agent 1 task")
@@ -274,10 +241,7 @@ class TestMVPDemonstration:
         )
 
         # Agent saves the task description
-        task_id = worker_agent.save_context_item(
-            ContextItemType.TASK,
-            task_description
-        )
+        task_id = worker_agent.save_context_item(ContextItemType.TASK, task_description)
 
         print(f"\n✓ Agent saved task (ID: {task_id})")
 
@@ -287,10 +251,7 @@ class TestMVPDemonstration:
         loaded_context = worker_agent.load_context(tier=None)
 
         # Agent can now reference the original task
-        task_item = next(
-            (item for item in loaded_context if item["id"] == task_id),
-            None
-        )
+        task_item = next((item for item in loaded_context if item["id"] == task_id), None)
 
         print(f"✓ Agent retrieved task: {task_item['content'][:50]}...")
 

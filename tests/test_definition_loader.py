@@ -4,10 +4,7 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from codeframe.agents.definition_loader import (
-    AgentDefinition,
-    AgentDefinitionLoader
-)
+from codeframe.agents.definition_loader import AgentDefinition, AgentDefinitionLoader
 from codeframe.core.models import AgentMaturity
 
 
@@ -25,7 +22,7 @@ class TestAgentDefinition:
             capabilities=["testing", "validation"],
             tools=["test_tool"],
             constraints={"max_tokens": 1000},
-            metadata={"version": "1.0.0"}
+            metadata={"version": "1.0.0"},
         )
 
         definition.validate()
@@ -35,33 +32,21 @@ class TestAgentDefinition:
 
     def test_missing_name(self) -> None:
         """Test validation fails with missing name."""
-        definition = AgentDefinition(
-            name="",
-            type="test",
-            system_prompt="Test prompt"
-        )
+        definition = AgentDefinition(name="", type="test", system_prompt="Test prompt")
 
         with pytest.raises(ValueError, match="must have a 'name' field"):
             definition.validate()
 
     def test_missing_type(self) -> None:
         """Test validation fails with missing type."""
-        definition = AgentDefinition(
-            name="test",
-            type="",
-            system_prompt="Test prompt"
-        )
+        definition = AgentDefinition(name="test", type="", system_prompt="Test prompt")
 
         with pytest.raises(ValueError, match="must have a 'type' field"):
             definition.validate()
 
     def test_missing_system_prompt(self) -> None:
         """Test validation fails with missing system_prompt."""
-        definition = AgentDefinition(
-            name="test",
-            type="test",
-            system_prompt=""
-        )
+        definition = AgentDefinition(name="test", type="test", system_prompt="")
 
         with pytest.raises(ValueError, match="must have a 'system_prompt' field"):
             definition.validate()
@@ -72,7 +57,7 @@ class TestAgentDefinition:
             name="test",
             type="test",
             system_prompt="Test",
-            capabilities="not a list"  # type: ignore
+            capabilities="not a list",  # type: ignore
         )
 
         with pytest.raises(ValueError, match="'capabilities' must be a list"):
@@ -119,9 +104,7 @@ metadata:
 """
 
     def test_load_single_definition(
-        self,
-        temp_definitions_dir: Path,
-        sample_yaml_content: str
+        self, temp_definitions_dir: Path, sample_yaml_content: str
     ) -> None:
         """Test loading a single YAML definition."""
         # Create YAML file
@@ -146,18 +129,22 @@ metadata:
         """Test loading multiple YAML definitions."""
         # Create multiple YAML files
         yaml1 = temp_definitions_dir / "backend.yaml"
-        yaml1.write_text("""
+        yaml1.write_text(
+            """
 name: backend-agent
 type: backend
 system_prompt: "Backend specialist"
-""")
+"""
+        )
 
         yaml2 = temp_definitions_dir / "frontend.yaml"
-        yaml2.write_text("""
+        yaml2.write_text(
+            """
 name: frontend-agent
 type: frontend
 system_prompt: "Frontend specialist"
-""")
+"""
+        )
 
         # Load definitions
         loader = AgentDefinitionLoader()
@@ -175,11 +162,13 @@ system_prompt: "Frontend specialist"
 
         # Create YAML in custom directory
         yaml_file = custom_dir / "custom-agent.yaml"
-        yaml_file.write_text("""
+        yaml_file.write_text(
+            """
 name: custom-agent
 type: custom
 system_prompt: "Custom agent"
-""")
+"""
+        )
 
         # Load definitions
         loader = AgentDefinitionLoader()
@@ -188,11 +177,7 @@ system_prompt: "Custom agent"
         assert len(definitions) == 1
         assert "custom-agent" in definitions
 
-    def test_get_definition(
-        self,
-        temp_definitions_dir: Path,
-        sample_yaml_content: str
-    ) -> None:
+    def test_get_definition(self, temp_definitions_dir: Path, sample_yaml_content: str) -> None:
         """Test retrieving a specific definition."""
         yaml_file = temp_definitions_dir / "test.yaml"
         yaml_file.write_text(sample_yaml_content)
@@ -211,11 +196,7 @@ system_prompt: "Custom agent"
         with pytest.raises(KeyError, match="not found"):
             loader.get_definition("nonexistent")
 
-    def test_create_agent(
-        self,
-        temp_definitions_dir: Path,
-        sample_yaml_content: str
-    ) -> None:
+    def test_create_agent(self, temp_definitions_dir: Path, sample_yaml_content: str) -> None:
         """Test creating an agent from definition."""
         yaml_file = temp_definitions_dir / "test.yaml"
         yaml_file.write_text(sample_yaml_content)
@@ -224,15 +205,13 @@ system_prompt: "Custom agent"
         loader.load_definitions(temp_definitions_dir)
 
         agent = loader.create_agent(
-            agent_type="test-backend",
-            agent_id="test-001",
-            provider="anthropic"
+            agent_type="test-backend", agent_id="test-001", provider="anthropic"
         )
 
         assert agent.agent_id == "test-001"
         assert agent.agent_type == "backend"
         assert agent.maturity == AgentMaturity.D2
-        assert hasattr(agent, 'definition')
+        assert hasattr(agent, "definition")
         assert agent.definition.name == "test-backend"
 
     def test_list_available_types(self, temp_definitions_dir: Path) -> None:
@@ -240,11 +219,13 @@ system_prompt: "Custom agent"
         # Create multiple definitions
         for i, name in enumerate(["agent1", "agent2", "agent3"]):
             yaml_file = temp_definitions_dir / f"{name}.yaml"
-            yaml_file.write_text(f"""
+            yaml_file.write_text(
+                f"""
 name: {name}
 type: type{i}
 system_prompt: "Test agent {i}"
-""")
+"""
+            )
 
         loader = AgentDefinitionLoader()
         loader.load_definitions(temp_definitions_dir)
@@ -259,25 +240,31 @@ system_prompt: "Test agent {i}"
         """Test querying definitions by type category."""
         # Create definitions of different types
         yaml1 = temp_definitions_dir / "backend1.yaml"
-        yaml1.write_text("""
+        yaml1.write_text(
+            """
 name: backend1
 type: backend
 system_prompt: "Backend 1"
-""")
+"""
+        )
 
         yaml2 = temp_definitions_dir / "backend2.yaml"
-        yaml2.write_text("""
+        yaml2.write_text(
+            """
 name: backend2
 type: backend
 system_prompt: "Backend 2"
-""")
+"""
+        )
 
         yaml3 = temp_definitions_dir / "frontend1.yaml"
-        yaml3.write_text("""
+        yaml3.write_text(
+            """
 name: frontend1
 type: frontend
 system_prompt: "Frontend 1"
-""")
+"""
+        )
 
         loader = AgentDefinitionLoader()
         loader.load_definitions(temp_definitions_dir)
@@ -294,11 +281,13 @@ system_prompt: "Frontend 1"
         """Test reloading definitions clears cache."""
         # Create initial definition
         yaml_file = temp_definitions_dir / "agent1.yaml"
-        yaml_file.write_text("""
+        yaml_file.write_text(
+            """
 name: agent1
 type: test
 system_prompt: "Test"
-""")
+"""
+        )
 
         loader = AgentDefinitionLoader()
         definitions = loader.load_definitions(temp_definitions_dir)
@@ -306,11 +295,13 @@ system_prompt: "Test"
 
         # Add another definition
         yaml_file2 = temp_definitions_dir / "agent2.yaml"
-        yaml_file2.write_text("""
+        yaml_file2.write_text(
+            """
 name: agent2
 type: test
 system_prompt: "Test 2"
-""")
+"""
+        )
 
         # Reload
         definitions = loader.reload_definitions(temp_definitions_dir)
@@ -319,12 +310,14 @@ system_prompt: "Test 2"
     def test_invalid_maturity_level(self, temp_definitions_dir: Path) -> None:
         """Test error on invalid maturity level."""
         yaml_file = temp_definitions_dir / "bad.yaml"
-        yaml_file.write_text("""
+        yaml_file.write_text(
+            """
 name: bad-agent
 type: test
 maturity: INVALID
 system_prompt: "Test"
-""")
+"""
+        )
 
         loader = AgentDefinitionLoader()
         with pytest.raises(ValueError, match="Invalid maturity level"):

@@ -17,7 +17,7 @@ class WorkerAgent:
         project_id: int,
         maturity: AgentMaturity = AgentMaturity.D1,
         system_prompt: str | None = None,
-        db: Optional[Any] = None
+        db: Optional[Any] = None,
     ):
         self.agent_id = agent_id
         self.agent_type = agent_type
@@ -40,10 +40,7 @@ class WorkerAgent:
         """
         self.current_task = task
         # TODO: Implement task execution with LLM provider
-        return {
-            "status": "completed",
-            "output": "Task executed successfully"
-        }
+        return {"status": "completed", "output": "Task executed successfully"}
 
     def assess_maturity(self) -> None:
         """Assess and update agent maturity level."""
@@ -130,12 +127,14 @@ class WorkerAgent:
             project_id=self.project_id,
             agent_id=self.agent_id,
             item_type=item_type.value,
-            content=content
+            content=content,
         )
 
         return item_id
 
-    async def load_context(self, tier: Optional[ContextTier] = ContextTier.HOT) -> List[Dict[str, Any]]:
+    async def load_context(
+        self, tier: Optional[ContextTier] = ContextTier.HOT
+    ) -> List[Dict[str, Any]]:
         """Load context items for this agent, optionally filtered by tier.
 
         Args:
@@ -157,10 +156,7 @@ class WorkerAgent:
         # - limit=100
         tier_value = tier.value if tier else None
         items = self.db.list_context_items(
-            project_id=self.project_id,
-            agent_id=self.agent_id,
-            tier=tier_value,
-            limit=100
+            project_id=self.project_id, agent_id=self.agent_id, tier=tier_value, limit=100
         )
 
         # Update access tracking for each loaded item

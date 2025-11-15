@@ -1,4 +1,5 @@
 """Workspace manager for creating and managing project workspaces."""
+
 import os
 import shutil
 import subprocess
@@ -27,7 +28,7 @@ class WorkspaceManager:
         project_id: int,
         source_type: SourceType,
         source_location: Optional[str] = None,
-        source_branch: str = "main"
+        source_branch: str = "main",
     ) -> Path:
         """Create workspace for a project.
 
@@ -83,7 +84,7 @@ class WorkspaceManager:
                 check=True,
                 capture_output=True,
                 timeout=30,
-                text=True
+                text=True,
             )
             logger.info(f"Initialized empty git repository at {workspace_path}")
         except subprocess.CalledProcessError as e:
@@ -117,7 +118,7 @@ class WorkspaceManager:
                 check=True,
                 capture_output=True,
                 timeout=300,  # 5 minute timeout for large repos
-                text=True
+                text=True,
             )
             logger.info(f"Cloned {git_url} (branch: {branch}) to {workspace_path}")
         except subprocess.CalledProcessError as e:
@@ -195,10 +196,14 @@ class WorkspaceManager:
                     check=True,
                     capture_output=True,
                     timeout=30,
-                    text=True
+                    text=True,
                 )
                 logger.info(f"Initialized git repository in {workspace_path}")
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+            except (
+                subprocess.CalledProcessError,
+                subprocess.TimeoutExpired,
+                FileNotFoundError,
+            ) as e:
                 logger.warning(f"Failed to initialize git repo: {e}")
                 # Don't fail the whole operation if git init fails
                 pass
@@ -227,7 +232,7 @@ class WorkspaceManager:
             resolved_path.relative_to(home_dir)
 
             # Blacklist sensitive directories
-            sensitive_dirs = {'.ssh', '.aws', '.gnupg', '.config'}
+            sensitive_dirs = {".ssh", ".aws", ".gnupg", ".config"}
             for part in resolved_path.parts:
                 if part in sensitive_dirs:
                     return False
@@ -241,9 +246,4 @@ class WorkspaceManager:
         """Extract from uploaded archive."""
         # TODO: Implement in Phase 4 (upload endpoint)
         workspace_path.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["git", "init"],
-            cwd=workspace_path,
-            check=True,
-            capture_output=True
-        )
+        subprocess.run(["git", "init"], cwd=workspace_path, check=True, capture_output=True)

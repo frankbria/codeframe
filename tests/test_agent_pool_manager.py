@@ -32,12 +32,7 @@ def mock_ws_manager():
 @pytest.fixture
 def pool_manager(mock_db, mock_ws_manager):
     """Create AgentPoolManager for testing."""
-    manager = AgentPoolManager(
-        project_id=1,
-        db=mock_db,
-        ws_manager=mock_ws_manager,
-        max_agents=5
-    )
+    manager = AgentPoolManager(project_id=1, db=mock_db, ws_manager=mock_ws_manager, max_agents=5)
     yield manager
     # Cleanup after test
     manager.clear()
@@ -48,11 +43,7 @@ class TestAgentPoolManagerInitialization:
 
     def test_initialization_with_defaults(self, mock_db, mock_ws_manager):
         """Test pool manager initializes with default values."""
-        manager = AgentPoolManager(
-            project_id=1,
-            db=mock_db,
-            ws_manager=mock_ws_manager
-        )
+        manager = AgentPoolManager(project_id=1, db=mock_db, ws_manager=mock_ws_manager)
 
         assert manager.project_id == 1
         assert manager.max_agents == 10  # Default
@@ -62,10 +53,7 @@ class TestAgentPoolManagerInitialization:
     def test_initialization_with_custom_max(self, mock_db, mock_ws_manager):
         """Test pool manager initializes with custom max agents."""
         manager = AgentPoolManager(
-            project_id=1,
-            db=mock_db,
-            ws_manager=mock_ws_manager,
-            max_agents=3
+            project_id=1, db=mock_db, ws_manager=mock_ws_manager, max_agents=3
         )
 
         assert manager.max_agents == 3
@@ -74,7 +62,7 @@ class TestAgentPoolManagerInitialization:
 class TestAgentCreation:
     """Test agent creation functionality."""
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_create_backend_agent(self, mock_backend_class, pool_manager):
         """Test creating backend worker agent."""
         mock_agent = Mock()
@@ -88,7 +76,7 @@ class TestAgentCreation:
         assert pool_manager.agent_pool[agent_id]["status"] == "idle"
         assert pool_manager.agent_pool[agent_id]["agent_type"] == "backend"
 
-    @patch('codeframe.agents.agent_pool_manager.FrontendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.FrontendWorkerAgent")
     def test_create_frontend_agent(self, mock_frontend_class, pool_manager):
         """Test creating frontend worker agent."""
         mock_agent = Mock()
@@ -99,7 +87,7 @@ class TestAgentCreation:
         assert agent_id == "frontend-worker-001"
         assert pool_manager.agent_pool[agent_id]["agent_type"] == "frontend"
 
-    @patch('codeframe.agents.agent_pool_manager.TestWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.TestWorkerAgent")
     def test_create_test_agent(self, mock_test_class, pool_manager):
         """Test creating test worker agent."""
         mock_agent = Mock()
@@ -110,7 +98,7 @@ class TestAgentCreation:
         assert agent_id == "test-worker-001"
         assert pool_manager.agent_pool[agent_id]["agent_type"] == "test"
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_create_multiple_agents_increments_number(self, mock_backend_class, pool_manager):
         """Test creating multiple agents increments agent number."""
         mock_backend_class.return_value = Mock()
@@ -132,7 +120,7 @@ class TestAgentCreation:
 class TestAgentPoolLimits:
     """Test max agent limit enforcement."""
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_create_agent_at_max_limit_raises_error(self, mock_backend_class, pool_manager):
         """Test creating agent beyond max limit raises error."""
         mock_backend_class.return_value = Mock()
@@ -145,7 +133,7 @@ class TestAgentPoolLimits:
         with pytest.raises(RuntimeError, match="Agent pool at maximum capacity"):
             pool_manager.create_agent("backend")
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_create_agent_after_retirement_succeeds(self, mock_backend_class, pool_manager):
         """Test creating agent after retirement succeeds."""
         mock_backend_class.return_value = Mock()
@@ -164,7 +152,7 @@ class TestAgentPoolLimits:
 class TestAgentStatusManagement:
     """Test agent status tracking."""
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_mark_agent_busy(self, mock_backend_class, pool_manager):
         """Test marking agent as busy."""
         mock_backend_class.return_value = Mock()
@@ -175,7 +163,7 @@ class TestAgentStatusManagement:
         assert pool_manager.agent_pool[agent_id]["status"] == "busy"
         assert pool_manager.agent_pool[agent_id]["current_task"] == 42
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_mark_agent_idle(self, mock_backend_class, pool_manager):
         """Test marking agent as idle."""
         mock_backend_class.return_value = Mock()
@@ -187,7 +175,7 @@ class TestAgentStatusManagement:
         assert pool_manager.agent_pool[agent_id]["status"] == "idle"
         assert pool_manager.agent_pool[agent_id]["current_task"] is None
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_mark_agent_blocked(self, mock_backend_class, pool_manager):
         """Test marking agent as blocked."""
         mock_backend_class.return_value = Mock()
@@ -205,7 +193,7 @@ class TestAgentStatusManagement:
 class TestAgentRetirement:
     """Test agent retirement and cleanup."""
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_retire_agent_removes_from_pool(self, mock_backend_class, pool_manager):
         """Test retiring agent removes it from pool."""
         mock_backend_class.return_value = Mock()
@@ -215,13 +203,13 @@ class TestAgentRetirement:
 
         assert agent_id not in pool_manager.agent_pool
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_retire_nonexistent_agent_raises_error(self, mock_backend_class, pool_manager):
         """Test retiring non-existent agent raises error."""
         with pytest.raises(KeyError, match="not in pool"):
             pool_manager.retire_agent("nonexistent-agent-999")
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_retire_all_agents(self, mock_backend_class, pool_manager):
         """Test retiring all agents clears pool."""
         mock_backend_class.return_value = Mock()
@@ -246,19 +234,19 @@ class TestAgentRetirement:
 class TestEdgeCases:
     """Test edge cases and error handling."""
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_mark_busy_nonexistent_agent(self, mock_backend_class, pool_manager):
         """Test marking non-existent agent as busy raises error."""
         with pytest.raises(KeyError):
             pool_manager.mark_agent_busy("nonexistent-999", task_id=1)
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_mark_idle_nonexistent_agent(self, mock_backend_class, pool_manager):
         """Test marking non-existent agent as idle raises error."""
         with pytest.raises(KeyError):
             pool_manager.mark_agent_idle("nonexistent-999")
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_double_retirement_raises_error(self, mock_backend_class, pool_manager):
         """Test retiring same agent twice raises error."""
         mock_backend_class.return_value = Mock()
@@ -273,7 +261,7 @@ class TestEdgeCases:
 class TestTasksCompletedTracking:
     """Test tracking tasks completed by agents."""
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_increment_tasks_completed(self, mock_backend_class, pool_manager):
         """Test incrementing tasks completed counter."""
         mock_backend_class.return_value = Mock()
@@ -287,7 +275,7 @@ class TestTasksCompletedTracking:
 
         assert pool_manager.agent_pool[agent_id]["tasks_completed"] == 3
 
-    @patch('codeframe.agents.agent_pool_manager.BackendWorkerAgent')
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
     def test_tasks_completed_resets_on_new_agent(self, mock_backend_class, pool_manager):
         """Test tasks completed starts at 0 for new agents."""
         mock_backend_class.return_value = Mock()

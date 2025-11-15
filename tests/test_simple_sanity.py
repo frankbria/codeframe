@@ -17,6 +17,7 @@ async def test_async_sanity():
     """Simplest async test."""
     print("\n🎯 ASYNC SANITY TEST: Starting...")
     import asyncio
+
     await asyncio.sleep(0.1)
     assert True
     print("🎯 ASYNC SANITY TEST: Passed!")

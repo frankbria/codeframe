@@ -22,11 +22,7 @@ def temp_tests_dir(tmp_path):
 @pytest.fixture
 def test_agent(temp_tests_dir):
     """Create TestWorkerAgent for testing."""
-    agent = TestWorkerAgent(
-        agent_id="test-agent-001",
-        provider="anthropic",
-        api_key="test-key"
-    )
+    agent = TestWorkerAgent(agent_id="test-agent-001", provider="anthropic", api_key="test-key")
     agent.tests_dir = temp_tests_dir
     agent.project_root = temp_tests_dir.parent
     return agent
@@ -41,7 +37,7 @@ def sample_task():
         description="Generate tests for codeframe/services/user_service.py",
         status="pending",
         priority=1,
-        workflow_step=1
+        workflow_step=1,
     )
 
 
@@ -61,10 +57,7 @@ class TestTestWorkerAgentInitialization:
     @pytest.mark.asyncio
     async def test_initialization_with_custom_attempts(self):
         """Test agent initializes with custom correction attempts."""
-        agent = TestWorkerAgent(
-            agent_id="test-002",
-            max_correction_attempts=5
-        )
+        agent = TestWorkerAgent(agent_id="test-002", max_correction_attempts=5)
 
         assert agent.max_correction_attempts == 5
 
@@ -76,11 +69,14 @@ class TestTestSpecParsing:
     async def test_parse_json_spec(self, test_agent):
         """Test parsing valid JSON specification."""
         import json
-        json_spec = json.dumps({
-            "test_name": "test_user_service",
-            "target_file": "codeframe/services/user_service.py",
-            "description": "Test user CRUD operations"
-        })
+
+        json_spec = json.dumps(
+            {
+                "test_name": "test_user_service",
+                "target_file": "codeframe/services/user_service.py",
+                "description": "Test user CRUD operations",
+            }
+        )
 
         spec = test_agent._parse_test_spec(json_spec)
 
@@ -116,7 +112,8 @@ class TestCodeAnalysis:
         """Test analyzing existing Python file."""
         # Create sample target file
         target_file = tmp_path / "sample.py"
-        target_file.write_text("""
+        target_file.write_text(
+            """
 def add(a, b):
     return a + b
 
@@ -126,7 +123,8 @@ async def fetch_data():
 class Calculator:
     def multiply(self, x, y):
         return x * y
-""")
+"""
+        )
 
         analysis = test_agent._analyze_target_code("sample.py")
 
@@ -158,14 +156,8 @@ class TestTestGeneration:
     @pytest.mark.asyncio
     async def test_generate_basic_test_template(self, test_agent):
         """Test generating basic test template."""
-        spec = {
-            "test_name": "test_calculator",
-            "target_file": "calculator.py"
-        }
-        code_analysis = {
-            "functions": ["add", "subtract"],
-            "classes": ["Calculator"]
-        }
+        spec = {"test_name": "test_calculator", "target_file": "calculator.py"}
+        code_analysis = {"functions": ["add", "subtract"], "classes": ["Calculator"]}
 
         code = test_agent._generate_basic_test_template(spec, code_analysis)
 
@@ -173,7 +165,7 @@ class TestTestGeneration:
         assert "import pytest" in code
         assert "def test_calculator" in code
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_generate_tests_with_api_success(self, mock_anthropic_class, test_agent):
         """Test generating tests using Claude API."""
@@ -290,7 +282,7 @@ def test_failing():
 class TestSelfCorrection:
     """Test self-correction loop."""
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_correct_failing_tests(self, mock_anthropic_class, test_agent):
         """Test correcting failing tests using Claude API."""
@@ -316,10 +308,7 @@ def test_corrected():
         code_analysis = {}
 
         corrected = await test_agent._correct_failing_tests(
-            original_code,
-            error_output,
-            spec,
-            code_analysis
+            original_code, error_output, spec, code_analysis
         )
 
         assert corrected is not None
@@ -340,7 +329,7 @@ class TestTaskExecution:
         assert "status" in result
         assert "test_file" in result or "error" in result
 
-    @patch('codeframe.agents.test_worker_agent.TestWorkerAgent._execute_tests')
+    @patch("codeframe.agents.test_worker_agent.TestWorkerAgent._execute_tests")
     @pytest.mark.asyncio
     async def test_execute_task_success(self, mock_execute, test_agent, sample_task):
         """Test successful task execution with mocked test execution."""
@@ -350,7 +339,7 @@ class TestTaskExecution:
         mock_execute.return_value = (
             True,  # all_passed
             "2 passed",  # output
-            {"passed": 2, "failed": 0, "errors": 0, "total": 2}  # counts
+            {"passed": 2, "failed": 0, "errors": 0, "total": 2},  # counts
         )
 
         result = await test_agent.execute_task(sample_task, project_id=1)
@@ -359,7 +348,7 @@ class TestTaskExecution:
         assert "test_results" in result
         assert result["test_results"]["passed"] is True
 
-    @patch('codeframe.agents.test_worker_agent.TestWorkerAgent._execute_tests')
+    @patch("codeframe.agents.test_worker_agent.TestWorkerAgent._execute_tests")
     @pytest.mark.asyncio
     async def test_execute_task_with_corrections(self, mock_execute, test_agent, sample_task):
         """Test task execution with self-correction."""
@@ -369,14 +358,14 @@ class TestTaskExecution:
         # First execution fails, second passes
         mock_execute.side_effect = [
             (False, "1 failed", {"passed": 0, "failed": 1, "errors": 0, "total": 1}),
-            (True, "1 passed", {"passed": 1, "failed": 0, "errors": 0, "total": 1})
+            (True, "1 passed", {"passed": 1, "failed": 0, "errors": 0, "total": 1}),
         ]
 
         # Mock correction to return different code
         with patch.object(
             test_agent,
-            '_correct_failing_tests',
-            return_value="import pytest\n\ndef test_fixed():\n    assert True"
+            "_correct_failing_tests",
+            return_value="import pytest\n\ndef test_fixed():\n    assert True",
         ):
             result = await test_agent.execute_task(sample_task, project_id=1)
 

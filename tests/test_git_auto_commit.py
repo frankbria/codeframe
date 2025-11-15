@@ -180,9 +180,7 @@ class TestCommitCreation:
 
         # Commit the changes
         commit_hash = workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=files,
-            agent_id="test-agent"
+            task=task, files_modified=files, agent_id="test-agent"
         )
 
         # Verify commit was created
@@ -213,9 +211,7 @@ class TestCommitCreation:
         files = ["file1.py", "file2.py"]
 
         commit_hash = workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=files,
-            agent_id="test-agent"
+            task=task, files_modified=files, agent_id="test-agent"
         )
 
         assert commit_hash is not None
@@ -241,9 +237,7 @@ class TestCommitCreation:
         }
 
         commit_hash = workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=["hello.py"],
-            agent_id="test-agent"
+            task=task, files_modified=["hello.py"], agent_id="test-agent"
         )
 
         # Get commit message from git
@@ -273,9 +267,7 @@ class TestCommitCreation:
         }
 
         commit_hash = workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=["feature.py"],
-            agent_id="test-agent"
+            task=task, files_modified=["feature.py"], agent_id="test-agent"
         )
 
         # Verify commit is on feature branch
@@ -300,9 +292,7 @@ class TestCommitCreation:
         }
 
         commit_hash = workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=["test.py"],
-            agent_id="test-agent"
+            task=task, files_modified=["test.py"], agent_id="test-agent"
         )
 
         # SHA-1 is 40 hexadecimal characters
@@ -331,17 +321,18 @@ class TestChangelogIntegration:
         }
 
         commit_hash = workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=["test.py"],
-            agent_id="backend-agent-1"
+            task=task, files_modified=["test.py"], agent_id="backend-agent-1"
         )
 
         # Query changelog
         cursor = db.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM changelog
             WHERE task_id = ? AND action = 'commit'
-        """, (task["id"],))
+        """,
+            (task["id"],),
+        )
 
         row = cursor.fetchone()
         assert row is not None
@@ -354,6 +345,7 @@ class TestChangelogIntegration:
 
         # Verify details JSON
         import json
+
         details = json.loads(entry["details"])
         assert details["commit_hash"] == commit_hash
         assert "feat(1.2.1):" in details["commit_message"]
@@ -373,9 +365,7 @@ class TestChangelogIntegration:
         }
 
         commit_hash = workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=["test.py"],
-            agent_id="test-agent"
+            task=task, files_modified=["test.py"], agent_id="test-agent"
         )
 
         # Get changelog entry
@@ -406,9 +396,7 @@ class TestChangelogIntegration:
         }
 
         workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=["test.py"],
-            agent_id="test-agent"
+            task=task, files_modified=["test.py"], agent_id="test-agent"
         )
 
         # Query by task_id
@@ -433,9 +421,7 @@ class TestChangelogIntegration:
         }
 
         workflow_manager.commit_task_changes(
-            task=task,
-            files_modified=["test.py"],
-            agent_id="backend-agent-1"
+            task=task, files_modified=["test.py"], agent_id="backend-agent-1"
         )
 
         # Query by agent_id
@@ -465,9 +451,7 @@ class TestErrorHandling:
         # Should raise ValueError or skip commit
         with pytest.raises(ValueError, match="No files to commit"):
             workflow_manager.commit_task_changes(
-                task=task,
-                files_modified=[],
-                agent_id="test-agent"
+                task=task, files_modified=[], agent_id="test-agent"
             )
 
     def test_handle_nonexistent_files(self, workflow_manager, temp_git_repo):
@@ -483,9 +467,7 @@ class TestErrorHandling:
         # Should raise error for nonexistent files
         with pytest.raises(Exception):  # Could be git.GitCommandError or FileNotFoundError
             workflow_manager.commit_task_changes(
-                task=task,
-                files_modified=["nonexistent.py"],
-                agent_id="test-agent"
+                task=task, files_modified=["nonexistent.py"], agent_id="test-agent"
             )
 
     def test_handle_missing_task_fields(self, workflow_manager, temp_git_repo):
@@ -502,7 +484,5 @@ class TestErrorHandling:
 
         with pytest.raises(KeyError):
             workflow_manager.commit_task_changes(
-                task=task,
-                files_modified=["test.py"],
-                agent_id="test-agent"
+                task=task, files_modified=["test.py"], agent_id="test-agent"
             )

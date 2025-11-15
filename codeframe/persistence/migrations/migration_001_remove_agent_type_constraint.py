@@ -22,8 +22,7 @@ class RemoveAgentTypeConstraint(Migration):
 
     def __init__(self):
         super().__init__(
-            version="001",
-            description="Remove hard-coded CHECK constraint on agent type"
+            version="001", description="Remove hard-coded CHECK constraint on agent type"
         )
 
     def can_apply(self, conn: sqlite3.Connection) -> bool:
@@ -66,7 +65,8 @@ class RemoveAgentTypeConstraint(Migration):
         logger.info(f"Found {agent_count} agents to migrate")
 
         # 1. Create new table without type constraint
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE agents_new (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -77,14 +77,17 @@ class RemoveAgentTypeConstraint(Migration):
                 last_heartbeat TIMESTAMP,
                 metrics JSON
             )
-        """)
+        """
+        )
         logger.info("Created new agents table without type constraint")
 
         # 2. Copy data from old table
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO agents_new
             SELECT * FROM agents
-        """)
+        """
+        )
         logger.info(f"Copied {agent_count} agents to new table")
 
         # 3. Drop old table
@@ -110,7 +113,8 @@ class RemoveAgentTypeConstraint(Migration):
         logger.info(f"Found {agent_count} agents to rollback")
 
         # 1. Create old table with type constraint
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE agents_old (
                 id TEXT PRIMARY KEY,
                 type TEXT CHECK(type IN ('lead', 'backend', 'frontend', 'test', 'review')),
@@ -121,15 +125,18 @@ class RemoveAgentTypeConstraint(Migration):
                 last_heartbeat TIMESTAMP,
                 metrics JSON
             )
-        """)
+        """
+        )
         logger.info("Created agents table with type constraint")
 
         # 2. Copy data - this will fail if any agents have non-standard types
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO agents_old
                 SELECT * FROM agents
-            """)
+            """
+            )
             logger.info(f"Copied {agent_count} agents to old table")
         except sqlite3.IntegrityError as e:
             logger.error(f"Cannot rollback: agents table contains non-standard types: {e}")

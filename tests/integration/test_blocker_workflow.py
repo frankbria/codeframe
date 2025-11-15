@@ -3,6 +3,7 @@ Integration tests for complete blocker workflow.
 
 Tests T055-T057 from Phase 9: Testing & Validation
 """
+
 import pytest
 import pytest_asyncio
 import asyncio
@@ -28,7 +29,7 @@ async def sample_project(db):
     project_id = db.create_project(
         name="Integration Test Project",
         repo_path="/tmp/test",
-        description="Test project for integration tests"
+        description="Test project for integration tests",
     )
     return project_id
 
@@ -37,36 +38,42 @@ async def sample_project(db):
 async def sample_tasks(db, sample_project):
     """Create multiple sample tasks with dependencies."""
     # Create issues first
-    issue1_id = db.create_issue({
-        "project_id": sample_project,
-        "issue_number": "1.0",
-        "title": "Issue 1",
-        "description": "First issue",
-        "status": "pending",
-        "priority": 2,
-        "workflow_step": 1
-    })
-    
-    issue2_id = db.create_issue({
-        "project_id": sample_project,
-        "issue_number": "2.0",
-        "title": "Issue 2",
-        "description": "Second issue",
-        "status": "pending",
-        "priority": 2,
-        "workflow_step": 1
-    })
-    
-    issue3_id = db.create_issue({
-        "project_id": sample_project,
-        "issue_number": "3.0",
-        "title": "Issue 3",
-        "description": "Third issue",
-        "status": "pending",
-        "priority": 2,
-        "workflow_step": 1
-    })
-    
+    issue1_id = db.create_issue(
+        {
+            "project_id": sample_project,
+            "issue_number": "1.0",
+            "title": "Issue 1",
+            "description": "First issue",
+            "status": "pending",
+            "priority": 2,
+            "workflow_step": 1,
+        }
+    )
+
+    issue2_id = db.create_issue(
+        {
+            "project_id": sample_project,
+            "issue_number": "2.0",
+            "title": "Issue 2",
+            "description": "Second issue",
+            "status": "pending",
+            "priority": 2,
+            "workflow_step": 1,
+        }
+    )
+
+    issue3_id = db.create_issue(
+        {
+            "project_id": sample_project,
+            "issue_number": "3.0",
+            "title": "Issue 3",
+            "description": "Third issue",
+            "status": "pending",
+            "priority": 2,
+            "workflow_step": 1,
+        }
+    )
+
     # Create tasks
     task1_id = db.create_task_with_issue(
         project_id=sample_project,
@@ -78,7 +85,7 @@ async def sample_tasks(db, sample_project):
         status=TaskStatus.PENDING,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     task2_id = db.create_task_with_issue(
@@ -91,7 +98,7 @@ async def sample_tasks(db, sample_project):
         status=TaskStatus.PENDING,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     task3_id = db.create_task_with_issue(
@@ -104,7 +111,7 @@ async def sample_tasks(db, sample_project):
         status=TaskStatus.PENDING,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     return {"task1": task1_id, "task2": task2_id, "task3": task3_id}
@@ -123,47 +130,52 @@ class TestCompleteBlockerWorkflow:
             project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
-            question="Should I use SQLite or PostgreSQL for the database?"
+            question="Should I use SQLite or PostgreSQL for the database?",
         )
         assert blocker_id > 0
 
         # Step 2: Verify blocker appears in dashboard (list API)
         response = db.list_blockers(sample_project)
-        assert response['total'] == 1
-        assert response['pending_count'] == 1
-        assert response['sync_count'] == 1
-        assert response['blockers'][0]['id'] == blocker_id
-        assert response['blockers'][0]['question'] == "Should I use SQLite or PostgreSQL for the database?"
+        assert response["total"] == 1
+        assert response["pending_count"] == 1
+        assert response["sync_count"] == 1
+        assert response["blockers"][0]["id"] == blocker_id
+        assert (
+            response["blockers"][0]["question"]
+            == "Should I use SQLite or PostgreSQL for the database?"
+        )
 
         # Step 3: User views blocker details
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'PENDING'
-        assert blocker['agent_id'] == "backend-worker-001"
+        assert blocker["status"] == "PENDING"
+        assert blocker["agent_id"] == "backend-worker-001"
 
         # Step 4: User resolves blocker (simulating UI submission)
         success = db.resolve_blocker(
-            blocker_id,
-            "Use SQLite to match existing codebase. PostgreSQL is overkill for MVP."
+            blocker_id, "Use SQLite to match existing codebase. PostgreSQL is overkill for MVP."
         )
         assert success is True
 
         # Step 5: Verify blocker status updated
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'RESOLVED'
-        assert blocker['answer'] == "Use SQLite to match existing codebase. PostgreSQL is overkill for MVP."
-        assert blocker['resolved_at'] is not None
+        assert blocker["status"] == "RESOLVED"
+        assert (
+            blocker["answer"]
+            == "Use SQLite to match existing codebase. PostgreSQL is overkill for MVP."
+        )
+        assert blocker["resolved_at"] is not None
 
         # Step 6: Agent polls and gets answer
         resolved_blocker = db.get_pending_blocker("backend-worker-001")
         assert resolved_blocker is None  # No more pending blockers
 
         blocker_check = db.get_blocker(blocker_id)
-        assert blocker_check['status'] == BlockerStatus.RESOLVED
-        assert blocker_check['answer'] is not None
+        assert blocker_check["status"] == BlockerStatus.RESOLVED
+        assert blocker_check["answer"] is not None
 
         # Step 7: Verify blocker disappears from pending list
-        response = db.list_blockers(sample_project, status='PENDING')
-        assert response['total'] == 0
+        response = db.list_blockers(sample_project, status="PENDING")
+        assert response["total"] == 0
 
     def test_workflow_with_async_blocker(self, db, sample_project, sample_tasks):
         """Test workflow with ASYNC blocker (agent continues work)."""
@@ -175,7 +187,7 @@ class TestCompleteBlockerWorkflow:
             project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.ASYNC,
-            question="Should the button be blue or green?"
+            question="Should the button be blue or green?",
         )
 
         # Agent can continue working (ASYNC blocker doesn't pause)
@@ -186,8 +198,8 @@ class TestCompleteBlockerWorkflow:
 
         # Agent can incorporate answer later
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'RESOLVED'
-        assert blocker['blocker_type'] == BlockerType.ASYNC
+        assert blocker["status"] == "RESOLVED"
+        assert blocker["blocker_type"] == BlockerType.ASYNC
 
     def test_workflow_with_multiple_sequential_blockers(self, db, sample_project, sample_tasks):
         """Test agent creating and resolving multiple blockers sequentially."""
@@ -199,7 +211,7 @@ class TestCompleteBlockerWorkflow:
             project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
-            question="Question 1"
+            question="Question 1",
         )
         db.resolve_blocker(blocker1_id, "Answer 1")
 
@@ -209,15 +221,15 @@ class TestCompleteBlockerWorkflow:
             project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
-            question="Question 2"
+            question="Question 2",
         )
         db.resolve_blocker(blocker2_id, "Answer 2")
 
         # Verify both resolved
         blocker1 = db.get_blocker(blocker1_id)
         blocker2 = db.get_blocker(blocker2_id)
-        assert blocker1['status'] == BlockerStatus.RESOLVED
-        assert blocker2['status'] == BlockerStatus.RESOLVED
+        assert blocker1["status"] == BlockerStatus.RESOLVED
+        assert blocker2["status"] == BlockerStatus.RESOLVED
 
 
 class TestSyncBlockerPausingDependentTasks:
@@ -234,7 +246,7 @@ class TestSyncBlockerPausingDependentTasks:
             project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.SYNC,
-            question="Critical decision needed for task 1"
+            question="Critical decision needed for task 1",
         )
 
         # Lead Agent should recognize task 1 is blocked
@@ -242,8 +254,8 @@ class TestSyncBlockerPausingDependentTasks:
 
         # Verify blocker exists for task 1
         blocker = db.get_blocker(blocker_id)
-        assert blocker['blocker_type'] == BlockerType.SYNC
-        assert blocker['task_id'] == task1_id
+        assert blocker["blocker_type"] == BlockerType.SYNC
+        assert blocker["task_id"] == task1_id
 
         # In a real system, Lead Agent would:
         # 1. Check if task1 has pending SYNC blocker
@@ -266,14 +278,14 @@ class TestSyncBlockerPausingDependentTasks:
             project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.SYNC,
-            question="Blocker for task 1"
+            question="Blocker for task 1",
         )
 
         # Task 3 should continue unaffected (no dependency on task 1)
         # Lead Agent should allow task 3 to proceed normally
 
         blocker = db.get_blocker(blocker_id)
-        assert blocker['task_id'] == task1_id
+        assert blocker["task_id"] == task1_id
 
         # Task 3 can execute normally (verify it has no blocker)
         task3_blocker = db.get_pending_blocker("frontend-worker-001")
@@ -293,27 +305,37 @@ class TestAsyncBlockerAllowingParallelWork:
             project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.ASYNC,
-            question="Preference question - not critical"
+            question="Preference question - not critical",
         )
 
         # Agent should be able to continue with other work
         # Create another task and start working on it
         task4_id = db.create_task_with_issue(
-        project_id=sample_project,
-        issue_id=db.create_issue({"project_id": sample_project, "issue_number": "4.0", "title": "Issue 4", "description": "Fourth issue", "status": "pending", "priority": 2, "workflow_step": 1}),
-        task_number="4.0.1",
-        parent_issue_number="4.0",
-        title="Task 4 - Additional Work",
-        description="Can be done in parallel",
-        status=TaskStatus.PENDING,
-        priority=2,
-        workflow_step=1,
-        can_parallelize=False
-    )
+            project_id=sample_project,
+            issue_id=db.create_issue(
+                {
+                    "project_id": sample_project,
+                    "issue_number": "4.0",
+                    "title": "Issue 4",
+                    "description": "Fourth issue",
+                    "status": "pending",
+                    "priority": 2,
+                    "workflow_step": 1,
+                }
+            ),
+            task_number="4.0.1",
+            parent_issue_number="4.0",
+            title="Task 4 - Additional Work",
+            description="Can be done in parallel",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step=1,
+            can_parallelize=False,
+        )
 
         # Verify ASYNC blocker doesn't pause task 4
         blocker = db.get_blocker(blocker_id)
-        assert blocker['blocker_type'] == BlockerType.ASYNC
+        assert blocker["blocker_type"] == BlockerType.ASYNC
 
         # Agent can check for ASYNC blockers later and incorporate answers
         # when available, without blocking current work
@@ -329,7 +351,7 @@ class TestAsyncBlockerAllowingParallelWork:
             project_id=1,
             task_id=task1_id,
             blocker_type=BlockerType.ASYNC,
-            question="ASYNC question 1"
+            question="ASYNC question 1",
         )
 
         blocker2_id = db.create_blocker(
@@ -337,22 +359,22 @@ class TestAsyncBlockerAllowingParallelWork:
             project_id=1,
             task_id=task3_id,
             blocker_type=BlockerType.ASYNC,
-            question="ASYNC question 2"
+            question="ASYNC question 2",
         )
 
         # Both agents continue working
         # Verify both blockers are ASYNC
         blocker1 = db.get_blocker(blocker1_id)
         blocker2 = db.get_blocker(blocker2_id)
-        assert blocker1['blocker_type'] == BlockerType.ASYNC
-        assert blocker2['blocker_type'] == BlockerType.ASYNC
+        assert blocker1["blocker_type"] == BlockerType.ASYNC
+        assert blocker2["blocker_type"] == BlockerType.ASYNC
 
         # Resolve one
         db.resolve_blocker(blocker1_id, "Answer 1")
 
         # Other still pending but not blocking
         blocker2_check = db.get_blocker(blocker2_id)
-        assert blocker2_check['status'] == 'PENDING'
+        assert blocker2_check["status"] == "PENDING"
 
 
 class TestBlockerWorkflowEdgeCases:
@@ -370,7 +392,7 @@ class TestBlockerWorkflowEdgeCases:
             project_id=1,
             task_id=task_id,
             blocker_type=BlockerType.SYNC,
-            question="Question that will expire"
+            question="Question that will expire",
         )
 
         # Manually set created_at to 25 hours ago
@@ -378,7 +400,7 @@ class TestBlockerWorkflowEdgeCases:
         cursor = db.conn.cursor()
         cursor.execute(
             "UPDATE blockers SET created_at = ? WHERE id = ?",
-            (old_timestamp.isoformat(), blocker_id)
+            (old_timestamp.isoformat(), blocker_id),
         )
         db.conn.commit()
 
@@ -388,7 +410,7 @@ class TestBlockerWorkflowEdgeCases:
 
         # Verify blocker expired
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'EXPIRED'
+        assert blocker["status"] == "EXPIRED"
 
         # User cannot resolve expired blocker
         success = db.resolve_blocker(blocker_id, "Too late")
@@ -411,11 +433,11 @@ class TestBlockerWorkflowEdgeCases:
                 project_id=1,
                 task_id=task_id,
                 blocker_type=BlockerType.SYNC,
-                question=f"Question {i}"
+                question=f"Question {i}",
             )
             success = db.resolve_blocker(blocker_id, f"Answer {i}")
             assert success is True
 
         # Verify all resolved
-        response = db.list_blockers(sample_project, status='RESOLVED')
-        assert response['total'] == 10
+        response = db.list_blockers(sample_project, status="RESOLVED")
+        assert response["total"] == 10

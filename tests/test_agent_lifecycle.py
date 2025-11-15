@@ -52,7 +52,7 @@ def temp_db_for_lifecycle(tmp_path):
 @pytest.fixture
 def test_client_with_db(temp_db_path):
     """Create test client with properly initialized database.
-    
+
     Follows the pattern from test_project_creation_api.py:
     1. Set DATABASE_PATH environment variable
     2. Reload server module to pick up new env var
@@ -60,11 +60,12 @@ def test_client_with_db(temp_db_path):
     """
     # Set environment variable
     os.environ["DATABASE_PATH"] = str(temp_db_path)
-    
+
     # Reload server to pick up new DATABASE_PATH
     from codeframe.ui import server
+
     reload(server)
-    
+
     # TestClient will trigger lifespan which initializes app.state.db
     with TestClient(server.app) as client:
         yield client
@@ -74,8 +75,7 @@ def test_client_with_db(temp_db_path):
 def sample_project(test_client_with_db):
     """Create a sample project for lifecycle tests."""
     response = test_client_with_db.post(
-        "/api/projects",
-        json={"project_name": "Lifecycle Test Project"}
+        "/api/projects", json={"project_name": "Lifecycle Test Project"}
     )
     assert response.status_code == 201
     return response.json()
@@ -85,9 +85,7 @@ def sample_project(test_client_with_db):
 class TestStartAgentEndpoint:
     """Test POST /api/projects/{id}/start endpoint (cf-10.2)."""
 
-    def test_start_agent_endpoint_returns_202_accepted(
-        self, test_client_with_db, sample_project
-    ):
+    def test_start_agent_endpoint_returns_202_accepted(self, test_client_with_db, sample_project):
         """Test that start endpoint returns 202 Accepted immediately (non-blocking).
 
         Requirement: cf-10.2 - Return 202 Accepted immediately (non-blocking)
@@ -96,7 +94,7 @@ class TestStartAgentEndpoint:
         project_id = sample_project["id"]
 
         # ACT
-        with patch('codeframe.ui.server.start_agent') as mock_start_agent:
+        with patch("codeframe.ui.server.start_agent") as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
             response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
@@ -105,9 +103,7 @@ class TestStartAgentEndpoint:
         assert "message" in response.json()
         assert "starting" in response.json()["message"].lower()
 
-    def test_start_agent_endpoint_handles_nonexistent_project(
-        self, test_client_with_db
-    ):
+    def test_start_agent_endpoint_handles_nonexistent_project(self, test_client_with_db):
         """Test that start endpoint returns 404 for nonexistent project.
 
         Requirement: cf-10.2 - Handle nonexistent projects gracefully
@@ -134,17 +130,21 @@ class TestStartAgentEndpoint:
 
         # Update project status to RUNNING - get db from reloaded server
         from codeframe.ui import server
+
         db = server.app.state.db
         db.update_project(project_id, {"status": ProjectStatus.RUNNING})
 
         # ACT
-        with patch('codeframe.ui.server.start_agent') as mock_start_agent:
+        with patch("codeframe.ui.server.start_agent") as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
             response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
         assert response.status_code == 200  # Already running
-        assert "already" in response.json()["message"].lower() or "running" in response.json()["message"].lower()
+        assert (
+            "already" in response.json()["message"].lower()
+            or "running" in response.json()["message"].lower()
+        )
 
     def test_start_agent_endpoint_triggers_background_task(
         self, test_client_with_db, sample_project
@@ -157,11 +157,11 @@ class TestStartAgentEndpoint:
         project_id = sample_project["id"]
 
         # ACT
-        with patch('codeframe.ui.server.BackgroundTasks') as mock_bg_tasks:
+        with patch("codeframe.ui.server.BackgroundTasks") as mock_bg_tasks:
             mock_bg_instance = Mock()
             mock_bg_tasks.return_value = mock_bg_instance
 
-            with patch('codeframe.ui.server.start_agent') as mock_start_agent:
+            with patch("codeframe.ui.server.start_agent") as mock_start_agent:
                 response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
@@ -173,9 +173,7 @@ class TestStartAgentFunction:
     """Test start_agent async function (cf-10.1)."""
 
     @pytest.mark.asyncio
-    async def test_start_agent_creates_lead_agent_instance(
-        self, temp_db_for_lifecycle
-    ):
+    async def test_start_agent_creates_lead_agent_instance(self, temp_db_for_lifecycle):
         """Test that start_agent creates LeadAgent instance.
 
         Requirement: cf-10.1 - Create and store agent reference
@@ -187,11 +185,12 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch('codeframe.ui.server.LeadAgent') as mock_lead_agent_class:
+        with patch("codeframe.ui.server.LeadAgent") as mock_lead_agent_class:
             mock_agent = Mock()
             mock_lead_agent_class.return_value = mock_agent
 
             from codeframe.ui.server import start_agent
+
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
         # ASSERT
@@ -199,9 +198,7 @@ class TestStartAgentFunction:
         mock_lead_agent_class.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_start_agent_updates_project_status_to_running(
-        self, temp_db_for_lifecycle
-    ):
+    async def test_start_agent_updates_project_status_to_running(self, temp_db_for_lifecycle):
         """Test that start_agent updates project status to RUNNING.
 
         Requirement: cf-10.1 - Update project status to "running"
@@ -211,8 +208,9 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch('codeframe.ui.server.LeadAgent'):
+        with patch("codeframe.ui.server.LeadAgent"):
             from codeframe.ui.server import start_agent
+
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
         # ASSERT
@@ -220,9 +218,7 @@ class TestStartAgentFunction:
         assert project["status"] == ProjectStatus.RUNNING.value
 
     @pytest.mark.asyncio
-    async def test_start_agent_saves_greeting_to_database(
-        self, temp_db_for_lifecycle
-    ):
+    async def test_start_agent_saves_greeting_to_database(self, temp_db_for_lifecycle):
         """Test that start_agent saves greeting message to conversation history.
 
         Requirement: cf-10.3 - Save greeting to conversation history
@@ -233,8 +229,9 @@ class TestStartAgentFunction:
         expected_greeting = "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
 
         # ACT
-        with patch('codeframe.ui.server.LeadAgent'):
+        with patch("codeframe.ui.server.LeadAgent"):
             from codeframe.ui.server import start_agent
+
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
         # ASSERT
@@ -244,9 +241,7 @@ class TestStartAgentFunction:
         assert expected_greeting in conversation[0]["value"]
 
     @pytest.mark.asyncio
-    async def test_start_agent_broadcasts_via_websocket(
-        self, temp_db_for_lifecycle
-    ):
+    async def test_start_agent_broadcasts_via_websocket(self, temp_db_for_lifecycle):
         """Test that start_agent broadcasts messages via WebSocket.
 
         Requirement: cf-10.4 - Broadcast messages via WebSocket
@@ -256,9 +251,10 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch('codeframe.ui.server.LeadAgent'):
-            with patch('codeframe.ui.server.manager.broadcast') as mock_broadcast:
+        with patch("codeframe.ui.server.LeadAgent"):
+            with patch("codeframe.ui.server.manager.broadcast") as mock_broadcast:
                 from codeframe.ui.server import start_agent
+
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
         # ASSERT
@@ -287,11 +283,8 @@ class TestWebSocketMessageProtocol:
 
         # ACT
         import asyncio
-        message = {
-            "type": "status_update",
-            "project_id": 1,
-            "status": "running"
-        }
+
+        message = {"type": "status_update", "project_id": 1, "status": "running"}
         asyncio.run(mock_manager.broadcast(message))
 
         # ASSERT
@@ -310,11 +303,12 @@ class TestWebSocketMessageProtocol:
 
         # ACT
         import asyncio
+
         message = {
             "type": "chat_message",
             "project_id": 1,
             "role": "assistant",
-            "content": "Hello!"
+            "content": "Hello!",
         }
         asyncio.run(mock_manager.broadcast(message))
 
@@ -335,11 +329,8 @@ class TestWebSocketMessageProtocol:
 
         # ACT
         import asyncio
-        message = {
-            "type": "agent_started",
-            "project_id": 1,
-            "agent_type": "lead"
-        }
+
+        message = {"type": "agent_started", "project_id": 1, "agent_type": "lead"}
         asyncio.run(mock_manager.broadcast(message))
 
         # ASSERT
@@ -352,9 +343,7 @@ class TestWebSocketMessageProtocol:
 class TestAgentLifecycleIntegration:
     """Integration test for complete agent lifecycle workflow."""
 
-    def test_complete_start_workflow_end_to_end(
-        self, test_client_with_db, sample_project
-    ):
+    def test_complete_start_workflow_end_to_end(self, test_client_with_db, sample_project):
         """Test complete workflow from start request to agent running.
 
         Integration test covering:
@@ -370,6 +359,7 @@ class TestAgentLifecycleIntegration:
         project_id = sample_project["id"]
         # Get db from reloaded server
         from codeframe.ui import server
+
         db = server.app.state.db
 
         # Verify initial state
@@ -380,8 +370,8 @@ class TestAgentLifecycleIntegration:
         assert len(initial_conversation) == 0
 
         # ACT
-        with patch('codeframe.ui.server.LeadAgent') as mock_lead_agent_class:
-            with patch('codeframe.ui.server.manager.broadcast') as mock_broadcast:
+        with patch("codeframe.ui.server.LeadAgent") as mock_lead_agent_class:
+            with patch("codeframe.ui.server.manager.broadcast") as mock_broadcast:
                 # Mock LeadAgent
                 mock_agent = Mock()
                 mock_lead_agent_class.return_value = mock_agent
@@ -391,6 +381,7 @@ class TestAgentLifecycleIntegration:
 
                 # Give background task time to execute
                 import time
+
                 time.sleep(0.5)
 
         # ASSERT
@@ -476,48 +467,42 @@ class TestRunningAgentsDictionary:
 class TestAgentLifecycleErrorHandling:
     """Test error handling in agent lifecycle."""
 
-    def test_start_agent_handles_database_error_gracefully(
-        self, test_client_with_db
-    ):
+    def test_start_agent_handles_database_error_gracefully(self, test_client_with_db):
         """Test that start_agent handles database errors gracefully."""
         # ARRANGE
         project_id = 1
 
         # ACT - Mock get_project to return None (simulating not found)
-        with patch('codeframe.ui.server.app.state.db.get_project', return_value=None):
+        with patch("codeframe.ui.server.app.state.db.get_project", return_value=None):
             response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT - Should return 404 when project not found
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_start_agent_handles_lead_agent_initialization_error(
-        self, temp_db_for_lifecycle
-    ):
+    async def test_start_agent_handles_lead_agent_initialization_error(self, temp_db_for_lifecycle):
         """Test that start_agent handles LeadAgent initialization errors."""
         # ARRANGE
         project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
         running_agents = {}
 
         # ACT & ASSERT
-        with patch('codeframe.ui.server.LeadAgent', side_effect=ValueError("Missing API key")):
+        with patch("codeframe.ui.server.LeadAgent", side_effect=ValueError("Missing API key")):
             from codeframe.ui.server import start_agent
 
             with pytest.raises(ValueError):
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, None)
 
     @pytest.mark.asyncio
-    async def test_start_agent_handles_websocket_broadcast_failure(
-        self, temp_db_for_lifecycle
-    ):
+    async def test_start_agent_handles_websocket_broadcast_failure(self, temp_db_for_lifecycle):
         """Test that start_agent continues even if WebSocket broadcast fails."""
         # ARRANGE
         project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
         running_agents = {}
 
         # ACT
-        with patch('codeframe.ui.server.LeadAgent'):
-            with patch('codeframe.ui.server.manager.broadcast', side_effect=Exception("WS Error")):
+        with patch("codeframe.ui.server.LeadAgent"):
+            with patch("codeframe.ui.server.manager.broadcast", side_effect=Exception("WS Error")):
                 from codeframe.ui.server import start_agent
 
                 # Should not raise exception

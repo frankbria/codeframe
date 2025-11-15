@@ -30,11 +30,7 @@ class TestRunner:
         print(f"Status: {result.status}, Passed: {result.passed}/{result.total}")
     """
 
-    def __init__(
-        self,
-        project_root: Path = Path("."),
-        timeout: int = 300
-    ):
+    def __init__(self, project_root: Path = Path("."), timeout: int = 300):
         """
         Initialize TestRunner.
 
@@ -45,10 +41,7 @@ class TestRunner:
         self.project_root = Path(project_root)
         self.timeout = timeout
 
-    def run_tests(
-        self,
-        test_paths: Optional[List[str]] = None
-    ) -> TestResult:
+    def run_tests(self, test_paths: Optional[List[str]] = None) -> TestResult:
         """
         Run pytest tests and return structured results.
 
@@ -71,22 +64,16 @@ class TestRunner:
         if not self.project_root.exists():
             logger.error(f"Project root does not exist: {self.project_root}")
             return TestResult(
-                status="error",
-                output=f"Project directory not found: {self.project_root}"
+                status="error", output=f"Project directory not found: {self.project_root}"
             )
 
         # Create temporary file for JSON report
-        with tempfile.NamedTemporaryFile(mode='w+', suffix='.json', delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=".json", delete=False) as tmp_file:
             json_report_path = tmp_file.name
 
         try:
             # Build pytest command
-            cmd = [
-                "pytest",
-                "--json-report",
-                f"--json-report-file={json_report_path}",
-                "-v"
-            ]
+            cmd = ["pytest", "--json-report", f"--json-report-file={json_report_path}", "-v"]
 
             # Add specific test paths if provided
             if test_paths:
@@ -96,15 +83,11 @@ class TestRunner:
 
             # Execute pytest
             result = subprocess.run(
-                cmd,
-                cwd=self.project_root,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout
+                cmd, cwd=self.project_root, capture_output=True, text=True, timeout=self.timeout
             )
 
             # Read JSON report from file
-            with open(json_report_path, 'r') as f:
+            with open(json_report_path, "r") as f:
                 json_output = f.read()
 
             # Parse results
@@ -113,22 +96,20 @@ class TestRunner:
         except subprocess.TimeoutExpired:
             logger.warning(f"Test execution timeout after {self.timeout}s")
             return TestResult(
-                status="timeout",
-                output=f"Test execution exceeded timeout of {self.timeout}s"
+                status="timeout", output=f"Test execution exceeded timeout of {self.timeout}s"
             )
 
         except FileNotFoundError:
             logger.error("pytest not found - is it installed?")
             return TestResult(
                 status="error",
-                output="pytest not found. Install with: pip install pytest pytest-json-report"
+                output="pytest not found. Install with: pip install pytest pytest-json-report",
             )
 
         except Exception as e:
             logger.error(f"Unexpected error running tests: {e}")
             return TestResult(
-                status="error",
-                output=f"Unexpected error: {type(e).__name__}: {str(e)}"
+                status="error", output=f"Unexpected error: {type(e).__name__}: {str(e)}"
             )
 
         finally:
@@ -161,10 +142,7 @@ class TestRunner:
             data = json.loads(json_output)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse pytest JSON output: {e}")
-            return TestResult(
-                status="error",
-                output=f"Failed to parse pytest output: {str(e)}"
-            )
+            return TestResult(status="error", output=f"Failed to parse pytest output: {str(e)}")
 
         # Extract summary data
         summary = data.get("summary", {})
@@ -202,5 +180,5 @@ class TestRunner:
             errors=errors,
             skipped=skipped,
             duration=duration,
-            output=data  # Store full JSON for debugging
+            output=data,  # Store full JSON for debugging
         )

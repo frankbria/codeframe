@@ -34,7 +34,7 @@ def test_list_projects_includes_progress_metrics():
         description="Test issue for progress calculation",
         status=TaskStatus.IN_PROGRESS,
         priority=2,
-        workflow_step=1
+        workflow_step=1,
     )
     issue_id = db.create_issue(issue)
 
@@ -49,7 +49,7 @@ def test_list_projects_includes_progress_metrics():
         status=TaskStatus.COMPLETED,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     db.create_task_with_issue(
@@ -62,7 +62,7 @@ def test_list_projects_includes_progress_metrics():
         status=TaskStatus.COMPLETED,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     db.create_task_with_issue(
@@ -75,7 +75,7 @@ def test_list_projects_includes_progress_metrics():
         status=TaskStatus.COMPLETED,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     db.create_task_with_issue(
@@ -88,7 +88,7 @@ def test_list_projects_includes_progress_metrics():
         status=TaskStatus.PENDING,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     db.create_task_with_issue(
@@ -101,7 +101,7 @@ def test_list_projects_includes_progress_metrics():
         status=TaskStatus.IN_PROGRESS,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     # When: We fetch the project list
@@ -125,12 +125,15 @@ def test_list_projects_includes_progress_metrics():
 
     # And: The metrics should be calculated correctly
     # 3 out of 5 tasks completed = 60%
-    assert project["progress"]["completed_tasks"] == 3, \
-        f"Expected 3 completed tasks, got {project['progress']['completed_tasks']}"
-    assert project["progress"]["total_tasks"] == 5, \
-        f"Expected 5 total tasks, got {project['progress']['total_tasks']}"
-    assert project["progress"]["percentage"] == 60.0, \
-        f"Expected 60.0% completion, got {project['progress']['percentage']}"
+    assert (
+        project["progress"]["completed_tasks"] == 3
+    ), f"Expected 3 completed tasks, got {project['progress']['completed_tasks']}"
+    assert (
+        project["progress"]["total_tasks"] == 5
+    ), f"Expected 5 total tasks, got {project['progress']['total_tasks']}"
+    assert (
+        project["progress"]["percentage"] == 60.0
+    ), f"Expected 60.0% completion, got {project['progress']['percentage']}"
 
 
 def test_list_projects_progress_with_no_tasks():
@@ -178,7 +181,7 @@ def test_list_projects_progress_with_all_completed():
         description="All tasks done",
         status=TaskStatus.COMPLETED,
         priority=2,
-        workflow_step=1
+        workflow_step=1,
     )
     issue_id = db.create_issue(issue)
 
@@ -194,7 +197,7 @@ def test_list_projects_progress_with_all_completed():
             status=TaskStatus.COMPLETED,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
     # When: We fetch the project list
@@ -227,7 +230,7 @@ def test_list_projects_progress_multiple_projects():
         description="Test",
         status=TaskStatus.IN_PROGRESS,
         priority=2,
-        workflow_step=1
+        workflow_step=1,
     )
     issue1_id = db.create_issue(issue1)
 
@@ -241,7 +244,7 @@ def test_list_projects_progress_multiple_projects():
         status=TaskStatus.COMPLETED,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     db.create_task_with_issue(
@@ -254,7 +257,7 @@ def test_list_projects_progress_multiple_projects():
         status=TaskStatus.PENDING,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
 
     # Project 2: 75% complete (3 of 4 tasks)
@@ -266,7 +269,7 @@ def test_list_projects_progress_multiple_projects():
         description="Test",
         status=TaskStatus.IN_PROGRESS,
         priority=2,
-        workflow_step=1
+        workflow_step=1,
     )
     issue2_id = db.create_issue(issue2)
 
@@ -282,7 +285,7 @@ def test_list_projects_progress_multiple_projects():
             status=status,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
     # When: We fetch the project list

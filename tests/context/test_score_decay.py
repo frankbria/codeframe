@@ -17,13 +17,13 @@ class TestScoreDecay:
     def test_exponential_decay_over_time(self):
         """Verify e^(-0.5 × days) formula with multiple time points."""
         test_cases = [
-            (0, 1.0),                    # t=0: No decay
-            (1, math.exp(-0.5)),        # t=1 day: e^(-0.5) ≈ 0.606
-            (2, math.exp(-1.0)),        # t=2 days: e^(-1) ≈ 0.368
-            (3, math.exp(-1.5)),        # t=3 days: e^(-1.5) ≈ 0.223
-            (7, math.exp(-3.5)),        # t=7 days: e^(-3.5) ≈ 0.030
-            (14, math.exp(-7.0)),       # t=14 days: e^(-7) ≈ 0.0009
-            (30, math.exp(-15.0)),      # t=30 days: e^(-15) ≈ 3e-7
+            (0, 1.0),  # t=0: No decay
+            (1, math.exp(-0.5)),  # t=1 day: e^(-0.5) ≈ 0.606
+            (2, math.exp(-1.0)),  # t=2 days: e^(-1) ≈ 0.368
+            (3, math.exp(-1.5)),  # t=3 days: e^(-1.5) ≈ 0.223
+            (7, math.exp(-3.5)),  # t=7 days: e^(-3.5) ≈ 0.030
+            (14, math.exp(-7.0)),  # t=14 days: e^(-7) ≈ 0.0009
+            (30, math.exp(-15.0)),  # t=30 days: e^(-15) ≈ 3e-7
         ]
 
         for age_days, expected_decay in test_cases:

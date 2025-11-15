@@ -25,9 +25,7 @@ def example_basic_usage():
 
     # Create a backend worker
     backend_worker = factory.create_agent(
-        agent_type="backend-worker",
-        agent_id="worker-001",
-        provider="claude"
+        agent_type="backend-worker", agent_id="worker-001", provider="claude"
     )
 
     print(f"\nCreated agent: {backend_worker.agent_id}")
@@ -47,7 +45,9 @@ def example_specialized_agents():
     # Create different types of agents
     agents = {
         "Backend Architect": factory.create_agent("backend-architect", "arch-001", "claude"),
-        "Frontend Specialist": factory.create_agent("frontend-specialist", "frontend-001", "claude"),
+        "Frontend Specialist": factory.create_agent(
+            "frontend-specialist", "frontend-001", "claude"
+        ),
         "Test Engineer": factory.create_agent("test-engineer", "test-001", "claude"),
         "Code Reviewer": factory.create_agent("code-reviewer", "review-001", "claude"),
     }
@@ -118,9 +118,7 @@ def example_custom_maturity():
 
     # Create agent with default maturity (D1 for backend-worker)
     default_agent = factory.create_agent(
-        agent_type="backend-worker",
-        agent_id="worker-default",
-        provider="claude"
+        agent_type="backend-worker", agent_id="worker-default", provider="claude"
     )
     print(f"\nDefault maturity: {default_agent.maturity.value}")
 
@@ -129,7 +127,7 @@ def example_custom_maturity():
         agent_type="backend-worker",
         agent_id="worker-advanced",
         provider="claude",
-        maturity=AgentMaturity.D4
+        maturity=AgentMaturity.D4,
     )
     print(f"Custom maturity: {advanced_agent.maturity.value}")
 
@@ -169,10 +167,7 @@ def example_backward_compatibility():
     from codeframe.agents import WorkerAgent
 
     old_style_agent = WorkerAgent(
-        agent_id="old-001",
-        agent_type="backend",
-        provider="claude",
-        maturity=AgentMaturity.D1
+        agent_id="old-001", agent_type="backend", provider="claude", maturity=AgentMaturity.D1
     )
 
     print("\nOld style agent created:")

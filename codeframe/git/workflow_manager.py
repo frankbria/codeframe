@@ -102,7 +102,9 @@ class GitWorkflowManager:
 
             if matching_issue:
                 self.db.create_git_branch(matching_issue["id"], branch_name)
-                logger.debug(f"Stored branch {branch_name} in database for issue {matching_issue['id']}")
+                logger.debug(
+                    f"Stored branch {branch_name} in database for issue {matching_issue['id']}"
+                )
         except Exception as e:
             logger.warning(f"Could not store branch in database: {e}")
             # Don't fail if database tracking fails
@@ -160,9 +162,7 @@ class GitWorkflowManager:
 
         # Check all tasks are completed
         if not self.is_issue_complete(issue_id):
-            raise ValueError(
-                f"Cannot merge issue {issue_number}: incomplete tasks remain"
-            )
+            raise ValueError(f"Cannot merge issue {issue_number}: incomplete tasks remain")
 
         # Get branch name from database
         branch_record = self.db.get_branch_for_issue(issue_id)
@@ -227,8 +227,7 @@ class GitWorkflowManager:
         all_completed = all(task["status"] == "completed" for task in tasks)
 
         logger.debug(
-            f"Issue {issue_id} completion check: {len(tasks)} tasks, "
-            f"completed={all_completed}"
+            f"Issue {issue_id} completion check: {len(tasks)} tasks, " f"completed={all_completed}"
         )
 
         return all_completed
@@ -286,9 +285,7 @@ class GitWorkflowManager:
             # Default to "feat" for implementation tasks
             return "feat"
 
-    def _generate_commit_message(
-        self, task: Dict[str, Any], files_modified: List[str]
-    ) -> str:
+    def _generate_commit_message(self, task: Dict[str, Any], files_modified: List[str]) -> str:
         """Generate conventional commit message from task.
 
         Args:
@@ -299,10 +296,7 @@ class GitWorkflowManager:
             Conventional commit message string
         """
         # Infer commit type
-        commit_type = self._infer_commit_type(
-            task["title"],
-            task.get("description", "")
-        )
+        commit_type = self._infer_commit_type(task["title"], task.get("description", ""))
 
         # Build message
         scope = task["task_number"]
@@ -324,10 +318,7 @@ class GitWorkflowManager:
         return message
 
     def commit_task_changes(
-        self,
-        task: Dict[str, Any],
-        files_modified: List[str],
-        agent_id: str
+        self, task: Dict[str, Any], files_modified: List[str], agent_id: str
     ) -> str:
         """Create git commit for task changes and record in changelog.
 
@@ -364,18 +355,19 @@ class GitWorkflowManager:
         commit = self.repo.index.commit(commit_message)
         commit_hash = commit.hexsha
 
-        logger.info(
-            f"Created commit {commit_hash[:7]} for task {task['task_number']}"
-        )
+        logger.info(f"Created commit {commit_hash[:7]} for task {task['task_number']}")
 
         # Record in changelog
         import json
+
         try:
-            details = json.dumps({
-                "commit_hash": commit_hash,
-                "commit_message": commit_message,
-                "files_modified": files_modified,
-            })
+            details = json.dumps(
+                {
+                    "commit_hash": commit_hash,
+                    "commit_message": commit_message,
+                    "files_modified": files_modified,
+                }
+            )
 
             cursor = self.db.conn.cursor()
             cursor.execute(

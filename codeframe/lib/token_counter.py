@@ -186,7 +186,4 @@ class TokenCounter:
         Returns:
             Dictionary with cache statistics including size and hit rate.
         """
-        return {
-            "cache_size": len(self._cache),
-            "cache_enabled": self.cache_enabled
-        }
+        return {"cache_size": len(self._cache), "cache_enabled": self.cache_enabled}

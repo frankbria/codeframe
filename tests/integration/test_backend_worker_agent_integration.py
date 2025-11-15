@@ -32,30 +32,25 @@ class TestBackendWorkerAgentIntegration:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         # Test creating multiple files with nested directories
         files = [
             {
                 "path": "src/models/user.py",
                 "action": "create",
-                "content": "class User:\n    def __init__(self, name):\n        self.name = name\n"
+                "content": "class User:\n    def __init__(self, name):\n        self.name = name\n",
             },
             {
                 "path": "src/models/__init__.py",
                 "action": "create",
-                "content": "from .user import User\n"
+                "content": "from .user import User\n",
             },
             {
                 "path": "tests/test_user.py",
                 "action": "create",
-                "content": "def test_user():\n    assert True\n"
-            }
+                "content": "def test_user():\n    assert True\n",
+            },
         ]
 
         # Execute
@@ -77,7 +72,7 @@ class TestBackendWorkerAgentIntegration:
             {
                 "path": "src/models/user.py",
                 "action": "modify",
-                "content": "class User:\n    def __init__(self, name, email):\n        self.name = name\n        self.email = email\n"
+                "content": "class User:\n    def __init__(self, name, email):\n        self.name = name\n        self.email = email\n",
             }
         ]
 
@@ -89,12 +84,7 @@ class TestBackendWorkerAgentIntegration:
         assert modified_content != user_content
 
         # Test deleting a file
-        files_delete = [
-            {
-                "path": "tests/test_user.py",
-                "action": "delete"
-            }
-        ]
+        files_delete = [{"path": "tests/test_user.py", "action": "delete"}]
 
         modified_paths = agent.apply_file_changes(files_delete)
 
@@ -110,14 +100,16 @@ class TestBackendWorkerAgentIntegration:
 
         # Create real project and task
         project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -129,16 +121,13 @@ class TestBackendWorkerAgentIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create agent with real database
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
         )
 
         # Test updating to in_progress
@@ -150,7 +139,9 @@ class TestBackendWorkerAgentIntegration:
         assert row["status"] == "in_progress"
 
         # Test updating to completed (should set completed_at)
-        agent.update_task_status(task_id, TaskStatus.COMPLETED.value, output="Task completed successfully")
+        agent.update_task_status(
+            task_id, TaskStatus.COMPLETED.value, output="Task completed successfully"
+        )
 
         cursor.execute("SELECT status, completed_at FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
@@ -159,6 +150,7 @@ class TestBackendWorkerAgentIntegration:
 
         # Verify completed_at is a valid timestamp
         from datetime import datetime
+
         completed_at = datetime.fromisoformat(row["completed_at"])
         assert completed_at is not None
 
@@ -169,14 +161,16 @@ class TestBackendWorkerAgentIntegration:
         db.initialize()
 
         project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Create User Model",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Create User Model",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -188,7 +182,7 @@ class TestBackendWorkerAgentIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create real codebase index (empty for this test)
@@ -201,30 +195,36 @@ class TestBackendWorkerAgentIntegration:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock Anthropic API to return realistic code
-        with patch('anthropic.Anthropic') as mock_anthropic_class:
+        with patch("anthropic.Anthropic") as mock_anthropic_class:
             mock_client = Mock()
             mock_anthropic_class.return_value = mock_client
 
             mock_response = Mock()
-            mock_response.content = [Mock(text=json.dumps({
-                "files": [
-                    {
-                        "path": "models/user.py",
-                        "action": "create",
-                        "content": "class User:\n    def __init__(self, name, email):\n        self.name = name\n        self.email = email\n\n    def __repr__(self):\n        return f'User({self.name}, {self.email})'\n"
-                    },
-                    {
-                        "path": "tests/test_user.py",
-                        "action": "create",
-                        "content": "from models.user import User\n\ndef test_user_creation():\n    user = User('Alice', 'alice@example.com')\n    assert user.name == 'Alice'\n    assert user.email == 'alice@example.com'\n"
-                    }
-                ],
-                "explanation": "Created User model with name and email fields, plus tests"
-            }))]
+            mock_response.content = [
+                Mock(
+                    text=json.dumps(
+                        {
+                            "files": [
+                                {
+                                    "path": "models/user.py",
+                                    "action": "create",
+                                    "content": "class User:\n    def __init__(self, name, email):\n        self.name = name\n        self.email = email\n\n    def __repr__(self):\n        return f'User({self.name}, {self.email})'\n",
+                                },
+                                {
+                                    "path": "tests/test_user.py",
+                                    "action": "create",
+                                    "content": "from models.user import User\n\ndef test_user_creation():\n    user = User('Alice', 'alice@example.com')\n    assert user.name == 'Alice'\n    assert user.email == 'alice@example.com'\n",
+                                },
+                            ],
+                            "explanation": "Created User model with name and email fields, plus tests",
+                        }
+                    )
+                )
+            ]
             mock_client.messages.create.return_value = mock_response
 
             # Get task from database
@@ -268,14 +268,16 @@ class TestBackendWorkerAgentIntegration:
         db.initialize()
 
         project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -287,7 +289,7 @@ class TestBackendWorkerAgentIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -298,25 +300,31 @@ class TestBackendWorkerAgentIntegration:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock API to return a modify operation on non-existent file
-        with patch('anthropic.Anthropic') as mock_anthropic_class:
+        with patch("anthropic.Anthropic") as mock_anthropic_class:
             mock_client = Mock()
             mock_anthropic_class.return_value = mock_client
 
             mock_response = Mock()
-            mock_response.content = [Mock(text=json.dumps({
-                "files": [
-                    {
-                        "path": "nonexistent.py",
-                        "action": "modify",
-                        "content": "modified content"
-                    }
-                ],
-                "explanation": "Modified file"
-            }))]
+            mock_response.content = [
+                Mock(
+                    text=json.dumps(
+                        {
+                            "files": [
+                                {
+                                    "path": "nonexistent.py",
+                                    "action": "modify",
+                                    "content": "modified content",
+                                }
+                            ],
+                            "explanation": "Modified file",
+                        }
+                    )
+                )
+            ]
             mock_client.messages.create.return_value = mock_response
 
             # Get task
@@ -342,20 +350,11 @@ class TestBackendWorkerAgentIntegration:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(
-            project_id=1,
-            db=db,
-            codebase_index=index,
-            project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
 
         # Attempt path traversal
         malicious_files = [
-            {
-                "path": "../../../etc/passwd",
-                "action": "create",
-                "content": "malicious"
-            }
+            {"path": "../../../etc/passwd", "action": "create", "content": "malicious"}
         ]
 
         with pytest.raises(ValueError) as exc_info:
@@ -375,14 +374,16 @@ class TestBackendWorkerAgentIntegration:
         db.initialize()
 
         project_id = db.create_project("multi_task_test", ProjectStatus.ACTIVE)
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Build User System",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Build User System",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         # Create multiple tasks
         task1_id = db.create_task_with_issue(
@@ -395,7 +396,7 @@ class TestBackendWorkerAgentIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         task2_id = db.create_task_with_issue(
@@ -408,7 +409,7 @@ class TestBackendWorkerAgentIntegration:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=2,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -419,42 +420,56 @@ class TestBackendWorkerAgentIntegration:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock API for task 1
-        with patch('anthropic.Anthropic') as mock_anthropic_class:
+        with patch("anthropic.Anthropic") as mock_anthropic_class:
             mock_client = Mock()
             mock_anthropic_class.return_value = mock_client
 
             # Task 1: Create User model
             mock_response1 = Mock()
-            mock_response1.content = [Mock(text=json.dumps({
-                "files": [{
-                    "path": "user.py",
-                    "action": "create",
-                    "content": "class User:\n    pass\n"
-                }],
-                "explanation": "Created User model"
-            }))]
+            mock_response1.content = [
+                Mock(
+                    text=json.dumps(
+                        {
+                            "files": [
+                                {
+                                    "path": "user.py",
+                                    "action": "create",
+                                    "content": "class User:\n    pass\n",
+                                }
+                            ],
+                            "explanation": "Created User model",
+                        }
+                    )
+                )
+            ]
 
             # Task 2: Create UserRepository (modifies user.py, creates repo.py)
             mock_response2 = Mock()
-            mock_response2.content = [Mock(text=json.dumps({
-                "files": [
-                    {
-                        "path": "user.py",
-                        "action": "modify",
-                        "content": "class User:\n    def __init__(self, name):\n        self.name = name\n"
-                    },
-                    {
-                        "path": "repository.py",
-                        "action": "create",
-                        "content": "class UserRepository:\n    pass\n"
-                    }
-                ],
-                "explanation": "Enhanced User model and created repository"
-            }))]
+            mock_response2.content = [
+                Mock(
+                    text=json.dumps(
+                        {
+                            "files": [
+                                {
+                                    "path": "user.py",
+                                    "action": "modify",
+                                    "content": "class User:\n    def __init__(self, name):\n        self.name = name\n",
+                                },
+                                {
+                                    "path": "repository.py",
+                                    "action": "create",
+                                    "content": "class UserRepository:\n    pass\n",
+                                },
+                            ],
+                            "explanation": "Enhanced User model and created repository",
+                        }
+                    )
+                )
+            ]
 
             mock_client.messages.create.side_effect = [mock_response1, mock_response2]
 

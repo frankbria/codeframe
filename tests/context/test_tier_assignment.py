@@ -55,10 +55,10 @@ class TestTierAssignment:
         """Test exact threshold values (0.8 and 0.4)."""
         # ARRANGE: Exact boundary values
         boundaries = [
-            (0.8, "HOT"),      # Lower bound of HOT tier
-            (0.79999, "WARM"), # Just below HOT threshold
-            (0.4, "WARM"),     # Lower bound of WARM tier
-            (0.39999, "COLD"), # Just below WARM threshold
+            (0.8, "HOT"),  # Lower bound of HOT tier
+            (0.79999, "WARM"),  # Just below HOT threshold
+            (0.4, "WARM"),  # Lower bound of WARM tier
+            (0.39999, "COLD"),  # Just below WARM threshold
         ]
 
         for score, expected_tier in boundaries:
@@ -66,8 +66,9 @@ class TestTierAssignment:
             tier = assign_tier(score)
 
             # ASSERT: Boundary values assign correct tier
-            assert tier == expected_tier, \
-                f"Score {score} should assign {expected_tier} tier, got {tier}"
+            assert (
+                tier == expected_tier
+            ), f"Score {score} should assign {expected_tier} tier, got {tier}"
 
     def test_tier_reassignment_on_score_change(self):
         """Test that changing score results in tier update."""

@@ -51,14 +51,14 @@ class TestExpireStaleBlockersCronJob:
             cursor = db.conn.execute(
                 """INSERT INTO projects (name, description, workspace_path, status)
                    VALUES (?, ?, ?, ?) RETURNING id""",
-                ("test-project", "Test", "/tmp/test", "active")
+                ("test-project", "Test", "/tmp/test", "active"),
             )
             project_id = cursor.fetchone()[0]
 
             cursor = db.conn.execute(
                 """INSERT INTO tasks (project_id, title, description, status, priority)
                    VALUES (?, ?, ?, ?, ?) RETURNING id""",
-                (project_id, "Test Task", "Test", "pending", 0)
+                (project_id, "Test Task", "Test", "pending", 0),
             )
             task_id = cursor.fetchone()[0]
 
@@ -67,7 +67,7 @@ class TestExpireStaleBlockersCronJob:
             cursor = db.conn.execute(
                 """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
-                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time)
+                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time),
             )
             blocker_id = cursor.fetchone()[0]
             db.conn.commit()
@@ -82,7 +82,7 @@ class TestExpireStaleBlockersCronJob:
             db = Database(db_path)
             db.initialize(run_migrations=False)
             blocker = db.get_blocker(blocker_id)
-            assert blocker['status'] == 'EXPIRED'
+            assert blocker["status"] == "EXPIRED"
             db.close()
 
         finally:
@@ -103,7 +103,7 @@ class TestExpireStaleBlockersCronJob:
             cursor = db.conn.execute(
                 """INSERT INTO projects (name, description, workspace_path, status)
                    VALUES (?, ?, ?, ?) RETURNING id""",
-                ("test-project", "Test", "/tmp/test", "active")
+                ("test-project", "Test", "/tmp/test", "active"),
             )
             project_id = cursor.fetchone()[0]
 
@@ -111,7 +111,7 @@ class TestExpireStaleBlockersCronJob:
             cursor = db.conn.execute(
                 """INSERT INTO tasks (project_id, title, description, status, priority)
                    VALUES (?, ?, ?, ?, ?) RETURNING id""",
-                (project_id, "Test Task", "Test", "in_progress", 0)
+                (project_id, "Test Task", "Test", "in_progress", 0),
             )
             task_id = cursor.fetchone()[0]
 
@@ -120,7 +120,7 @@ class TestExpireStaleBlockersCronJob:
             cursor = db.conn.execute(
                 """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
-                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time)
+                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time),
             )
             blocker_id = cursor.fetchone()[0]
             db.conn.commit()
@@ -135,9 +135,9 @@ class TestExpireStaleBlockersCronJob:
             db = Database(db_path)
             db.initialize(run_migrations=False)
             task = db.get_task(task_id)
-            assert task['status'] == TaskStatus.FAILED.value
-            assert "blocker" in task['output'].lower()
-            assert str(blocker_id) in task['output']
+            assert task["status"] == TaskStatus.FAILED.value
+            assert "blocker" in task["output"].lower()
+            assert str(blocker_id) in task["output"]
             db.close()
 
         finally:
@@ -157,14 +157,14 @@ class TestExpireStaleBlockersCronJob:
             cursor = db.conn.execute(
                 """INSERT INTO projects (name, description, workspace_path, status)
                    VALUES (?, ?, ?, ?) RETURNING id""",
-                ("test-project", "Test", "/tmp/test", "active")
+                ("test-project", "Test", "/tmp/test", "active"),
             )
             project_id = cursor.fetchone()[0]
 
             cursor = db.conn.execute(
                 """INSERT INTO tasks (project_id, title, description, status, priority)
                    VALUES (?, ?, ?, ?, ?) RETURNING id""",
-                (project_id, "Test Task", "Test", "pending", 0)
+                (project_id, "Test Task", "Test", "pending", 0),
             )
             task_id = cursor.fetchone()[0]
 
@@ -172,7 +172,7 @@ class TestExpireStaleBlockersCronJob:
             cursor = db.conn.execute(
                 """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
-                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time)
+                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time),
             )
             blocker_id = cursor.fetchone()[0]
             db.conn.commit()
@@ -181,12 +181,12 @@ class TestExpireStaleBlockersCronJob:
             # Mock WebSocket broadcast
             mock_ws_manager = MagicMock()
 
-            with patch("codeframe.tasks.expire_blockers.broadcast_blocker_expired", new_callable=AsyncMock) as mock_broadcast:
+            with patch(
+                "codeframe.tasks.expire_blockers.broadcast_blocker_expired", new_callable=AsyncMock
+            ) as mock_broadcast:
                 # Run cron job with WebSocket
                 expired_count = await expire_stale_blockers_job(
-                    db_path=db_path,
-                    hours=24,
-                    ws_manager=mock_ws_manager
+                    db_path=db_path, hours=24, ws_manager=mock_ws_manager
                 )
 
                 assert expired_count == 1
@@ -194,9 +194,9 @@ class TestExpireStaleBlockersCronJob:
                 # Verify broadcast was called
                 mock_broadcast.assert_called_once()
                 call_kwargs = mock_broadcast.call_args.kwargs
-                assert call_kwargs['blocker_id'] == blocker_id
-                assert call_kwargs['agent_id'] == "backend-worker-1"
-                assert call_kwargs['task_id'] == task_id
+                assert call_kwargs["blocker_id"] == blocker_id
+                assert call_kwargs["agent_id"] == "backend-worker-1"
+                assert call_kwargs["task_id"] == task_id
 
         finally:
             Path(db_path).unlink(missing_ok=True)
@@ -216,7 +216,7 @@ class TestExpireStaleBlockersCronJob:
             db.conn.execute(
                 """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                ("backend-worker-1", None, "ASYNC", "Stale?", "PENDING", stale_time)
+                ("backend-worker-1", None, "ASYNC", "Stale?", "PENDING", stale_time),
             )
             db.conn.commit()
             db.close()

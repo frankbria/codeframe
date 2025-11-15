@@ -4,11 +4,12 @@ from unittest.mock import patch, Mock
 
 # Test 1: Can we patch TestWorkerAgent at all?
 print("Test 1: Basic patch test")
-with patch('codeframe.agents.test_worker_agent.TestWorkerAgent') as MockCls:
+with patch("codeframe.agents.test_worker_agent.TestWorkerAgent") as MockCls:
     mock_instance = Mock()
     MockCls.return_value = mock_instance
 
     from codeframe.agents.test_worker_agent import TestWorkerAgent
+
     agent = TestWorkerAgent(agent_id="test-001")
 
     print(f"agent type: {type(agent)}")
@@ -16,11 +17,11 @@ with patch('codeframe.agents.test_worker_agent.TestWorkerAgent') as MockCls:
     print(f"MockCls called: {MockCls.called}")
     print(f"MockCls call count: {MockCls.call_count}")
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 
 # Test 2: Patch at import location
 print("\nTest 2: Patch at import location (agent_pool_manager)")
-with patch('codeframe.agents.agent_pool_manager.TestWorkerAgent') as MockCls:
+with patch("codeframe.agents.agent_pool_manager.TestWorkerAgent") as MockCls:
     mock_instance = Mock()
     MockCls.return_value = mock_instance
 
@@ -34,11 +35,7 @@ with patch('codeframe.agents.agent_pool_manager.TestWorkerAgent') as MockCls:
     project_id = db.create_project("test", ProjectStatus.ACTIVE)
 
     pool = AgentPoolManager(
-        project_id=project_id,
-        db=db,
-        ws_manager=None,
-        max_agents=5,
-        api_key="test-key"
+        project_id=project_id, db=db, ws_manager=None, max_agents=5, api_key="test-key"
     )
 
     print("Creating agent...")

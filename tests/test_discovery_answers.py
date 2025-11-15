@@ -16,8 +16,7 @@ class TestAnswerCaptureBasics:
         capture = AnswerCapture()
 
         result = capture.capture_answer(
-            question_id="q1",
-            answer_text="Authentication for a SaaS app"
+            question_id="q1", answer_text="Authentication for a SaaS app"
         )
 
         assert result is True
@@ -72,8 +71,7 @@ class TestFeatureExtraction:
         """Test extracting features from natural sentence."""
         capture = AnswerCapture()
         capture.capture_answer(
-            "q1",
-            "The system needs authentication, authorization, and user profile management"
+            "q1", "The system needs authentication, authorization, and user profile management"
         )
 
         features = capture.extract_features(capture.answers)
@@ -123,8 +121,7 @@ class TestUserExtraction:
         """Test extracting users with specific roles."""
         capture = AnswerCapture()
         capture.capture_answer(
-            "q1",
-            "The system is for administrators, content creators, and viewers"
+            "q1", "The system is for administrators, content creators, and viewers"
         )
 
         users = capture.extract_users(capture.answers)
@@ -137,8 +134,7 @@ class TestUserExtraction:
         """Test extracting users from persona descriptions."""
         capture = AnswerCapture()
         capture.capture_answer(
-            "q1",
-            "Primary users are software engineers. Secondary users include project managers."
+            "q1", "Primary users are software engineers. Secondary users include project managers."
         )
 
         users = capture.extract_users(capture.answers)
@@ -193,8 +189,7 @@ class TestConstraintExtraction:
         """Test extracting multiple types of constraints."""
         capture = AnswerCapture()
         capture.capture_answer(
-            "q1",
-            "Use PostgreSQL database, must be GDPR compliant, response under 100ms"
+            "q1", "Use PostgreSQL database, must be GDPR compliant, response under 100ms"
         )
 
         constraints = capture.extract_constraints(capture.answers)
@@ -231,15 +226,14 @@ class TestStructuredDataGeneration:
     def test_structured_data_example_case(self):
         """Test the example from requirements."""
         capture = AnswerCapture()
-        capture.capture_answer(
-            "q1",
-            "Authentication for a SaaS app. Users are developers."
-        )
+        capture.capture_answer("q1", "Authentication for a SaaS app. Users are developers.")
 
         data = capture.get_structured_data()
 
         # Should extract problem, domain, and users
-        assert any("authentication" in str(v).lower() for v in data.values() if isinstance(v, (str, list)))
+        assert any(
+            "authentication" in str(v).lower() for v in data.values() if isinstance(v, (str, list))
+        )
         assert any("saas" in str(v).lower() for v in data.values() if isinstance(v, (str, list)))
         assert any("developer" in str(u).lower() for u in data.get("users", []))
 

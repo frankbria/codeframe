@@ -43,7 +43,8 @@ class Database:
         cursor = self.conn.cursor()
 
         # Projects table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -68,10 +69,12 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config JSON
             )
-        """)
+        """
+        )
 
         # Issues table (cf-16.2: Hierarchical Issue/Task model)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS issues (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
@@ -85,16 +88,20 @@ class Database:
                 completed_at TIMESTAMP,
                 UNIQUE(project_id, issue_number)
             )
-        """)
+        """
+        )
 
         # Create index for issues
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_issues_number
             ON issues(project_id, issue_number)
-        """)
+        """
+        )
 
         # Tasks table (enhanced for Issue relationship)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
@@ -115,16 +122,20 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Create index for tasks by parent issue number
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_tasks_issue_number
             ON tasks(parent_issue_number)
-        """)
+        """
+        )
 
         # Agents table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
@@ -135,10 +146,12 @@ class Database:
                 last_heartbeat TIMESTAMP,
                 metrics JSON
             )
-        """)
+        """
+        )
 
         # Blockers table (updated schema from migration 003)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS blockers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id TEXT NOT NULL,
@@ -153,24 +166,32 @@ class Database:
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
 
         # Blocker indexes (from migration 003)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_blockers_status_created
             ON blockers(status, created_at)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_blockers_agent_status
             ON blockers(agent_id, status)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_blockers_task_id
             ON blockers(task_id)
-        """)
+        """
+        )
 
         # Memory table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS memory (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
@@ -180,10 +201,12 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Context items table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS context_items (
                 id TEXT PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
@@ -198,10 +221,12 @@ class Database:
                 current_tier TEXT CHECK(current_tier IN ('hot', 'warm', 'cold')),
                 manual_pin BOOLEAN DEFAULT FALSE
             )
-        """)
+        """
+        )
 
         # Checkpoints table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS checkpoints (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
@@ -211,10 +236,12 @@ class Database:
                 db_backup_path TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Context checkpoints table (for flash save)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS context_checkpoints (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id TEXT NOT NULL,
@@ -225,16 +252,20 @@ class Database:
                 token_count INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Index for context checkpoints
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_checkpoints_agent_created
             ON context_checkpoints(agent_id, created_at DESC)
-        """)
+        """
+        )
 
         # Changelog table
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS changelog (
                 id INTEGER PRIMARY KEY,
                 project_id INTEGER REFERENCES projects(id),
@@ -244,10 +275,12 @@ class Database:
                 details JSON,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Git branches table (cf-33: Git Branching & Deployment Workflow)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS git_branches (
                 id INTEGER PRIMARY KEY,
                 issue_id INTEGER REFERENCES issues(id),
@@ -257,10 +290,12 @@ class Database:
                 merge_commit TEXT,
                 status TEXT CHECK(status IN ('active', 'merged', 'abandoned')) DEFAULT 'active'
             )
-        """)
+        """
+        )
 
         # Deployments table (cf-33: Deployment tracking)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS deployments (
                 id INTEGER PRIMARY KEY,
                 commit_hash TEXT NOT NULL,
@@ -270,10 +305,12 @@ class Database:
                 duration_seconds REAL,
                 triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Test Results table (cf-42: Test Runner Integration)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS test_results (
                 id INTEGER PRIMARY KEY,
                 task_id INTEGER NOT NULL REFERENCES tasks(id),
@@ -286,16 +323,20 @@ class Database:
                 output TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Create index for test_results by task
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_test_results_task
             ON test_results(task_id)
-        """)
+        """
+        )
 
         # Correction Attempts table (cf-43: Self-Correction Loop)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS correction_attempts (
                 id INTEGER PRIMARY KEY,
                 task_id INTEGER NOT NULL REFERENCES tasks(id),
@@ -306,16 +347,20 @@ class Database:
                 test_result_id INTEGER REFERENCES test_results(id),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
 
         # Create index for correction_attempts by task
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_correction_attempts_task
             ON correction_attempts(task_id)
-        """)
+        """
+        )
 
         # Task Dependencies junction table (Sprint 4: Multi-Agent Coordination)
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS task_dependencies (
                 id INTEGER PRIMARY KEY,
                 task_id INTEGER NOT NULL,
@@ -324,18 +369,23 @@ class Database:
                 FOREIGN KEY (depends_on_task_id) REFERENCES tasks(id),
                 UNIQUE(task_id, depends_on_task_id)
             )
-        """)
+        """
+        )
 
         # Create index for task_dependencies queries
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_task_dependencies_task
             ON task_dependencies(task_id)
-        """)
-        
-        cursor.execute("""
+        """
+        )
+
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_task_dependencies_depends_on
             ON task_dependencies(depends_on_task_id)
-        """)
+        """
+        )
 
         self.conn.commit()
 
@@ -346,9 +396,15 @@ class Database:
         """
         try:
             from codeframe.persistence.migrations import MigrationRunner
-            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import migration as migration_001
-            from codeframe.persistence.migrations.migration_002_refactor_projects_schema import migration as migration_002
-            from codeframe.persistence.migrations.migration_003_update_blockers_schema import migration as migration_003
+            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import (
+                migration as migration_001,
+            )
+            from codeframe.persistence.migrations.migration_002_refactor_projects_schema import (
+                migration as migration_002,
+            )
+            from codeframe.persistence.migrations.migration_003_update_blockers_schema import (
+                migration as migration_003,
+            )
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -379,7 +435,7 @@ class Database:
         source_location: Optional[str] = None,
         source_branch: str = "main",
         workspace_path: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> int:
         """Create a new project.
 
@@ -412,8 +468,8 @@ class Database:
                 source_branch,
                 workspace_path or "",
                 False,  # Will be set to True after workspace initialization
-                "init"  # Default status
-            )
+                "init",  # Default status
+            ),
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -451,25 +507,28 @@ class Database:
             issue_number = issue.issue_number
             title = issue.title
             description = issue.description
-            status = issue.status.value if hasattr(issue.status, 'value') else issue.status
+            status = issue.status.value if hasattr(issue.status, "value") else issue.status
             priority = issue.priority
             workflow_step = issue.workflow_step
 
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO issues (
                 project_id, issue_number, title, description,
                 status, priority, workflow_step
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            project_id,
-            issue_number,
-            title,
-            description,
-            status,
-            priority,
-            workflow_step,
-        ))
+        """,
+            (
+                project_id,
+                issue_number,
+                title,
+                description,
+                status,
+                priority,
+                workflow_step,
+            ),
+        )
         self.conn.commit()
         return cursor.lastrowid
 
@@ -507,19 +566,22 @@ class Database:
     def create_task(self, task: Task) -> int:
         """Create a new task."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO tasks (
                 project_id, title, description, status, priority, workflow_step, requires_mcp
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            task.project_id,
-            task.title,
-            task.description,
-            task.status.value,
-            task.priority,
-            task.workflow_step,
-            task.requires_mcp
-        ))
+        """,
+            (
+                task.project_id,
+                task.title,
+                task.description,
+                task.status.value,
+                task.priority,
+                task.workflow_step,
+                task.requires_mcp,
+            ),
+        )
         self.conn.commit()
         return cursor.lastrowid
 
@@ -528,7 +590,7 @@ class Database:
         cursor = self.conn.cursor()
         cursor.execute(
             "SELECT * FROM tasks WHERE project_id = ? AND status = ?",
-            (project_id, TaskStatus.PENDING.value)
+            (project_id, TaskStatus.PENDING.value),
         )
         rows = cursor.fetchall()
         # TODO: Convert rows to Task objects
@@ -622,7 +684,7 @@ class Database:
         project_id: int,
         task_id: Optional[int],
         blocker_type: str,
-        question: str
+        question: str,
     ) -> int:
         """Create a new blocker with rate limiting.
 
@@ -649,7 +711,7 @@ class Database:
                FROM blockers
                WHERE agent_id = ?
                  AND datetime(created_at) > datetime('now', '-60 seconds')""",
-            (agent_id,)
+            (agent_id,),
         )
         row = cursor.fetchone()
         recent_blocker_count = row["count"]
@@ -664,7 +726,7 @@ class Database:
         cursor.execute(
             """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status)
                VALUES (?, ?, ?, ?, ?, 'PENDING')""",
-            (agent_id, project_id, task_id, blocker_type, question)
+            (agent_id, project_id, task_id, blocker_type, question),
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -684,7 +746,7 @@ class Database:
             """UPDATE blockers
                SET answer = ?, status = 'RESOLVED', resolved_at = CURRENT_TIMESTAMP
                WHERE id = ? AND status = 'PENDING'""",
-            (answer, blocker_id)
+            (answer, blocker_id),
         )
         self.conn.commit()
         return cursor.rowcount > 0
@@ -703,16 +765,12 @@ class Database:
             """SELECT * FROM blockers
                WHERE agent_id = ? AND status = 'PENDING'
                ORDER BY created_at ASC LIMIT 1""",
-            (agent_id,)
+            (agent_id,),
         )
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def list_blockers(
-        self,
-        project_id: int,
-        status: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def list_blockers(self, project_id: int, status: Optional[str] = None) -> Dict[str, Any]:
         """List blockers with agent/task info joined.
 
         Args:
@@ -753,16 +811,16 @@ class Database:
         rows = cursor.fetchall()
 
         blockers = [dict(row) for row in rows]
-        pending_count = sum(1 for b in blockers if b.get('status') == 'PENDING')
-        sync_count = sum(1 for b in blockers if b.get('blocker_type') == 'SYNC')
-        async_count = sum(1 for b in blockers if b.get('blocker_type') == 'ASYNC')
+        pending_count = sum(1 for b in blockers if b.get("status") == "PENDING")
+        sync_count = sum(1 for b in blockers if b.get("blocker_type") == "SYNC")
+        async_count = sum(1 for b in blockers if b.get("blocker_type") == "ASYNC")
 
         return {
-            'blockers': blockers,
-            'total': len(blockers),
-            'pending_count': pending_count,
-            'sync_count': sync_count,
-            'async_count': async_count
+            "blockers": blockers,
+            "total": len(blockers),
+            "pending_count": pending_count,
+            "sync_count": sync_count,
+            "async_count": async_count,
         }
 
     def get_blocker(self, blocker_id: int) -> Optional[Dict[str, Any]]:
@@ -826,7 +884,8 @@ class Database:
         cursor = self.conn.cursor()
 
         # Get all blockers for tasks in this project
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 b.status,
                 b.blocker_type,
@@ -835,7 +894,9 @@ class Database:
             FROM blockers b
             INNER JOIN tasks t ON b.task_id = t.id
             WHERE t.project_id = ?
-        """, (project_id,))
+        """,
+            (project_id,),
+        )
 
         rows = cursor.fetchall()
 
@@ -848,7 +909,7 @@ class Database:
                 "expired_count": 0,
                 "pending_count": 0,
                 "sync_count": 0,
-                "async_count": 0
+                "async_count": 0,
             }
 
         # Calculate metrics
@@ -872,6 +933,7 @@ class Database:
                 # Calculate resolution time
                 if created_at and resolved_at:
                     from datetime import datetime
+
                     created = datetime.fromisoformat(created_at)
                     resolved = datetime.fromisoformat(resolved_at)
                     resolution_time_seconds = (resolved - created).total_seconds()
@@ -906,7 +968,7 @@ class Database:
             "expired_count": expired_count,
             "pending_count": pending_count,
             "sync_count": sync_count,
-            "async_count": async_count
+            "async_count": async_count,
         }
 
     def list_projects(self) -> List[Dict[str, Any]]:
@@ -957,10 +1019,10 @@ class Database:
             FROM tasks
             WHERE project_id = ?
             """,
-            (project_id,)
+            (project_id,),
         )
         row = cursor.fetchone()
-        
+
         total_tasks = row["total_tasks"]
         completed_tasks = row["completed_tasks"] or 0  # Handle NULL when no tasks
 
@@ -1296,9 +1358,7 @@ class Database:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-    def get_tasks_by_parent_issue_number(
-        self, parent_issue_number: str
-    ) -> List[Dict[str, Any]]:
+    def get_tasks_by_parent_issue_number(self, parent_issue_number: str) -> List[Dict[str, Any]]:
         """Get all tasks by parent issue number.
 
         Args:
@@ -1361,9 +1421,7 @@ class Database:
         completed_tasks = cursor.fetchone()[0]
 
         # Calculate percentage
-        completion_percentage = (
-            (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
-        )
+        completion_percentage = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0.0
 
         return {
             "total_tasks": total_tasks,
@@ -1440,21 +1498,25 @@ class Database:
             if not timestamp_str:
                 return timestamp_str
             # If already has 'Z' or timezone, return as-is
-            if 'Z' in timestamp_str or '+' in timestamp_str:
+            if "Z" in timestamp_str or "+" in timestamp_str:
                 return timestamp_str
             # Parse and add Z suffix for UTC
             try:
                 # SQLite format: "2025-10-17 22:01:56"
                 dt = datetime.fromisoformat(timestamp_str)
-                return dt.isoformat() + 'Z'
+                return dt.isoformat() + "Z"
             except:
                 return timestamp_str
 
         # Determine generated_at
-        generated_at = generated_row["value"] if generated_row else ensure_rfc3339(prd_row["created_at"])
+        generated_at = (
+            generated_row["value"] if generated_row else ensure_rfc3339(prd_row["created_at"])
+        )
 
         # Determine updated_at - use generated_at if updated_at is same as created_at
-        updated_at = ensure_rfc3339(prd_row["updated_at"] if prd_row["updated_at"] else prd_row["created_at"])
+        updated_at = ensure_rfc3339(
+            prd_row["updated_at"] if prd_row["updated_at"] else prd_row["created_at"]
+        )
 
         # If updated_at == created_at (never been updated), use generated_at for both
         if prd_row["updated_at"] == prd_row["created_at"] and generated_row:
@@ -1467,9 +1529,7 @@ class Database:
         }
 
     # Issues/Tasks methods (cf-26)
-    def get_issues_with_tasks(
-        self, project_id: int, include_tasks: bool = False
-    ) -> Dict[str, Any]:
+    def get_issues_with_tasks(self, project_id: int, include_tasks: bool = False) -> Dict[str, Any]:
         """Get issues for a project with optional tasks.
 
         Args:
@@ -1499,11 +1559,11 @@ class Database:
             """Ensure timestamp is in RFC 3339 format with timezone."""
             if not timestamp_str:
                 return timestamp_str
-            if 'Z' in timestamp_str or '+' in timestamp_str:
+            if "Z" in timestamp_str or "+" in timestamp_str:
                 return timestamp_str
             try:
                 dt = datetime.fromisoformat(timestamp_str)
-                return dt.isoformat() + 'Z'
+                return dt.isoformat() + "Z"
             except:
                 return timestamp_str
 
@@ -1526,7 +1586,11 @@ class Database:
                 "proposed_by": "agent",  # Default for now
                 "created_at": ensure_rfc3339(issue_dict["created_at"]),
                 "updated_at": ensure_rfc3339(issue_dict["created_at"]),  # Use created_at for now
-                "completed_at": ensure_rfc3339(issue_dict["completed_at"]) if issue_dict.get("completed_at") else None,
+                "completed_at": (
+                    ensure_rfc3339(issue_dict["completed_at"])
+                    if issue_dict.get("completed_at")
+                    else None
+                ),
             }
 
             # Include tasks if requested
@@ -1553,7 +1617,11 @@ class Database:
                         # depends_on might be a comma-separated string or single value
                         depends_on_str = task_dict["depends_on"]
                         if depends_on_str:
-                            depends_on = [depends_on_str] if ',' not in depends_on_str else depends_on_str.split(',')
+                            depends_on = (
+                                [depends_on_str]
+                                if "," not in depends_on_str
+                                else depends_on_str.split(",")
+                            )
 
                     formatted_task = {
                         "id": str(task_dict["id"]),
@@ -1564,8 +1632,14 @@ class Database:
                         "depends_on": depends_on,
                         "proposed_by": "agent",  # Default for now
                         "created_at": ensure_rfc3339(task_dict["created_at"]),
-                        "updated_at": ensure_rfc3339(task_dict["created_at"]),  # Use created_at for now
-                        "completed_at": ensure_rfc3339(task_dict["completed_at"]) if task_dict.get("completed_at") else None,
+                        "updated_at": ensure_rfc3339(
+                            task_dict["created_at"]
+                        ),  # Use created_at for now
+                        "completed_at": (
+                            ensure_rfc3339(task_dict["completed_at"])
+                            if task_dict.get("completed_at")
+                            else None
+                        ),
                     }
                     tasks.append(formatted_task)
                     total_tasks += 1
@@ -1834,7 +1908,7 @@ class Database:
         error_analysis: str,
         fix_description: str,
         code_changes: str = "",
-        test_result_id: Optional[int] = None
+        test_result_id: Optional[int] = None,
     ) -> int:
         """
         Create a correction attempt record for a task.
@@ -1863,7 +1937,14 @@ class Database:
             (task_id, attempt_number, error_analysis, fix_description, code_changes, test_result_id)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (task_id, attempt_number, error_analysis, fix_description, code_changes, test_result_id)
+            (
+                task_id,
+                attempt_number,
+                error_analysis,
+                fix_description,
+                code_changes,
+                test_result_id,
+            ),
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -1887,9 +1968,9 @@ class Database:
             WHERE task_id = ?
             ORDER BY attempt_number ASC
             """,
-            (task_id,)
+            (task_id,),
         )
-        
+
         columns = [desc[0] for desc in cursor.description]
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -1913,9 +1994,9 @@ class Database:
             ORDER BY attempt_number DESC
             LIMIT 1
             """,
-            (task_id,)
+            (task_id,),
         )
-        
+
         row = cursor.fetchone()
         if row:
             columns = [desc[0] for desc in cursor.description]
@@ -1933,138 +2014,160 @@ class Database:
             Number of correction attempts
         """
         cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT COUNT(*) FROM correction_attempts WHERE task_id = ?",
-            (task_id,)
-        )
+        cursor.execute("SELECT COUNT(*) FROM correction_attempts WHERE task_id = ?", (task_id,))
         return cursor.fetchone()[0]
 
     # Task Dependency Management Methods (Sprint 4: cf-21)
-    
+
     def add_task_dependency(self, task_id: int, depends_on_task_id: int) -> None:
         """Add a dependency relationship between tasks.
-        
+
         Args:
             task_id: The task that depends on another
             depends_on_task_id: The task that must be completed first
-            
+
         Raises:
             sqlite3.IntegrityError: If dependency would create a cycle
         """
         cursor = self.conn.cursor()
-        
+
         # Insert into junction table
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO task_dependencies (task_id, depends_on_task_id)
             VALUES (?, ?)
-        """, (task_id, depends_on_task_id))
-        
+        """,
+            (task_id, depends_on_task_id),
+        )
+
         # Update depends_on JSON array in tasks table
         cursor.execute("SELECT depends_on FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
-        
+
         if row and row[0]:
             import json
+
             depends_on = json.loads(row[0]) if row[0] else []
         else:
             depends_on = []
-            
+
         if depends_on_task_id not in depends_on:
             depends_on.append(depends_on_task_id)
-            
-        cursor.execute("""
+
+        cursor.execute(
+            """
             UPDATE tasks SET depends_on = ? WHERE id = ?
-        """, (json.dumps(depends_on), task_id))
-        
+        """,
+            (json.dumps(depends_on), task_id),
+        )
+
         self.conn.commit()
-    
+
     def get_task_dependencies(self, task_id: int) -> list:
         """Get all tasks that the given task depends on.
-        
+
         Args:
             task_id: The task ID to get dependencies for
-            
+
         Returns:
             List of task IDs that must be completed first
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT depends_on_task_id 
             FROM task_dependencies 
             WHERE task_id = ?
-        """, (task_id,))
-        
+        """,
+            (task_id,),
+        )
+
         return [row[0] for row in cursor.fetchall()]
-    
+
     def get_dependent_tasks(self, task_id: int) -> list:
         """Get all tasks that depend on the given task.
-        
+
         Args:
             task_id: The task ID to find dependents for
-            
+
         Returns:
             List of task IDs that depend on this task
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT task_id 
             FROM task_dependencies 
             WHERE depends_on_task_id = ?
-        """, (task_id,))
-        
+        """,
+            (task_id,),
+        )
+
         return [row[0] for row in cursor.fetchall()]
-    
+
     def remove_task_dependency(self, task_id: int, depends_on_task_id: int) -> None:
         """Remove a dependency relationship between tasks.
-        
+
         Args:
             task_id: The task that currently depends on another
             depends_on_task_id: The task dependency to remove
         """
         cursor = self.conn.cursor()
-        
+
         # Remove from junction table
-        cursor.execute("""
+        cursor.execute(
+            """
             DELETE FROM task_dependencies 
             WHERE task_id = ? AND depends_on_task_id = ?
-        """, (task_id, depends_on_task_id))
-        
+        """,
+            (task_id, depends_on_task_id),
+        )
+
         # Update depends_on JSON array in tasks table
         cursor.execute("SELECT depends_on FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
-        
+
         if row and row[0]:
             import json
+
             depends_on = json.loads(row[0]) if row[0] else []
             if depends_on_task_id in depends_on:
                 depends_on.remove(depends_on_task_id)
-                
-            cursor.execute("""
+
+            cursor.execute(
+                """
                 UPDATE tasks SET depends_on = ? WHERE id = ?
-            """, (json.dumps(depends_on), task_id))
-        
+            """,
+                (json.dumps(depends_on), task_id),
+            )
+
         self.conn.commit()
-    
+
     def clear_all_task_dependencies(self, task_id: int) -> None:
         """Remove all dependencies for a given task.
-        
+
         Args:
             task_id: The task ID to clear dependencies for
         """
         cursor = self.conn.cursor()
-        
-        # Remove from junction table
-        cursor.execute("""
-            DELETE FROM task_dependencies WHERE task_id = ?
-        """, (task_id,))
-        
-        # Clear depends_on JSON array
-        cursor.execute("""
-            UPDATE tasks SET depends_on = '[]' WHERE id = ?
-        """, (task_id,))
-        
-        self.conn.commit()
 
+        # Remove from junction table
+        cursor.execute(
+            """
+            DELETE FROM task_dependencies WHERE task_id = ?
+        """,
+            (task_id,),
+        )
+
+        # Clear depends_on JSON array
+        cursor.execute(
+            """
+            UPDATE tasks SET depends_on = '[]' WHERE id = ?
+        """,
+            (task_id,),
+        )
+
+        self.conn.commit()
 
     def get_recent_activity(self, project_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         """
@@ -2078,7 +2181,8 @@ class Database:
             List of activity dictionaries formatted for frontend
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 timestamp,
                 agent_id,
@@ -2089,7 +2193,9 @@ class Database:
             WHERE project_id = ?
             ORDER BY timestamp DESC
             LIMIT ?
-        """, (project_id, limit))
+        """,
+            (project_id, limit),
+        )
 
         columns = [desc[0] for desc in cursor.description]
         rows = cursor.fetchall()
@@ -2100,23 +2206,21 @@ class Database:
             activity_dict = dict(zip(columns, row))
 
             # Map database fields to frontend expected format
-            activity_items.append({
-                "timestamp": activity_dict["timestamp"],
-                "type": activity_dict["action"],
-                "agent": activity_dict["agent_id"] or "system",
-                "message": activity_dict.get("details") or activity_dict["action"],
-            })
+            activity_items.append(
+                {
+                    "timestamp": activity_dict["timestamp"],
+                    "type": activity_dict["action"],
+                    "agent": activity_dict["agent_id"] or "system",
+                    "message": activity_dict.get("details") or activity_dict["action"],
+                }
+            )
 
         return activity_items
 
     # Context Management Methods (007-context-management)
 
     def create_context_item(
-        self,
-        project_id: int,
-        agent_id: str,
-        item_type: str,
-        content: str
+        self, project_id: int, agent_id: str, item_type: str, content: str
     ) -> str:
         """Create a new context item with auto-calculated importance score.
 
@@ -2144,7 +2248,7 @@ class Database:
             item_type=item_type,
             created_at=created_at,
             access_count=0,  # New item has no accesses yet
-            last_accessed=created_at
+            last_accessed=created_at,
         )
 
         # Auto-assign tier based on importance score (T040)
@@ -2162,8 +2266,18 @@ class Database:
                 current_tier, created_at, last_accessed, access_count
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (item_id, project_id, agent_id, item_type, content, importance_score,
-             tier, created_at.isoformat(), created_at.isoformat(), 0)
+            (
+                item_id,
+                project_id,
+                agent_id,
+                item_type,
+                content,
+                importance_score,
+                tier,
+                created_at.isoformat(),
+                created_at.isoformat(),
+                0,
+            ),
         )
         self.conn.commit()
         return item_id
@@ -2188,7 +2302,7 @@ class Database:
         agent_id: str,
         tier: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """List context items for an agent on a project, optionally filtered by tier.
 
@@ -2226,12 +2340,7 @@ class Database:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
-    def update_context_item_tier(
-        self,
-        item_id: str,
-        tier: str,
-        importance_score: float
-    ) -> None:
+    def update_context_item_tier(self, item_id: str, tier: str, importance_score: float) -> None:
         """Update a context item's tier and importance score.
 
         Args:
@@ -2249,7 +2358,7 @@ class Database:
             SET current_tier = ?, importance_score = ?
             WHERE id = ?
             """,
-            (tier_lower, importance_score, item_id)
+            (tier_lower, importance_score, item_id),
         )
         self.conn.commit()
 
@@ -2277,7 +2386,7 @@ class Database:
                 access_count = access_count + 1
             WHERE id = ?
             """,
-            (item_id,)
+            (item_id,),
         )
         self.conn.commit()
 
@@ -2306,7 +2415,7 @@ class Database:
                WHERE project_id = ?
                  AND agent_id = ?
                  AND current_tier = 'cold'""",
-            (project_id, agent_id)
+            (project_id, agent_id),
         )
 
         deleted_count = cursor.rowcount
@@ -2321,7 +2430,7 @@ class Database:
         items_count: int,
         items_archived: int,
         hot_items_retained: int,
-        token_count: int
+        token_count: int,
     ) -> int:
         """Create a flash save checkpoint.
 
@@ -2344,17 +2453,19 @@ class Database:
                 hot_items_retained, token_count
             ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (agent_id, checkpoint_data, items_count, items_archived,
-             hot_items_retained, token_count)
+            (
+                agent_id,
+                checkpoint_data,
+                items_count,
+                items_archived,
+                hot_items_retained,
+                token_count,
+            ),
         )
         self.conn.commit()
         return cursor.lastrowid
 
-    def list_checkpoints(
-        self,
-        agent_id: str,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    def list_checkpoints(self, agent_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         """List checkpoints for an agent, most recent first.
 
         Args:
@@ -2372,7 +2483,7 @@ class Database:
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            (agent_id, limit)
+            (agent_id, limit),
         )
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -2387,9 +2498,6 @@ class Database:
             Checkpoint dictionary or None if not found
         """
         cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM context_checkpoints WHERE id = ?",
-            (checkpoint_id,)
-        )
+        cursor.execute("SELECT * FROM context_checkpoints WHERE id = ?", (checkpoint_id,))
         row = cursor.fetchone()
         return dict(row) if row else None

@@ -36,15 +36,11 @@ def temp_db():
     Path(db_path).unlink(missing_ok=True)
 
 
-
-
 @pytest.fixture
 def test_project(temp_db):
     """Create a test project for context items."""
     project_id = temp_db.create_project(
-        name="test-project",
-        description="Test project for context management",
-        workspace_path=""
+        name="test-project", description="Test project for context management", workspace_path=""
     )
     return project_id
 
@@ -70,14 +66,16 @@ class TestScoreRecalculationIntegration:
         agent_id = "test-agent-recalc-001"
 
         # STEP 1: Create a TASK item (high initial score)
-        item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
+        item_id = temp_db.create_context_item(
+            project_id=test_project,
+            agent_id=agent_id,
             item_type=ContextItemType.TASK.value,
-            content="Implement user authentication"
+            content="Implement user authentication",
         )
 
         # Get initial item
         item_before = temp_db.get_context_item(item_id)
-        initial_score = item_before['importance_score']
+        initial_score = item_before["importance_score"]
 
         # Initial score should be high (TASK type=1.0, fresh age=1.0, no access=0.0)
         # Expected: 0.4 × 1.0 + 0.4 × 1.0 + 0.2 × 0.0 = 0.8
@@ -89,7 +87,7 @@ class TestScoreRecalculationIntegration:
         cursor = temp_db.conn.cursor()
         cursor.execute(
             "UPDATE context_items SET created_at = ? WHERE id = ?",
-            (seven_days_ago.isoformat(), item_id)
+            (seven_days_ago.isoformat(), item_id),
         )
         temp_db.conn.commit()
 
@@ -101,21 +99,25 @@ class TestScoreRecalculationIntegration:
 
         # STEP 4: Verify score decreased
         item_after = temp_db.get_context_item(item_id)
-        recalculated_score = item_after['importance_score']
+        recalculated_score = item_after["importance_score"]
 
         # Age decay for 7 days: e^(-0.5 × 7) = e^(-3.5) ≈ 0.03
         # Expected: 0.4 × 1.0 + 0.4 × 0.03 + 0.2 × 0.0 ≈ 0.41
         assert recalculated_score < initial_score  # Score decreased
         assert recalculated_score < 0.5  # Significantly decayed
 
-    def test_score_recalculation_with_high_access_count(self, temp_db, test_project, context_manager):
+    def test_score_recalculation_with_high_access_count(
+        self, temp_db, test_project, context_manager
+    ):
         """Test that high access count boosts score even for older items."""
         agent_id = "test-agent-recalc-002"
 
         # Create item
-        item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
+        item_id = temp_db.create_context_item(
+            project_id=test_project,
+            agent_id=agent_id,
             item_type=ContextItemType.CODE.value,
-            content="def authenticate_user(): ..."
+            content="def authenticate_user(): ...",
         )
 
         # Simulate age (3 days old)
@@ -123,20 +125,20 @@ class TestScoreRecalculationIntegration:
         cursor = temp_db.conn.cursor()
         cursor.execute(
             "UPDATE context_items SET created_at = ?, access_count = ? WHERE id = ?",
-            (three_days_ago.isoformat(), 100, item_id)  # High access count
+            (three_days_ago.isoformat(), 100, item_id),  # High access count
         )
         temp_db.conn.commit()
 
         # Get initial score (before recalculation)
         item_before = temp_db.get_context_item(item_id)
-        initial_score = item_before['importance_score']
+        initial_score = item_before["importance_score"]
 
         # Recalculate
         context_manager.recalculate_scores_for_agent(test_project, agent_id)
 
         # Get recalculated score
         item_after = temp_db.get_context_item(item_id)
-        recalculated_score = item_after['importance_score']
+        recalculated_score = item_after["importance_score"]
 
         # Age decay for 3 days: e^(-0.5 × 3) = e^(-1.5) ≈ 0.223
         # Access boost for 100 accesses: log(101) / 10 ≈ 0.46
@@ -161,9 +163,11 @@ class TestScoreRecalculationIntegration:
         # Create multiple items
         item_ids = []
         for i in range(5):
-            item_id = temp_db.create_context_item(project_id=test_project, agent_id=agent_id,
+            item_id = temp_db.create_context_item(
+                project_id=test_project,
+                agent_id=agent_id,
                 item_type=ContextItemType.TASK.value,
-                content=f"Task {i}"
+                content=f"Task {i}",
             )
             item_ids.append(item_id)
 
@@ -176,4 +180,4 @@ class TestScoreRecalculationIntegration:
         # Verify all items have scores
         for item_id in item_ids:
             item = temp_db.get_context_item(item_id)
-            assert 0.0 <= item['importance_score'] <= 1.0
+            assert 0.0 <= item["importance_score"] <= 1.0

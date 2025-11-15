@@ -1,4 +1,5 @@
 """Tests for workspace management."""
+
 import pytest
 import tempfile
 import shutil
@@ -19,10 +20,7 @@ def test_workspace_manager_creates_directory(temp_workspace_root):
     """Verify workspace manager creates workspace directory."""
     manager = WorkspaceManager(temp_workspace_root)
 
-    workspace_path = manager.create_workspace(
-        project_id=1,
-        source_type=SourceType.EMPTY
-    )
+    workspace_path = manager.create_workspace(project_id=1, source_type=SourceType.EMPTY)
 
     assert workspace_path.exists()
     assert workspace_path.is_dir()
@@ -33,10 +31,7 @@ def test_workspace_manager_empty_source(temp_workspace_root):
     """Verify empty source creates git repo."""
     manager = WorkspaceManager(temp_workspace_root)
 
-    workspace_path = manager.create_workspace(
-        project_id=1,
-        source_type=SourceType.EMPTY
-    )
+    workspace_path = manager.create_workspace(project_id=1, source_type=SourceType.EMPTY)
 
     # Verify git initialized
     git_dir = workspace_path / ".git"

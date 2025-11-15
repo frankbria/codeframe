@@ -17,7 +17,7 @@ def webhook_service():
     return WebhookNotificationService(
         webhook_url="https://hooks.example.com/webhook/12345",
         timeout=5,
-        dashboard_base_url="http://localhost:3000"
+        dashboard_base_url="http://localhost:3000",
     )
 
 
@@ -25,9 +25,7 @@ def webhook_service():
 def webhook_service_no_url():
     """Create webhook service with no URL configured."""
     return WebhookNotificationService(
-        webhook_url=None,
-        timeout=5,
-        dashboard_base_url="http://localhost:3000"
+        webhook_url=None, timeout=5, dashboard_base_url="http://localhost:3000"
     )
 
 
@@ -61,7 +59,7 @@ class TestWebhookNotificationService:
             agent_id="backend-worker-abc123",
             task_id=456,
             blocker_type=BlockerType.SYNC,
-            created_at=created_at
+            created_at=created_at,
         )
 
         assert payload["blocker_id"] == 123
@@ -81,7 +79,7 @@ class TestWebhookNotificationService:
             agent_id="frontend-worker-xyz789",
             task_id=101,
             blocker_type=BlockerType.ASYNC,
-            created_at=created_at
+            created_at=created_at,
         )
 
         assert payload["type"] == "ASYNC"
@@ -113,7 +111,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
         assert result is True
@@ -130,7 +128,7 @@ class TestWebhookNotificationService:
             agent_id="backend-worker-1",
             task_id=456,
             blocker_type=BlockerType.ASYNC,
-            created_at=created_at
+            created_at=created_at,
         )
 
         assert result is False
@@ -146,7 +144,7 @@ class TestWebhookNotificationService:
             agent_id="backend-worker-1",
             task_id=456,
             blocker_type=BlockerType.SYNC,
-            created_at=created_at
+            created_at=created_at,
         )
 
         assert result is False
@@ -166,7 +164,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
         assert result is False
@@ -189,7 +187,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
         assert result is False
@@ -209,7 +207,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
         assert result is False
@@ -221,7 +219,9 @@ class TestWebhookNotificationService:
 
         mock_response = AsyncMock()
         mock_response.status = 500
-        mock_response.raise_for_status.side_effect = aiohttp.ClientError("500 Internal Server Error")
+        mock_response.raise_for_status.side_effect = aiohttp.ClientError(
+            "500 Internal Server Error"
+        )
 
         mock_session = AsyncMock()
         mock_session.post.return_value.__aenter__.return_value = mock_response
@@ -233,7 +233,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
         assert result is False
@@ -249,7 +249,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
             # Verify background task was created
@@ -281,7 +281,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
         # Verify POST was called with correct arguments
@@ -320,7 +320,7 @@ class TestWebhookNotificationService:
                 agent_id="backend-worker-1",
                 task_id=456,
                 blocker_type=BlockerType.SYNC,
-                created_at=created_at
+                created_at=created_at,
             )
 
         # Verify timeout was passed

@@ -72,10 +72,16 @@ class TypeScriptParser:
         symbols = []
 
         # Extract all symbols from the parse tree
-        symbols.extend(self._extract_interfaces(tree.root_node, source_code, str(file_path), language))
-        symbols.extend(self._extract_type_aliases(tree.root_node, source_code, str(file_path), language))
+        symbols.extend(
+            self._extract_interfaces(tree.root_node, source_code, str(file_path), language)
+        )
+        symbols.extend(
+            self._extract_type_aliases(tree.root_node, source_code, str(file_path), language)
+        )
         symbols.extend(self._extract_classes(tree.root_node, source_code, str(file_path), language))
-        symbols.extend(self._extract_functions(tree.root_node, source_code, str(file_path), language))
+        symbols.extend(
+            self._extract_functions(tree.root_node, source_code, str(file_path), language)
+        )
 
         return symbols
 
@@ -89,9 +95,9 @@ class TypeScriptParser:
             if child.type == "interface_declaration":
                 name_node = child.child_by_field_name("name")
                 if name_node:
-                    interface_name = source_code[
-                        name_node.start_byte : name_node.end_byte
-                    ].decode("utf-8")
+                    interface_name = source_code[name_node.start_byte : name_node.end_byte].decode(
+                        "utf-8"
+                    )
 
                     interface_symbol = Symbol(
                         name=interface_name,
@@ -133,9 +139,9 @@ class TypeScriptParser:
             if child.type == "type_alias_declaration":
                 name_node = child.child_by_field_name("name")
                 if name_node:
-                    type_name = source_code[
-                        name_node.start_byte : name_node.end_byte
-                    ].decode("utf-8")
+                    type_name = source_code[name_node.start_byte : name_node.end_byte].decode(
+                        "utf-8"
+                    )
 
                     type_symbol = Symbol(
                         name=type_name,
@@ -152,9 +158,9 @@ class TypeScriptParser:
                 if declaration and declaration.type == "type_alias_declaration":
                     name_node = declaration.child_by_field_name("name")
                     if name_node:
-                        type_name = source_code[
-                            name_node.start_byte : name_node.end_byte
-                        ].decode("utf-8")
+                        type_name = source_code[name_node.start_byte : name_node.end_byte].decode(
+                            "utf-8"
+                        )
 
                         type_symbol = Symbol(
                             name=type_name,
@@ -191,9 +197,9 @@ class TypeScriptParser:
             if class_node:
                 name_node = class_node.child_by_field_name("name")
                 if name_node:
-                    class_name = source_code[
-                        name_node.start_byte : name_node.end_byte
-                    ].decode("utf-8")
+                    class_name = source_code[name_node.start_byte : name_node.end_byte].decode(
+                        "utf-8"
+                    )
 
                     class_symbol = Symbol(
                         name=class_name,
@@ -208,7 +214,9 @@ class TypeScriptParser:
                     class_body = class_node.child_by_field_name("body")
                     if class_body:
                         symbols.extend(
-                            self._extract_methods(class_body, class_name, source_code, file_path, language)
+                            self._extract_methods(
+                                class_body, class_name, source_code, file_path, language
+                            )
                         )
 
         return symbols
@@ -228,9 +236,9 @@ class TypeScriptParser:
             if method_node:
                 name_node = method_node.child_by_field_name("name")
                 if name_node:
-                    method_name = source_code[
-                        name_node.start_byte : name_node.end_byte
-                    ].decode("utf-8")
+                    method_name = source_code[name_node.start_byte : name_node.end_byte].decode(
+                        "utf-8"
+                    )
 
                     method_symbol = Symbol(
                         name=method_name,
@@ -289,9 +297,9 @@ class TypeScriptParser:
             if function_node:
                 name_node = function_node.child_by_field_name("name")
                 if name_node:
-                    func_name = source_code[
-                        name_node.start_byte : name_node.end_byte
-                    ].decode("utf-8")
+                    func_name = source_code[name_node.start_byte : name_node.end_byte].decode(
+                        "utf-8"
+                    )
 
                     func_symbol = Symbol(
                         name=func_name,

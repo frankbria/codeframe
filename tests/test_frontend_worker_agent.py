@@ -26,9 +26,7 @@ def frontend_agent(temp_web_ui_dir, monkeypatch):
     """Create FrontendWorkerAgent for testing."""
     # Patch project paths
     agent = FrontendWorkerAgent(
-        agent_id="frontend-test-001",
-        provider="anthropic",
-        api_key="test-key"
+        agent_id="frontend-test-001", provider="anthropic", api_key="test-key"
     )
     agent.web_ui_root = temp_web_ui_dir
     agent.components_dir = temp_web_ui_dir / "src" / "components"
@@ -52,7 +50,7 @@ def sample_task():
         description="Create a UserCard component that displays user information",
         status="pending",
         priority=1,
-        workflow_step=1
+        workflow_step=1,
     )
 
 
@@ -71,19 +69,13 @@ class TestFrontendWorkerAgentInitialization:
 
     def test_initialization_with_custom_maturity(self):
         """Test agent initializes with custom maturity level."""
-        agent = FrontendWorkerAgent(
-            agent_id="frontend-002",
-            maturity=AgentMaturity.D3
-        )
+        agent = FrontendWorkerAgent(agent_id="frontend-002", maturity=AgentMaturity.D3)
 
         assert agent.maturity == AgentMaturity.D3
 
     def test_initialization_with_api_key(self):
         """Test agent initializes with provided API key."""
-        agent = FrontendWorkerAgent(
-            agent_id="frontend-003",
-            api_key="test-api-key-123"
-        )
+        agent = FrontendWorkerAgent(agent_id="frontend-003", api_key="test-api-key-123")
 
         assert agent.api_key == "test-api-key-123"
         assert agent.client is not None
@@ -99,11 +91,9 @@ class TestComponentSpecParsing:
 
     def test_parse_json_spec(self, frontend_agent):
         """Test parsing valid JSON specification."""
-        json_spec = json.dumps({
-            "name": "UserProfile",
-            "description": "User profile component",
-            "generate_types": True
-        })
+        json_spec = json.dumps(
+            {"name": "UserProfile", "description": "User profile component", "generate_types": True}
+        )
 
         spec = frontend_agent._parse_component_spec(json_spec)
 
@@ -145,10 +135,7 @@ class TestComponentGeneration:
 
     def test_generate_basic_component_template(self, frontend_agent):
         """Test generating basic component template without API."""
-        spec = {
-            "name": "TestComponent",
-            "description": "A test component"
-        }
+        spec = {"name": "TestComponent", "description": "A test component"}
 
         code = frontend_agent._generate_basic_component_template(spec)
 
@@ -159,7 +146,7 @@ class TestComponentGeneration:
         assert "className=" in code  # Tailwind CSS
         assert "import React from 'react'" in code
 
-    @patch('codeframe.agents.frontend_worker_agent.AsyncAnthropic')
+    @patch("codeframe.agents.frontend_worker_agent.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_generate_component_with_api_success(self, mock_anthropic_class, frontend_agent):
         """Test generating component using Claude API successfully."""
@@ -188,10 +175,7 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
         # Update agent's client
         frontend_agent.client = mock_client
 
-        spec = {
-            "name": "Button",
-            "description": "A button component"
-        }
+        spec = {"name": "Button", "description": "A button component"}
 
         code = await frontend_agent._generate_react_component(spec)
 
@@ -206,10 +190,7 @@ export const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
         # Set client to None to trigger fallback
         frontend_agent.client = None
 
-        spec = {
-            "name": "FallbackComponent",
-            "description": "Component with API failure"
-        }
+        spec = {"name": "FallbackComponent", "description": "Component with API failure"}
 
         code = await frontend_agent._generate_react_component(spec)
 
@@ -225,10 +206,7 @@ class TestFileCreation:
         """Test creating component file in correct location."""
         component_code = "export const Test = () => <div>Test</div>;"
 
-        file_paths = frontend_agent._create_component_files(
-            "TestComponent",
-            component_code
-        )
+        file_paths = frontend_agent._create_component_files("TestComponent", component_code)
 
         assert "component" in file_paths
         assert file_paths["component"].endswith("TestComponent.tsx")
@@ -244,9 +222,7 @@ class TestFileCreation:
         types_code = "export interface TestProps { name: string; }"
 
         file_paths = frontend_agent._create_component_files(
-            "TestComponent",
-            component_code,
-            types_code
+            "TestComponent", component_code, types_code
         )
 
         assert "component" in file_paths
@@ -269,10 +245,7 @@ class TestFileCreation:
         component_code = "new content"
 
         with pytest.raises(FileExistsError, match="already exists"):
-            frontend_agent._create_component_files(
-                "ExistingComponent",
-                component_code
-            )
+            frontend_agent._create_component_files("ExistingComponent", component_code)
 
         # Verify original file unchanged
         assert existing_file.read_text() == "existing content"
@@ -343,10 +316,7 @@ class TestTaskExecution:
 
     @pytest.mark.asyncio
     async def test_execute_task_with_websocket_broadcasts(
-        self,
-        frontend_agent,
-        sample_task,
-        mock_websocket_manager
+        self, frontend_agent, sample_task, mock_websocket_manager
     ):
         """Test task execution broadcasts WebSocket messages."""
         frontend_agent.websocket_manager = mock_websocket_manager
@@ -363,14 +333,16 @@ class TestTaskExecution:
         json_task = Task(
             id=2,
             title="Create Button component",
-            description=json.dumps({
-                "name": "Button",
-                "description": "Reusable button component",
-                "generate_types": False
-            }),
+            description=json.dumps(
+                {
+                    "name": "Button",
+                    "description": "Reusable button component",
+                    "generate_types": False,
+                }
+            ),
             status="pending",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
 
         result = await frontend_agent.execute_task(json_task, project_id=1)
@@ -392,7 +364,7 @@ class TestTaskExecution:
             description="Component: <Invalid>Name>",  # Invalid component name
             status="pending",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
 
         # Mock _create_component_files to raise error
@@ -418,10 +390,7 @@ class TestWebSocketIntegration:
 
     @pytest.mark.asyncio
     async def test_broadcast_task_started(
-        self,
-        frontend_agent,
-        sample_task,
-        mock_websocket_manager
+        self, frontend_agent, sample_task, mock_websocket_manager
     ):
         """Test broadcasting task started status."""
         frontend_agent.websocket_manager = mock_websocket_manager
@@ -434,10 +403,7 @@ class TestWebSocketIntegration:
 
     @pytest.mark.asyncio
     async def test_broadcast_task_completed(
-        self,
-        frontend_agent,
-        sample_task,
-        mock_websocket_manager
+        self, frontend_agent, sample_task, mock_websocket_manager
     ):
         """Test broadcasting task completed status."""
         frontend_agent.websocket_manager = mock_websocket_manager
@@ -463,7 +429,7 @@ class TestErrorHandling:
             description="Component: Existing",
             status="pending",
             priority=1,
-            workflow_step=1
+            workflow_step=1,
         )
 
         result = await frontend_agent.execute_task(task, project_id=1)
@@ -477,10 +443,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_missing_api_key(self):
         """Test agent works without API key (using fallback templates)."""
-        agent = FrontendWorkerAgent(
-            agent_id="frontend-no-key",
-            api_key=None
-        )
+        agent = FrontendWorkerAgent(agent_id="frontend-no-key", api_key=None)
 
         assert agent.client is None
 

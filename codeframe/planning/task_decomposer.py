@@ -52,10 +52,7 @@ class TaskDecomposer:
 
         # Send to Claude API
         try:
-            response = provider.send_message([{
-                "role": "user",
-                "content": prompt
-            }])
+            response = provider.send_message([{"role": "user", "content": prompt}])
 
             claude_response = response["content"]
 
@@ -135,12 +132,12 @@ Now decompose the issue above into {self._estimate_task_count(issue)} atomic tas
         # 1. Title - Description
         # Task 1: Title - Description
         # 1) Title - Description
-        pattern = r'(?:Task\s+)?(\d+)[.):]\s*([^\n-]+?)(?:\s*-\s*([^\n]+))?(?:\n|$)'
+        pattern = r"(?:Task\s+)?(\d+)[.):]\s*([^\n-]+?)(?:\s*-\s*([^\n]+))?(?:\n|$)"
         matches = re.findall(pattern, response, re.MULTILINE | re.IGNORECASE)
 
         if not matches:
             # Try alternative format: "1. Title\n   Description"
-            pattern_alt = r'(\d+)[.):]\s*([^\n]+)\n\s+([^\n]+(?:\n\s+[^\n]+)*)'
+            pattern_alt = r"(\d+)[.):]\s*([^\n]+)\n\s+([^\n]+(?:\n\s+[^\n]+)*)"
             matches = re.findall(pattern_alt, response, re.MULTILINE)
 
         if not matches:

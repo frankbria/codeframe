@@ -79,10 +79,12 @@ class TestIssuesTableCreation:
         indexes = [row[0] for row in cursor.fetchall()]
 
         # Verify indexes exist
-        assert any("idx_issues_number" in idx for idx in indexes), \
-            "Index on issues(project_id, issue_number) not found"
-        assert any("idx_tasks_issue_number" in idx for idx in indexes), \
-            "Index on tasks(parent_issue_number) not found"
+        assert any(
+            "idx_issues_number" in idx for idx in indexes
+        ), "Index on issues(project_id, issue_number) not found"
+        assert any(
+            "idx_tasks_issue_number" in idx for idx in indexes
+        ), "Index on tasks(parent_issue_number) not found"
 
 
 @pytest.mark.unit
@@ -102,7 +104,7 @@ class TestIssueCRUD:
             title="Implement database migration",
             description="Add Issues table with hierarchical model",
             status=TaskStatus.PENDING,
-            priority=1
+            priority=1,
         )
         issue_id = db.create_issue(issue)
 
@@ -124,7 +126,7 @@ class TestIssueCRUD:
             description="Create REST API for issue management",
             status=TaskStatus.IN_PROGRESS,
             priority=0,
-            workflow_step=5
+            workflow_step=5,
         )
         issue_id = db.create_issue(issue)
 
@@ -150,7 +152,7 @@ class TestIssueCRUD:
             title="Test Issue",
             description="This is a test",
             status=TaskStatus.PENDING,
-            priority=2
+            priority=2,
         )
         issue_id = db.create_issue(issue)
 
@@ -183,30 +185,36 @@ class TestIssueCRUD:
         project_id = db.create_project("test-project", ProjectStatus.INIT)
 
         # Create multiple issues
-        db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.1",
-            title="Issue 1",
-            description="Description 1",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
-        db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.2",
-            title="Issue 2",
-            description="Description 2",
-            status=TaskStatus.IN_PROGRESS,
-            priority=2
-        ))
-        db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="2.1",
-            title="Issue 3",
-            description="Description 3",
-            status=TaskStatus.COMPLETED,
-            priority=3
-        ))
+        db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.1",
+                title="Issue 1",
+                description="Description 1",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
+        db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.2",
+                title="Issue 2",
+                description="Description 2",
+                status=TaskStatus.IN_PROGRESS,
+                priority=2,
+            )
+        )
+        db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="2.1",
+                title="Issue 3",
+                description="Description 3",
+                status=TaskStatus.COMPLETED,
+                priority=3,
+            )
+        )
 
         # List all issues for project
         issues = db.list_issues(project_id)
@@ -236,22 +244,26 @@ class TestIssueCRUD:
         project2_id = db.create_project("project2", ProjectStatus.INIT)
 
         # Create issues in different projects
-        db.create_issue(Issue(
-            project_id=project1_id,
-            issue_number="1.1",
-            title="Project 1 Issue",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
-        db.create_issue(Issue(
-            project_id=project2_id,
-            issue_number="1.1",
-            title="Project 2 Issue",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+        db.create_issue(
+            Issue(
+                project_id=project1_id,
+                issue_number="1.1",
+                title="Project 1 Issue",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
+        db.create_issue(
+            Issue(
+                project_id=project2_id,
+                issue_number="1.1",
+                title="Project 2 Issue",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
 
         # List issues for project1
         issues = db.list_issues(project1_id)
@@ -265,14 +277,16 @@ class TestIssueCRUD:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.1",
-            title="Test",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.1",
+                title="Test",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
 
         # Update status
         db.update_issue(issue_id, {"status": "in_progress"})
@@ -287,23 +301,28 @@ class TestIssueCRUD:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.1",
-            title="Original Title",
-            description="Original Desc",
-            status=TaskStatus.PENDING,
-            priority=2
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.1",
+                title="Original Title",
+                description="Original Desc",
+                status=TaskStatus.PENDING,
+                priority=2,
+            )
+        )
 
         # Update multiple fields
-        db.update_issue(issue_id, {
-            "title": "Updated Title",
-            "description": "Updated Description",
-            "status": "completed",
-            "priority": 0,
-            "workflow_step": 10
-        })
+        db.update_issue(
+            issue_id,
+            {
+                "title": "Updated Title",
+                "description": "Updated Description",
+                "status": "completed",
+                "priority": 0,
+                "workflow_step": 10,
+            },
+        )
 
         # Verify updates
         issue = db.get_issue(issue_id)
@@ -319,20 +338,21 @@ class TestIssueCRUD:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.1",
-            title="Test",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.1",
+                title="Test",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Complete the issue
-        db.update_issue(issue_id, {
-            "status": "completed",
-            "completed_at": datetime.now().isoformat()
-        })
+        db.update_issue(
+            issue_id, {"status": "completed", "completed_at": datetime.now().isoformat()}
+        )
 
         # Verify completed_at is set
         issue = db.get_issue(issue_id)
@@ -357,14 +377,16 @@ class TestTaskIssueRelationship:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Parent Issue",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Parent Issue",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Create task with issue relationship
         task_id = db.create_task_with_issue(
@@ -377,7 +399,7 @@ class TestTaskIssueRelationship:
             status=TaskStatus.PENDING,
             priority=1,
             workflow_step=3,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         assert task_id is not None
@@ -389,27 +411,53 @@ class TestTaskIssueRelationship:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Parent Issue",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Parent Issue",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Create multiple tasks for the issue
         db.create_task_with_issue(
-            project_id, issue_id, "1.5.1", "1.5",
-            "Task 1", "Desc 1", TaskStatus.PENDING, 1, 1, False
+            project_id,
+            issue_id,
+            "1.5.1",
+            "1.5",
+            "Task 1",
+            "Desc 1",
+            TaskStatus.PENDING,
+            1,
+            1,
+            False,
         )
         db.create_task_with_issue(
-            project_id, issue_id, "1.5.2", "1.5",
-            "Task 2", "Desc 2", TaskStatus.IN_PROGRESS, 1, 2, True
+            project_id,
+            issue_id,
+            "1.5.2",
+            "1.5",
+            "Task 2",
+            "Desc 2",
+            TaskStatus.IN_PROGRESS,
+            1,
+            2,
+            True,
         )
         db.create_task_with_issue(
-            project_id, issue_id, "1.5.3", "1.5",
-            "Task 3", "Desc 3", TaskStatus.COMPLETED, 1, 3, False
+            project_id,
+            issue_id,
+            "1.5.3",
+            "1.5",
+            "Task 3",
+            "Desc 3",
+            TaskStatus.COMPLETED,
+            1,
+            3,
+            False,
         )
 
         # Get tasks by issue
@@ -427,14 +475,16 @@ class TestTaskIssueRelationship:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Issue",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Issue",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
 
         tasks = db.get_tasks_by_issue(issue_id)
         assert tasks == []
@@ -445,20 +495,29 @@ class TestTaskIssueRelationship:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Issue",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Issue",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Create parallelizable task
         task_id = db.create_task_with_issue(
-            project_id, issue_id, "1.5.1", "1.5",
-            "Parallel Task", "Can run in parallel", TaskStatus.PENDING,
-            1, 1, can_parallelize=True
+            project_id,
+            issue_id,
+            "1.5.1",
+            "1.5",
+            "Parallel Task",
+            "Can run in parallel",
+            TaskStatus.PENDING,
+            1,
+            1,
+            can_parallelize=True,
         )
 
         # Verify flag
@@ -473,23 +532,23 @@ class TestTaskIssueRelationship:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="2.3",
-            title="Issue",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="2.3",
+                title="Issue",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Create tasks
         db.create_task_with_issue(
-            project_id, issue_id, "2.3.1", "2.3",
-            "Task 1", "Desc", TaskStatus.PENDING, 1, 1, False
+            project_id, issue_id, "2.3.1", "2.3", "Task 1", "Desc", TaskStatus.PENDING, 1, 1, False
         )
         db.create_task_with_issue(
-            project_id, issue_id, "2.3.2", "2.3",
-            "Task 2", "Desc", TaskStatus.PENDING, 1, 1, False
+            project_id, issue_id, "2.3.2", "2.3", "Task 2", "Desc", TaskStatus.PENDING, 1, 1, False
         )
 
         # Query by parent issue number
@@ -512,25 +571,29 @@ class TestIssueConstraints:
         project_id = db.create_project("test-project", ProjectStatus.INIT)
 
         # Create first issue
-        db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Issue 1",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+        db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Issue 1",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
 
         # Try to create duplicate issue number
         with pytest.raises(Exception):  # sqlite3.IntegrityError
-            db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Issue 2",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+            db.create_issue(
+                Issue(
+                    project_id=project_id,
+                    issue_number="1.5",
+                    title="Issue 2",
+                    description="Desc",
+                    status=TaskStatus.PENDING,
+                    priority=1,
+                )
+            )
 
     def test_same_issue_number_different_projects_allowed(self, temp_db_path):
         """Test that same issue_number is allowed in different projects."""
@@ -541,22 +604,26 @@ class TestIssueConstraints:
         project2_id = db.create_project("project2", ProjectStatus.INIT)
 
         # Create issues with same number in different projects - should succeed
-        issue1_id = db.create_issue(Issue(
-            project_id=project1_id,
-            issue_number="1.1",
-            title="Issue 1",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
-        issue2_id = db.create_issue(Issue(
-            project_id=project2_id,
-            issue_number="1.1",
-            title="Issue 2",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+        issue1_id = db.create_issue(
+            Issue(
+                project_id=project1_id,
+                issue_number="1.1",
+                title="Issue 1",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
+        issue2_id = db.create_issue(
+            Issue(
+                project_id=project2_id,
+                issue_number="1.1",
+                title="Issue 2",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
 
         assert issue1_id != issue2_id
 
@@ -574,7 +641,7 @@ class TestIssueConstraints:
         with pytest.raises(Exception):  # sqlite3.IntegrityError
             cursor.execute(
                 "INSERT INTO issues (project_id, issue_number, title, status, priority) VALUES (?, ?, ?, ?, ?)",
-                (project_id, "1.1", "Test", "INVALID_STATUS", 1)
+                (project_id, "1.1", "Test", "INVALID_STATUS", 1),
             )
 
     def test_issue_priority_constraint(self, temp_db_path):
@@ -589,7 +656,7 @@ class TestIssueConstraints:
         with pytest.raises(Exception):  # sqlite3.IntegrityError
             cursor.execute(
                 "INSERT INTO issues (project_id, issue_number, title, status, priority) VALUES (?, ?, ?, ?, ?)",
-                (project_id, "1.1", "Test", "pending", 10)  # Invalid priority
+                (project_id, "1.1", "Test", "pending", 10),  # Invalid priority
             )
 
     def test_issue_foreign_key_to_project(self, temp_db_path):
@@ -606,7 +673,7 @@ class TestIssueConstraints:
         try:
             cursor.execute(
                 "INSERT INTO issues (project_id, issue_number, title, status, priority) VALUES (?, ?, ?, ?, ?)",
-                (99999, "1.1", "Test", "pending", 1)
+                (99999, "1.1", "Test", "pending", 1),
             )
             db.conn.commit()
             # If we get here, foreign keys aren't enforced
@@ -631,7 +698,7 @@ class TestIssueConstraints:
                 """INSERT INTO tasks
                    (project_id, issue_id, task_number, title, status, priority)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                (project_id, 99999, "1.1.1", "Test", "pending", 1)
+                (project_id, 99999, "1.1.1", "Test", "pending", 1),
             )
             db.conn.commit()
         except Exception:
@@ -649,20 +716,30 @@ class TestIssueTaskQueries:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Issue",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Issue",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Create tasks
         for i in range(3):
             db.create_task_with_issue(
-                project_id, issue_id, f"1.5.{i+1}", "1.5",
-                f"Task {i+1}", "Desc", TaskStatus.PENDING, 1, 1, False
+                project_id,
+                issue_id,
+                f"1.5.{i+1}",
+                "1.5",
+                f"Task {i+1}",
+                "Desc",
+                TaskStatus.PENDING,
+                1,
+                1,
+                False,
             )
 
         # Get issue with task count
@@ -677,27 +754,44 @@ class TestIssueTaskQueries:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Issue",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Issue",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Create tasks with different statuses
         db.create_task_with_issue(
-            project_id, issue_id, "1.5.1", "1.5",
-            "Task 1", "Desc", TaskStatus.COMPLETED, 1, 1, False
+            project_id,
+            issue_id,
+            "1.5.1",
+            "1.5",
+            "Task 1",
+            "Desc",
+            TaskStatus.COMPLETED,
+            1,
+            1,
+            False,
         )
         db.create_task_with_issue(
-            project_id, issue_id, "1.5.2", "1.5",
-            "Task 2", "Desc", TaskStatus.COMPLETED, 1, 1, False
+            project_id,
+            issue_id,
+            "1.5.2",
+            "1.5",
+            "Task 2",
+            "Desc",
+            TaskStatus.COMPLETED,
+            1,
+            1,
+            False,
         )
         db.create_task_with_issue(
-            project_id, issue_id, "1.5.3", "1.5",
-            "Task 3", "Desc", TaskStatus.PENDING, 1, 1, False
+            project_id, issue_id, "1.5.3", "1.5", "Task 3", "Desc", TaskStatus.PENDING, 1, 1, False
         )
 
         # Calculate completion
@@ -715,31 +809,33 @@ class TestIssueTaskQueries:
         project_id = db.create_project("test-project", ProjectStatus.INIT)
 
         # Create issue 1 with tasks
-        issue1_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.1",
-            title="Issue 1",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue1_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.1",
+                title="Issue 1",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
         db.create_task_with_issue(
-            project_id, issue1_id, "1.1.1", "1.1",
-            "Task", "Desc", TaskStatus.COMPLETED, 1, 1, False
+            project_id, issue1_id, "1.1.1", "1.1", "Task", "Desc", TaskStatus.COMPLETED, 1, 1, False
         )
 
         # Create issue 2 with tasks
-        issue2_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.2",
-            title="Issue 2",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+        issue2_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.2",
+                title="Issue 2",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
         db.create_task_with_issue(
-            project_id, issue2_id, "1.2.1", "1.2",
-            "Task", "Desc", TaskStatus.PENDING, 1, 1, False
+            project_id, issue2_id, "1.2.1", "1.2", "Task", "Desc", TaskStatus.PENDING, 1, 1, False
         )
 
         # List with progress
@@ -764,48 +860,61 @@ class TestIssueTaskIntegration:
         project_id = db.create_project("my-app", ProjectStatus.INIT)
 
         # 2. Create issue
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.5",
-            title="Database Migration",
-            description="Implement hierarchical Issue/Task model",
-            status=TaskStatus.PENDING,
-            priority=0
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.5",
+                title="Database Migration",
+                description="Implement hierarchical Issue/Task model",
+                status=TaskStatus.PENDING,
+                priority=0,
+            )
+        )
 
         # 3. Update issue to in_progress
         db.update_issue(issue_id, {"status": "in_progress"})
 
         # 4. Create subtasks
         task1_id = db.create_task_with_issue(
-            project_id, issue_id, "1.5.1", "1.5",
-            "Create Issues table", "Schema definition",
-            TaskStatus.PENDING, 0, 1, False
+            project_id,
+            issue_id,
+            "1.5.1",
+            "1.5",
+            "Create Issues table",
+            "Schema definition",
+            TaskStatus.PENDING,
+            0,
+            1,
+            False,
         )
 
         task2_id = db.create_task_with_issue(
-            project_id, issue_id, "1.5.2", "1.5",
-            "Write tests", "TDD approach",
-            TaskStatus.PENDING, 0, 2, False
+            project_id,
+            issue_id,
+            "1.5.2",
+            "1.5",
+            "Write tests",
+            "TDD approach",
+            TaskStatus.PENDING,
+            0,
+            2,
+            False,
         )
 
         # 5. Complete tasks
         cursor = db.conn.cursor()
         cursor.execute(
-            "UPDATE tasks SET status = ? WHERE id = ?",
-            (TaskStatus.COMPLETED.value, task1_id)
+            "UPDATE tasks SET status = ? WHERE id = ?", (TaskStatus.COMPLETED.value, task1_id)
         )
         cursor.execute(
-            "UPDATE tasks SET status = ? WHERE id = ?",
-            (TaskStatus.COMPLETED.value, task2_id)
+            "UPDATE tasks SET status = ? WHERE id = ?", (TaskStatus.COMPLETED.value, task2_id)
         )
         db.conn.commit()
 
         # 6. Complete issue
-        db.update_issue(issue_id, {
-            "status": "completed",
-            "completed_at": datetime.now().isoformat()
-        })
+        db.update_issue(
+            issue_id, {"status": "completed", "completed_at": datetime.now().isoformat()}
+        )
 
         # 7. Verify final state
         issue = db.get_issue(issue_id)
@@ -821,27 +930,53 @@ class TestIssueTaskIntegration:
         db.initialize()
 
         project_id = db.create_project("test-project", ProjectStatus.INIT)
-        issue_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="2.1",
-            title="Feature X",
-            description="Desc",
-            status=TaskStatus.IN_PROGRESS,
-            priority=1
-        ))
+        issue_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="2.1",
+                title="Feature X",
+                description="Desc",
+                status=TaskStatus.IN_PROGRESS,
+                priority=1,
+            )
+        )
 
         # Create tasks, some parallelizable
         db.create_task_with_issue(
-            project_id, issue_id, "2.1.1", "2.1",
-            "Backend API", "Desc", TaskStatus.IN_PROGRESS, 1, 1, True
+            project_id,
+            issue_id,
+            "2.1.1",
+            "2.1",
+            "Backend API",
+            "Desc",
+            TaskStatus.IN_PROGRESS,
+            1,
+            1,
+            True,
         )
         db.create_task_with_issue(
-            project_id, issue_id, "2.1.2", "2.1",
-            "Frontend UI", "Desc", TaskStatus.IN_PROGRESS, 1, 1, True
+            project_id,
+            issue_id,
+            "2.1.2",
+            "2.1",
+            "Frontend UI",
+            "Desc",
+            TaskStatus.IN_PROGRESS,
+            1,
+            1,
+            True,
         )
         db.create_task_with_issue(
-            project_id, issue_id, "2.1.3", "2.1",
-            "Integration test", "Desc", TaskStatus.PENDING, 1, 2, False
+            project_id,
+            issue_id,
+            "2.1.3",
+            "2.1",
+            "Integration test",
+            "Desc",
+            TaskStatus.PENDING,
+            1,
+            2,
+            False,
         )
 
         # Get parallelizable tasks
@@ -849,7 +984,7 @@ class TestIssueTaskIntegration:
         cursor.execute(
             """SELECT * FROM tasks
                WHERE issue_id = ? AND can_parallelize = 1""",
-            (issue_id,)
+            (issue_id,),
         )
         parallel_tasks = cursor.fetchall()
 
@@ -863,47 +998,53 @@ class TestIssueTaskIntegration:
         project_id = db.create_project("test-project", ProjectStatus.INIT)
 
         # Create issues with hierarchical numbers
-        issue1_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1",
-            title="Epic 1",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
-        issue2_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.1",
-            title="Story 1.1",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
-        issue3_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="1.2",
-            title="Story 1.2",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
-        issue4_id = db.create_issue(Issue(
-            project_id=project_id,
-            issue_number="2",
-            title="Epic 2",
-            description="Desc",
-            status=TaskStatus.PENDING,
-            priority=1
-        ))
+        issue1_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1",
+                title="Epic 1",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
+        issue2_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.1",
+                title="Story 1.1",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
+        issue3_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="1.2",
+                title="Story 1.2",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
+        issue4_id = db.create_issue(
+            Issue(
+                project_id=project_id,
+                issue_number="2",
+                title="Epic 2",
+                description="Desc",
+                status=TaskStatus.PENDING,
+                priority=1,
+            )
+        )
 
         # Create tasks for story 1.1
         db.create_task_with_issue(
-            project_id, issue2_id, "1.1.1", "1.1",
-            "Task 1", "Desc", TaskStatus.PENDING, 1, 1, False
+            project_id, issue2_id, "1.1.1", "1.1", "Task 1", "Desc", TaskStatus.PENDING, 1, 1, False
         )
         db.create_task_with_issue(
-            project_id, issue2_id, "1.1.2", "1.1",
-            "Task 2", "Desc", TaskStatus.PENDING, 1, 1, False
+            project_id, issue2_id, "1.1.2", "1.1", "Task 2", "Desc", TaskStatus.PENDING, 1, 1, False
         )
 
         # Verify hierarchy

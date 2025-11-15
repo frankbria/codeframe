@@ -18,11 +18,13 @@ class TestServerDatabaseInitialization:
         """Test that database is initialized when server starts."""
         # ARRANGE: Import server module with temp database path
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         # Import app AFTER setting environment variable
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -41,10 +43,12 @@ class TestServerDatabaseInitialization:
         """Test that all database tables are created on startup."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -59,8 +63,14 @@ class TestServerDatabaseInitialization:
             tables = [row[0] for row in cursor.fetchall()]
 
             expected_tables = [
-                "projects", "tasks", "agents", "blockers",
-                "memory", "context_items", "checkpoints", "changelog"
+                "projects",
+                "tasks",
+                "agents",
+                "blockers",
+                "memory",
+                "context_items",
+                "checkpoints",
+                "changelog",
             ]
 
             for table in expected_tables:
@@ -70,10 +80,12 @@ class TestServerDatabaseInitialization:
         """Test database connection is properly managed across app lifecycle."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -92,10 +104,12 @@ class TestServerDatabaseInitialization:
         # ARRANGE: Set custom database path
         custom_db_path = temp_dir / "custom" / "test.db"
         import os
+
         os.environ["DATABASE_PATH"] = str(custom_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -110,10 +124,12 @@ class TestServerDatabaseInitialization:
         """Test that database connection persists across multiple requests."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -139,10 +155,12 @@ class TestServerDatabaseAccess:
         """Test that database is accessible from API endpoints."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -166,6 +184,7 @@ class TestServerDatabaseErrorHandling:
         """Test that server handles database initialization errors gracefully."""
         # ARRANGE: Use invalid database path
         import os
+
         os.environ["DATABASE_PATH"] = "/invalid/path/that/cannot/be/created/test.db"
 
         from codeframe.ui import server
@@ -185,11 +204,13 @@ class TestServerDatabaseErrorHandling:
         """Test that database path defaults to .codeframe/state.db if not configured."""
         # ARRANGE: Clear DATABASE_PATH from environment
         import os
+
         if "DATABASE_PATH" in os.environ:
             del os.environ["DATABASE_PATH"]
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -209,10 +230,12 @@ class TestServerDatabaseIntegration:
         """Test complete server startup with database initialization."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -232,10 +255,12 @@ class TestServerDatabaseIntegration:
         """Test that database operations work during API requests."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app

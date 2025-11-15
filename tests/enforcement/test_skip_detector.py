@@ -112,13 +112,13 @@ def test_example():
 
     def test_allows_skip_with_strong_justification(self):
         """T016: Test skip with strong justification (allowed if policy changes)"""
-        code = '''
+        code = """
 import pytest
 
 @pytest.mark.skip(reason="Blocked by external API downtime - Issue #123")
 def test_example():
     pass
-'''
+"""
         tree = ast.parse(code)
         visitor = SkipDetectorVisitor("test.py")
         visitor.visit(tree)
@@ -170,10 +170,12 @@ class SkipProcessor:
         # Create a large test file with 500 test functions
         code_parts = ["import pytest\n\n"]
         for i in range(500):
-            code_parts.append(f"""
+            code_parts.append(
+                f"""
 def test_example_{i}():
     assert True
-""")
+"""
+            )
 
         code = "".join(code_parts)
 
@@ -199,16 +201,16 @@ class TestSkipDetectorHelpers:
 
     def test_check_file_returns_violations(self):
         """Test that check_file returns violations for test files with skips."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", prefix="test_", delete=False
-        ) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", prefix="test_", delete=False) as f:
+            f.write(
+                """
 import pytest
 
 @pytest.mark.skip
 def test_example():
     pass
-""")
+"""
+            )
             f.flush()
             temp_path = f.name
 

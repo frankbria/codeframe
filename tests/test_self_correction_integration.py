@@ -22,9 +22,11 @@ from codeframe.testing.models import TestResult
 class TestSelfCorrectionLoop:
     """Test self-correction loop integration."""
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_self_correction_successful_on_first_attempt(self, mock_anthropic_class, tmp_path):
+    async def test_self_correction_successful_on_first_attempt(
+        self, mock_anthropic_class, tmp_path
+    ):
         """Test self-correction succeeds on first attempt."""
         from codeframe.testing.test_runner import TestRunner
 
@@ -32,14 +34,16 @@ class TestSelfCorrectionLoop:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -51,7 +55,7 @@ class TestSelfCorrectionLoop:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -63,25 +67,41 @@ class TestSelfCorrectionLoop:
 
         # First response: code with failing test
         first_response = Mock()
-        first_response.content = [Mock(text=json.dumps({
-            "files": [{
-                "path": "codeframe/models/user.py",
-                "action": "create",
-                "content": "class User:\n    def __init__(self):\n        self.name = None\n"
-            }],
-            "explanation": "Created User model"
-        }))]
+        first_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "create",
+                                "content": "class User:\n    def __init__(self):\n        self.name = None\n",
+                            }
+                        ],
+                        "explanation": "Created User model",
+                    }
+                )
+            )
+        ]
 
         # Second response: corrected code
         correction_response = Mock()
-        correction_response.content = [Mock(text=json.dumps({
-            "files": [{
-                "path": "codeframe/models/user.py",
-                "action": "modify",
-                "content": "class User:\n    def __init__(self, name):\n        self.name = name\n"
-            }],
-            "explanation": "Fixed User model initialization"
-        }))]
+        correction_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "codeframe/models/user.py",
+                                "action": "modify",
+                                "content": "class User:\n    def __init__(self, name):\n        self.name = name\n",
+                            }
+                        ],
+                        "explanation": "Fixed User model initialization",
+                    }
+                )
+            )
+        ]
 
         mock_client.messages.create.side_effect = [first_response, correction_response]
 
@@ -90,16 +110,20 @@ class TestSelfCorrectionLoop:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner: fail initially, then pass after correction
         test_results_sequence = [
-            TestResult(status="failed", total=5, passed=3, failed=2, errors=0, skipped=0, duration=1.0),
-            TestResult(status="passed", total=5, passed=5, failed=0, errors=0, skipped=0, duration=1.1)
+            TestResult(
+                status="failed", total=5, passed=3, failed=2, errors=0, skipped=0, duration=1.0
+            ),
+            TestResult(
+                status="passed", total=5, passed=5, failed=0, errors=0, skipped=0, duration=1.1
+            ),
         ]
 
-        with patch.object(TestRunner, 'run_tests', side_effect=test_results_sequence):
+        with patch.object(TestRunner, "run_tests", side_effect=test_results_sequence):
             cursor = db.conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
@@ -121,7 +145,7 @@ class TestSelfCorrectionLoop:
             assert test_results[0]["status"] == "failed"
             assert test_results[1]["status"] == "passed"
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
     async def test_self_correction_exhausts_all_attempts(self, mock_anthropic_class, tmp_path):
         """Test self-correction exhausts all 3 attempts and creates blocker."""
@@ -131,14 +155,16 @@ class TestSelfCorrectionLoop:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -150,7 +176,7 @@ class TestSelfCorrectionLoop:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -163,14 +189,22 @@ class TestSelfCorrectionLoop:
         responses = []
         for i in range(4):  # Initial + 3 correction attempts
             response = Mock()
-            response.content = [Mock(text=json.dumps({
-                "files": [{
-                    "path": "codeframe/models/user.py",
-                    "action": "create" if i == 0 else "modify",
-                    "content": f"# Attempt {i}\nclass User:\n    pass\n"
-                }],
-                "explanation": f"Attempt {i} to fix"
-            }))]
+            response.content = [
+                Mock(
+                    text=json.dumps(
+                        {
+                            "files": [
+                                {
+                                    "path": "codeframe/models/user.py",
+                                    "action": "create" if i == 0 else "modify",
+                                    "content": f"# Attempt {i}\nclass User:\n    pass\n",
+                                }
+                            ],
+                            "explanation": f"Attempt {i} to fix",
+                        }
+                    )
+                )
+            ]
             responses.append(response)
 
         mock_client.messages.create.side_effect = responses
@@ -180,7 +214,7 @@ class TestSelfCorrectionLoop:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner: always fail
@@ -192,10 +226,10 @@ class TestSelfCorrectionLoop:
             errors=0,
             skipped=0,
             duration=1.0,
-            output="AssertionError: Test failed"
+            output="AssertionError: Test failed",
         )
 
-        with patch.object(TestRunner, 'run_tests', return_value=failing_result):
+        with patch.object(TestRunner, "run_tests", return_value=failing_result):
             cursor = db.conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
@@ -226,9 +260,11 @@ class TestSelfCorrectionLoop:
             updated_task = cursor.fetchone()
             assert updated_task["status"] == "blocked"
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_self_correction_successful_on_second_attempt(self, mock_anthropic_class, tmp_path):
+    async def test_self_correction_successful_on_second_attempt(
+        self, mock_anthropic_class, tmp_path
+    ):
         """Test self-correction succeeds on second attempt."""
         from codeframe.testing.test_runner import TestRunner
 
@@ -236,14 +272,16 @@ class TestSelfCorrectionLoop:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -255,7 +293,7 @@ class TestSelfCorrectionLoop:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -266,18 +304,56 @@ class TestSelfCorrectionLoop:
         mock_anthropic_class.return_value = mock_client
 
         responses = [
-            Mock(content=[Mock(text=json.dumps({
-                "files": [{"path": "user.py", "action": "create", "content": "# Initial"}],
-                "explanation": "Initial code"
-            }))]),
-            Mock(content=[Mock(text=json.dumps({
-                "files": [{"path": "user.py", "action": "modify", "content": "# Attempt 1"}],
-                "explanation": "First fix"
-            }))]),
-            Mock(content=[Mock(text=json.dumps({
-                "files": [{"path": "user.py", "action": "modify", "content": "# Attempt 2"}],
-                "explanation": "Second fix"
-            }))])
+            Mock(
+                content=[
+                    Mock(
+                        text=json.dumps(
+                            {
+                                "files": [
+                                    {"path": "user.py", "action": "create", "content": "# Initial"}
+                                ],
+                                "explanation": "Initial code",
+                            }
+                        )
+                    )
+                ]
+            ),
+            Mock(
+                content=[
+                    Mock(
+                        text=json.dumps(
+                            {
+                                "files": [
+                                    {
+                                        "path": "user.py",
+                                        "action": "modify",
+                                        "content": "# Attempt 1",
+                                    }
+                                ],
+                                "explanation": "First fix",
+                            }
+                        )
+                    )
+                ]
+            ),
+            Mock(
+                content=[
+                    Mock(
+                        text=json.dumps(
+                            {
+                                "files": [
+                                    {
+                                        "path": "user.py",
+                                        "action": "modify",
+                                        "content": "# Attempt 2",
+                                    }
+                                ],
+                                "explanation": "Second fix",
+                            }
+                        )
+                    )
+                ]
+            ),
         ]
         mock_client.messages.create.side_effect = responses
 
@@ -286,17 +362,23 @@ class TestSelfCorrectionLoop:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner: fail twice, then pass
         test_sequence = [
-            TestResult(status="failed", total=5, passed=3, failed=2, errors=0, skipped=0, duration=1.0),
-            TestResult(status="failed", total=5, passed=4, failed=1, errors=0, skipped=0, duration=1.0),
-            TestResult(status="passed", total=5, passed=5, failed=0, errors=0, skipped=0, duration=1.0)
+            TestResult(
+                status="failed", total=5, passed=3, failed=2, errors=0, skipped=0, duration=1.0
+            ),
+            TestResult(
+                status="failed", total=5, passed=4, failed=1, errors=0, skipped=0, duration=1.0
+            ),
+            TestResult(
+                status="passed", total=5, passed=5, failed=0, errors=0, skipped=0, duration=1.0
+            ),
         ]
 
-        with patch.object(TestRunner, 'run_tests', side_effect=test_sequence):
+        with patch.object(TestRunner, "run_tests", side_effect=test_sequence):
             cursor = db.conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
@@ -315,9 +397,11 @@ class TestSelfCorrectionLoop:
             test_results = db.get_test_results_by_task(task_id)
             assert len(test_results) == 3  # Initial + 2 correction attempts
 
-    @patch('anthropic.AsyncAnthropic')
+    @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
-    async def test_no_self_correction_when_tests_pass_initially(self, mock_anthropic_class, tmp_path):
+    async def test_no_self_correction_when_tests_pass_initially(
+        self, mock_anthropic_class, tmp_path
+    ):
         """Test self-correction is not triggered when tests pass initially."""
         from codeframe.testing.test_runner import TestRunner
 
@@ -325,14 +409,16 @@ class TestSelfCorrectionLoop:
         db.initialize()
 
         project_id = db.create_project("test", "Test project")
-        issue_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Test Issue",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1
-        })
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         task_id = db.create_task_with_issue(
             project_id=project_id,
@@ -344,7 +430,7 @@ class TestSelfCorrectionLoop:
             status=TaskStatus.PENDING,
             priority=0,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         index = Mock(spec=CodebaseIndex)
@@ -354,10 +440,18 @@ class TestSelfCorrectionLoop:
         mock_client = AsyncMock()
         mock_anthropic_class.return_value = mock_client
         mock_response = Mock()
-        mock_response.content = [Mock(text=json.dumps({
-            "files": [{"path": "user.py", "action": "create", "content": "# Good code"}],
-            "explanation": "Perfect implementation"
-        }))]
+        mock_response.content = [
+            Mock(
+                text=json.dumps(
+                    {
+                        "files": [
+                            {"path": "user.py", "action": "create", "content": "# Good code"}
+                        ],
+                        "explanation": "Perfect implementation",
+                    }
+                )
+            )
+        ]
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
@@ -365,21 +459,15 @@ class TestSelfCorrectionLoop:
             db=db,
             codebase_index=index,
             api_key="test-key",
-            project_root=tmp_path
+            project_root=tmp_path,
         )
 
         # Mock test runner: pass immediately
         passing_result = TestResult(
-            status="passed",
-            total=5,
-            passed=5,
-            failed=0,
-            errors=0,
-            skipped=0,
-            duration=1.0
+            status="passed", total=5, passed=5, failed=0, errors=0, skipped=0, duration=1.0
         )
 
-        with patch.object(TestRunner, 'run_tests', return_value=passing_result):
+        with patch.object(TestRunner, "run_tests", return_value=passing_result):
             cursor = db.conn.cursor()
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())

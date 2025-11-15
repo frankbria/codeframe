@@ -48,10 +48,7 @@ def project_with_prd(client):
         Tuple of (project_id, prd_content, generated_at)
     """
     # Create project
-    project_id = app.state.db.create_project(
-        name="Test PRD Project",
-        status=ProjectStatus.PLANNING
-    )
+    project_id = app.state.db.create_project(name="Test PRD Project", status=ProjectStatus.PLANNING)
 
     # Store PRD content in database
     prd_content = """# Product Requirements Document
@@ -70,19 +67,13 @@ Users need better task tracking.
 
     # Store PRD in memory table
     app.state.db.create_memory(
-        project_id=project_id,
-        category="prd",
-        key="prd_content",
-        value=prd_content
+        project_id=project_id, category="prd", key="prd_content", value=prd_content
     )
 
     # Store metadata
-    generated_at = datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     app.state.db.create_memory(
-        project_id=project_id,
-        category="prd",
-        key="generated_at",
-        value=generated_at
+        project_id=project_id, category="prd", key="generated_at", value=generated_at
     )
 
     return project_id, prd_content, generated_at
@@ -158,13 +149,13 @@ class TestPRDResponseStructure:
         generated_at = data["generated_at"]
         assert isinstance(generated_at, str)
         # Should be parseable as ISO format with timezone
-        dt = datetime.fromisoformat(generated_at.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
         assert dt.tzinfo is not None  # Must have timezone
 
         # Verify updated_at is valid RFC 3339
         updated_at = data["updated_at"]
         assert isinstance(updated_at, str)
-        dt = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+        dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
         assert dt.tzinfo is not None
 
     def test_prd_response_status_is_available(self, client, project_with_prd):
@@ -190,10 +181,7 @@ class TestPRDEndpointNotFound:
     def test_prd_not_found_returns_status_not_found(self, client):
         """Test that status is 'not_found' when PRD doesn't exist."""
         # Create project without PRD
-        project_id = app.state.db.create_project(
-            name="No PRD Project",
-            status=ProjectStatus.INIT
-        )
+        project_id = app.state.db.create_project(name="No PRD Project", status=ProjectStatus.INIT)
 
         response = client.get(f"/api/projects/{project_id}/prd")
         data = response.json()
@@ -204,10 +192,7 @@ class TestPRDEndpointNotFound:
     def test_prd_not_found_returns_empty_content(self, client):
         """Test that prd_content is empty when PRD doesn't exist."""
         # Create project without PRD
-        project_id = app.state.db.create_project(
-            name="No PRD Project",
-            status=ProjectStatus.INIT
-        )
+        project_id = app.state.db.create_project(name="No PRD Project", status=ProjectStatus.INIT)
 
         response = client.get(f"/api/projects/{project_id}/prd")
         data = response.json()
@@ -235,25 +220,18 @@ class TestPRDEndpointEdgeCases:
         """Test that endpoint handles large PRD content."""
         # Create project with large PRD
         project_id = app.state.db.create_project(
-            name="Large PRD Project",
-            status=ProjectStatus.PLANNING
+            name="Large PRD Project", status=ProjectStatus.PLANNING
         )
 
         # Create large PRD content (>100KB)
         large_content = "# PRD\n\n" + ("Lorem ipsum dolor sit amet. " * 10000)
         app.state.db.create_memory(
-            project_id=project_id,
-            category="prd",
-            key="prd_content",
-            value=large_content
+            project_id=project_id, category="prd", key="prd_content", value=large_content
         )
 
-        generated_at = datetime.now(UTC).isoformat().replace('+00:00', 'Z')
+        generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         app.state.db.create_memory(
-            project_id=project_id,
-            category="prd",
-            key="generated_at",
-            value=generated_at
+            project_id=project_id, category="prd", key="generated_at", value=generated_at
         )
 
         response = client.get(f"/api/projects/{project_id}/prd")

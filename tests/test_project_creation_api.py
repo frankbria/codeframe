@@ -22,10 +22,12 @@ class TestProjectCreationAPI:
         """Test successful project creation via API (201 Created)."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -33,11 +35,7 @@ class TestProjectCreationAPI:
         # ACT
         with TestClient(app) as client:
             response = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "test-api-project",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "test-api-project", "project_type": "python"}
             )
 
         # ASSERT
@@ -60,22 +58,19 @@ class TestProjectCreationAPI:
         """Test that missing project_name returns 400 Bad Request."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
 
         # ACT
         with TestClient(app) as client:
-            response = client.post(
-                "/api/projects",
-                json={
-                    "project_type": "python"
-                }
-            )
+            response = client.post("/api/projects", json={"project_type": "python"})
 
         # ASSERT
         assert response.status_code == 422  # FastAPI validation error
@@ -86,10 +81,12 @@ class TestProjectCreationAPI:
         """Test that empty project_name returns 422 (Pydantic validation error)."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -97,11 +94,7 @@ class TestProjectCreationAPI:
         # ACT
         with TestClient(app) as client:
             response = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "", "project_type": "python"}
             )
 
         # ASSERT
@@ -113,10 +106,12 @@ class TestProjectCreationAPI:
         """Test that invalid project_type returns 400 Bad Request."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -125,10 +120,7 @@ class TestProjectCreationAPI:
         with TestClient(app) as client:
             response = client.post(
                 "/api/projects",
-                json={
-                    "project_name": "test-project",
-                    "project_type": "invalid_type"
-                }
+                json={"project_name": "test-project", "project_type": "invalid_type"},
             )
 
         # ASSERT
@@ -140,10 +132,12 @@ class TestProjectCreationAPI:
         """Test that duplicate project name returns 409 Conflict."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -152,21 +146,13 @@ class TestProjectCreationAPI:
         with TestClient(app) as client:
             # Create first project
             response1 = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "duplicate-test",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "duplicate-test", "project_type": "python"}
             )
             assert response1.status_code == 201
 
             # Try to create duplicate
             response2 = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "duplicate-test",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "duplicate-test", "project_type": "python"}
             )
 
         # ASSERT
@@ -179,10 +165,12 @@ class TestProjectCreationAPI:
         """Test that created project returns all expected fields."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -190,11 +178,7 @@ class TestProjectCreationAPI:
         # ACT
         with TestClient(app) as client:
             response = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "complete-project",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "complete-project", "project_type": "python"}
             )
 
         # ASSERT
@@ -216,22 +200,19 @@ class TestProjectCreationAPI:
         """Test that project_type defaults to 'python' if not specified."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
 
         # ACT
         with TestClient(app) as client:
-            response = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "default-type-project"
-                }
-            )
+            response = client.post("/api/projects", json={"project_name": "default-type-project"})
 
         # ASSERT
         assert response.status_code == 201
@@ -247,10 +228,12 @@ class TestProjectCreationIntegration:
         """Test that created project is actually stored in database."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -259,11 +242,7 @@ class TestProjectCreationIntegration:
         with TestClient(app) as client:
             # Create project via API
             response = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "persist-test",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "persist-test", "project_type": "python"}
             )
             assert response.status_code == 201
             created_id = response.json()["id"]
@@ -283,10 +262,12 @@ class TestProjectCreationIntegration:
         """Test creating multiple projects via API."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -299,11 +280,7 @@ class TestProjectCreationIntegration:
 
             for name in names:
                 response = client.post(
-                    "/api/projects",
-                    json={
-                        "project_name": name,
-                        "project_type": "python"
-                    }
+                    "/api/projects", json={"project_name": name, "project_type": "python"}
                 )
                 assert response.status_code == 201
                 created_ids.append(response.json()["id"])
@@ -326,10 +303,12 @@ class TestProjectCreationIntegration:
         """Test complete workflow: create via API, then get status."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -338,11 +317,7 @@ class TestProjectCreationIntegration:
         with TestClient(app) as client:
             # Create project
             create_response = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "workflow-test",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "workflow-test", "project_type": "python"}
             )
             assert create_response.status_code == 201
             project_id = create_response.json()["id"]
@@ -366,10 +341,12 @@ class TestProjectCreationErrorHandling:
         """Test that database errors are handled gracefully (500 Internal Server Error)."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -380,11 +357,7 @@ class TestProjectCreationErrorHandling:
             app.state.db.close()
 
             response = client.post(
-                "/api/projects",
-                json={
-                    "project_name": "error-test",
-                    "project_type": "python"
-                }
+                "/api/projects", json={"project_name": "error-test", "project_type": "python"}
             )
 
             # Should return 500 Internal Server Error
@@ -396,10 +369,12 @@ class TestProjectCreationErrorHandling:
         """Test that extra fields in request are ignored."""
         # ARRANGE
         import os
+
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
         from codeframe.ui import server
         from importlib import reload
+
         reload(server)
 
         app = server.app
@@ -412,8 +387,8 @@ class TestProjectCreationErrorHandling:
                     "project_name": "extra-fields-test",
                     "project_type": "python",
                     "extra_field": "should be ignored",
-                    "another_extra": 123
-                }
+                    "another_extra": 123,
+                },
             )
 
         # ASSERT

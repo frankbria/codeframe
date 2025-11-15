@@ -22,7 +22,7 @@ class TestEvidenceVerifier:
             pass_rate=100.0,
             coverage=90.0,
             output="All tests passed",
-            duration=1.23
+            duration=1.23,
         )
 
         evidence = verifier.collect_evidence(
@@ -30,7 +30,7 @@ class TestEvidenceVerifier:
             skip_violations=[],
             language="python",
             agent_id="worker-001",
-            task_description="Implement user auth"
+            task_description="Implement user auth",
         )
 
         assert verifier.verify(evidence) is True
@@ -49,7 +49,7 @@ class TestEvidenceVerifier:
             pass_rate=80.0,
             coverage=85.0,
             output="2 tests failed",
-            duration=1.23
+            duration=1.23,
         )
 
         evidence = verifier.collect_evidence(
@@ -57,7 +57,7 @@ class TestEvidenceVerifier:
             skip_violations=[],
             language="python",
             agent_id="worker-001",
-            task_description="Test task"
+            task_description="Test task",
         )
 
         assert verifier.verify(evidence) is False
@@ -76,7 +76,7 @@ class TestEvidenceVerifier:
             pass_rate=100.0,
             coverage=70.0,  # Below threshold
             output="All tests passed",
-            duration=1.23
+            duration=1.23,
         )
 
         evidence = verifier.collect_evidence(
@@ -84,7 +84,7 @@ class TestEvidenceVerifier:
             skip_violations=[],
             language="python",
             agent_id="worker-001",
-            task_description="Test task"
+            task_description="Test task",
         )
 
         assert verifier.verify(evidence) is False
@@ -103,7 +103,7 @@ class TestEvidenceVerifier:
             pass_rate=100.0,
             coverage=90.0,
             output="All tests passed",
-            duration=1.23
+            duration=1.23,
         )
 
         skip_violations = [
@@ -113,7 +113,7 @@ class TestEvidenceVerifier:
                 pattern="@skip",
                 context="test_something",
                 reason=None,
-                severity="error"
+                severity="error",
             )
         ]
 
@@ -122,7 +122,7 @@ class TestEvidenceVerifier:
             skip_violations=skip_violations,
             language="python",
             agent_id="worker-001",
-            task_description="Test task"
+            task_description="Test task",
         )
 
         assert verifier.verify(evidence) is False
@@ -141,7 +141,7 @@ class TestEvidenceVerifier:
             pass_rate=100.0,
             coverage=90.0,
             output="All tests passed",
-            duration=1.23
+            duration=1.23,
         )
 
         evidence = verifier.collect_evidence(
@@ -149,7 +149,7 @@ class TestEvidenceVerifier:
             skip_violations=[],
             language="python",
             agent_id="worker-001",
-            task_description="Implement feature X"
+            task_description="Implement feature X",
         )
 
         verifier.verify(evidence)
@@ -174,7 +174,7 @@ class TestEvidenceVerifier:
             pass_rate=100.0,
             coverage=85.0,
             output="ok  \tgithub.com/example/pkg\t2.500s",  # More realistic Go output
-            duration=2.5
+            duration=2.5,
         )
 
         evidence = verifier.collect_evidence(
@@ -183,7 +183,7 @@ class TestEvidenceVerifier:
             language="go",
             agent_id="worker-002",
             task_description="Add API endpoint",
-            framework="go test"
+            framework="go test",
         )
 
         assert verifier.verify(evidence) is True

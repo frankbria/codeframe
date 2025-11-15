@@ -31,6 +31,7 @@ def test_db():
 def test_project(test_db):
     """Create a test project."""
     from codeframe.core.models import ProjectStatus
+
     project_id = test_db.create_project("test_project", ProjectStatus.INIT)
     return project_id
 
@@ -45,7 +46,7 @@ def test_issue(test_db, test_project):
         description="Test description",
         status=TaskStatus.PENDING,
         priority=0,
-        workflow_step=1
+        workflow_step=1,
     )
     issue_id = test_db.create_issue(issue)
     return issue_id
@@ -57,9 +58,7 @@ class TestGitBranchesSchema:
     def test_table_exists(self, test_db):
         """Test that git_branches table exists."""
         cursor = test_db.conn.cursor()
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='git_branches'"
-        )
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='git_branches'")
         result = cursor.fetchone()
         assert result is not None
 
@@ -89,7 +88,7 @@ class TestGitBranchesSchema:
         with pytest.raises(Exception):  # sqlite3.IntegrityError
             cursor.execute(
                 "INSERT INTO git_branches (issue_id, branch_name, status) VALUES (?, ?, ?)",
-                (test_issue, "invalid-branch", "invalid_status")
+                (test_issue, "invalid-branch", "invalid_status"),
             )
 
 
@@ -373,23 +372,27 @@ class TestBranchStatistics:
     def test_count_branches_by_issue(self, test_db, test_project):
         """Test counting branches per issue."""
         # Create multiple issues
-        issue1_id = test_db.create_issue(Issue(
-            project_id=test_project,
-            issue_number="1.1",
-            title="Issue 1",
-            status=TaskStatus.PENDING,
-            priority=0,
-            workflow_step=1
-        ))
+        issue1_id = test_db.create_issue(
+            Issue(
+                project_id=test_project,
+                issue_number="1.1",
+                title="Issue 1",
+                status=TaskStatus.PENDING,
+                priority=0,
+                workflow_step=1,
+            )
+        )
 
-        issue2_id = test_db.create_issue(Issue(
-            project_id=test_project,
-            issue_number="1.2",
-            title="Issue 2",
-            status=TaskStatus.PENDING,
-            priority=0,
-            workflow_step=1
-        ))
+        issue2_id = test_db.create_issue(
+            Issue(
+                project_id=test_project,
+                issue_number="1.2",
+                title="Issue 2",
+                status=TaskStatus.PENDING,
+                priority=0,
+                workflow_step=1,
+            )
+        )
 
         # Create branches
         test_db.create_git_branch(issue1_id, "branch-1-1")

@@ -27,7 +27,7 @@ class TestTestResultModel:
             errors=0,
             skipped=0,
             duration=1.5,
-            output={"summary": "all passed"}
+            output={"summary": "all passed"},
         )
 
         assert result.status == "passed"
@@ -54,13 +54,7 @@ class TestTestResultModel:
     def test_test_result_failed_status(self):
         """Test TestResult with failed tests."""
         result = TestResult(
-            status="failed",
-            total=10,
-            passed=7,
-            failed=3,
-            errors=0,
-            skipped=0,
-            duration=2.3
+            status="failed", total=10, passed=7, failed=3, errors=0, skipped=0, duration=2.3
         )
 
         assert result.status == "failed"
@@ -70,13 +64,7 @@ class TestTestResultModel:
     def test_test_result_error_status(self):
         """Test TestResult with test errors."""
         result = TestResult(
-            status="error",
-            total=10,
-            passed=5,
-            failed=2,
-            errors=3,
-            skipped=0,
-            duration=1.8
+            status="error", total=10, passed=5, failed=2, errors=3, skipped=0, duration=1.8
         )
 
         assert result.status == "error"
@@ -116,20 +104,15 @@ class TestTestRunnerExecution:
 
         # Mock subprocess.run and file operations to simulate pytest success
         mock_json_data = {
-            "summary": {
-                "total": 10,
-                "passed": 10,
-                "failed": 0,
-                "error": 0,
-                "skipped": 0
-            },
-            "duration": 1.5
+            "summary": {"total": 10, "passed": 10, "failed": 0, "error": 0, "skipped": 0},
+            "duration": 1.5,
         }
 
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', create=True) as mock_open:
+        with patch("subprocess.run") as mock_run, patch("builtins.open", create=True) as mock_open:
             mock_run.return_value = MagicMock(returncode=0)
-            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                mock_json_data
+            )
 
             result = runner.run_tests()
 
@@ -144,23 +127,16 @@ class TestTestRunnerExecution:
         runner = TestRunner(project_root=tmp_path)
 
         mock_json_data = {
-            "summary": {
-                "total": 10,
-                "passed": 7,
-                "failed": 3,
-                "error": 0,
-                "skipped": 0
-            },
+            "summary": {"total": 10, "passed": 7, "failed": 3, "error": 0, "skipped": 0},
             "duration": 2.3,
-            "tests": [
-                {"outcome": "failed", "nodeid": "test_foo.py::test_bar"}
-            ]
+            "tests": [{"outcome": "failed", "nodeid": "test_foo.py::test_bar"}],
         }
 
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', create=True) as mock_open:
+        with patch("subprocess.run") as mock_run, patch("builtins.open", create=True) as mock_open:
             mock_run.return_value = MagicMock(returncode=1)
-            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                mock_json_data
+            )
 
             result = runner.run_tests()
 
@@ -174,20 +150,15 @@ class TestTestRunnerExecution:
         runner = TestRunner(project_root=tmp_path)
 
         mock_json_data = {
-            "summary": {
-                "total": 10,
-                "passed": 7,
-                "failed": 0,
-                "error": 3,
-                "skipped": 0
-            },
-            "duration": 1.8
+            "summary": {"total": 10, "passed": 7, "failed": 0, "error": 3, "skipped": 0},
+            "duration": 1.8,
         }
 
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', create=True) as mock_open:
+        with patch("subprocess.run") as mock_run, patch("builtins.open", create=True) as mock_open:
             mock_run.return_value = MagicMock(returncode=1)
-            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                mock_json_data
+            )
 
             result = runner.run_tests()
 
@@ -200,20 +171,17 @@ class TestTestRunnerExecution:
         runner = TestRunner(project_root=tmp_path)
 
         mock_json_data = {
-            "summary": {
-                "total": 0,
-                "passed": 0,
-                "failed": 0,
-                "error": 0,
-                "skipped": 0
-            },
-            "duration": 0.1
+            "summary": {"total": 0, "passed": 0, "failed": 0, "error": 0, "skipped": 0},
+            "duration": 0.1,
         }
 
-        with patch('subprocess.run') as mock_run, \
-             patch('builtins.open', create=True) as mock_open:
-            mock_run.return_value = MagicMock(returncode=5)  # pytest exit code for no tests collected
-            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(mock_json_data)
+        with patch("subprocess.run") as mock_run, patch("builtins.open", create=True) as mock_open:
+            mock_run.return_value = MagicMock(
+                returncode=5
+            )  # pytest exit code for no tests collected
+            mock_open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                mock_json_data
+            )
 
             result = runner.run_tests()
 
@@ -224,8 +192,9 @@ class TestTestRunnerExecution:
         """Test run_tests handles timeout."""
         runner = TestRunner(project_root=tmp_path, timeout=1)
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             import subprocess
+
             mock_run.side_effect = subprocess.TimeoutExpired(cmd="pytest", timeout=1)
 
             result = runner.run_tests()
@@ -246,7 +215,7 @@ class TestTestRunnerExecution:
         """Test run_tests gracefully handles missing pytest."""
         runner = TestRunner(project_root=tmp_path)
 
-        with patch('subprocess.run') as mock_run:
+        with patch("subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("pytest not found")
 
             result = runner.run_tests()
@@ -263,20 +232,9 @@ class TestPytestJSONParsing:
         runner = TestRunner(project_root=tmp_path)
 
         json_output = {
-            "summary": {
-                "total": 15,
-                "passed": 12,
-                "failed": 2,
-                "error": 1,
-                "skipped": 0
-            },
+            "summary": {"total": 15, "passed": 12, "failed": 2, "error": 1, "skipped": 0},
             "duration": 3.5,
-            "tests": [
-                {
-                    "nodeid": "test_foo.py::test_bar",
-                    "outcome": "passed"
-                }
-            ]
+            "tests": [{"nodeid": "test_foo.py::test_bar", "outcome": "passed"}],
         }
 
         result = runner._parse_results(json.dumps(json_output), returncode=1)

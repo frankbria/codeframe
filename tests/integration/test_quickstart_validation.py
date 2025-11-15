@@ -3,6 +3,7 @@ Quickstart validation scenarios (049-human-in-loop, T069).
 
 Validates the 5-minute tutorial and common patterns from quickstart.md work correctly.
 """
+
 import pytest
 import pytest_asyncio
 from datetime import datetime, timedelta
@@ -25,7 +26,7 @@ async def sample_project(db):
     project_id = db.create_project(
         name="Quickstart Test Project",
         repo_path="/tmp/quickstart_test",
-        description="Test project for quickstart validation"
+        description="Test project for quickstart validation",
     )
     return project_id
 
@@ -33,15 +34,17 @@ async def sample_project(db):
 @pytest_asyncio.fixture
 async def sample_task(db, sample_project):
     """Create a sample task for testing."""
-    issue_id = db.create_issue({
-        "project_id": sample_project,
-        "issue_number": "1.0",
-        "title": "Test Issue",
-        "description": "Test issue",
-        "status": "pending",
-        "priority": 2,
-        "workflow_step": 1
-    })
+    issue_id = db.create_issue(
+        {
+            "project_id": sample_project,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "description": "Test issue",
+            "status": "pending",
+            "priority": 2,
+            "workflow_step": 1,
+        }
+    )
 
     task_id = db.create_task_with_issue(
         project_id=sample_project,
@@ -53,7 +56,7 @@ async def sample_task(db, sample_project):
         status=TaskStatus.PENDING,
         priority=2,
         workflow_step=1,
-        can_parallelize=False
+        can_parallelize=False,
     )
     return task_id
 
@@ -69,7 +72,7 @@ class TestFiveMinuteTutorial:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="Should the user table use UUID or auto-increment ID?"
+            question="Should the user table use UUID or auto-increment ID?",
         )
 
         assert blocker_id > 0
@@ -83,20 +86,20 @@ class TestFiveMinuteTutorial:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="Should we use SQLite or PostgreSQL?"
+            question="Should we use SQLite or PostgreSQL?",
         )
 
         # Simulate dashboard fetching blockers
         response = db.list_blockers(sample_project)
 
-        assert response['total'] == 1
-        assert response['pending_count'] == 1
-        assert response['sync_count'] == 1
+        assert response["total"] == 1
+        assert response["pending_count"] == 1
+        assert response["sync_count"] == 1
 
-        blocker = response['blockers'][0]
-        assert blocker['blocker_type'] == BlockerType.SYNC
-        assert blocker['question'] == "Should we use SQLite or PostgreSQL?"
-        assert blocker['agent_id'] == "backend-worker-001"
+        blocker = response["blockers"][0]
+        assert blocker["blocker_type"] == BlockerType.SYNC
+        assert blocker["question"] == "Should we use SQLite or PostgreSQL?"
+        assert blocker["agent_id"] == "backend-worker-001"
         print(f"✓ Blocker visible in dashboard: {blocker['question'][:50]}...")
 
     def test_scenario_3_resolve_blocker(self, db, sample_task):
@@ -107,7 +110,7 @@ class TestFiveMinuteTutorial:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="Should we use SQLite or PostgreSQL?"
+            question="Should we use SQLite or PostgreSQL?",
         )
 
         # User resolves blocker
@@ -118,9 +121,9 @@ class TestFiveMinuteTutorial:
 
         # Verify resolution
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'RESOLVED'
-        assert blocker['answer'] == answer
-        assert blocker['resolved_at'] is not None
+        assert blocker["status"] == "RESOLVED"
+        assert blocker["answer"] == answer
+        assert blocker["resolved_at"] is not None
         print(f"✓ Blocker resolved with answer: {answer[:40]}...")
 
     def test_scenario_4_agent_resume(self, db, sample_task):
@@ -131,13 +134,13 @@ class TestFiveMinuteTutorial:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="What API key should I use?"
+            question="What API key should I use?",
         )
 
         # Agent polls (blocker still pending)
         pending = db.get_pending_blocker("backend-worker-001")
         assert pending is not None
-        assert pending['id'] == blocker_id
+        assert pending["id"] == blocker_id
 
         # User resolves
         db.resolve_blocker(blocker_id, "Use key: sk-test-123")
@@ -148,8 +151,8 @@ class TestFiveMinuteTutorial:
 
         # Agent gets resolved blocker
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'RESOLVED'
-        assert blocker['answer'] == "Use key: sk-test-123"
+        assert blocker["status"] == "RESOLVED"
+        assert blocker["answer"] == "Use key: sk-test-123"
         print(f"✓ Agent can resume with answer: {blocker['answer']}")
 
 
@@ -164,20 +167,20 @@ class TestCommonPatterns:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="ANTHROPIC_API_KEY environment variable not set. Please provide the API key."
+            question="ANTHROPIC_API_KEY environment variable not set. Please provide the API key.",
         )
 
         # Wait for resolution (simulated)
         blocker = db.get_blocker(blocker_id)
-        assert blocker['blocker_type'] == BlockerType.SYNC
-        assert blocker['status'] == 'PENDING'
+        assert blocker["blocker_type"] == BlockerType.SYNC
+        assert blocker["status"] == "PENDING"
 
         # User provides API key
         db.resolve_blocker(blocker_id, "sk-ant-api03-test-key")
 
         # Agent gets answer
         blocker = db.get_blocker(blocker_id)
-        assert blocker['answer'].startswith("sk-ant-api03-")
+        assert blocker["answer"].startswith("sk-ant-api03-")
         print(f"✓ SYNC blocker pattern works: API key configured")
 
     def test_pattern_2_async_blocker(self, db, sample_task):
@@ -188,34 +191,36 @@ class TestCommonPatterns:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.ASYNC,
-            question="Should the button use primary blue (#0066CC) or teal (#00A8A8)?"
+            question="Should the button use primary blue (#0066CC) or teal (#00A8A8)?",
         )
 
         # Blocker is ASYNC, agent continues with default
         blocker = db.get_blocker(blocker_id)
-        assert blocker['blocker_type'] == BlockerType.ASYNC
+        assert blocker["blocker_type"] == BlockerType.ASYNC
 
         # Later, user provides preference
         db.resolve_blocker(blocker_id, "Use teal #00A8A8 to match brand guidelines")
 
         # Agent checks later and applies answer
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'RESOLVED'
-        assert "#00A8A8" in blocker['answer']
+        assert blocker["status"] == "RESOLVED"
+        assert "#00A8A8" in blocker["answer"]
         print(f"✓ ASYNC blocker pattern works: Preference applied")
 
     def test_pattern_3_multiple_blockers(self, db, sample_project):
         """Pattern 3: Multiple blockers workflow."""
         # Create issues and tasks for multiple agents
-        issue_a = db.create_issue({
-            "project_id": sample_project,
-            "issue_number": "A.0",
-            "title": "Backend Task",
-            "description": "Backend work",
-            "status": "pending",
-            "priority": 2,
-            "workflow_step": 1
-        })
+        issue_a = db.create_issue(
+            {
+                "project_id": sample_project,
+                "issue_number": "A.0",
+                "title": "Backend Task",
+                "description": "Backend work",
+                "status": "pending",
+                "priority": 2,
+                "workflow_step": 1,
+            }
+        )
         task_a = db.create_task_with_issue(
             project_id=sample_project,
             issue_id=issue_a,
@@ -226,18 +231,20 @@ class TestCommonPatterns:
             status=TaskStatus.PENDING,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
-        issue_b = db.create_issue({
-            "project_id": sample_project,
-            "issue_number": "B.0",
-            "title": "Frontend Task",
-            "description": "Frontend work",
-            "status": "pending",
-            "priority": 2,
-            "workflow_step": 1
-        })
+        issue_b = db.create_issue(
+            {
+                "project_id": sample_project,
+                "issue_number": "B.0",
+                "title": "Frontend Task",
+                "description": "Frontend work",
+                "status": "pending",
+                "priority": 2,
+                "workflow_step": 1,
+            }
+        )
         task_b = db.create_task_with_issue(
             project_id=sample_project,
             issue_id=issue_b,
@@ -248,7 +255,7 @@ class TestCommonPatterns:
             status=TaskStatus.PENDING,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Multiple agents create blockers simultaneously
@@ -257,7 +264,7 @@ class TestCommonPatterns:
             project_id=1,
             task_id=task_a,
             blocker_type=BlockerType.SYNC,
-            question="Use REST or GraphQL for API?"
+            question="Use REST or GraphQL for API?",
         )
 
         blocker_b = db.create_blocker(
@@ -265,13 +272,13 @@ class TestCommonPatterns:
             project_id=1,
             task_id=task_b,
             blocker_type=BlockerType.ASYNC,
-            question="Use Tailwind or CSS Modules?"
+            question="Use Tailwind or CSS Modules?",
         )
 
         # Dashboard shows both blockers
         response = db.list_blockers(sample_project)
-        assert response['total'] == 2
-        assert response['sync_count'] == 1  # 1 SYNC, 1 ASYNC
+        assert response["total"] == 2
+        assert response["sync_count"] == 1  # 1 SYNC, 1 ASYNC
 
         # Resolve SYNC first (blocking)
         db.resolve_blocker(blocker_a, "Use REST for consistency with existing endpoints")
@@ -282,8 +289,8 @@ class TestCommonPatterns:
         # Verify both resolved
         blocker_a_resolved = db.get_blocker(blocker_a)
         blocker_b_resolved = db.get_blocker(blocker_b)
-        assert blocker_a_resolved['status'] == 'RESOLVED'
-        assert blocker_b_resolved['status'] == 'RESOLVED'
+        assert blocker_a_resolved["status"] == "RESOLVED"
+        assert blocker_b_resolved["status"] == "RESOLVED"
         print(f"✓ Multiple blockers pattern works: 2 blockers resolved")
 
 
@@ -293,25 +300,23 @@ class TestTroubleshooting:
     def test_blocker_not_appearing_wrong_project(self, db):
         """Troubleshooting: Wrong project_id filter."""
         project_1 = db.create_project(
-            name="Project 1",
-            description="Test project 1",
-            source_type="empty"
+            name="Project 1", description="Test project 1", source_type="empty"
         )
         project_2 = db.create_project(
-            name="Project 2",
-            description="Test project 2",
-            source_type="empty"
+            name="Project 2", description="Test project 2", source_type="empty"
         )
 
-        issue = db.create_issue({
-            "project_id": project_1,
-            "issue_number": "1.0",
-            "title": "Issue",
-            "description": "Desc",
-            "status": "pending",
-            "priority": 2,
-            "workflow_step": 1
-        })
+        issue = db.create_issue(
+            {
+                "project_id": project_1,
+                "issue_number": "1.0",
+                "title": "Issue",
+                "description": "Desc",
+                "status": "pending",
+                "priority": 2,
+                "workflow_step": 1,
+            }
+        )
         task = db.create_task_with_issue(
             project_id=project_1,
             issue_id=issue,
@@ -322,7 +327,7 @@ class TestTroubleshooting:
             status=TaskStatus.PENDING,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # Create blocker in project 1
@@ -331,16 +336,16 @@ class TestTroubleshooting:
             project_id=1,
             task_id=task,
             blocker_type=BlockerType.SYNC,
-            question="Test question"
+            question="Test question",
         )
 
         # Query project 2 (wrong project)
         response = db.list_blockers(project_2)
-        assert response['total'] == 0  # Blocker not visible
+        assert response["total"] == 0  # Blocker not visible
 
         # Query project 1 (correct project)
         response = db.list_blockers(project_1)
-        assert response['total'] == 1  # Blocker visible
+        assert response["total"] == 1  # Blocker visible
         print(f"✓ Troubleshooting: Project filter works correctly")
 
     def test_duplicate_resolutions(self, db, sample_task):
@@ -350,7 +355,7 @@ class TestTroubleshooting:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="Test question?"
+            question="Test question?",
         )
 
         # First user resolves
@@ -363,7 +368,7 @@ class TestTroubleshooting:
 
         # Verify first answer persists
         blocker = db.get_blocker(blocker_id)
-        assert blocker['answer'] == "First answer"
+        assert blocker["answer"] == "First answer"
         print(f"✓ Troubleshooting: Duplicate resolution prevented")
 
     def test_stale_blockers_expiration(self, db, sample_task):
@@ -374,7 +379,7 @@ class TestTroubleshooting:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="Old question"
+            question="Old question",
         )
 
         # Manually set to 25 hours ago
@@ -382,7 +387,7 @@ class TestTroubleshooting:
         cursor = db.conn.cursor()
         cursor.execute(
             "UPDATE blockers SET created_at = ? WHERE id = ?",
-            (old_timestamp.isoformat(), blocker_id)
+            (old_timestamp.isoformat(), blocker_id),
         )
         db.conn.commit()
 
@@ -392,7 +397,7 @@ class TestTroubleshooting:
 
         # Verify status changed
         blocker = db.get_blocker(blocker_id)
-        assert blocker['status'] == 'EXPIRED'
+        assert blocker["status"] == "EXPIRED"
         print(f"✓ Troubleshooting: Stale blocker expired after 24h")
 
 
@@ -407,14 +412,14 @@ class TestAdvancedUsage:
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.SYNC,
-            question="Question 1"
+            question="Question 1",
         )
         blocker2 = db.create_blocker(
             agent_id="backend-worker-002",
             project_id=1,
             task_id=sample_task,
             blocker_type=BlockerType.ASYNC,
-            question="Question 2"
+            question="Question 2",
         )
 
         # Resolve one
@@ -423,12 +428,12 @@ class TestAdvancedUsage:
         # Get metrics
         metrics = db.get_blocker_metrics(sample_project)
 
-        assert metrics['total_blockers'] == 2
-        assert metrics['resolved_count'] == 1
-        assert metrics['pending_count'] == 1
-        assert metrics['sync_count'] == 1
-        assert metrics['async_count'] == 1
-        assert metrics['avg_resolution_time_seconds'] is not None
+        assert metrics["total_blockers"] == 2
+        assert metrics["resolved_count"] == 1
+        assert metrics["pending_count"] == 1
+        assert metrics["sync_count"] == 1
+        assert metrics["async_count"] == 1
+        assert metrics["avg_resolution_time_seconds"] is not None
         print(f"✓ Advanced: Blocker metrics available")
 
     def test_rate_limiting(self, db, sample_task):
@@ -440,7 +445,7 @@ class TestAdvancedUsage:
                 project_id=1,
                 task_id=sample_task,
                 blocker_type=BlockerType.SYNC,
-                question=f"Question {i}"
+                question=f"Question {i}",
             )
 
         # 11th blocker should be rate limited
@@ -450,7 +455,7 @@ class TestAdvancedUsage:
                 project_id=1,
                 task_id=sample_task,
                 blocker_type=BlockerType.SYNC,
-                question="Question 11"
+                question="Question 11",
             )
 
         print(f"✓ Advanced: Rate limiting enforced (10/minute)")

@@ -43,7 +43,7 @@ class TestAPIContracts:
             description="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=2,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
@@ -57,7 +57,7 @@ class TestAPIContracts:
             status=TaskStatus.COMPLETED,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # When: We call the API endpoint (via database layer)
@@ -73,12 +73,10 @@ class TestAPIContracts:
             assert field in project, f"Missing required field: {field}"
 
         # Progress field (frontend Dashboard.tsx:194-218)
-        assert "progress" in project, \
-            "Missing 'progress' field - causes TypeError in Dashboard"
+        assert "progress" in project, "Missing 'progress' field - causes TypeError in Dashboard"
 
         progress = project["progress"]
-        assert isinstance(progress, dict), \
-            "'progress' must be a dict object"
+        assert isinstance(progress, dict), "'progress' must be a dict object"
 
         # Progress sub-fields (Dashboard.tsx expects these)
         assert "completed_tasks" in progress
@@ -115,7 +113,7 @@ class TestAPIContracts:
             description="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=2,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
@@ -129,7 +127,7 @@ class TestAPIContracts:
             status=TaskStatus.COMPLETED,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # When: We simulate the /status endpoint (get_project + calculate_progress)
@@ -143,12 +141,11 @@ class TestAPIContracts:
             "status": project["status"],
             "phase": project.get("phase", "discovery"),
             "workflow_step": project.get("workflow_step", 1),
-            "progress": progress
+            "progress": progress,
         }
 
         # Then: Response must have progress field
-        assert "progress" in status_response, \
-            "Missing 'progress' - this was the cf-46 bug!"
+        assert "progress" in status_response, "Missing 'progress' - this was the cf-46 bug!"
 
         # Validate progress structure
         assert "completed_tasks" in status_response["progress"]
@@ -184,10 +181,10 @@ class TestAPIContracts:
         db.initialize()
 
         test_cases = [
-            ("0% complete", 0, 5),   # 0 of 5 tasks
+            ("0% complete", 0, 5),  # 0 of 5 tasks
             ("50% complete", 1, 2),  # 1 of 2 tasks
-            ("100% complete", 3, 3), # 3 of 3 tasks
-            ("Empty project", 0, 0), # No tasks
+            ("100% complete", 3, 3),  # 3 of 3 tasks
+            ("Empty project", 0, 0),  # No tasks
         ]
 
         for name, completed, total in test_cases:
@@ -201,7 +198,7 @@ class TestAPIContracts:
                     description="Test",
                     status=TaskStatus.IN_PROGRESS,
                     priority=2,
-                    workflow_step=1
+                    workflow_step=1,
                 )
                 issue_id = db.create_issue(issue)
 
@@ -217,7 +214,7 @@ class TestAPIContracts:
                         status=status,
                         priority=2,
                         workflow_step=1,
-                        can_parallelize=False
+                        can_parallelize=False,
                     )
 
         # When: We fetch all projects
@@ -234,8 +231,7 @@ class TestAPIContracts:
         for project in projects:
             expected = expected_percentages[project["name"]]
             actual = project["progress"]["percentage"]
-            assert actual == expected, \
-                f"{project['name']}: expected {expected}%, got {actual}%"
+            assert actual == expected, f"{project['name']}: expected {expected}%, got {actual}%"
 
 
 class TestEnvironmentConfiguration:
@@ -260,10 +256,14 @@ class TestEnvironmentConfiguration:
         test_cases = [
             ("", []),  # Empty should use defaults
             ("http://localhost:3000", ["http://localhost:3000"]),
-            ("http://localhost:3000,http://example.com",
-             ["http://localhost:3000", "http://example.com"]),
-            ("  http://a.com  ,  http://b.com  ",
-             ["http://a.com", "http://b.com"]),  # Whitespace handling
+            (
+                "http://localhost:3000,http://example.com",
+                ["http://localhost:3000", "http://example.com"],
+            ),
+            (
+                "  http://a.com  ,  http://b.com  ",
+                ["http://a.com", "http://b.com"],
+            ),  # Whitespace handling
         ]
 
         for env_value, expected_origins in test_cases:
@@ -274,8 +274,7 @@ class TestEnvironmentConfiguration:
                 origins = []
 
             # Then: Should parse correctly
-            assert origins == expected_origins, \
-                f"Failed to parse: {env_value!r}"
+            assert origins == expected_origins, f"Failed to parse: {env_value!r}"
 
     def test_next_public_api_url_required(self):
         """
@@ -324,14 +323,7 @@ class TestDataIntegrity:
         Frontend Dashboard checks for status === 'completed' exactly.
         """
         # Valid task statuses from TaskStatus enum
-        valid_statuses = [
-            "pending",
-            "assigned",
-            "in_progress",
-            "blocked",
-            "completed",
-            "failed"
-        ]
+        valid_statuses = ["pending", "assigned", "in_progress", "blocked", "completed", "failed"]
 
         # Given: A database with tasks in various statuses
         db = Database(":memory:")
@@ -345,7 +337,7 @@ class TestDataIntegrity:
             description="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=2,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
@@ -360,7 +352,7 @@ class TestDataIntegrity:
             status=TaskStatus.COMPLETED,
             priority=2,
             workflow_step=1,
-            can_parallelize=False
+            can_parallelize=False,
         )
 
         # When: We fetch projects
@@ -387,12 +379,14 @@ class TestDataIntegrity:
             description="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=2,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
         # Create tasks with non-completed statuses
-        for i, status in enumerate([TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED]):
+        for i, status in enumerate(
+            [TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED]
+        ):
             db.create_task_with_issue(
                 project_id=project_id,
                 issue_id=issue_id,
@@ -403,7 +397,7 @@ class TestDataIntegrity:
                 status=status,
                 priority=2,
                 workflow_step=1,
-                can_parallelize=False
+                can_parallelize=False,
             )
 
         # When: We fetch projects
@@ -432,8 +426,8 @@ class TestEdgeCases:
         # Then: Should handle nulls gracefully
         project = projects[0]
         assert project["root_path"] is None  # Optional field
-        assert project["config"] is None      # Optional field
-        assert "progress" in project          # Required field
+        assert project["config"] is None  # Optional field
+        assert "progress" in project  # Required field
         assert project["progress"]["total_tasks"] == 0
 
     def test_large_project_performance(self):
@@ -454,7 +448,7 @@ class TestEdgeCases:
             description="Test",
             status=TaskStatus.IN_PROGRESS,
             priority=2,
-            workflow_step=1
+            workflow_step=1,
         )
         issue_id = db.create_issue(issue)
 
@@ -471,11 +465,12 @@ class TestEdgeCases:
                 status=status,
                 priority=2,
                 workflow_step=1,
-                can_parallelize=False
+                can_parallelize=False,
             )
 
         # When: We fetch projects
         import time
+
         start = time.time()
         projects = db.list_projects()
         elapsed = time.time() - start
@@ -500,32 +495,56 @@ class TestEdgeCases:
 
         # Project 1: 75% complete
         p1_id = db.create_project("Project 1", ProjectStatus.ACTIVE)
-        i1 = db.create_issue(Issue(
-            project_id=p1_id, issue_number="1.1", title="I1",
-            description="", status=TaskStatus.IN_PROGRESS,
-            priority=2, workflow_step=1
-        ))
+        i1 = db.create_issue(
+            Issue(
+                project_id=p1_id,
+                issue_number="1.1",
+                title="I1",
+                description="",
+                status=TaskStatus.IN_PROGRESS,
+                priority=2,
+                workflow_step=1,
+            )
+        )
         for i in range(4):
             db.create_task_with_issue(
-                project_id=p1_id, issue_id=i1, task_number=f"1.1.{i+1}",
-                parent_issue_number="1.1", title=f"T{i+1}", description="",
+                project_id=p1_id,
+                issue_id=i1,
+                task_number=f"1.1.{i+1}",
+                parent_issue_number="1.1",
+                title=f"T{i+1}",
+                description="",
                 status=TaskStatus.COMPLETED if i < 3 else TaskStatus.PENDING,
-                priority=2, workflow_step=1, can_parallelize=False
+                priority=2,
+                workflow_step=1,
+                can_parallelize=False,
             )
 
         # Project 2: 25% complete
         p2_id = db.create_project("Project 2", ProjectStatus.ACTIVE)
-        i2 = db.create_issue(Issue(
-            project_id=p2_id, issue_number="1.1", title="I1",
-            description="", status=TaskStatus.IN_PROGRESS,
-            priority=2, workflow_step=1
-        ))
+        i2 = db.create_issue(
+            Issue(
+                project_id=p2_id,
+                issue_number="1.1",
+                title="I1",
+                description="",
+                status=TaskStatus.IN_PROGRESS,
+                priority=2,
+                workflow_step=1,
+            )
+        )
         for i in range(4):
             db.create_task_with_issue(
-                project_id=p2_id, issue_id=i2, task_number=f"1.1.{i+1}",
-                parent_issue_number="1.1", title=f"T{i+1}", description="",
+                project_id=p2_id,
+                issue_id=i2,
+                task_number=f"1.1.{i+1}",
+                parent_issue_number="1.1",
+                title=f"T{i+1}",
+                description="",
                 status=TaskStatus.COMPLETED if i < 1 else TaskStatus.PENDING,
-                priority=2, workflow_step=1, can_parallelize=False
+                priority=2,
+                workflow_step=1,
+                can_parallelize=False,
             )
 
         # When: We fetch all projects
