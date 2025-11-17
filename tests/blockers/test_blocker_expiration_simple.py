@@ -54,9 +54,9 @@ class TestExpireStaleBlockers:
         recent_time = (datetime.now() - timedelta(hours=2)).isoformat()
 
         temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Test question?", "PENDING", recent_time),
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            ("backend-worker-1", 1, 1, "SYNC", "Test question?", "PENDING", recent_time),
         )
         temp_db.conn.commit()
 
@@ -70,10 +70,10 @@ class TestExpireStaleBlockers:
         stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
 
         cursor = temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Stale question?", "PENDING", stale_time),
+            ("backend-worker-1", 1, 1, "SYNC", "Stale question?", "PENDING", stale_time),
         )
         blocker_id = cursor.fetchone()[0]
         temp_db.conn.commit()
@@ -93,10 +93,10 @@ class TestExpireStaleBlockers:
         stale_time = (datetime.now() - timedelta(hours=3)).isoformat()
 
         cursor = temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "PENDING", stale_time),
+            ("backend-worker-1", 1, 1, "SYNC", "Question?", "PENDING", stale_time),
         )
         blocker_id = cursor.fetchone()[0]
         temp_db.conn.commit()
@@ -113,9 +113,9 @@ class TestExpireStaleBlockers:
         stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
 
         temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at, answer)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "RESOLVED", stale_time, "Answer"),
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at, answer)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("backend-worker-1", 1, 1, "SYNC", "Question?", "RESOLVED", stale_time, "Answer"),
         )
         temp_db.conn.commit()
 
@@ -129,9 +129,9 @@ class TestExpireStaleBlockers:
         stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
 
         temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-1", 1, "SYNC", "Question?", "EXPIRED", stale_time),
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            ("backend-worker-1", 1, 1, "SYNC", "Question?", "EXPIRED", stale_time),
         )
         temp_db.conn.commit()
 
@@ -146,26 +146,26 @@ class TestExpireStaleBlockers:
 
         # Insert 2 stale blockers (all using task_id=1 to avoid FK constraints)
         cursor1 = temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-1", 1, "SYNC", "Stale 1?", "PENDING", stale_time),
+            ("backend-worker-1", 1, 1, "SYNC", "Stale 1?", "PENDING", stale_time),
         )
         stale_id_1 = cursor1.fetchone()[0]
 
         cursor2 = temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                RETURNING id""",
-            ("backend-worker-2", 1, "ASYNC", "Stale 2?", "PENDING", stale_time),
+            ("backend-worker-2", 1, 1, "ASYNC", "Stale 2?", "PENDING", stale_time),
         )
         stale_id_2 = cursor2.fetchone()[0]
 
         # Insert 1 recent blocker
         temp_db.conn.execute(
-            """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            ("backend-worker-3", 1, "SYNC", "Recent?", "PENDING", recent_time),
+            """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            ("backend-worker-3", 1, 1, "SYNC", "Recent?", "PENDING", recent_time),
         )
         temp_db.conn.commit()
 

@@ -50,7 +50,7 @@ def client(test_db):
 @pytest.fixture
 def test_project(test_db):
     """Create a test project with running Lead Agent."""
-    project_id = test_db.create_project(name="Test Chat Project", status=ProjectStatus.RUNNING)
+    project_id = test_db.create_project(name="Test Chat Project", description="Test Chat Project project")
 
     # Create Lead Agent record
     test_db.create_agent(
@@ -147,7 +147,7 @@ class TestChatEndpoint:
         RED Test: Return 400 if Lead Agent not started for project
         """
         # Arrange: Create project without starting agent
-        project_id = test_db.create_project(name="Project Without Agent", status=ProjectStatus.INIT)
+        project_id = test_db.create_project(name="Project Without Agent", description="Project Without Agent project")
 
         # Act
         response = client.post(f"/api/projects/{project_id}/chat", json={"message": "Hello"})

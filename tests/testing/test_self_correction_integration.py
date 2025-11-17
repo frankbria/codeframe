@@ -250,14 +250,16 @@ class TestSelfCorrectionLoop:
 
             # Verify blocker was created
             cursor.execute("SELECT * FROM blockers WHERE task_id = ?", (task_id,))
-            blocker = cursor.fetchone()
-            assert blocker is not None
-            assert blocker["severity"] == "sync"
-            assert "3 self-correction attempts" in blocker["reason"]
+            blocker_row = cursor.fetchone()
+            assert blocker_row is not None
+            blocker = dict(blocker_row)
+            assert blocker["blocker_type"] == "SYNC"
+            assert "3 self-correction attempts" in blocker["question"]
 
             # Verify task status is blocked
             cursor.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
-            updated_task = cursor.fetchone()
+            updated_task_row = cursor.fetchone()
+            updated_task = dict(updated_task_row)
             assert updated_task["status"] == "blocked"
 
     @patch("anthropic.AsyncAnthropic")

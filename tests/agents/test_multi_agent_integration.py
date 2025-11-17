@@ -81,7 +81,7 @@ def project_id(db, temp_project_dir):
     print(f"🟢 FIXTURE: Project created with ID: {project_id}")
     # Update project with root_path
     print(f"🟢 FIXTURE: Updating project root_path to {temp_project_dir}...")
-    db.update_project(project_id, {"root_path": temp_project_dir})
+    db.update_project(project_id, {"workspace_path": temp_project_dir})
     print("🟢 FIXTURE: Project fixture complete ✅")
     return project_id
 

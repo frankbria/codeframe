@@ -144,9 +144,8 @@ class TestFrontendWorkerAgentAnswerInjection:
     async def test_create_blocker_and_wait_enriches_context_with_answer(self):
         """Test create_blocker_and_wait enriches context with blocker answer."""
         # Setup agent
-        agent = FrontendWorkerAgent(agent_id="frontend-worker-001")
+        agent = FrontendWorkerAgent(agent_id="frontend-worker-001", project_id=1)
         agent.db = Mock(spec=Database)
-        agent.project_id = 1
 
         # Mock methods
         with patch.object(agent, "create_blocker", new_callable=AsyncMock) as mock_create:
@@ -184,9 +183,8 @@ class TestTestWorkerAgentAnswerInjection:
     async def test_create_blocker_and_wait_enriches_context_with_answer(self):
         """Test create_blocker_and_wait enriches context with blocker answer."""
         # Setup agent
-        agent = TestWorkerAgent(agent_id="test-worker-001")
+        agent = TestWorkerAgent(agent_id="test-worker-001", project_id=1)
         agent.db = Mock(spec=Database)
-        agent.project_id = 1
 
         # Mock methods
         with patch.object(agent, "create_blocker", new_callable=AsyncMock) as mock_create:

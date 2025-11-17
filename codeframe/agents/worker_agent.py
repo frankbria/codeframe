@@ -14,7 +14,7 @@ class WorkerAgent:
         agent_id: str,
         agent_type: str,
         provider: str,
-        project_id: int,
+        project_id: int | None = None,
         maturity: AgentMaturity = AgentMaturity.D1,
         system_prompt: str | None = None,
         db: Optional[Any] = None,
