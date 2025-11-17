@@ -18,7 +18,7 @@ import json
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
-from codeframe.core.models import TaskStatus, ProjectStatus
+from codeframe.core.models import TaskStatus
 
 
 class TestBackendWorkerAgentIntegration:
@@ -197,8 +197,24 @@ class TestBackendWorkerAgentIntegration:
             project_root=tmp_path,
         )
 
+        # Mock test runner to return success
+        mock_test_result = Mock()
+        mock_test_result.status = "passed"
+        mock_test_result.passed = 1
+        mock_test_result.failed = 0
+        mock_test_result.errors = 0
+        mock_test_result.skipped = 0
+        mock_test_result.total = 1
+        mock_test_result.output = "1 passed"
+        mock_test_result.duration = 0.1
+
         # Mock Anthropic API to return realistic code
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_class:
+        with (
+            patch("anthropic.AsyncAnthropic") as mock_anthropic_class,
+            patch("codeframe.testing.test_runner.TestRunner") as mock_test_runner_class,
+        ):
+
+            # Setup Anthropic mock
             mock_client = Mock()
             mock_anthropic_class.return_value = mock_client
 
@@ -225,6 +241,11 @@ class TestBackendWorkerAgentIntegration:
                 )
             ]
             mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+            # Setup TestRunner mock
+            mock_test_runner = Mock()
+            mock_test_runner.run_tests.return_value = mock_test_result
+            mock_test_runner_class.return_value = mock_test_runner
 
             # Get task from database
             cursor = db.conn.cursor()
@@ -425,9 +446,26 @@ class TestBackendWorkerAgentIntegration:
         )
 
         # Mock API for task 1
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic_class:
+        with (
+            patch("anthropic.AsyncAnthropic") as mock_anthropic_class,
+            patch("codeframe.testing.test_runner.TestRunner") as mock_test_runner_class,
+        ):
             mock_client = Mock()
             mock_anthropic_class.return_value = mock_client
+
+            # Mock TestRunner to return passing results
+            mock_test_runner = Mock()
+            mock_test_runner_class.return_value = mock_test_runner
+            mock_test_result = Mock()
+            mock_test_result.status = "passed"
+            mock_test_result.passed = 1
+            mock_test_result.failed = 0
+            mock_test_result.errors = 0
+            mock_test_result.skipped = 0
+            mock_test_result.total = 1
+            mock_test_result.output = "1 passed"
+            mock_test_result.duration = 0.1
+            mock_test_runner.run_tests.return_value = mock_test_result
 
             # Task 1: Create User model
             mock_response1 = Mock()
