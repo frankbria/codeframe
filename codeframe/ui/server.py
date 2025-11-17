@@ -61,8 +61,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
     # Startup: Initialize database
-    db_path_str = os.environ.get("DATABASE_PATH", ".codeframe/state.db")
-    db_path = Path(db_path_str)
+    # If DATABASE_PATH is not set, use default relative to WORKSPACE_ROOT
+    db_path_str = os.environ.get("DATABASE_PATH")
+    if db_path_str:
+        db_path = Path(db_path_str)
+    else:
+        # Use WORKSPACE_ROOT if set, otherwise use current directory
+        workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "."))
+        db_path = workspace_root / ".codeframe" / "state.db"
 
     app.state.db = Database(db_path)
     app.state.db.initialize()

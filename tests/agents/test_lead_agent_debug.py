@@ -40,7 +40,7 @@ def project_id_debug(db_debug, temp_project_dir_debug):
     """Create test project."""
     print("🟢 FIXTURE: Creating project...")
     project_id = db_debug.create_project("test-project", "Test Project project")
-    db_debug.update_project(project_id, {"root_path": temp_project_dir_debug})
+    db_debug.update_project(project_id, {"workspace_path": temp_project_dir_debug})
     print(f"🟢 FIXTURE: Project created: {project_id} ✅")
     return project_id
 

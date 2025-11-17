@@ -47,7 +47,7 @@ def project_with_issues(client):
     """
     # Create project
     project_id = app.state.db.create_project(
-        name="Test Issues Project", status=ProjectStatus.PLANNING
+        name="Test Issues Project", description="Test Issues Project project"
     )
 
     # Create issues
@@ -367,7 +367,7 @@ class TestIssuesEndpointEdgeCases:
     def test_empty_issues_list(self, client):
         """Test that empty project returns empty issues array."""
         # Create project without issues
-        project_id = app.state.db.create_project(name="Empty Project", status=ProjectStatus.INIT)
+        project_id = app.state.db.create_project(name="Empty Project", description="Empty Project project")
 
         response = client.get(f"/api/projects/{project_id}/issues")
         data = response.json()

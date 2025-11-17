@@ -425,7 +425,7 @@ class TestEdgeCases:
 
         # Then: Should handle nulls gracefully
         project = projects[0]
-        assert project["root_path"] is None  # Optional field
+        assert project["workspace_path"] == ""  # Default empty workspace
         assert project["config"] is None  # Optional field
         assert "progress" in project  # Required field
         assert project["progress"]["total_tasks"] == 0

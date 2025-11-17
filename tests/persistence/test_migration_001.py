@@ -103,14 +103,14 @@ class TestMigration001:
                 agent_id="agent-3",
                 agent_type="security",  # Not in old constraint list
                 provider="claude",
-                maturity_level=AgentMaturity.DIRECTIVE,
+                maturity_level=AgentMaturity.D1,
             )
 
             db.create_agent(
                 agent_id="agent-4",
                 agent_type="accessibility",  # Not in old constraint list
                 provider="gpt4",
-                maturity_level=AgentMaturity.SUPPORTING,
+                maturity_level=AgentMaturity.D3,
             )
 
             # Verify new agents stored
@@ -153,7 +153,7 @@ class TestMigration001:
                     agent_id=f"agent-{i}",
                     agent_type=agent_type,
                     provider="claude",
-                    maturity_level=AgentMaturity.DIRECTIVE,
+                    maturity_level=AgentMaturity.D1,
                 )
 
             # Verify all agents stored
@@ -349,7 +349,7 @@ class TestMigration001:
                 agent_id="agent-security",
                 agent_type="security",
                 provider="claude",
-                maturity_level=AgentMaturity.DIRECTIVE,
+                maturity_level=AgentMaturity.D1,
             )
             db.close()
 

@@ -65,9 +65,9 @@ class TestExpireStaleBlockersCronJob:
             # Create stale blocker
             stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
             cursor = db.conn.execute(
-                """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
-                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time),
+                """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id""",
+                ("backend-worker-1", project_id, task_id, "SYNC", "Stale?", "PENDING", stale_time),
             )
             blocker_id = cursor.fetchone()[0]
             db.conn.commit()
@@ -118,9 +118,9 @@ class TestExpireStaleBlockersCronJob:
             # Create stale blocker
             stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
             cursor = db.conn.execute(
-                """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
-                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time),
+                """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id""",
+                ("backend-worker-1", project_id, task_id, "SYNC", "Stale?", "PENDING", stale_time),
             )
             blocker_id = cursor.fetchone()[0]
             db.conn.commit()
@@ -170,9 +170,9 @@ class TestExpireStaleBlockersCronJob:
 
             stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
             cursor = db.conn.execute(
-                """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
-                ("backend-worker-1", task_id, "SYNC", "Stale?", "PENDING", stale_time),
+                """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id""",
+                ("backend-worker-1", project_id, task_id, "SYNC", "Stale?", "PENDING", stale_time),
             )
             blocker_id = cursor.fetchone()[0]
             db.conn.commit()
@@ -214,9 +214,9 @@ class TestExpireStaleBlockersCronJob:
             # Create stale blocker without task_id
             stale_time = (datetime.now() - timedelta(hours=25)).isoformat()
             db.conn.execute(
-                """INSERT INTO blockers (agent_id, task_id, blocker_type, question, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                ("backend-worker-1", None, "ASYNC", "Stale?", "PENDING", stale_time),
+                """INSERT INTO blockers (agent_id, project_id, task_id, blocker_type, question, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                ("backend-worker-1", 1, None, "ASYNC", "Stale?", "PENDING", stale_time),
             )
             db.conn.commit()
             db.close()

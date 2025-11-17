@@ -416,27 +416,52 @@ class TestLeadAgentBlockerHandlingIntegration:
         db.initialize()
         project_id = db.create_project("test-project", "Test project description")
 
+        # Create issues first
+        issue_1_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Feature 1",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1,
+        })
+
+        issue_2_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "2.0",
+            "title": "Feature 2",
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1,
+        })
+
         # Create task chain: A -> B (dependent), and C (independent)
-        task_a_id = db.create_task(
+        task_a_id = db.create_task_with_issue(
             project_id=project_id,
+            issue_id=issue_1_id,
             task_number="1.1",
+            parent_issue_number="1.0",
             title="Task A",
             description="Will create SYNC blocker",
             status="pending",
         )
 
-        task_b_id = db.create_task(
+        task_b_id = db.create_task_with_issue(
             project_id=project_id,
+            issue_id=issue_1_id,
             task_number="1.2",
+            parent_issue_number="1.0",
             title="Task B",
             description="Depends on A",
             status="pending",
             depends_on="1.1",
         )
 
-        task_c_id = db.create_task(
+        task_c_id = db.create_task_with_issue(
             project_id=project_id,
+            issue_id=issue_2_id,
             task_number="2.1",
+            parent_issue_number="2.0",
             title="Task C",
             description="Independent task",
             status="pending",

@@ -200,13 +200,16 @@ class TestServerDatabaseErrorHandling:
             # Expected - cannot create directory
             assert True
 
-    def test_database_path_defaults_correctly(self):
+    def test_database_path_defaults_correctly(self, tmp_path):
         """Test that database path defaults to .codeframe/state.db if not configured."""
-        # ARRANGE: Clear DATABASE_PATH from environment
+        # ARRANGE: Clear DATABASE_PATH from environment and set WORKSPACE_ROOT to temp dir
         import os
 
         if "DATABASE_PATH" in os.environ:
             del os.environ["DATABASE_PATH"]
+
+        # Set WORKSPACE_ROOT to temporary directory to avoid conflicts with existing .codeframe/state.db
+        os.environ["WORKSPACE_ROOT"] = str(tmp_path)
 
         from codeframe.ui import server
         from importlib import reload
@@ -215,11 +218,16 @@ class TestServerDatabaseErrorHandling:
 
         app = server.app
 
-        # ACT: Start the app with TestClient to trigger lifespan
-        with TestClient(app) as client:
-            # ASSERT: Should use default path
-            expected_default = Path(".codeframe/state.db")
-            assert app.state.db.db_path == expected_default
+        try:
+            # ACT: Start the app with TestClient to trigger lifespan
+            with TestClient(app) as client:
+                # ASSERT: Should use default path under workspace root
+                expected_default = tmp_path / ".codeframe/state.db"
+                assert app.state.db.db_path == expected_default
+        finally:
+            # Clean up environment
+            if "WORKSPACE_ROOT" in os.environ:
+                del os.environ["WORKSPACE_ROOT"]
 
 
 @pytest.mark.integration
@@ -240,16 +248,21 @@ class TestServerDatabaseIntegration:
 
         app = server.app
 
-        # ACT: Create test client (simulates server startup)
-        with TestClient(app) as client:
-            # ASSERT: Server should be running with database
-            response = client.get("/")
-            assert response.status_code == 200
-            assert response.json()["status"] == "online"
+        try:
+            # ACT: Create test client (simulates server startup)
+            with TestClient(app) as client:
+                # ASSERT: Server should be running with database
+                response = client.get("/")
+                assert response.status_code == 200
+                assert response.json()["status"] == "online"
 
-            # Database should be initialized
-            assert app.state.db is not None
-            assert app.state.db.conn is not None
+                # Database should be initialized
+                assert app.state.db is not None
+                assert app.state.db.conn is not None
+        finally:
+            # Clean up environment
+            if "DATABASE_PATH" in os.environ:
+                del os.environ["DATABASE_PATH"]
 
     def test_database_operations_during_requests(self, temp_db_path):
         """Test that database operations work during API requests."""
@@ -265,14 +278,19 @@ class TestServerDatabaseIntegration:
 
         app = server.app
 
-        # ACT & ASSERT: Perform database operations during request
-        with TestClient(app) as client:
-            # Create project in database
-            db = app.state.db
-            project_id = db.create_project("integration-test", "Integration Test project")
+        try:
+            # ACT & ASSERT: Perform database operations during request
+            with TestClient(app) as client:
+                # Create project in database
+                db = app.state.db
+                project_id = db.create_project("integration-test", "Integration Test project")
 
-            # Verify project was created
-            project = db.get_project(project_id)
-            assert project is not None
-            assert project["name"] == "integration-test"
-            assert project["status"] == "active"
+                # Verify project was created
+                project = db.get_project(project_id)
+                assert project is not None
+                assert project["name"] == "integration-test"
+                assert project["status"] == "init"  # Default status for new projects
+        finally:
+            # Clean up environment
+            if "DATABASE_PATH" in os.environ:
+                del os.environ["DATABASE_PATH"]

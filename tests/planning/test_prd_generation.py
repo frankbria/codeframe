@@ -30,6 +30,7 @@ def project_id(db):
 
     project_id = db.create_project(
         name="Test PRD Project",
+        description="Test PRD Project project",
         status=ProjectStatus.ACTIVE,
     )
     return project_id
@@ -54,12 +55,32 @@ def discovery_answers(db, project_id):
             value=answer,
         )
 
+    # Mark discovery as completed
+    db.create_memory(
+        project_id=project_id,
+        category="discovery_state",
+        key="state",
+        value="completed",
+    )
+    db.update_project(project_id, {"phase": "planning"})
+
     return answers
 
 
 @pytest.fixture
 def lead_agent(db, project_id):
     """Create Lead Agent with test API key."""
+    agent = LeadAgent(
+        project_id=project_id,
+        db=db,
+        api_key="test-api-key",
+    )
+    return agent
+
+
+@pytest.fixture
+def lead_agent_with_discovery(db, project_id, discovery_answers):
+    """Create Lead Agent with discovery completed."""
     agent = LeadAgent(
         project_id=project_id,
         db=db,
@@ -77,7 +98,7 @@ class TestPRDGenerationBasics:
         assert callable(lead_agent.generate_prd)
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_generate_prd_loads_discovery_answers(self, mock_send, lead_agent, discovery_answers):
+    def test_generate_prd_loads_discovery_answers(self, mock_send, lead_agent_with_discovery):
         """Test that PRD generation loads discovery answers."""
         # Mock Claude response
         mock_send.return_value = {
@@ -86,7 +107,7 @@ class TestPRDGenerationBasics:
         }
 
         # Generate PRD
-        prd_content = lead_agent.generate_prd()
+        prd_content = lead_agent_with_discovery.generate_prd()
 
         # Verify Claude was called
         assert mock_send.called
@@ -96,7 +117,7 @@ class TestPRDGenerationBasics:
         assert len(prd_content) > 0
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_generate_prd_sends_structured_prompt(self, mock_send, lead_agent, discovery_answers):
+    def test_generate_prd_sends_structured_prompt(self, mock_send, lead_agent_with_discovery):
         """Test that PRD generation sends structured prompt to Claude."""
         # Mock Claude response
         mock_send.return_value = {
@@ -105,7 +126,7 @@ class TestPRDGenerationBasics:
         }
 
         # Generate PRD
-        lead_agent.generate_prd()
+        lead_agent_with_discovery.generate_prd()
 
         # Get the call args
         call_args = mock_send.call_args[0][0]
@@ -117,14 +138,14 @@ class TestPRDGenerationBasics:
         # Verify discovery answers included in prompt
         prompt_content = call_args[-1]["content"]
         assert "problem" in prompt_content.lower() or "SaaS platform" in prompt_content
-        assert "document analysis" in prompt_content.lower() or "AI" in prompt_content.lower()
+        assert "document analysis" in prompt_content.lower() or "ai" in prompt_content.lower()
 
 
 class TestPRDStructure:
     """Test PRD document structure requirements."""
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_prd_includes_required_sections(self, mock_send, lead_agent, discovery_answers):
+    def test_prd_includes_required_sections(self, mock_send, lead_agent_with_discovery):
         """Test that generated PRD includes all required sections."""
         # Mock complete PRD response
         mock_prd = """# Product Requirements Document (PRD)
@@ -163,7 +184,7 @@ Legal professionals need faster document analysis.
         }
 
         # Generate PRD
-        prd_content = lead_agent.generate_prd()
+        prd_content = lead_agent_with_discovery.generate_prd()
 
         # Verify required sections present
         required_sections = [
@@ -187,7 +208,7 @@ class TestPRDPersistence:
     @patch("pathlib.Path.mkdir")
     @patch("builtins.open", new_callable=mock_open)
     def test_prd_saved_to_file(
-        self, mock_file, mock_mkdir, mock_send, lead_agent, discovery_answers
+        self, mock_file, mock_mkdir, mock_send, lead_agent_with_discovery
     ):
         """Test that PRD is saved to .codeframe/memory/prd.md."""
         # Mock Claude response
@@ -198,7 +219,7 @@ class TestPRDPersistence:
         }
 
         # Generate PRD
-        prd_content = lead_agent.generate_prd()
+        prd_content = lead_agent_with_discovery.generate_prd()
 
         # Verify file was opened for writing
         mock_file.assert_called()
@@ -211,7 +232,7 @@ class TestPRDPersistence:
         assert "prd.md" in file_path_str or mock_file.called
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_prd_stored_in_database(self, mock_send, lead_agent, discovery_answers, db, project_id):
+    def test_prd_stored_in_database(self, mock_send, lead_agent_with_discovery, db, project_id):
         """Test that PRD metadata is stored in database."""
         # Mock Claude response
         mock_prd = "# PRD Content"
@@ -221,7 +242,7 @@ class TestPRDPersistence:
         }
 
         # Generate PRD
-        lead_agent.generate_prd()
+        lead_agent_with_discovery.generate_prd()
 
         # Verify PRD reference stored in database
         memories = db.get_project_memories(project_id)
@@ -234,28 +255,29 @@ class TestPRDErrorHandling:
     """Test error handling in PRD generation."""
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_generate_prd_handles_api_error(self, mock_send, lead_agent):
+    def test_generate_prd_handles_api_error(self, mock_send, lead_agent_with_discovery):
         """Test that PRD generation handles API errors gracefully."""
         # Mock API error
         mock_send.side_effect = Exception("API rate limit exceeded")
 
         # Should raise exception with helpful message
         with pytest.raises(Exception) as exc_info:
-            lead_agent.generate_prd()
+            lead_agent_with_discovery.generate_prd()
 
         assert "API" in str(exc_info.value) or "rate limit" in str(exc_info.value)
 
     def test_generate_prd_requires_discovery_complete(self, lead_agent):
         """Test that PRD generation requires discovery to be complete."""
         # Agent has no discovery answers
-        # Should raise exception or return error message
-        result = lead_agent.generate_prd()
+        # Should raise exception
+        with pytest.raises(ValueError) as exc_info:
+            lead_agent.generate_prd()
 
-        # Either raises exception or returns error message
-        assert result is None or "discovery" in result.lower() or "complete" in result.lower()
+        # Verify error message mentions discovery
+        assert "discovery" in str(exc_info.value).lower()
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_generate_prd_handles_empty_response(self, mock_send, lead_agent, discovery_answers):
+    def test_generate_prd_handles_empty_response(self, mock_send, lead_agent_with_discovery):
         """Test handling of empty Claude response."""
         # Mock empty response
         mock_send.return_value = {
@@ -264,7 +286,7 @@ class TestPRDErrorHandling:
         }
 
         # Generate PRD
-        prd_content = lead_agent.generate_prd()
+        prd_content = lead_agent_with_discovery.generate_prd()
 
         # Should return empty string or raise error
         assert prd_content == "" or prd_content is None
@@ -274,7 +296,7 @@ class TestPRDTokenUsageTracking:
     """Test token usage tracking for PRD generation."""
 
     @patch.object(AnthropicProvider, "send_message")
-    def test_prd_generation_logs_token_usage(self, mock_send, lead_agent, discovery_answers):
+    def test_prd_generation_logs_token_usage(self, mock_send, lead_agent_with_discovery):
         """Test that token usage is logged during PRD generation."""
         # Mock Claude response with token usage
         mock_send.return_value = {
@@ -284,7 +306,7 @@ class TestPRDTokenUsageTracking:
 
         # Generate PRD (should log token usage)
         with patch("codeframe.agents.lead_agent.logger") as mock_logger:
-            lead_agent.generate_prd()
+            lead_agent_with_discovery.generate_prd()
 
             # Verify logging occurred
             assert mock_logger.info.called or mock_logger.debug.called

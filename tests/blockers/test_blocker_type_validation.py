@@ -115,7 +115,7 @@ class TestFrontendWorkerAgentBlockerTypeValidation:
     @pytest.mark.asyncio
     async def test_create_blocker_accepts_sync_type(self):
         """Test create_blocker accepts SYNC blocker type."""
-        agent = FrontendWorkerAgent(agent_id="frontend-001")
+        agent = FrontendWorkerAgent(agent_id="frontend-001", project_id=1)
         agent.db = Mock(spec=Database)
         agent.db.create_blocker.return_value = 1
         agent.project_id = 1
@@ -133,7 +133,7 @@ class TestFrontendWorkerAgentBlockerTypeValidation:
     @pytest.mark.asyncio
     async def test_create_blocker_rejects_invalid_type(self):
         """Test create_blocker rejects invalid blocker type."""
-        agent = FrontendWorkerAgent(agent_id="frontend-001")
+        agent = FrontendWorkerAgent(agent_id="frontend-001", project_id=1)
         agent.db = Mock(spec=Database)
         agent.project_id = 1
         agent.ws_manager = None
@@ -151,29 +151,29 @@ class TestTestWorkerAgentBlockerTypeValidation:
     @pytest.mark.asyncio
     async def test_create_blocker_accepts_sync_type(self):
         """Test create_blocker accepts SYNC blocker type."""
-        agent = TestWorkerAgent(agent_id="test-001")
-        agent.database = Mock(spec=Database)
-        agent.database.create_blocker.return_value = 1
-        agent.project_id = 1
+        db = Mock(spec=Database)
+        db.create_blocker.return_value = 1
+        agent = TestWorkerAgent(agent_id="test-001", project_id=1, db=db)
+        agent.ws_manager = None  # No WebSocket manager in test
 
         blocker_id = await agent.create_blocker(
             question="Critical test issue?", blocker_type="SYNC"
         )
 
         assert blocker_id == 1
-        agent.database.create_blocker.assert_called_once()
-        call_args = agent.database.create_blocker.call_args[1]
+        db.create_blocker.assert_called_once()
+        call_args = db.create_blocker.call_args[1]
         assert call_args["blocker_type"] == "SYNC"
 
     @pytest.mark.asyncio
     async def test_create_blocker_rejects_invalid_type(self):
         """Test create_blocker rejects invalid blocker type."""
-        agent = TestWorkerAgent(agent_id="test-001")
-        agent.database = Mock(spec=Database)
-        agent.project_id = 1
+        db = Mock(spec=Database)
+        agent = TestWorkerAgent(agent_id="test-001", project_id=1, db=db)
+        agent.ws_manager = None  # No WebSocket manager in test
 
         with pytest.raises(ValueError) as exc_info:
             await agent.create_blocker(question="Question?", blocker_type="HIGH")
 
         assert "Invalid blocker_type" in str(exc_info.value)
-        agent.database.create_blocker.assert_not_called()
+        db.create_blocker.assert_not_called()

@@ -458,17 +458,24 @@ class TestDataIntegrity:
             )
 
     def test_agent_type_constraint(self, temp_db_path):
-        """Test that invalid agent type is rejected."""
+        """Test that arbitrary agent types are allowed (constraint removed by migration 001)."""
         db = Database(temp_db_path)
         db.initialize()
 
         cursor = db.conn.cursor()
 
-        with pytest.raises(Exception):  # sqlite3.IntegrityError
-            cursor.execute(
-                "INSERT INTO agents (id, type) VALUES (?, ?)",
-                ("test-agent", "INVALID_TYPE"),
-            )
+        # After migration 001, arbitrary agent types should be accepted
+        cursor.execute(
+            "INSERT INTO agents (id, type) VALUES (?, ?)",
+            ("test-agent", "CUSTOM_TYPE"),
+        )
+        db.conn.commit()
+
+        # Verify the agent was inserted
+        cursor.execute("SELECT type FROM agents WHERE id = ?", ("test-agent",))
+        result = cursor.fetchone()
+        assert result is not None
+        assert result[0] == "CUSTOM_TYPE"
 
     def test_foreign_key_constraint(self, temp_db_path):
         """Test foreign key constraints (if enabled)."""

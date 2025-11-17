@@ -1518,7 +1518,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             cursor.execute("SELECT * FROM blockers WHERE task_id = ?", (task_id,))
             blocker = cursor.fetchone()
             assert blocker is not None
-            assert blocker["severity"] == "sync"
+            assert blocker["blocker_type"] == "SYNC"
 
     @patch("anthropic.AsyncAnthropic")
     @pytest.mark.asyncio
@@ -1651,4 +1651,4 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             cursor.execute("SELECT * FROM blockers WHERE task_id = ?", (task_id,))
             blocker = cursor.fetchone()
             assert blocker is not None
-            assert blocker["severity"] == "sync"
+            assert blocker["blocker_type"] == "SYNC"

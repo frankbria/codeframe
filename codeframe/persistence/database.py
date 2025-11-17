@@ -741,12 +741,15 @@ class Database:
         Returns:
             True if blocker was resolved, False if already resolved or not found
         """
+        from datetime import datetime, UTC
+
         cursor = self.conn.cursor()
+        resolved_at = datetime.now(UTC).isoformat()
         cursor.execute(
             """UPDATE blockers
-               SET answer = ?, status = 'RESOLVED', resolved_at = CURRENT_TIMESTAMP
+               SET answer = ?, status = 'RESOLVED', resolved_at = ?
                WHERE id = ? AND status = 'PENDING'""",
-            (answer, blocker_id),
+            (answer, resolved_at, blocker_id),
         )
         self.conn.commit()
         return cursor.rowcount > 0

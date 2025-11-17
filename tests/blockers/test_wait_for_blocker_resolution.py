@@ -246,9 +246,8 @@ class TestFrontendWorkerAgentBlockerResolution:
         # Setup mocked database
         db = Mock(spec=Database)
 
-        agent = FrontendWorkerAgent(agent_id="frontend-worker-001")
+        agent = FrontendWorkerAgent(agent_id="frontend-worker-001", project_id=1)
         agent.db = db
-        agent.project_id = 1
         agent.ws_manager = None
 
         # Mock blocker transition
@@ -277,9 +276,8 @@ class TestTestWorkerAgentBlockerResolution:
         # Setup mocked database
         db = Mock(spec=Database)
 
-        agent = TestWorkerAgent(agent_id="test-worker-001")
+        agent = TestWorkerAgent(agent_id="test-worker-001", project_id=1)
         agent.db = db
-        agent.project_id = 1
         agent.ws_manager = None
 
         # Mock blocker transition

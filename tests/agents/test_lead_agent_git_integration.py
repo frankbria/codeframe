@@ -63,7 +63,7 @@ def lead_agent(test_db, temp_git_repo):
 
     # Create project with root_path
     project_id = test_db.create_project("test_project", "Test Project project")
-    test_db.update_project(project_id, {"root_path": str(repo_path)})
+    test_db.update_project(project_id, {"workspace_path": str(repo_path)})
 
     # Mock API key for LeadAgent
     api_key = os.environ.get("ANTHROPIC_API_KEY", "test-key")
