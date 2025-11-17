@@ -96,7 +96,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         issue = Issue(
             project_id=project_id,
@@ -117,7 +117,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         issue = Issue(
             project_id=project_id,
@@ -145,7 +145,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="1.1",
@@ -182,7 +182,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create multiple issues
         db.create_issue(
@@ -230,7 +230,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issues = db.list_issues(project_id)
 
         assert issues == []
@@ -240,8 +240,8 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project1_id = db.create_project("project1", ProjectStatus.INIT)
-        project2_id = db.create_project("project2", ProjectStatus.INIT)
+        project1_id = db.create_project("project1", "Project1 project")
+        project2_id = db.create_project("project2", "Project2 project")
 
         # Create issues in different projects
         db.create_issue(
@@ -276,7 +276,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -300,7 +300,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -337,7 +337,7 @@ class TestIssueCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -376,7 +376,7 @@ class TestTaskIssueRelationship:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -410,7 +410,7 @@ class TestTaskIssueRelationship:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -474,7 +474,7 @@ class TestTaskIssueRelationship:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -494,7 +494,7 @@ class TestTaskIssueRelationship:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -531,7 +531,7 @@ class TestTaskIssueRelationship:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -568,7 +568,7 @@ class TestIssueConstraints:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create first issue
         db.create_issue(
@@ -600,8 +600,8 @@ class TestIssueConstraints:
         db = Database(temp_db_path)
         db.initialize()
 
-        project1_id = db.create_project("project1", ProjectStatus.INIT)
-        project2_id = db.create_project("project2", ProjectStatus.INIT)
+        project1_id = db.create_project("project1", "Project1 project")
+        project2_id = db.create_project("project2", "Project2 project")
 
         # Create issues with same number in different projects - should succeed
         issue1_id = db.create_issue(
@@ -632,7 +632,7 @@ class TestIssueConstraints:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Valid statuses: pending, in_progress, completed, failed
         cursor = db.conn.cursor()
@@ -649,7 +649,7 @@ class TestIssueConstraints:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         cursor = db.conn.cursor()
 
         # Try priority out of range
@@ -689,7 +689,7 @@ class TestIssueConstraints:
         # Enable foreign keys
         db.conn.execute("PRAGMA foreign_keys = ON")
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         cursor = db.conn.cursor()
 
         # Try to create task with non-existent issue_id
@@ -715,7 +715,7 @@ class TestIssueTaskQueries:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -753,7 +753,7 @@ class TestIssueTaskQueries:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -806,7 +806,7 @@ class TestIssueTaskQueries:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create issue 1 with tasks
         issue1_id = db.create_issue(
@@ -857,7 +857,7 @@ class TestIssueTaskIntegration:
         db.initialize()
 
         # 1. Create project
-        project_id = db.create_project("my-app", ProjectStatus.INIT)
+        project_id = db.create_project("my-app", "My App project")
 
         # 2. Create issue
         issue_id = db.create_issue(
@@ -929,7 +929,7 @@ class TestIssueTaskIntegration:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             Issue(
                 project_id=project_id,
@@ -995,7 +995,7 @@ class TestIssueTaskIntegration:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create issues with hierarchical numbers
         issue1_id = db.create_issue(

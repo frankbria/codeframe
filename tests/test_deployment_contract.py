@@ -34,7 +34,7 @@ class TestAPIContracts:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("API Contract Test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("API Contract Test", "Api Contract Test project")
 
         issue = Issue(
             project_id=project_id,
@@ -104,7 +104,7 @@ class TestAPIContracts:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("Status Test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("Status Test", "Status Test project")
 
         issue = Issue(
             project_id=project_id,
@@ -188,7 +188,7 @@ class TestAPIContracts:
         ]
 
         for name, completed, total in test_cases:
-            project_id = db.create_project(name, ProjectStatus.ACTIVE)
+            project_id = db.create_project(name, f"{name} project")
 
             if total > 0:
                 issue = Issue(
@@ -329,7 +329,7 @@ class TestDataIntegrity:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("Status Test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("Status Test", "Status Test project")
         issue = Issue(
             project_id=project_id,
             issue_number="1.1",
@@ -371,7 +371,7 @@ class TestDataIntegrity:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("Status Test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("Status Test", "Status Test project")
         issue = Issue(
             project_id=project_id,
             issue_number="1.1",
@@ -418,7 +418,7 @@ class TestEdgeCases:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("Minimal Project", ProjectStatus.INIT)
+        project_id = db.create_project("Minimal Project", "Minimal Project project")
 
         # When: We fetch projects
         projects = db.list_projects()
@@ -440,7 +440,7 @@ class TestEdgeCases:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("Large Project", ProjectStatus.ACTIVE)
+        project_id = db.create_project("Large Project", "Large Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="1.1",
@@ -494,7 +494,7 @@ class TestEdgeCases:
         db.initialize()
 
         # Project 1: 75% complete
-        p1_id = db.create_project("Project 1", ProjectStatus.ACTIVE)
+        p1_id = db.create_project("Project 1", "Project 1 project")
         i1 = db.create_issue(
             Issue(
                 project_id=p1_id,
@@ -521,7 +521,7 @@ class TestEdgeCases:
             )
 
         # Project 2: 25% complete
-        p2_id = db.create_project("Project 2", ProjectStatus.ACTIVE)
+        p2_id = db.create_project("Project 2", "Project 2 project")
         i2 = db.create_issue(
             Issue(
                 project_id=p2_id,

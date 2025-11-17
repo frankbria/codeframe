@@ -179,7 +179,7 @@ class TestStartAgentFunction:
         Requirement: cf-10.1 - Create and store agent reference
         """
         # ARRANGE
-        project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
+        project_id = temp_db_for_lifecycle.create_project("Test Project", "Test Project project")
 
         # Initialize running_agents dictionary
         running_agents = {}
@@ -204,7 +204,7 @@ class TestStartAgentFunction:
         Requirement: cf-10.1 - Update project status to "running"
         """
         # ARRANGE
-        project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
+        project_id = temp_db_for_lifecycle.create_project("Test Project", "Test Project project")
         running_agents = {}
 
         # ACT
@@ -224,7 +224,7 @@ class TestStartAgentFunction:
         Requirement: cf-10.3 - Save greeting to conversation history
         """
         # ARRANGE
-        project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
+        project_id = temp_db_for_lifecycle.create_project("Test Project", "Test Project project")
         running_agents = {}
         expected_greeting = "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
 
@@ -247,7 +247,7 @@ class TestStartAgentFunction:
         Requirement: cf-10.4 - Broadcast messages via WebSocket
         """
         # ARRANGE
-        project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
+        project_id = temp_db_for_lifecycle.create_project("Test Project", "Test Project project")
         running_agents = {}
 
         # ACT
@@ -483,7 +483,7 @@ class TestAgentLifecycleErrorHandling:
     async def test_start_agent_handles_lead_agent_initialization_error(self, temp_db_for_lifecycle):
         """Test that start_agent handles LeadAgent initialization errors."""
         # ARRANGE
-        project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
+        project_id = temp_db_for_lifecycle.create_project("Test Project", "Test Project project")
         running_agents = {}
 
         # ACT & ASSERT
@@ -497,7 +497,7 @@ class TestAgentLifecycleErrorHandling:
     async def test_start_agent_handles_websocket_broadcast_failure(self, temp_db_for_lifecycle):
         """Test that start_agent continues even if WebSocket broadcast fails."""
         # ARRANGE
-        project_id = temp_db_for_lifecycle.create_project("Test Project", ProjectStatus.INIT)
+        project_id = temp_db_for_lifecycle.create_project("Test Project", "Test Project project")
         running_agents = {}
 
         # ACT

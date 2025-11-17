@@ -20,7 +20,7 @@ class TestCorrectionAttemptDatabase:
         db = Database(":memory:")
         db.initialize()
         # Create a test project and task
-        project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test-project", "Test Project project")
         # Note: create_task requires a Task object, so we'll use SQL directly for test
         cursor = db.conn.cursor()
         cursor.execute(

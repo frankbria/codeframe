@@ -143,7 +143,7 @@ class TestCreateFeatureBranch:
         # First create an issue in database
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -174,7 +174,7 @@ class TestMergeToMain:
         # Setup: create issue and tasks in database
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -242,7 +242,7 @@ class TestMergeToMain:
         # Setup: create issue with incomplete tasks
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -286,7 +286,7 @@ class TestMergeToMain:
         # Setup: create issue with completed tasks
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -340,7 +340,7 @@ class TestMergeToMain:
         # Setup complete issue
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -390,7 +390,7 @@ class TestIsIssueComplete:
         """Test issue is complete when all tasks are completed."""
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -422,7 +422,7 @@ class TestIsIssueComplete:
         """Test issue is not complete with pending tasks."""
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -465,7 +465,7 @@ class TestIsIssueComplete:
         """Test issue with no tasks is considered incomplete."""
         from codeframe.core.models import Issue, TaskStatus, ProjectStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project("test_project", "Test Project project")
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",

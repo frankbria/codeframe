@@ -181,7 +181,7 @@ class TestAgentFactory:
         # Create minimal dependencies
         db = Database(":memory:")
         db.initialize()
-        project_id = db.create_project("test", ProjectStatus.INIT)
+        project_id = db.create_project("test", "Test project")
 
         # Create a simple codebase index
         index = CodebaseIndex(Path("."))

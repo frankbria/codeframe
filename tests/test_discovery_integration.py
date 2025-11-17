@@ -25,7 +25,7 @@ class TestDiscoveryFlowInitialization:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -47,7 +47,7 @@ class TestDiscoveryFlowInitialization:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -70,7 +70,7 @@ class TestDiscoveryFlowInitialization:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -103,7 +103,7 @@ class TestDiscoveryStateTransitions:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -129,7 +129,7 @@ class TestDiscoveryStateTransitions:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -159,7 +159,7 @@ class TestDiscoveryStateTransitions:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -197,7 +197,7 @@ class TestDiscoveryAnswerProcessing:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -225,7 +225,7 @@ class TestDiscoveryAnswerProcessing:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -256,7 +256,7 @@ class TestDiscoveryAnswerProcessing:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -290,7 +290,7 @@ class TestDiscoveryDatabasePersistence:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -320,7 +320,7 @@ class TestDiscoveryDatabasePersistence:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -357,7 +357,7 @@ class TestDiscoveryCompletionDetection:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -400,7 +400,7 @@ class TestDiscoveryCompletionDetection:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -444,7 +444,7 @@ class TestDiscoveryProgressIndicators:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -468,7 +468,7 @@ class TestDiscoveryProgressIndicators:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -502,7 +502,7 @@ class TestDiscoveryProgressIndicators:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -536,7 +536,7 @@ class TestDiscoveryProgressIndicators:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -559,7 +559,7 @@ class TestDiscoveryProgressIndicators:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -582,7 +582,7 @@ class TestDiscoveryProgressIndicators:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -618,7 +618,7 @@ class TestDiscoveryEndToEndFlow:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -668,7 +668,7 @@ class TestDiscoveryEndToEndFlow:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {

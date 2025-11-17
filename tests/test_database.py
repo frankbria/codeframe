@@ -63,7 +63,7 @@ class TestProjectCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         assert project_id is not None
         assert isinstance(project_id, int)
@@ -75,7 +75,7 @@ class TestProjectCRUD:
         db.initialize()
 
         # Create project
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Retrieve it
         project = db.get_project(project_id)
@@ -100,9 +100,9 @@ class TestProjectCRUD:
         db.initialize()
 
         # Create multiple projects
-        db.create_project("project1", ProjectStatus.INIT)
-        db.create_project("project2", ProjectStatus.PLANNING)
-        db.create_project("project3", ProjectStatus.ACTIVE)
+        db.create_project("project1", "Project1 project")
+        db.create_project("project2", "Project2 project")
+        db.create_project("project3", "Project3 project")
 
         # List all projects
         projects = db.list_projects()
@@ -126,7 +126,7 @@ class TestProjectCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Update status
         db.update_project(project_id, {"status": ProjectStatus.ACTIVE})
@@ -140,7 +140,7 @@ class TestProjectCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Update with config
         config = {"providers": {"lead_agent": "claude"}, "debug": True}
@@ -166,7 +166,7 @@ class TestProjectCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
         project = db.get_project(project_id)
 
         assert project["phase"] == "discovery"
@@ -176,7 +176,7 @@ class TestProjectCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Update phase to planning
         db.update_project(project_id, {"phase": "planning"})
@@ -203,7 +203,7 @@ class TestProjectCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Verify starts at discovery
         project = db.get_project(project_id)
@@ -240,7 +240,7 @@ class TestAgentCRUD:
         db.initialize()
 
         # Create project first
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create agent
         agent_id = db.create_agent(
@@ -302,7 +302,7 @@ class TestAgentCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create multiple agents (for now, agents aren't project-specific in schema)
         # But we'll add project_id to agents table later
@@ -324,7 +324,7 @@ class TestMemoryCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         memory_id = db.create_memory(
             project_id=project_id,
@@ -341,7 +341,7 @@ class TestMemoryCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create memory
         memory_id = db.create_memory(
@@ -364,7 +364,7 @@ class TestMemoryCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create multiple memories
         db.create_memory(project_id, "pattern", "key1", "value1")
@@ -388,7 +388,7 @@ class TestMemoryCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Create conversation messages
         db.create_memory(project_id, "conversation", "user_1", "Hello!")
@@ -431,7 +431,7 @@ class TestDatabaseConnection:
     def test_context_manager(self, temp_db_path):
         """Test using database as context manager."""
         with Database(temp_db_path) as db:
-            db.create_project("test-project", ProjectStatus.INIT)
+            db.create_project("test-project", "Test Project project")
             assert db.conn is not None
 
         # After exiting context, connection should be closed
@@ -505,7 +505,7 @@ class TestTransactions:
         db.initialize()
 
         # Create a project
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         try:
             cursor = db.conn.cursor()
@@ -538,7 +538,7 @@ class TestDatabaseIntegration:
         db.initialize()
 
         # 1. Create project
-        project_id = db.create_project("my-app", ProjectStatus.INIT)
+        project_id = db.create_project("my-app", "My App project")
 
         # 2. Update to planning
         db.update_project(project_id, {"status": ProjectStatus.PLANNING})
@@ -573,7 +573,7 @@ class TestTestResults:
         db.initialize()
 
         # Create project and task
-        project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -618,7 +618,7 @@ class TestTestResults:
         db.initialize()
 
         # Create project and task
-        project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -681,7 +681,7 @@ class TestTestResults:
         db.initialize()
 
         # Create task
-        project_id = db.create_project("test-project", ProjectStatus.ACTIVE)
+        project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,

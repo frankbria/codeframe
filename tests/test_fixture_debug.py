@@ -56,7 +56,7 @@ def test_temp_dir_only(temp_project_dir_debug):
 def test_both_fixtures(db_debug, temp_project_dir_debug):
     """Test using both fixtures."""
     print("\n⭐ TEST: test_both_fixtures started")
-    project_id = db_debug.create_project("test-project", ProjectStatus.ACTIVE)
+    project_id = db_debug.create_project("test-project", "Test Project project")
     print(f"⭐ TEST: Created project {project_id}")
     db_debug.update_project(project_id, {"root_path": temp_project_dir_debug})
     print("⭐ TEST: Updated project root_path")

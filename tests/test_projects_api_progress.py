@@ -24,7 +24,7 @@ def test_list_projects_includes_progress_metrics():
     db = Database(":memory:")
     db.initialize()
 
-    project_id = db.create_project("Test Project", ProjectStatus.ACTIVE)
+    project_id = db.create_project("Test Project", "Test Project project")
 
     # And: An issue for that project
     issue = Issue(
@@ -146,7 +146,7 @@ def test_list_projects_progress_with_no_tasks():
     db = Database(":memory:")
     db.initialize()
 
-    project_id = db.create_project("Empty Project", ProjectStatus.INIT)
+    project_id = db.create_project("Empty Project", "Empty Project project")
 
     # When: We fetch the project list
     projects = db.list_projects()
@@ -171,7 +171,7 @@ def test_list_projects_progress_with_all_completed():
     db = Database(":memory:")
     db.initialize()
 
-    project_id = db.create_project("Completed Project", ProjectStatus.COMPLETED)
+    project_id = db.create_project("Completed Project", "Completed Project project")
 
     # And: An issue with all tasks completed
     issue = Issue(
@@ -222,7 +222,7 @@ def test_list_projects_progress_multiple_projects():
     db.initialize()
 
     # Project 1: 50% complete (1 of 2 tasks)
-    project1_id = db.create_project("Project Alpha", ProjectStatus.ACTIVE)
+    project1_id = db.create_project("Project Alpha", "Project Alpha project")
     issue1 = Issue(
         project_id=project1_id,
         issue_number="1.1",
@@ -261,7 +261,7 @@ def test_list_projects_progress_multiple_projects():
     )
 
     # Project 2: 75% complete (3 of 4 tasks)
-    project2_id = db.create_project("Project Beta", ProjectStatus.ACTIVE)
+    project2_id = db.create_project("Project Beta", "Project Beta project")
     issue2 = Issue(
         project_id=project2_id,
         issue_number="1.1",

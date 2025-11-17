@@ -62,7 +62,7 @@ def lead_agent(test_db, temp_git_repo):
     repo_path, repo = temp_git_repo
 
     # Create project with root_path
-    project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+    project_id = test_db.create_project("test_project", "Test Project project")
     test_db.update_project(project_id, {"root_path": str(repo_path)})
 
     # Mock API key for LeadAgent

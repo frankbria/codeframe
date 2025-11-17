@@ -59,7 +59,7 @@ def temp_project_dir_async_debug():
 def project_id_async_debug(db_async_debug, temp_project_dir_async_debug):
     """Create test project."""
     print("🟢 ASYNC FIXTURE: Creating project...")
-    project_id = db_async_debug.create_project("test-project", ProjectStatus.ACTIVE)
+    project_id = db_async_debug.create_project("test-project", "Test Project project")
     db_async_debug.update_project(project_id, {"root_path": temp_project_dir_async_debug})
     print(f"🟢 ASYNC FIXTURE: Project {project_id} ✅")
     return project_id
