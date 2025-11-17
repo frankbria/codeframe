@@ -3,7 +3,6 @@
 Following TDD methodology - these tests are written BEFORE implementation.
 """
 
-import pytest
 from codeframe.indexing.models import Symbol, SymbolType
 
 

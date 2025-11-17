@@ -16,7 +16,6 @@ Test Coverage:
 """
 
 import ast
-import sys
 import tempfile
 import time
 from pathlib import Path

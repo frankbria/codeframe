@@ -2,7 +2,6 @@
 Tests for EvidenceVerifier - validates agent claims.
 """
 
-from datetime import datetime
 from codeframe.enforcement import EvidenceVerifier, TestResult, SkipViolation
 
 

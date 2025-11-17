@@ -4,10 +4,8 @@ Debug async test that mimics the actual test structure.
 
 import pytest
 import asyncio
-import os
 import tempfile
 from unittest.mock import Mock, patch
-from pathlib import Path
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus, Task, TaskStatus
 from codeframe.agents.lead_agent import LeadAgent

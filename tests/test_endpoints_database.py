@@ -6,7 +6,6 @@ Task: cf-8.3 - Wire endpoints to database
 
 import pytest
 from fastapi.testclient import TestClient
-from pathlib import Path
 from codeframe.core.models import ProjectStatus, AgentMaturity
 
 

@@ -25,7 +25,6 @@ import argparse
 import json
 import sys
 import time
-from typing import Optional
 
 try:
     import websocket
@@ -190,7 +189,7 @@ def test_connection_stability(ws_url: str, connection_name: str, duration: int =
 
             # Wait for pong
             response = ws.recv()
-            print(f"✓ (pong received)")
+            print("✓ (pong received)")
 
             # Wait before next ping
             if elapsed + ping_interval < duration:

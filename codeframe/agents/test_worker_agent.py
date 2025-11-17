@@ -13,7 +13,7 @@ import asyncio
 import subprocess
 import re
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, Tuple
 from anthropic import AsyncAnthropic
 
 from codeframe.core.models import Task, AgentMaturity
@@ -63,8 +63,10 @@ class TestWorkerAgent(WorkerAgent):
             agent_id=agent_id,
             agent_type="test",
             provider=provider,
+            project_id=project_id or 1,  # Default to 1 if not provided
             maturity=maturity,
             system_prompt=self._build_system_prompt(),
+            db=db,
         )
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
@@ -143,6 +145,9 @@ Output format:
             # Create test file
             test_file = self._create_test_file(test_spec["test_name"], test_code)
 
+            # Run linting on test file (Sprint 9 Phase 5: T113)
+            await self._run_and_check_linting(task, test_file, project_id)
+
             # Execute tests and self-correct if needed
             test_result = await self._execute_and_correct_tests(
                 test_file, test_spec, code_analysis, project_id, task.id
@@ -169,6 +174,33 @@ Output format:
                 f"Test agent {self.agent_id} completed task {task.id}: "
                 f"{test_result['passed_count']}/{test_result['total_count']} tests passed"
             )
+
+            # T077: Auto-commit task changes after successful completion
+            if hasattr(self, "git_workflow") and self.git_workflow and test_result.get("passed"):
+                try:
+                    # Convert test_file Path to string for files_modified
+                    files_modified = [str(test_file)]
+
+                    # Convert Task object to dict for git_workflow
+                    task_dict = {
+                        "id": task.id,
+                        "project_id": task.project_id,
+                        "task_number": task.task_number,
+                        "title": task.title,
+                        "description": task.description,
+                    }
+
+                    commit_sha = self.git_workflow.commit_task_changes(
+                        task=task_dict, files_modified=files_modified, agent_id=self.agent_id
+                    )
+
+                    # T082: Record commit SHA in database
+                    if commit_sha and self.db:
+                        self.db.update_task_commit_sha(task.id, commit_sha)
+                        logger.info(f"Task {task.id} committed with SHA: {commit_sha[:7]}")
+                except Exception as e:
+                    # T080: Graceful degradation - log warning but don't block task completion
+                    logger.warning(f"Auto-commit failed for task {task.id} (non-blocking): {e}")
 
             return {
                 "status": final_status,
@@ -381,6 +413,115 @@ def {test_name}():
         test_file.write_text(test_code, encoding="utf-8")
 
         return test_file
+
+    async def _run_and_check_linting(self, task: Task, test_file: Path, project_id: int) -> None:
+        """
+        Run linting on test file and create blocker if critical errors found (T113).
+
+        This method executes linting on Python test files created during task execution,
+        stores results in the database, and creates a blocker if critical errors are found.
+
+        Args:
+            task: Task object
+            test_file: Path to created test file
+            project_id: Project ID for broadcasts
+
+        Raises:
+            ValueError: If linting fails with critical errors (blocker created)
+        """
+        try:
+            from codeframe.testing.lint_runner import LintRunner
+            from codeframe.lib.lint_utils import format_lint_blocker
+            from datetime import datetime
+
+            # Initialize LintRunner
+            lint_runner = LintRunner(self.project_root)
+
+            logger.info(f"Running linting on test file {test_file} for task {task.id}")
+
+            # Run linting on test file
+            lint_results = await lint_runner.run_lint([test_file])
+
+            # Store results in database if db is available
+            if self.db:
+                for result in lint_results:
+                    self.db.create_lint_result(
+                        task_id=task.id,
+                        linter=result.linter,
+                        error_count=result.error_count,
+                        warning_count=result.warning_count,
+                        files_linted=result.files_linted,
+                        output=result.output,
+                    )
+
+            # Check quality gate
+            if lint_runner.has_critical_errors(lint_results):
+                # Create blocker with lint findings
+                blocker_description = format_lint_blocker(lint_results)
+                total_errors = sum(r.error_count for r in lint_results)
+
+                if self.db:
+                    self.db.create_blocker(
+                        project_id=project_id,
+                        blocker_type="SYNC",
+                        title=f"Linting failed: {total_errors} critical errors",
+                        description=blocker_description,
+                        blocking_task_id=task.id,
+                    )
+
+                logger.error(f"Task {task.id} blocked by {total_errors} lint errors")
+
+                # Broadcast lint failure via WebSocket (T119)
+                if self.websocket_manager:
+                    try:
+                        from codeframe.ui.websocket_broadcasts import broadcast_to_project
+
+                        await broadcast_to_project(
+                            self.websocket_manager,
+                            project_id,
+                            {
+                                "type": "lint_failed",
+                                "task_id": task.id,
+                                "error_count": total_errors,
+                                "timestamp": datetime.utcnow().isoformat(),
+                            },
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to broadcast lint failure: {e}")
+
+                raise ValueError(f"Linting failed - {total_errors} critical errors found")
+
+            # Log warnings (non-blocking)
+            total_warnings = sum(r.warning_count for r in lint_results)
+            if total_warnings > 0:
+                logger.warning(f"Task {task.id}: {total_warnings} lint warnings (non-blocking)")
+
+            # Broadcast lint success via WebSocket (T119)
+            if self.websocket_manager:
+                try:
+                    from codeframe.ui.websocket_broadcasts import broadcast_to_project
+
+                    await broadcast_to_project(
+                        self.websocket_manager,
+                        project_id,
+                        {
+                            "type": "lint_completed",
+                            "task_id": task.id,
+                            "error_count": 0,
+                            "warning_count": total_warnings,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast lint success: {e}")
+
+        except ImportError:
+            logger.warning("LintRunner not available - skipping lint check")
+        except Exception as e:
+            # Don't block task on lint infrastructure failure (unless it's our ValueError)
+            if isinstance(e, ValueError) and "Linting failed" in str(e):
+                raise
+            logger.error(f"Lint check failed: {e}")
 
     def _execute_tests(self, test_file: Path) -> Tuple[bool, str, Dict[str, int]]:
         """

@@ -4,11 +4,9 @@ Unit tests for TestRunner (cf-42) - TDD Implementation.
 Tests written FIRST following RED-GREEN-REFACTOR methodology.
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 import json
-from datetime import datetime
 
 from codeframe.testing.models import TestResult
 from codeframe.testing.test_runner import TestRunner

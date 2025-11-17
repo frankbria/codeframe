@@ -7,12 +7,12 @@ Tests follow RED-GREEN-REFACTOR TDD cycle.
 """
 
 import pytest
-from datetime import datetime, UTC
+from datetime import datetime
 from fastapi.testclient import TestClient
 
 from codeframe.ui.server import app
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, BlockerType, BlockerStatus
+from codeframe.core.models import BlockerType, BlockerStatus
 
 
 @pytest.fixture

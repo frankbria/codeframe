@@ -6,8 +6,6 @@ Target: >90% coverage for database.py module.
 
 import json
 import pytest
-from pathlib import Path
-from datetime import datetime
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus, TaskStatus, AgentMaturity
 
@@ -737,3 +735,301 @@ class TestTestResults:
         statuses = [r["status"] for r in results]
         assert "failed" in statuses
         assert "passed" in statuses
+
+
+@pytest.mark.unit
+class TestLintResults:
+    """Test lint_results table and operations (T091-T092)."""
+
+    # T091: Test lint results database storage
+    def test_create_lint_result(self, temp_db_path):
+        """Test creating a lint result record in database."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create project and task
+        project_id = db.create_project("test-project", "Test project for linting")
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Lint Task",
+            description="Test lint",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False,
+        )
+
+        # Create lint result
+        result_id = db.create_lint_result(
+            task_id=task_id,
+            linter="ruff",
+            error_count=5,
+            warning_count=10,
+            files_linted=3,
+            output='{"findings": [{"code": "F401", "message": "unused import"}]}',
+        )
+
+        assert result_id is not None
+        assert isinstance(result_id, int)
+
+    def test_get_lint_results_for_task(self, temp_db_path):
+        """Test retrieving lint results for a specific task."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create project and task
+        project_id = db.create_project("test-project", "Test project for linting")
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Lint Task",
+            description="Test lint",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False,
+        )
+
+        # Create multiple lint results for same task (ruff + eslint)
+        db.create_lint_result(
+            task_id=task_id,
+            linter="ruff",
+            error_count=5,
+            warning_count=10,
+            files_linted=3,
+            output='{"findings": []}',
+        )
+
+        db.create_lint_result(
+            task_id=task_id,
+            linter="eslint",
+            error_count=2,
+            warning_count=7,
+            files_linted=2,
+            output='{"findings": []}',
+        )
+
+        # Retrieve results
+        results = db.get_lint_results_for_task(task_id)
+
+        assert len(results) == 2
+        linters = {r["linter"] for r in results}
+        assert "ruff" in linters
+        assert "eslint" in linters
+
+        # Verify data integrity
+        ruff_result = next(r for r in results if r["linter"] == "ruff")
+        assert ruff_result["error_count"] == 5
+        assert ruff_result["warning_count"] == 10
+        assert ruff_result["files_linted"] == 3
+
+    # T092: Test lint trend aggregation
+    def test_get_lint_trend(self, temp_db_path):
+        """Test aggregating lint results over time for trend analysis."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create project
+        project_id = db.create_project("test-project", "Test project for trend analysis")
+
+        # Create multiple tasks with lint results
+        for i in range(5):
+            issue_id = db.create_issue(
+                {
+                    "project_id": project_id,
+                    "issue_number": f"{i+1}.0",
+                    "title": f"Issue {i+1}",
+                    "status": "pending",
+                    "priority": 0,
+                    "workflow_step": 1,
+                }
+            )
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"{i+1}.0.1",
+                parent_issue_number=f"{i+1}.0",
+                title=f"Task {i+1}",
+                description="Test",
+                status=TaskStatus.COMPLETED,
+                priority=0,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+
+            # Simulate improving quality over time (fewer errors each iteration)
+            db.create_lint_result(
+                task_id=task_id,
+                linter="ruff",
+                error_count=10 - i,  # 10, 9, 8, 7, 6
+                warning_count=20 - (i * 2),  # 20, 18, 16, 14, 12
+                files_linted=5,
+                output="{}",
+            )
+
+        # Get trend for last 7 days
+        trend = db.get_lint_trend(project_id, days=7)
+
+        assert len(trend) > 0
+        # Verify data structure (matches get_lint_trend implementation)
+        for entry in trend:
+            assert "date" in entry
+            assert "linter" in entry
+            assert "error_count" in entry
+            assert "warning_count" in entry
+
+    def test_lint_results_foreign_key_to_task(self, temp_db_path):
+        """Test that lint_results has foreign key to tasks table."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Verify schema includes task_id foreign key
+        cursor = db.conn.cursor()
+        cursor.execute("PRAGMA table_info(lint_results)")
+        columns = cursor.fetchall()
+
+        column_names = [col[1] for col in columns]
+        assert "task_id" in column_names
+
+    def test_multiple_linters_for_same_task(self, temp_db_path):
+        """Test storing results from multiple linters (ruff + eslint) for same task."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create task
+        project_id = db.create_project("test-project", "Test project for multi-linter")
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Mixed Task",
+            description="Python + TypeScript",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False,
+        )
+
+        # Ruff result (Python)
+        db.create_lint_result(
+            task_id=task_id,
+            linter="ruff",
+            error_count=3,
+            warning_count=5,
+            files_linted=2,
+            output='{"findings": [{"code": "F401"}]}',
+        )
+
+        # ESLint result (TypeScript)
+        db.create_lint_result(
+            task_id=task_id,
+            linter="eslint",
+            error_count=1,
+            warning_count=2,
+            files_linted=1,
+            output='{"findings": [{"ruleId": "no-unused-vars"}]}',
+        )
+
+        # Get all results
+        results = db.get_lint_results_for_task(task_id)
+
+        assert len(results) == 2
+        # Verify both linters present
+        linters = {r["linter"] for r in results}
+        assert linters == {"ruff", "eslint"}
+
+    def test_lint_output_json_storage(self, temp_db_path):
+        """Test that lint output JSON is stored and retrieved correctly."""
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create task
+        project_id = db.create_project("test-project", "Test project for JSON storage")
+        issue_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Test Issue",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.0.1",
+            parent_issue_number="1.0",
+            title="Lint Task",
+            description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False,
+        )
+
+        # Create lint result with complex JSON output
+        detailed_output = json.dumps(
+            {
+                "findings": [
+                    {"code": "F401", "message": "unused import 'os'", "line": 1},
+                    {"code": "E501", "message": "line too long", "line": 5},
+                ],
+                "metadata": {"version": "0.1.0", "duration": "0.5s"},
+            }
+        )
+
+        db.create_lint_result(
+            task_id=task_id,
+            linter="ruff",
+            error_count=2,
+            warning_count=0,
+            files_linted=1,
+            output=detailed_output,
+        )
+
+        # Retrieve and verify JSON
+        results = db.get_lint_results_for_task(task_id)
+        assert len(results) == 1
+
+        stored_output = results[0]["output"]
+        parsed_output = json.loads(stored_output)
+
+        assert len(parsed_output["findings"]) == 2
+        assert parsed_output["metadata"]["version"] == "0.1.0"

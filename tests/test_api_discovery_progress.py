@@ -7,7 +7,6 @@ Tests verify GET /api/projects/{id}/discovery/progress endpoint.
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
-from pathlib import Path
 
 from codeframe.ui.server import app
 from codeframe.persistence.database import Database

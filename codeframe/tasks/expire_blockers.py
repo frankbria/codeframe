@@ -18,9 +18,6 @@ Environment:
 import asyncio
 import logging
 import sys
-from datetime import datetime
-from pathlib import Path
-from typing import List
 
 from codeframe.persistence.database import Database
 from codeframe.core.models import TaskStatus

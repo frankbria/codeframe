@@ -13,7 +13,6 @@ import pytest
 import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta, UTC
-from unittest.mock import patch
 
 from codeframe.persistence.database import Database
 from codeframe.lib.context_manager import ContextManager
