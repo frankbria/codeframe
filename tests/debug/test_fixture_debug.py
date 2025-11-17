@@ -4,9 +4,7 @@ Debug test to isolate which fixture is hanging.
 
 import pytest
 import tempfile
-from pathlib import Path
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 
 
 @pytest.fixture
@@ -58,6 +56,6 @@ def test_both_fixtures(db_debug, temp_project_dir_debug):
     print("\n⭐ TEST: test_both_fixtures started")
     project_id = db_debug.create_project("test-project", "Test Project project")
     print(f"⭐ TEST: Created project {project_id}")
-    db_debug.update_project(project_id, {"root_path": temp_project_dir_debug})
-    print("⭐ TEST: Updated project root_path")
+    db_debug.update_project(project_id, {"workspace_path": temp_project_dir_debug})
+    print("⭐ TEST: Updated project workspace_path")
     print("⭐ TEST: test_both_fixtures passed!")

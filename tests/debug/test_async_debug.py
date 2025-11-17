@@ -4,12 +4,10 @@ Debug async test that mimics the actual test structure.
 
 import pytest
 import asyncio
-import os
 import tempfile
 from unittest.mock import Mock, patch
-from pathlib import Path
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, Task, TaskStatus
+from codeframe.core.models import Task, TaskStatus
 from codeframe.agents.lead_agent import LeadAgent
 
 
@@ -60,7 +58,7 @@ def project_id_async_debug(db_async_debug, temp_project_dir_async_debug):
     """Create test project."""
     print("🟢 ASYNC FIXTURE: Creating project...")
     project_id = db_async_debug.create_project("test-project", "Test Project project")
-    db_async_debug.update_project(project_id, {"root_path": temp_project_dir_async_debug})
+    db_async_debug.update_project(project_id, {"workspace_path": temp_project_dir_async_debug})
     print(f"🟢 ASYNC FIXTURE: Project {project_id} ✅")
     return project_id
 
