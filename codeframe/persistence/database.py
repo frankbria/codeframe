@@ -569,8 +569,8 @@ class Database:
         cursor.execute(
             """
             INSERT INTO tasks (
-                project_id, title, description, status, priority, workflow_step, requires_mcp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                project_id, title, description, status, priority, workflow_step, requires_mcp, depends_on
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 task.project_id,
@@ -580,6 +580,7 @@ class Database:
                 task.priority,
                 task.workflow_step,
                 task.requires_mcp,
+                task.depends_on,
             ),
         )
         self.conn.commit()
@@ -592,7 +593,7 @@ class Database:
             "SELECT * FROM tasks WHERE project_id = ? AND status = ?",
             (project_id, TaskStatus.PENDING.value),
         )
-        rows = cursor.fetchall()
+        _rows = cursor.fetchall()
         # TODO: Convert rows to Task objects
         return []
 
@@ -1508,7 +1509,7 @@ class Database:
                 # SQLite format: "2025-10-17 22:01:56"
                 dt = datetime.fromisoformat(timestamp_str)
                 return dt.isoformat() + "Z"
-            except:
+            except ValueError:
                 return timestamp_str
 
         # Determine generated_at
@@ -1567,7 +1568,7 @@ class Database:
             try:
                 dt = datetime.fromisoformat(timestamp_str)
                 return dt.isoformat() + "Z"
-            except:
+            except ValueError:
                 return timestamp_str
 
         # Format issues according to API contract
