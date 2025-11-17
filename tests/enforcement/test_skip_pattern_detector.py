@@ -2,12 +2,7 @@
 Tests for SkipPatternDetector - multi-language skip pattern detection.
 """
 
-import tempfile
-from pathlib import Path
-
-import pytest
-
-from codeframe.enforcement import SkipPatternDetector, SkipViolation
+from codeframe.enforcement import SkipPatternDetector
 
 
 class TestSkipPatternDetectorPython:

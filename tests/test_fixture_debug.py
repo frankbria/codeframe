@@ -4,7 +4,6 @@ Debug test to isolate which fixture is hanging.
 
 import pytest
 import tempfile
-from pathlib import Path
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus
 

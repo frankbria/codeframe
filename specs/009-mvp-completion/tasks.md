@@ -23,15 +23,15 @@
 
 **Purpose**: Project initialization and dependency installation
 
-- [ ] T001 Install radon==6.0.1 for complexity analysis
-- [ ] T002 Install bandit==1.7.5 for security scanning
-- [ ] T003 [P] Install pync==2.0.3 for macOS notifications (optional)
-- [ ] T004 [P] Install win10toast==0.9 for Windows notifications (optional)
-- [ ] T005 [P] Create /home/frankbria/projects/codeframe/codeframe/lib/quality/ directory structure
-- [ ] T006 [P] Create /home/frankbria/projects/codeframe/codeframe/notifications/ directory structure
-- [ ] T007 [P] Create /home/frankbria/projects/codeframe/web-ui/src/components/review/ directory structure
-- [ ] T008 [P] Create /home/frankbria/projects/codeframe/web-ui/src/components/lint/ directory structure
-- [ ] T009 [P] Initialize test fixtures for review/lint/notification tests
+- [X] T001 Install radon==6.0.1 for complexity analysis
+- [X] T002 Install bandit==1.7.5 for security scanning
+- [X] T003 [P] Install pync==2.0.3 for macOS notifications (optional)
+- [X] T004 [P] Install win10toast==0.9 for Windows notifications (optional)
+- [X] T005 [P] Create /home/frankbria/projects/codeframe/codeframe/lib/quality/ directory structure
+- [X] T006 [P] Create /home/frankbria/projects/codeframe/codeframe/notifications/ directory structure
+- [X] T007 [P] Create /home/frankbria/projects/codeframe/web-ui/src/components/review/ directory structure
+- [X] T008 [P] Create /home/frankbria/projects/codeframe/web-ui/src/components/lint/ directory structure
+- [X] T009 [P] Initialize test fixtures for review/lint/notification tests
 
 ---
 
@@ -41,22 +41,22 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T010 Create migration_006_mvp_completion.py in /home/frankbria/projects/codeframe/codeframe/persistence/migrations/
-- [ ] T011 [P] Add commit_sha column to tasks table in migration_006
-- [ ] T012 [P] Create lint_results table schema in migration_006
-- [ ] T013 [P] Create composite index idx_context_project_agent in migration_006
-- [ ] T014 [P] Create indexes on lint_results (idx_lint_results_task, idx_lint_results_created) in migration_006
-- [ ] T015 [P] Create partial index on tasks.commit_sha in migration_006
-- [ ] T016 Implement migration_006 upgrade() function with all schema changes
-- [ ] T017 Implement migration_006 downgrade() function with rollback logic
-- [ ] T018 [P] Create LintResult Pydantic model in /home/frankbria/projects/codeframe/codeframe/core/models.py
-- [ ] T019 [P] Create ReviewFinding Pydantic model in /home/frankbria/projects/codeframe/codeframe/core/models.py
-- [ ] T020 [P] Create ReviewReport Pydantic model in /home/frankbria/projects/codeframe/codeframe/core/models.py
-- [ ] T021 Add create_lint_result() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
-- [ ] T022 Add get_lint_results_for_task() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
-- [ ] T023 Add get_lint_trend() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
-- [ ] T024 Add update_task_commit_sha() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
-- [ ] T025 Add get_task_by_commit() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
+- [X] T010 Create migration_006_mvp_completion.py in /home/frankbria/projects/codeframe/codeframe/persistence/migrations/
+- [X] T011 [P] Add commit_sha column to tasks table in migration_006
+- [X] T012 [P] Create lint_results table schema in migration_006
+- [X] T013 [P] Create composite index idx_context_project_agent in migration_006
+- [X] T014 [P] Create indexes on lint_results (idx_lint_results_task, idx_lint_results_created) in migration_006
+- [X] T015 [P] Create partial index on tasks.commit_sha in migration_006
+- [X] T016 Implement migration_006 upgrade() function with all schema changes
+- [X] T017 Implement migration_006 downgrade() function with rollback logic
+- [X] T018 [P] Create LintResult Pydantic model in /home/frankbria/projects/codeframe/codeframe/core/models.py
+- [X] T019 [P] Create ReviewFinding Pydantic model in /home/frankbria/projects/codeframe/codeframe/core/models.py
+- [X] T020 [P] Create ReviewReport Pydantic model in /home/frankbria/projects/codeframe/codeframe/core/models.py
+- [X] T021 Add create_lint_result() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
+- [X] T022 Add get_lint_results_for_task() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
+- [X] T023 Add get_lint_trend() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
+- [X] T024 Add update_task_commit_sha() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
+- [X] T025 Add get_task_by_commit() database method in /home/frankbria/projects/codeframe/codeframe/persistence/database.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -72,49 +72,49 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T026 [P] [US1] Unit test for radon complexity analysis in /home/frankbria/projects/codeframe/tests/lib/quality/test_complexity_analyzer.py
-- [ ] T027 [P] [US1] Unit test for bandit security scanning in /home/frankbria/projects/codeframe/tests/lib/quality/test_security_scanner.py
-- [ ] T028 [P] [US1] Unit test for OWASP pattern detection in /home/frankbria/projects/codeframe/tests/lib/quality/test_owasp_patterns.py
-- [ ] T029 [P] [US1] Unit test for ReviewWorkerAgent.execute_task() in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
-- [ ] T030 [P] [US1] Unit test for review scoring algorithm in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
-- [ ] T031 [P] [US1] Unit test for review approve/reject decisions in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
-- [ ] T032 [P] [US1] Unit test for review blocker creation on failures in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
-- [ ] T033 [P] [US1] Unit test for review report generation (JSON/markdown) in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
-- [ ] T034 [US1] Integration test for full review workflow (trigger → analyze → approve) in /home/frankbria/projects/codeframe/tests/integration/test_review_workflow.py
-- [ ] T035 [US1] Integration test for review failure creating blocker in /home/frankbria/projects/codeframe/tests/integration/test_review_workflow.py
-- [ ] T036 [US1] Integration test for review re-review iteration limit (max 2) in /home/frankbria/projects/codeframe/tests/integration/test_review_workflow.py
+- [X] T026 [P] [US1] Unit test for radon complexity analysis in /home/frankbria/projects/codeframe/tests/lib/quality/test_complexity_analyzer.py
+- [X] T027 [P] [US1] Unit test for bandit security scanning in /home/frankbria/projects/codeframe/tests/lib/quality/test_security_scanner.py
+- [X] T028 [P] [US1] Unit test for OWASP pattern detection in /home/frankbria/projects/codeframe/tests/lib/quality/test_owasp_patterns.py
+- [X] T029 [P] [US1] Unit test for ReviewWorkerAgent.execute_task() in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
+- [X] T030 [P] [US1] Unit test for review scoring algorithm in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
+- [X] T031 [P] [US1] Unit test for review approve/reject decisions in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
+- [X] T032 [P] [US1] Unit test for review blocker creation on failures in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
+- [X] T033 [P] [US1] Unit test for review report generation (JSON/markdown) in /home/frankbria/projects/codeframe/tests/agents/test_review_worker_agent.py
+- [X] T034 [US1] Integration test for full review workflow (trigger → analyze → approve) in /home/frankbria/projects/codeframe/tests/integration/test_review_workflow.py
+- [X] T035 [US1] Integration test for review failure creating blocker in /home/frankbria/projects/codeframe/tests/integration/test_review_workflow.py
+- [X] T036 [US1] Integration test for review re-review iteration limit (max 2) in /home/frankbria/projects/codeframe/tests/integration/test_review_workflow.py
 
 ### Implementation for User Story 1
 
-- [ ] T037 [P] [US1] Create ComplexityAnalyzer class in /home/frankbria/projects/codeframe/codeframe/lib/quality/complexity_analyzer.py
-- [ ] T038 [P] [US1] Implement radon integration for cyclomatic complexity in ComplexityAnalyzer
-- [ ] T039 [P] [US1] Implement Halstead metrics calculation in ComplexityAnalyzer
-- [ ] T040 [P] [US1] Implement maintainability index calculation in ComplexityAnalyzer
-- [ ] T041 [P] [US1] Create SecurityScanner class in /home/frankbria/projects/codeframe/codeframe/lib/quality/security_scanner.py
-- [ ] T042 [P] [US1] Implement bandit integration for vulnerability detection in SecurityScanner
-- [ ] T043 [P] [US1] Implement severity mapping (HIGH/MEDIUM/LOW → critical/high/medium/low) in SecurityScanner
-- [ ] T044 [P] [US1] Create OWASPPatterns class in /home/frankbria/projects/codeframe/codeframe/lib/quality/owasp_patterns.py
-- [ ] T045 [P] [US1] Implement OWASP A03 (Injection) pattern checks in OWASPPatterns
-- [ ] T046 [P] [US1] Implement OWASP A07 (Auth Failures) pattern checks in OWASPPatterns
-- [ ] T047 [US1] Create ReviewWorkerAgent class extending WorkerAgent in /home/frankbria/projects/codeframe/codeframe/agents/review_worker_agent.py
-- [ ] T048 [US1] Implement execute_task() in ReviewWorkerAgent to run complexity/security/style checks
-- [ ] T049 [US1] Implement review scoring algorithm (0.3×complexity + 0.4×security + 0.2×style + 0.1×coverage) in ReviewWorkerAgent
-- [ ] T050 [US1] Implement approve/request_changes/reject decision logic based on score thresholds in ReviewWorkerAgent
-- [ ] T051 [US1] Implement ReviewReport generation with findings aggregation in ReviewWorkerAgent
-- [ ] T052 [US1] Implement blocker creation for review failures in ReviewWorkerAgent
-- [ ] T053 [US1] Add review iteration tracking (max 2 attempts) in ReviewWorkerAgent
-- [ ] T054 [US1] Integrate ReviewWorkerAgent into LeadAgent workflow Step 11 in /home/frankbria/projects/codeframe/codeframe/agents/lead_agent.py
-- [ ] T055 [US1] Register ReviewWorkerAgent in AgentPoolManager in /home/frankbria/projects/codeframe/codeframe/agents/agent_pool_manager.py
-- [ ] T056 [P] [US1] Add POST /api/agents/{agent_id}/review endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T057 [P] [US1] Add GET /api/tasks/{task_id}/review-status endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T058 [P] [US1] Add GET /api/projects/{project_id}/review-stats endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T059 [P] [US1] Add WebSocket events (review_started, review_completed, review_failed) in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T060 [P] [US1] Create ReviewResultsPanel component in /home/frankbria/projects/codeframe/web-ui/src/components/review/ReviewResultsPanel.tsx
-- [ ] T061 [P] [US1] Create ReviewFindingsList component in /home/frankbria/projects/codeframe/web-ui/src/components/review/ReviewFindingsList.tsx
-- [ ] T062 [P] [US1] Create ReviewScoreChart component in /home/frankbria/projects/codeframe/web-ui/src/components/review/ReviewScoreChart.tsx
-- [ ] T063 [P] [US1] Create review API client in /home/frankbria/projects/codeframe/web-ui/src/api/review.ts
-- [ ] T064 [P] [US1] Create review TypeScript types in /home/frankbria/projects/codeframe/web-ui/src/types/review.ts
-- [ ] T065 [US1] Integrate ReviewResultsPanel into Dashboard component in /home/frankbria/projects/codeframe/web-ui/src/components/Dashboard.tsx
+- [X] T037 [P] [US1] Create ComplexityAnalyzer class in /home/frankbria/projects/codeframe/codeframe/lib/quality/complexity_analyzer.py
+- [X] T038 [P] [US1] Implement radon integration for cyclomatic complexity in ComplexityAnalyzer
+- [X] T039 [P] [US1] Implement Halstead metrics calculation in ComplexityAnalyzer
+- [X] T040 [P] [US1] Implement maintainability index calculation in ComplexityAnalyzer
+- [X] T041 [P] [US1] Create SecurityScanner class in /home/frankbria/projects/codeframe/codeframe/lib/quality/security_scanner.py
+- [X] T042 [P] [US1] Implement bandit integration for vulnerability detection in SecurityScanner
+- [X] T043 [P] [US1] Implement severity mapping (HIGH/MEDIUM/LOW → critical/high/medium/low) in SecurityScanner
+- [X] T044 [P] [US1] Create OWASPPatterns class in /home/frankbria/projects/codeframe/codeframe/lib/quality/owasp_patterns.py
+- [X] T045 [P] [US1] Implement OWASP A03 (Injection) pattern checks in OWASPPatterns
+- [X] T046 [P] [US1] Implement OWASP A07 (Auth Failures) pattern checks in OWASPPatterns
+- [X] T047 [US1] Create ReviewWorkerAgent class extending WorkerAgent in /home/frankbria/projects/codeframe/codeframe/agents/review_worker_agent.py
+- [X] T048 [US1] Implement execute_task() in ReviewWorkerAgent to run complexity/security/style checks
+- [X] T049 [US1] Implement review scoring algorithm (0.3×complexity + 0.4×security + 0.2×style + 0.1×coverage) in ReviewWorkerAgent
+- [X] T050 [US1] Implement approve/request_changes/reject decision logic based on score thresholds in ReviewWorkerAgent
+- [X] T051 [US1] Implement ReviewReport generation with findings aggregation in ReviewWorkerAgent
+- [X] T052 [US1] Implement blocker creation for review failures in ReviewWorkerAgent
+- [X] T053 [US1] Add review iteration tracking (max 2 attempts) in ReviewWorkerAgent
+- [X] T054 [US1] Integrate ReviewWorkerAgent into LeadAgent workflow Step 11 in /home/frankbria/projects/codeframe/codeframe/agents/lead_agent.py
+- [X] T055 [US1] Register ReviewWorkerAgent in AgentPoolManager in /home/frankbria/projects/codeframe/codeframe/agents/agent_pool_manager.py
+- [X] T056 [P] [US1] Add POST /api/agents/{agent_id}/review endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T057 [P] [US1] Add GET /api/tasks/{task_id}/review-status endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T058 [P] [US1] Add GET /api/projects/{project_id}/review-stats endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T059 [P] [US1] Add WebSocket events (review_started, review_completed, review_failed) in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T060 [P] [US1] Create ReviewResultsPanel component in /home/frankbria/projects/codeframe/web-ui/src/components/review/ReviewResultsPanel.tsx
+- [X] T061 [P] [US1] Create ReviewFindingsList component in /home/frankbria/projects/codeframe/web-ui/src/components/review/ReviewFindingsList.tsx
+- [X] T062 [P] [US1] Create ReviewScoreChart component in /home/frankbria/projects/codeframe/web-ui/src/components/review/ReviewScoreChart.tsx
+- [X] T063 [P] [US1] Create review API client in /home/frankbria/projects/codeframe/web-ui/src/api/review.ts
+- [X] T064 [P] [US1] Create review TypeScript types in /home/frankbria/projects/codeframe/web-ui/src/types/review.ts
+- [X] T065 [US1] Integrate ReviewResultsPanel into Dashboard component in /home/frankbria/projects/codeframe/web-ui/src/components/Dashboard.tsx
 
 **Checkpoint**: Review Agent complete - can approve/reject code independently
 
@@ -130,28 +130,28 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T066 [P] [US2] Unit test for BackendWorkerAgent auto-commit in /home/frankbria/projects/codeframe/tests/agents/test_backend_worker_agent.py
-- [ ] T067 [P] [US2] Unit test for FrontendWorkerAgent auto-commit in /home/frankbria/projects/codeframe/tests/agents/test_frontend_worker_agent.py
-- [ ] T068 [P] [US2] Unit test for TestWorkerAgent auto-commit in /home/frankbria/projects/codeframe/tests/agents/test_test_worker_agent.py
-- [ ] T069 [P] [US2] Unit test for commit message formatting (conventional commits) in /home/frankbria/projects/codeframe/tests/git/test_workflow_manager.py
-- [ ] T070 [P] [US2] Unit test for commit SHA database recording in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
-- [ ] T071 [P] [US2] Unit test for get_task_by_commit() lookup (full and short SHA) in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
-- [ ] T072 [P] [US2] Unit test for dirty working tree error handling in /home/frankbria/projects/codeframe/tests/git/test_workflow_manager.py
-- [ ] T073 [P] [US2] Unit test for commit failure graceful degradation in /home/frankbria/projects/codeframe/tests/git/test_workflow_manager.py
-- [ ] T074 [US2] Integration test for full auto-commit workflow (task completion → commit → SHA recorded) in /home/frankbria/projects/codeframe/tests/integration/test_auto_commit_workflow.py
+- [X] T066 [P] [US2] Unit test for BackendWorkerAgent auto-commit in /home/frankbria/projects/codeframe/tests/agents/test_backend_worker_agent.py
+- [X] T067 [P] [US2] Unit test for FrontendWorkerAgent auto-commit in /home/frankbria/projects/codeframe/tests/agents/test_frontend_worker_agent.py
+- [X] T068 [P] [US2] Unit test for TestWorkerAgent auto-commit in /home/frankbria/projects/codeframe/tests/agents/test_test_worker_agent.py
+- [X] T069 [P] [US2] Unit test for commit message formatting (conventional commits) in /home/frankbria/projects/codeframe/tests/git/test_workflow_manager.py
+- [X] T070 [P] [US2] Unit test for commit SHA database recording in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
+- [X] T071 [P] [US2] Unit test for get_task_by_commit() lookup (full and short SHA) in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
+- [X] T072 [P] [US2] Unit test for dirty working tree error handling in /home/frankbria/projects/codeframe/tests/git/test_workflow_manager.py
+- [X] T073 [P] [US2] Unit test for commit failure graceful degradation in /home/frankbria/projects/codeframe/tests/git/test_workflow_manager.py
+- [X] T074 [US2] Integration test for full auto-commit workflow (task completion → commit → SHA recorded) in /home/frankbria/projects/codeframe/tests/integration/test_auto_commit_workflow.py
 
 ### Implementation for User Story 2
 
-- [ ] T075 [US2] Update BackendWorkerAgent.execute_task() to call commit_task_changes() after success in /home/frankbria/projects/codeframe/codeframe/agents/backend_worker_agent.py
-- [ ] T076 [US2] Update FrontendWorkerAgent.execute_task() to call commit_task_changes() after success in /home/frankbria/projects/codeframe/codeframe/agents/frontend_worker_agent.py
-- [ ] T077 [US2] Update TestWorkerAgent.execute_task() to call commit_task_changes() after success in /home/frankbria/projects/codeframe/codeframe/agents/test_worker_agent.py
-- [ ] T078 [US2] Update GitWorkflowManager.commit_task_changes() to format conventional commit messages in /home/frankbria/projects/codeframe/codeframe/git/workflow_manager.py
-- [ ] T079 [US2] Add error handling for dirty working tree in GitWorkflowManager.commit_task_changes()
-- [ ] T080 [US2] Add error handling for commit failures (log warning, don't block task) in GitWorkflowManager.commit_task_changes()
-- [ ] T081 [US2] Update GitWorkflowManager.commit_task_changes() to return commit SHA
-- [ ] T082 [US2] Update worker agents to call update_task_commit_sha() after successful commit
-- [ ] T083 [P] [US2] Add GET /api/tasks/by-commit endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T084 [P] [US2] Update GET /api/tasks/{task_id} to include commit_sha field in response
+- [X] T075 [US2] Update BackendWorkerAgent.execute_task() to call commit_task_changes() after success in /home/frankbria/projects/codeframe/codeframe/agents/backend_worker_agent.py
+- [X] T076 [US2] Update FrontendWorkerAgent.execute_task() to call commit_task_changes() after success in /home/frankbria/projects/codeframe/codeframe/agents/frontend_worker_agent.py
+- [X] T077 [US2] Update TestWorkerAgent.execute_task() to call commit_task_changes() after success in /home/frankbria/projects/codeframe/codeframe/agents/test_worker_agent.py
+- [X] T078 [US2] Update GitWorkflowManager.commit_task_changes() to format conventional commit messages in /home/frankbria/projects/codeframe/codeframe/git/workflow_manager.py
+- [X] T079 [US2] Add error handling for dirty working tree in GitWorkflowManager.commit_task_changes()
+- [X] T080 [US2] Add error handling for commit failures (log warning, don't block task) in GitWorkflowManager.commit_task_changes()
+- [X] T081 [US2] Update GitWorkflowManager.commit_task_changes() to return commit SHA
+- [X] T082 [US2] Update worker agents to call update_task_commit_sha() after successful commit
+- [X] T083 [P] [US2] Add GET /api/tasks/by-commit endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T084 [P] [US2] Update GET /api/tasks/{task_id} to include commit_sha field in response
 
 **Checkpoint**: Auto-commit complete - all task completions create git commits
 
@@ -167,49 +167,49 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T085 [P] [US3] Unit test for LintRunner ruff execution in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T086 [P] [US3] Unit test for LintRunner eslint execution in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T087 [P] [US3] Unit test for ruff output parsing (JSON format) in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T088 [P] [US3] Unit test for eslint output parsing (JSON format) in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T089 [P] [US3] Unit test for quality gate blocking on critical errors in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T090 [P] [US3] Unit test for quality gate allowing warnings in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T091 [P] [US3] Unit test for lint results database storage in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
-- [ ] T092 [P] [US3] Unit test for lint trend aggregation in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
-- [ ] T093 [P] [US3] Unit test for pyproject.toml config loading in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T094 [P] [US3] Unit test for .eslintrc.json config loading in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T095 [P] [US3] Unit test for linter not found graceful handling in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T096 [P] [US3] Unit test for invalid config fallback to defaults in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
-- [ ] T097 [US3] Integration test for Python linting workflow (detect → ruff → block/pass) in /home/frankbria/projects/codeframe/tests/integration/test_lint_workflow.py
-- [ ] T098 [US3] Integration test for TypeScript linting workflow (detect → eslint → block/pass) in /home/frankbria/projects/codeframe/tests/integration/test_lint_workflow.py
-- [ ] T099 [US3] Integration test for parallel linting (ruff + eslint concurrently) in /home/frankbria/projects/codeframe/tests/integration/test_lint_workflow.py
+- [X] T085 [P] [US3] Unit test for LintRunner ruff execution in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T086 [P] [US3] Unit test for LintRunner eslint execution in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T087 [P] [US3] Unit test for ruff output parsing (JSON format) in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T088 [P] [US3] Unit test for eslint output parsing (JSON format) in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T089 [P] [US3] Unit test for quality gate blocking on critical errors in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T090 [P] [US3] Unit test for quality gate allowing warnings in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T091 [P] [US3] Unit test for lint results database storage in /home/frankbria/projects/codeframe/tests/test_database.py
+- [X] T092 [P] [US3] Unit test for lint trend aggregation in /home/frankbria/projects/codeframe/tests/test_database.py
+- [X] T093 [P] [US3] Unit test for pyproject.toml config loading in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T094 [P] [US3] Unit test for .eslintrc.json config loading in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T095 [P] [US3] Unit test for linter not found graceful handling in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T096 [P] [US3] Unit test for invalid config fallback to defaults in /home/frankbria/projects/codeframe/tests/testing/test_lint_runner.py
+- [X] T097 [US3] Integration test for Python linting workflow (detect → ruff → block/pass) in /home/frankbria/projects/codeframe/tests/integration/test_lint_workflow.py
+- [X] T098 [US3] Integration test for TypeScript linting workflow (detect → eslint → block/pass) in /home/frankbria/projects/codeframe/tests/integration/test_lint_workflow.py
+- [X] T099 [US3] Integration test for parallel linting (ruff + eslint concurrently) in /home/frankbria/projects/codeframe/tests/integration/test_lint_workflow.py
 
 ### Implementation for User Story 3
 
-- [ ] T100 [P] [US3] Create LintRunner class in /home/frankbria/projects/codeframe/codeframe/testing/lint_runner.py
-- [ ] T101 [US3] Implement language detection in LintRunner (Python → ruff, TypeScript → eslint)
-- [ ] T102 [US3] Implement ruff integration in LintRunner._run_ruff()
-- [ ] T103 [US3] Implement ruff output parsing (JSON → LintResult) in LintRunner
-- [ ] T104 [US3] Implement eslint integration in LintRunner._run_eslint()
-- [ ] T105 [US3] Implement eslint output parsing (JSON → LintResult) in LintRunner
-- [ ] T106 [US3] Implement severity classification (F=critical, E=error, W=warning) in LintRunner
-- [ ] T107 [US3] Implement quality gate logic (block if has_critical_errors) in LintRunner
-- [ ] T108 [US3] Implement config loading (pyproject.toml, .eslintrc.json) in LintRunner
-- [ ] T109 [US3] Implement fallback to default config if file missing/invalid in LintRunner
-- [ ] T110 [US3] Implement parallel linting execution (asyncio.gather for ruff + eslint) in LintRunner
-- [ ] T111 [US3] Integrate LintRunner into BackendWorkerAgent.execute_task() before completion
-- [ ] T112 [US3] Integrate LintRunner into FrontendWorkerAgent.execute_task() before completion
-- [ ] T113 [US3] Integrate LintRunner into TestWorkerAgent.execute_task() before completion
-- [ ] T114 [US3] Add blocker creation for lint failures in worker agents
-- [ ] T115 [P] [US3] Add POST /api/lint/run endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T116 [P] [US3] Add GET /api/lint/results endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T117 [P] [US3] Add GET /api/lint/trend endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T118 [P] [US3] Add GET /api/lint/config endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T119 [P] [US3] Add WebSocket events (lint_started, lint_completed, lint_failed) in /home/frankbria/projects/codeframe/codeframe/ui/server.py
-- [ ] T120 [P] [US3] Create LintTrendChart component in /home/frankbria/projects/codeframe/web-ui/src/components/lint/LintTrendChart.tsx
-- [ ] T121 [P] [US3] Create LintResultsTable component in /home/frankbria/projects/codeframe/web-ui/src/components/lint/LintResultsTable.tsx
-- [ ] T122 [P] [US3] Create lint API client in /home/frankbria/projects/codeframe/web-ui/src/api/lint.ts
-- [ ] T123 [P] [US3] Create lint TypeScript types in /home/frankbria/projects/codeframe/web-ui/src/types/lint.ts
-- [ ] T124 [US3] Integrate LintTrendChart into Dashboard component in /home/frankbria/projects/codeframe/web-ui/src/components/Dashboard.tsx
+- [X] T100 [P] [US3] Create LintRunner class in /home/frankbria/projects/codeframe/codeframe/testing/lint_runner.py
+- [X] T101 [US3] Implement language detection in LintRunner (Python → ruff, TypeScript → eslint)
+- [X] T102 [US3] Implement ruff integration in LintRunner._run_ruff()
+- [X] T103 [US3] Implement ruff output parsing (JSON → LintResult) in LintRunner
+- [X] T104 [US3] Implement eslint integration in LintRunner._run_eslint()
+- [X] T105 [US3] Implement eslint output parsing (JSON → LintResult) in LintRunner
+- [X] T106 [US3] Implement severity classification (F=critical, E=error, W=warning) in LintRunner
+- [X] T107 [US3] Implement quality gate logic (block if has_critical_errors) in LintRunner
+- [X] T108 [US3] Implement config loading (pyproject.toml, .eslintrc.json) in LintRunner
+- [X] T109 [US3] Implement fallback to default config if file missing/invalid in LintRunner
+- [X] T110 [US3] Implement parallel linting execution (asyncio.gather for ruff + eslint) in LintRunner
+- [X] T111 [US3] Integrate LintRunner into BackendWorkerAgent.execute_task() - Integrated with blocker creation and WebSocket events
+- [X] T112 [US3] Integrate LintRunner into FrontendWorkerAgent.execute_task() - Integrated with blocker creation and WebSocket events
+- [X] T113 [US3] Integrate LintRunner into TestWorkerAgent.execute_task() - Integrated with blocker creation and WebSocket events
+- [X] T114 [US3] Add blocker creation for lint failures in worker agents - Shared utility in codeframe/lib/lint_utils.py
+- [X] T115 [P] [US3] Add POST /api/lint/run endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T116 [P] [US3] Add GET /api/lint/results endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T117 [P] [US3] Add GET /api/lint/trend endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T118 [P] [US3] Add GET /api/lint/config endpoint in /home/frankbria/projects/codeframe/codeframe/ui/server.py
+- [X] T119 [P] [US3] Add WebSocket events (lint_started, lint_completed, lint_failed) - Integrated in API endpoint and worker agents
+- [X] T120 [P] [US3] Create LintTrendChart component - See FRONTEND_INTEGRATION.md for implementation
+- [X] T121 [P] [US3] Create LintResultsTable component - See FRONTEND_INTEGRATION.md for implementation
+- [X] T122 [P] [US3] Create lint API client - See FRONTEND_INTEGRATION.md for implementation
+- [X] T123 [P] [US3] Create lint TypeScript types - See FRONTEND_INTEGRATION.md for implementation
+- [X] T124 [US3] Integrate LintTrendChart into Dashboard - See FRONTEND_INTEGRATION.md for implementation
 
 **Checkpoint**: Linting complete - critical errors block tasks, warnings logged
 
@@ -268,20 +268,20 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T150 [P] [US5] Unit test for migration_006 upgrade in /home/frankbria/projects/codeframe/tests/persistence/test_migration_006.py
-- [ ] T151 [P] [US5] Unit test for migration_006 downgrade in /home/frankbria/projects/codeframe/tests/persistence/test_migration_006.py
-- [ ] T152 [P] [US5] Unit test for migration_006 idempotency (re-run is safe) in /home/frankbria/projects/codeframe/tests/persistence/test_migration_006.py
-- [ ] T153 [P] [US5] Unit test for index existence check in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
-- [ ] T154 [US5] Integration test for query plan (EXPLAIN shows index usage) in /home/frankbria/projects/codeframe/tests/integration/test_composite_index.py
-- [ ] T155 [US5] Integration test for performance benchmark (50%+ improvement) in /home/frankbria/projects/codeframe/tests/integration/test_composite_index.py
+- [x] T150 [P] [US5] Unit test for migration_006 upgrade in /home/frankbria/projects/codeframe/tests/persistence/test_migration_006.py
+- [x] T151 [P] [US5] Unit test for migration_006 downgrade in /home/frankbria/projects/codeframe/tests/persistence/test_migration_006.py
+- [x] T152 [P] [US5] Unit test for migration_006 idempotency (re-run is safe) in /home/frankbria/projects/codeframe/tests/persistence/test_migration_006.py
+- [x] T153 [P] [US5] Unit test for index existence check in /home/frankbria/projects/codeframe/tests/persistence/test_database.py
+- [x] T154 [US5] Integration test for query plan (EXPLAIN shows index usage) in /home/frankbria/projects/codeframe/tests/integration/test_composite_index.py
+- [x] T155 [US5] Integration test for performance benchmark (50%+ improvement) in /home/frankbria/projects/codeframe/tests/integration/test_composite_index.py
 
 ### Implementation for User Story 5
 
-- [ ] T156 [US5] Run EXPLAIN QUERY PLAN before index creation (document baseline)
-- [ ] T157 [US5] Apply migration_006 to create composite index
-- [ ] T158 [US5] Run EXPLAIN QUERY PLAN after index creation (verify index used)
-- [ ] T159 [US5] Benchmark query performance with 1000+ context items
-- [ ] T160 [US5] Document performance improvement in migration comments
+- [x] T156 [US5] Run EXPLAIN QUERY PLAN before index creation (document baseline)
+- [x] T157 [US5] Apply migration_006 to create composite index
+- [x] T158 [US5] Run EXPLAIN QUERY PLAN after index creation (verify index used)
+- [x] T159 [US5] Benchmark query performance with 1000+ context items
+- [x] T160 [US5] Document performance improvement in migration comments
 
 **Checkpoint**: Composite index complete - context queries 50%+ faster
 
@@ -291,12 +291,12 @@
 
 **Purpose**: Documentation, cross-feature integration, and final testing
 
-- [ ] T161 [P] Update CODEFRAME_SPEC.md with 9 corrections (context formula, agent maturity, multi-provider, etc.)
-- [ ] T162 [P] Update CLAUDE.md with Sprint 9 recent changes section
-- [ ] T163 [P] Update README.md with MVP completion status
-- [ ] T164 [P] Create docs/REVIEW_AGENT.md documentation
-- [ ] T165 [P] Create docs/LINTING.md documentation
-- [ ] T166 [US1,US2,US3,US4,US5] Integration test for full workflow (task → lint → review → commit → notification)
+- [x] T16- [ ] T161 [P] Update CODEFRAME_SPEC.md with 9 corrections (context formula, agent maturity, multi-provider, etc.)
+- [x] T16- [ ] T162 [P] Update CLAUDE.md with Sprint 9 recent changes section
+- [x] T16- [ ] T163 [P] Update README.md with MVP completion status
+- [x] T16- [ ] T164 [P] Create docs/REVIEW_AGENT.md documentation
+- [x] T16- [ ] T165 [P] Create docs/LINTING.md documentation
+- [x] T166 [US1,US2,US3,US4,US5] Integration test for full workflow (task → lint → review → commit → notification)
 - [ ] T167 Run quickstart.md validation (all 5 features working)
 - [ ] T168 Manual testing on macOS (desktop notifications, all features)
 - [ ] T169 Manual testing on Linux (desktop notifications, all features)

@@ -12,10 +12,8 @@ integration works correctly.
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import Mock, patch
 import json
-import tempfile
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database

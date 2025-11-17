@@ -3,15 +3,12 @@ Tests for AdaptiveTestRunner - multi-language test execution system.
 """
 
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import subprocess
-import asyncio
 
 import pytest
 
-from codeframe.enforcement import AdaptiveTestRunner, TestResult, LanguageInfo
+from codeframe.enforcement import AdaptiveTestRunner
 
 
 class TestAdaptiveTestRunner:

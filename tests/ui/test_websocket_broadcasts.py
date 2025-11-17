@@ -6,9 +6,8 @@ WebSocket messages for real-time dashboard updates.
 """
 
 import pytest
-import asyncio
-from datetime import datetime, UTC
-from unittest.mock import AsyncMock, MagicMock, call
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 from codeframe.ui.websocket_broadcasts import (
     broadcast_task_status,

@@ -1,6 +1,5 @@
 """Tests for simple agent assignment logic."""
 
-import pytest
 from codeframe.agents.simple_assignment import SimpleAgentAssigner, assign_task_to_agent
 
 

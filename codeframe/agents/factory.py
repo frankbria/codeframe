@@ -1,10 +1,9 @@
 """Agent Factory - Create agents from YAML definitions."""
 
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Any
 import logging
 
-from codeframe.core.models import AgentMaturity
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.agents.definition_loader import AgentDefinitionLoader, AgentDefinition
 

@@ -5,8 +5,7 @@ Target: >90% coverage for lead_agent.py module.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus
