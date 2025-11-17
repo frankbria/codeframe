@@ -4,14 +4,12 @@ Unit tests for blocker database operations.
 Tests T050-T054 from Phase 9: Testing & Validation
 """
 
-import pytest
 import pytest_asyncio
-import asyncio
 import time
 import threading
 from datetime import datetime, timedelta
 from codeframe.persistence.database import Database
-from codeframe.core.models import BlockerType, BlockerStatus, TaskStatus
+from codeframe.core.models import BlockerType, TaskStatus
 
 
 @pytest_asyncio.fixture

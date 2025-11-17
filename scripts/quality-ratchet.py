@@ -22,7 +22,6 @@ Based on issue #14 recommendations.
 
 import json
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -307,7 +306,7 @@ def record(
     history.append(checkpoint)
     save_history(history, history_file)
 
-    console.print(f"[green]✓[/green] Checkpoint recorded:")
+    console.print("[green]✓[/green] Checkpoint recorded:")
     console.print(f"  Response count: {response_count}")
     console.print(f"  Pass rate: {test_metrics['pass_rate']}%")
     console.print(f"  Coverage: {coverage}%")

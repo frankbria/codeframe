@@ -7,8 +7,6 @@ that should be verified BEFORE deploying to staging/production.
 Created in response to cf-46 where production bugs were not caught by tests.
 """
 
-import pytest
-import os
 import sys
 from pathlib import Path
 

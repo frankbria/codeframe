@@ -94,7 +94,7 @@ Error Handling:
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 from codeframe.core.models import AgentMaturity
 from codeframe.agents.worker_agent import WorkerAgent

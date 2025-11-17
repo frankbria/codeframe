@@ -12,6 +12,7 @@ from threading import RLock
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
 from codeframe.agents.test_worker_agent import TestWorkerAgent
+from codeframe.agents.review_worker_agent import ReviewWorkerAgent
 from codeframe.ui.websocket_broadcasts import broadcast_agent_created, broadcast_agent_retired
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ class AgentPoolManager:
         """
         print(f"\n🏭 DEBUG: create_agent called with agent_type={agent_type}")
         with self.lock:
-            print(f"🏭 DEBUG: Acquired lock")
+            print("🏭 DEBUG: Acquired lock")
             # Check pool capacity
             if len(self.agent_pool) >= self.max_agents:
                 raise RuntimeError(
@@ -92,7 +93,7 @@ class AgentPoolManager:
                 )
 
             # Generate agent ID
-            print(f"🏭 DEBUG: Generating agent ID...")
+            print("🏭 DEBUG: Generating agent ID...")
             agent_id = f"{agent_type}-worker-{self.next_agent_number:03d}"
             self.next_agent_number += 1
             print(f"🏭 DEBUG: Generated agent_id={agent_id}")
@@ -100,7 +101,7 @@ class AgentPoolManager:
             # Create agent instance based on type with correct constructor arguments
             print(f"🏭 DEBUG: About to create {agent_type} agent instance...")
             if agent_type == "backend" or agent_type == "backend-worker":
-                print(f"🏭 DEBUG: Calling BackendWorkerAgent constructor...")
+                print("🏭 DEBUG: Calling BackendWorkerAgent constructor...")
                 agent_instance = BackendWorkerAgent(
                     project_id=self.project_id,
                     db=self.db,
@@ -116,14 +117,23 @@ class AgentPoolManager:
                     websocket_manager=self.ws_manager,
                 )
             elif agent_type == "test" or agent_type == "test-engineer":
-                print(f"🏭 DEBUG: Calling TestWorkerAgent constructor...")
+                print("🏭 DEBUG: Calling TestWorkerAgent constructor...")
                 agent_instance = TestWorkerAgent(
                     agent_id=agent_id,
                     provider="anthropic",
                     api_key=self.api_key,
                     websocket_manager=self.ws_manager,
                 )
-                print(f"🏭 DEBUG: TestWorkerAgent created successfully")
+                print("🏭 DEBUG: TestWorkerAgent created successfully")
+            elif agent_type == "review" or agent_type == "review-worker":
+                print("🏭 DEBUG: Calling ReviewWorkerAgent constructor...")
+                agent_instance = ReviewWorkerAgent(
+                    agent_id=agent_id,
+                    project_id=self.project_id,
+                    db=self.db,
+                    provider="anthropic",
+                )
+                print("🏭 DEBUG: ReviewWorkerAgent created successfully")
             else:
                 print(f"🏭 DEBUG: Unknown agent type: {agent_type}")
                 raise ValueError(f"Unknown agent type: {agent_type}")
@@ -161,7 +171,7 @@ class AgentPoolManager:
         """
         print(f"\n🔧 DEBUG: get_or_create_agent called with agent_type={agent_type}")
         with self.lock:
-            print(f"🔧 DEBUG: Acquired lock in get_or_create_agent")
+            print("🔧 DEBUG: Acquired lock in get_or_create_agent")
             # Look for idle agent of this type
             print(
                 f"🔧 DEBUG: Looking for idle {agent_type} agents in pool (pool size: {len(self.agent_pool)})"

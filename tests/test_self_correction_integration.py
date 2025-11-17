@@ -10,12 +10,11 @@ Tests the full self-correction workflow:
 
 import pytest
 import json
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
-from codeframe.core.models import TaskStatus, ProjectStatus
+from codeframe.core.models import TaskStatus
 from codeframe.testing.models import TestResult
 
 

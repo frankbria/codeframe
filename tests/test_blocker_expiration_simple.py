@@ -1,8 +1,6 @@
 """Simplified tests for blocker expiration functionality (049-human-in-loop, Phase 8)."""
 
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 

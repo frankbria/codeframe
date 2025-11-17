@@ -3,28 +3,29 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from enum import Enum
+from datetime import datetime, UTC
 import asyncio
 import json
 import logging
 import os
-import sqlite3
 
-from codeframe.core.project import Project
 from codeframe.core.models import (
-    TaskStatus,
-    AgentMaturity,
     ProjectStatus,
     BlockerResolve,
     ContextItemCreateModel,
     ContextItemResponse,
 )
 from codeframe.persistence.database import Database
-from codeframe.ui.models import ProjectCreateRequest, ProjectResponse, SourceType
+from codeframe.ui.models import (
+    ProjectCreateRequest,
+    ProjectResponse,
+    SourceType,
+    ReviewRequest,
+)
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.workspace import WorkspaceManager
 
@@ -105,7 +106,7 @@ else:
     ]
 
 # Log CORS configuration for debugging
-print(f"🔒 CORS Configuration:")
+print("🔒 CORS Configuration:")
 print(f"   CORS_ALLOWED_ORIGINS env: {cors_origins_env!r}")
 print(f"   Parsed allowed origins: {allowed_origins}")
 
@@ -145,6 +146,9 @@ manager = ConnectionManager()
 
 # cf-10.1: Dictionary to track running agents by project_id
 running_agents: Dict[int, LeadAgent] = {}
+
+# Sprint 9: Cache for review reports (task_id -> review report dict)
+review_cache: Dict[int, dict] = {}
 
 
 async def start_agent(
@@ -217,7 +221,7 @@ async def start_agent(
         except Exception:
             pass
 
-    except Exception as e:
+    except Exception:
         # Log error but let it propagate
         raise
 
@@ -275,7 +279,6 @@ async def health_check():
 @app.get("/api/projects")
 async def list_projects():
     """List all CodeFRAME projects."""
-    from fastapi import Request
 
     # Get projects from database
     projects = app.state.db.list_projects()
@@ -838,7 +841,6 @@ async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
             - 409: Blocker already resolved (duplicate resolution)
             - 422: Invalid request (validation error)
     """
-    from datetime import datetime, UTC
 
     # Check if blocker exists
     blocker = app.state.db.get_blocker(blocker_id)
@@ -925,6 +927,215 @@ async def get_blocker_metrics_endpoint(project_id: int):
     # Get metrics
     metrics = app.state.db.get_blocker_metrics(project_id)
     return metrics
+
+
+# Linting endpoints (Sprint 9 Phase 5: T115-T119)
+
+
+@app.get("/api/lint/results", tags=["lint"])
+async def get_lint_results(task_id: int):
+    """Get lint results for a specific task (T116).
+
+    Args:
+        task_id: Task ID to get lint results for
+
+    Returns:
+        List of lint results with error/warning counts and full output
+
+    Example:
+        GET /api/lint/results?task_id=123
+    """
+    results = app.state.db.get_lint_results_for_task(task_id)
+    return {"task_id": task_id, "results": results}
+
+
+@app.get("/api/lint/trend", tags=["lint"])
+async def get_lint_trend(project_id: int, days: int = 7):
+    """Get lint error trend for project over time (T117).
+
+    Args:
+        project_id: Project ID
+        days: Number of days to look back (default: 7)
+
+    Returns:
+        List of {date, linter, error_count, warning_count} dictionaries
+
+    Example:
+        GET /api/lint/trend?project_id=1&days=7
+    """
+    trend = app.state.db.get_lint_trend(project_id, days=days)
+    return {"project_id": project_id, "days": days, "trend": trend}
+
+
+@app.get("/api/lint/config", tags=["lint"])
+async def get_lint_config(project_id: int):
+    """Get current lint configuration for project (T118).
+
+    Args:
+        project_id: Project ID
+
+    Returns:
+        Lint configuration from pyproject.toml and .eslintrc.json
+
+    Example:
+        GET /api/lint/config?project_id=1
+    """
+    from pathlib import Path
+    from codeframe.testing.lint_runner import LintRunner
+
+    # Get project workspace path
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404, detail={"error": "Project not found", "project_id": project_id}
+        )
+
+    workspace_path = Path(project.get("workspace_path", "."))
+
+    # Load config using LintRunner
+    lint_runner = LintRunner(workspace_path)
+
+    return {
+        "project_id": project_id,
+        "config": lint_runner.config,
+        "has_ruff_config": "ruff" in lint_runner.config,
+        "has_eslint_config": "eslint" in lint_runner.config,
+    }
+
+
+@app.post("/api/lint/run", status_code=202, tags=["lint"])
+async def run_lint_manual(request: Request):
+    """Trigger manual lint run for specific files or task (T115).
+
+    Args:
+        request.json():
+            - project_id: int
+            - task_id: int (optional)
+            - files: list[str] (optional, if not using task_id)
+
+    Returns:
+        202 Accepted: Lint results with error/warning counts
+
+    Example:
+        POST /api/lint/run
+        {
+            "project_id": 1,
+            "task_id": 123
+        }
+    """
+    from pathlib import Path
+    from codeframe.testing.lint_runner import LintRunner
+
+    data = await request.json()
+    project_id = data.get("project_id")
+    task_id = data.get("task_id")
+    files = data.get("files", [])
+
+    if not project_id:
+        raise HTTPException(status_code=422, detail="project_id is required")
+
+    # Get project workspace
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404, detail={"error": "Project not found", "project_id": project_id}
+        )
+
+    workspace_path = Path(project.get("workspace_path", "."))
+
+    # Get files to lint
+    if task_id:
+        # Get files from task metadata (placeholder - would need implementation)
+        task = app.state.db.get_task(task_id)
+        if task and "files_modified" in task:
+            files = task["files_modified"]
+        else:
+            raise HTTPException(status_code=422, detail="Task has no files to lint")
+    elif not files:
+        raise HTTPException(status_code=422, detail="Either task_id or files must be provided")
+
+    # Convert to Path objects
+    file_paths = [Path(workspace_path) / f for f in files]
+
+    # Broadcast lint started (T119)
+    from codeframe.ui.websocket_broadcasts import broadcast_to_project
+
+    await broadcast_to_project(
+        project_id,
+        {
+            "type": "lint_started",
+            "task_id": task_id,
+            "file_count": len(file_paths),
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
+
+    # Run lint
+    lint_runner = LintRunner(workspace_path)
+    try:
+        results = await lint_runner.run_lint(file_paths)
+    except Exception as e:
+        # Broadcast lint failed (T119)
+        await broadcast_to_project(
+            project_id,
+            {
+                "type": "lint_failed",
+                "task_id": task_id,
+                "error": str(e),
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Store results if task_id provided
+    if task_id:
+        for result in results:
+            result.task_id = task_id
+            app.state.db.create_lint_result(
+                task_id=result.task_id,
+                linter=result.linter,
+                error_count=result.error_count,
+                warning_count=result.warning_count,
+                files_linted=result.files_linted,
+                output=result.output,
+            )
+
+    # Check quality gate
+    has_errors = lint_runner.has_critical_errors(results)
+
+    # Broadcast lint completed (T119)
+    total_errors = sum(r.error_count for r in results)
+    total_warnings = sum(r.warning_count for r in results)
+
+    await broadcast_to_project(
+        project_id,
+        {
+            "type": "lint_completed",
+            "task_id": task_id,
+            "has_errors": has_errors,
+            "error_count": total_errors,
+            "warning_count": total_warnings,
+            "results": [r.to_dict() for r in results],
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
+
+    # Prepare response
+    return {
+        "status": "completed",
+        "project_id": project_id,
+        "task_id": task_id,
+        "has_errors": has_errors,
+        "results": [
+            {
+                "linter": r.linter,
+                "error_count": r.error_count,
+                "warning_count": r.warning_count,
+                "files_linted": r.files_linted,
+            }
+            for r in results
+        ],
+    }
 
 
 # Context Management endpoints (007-context-management)
@@ -1227,7 +1438,7 @@ async def flash_save_context(agent_id: str, project_id: int, force: bool = False
 
 
 @app.get("/api/agents/{agent_id}/flash-save/checkpoints")
-async def list_checkpoints(agent_id: str, limit: int = 10):
+async def list_flash_save_checkpoints(agent_id: str, limit: int = 10):
     """List checkpoints for an agent (T055).
 
     Returns metadata about flash save checkpoints, sorted by creation time (most recent first).
@@ -1266,6 +1477,239 @@ async def list_checkpoints(agent_id: str, limit: int = 10):
         checkpoint.pop("checkpoint_data", None)
 
     return checkpoints
+
+
+@app.post("/api/agents/{agent_id}/review", tags=["review"])
+async def trigger_review(agent_id: str, request: ReviewRequest):
+    """Trigger code review for a task (T056).
+
+    Sprint 9 - User Story 1: Review Agent API
+
+    Executes code review using ReviewWorkerAgent and returns review report
+    with findings, scores, and recommendations.
+
+    Args:
+        agent_id: Review agent ID to use
+        request: ReviewRequest with task_id, project_id, files_modified
+
+    Returns:
+        200 OK: ReviewReport with status, overall_score, findings
+        500 Internal Server Error: Review execution failed
+
+    Example:
+        POST /api/agents/review-001/review
+        Body: {
+            "task_id": 42,
+            "project_id": 123,
+            "files_modified": ["/path/to/file.py"]
+        }
+
+        Response: {
+            "status": "approved",
+            "overall_score": 85.5,
+            "findings": [
+                {
+                    "category": "complexity",
+                    "severity": "medium",
+                    "message": "Function has complexity of 12",
+                    "file_path": "/path/to/file.py",
+                    "line_number": 42,
+                    "suggestion": "Consider breaking into smaller functions"
+                }
+            ],
+            "reviewer_agent_id": "review-001",
+            "task_id": 42
+        }
+    """
+    from codeframe.agents.review_worker_agent import ReviewWorkerAgent
+
+    try:
+        # Emit review started event (T059)
+        await manager.broadcast(
+            {
+                "type": "review_started",
+                "agent_id": agent_id,
+                "project_id": request.project_id,
+                "task_id": request.task_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
+
+        # Create review agent
+        review_agent = ReviewWorkerAgent(
+            agent_id=agent_id, project_id=request.project_id, db=app.state.db
+        )
+
+        # Get task data from database
+        task_data = app.state.db.get_task(request.task_id)
+        if not task_data:
+            raise HTTPException(status_code=404, detail=f"Task {request.task_id} not found")
+
+        # Build task dict for execute_task
+        task = {
+            "id": request.task_id,
+            "task_number": task_data.get("task_number", "unknown"),
+            "title": task_data.get("title", ""),
+            "description": task_data.get("description", ""),
+            "files_modified": request.files_modified,
+        }
+
+        # Execute review
+        report = await review_agent.execute_task(task)
+
+        if not report:
+            raise HTTPException(status_code=500, detail="Review failed to produce report")
+
+        # Cache the review report for later retrieval (T057, T058)
+        report_dict = report.model_dump()
+        report_dict["project_id"] = request.project_id  # Add project_id for filtering
+        review_cache[request.task_id] = report_dict
+
+        # Emit WebSocket event based on review status (T059)
+        event_type_map = {
+            "approved": "review_approved",
+            "changes_requested": "review_changes_requested",
+            "rejected": "review_rejected",
+        }
+        event_type = event_type_map.get(report.status, "review_completed")
+
+        await manager.broadcast(
+            {
+                "type": event_type,
+                "agent_id": agent_id,
+                "project_id": request.project_id,
+                "task_id": request.task_id,
+                "status": report.status,
+                "overall_score": report.overall_score,
+                "findings_count": len(report.findings),
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
+
+        # Return report as dict
+        return report_dict
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Emit failure event
+        await manager.broadcast(
+            {
+                "type": "review_failed",
+                "agent_id": agent_id,
+                "project_id": request.project_id,
+                "task_id": request.task_id,
+                "error": str(e),
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+        )
+        raise HTTPException(status_code=500, detail=f"Review execution failed: {str(e)}")
+
+
+@app.get("/api/tasks/{task_id}/review-status", tags=["review"])
+async def get_review_status(task_id: int):
+    """Get review status for a task (T057).
+
+    Returns the cached review report if available, otherwise indicates no review exists.
+
+    Args:
+        task_id: Task ID to get review status for
+
+    Returns:
+        200 OK: Review status object
+
+    Example:
+        GET /api/tasks/123/review-status
+        Response: {
+            "has_review": true,
+            "status": "approved",
+            "overall_score": 85.5,
+            "findings_count": 3
+        }
+    """
+    try:
+        # Check if review exists in cache
+        if task_id in review_cache:
+            report = review_cache[task_id]
+            return {
+                "has_review": True,
+                "status": report["status"],
+                "overall_score": report["overall_score"],
+                "findings_count": len(report.get("findings", [])),
+            }
+        else:
+            # No review exists yet
+            return {
+                "has_review": False,
+                "status": None,
+                "overall_score": None,
+                "findings_count": 0,
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get review status: {str(e)}")
+
+
+@app.get("/api/projects/{project_id}/review-stats", tags=["review"])
+async def get_review_stats(project_id: int):
+    """Get aggregated review statistics for a project (T058).
+
+    Returns counts and averages for all reviews in the project.
+
+    Args:
+        project_id: Project ID to get review stats for
+
+    Returns:
+        200 OK: Review statistics object
+
+    Example:
+        GET /api/projects/123/review-stats
+        Response: {
+            "total_reviews": 5,
+            "approved_count": 3,
+            "changes_requested_count": 1,
+            "rejected_count": 1,
+            "average_score": 75.5
+        }
+    """
+    try:
+        # Filter reviews for this project
+        project_reviews = [
+            report for report in review_cache.values() if report.get("project_id") == project_id
+        ]
+
+        # Calculate stats
+        total_reviews = len(project_reviews)
+
+        if total_reviews == 0:
+            return {
+                "total_reviews": 0,
+                "approved_count": 0,
+                "changes_requested_count": 0,
+                "rejected_count": 0,
+                "average_score": 0.0,
+            }
+
+        # Count by status
+        approved_count = sum(1 for r in project_reviews if r.get("status") == "approved")
+        changes_requested_count = sum(
+            1 for r in project_reviews if r.get("status") == "changes_requested"
+        )
+        rejected_count = sum(1 for r in project_reviews if r.get("status") == "rejected")
+
+        # Calculate average score
+        total_score = sum(r.get("overall_score", 0) for r in project_reviews)
+        average_score = round(total_score / total_reviews, 1) if total_reviews > 0 else 0.0
+
+        return {
+            "total_reviews": total_reviews,
+            "approved_count": approved_count,
+            "changes_requested_count": changes_requested_count,
+            "rejected_count": rejected_count,
+            "average_score": average_score,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get review stats: {str(e)}")
 
 
 @app.get("/api/agents/{agent_id}/context/stats")

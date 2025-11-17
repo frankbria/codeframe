@@ -7,11 +7,9 @@ Tests written FIRST before implementation.
 import pytest
 import tempfile
 from pathlib import Path
-import subprocess
 
 from codeframe.deployment.deployer import Deployer
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 
 
 @pytest.fixture

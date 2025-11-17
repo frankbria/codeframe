@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 import typer
 from rich.console import Console
-from rich.table import Table
 
 from codeframe.core.project import Project
 

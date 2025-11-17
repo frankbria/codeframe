@@ -7,9 +7,7 @@ Tests follow RED-GREEN-REFACTOR TDD cycle.
 """
 
 import pytest
-from datetime import datetime, UTC, timezone
-from pathlib import Path
-from unittest.mock import Mock, patch
+from datetime import datetime, UTC
 from fastapi.testclient import TestClient
 
 from codeframe.ui.server import app

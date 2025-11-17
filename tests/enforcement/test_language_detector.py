@@ -3,12 +3,9 @@ Tests for LanguageDetector - multi-language detection system.
 """
 
 import json
-import tempfile
-from pathlib import Path
 
-import pytest
 
-from codeframe.enforcement import LanguageDetector, LanguageInfo
+from codeframe.enforcement import LanguageDetector
 
 
 class TestLanguageDetector:

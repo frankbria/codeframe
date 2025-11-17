@@ -12,9 +12,7 @@ Following strict TDD methodology (RED-GREEN-REFACTOR).
 """
 
 import pytest
-import asyncio
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 import time
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
@@ -22,7 +20,6 @@ from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
 from codeframe.agents.test_worker_agent import TestWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
-from codeframe.core.models import BlockerStatus
 
 
 class TestBackendWorkerAgentBlockerResolution:

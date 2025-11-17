@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from codeframe.indexing.models import Symbol, SymbolType
+from codeframe.indexing.models import SymbolType
 from codeframe.indexing.parsers.python_parser import PythonParser
 
 

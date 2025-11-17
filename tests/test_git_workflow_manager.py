@@ -3,11 +3,9 @@
 Following TDD methodology: RED → GREEN → REFACTOR
 """
 
-import os
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 import git
 
 from codeframe.git.workflow_manager import GitWorkflowManager
@@ -141,9 +139,11 @@ class TestCreateFeatureBranch:
     def test_create_feature_branch_stores_in_database(self, workflow_manager, test_db):
         """Test that branch creation is recorded in database."""
         # First create an issue in database
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -172,9 +172,11 @@ class TestMergeToMain:
         repo_path, repo = temp_git_repo
 
         # Setup: create issue and tasks in database
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -240,9 +242,11 @@ class TestMergeToMain:
         repo_path, repo = temp_git_repo
 
         # Setup: create issue with incomplete tasks
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -284,9 +288,11 @@ class TestMergeToMain:
         repo_path, repo = temp_git_repo
 
         # Setup: create issue with completed tasks
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -338,9 +344,11 @@ class TestMergeToMain:
         repo_path, repo = temp_git_repo
 
         # Setup complete issue
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -388,9 +396,11 @@ class TestIsIssueComplete:
 
     def test_is_issue_complete_all_tasks_done(self, workflow_manager, test_db):
         """Test issue is complete when all tasks are completed."""
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -420,9 +430,11 @@ class TestIsIssueComplete:
 
     def test_is_issue_complete_with_pending_tasks(self, workflow_manager, test_db):
         """Test issue is not complete with pending tasks."""
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -463,9 +475,11 @@ class TestIsIssueComplete:
 
     def test_is_issue_complete_no_tasks(self, workflow_manager, test_db):
         """Test issue with no tasks is considered incomplete."""
-        from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for git workflow tests"
+        )
         issue = Issue(
             project_id=project_id,
             issue_number="2.1",
@@ -573,3 +587,273 @@ class TestEdgeCases:
         # Should sanitize and create valid branch
         branch_name = workflow_manager.create_feature_branch("2.1-beta", "Test Feature")
         assert branch_name == "issue-2.1-beta-test-feature"
+
+
+class TestConventionalCommitMessages:
+    """Test conventional commit message formatting (T069)."""
+
+    def test_commit_message_format_feat(self, workflow_manager, temp_git_repo):
+        """
+        T069: Test conventional commit format for feature tasks.
+
+        This test should FAIL initially because _generate_commit_message needs updates.
+        """
+        task = {
+            "id": 1,
+            "project_id": 1,
+            "task_number": "cf-1.5.3",
+            "title": "Add user authentication",
+            "description": "Implement JWT-based authentication for API endpoints",
+        }
+
+        message = workflow_manager._generate_commit_message(task, ["auth.py", "jwt_handler.py"])
+
+        # Assert conventional commit format: <type>(<scope>): <subject>
+        assert message.startswith("feat(cf-1.5.3): Add user authentication")
+        assert "Implement JWT-based authentication" in message
+        assert "Modified files:" in message
+        assert "- auth.py" in message
+        assert "- jwt_handler.py" in message
+
+    def test_commit_message_format_fix(self, workflow_manager, temp_git_repo):
+        """Test conventional commit format for bug fix tasks."""
+        task = {
+            "id": 2,
+            "project_id": 1,
+            "task_number": "cf-2.1.4",
+            "title": "Fix database connection leak",
+            "description": "Close connections properly after queries",
+        }
+
+        message = workflow_manager._generate_commit_message(task, ["database.py"])
+
+        assert message.startswith("fix(cf-2.1.4): Fix database connection leak")
+        assert "Close connections properly" in message
+
+    def test_commit_message_format_test(self, workflow_manager, temp_git_repo):
+        """Test conventional commit format for test tasks."""
+        task = {
+            "id": 3,
+            "project_id": 1,
+            "task_number": "cf-3.2.1",
+            "title": "Add tests for authentication module",
+            "description": "Comprehensive test coverage for auth",
+        }
+
+        message = workflow_manager._generate_commit_message(task, ["tests/test_auth.py"])
+
+        assert message.startswith("test(cf-3.2.1): Add tests for authentication module")
+
+    def test_commit_message_format_refactor(self, workflow_manager, temp_git_repo):
+        """Test conventional commit format for refactoring tasks."""
+        task = {
+            "id": 4,
+            "project_id": 1,
+            "task_number": "cf-4.1.2",
+            "title": "Refactor user service into separate modules",
+            "description": "Split monolithic user service",
+        }
+
+        message = workflow_manager._generate_commit_message(task, ["user_service.py"])
+
+        assert message.startswith("refactor(cf-4.1.2): Refactor user service into separate modules")
+
+
+class TestCommitErrorHandling:
+    """Test error handling in commit operations (T072-T073)."""
+
+    def test_commit_with_dirty_working_tree_raises_error(self, workflow_manager, temp_git_repo):
+        """
+        T072: Test that attempting to commit with untracked files raises ValueError.
+
+        This test should FAIL initially because error handling needs to be added.
+        """
+        repo_path, repo = temp_git_repo
+
+        # Create untracked file
+        (repo_path / "untracked.py").write_text("# untracked")
+
+        task = {
+            "id": 5,
+            "project_id": 1,
+            "task_number": "cf-5.1.1",
+            "title": "Test dirty tree",
+            "description": "Should fail",
+        }
+
+        # Attempting to commit without staging should raise ValueError
+        # Note: The method should check for dirty state BEFORE staging files
+        # This is a design choice to ensure commits are intentional
+        with pytest.raises(ValueError, match="Working tree is dirty"):
+            # Try to commit a file that doesn't exist in staging
+            workflow_manager.commit_task_changes(
+                task=task, files_modified=["nonexistent.py"], agent_id="test-agent"
+            )
+
+    def test_commit_failure_logs_warning_non_blocking(self, workflow_manager, temp_git_repo):
+        """
+        T073: Test that commit failures are gracefully handled (log warning, don't raise).
+
+        This is tested at the worker agent level, not at GitWorkflowManager level.
+        GitWorkflowManager should raise exceptions, worker agents should catch them.
+        """
+        # This test is actually covered in test_backend_worker_auto_commit.py
+        # test_backend_worker_graceful_commit_failure()
+        pass
+
+
+class TestDatabaseSHARecording:
+    """Test commit SHA recording in database (T070-T071)."""
+
+    def test_update_task_commit_sha(self, test_db):
+        """
+        T070: Test that update_task_commit_sha() stores full SHA correctly.
+
+        This test should PASS as the database method already exists.
+        """
+        from codeframe.core.models import TaskStatus
+
+        # Create project
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for SHA recording"
+        )
+
+        # Create issue
+        issue_id = test_db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.5",
+                "title": "Test Issue",
+                "status": TaskStatus.IN_PROGRESS.value,  # Convert enum to string
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
+
+        # Create task
+        task_id = test_db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="1.5.3",
+            parent_issue_number="1.5",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.COMPLETED,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False,
+        )
+
+        # Update with commit SHA
+        full_sha = "abc123def456789012345678901234567890abcd"
+        test_db.update_task_commit_sha(task_id, full_sha)
+
+        # Verify it was stored
+        cursor = test_db.conn.cursor()
+        cursor.execute("SELECT commit_sha FROM tasks WHERE id = ?", (task_id,))
+        result = cursor.fetchone()
+
+        assert result is not None
+        assert result["commit_sha"] == full_sha
+
+    def test_get_task_by_commit_full_sha(self, test_db):
+        """
+        T071: Test that get_task_by_commit() retrieves task by full SHA.
+
+        This test should PASS as the database method already exists.
+        """
+        from codeframe.core.models import TaskStatus
+
+        # Create project
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for SHA lookup"
+        )
+
+        # Create issue
+        issue_id = test_db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "2.3",
+                "title": "Test Issue",
+                "status": TaskStatus.IN_PROGRESS.value,
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
+
+        # Create task
+        task_id = test_db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="2.3.1",
+            parent_issue_number="2.3",
+            title="Implement feature X",
+            description="Test",
+            status=TaskStatus.COMPLETED,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False,
+        )
+
+        # Store commit SHA
+        full_sha = "def456abc789012345678901234567890abcdef1"
+        test_db.update_task_commit_sha(task_id, full_sha)
+
+        # Retrieve by full SHA
+        task = test_db.get_task_by_commit(full_sha)
+
+        assert task is not None
+        assert task["id"] == task_id
+        assert task["task_number"] == "2.3.1"
+        assert task["commit_sha"] == full_sha
+
+    def test_get_task_by_commit_short_sha(self, test_db):
+        """
+        T071: Test that get_task_by_commit() retrieves task by short SHA (7 chars).
+
+        This test should PASS as the database method supports short SHA.
+        """
+        from codeframe.core.models import TaskStatus
+
+        # Create project
+        project_id = test_db.create_project(
+            name="test_project", description="Test project for short SHA lookup"
+        )
+
+        # Create issue
+        issue_id = test_db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "3.1",
+                "title": "Test Issue",
+                "status": TaskStatus.IN_PROGRESS.value,
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
+
+        # Create task
+        task_id = test_db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="3.1.2",
+            parent_issue_number="3.1",
+            title="Fix bug Y",
+            description="Test",
+            status=TaskStatus.COMPLETED,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=False,
+        )
+
+        # Store full commit SHA
+        full_sha = "789abc012345678901234567890abcdef123456"
+        test_db.update_task_commit_sha(task_id, full_sha)
+
+        # Retrieve by short SHA (first 7 characters)
+        short_sha = full_sha[:7]
+        task = test_db.get_task_by_commit(short_sha)
+
+        assert task is not None
+        assert task["id"] == task_id
+        assert task["commit_sha"] == full_sha
