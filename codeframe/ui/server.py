@@ -3,21 +3,16 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from enum import Enum
 import asyncio
 import json
 import logging
 import os
-import sqlite3
 
-from codeframe.core.project import Project
 from codeframe.core.models import (
-    TaskStatus,
-    AgentMaturity,
     ProjectStatus,
     BlockerResolve,
     ContextItemCreateModel,
@@ -73,7 +68,11 @@ async def lifespan(app: FastAPI):
     app.state.db.initialize()
 
     # Initialize workspace manager
-    workspace_root = Path.cwd() / ".codeframe" / "workspaces"
+    # Allow WORKSPACE_ROOT override for testing
+    workspace_root_str = os.environ.get(
+        "WORKSPACE_ROOT", str(Path.cwd() / ".codeframe" / "workspaces")
+    )
+    workspace_root = Path(workspace_root_str)
     app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     yield
@@ -105,7 +104,7 @@ else:
     ]
 
 # Log CORS configuration for debugging
-print(f"🔒 CORS Configuration:")
+print("🔒 CORS Configuration:")
 print(f"   CORS_ALLOWED_ORIGINS env: {cors_origins_env!r}")
 print(f"   Parsed allowed origins: {allowed_origins}")
 
@@ -217,7 +216,7 @@ async def start_agent(
         except Exception:
             pass
 
-    except Exception as e:
+    except Exception:
         # Log error but let it propagate
         raise
 
@@ -275,7 +274,6 @@ async def health_check():
 @app.get("/api/projects")
 async def list_projects():
     """List all CodeFRAME projects."""
-    from fastapi import Request
 
     # Get projects from database
     projects = app.state.db.list_projects()
@@ -838,7 +836,6 @@ async def resolve_blocker_endpoint(blocker_id: int, request: BlockerResolve):
             - 409: Blocker already resolved (duplicate resolution)
             - 422: Invalid request (validation error)
     """
-    from datetime import datetime, UTC
 
     # Check if blocker exists
     blocker = app.state.db.get_blocker(blocker_id)
