@@ -8,11 +8,10 @@ T037: Add ASYNC blocker handling to LeadAgent (allow independent work to continu
 """
 
 import pytest
-import asyncio
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, Task, BlockerType, BlockerStatus, TaskStatus, Issue
+from codeframe.core.models import BlockerType, TaskStatus, Issue
 
 
 @pytest.mark.unit
@@ -417,23 +416,27 @@ class TestLeadAgentBlockerHandlingIntegration:
         project_id = db.create_project("test-project", "Test project description")
 
         # Create issues first
-        issue_1_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "1.0",
-            "title": "Feature 1",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1,
-        })
+        issue_1_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "1.0",
+                "title": "Feature 1",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
-        issue_2_id = db.create_issue({
-            "project_id": project_id,
-            "issue_number": "2.0",
-            "title": "Feature 2",
-            "status": "pending",
-            "priority": 0,
-            "workflow_step": 1,
-        })
+        issue_2_id = db.create_issue(
+            {
+                "project_id": project_id,
+                "issue_number": "2.0",
+                "title": "Feature 2",
+                "status": "pending",
+                "priority": 0,
+                "workflow_step": 1,
+            }
+        )
 
         # Create task chain: A -> B (dependent), and C (independent)
         task_a_id = db.create_task_with_issue(
@@ -461,8 +464,10 @@ class TestLeadAgentBlockerHandlingIntegration:
             workflow_step=1,
             can_parallelize=True,
         )
-        # Set dependency
-        db.conn.execute("UPDATE tasks SET depends_on = ? WHERE id = ?", ("1.1", task_b_id))
+        # Set dependency (use JSON array format with task ID)
+        db.conn.execute(
+            "UPDATE tasks SET depends_on = ? WHERE id = ?", (f"[{task_a_id}]", task_b_id)
+        )
         db.conn.commit()
 
         task_c_id = db.create_task_with_issue(
@@ -513,7 +518,7 @@ class TestLeadAgentBlockerHandlingIntegration:
 
             # Execute (should handle blocker gracefully)
             try:
-                result = await agent.start_multi_agent_execution(timeout=10)
+                _result = await agent.start_multi_agent_execution(timeout=10)
             except Exception:
                 pass  # Expected - blocker will pause execution
 
