@@ -181,7 +181,7 @@ class AnswerCapture:
                                 if (
                                     cleaned
                                     and len(cleaned) > 2
-                                    and not cleaned.lower() in ["system", "app"]
+                                    and cleaned.lower() not in ["system", "app"]
                                 ):
                                     users.append(cleaned)
                         break

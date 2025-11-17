@@ -405,6 +405,15 @@ class Database:
             from codeframe.persistence.migrations.migration_003_update_blockers_schema import (
                 migration as migration_003,
             )
+            from codeframe.persistence.migrations.migration_004_add_context_checkpoints import (
+                migration as migration_004,
+            )
+            from codeframe.persistence.migrations.migration_005_add_context_indexes import (
+                migration as migration_005,
+            )
+            from codeframe.persistence.migrations.migration_006_mvp_completion import (
+                migration as migration_006,
+            )
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -417,6 +426,9 @@ class Database:
             runner.register(migration_001)
             runner.register(migration_002)
             runner.register(migration_003)
+            runner.register(migration_004)
+            runner.register(migration_005)
+            runner.register(migration_006)
 
             # Apply all pending migrations
             runner.apply_all()
@@ -2499,5 +2511,128 @@ class Database:
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM context_checkpoints WHERE id = ?", (checkpoint_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    # Sprint 9: MVP Completion Database Methods
+
+    def create_lint_result(
+        self,
+        task_id: int,
+        linter: str,
+        error_count: int,
+        warning_count: int,
+        files_linted: int,
+        output: str,
+    ) -> int:
+        """Store lint execution result.
+
+        Args:
+            task_id: Task ID
+            linter: Linter tool name ('ruff', 'eslint', 'other')
+            error_count: Number of errors
+            warning_count: Number of warnings
+            files_linted: Number of files checked
+            output: Full lint output (JSON or text)
+
+        Returns:
+            Lint result ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO lint_results (task_id, linter, error_count, warning_count, files_linted, output)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (task_id, linter, error_count, warning_count, files_linted, output),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_lint_results_for_task(self, task_id: int) -> list[dict]:
+        """Get all lint results for a task.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            List of lint result dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, task_id, linter, error_count, warning_count, files_linted, output, created_at
+            FROM lint_results
+            WHERE task_id = ?
+            ORDER BY created_at DESC
+            """,
+            (task_id,),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_lint_trend(self, project_id: int, days: int = 7) -> list[dict]:
+        """Get lint error trend for project over time.
+
+        Args:
+            project_id: Project ID
+            days: Number of days to look back
+
+        Returns:
+            List of {date, linter, error_count, warning_count} dictionaries
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                DATE(lr.created_at) as date,
+                lr.linter,
+                SUM(lr.error_count) as error_count,
+                SUM(lr.warning_count) as warning_count
+            FROM lint_results lr
+            JOIN tasks t ON lr.task_id = t.id
+            WHERE t.project_id = ?
+              AND lr.created_at >= datetime('now', '-' || ? || ' days')
+            GROUP BY DATE(lr.created_at), lr.linter
+            ORDER BY date DESC
+            """,
+            (project_id, days),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def update_task_commit_sha(self, task_id: int, commit_sha: str) -> None:
+        """Update task with git commit SHA.
+
+        Args:
+            task_id: Task ID
+            commit_sha: Git commit hash
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE tasks SET commit_sha = ? WHERE id = ?
+            """,
+            (commit_sha, task_id),
+        )
+        self.conn.commit()
+
+    def get_task_by_commit(self, commit_sha: str) -> Optional[dict]:
+        """Find task by git commit SHA.
+
+        Args:
+            commit_sha: Git commit hash (full or short)
+
+        Returns:
+            Task dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        # Support both full (40 char) and short (7 char) hashes
+        cursor.execute(
+            """
+            SELECT * FROM tasks
+            WHERE commit_sha = ? OR commit_sha LIKE ?
+            LIMIT 1
+            """,
+            (commit_sha, f"{commit_sha}%"),
+        )
         row = cursor.fetchone()
         return dict(row) if row else None

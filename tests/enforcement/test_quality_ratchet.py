@@ -17,7 +17,6 @@ Test Coverage:
 
 import importlib.util
 import json
-import tempfile
 from pathlib import Path
 
 import pytest

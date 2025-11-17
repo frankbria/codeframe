@@ -11,7 +11,6 @@ Part of 007-context-management Phase 5 (US3 - Automatic Tier Assignment).
 import pytest
 import tempfile
 from pathlib import Path
-from datetime import datetime, timedelta, UTC
 
 from codeframe.persistence.database import Database
 from codeframe.core.models import ContextItemType

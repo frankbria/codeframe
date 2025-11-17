@@ -8,11 +8,10 @@ T037: Add ASYNC blocker handling to LeadAgent (allow independent work to continu
 """
 
 import pytest
-import asyncio
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, Task, BlockerType, BlockerStatus, TaskStatus, Issue
+from codeframe.core.models import BlockerType, TaskStatus, Issue
 
 
 @pytest.mark.unit

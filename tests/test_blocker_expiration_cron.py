@@ -1,6 +1,5 @@
 """Tests for blocker expiration cron job functionality (049-human-in-loop, Phase 8)."""
 
-import asyncio
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path

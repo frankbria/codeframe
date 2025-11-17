@@ -5,8 +5,6 @@ Tests written FIRST following RED-GREEN-REFACTOR methodology.
 """
 
 import pytest
-from pathlib import Path
-from datetime import datetime
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus
 

@@ -20,17 +20,13 @@ Definition of Done:
 """
 
 import pytest
-import asyncio
 import os
-from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
+from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
-from pathlib import Path
 from importlib import reload
 
-from codeframe.ui.server import app, manager
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus
-from codeframe.agents.lead_agent import LeadAgent
 
 
 @pytest.fixture
@@ -282,7 +278,6 @@ class TestWebSocketMessageProtocol:
         mock_manager.broadcast = AsyncMock()
 
         # ACT
-        import asyncio
 
         message = {"type": "status_update", "project_id": 1, "status": "running"}
         asyncio.run(mock_manager.broadcast(message))
@@ -302,7 +297,6 @@ class TestWebSocketMessageProtocol:
         mock_manager.broadcast = AsyncMock()
 
         # ACT
-        import asyncio
 
         message = {
             "type": "chat_message",
@@ -328,7 +322,6 @@ class TestWebSocketMessageProtocol:
         mock_manager.broadcast = AsyncMock()
 
         # ACT
-        import asyncio
 
         message = {"type": "agent_started", "project_id": 1, "agent_type": "lead"}
         asyncio.run(mock_manager.broadcast(message))

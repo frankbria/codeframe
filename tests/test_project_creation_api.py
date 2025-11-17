@@ -11,7 +11,6 @@ RED → GREEN → REFACTOR methodology:
 
 import pytest
 from fastapi.testclient import TestClient
-from codeframe.core.models import ProjectStatus
 
 
 @pytest.mark.unit

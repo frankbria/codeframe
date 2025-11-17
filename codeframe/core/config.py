@@ -1,10 +1,8 @@
 """Configuration management for CodeFRAME."""
 
 import json
-import os
-import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv

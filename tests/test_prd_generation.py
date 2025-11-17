@@ -1,10 +1,8 @@
 """Tests for PRD generation functionality (cf-16.1)."""
 
 import pytest
-from datetime import datetime, UTC
 from pathlib import Path
-from unittest.mock import Mock, patch, mock_open
-import json
+from unittest.mock import patch, mock_open
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

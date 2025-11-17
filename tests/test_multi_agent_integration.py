@@ -16,11 +16,10 @@ import pytest
 import asyncio
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import Task, ProjectStatus, TaskStatus
+from codeframe.core.models import Task, TaskStatus
 
 
 # Helper function to create Task objects easily

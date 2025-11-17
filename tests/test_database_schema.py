@@ -1,7 +1,6 @@
 """Tests for database schema changes (project refactoring)."""
 
 import pytest
-from pathlib import Path
 from codeframe.persistence.database import Database
 
 

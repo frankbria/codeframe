@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from datetime import datetime, timedelta
 from codeframe.persistence.database import Database
-from codeframe.core.models import BlockerType, BlockerStatus, TaskStatus
+from codeframe.core.models import BlockerType, TaskStatus
 
 
 @pytest_asyncio.fixture
@@ -181,7 +181,7 @@ class TestCommonPatterns:
         # Agent gets answer
         blocker = db.get_blocker(blocker_id)
         assert blocker["answer"].startswith("sk-ant-api03-")
-        print(f"✓ SYNC blocker pattern works: API key configured")
+        print("✓ SYNC blocker pattern works: API key configured")
 
     def test_pattern_2_async_blocker(self, db, sample_task):
         """Pattern 2: ASYNC blocker (clarification)."""
@@ -205,7 +205,7 @@ class TestCommonPatterns:
         blocker = db.get_blocker(blocker_id)
         assert blocker["status"] == "RESOLVED"
         assert "#00A8A8" in blocker["answer"]
-        print(f"✓ ASYNC blocker pattern works: Preference applied")
+        print("✓ ASYNC blocker pattern works: Preference applied")
 
     def test_pattern_3_multiple_blockers(self, db, sample_project):
         """Pattern 3: Multiple blockers workflow."""
@@ -291,7 +291,7 @@ class TestCommonPatterns:
         blocker_b_resolved = db.get_blocker(blocker_b)
         assert blocker_a_resolved["status"] == "RESOLVED"
         assert blocker_b_resolved["status"] == "RESOLVED"
-        print(f"✓ Multiple blockers pattern works: 2 blockers resolved")
+        print("✓ Multiple blockers pattern works: 2 blockers resolved")
 
 
 class TestTroubleshooting:
@@ -346,7 +346,7 @@ class TestTroubleshooting:
         # Query project 1 (correct project)
         response = db.list_blockers(project_1)
         assert response["total"] == 1  # Blocker visible
-        print(f"✓ Troubleshooting: Project filter works correctly")
+        print("✓ Troubleshooting: Project filter works correctly")
 
     def test_duplicate_resolutions(self, db, sample_task):
         """Troubleshooting: Duplicate resolutions (409 conflict)."""
@@ -369,7 +369,7 @@ class TestTroubleshooting:
         # Verify first answer persists
         blocker = db.get_blocker(blocker_id)
         assert blocker["answer"] == "First answer"
-        print(f"✓ Troubleshooting: Duplicate resolution prevented")
+        print("✓ Troubleshooting: Duplicate resolution prevented")
 
     def test_stale_blockers_expiration(self, db, sample_task):
         """Troubleshooting: Stale blockers (>24h) expire."""
@@ -398,7 +398,7 @@ class TestTroubleshooting:
         # Verify status changed
         blocker = db.get_blocker(blocker_id)
         assert blocker["status"] == "EXPIRED"
-        print(f"✓ Troubleshooting: Stale blocker expired after 24h")
+        print("✓ Troubleshooting: Stale blocker expired after 24h")
 
 
 class TestAdvancedUsage:
@@ -434,7 +434,7 @@ class TestAdvancedUsage:
         assert metrics["sync_count"] == 1
         assert metrics["async_count"] == 1
         assert metrics["avg_resolution_time_seconds"] is not None
-        print(f"✓ Advanced: Blocker metrics available")
+        print("✓ Advanced: Blocker metrics available")
 
     def test_rate_limiting(self, db, sample_task):
         """Advanced: Rate limiting (10 blockers/minute per agent)."""
@@ -458,7 +458,7 @@ class TestAdvancedUsage:
                 question="Question 11",
             )
 
-        print(f"✓ Advanced: Rate limiting enforced (10/minute)")
+        print("✓ Advanced: Rate limiting enforced (10/minute)")
 
 
 if __name__ == "__main__":

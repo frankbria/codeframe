@@ -64,7 +64,7 @@ def verify_old_schema_behavior():
             print("  ❌ FAIL: Old schema allowed custom type (unexpected!)")
             return False
         except sqlite3.IntegrityError as e:
-            print(f"  ✅ PASS: Old schema correctly rejected custom type")
+            print("  ✅ PASS: Old schema correctly rejected custom type")
             print(f"         Error: {e}")
 
         conn.close()
@@ -265,7 +265,7 @@ def verify_migration_execution():
         # Final verification
         cursor = conn.execute("SELECT id, type FROM agents ORDER BY id")
         all_agents = cursor.fetchall()
-        print(f"\n  ✅ PASS: Migration successful!")
+        print("\n  ✅ PASS: Migration successful!")
         print(f"\n  Final agent roster ({len(all_agents)} agents):")
         for agent_id, agent_type in all_agents:
             print(f"    - {agent_id:25} type: {agent_type}")

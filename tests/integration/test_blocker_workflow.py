@@ -4,14 +4,10 @@ Integration tests for complete blocker workflow.
 Tests T055-T057 from Phase 9: Testing & Validation
 """
 
-import pytest
 import pytest_asyncio
-import asyncio
 from datetime import datetime
 from codeframe.persistence.database import Database
 from codeframe.core.models import BlockerType, BlockerStatus, TaskStatus
-from codeframe.agents.backend_worker_agent import BackendWorkerAgent
-from codeframe.agents.lead_agent import LeadAgent
 
 
 @pytest_asyncio.fixture

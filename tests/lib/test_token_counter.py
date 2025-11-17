@@ -8,7 +8,6 @@ Tests cover:
 - Error handling and edge cases
 """
 
-import pytest
 from codeframe.lib.token_counter import TokenCounter
 
 

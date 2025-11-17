@@ -17,7 +17,7 @@ from codeframe.agents.dependency_resolver import DependencyResolver
 from codeframe.agents.simple_assignment import SimpleAgentAssigner
 
 if TYPE_CHECKING:
-    from codeframe.core.project import Project
+    pass
 
 
 logger = logging.getLogger(__name__)
@@ -1082,7 +1082,7 @@ Generate the PRD in markdown format with clear sections and professional languag
         print(f"🔄 DEBUG: Converted {len(tasks)} Task objects")
 
         logger.info(f"🚀 Multi-agent execution started: {len(tasks)} tasks")
-        print(f"🔄 DEBUG: Logged execution start")
+        print("🔄 DEBUG: Logged execution start")
 
         # Build dependency graph
         print("🔄 DEBUG: Building dependency graph...")
@@ -1116,7 +1116,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                     break
 
                 # Get ready tasks (dependencies satisfied, not completed/running)
-                print(f"🔄 DEBUG: Getting ready tasks from dependency_resolver...")
+                print("🔄 DEBUG: Getting ready tasks from dependency_resolver...")
                 ready_task_ids = self.dependency_resolver.get_ready_tasks(exclude_completed=True)
                 print(f"🔄 DEBUG: Got {len(ready_task_ids)} ready task IDs: {ready_task_ids}")
 
@@ -1128,7 +1128,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 print(f"🔄 DEBUG: After filtering: {len(ready_task_ids)} ready tasks")
 
                 # Log loop state
-                print(f"🔄 DEBUG: Calculating loop state...")
+                print("🔄 DEBUG: Calculating loop state...")
                 completed_count = len(
                     [t for t in tasks if t.id in self.dependency_resolver.completed_tasks]
                 )
@@ -1173,13 +1173,13 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 # Wait for at least one task to complete
                 if running_tasks:
-                    print(f"🔄 DEBUG: About to wait for tasks...")
+                    print("🔄 DEBUG: About to wait for tasks...")
                     done, _ = await asyncio.wait(
                         running_tasks.values(), return_when=asyncio.FIRST_COMPLETED
                     )
 
                     # Process completed tasks
-                    print(f"🔄 DEBUG: Processing completed tasks...")
+                    print("🔄 DEBUG: Processing completed tasks...")
                     for completed_future in done:
                         # Find which task this was
                         task_id = next(
@@ -1209,7 +1209,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                                     print(
                                         f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
                                     )
-                            except Exception as e:
+                            except Exception:
                                 logger.exception(f"Error processing task {task_id}")
                                 retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                 total_retries += 1
@@ -1225,7 +1225,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                             # Small delay before checking again
                             await asyncio.sleep(0.1)
 
-        except Exception as e:
+        except Exception:
             logger.exception("Critical error in multi-agent execution")
             raise
 
@@ -1315,7 +1315,44 @@ Generate the PRD in markdown format with clear sections and professional languag
             # Worker agents now use async execute_task - no threading needed
             await agent_instance.execute_task(task_dict)
 
-            # Task succeeded
+            # Step 11: Code Review (Sprint 9)
+            # Review the code changes before marking task as completed
+            logger.info(f"Initiating code review for task {task.id}")
+            try:
+                # Get or create review agent
+                review_agent_id = self.agent_pool_manager.get_or_create_agent("review")
+                review_agent = self.agent_pool_manager.get_agent_instance(review_agent_id)
+
+                # Execute review
+                review_report = await review_agent.execute_task(task_dict)
+
+                logger.info(
+                    f"Review completed: status={review_report.status}, "
+                    f"score={review_report.overall_score:.1f}"
+                )
+
+                # If review rejected or needs changes, blocker already created by ReviewWorkerAgent
+                # Don't mark task as completed yet - wait for blocker resolution
+                if review_report.status in ["rejected", "changes_requested"]:
+                    logger.warning(
+                        f"Task {task.id} review failed: {review_report.status}. "
+                        f"Blocker created, task remains in_progress."
+                    )
+                    # Mark review agent idle
+                    self.agent_pool_manager.mark_agent_idle(review_agent_id)
+                    # Mark worker agent idle
+                    self.agent_pool_manager.mark_agent_idle(agent_id)
+                    return False  # Task not completed due to review failure
+
+                # Mark review agent idle
+                self.agent_pool_manager.mark_agent_idle(review_agent_id)
+
+            except Exception as e:
+                logger.error(f"Code review failed for task {task.id}: {e}")
+                # Continue with task completion even if review fails (graceful degradation)
+                # In production, you might want to create an ASYNC blocker here
+
+            # Task succeeded and passed review
             self.db.update_task(task.id, {"status": "completed"})
             logger.info(f"Task {task.id} completed successfully by agent {agent_id}")
 
@@ -1324,7 +1361,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Task {task.id} execution failed")
 
             # Update task status
@@ -1392,7 +1429,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 if not can_assign_dependency:
                     logger.debug(
                         f"Task {task_id} blocked: depends on task {dependency_task['id']} "
-                        f"which has SYNC blocker"
+                        f"which has pending SYNC blocker"
                     )
                     return False
 
@@ -1404,7 +1441,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                     ):
                         logger.debug(
                             f"Task {task_id} blocked: dependency task {dependency_task['id']} "
-                            f"has SYNC blocker {blocker.get('id')}"
+                            f"has pending SYNC blocker {blocker.get('id')}"
                         )
                         return False
 
@@ -1445,7 +1482,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         # Deadlock detection: if all remaining tasks are blocked, we're stuck
         if incomplete and len(blocked) == len(incomplete):
-            print(f"🔍 DEBUG: DEADLOCK DETECTED!")
+            print("🔍 DEBUG: DEADLOCK DETECTED!")
             logger.error(
                 f"❌ DEADLOCK DETECTED: All {len(incomplete)} remaining tasks are blocked: {blocked}"
             )
