@@ -28,37 +28,46 @@ class TestGlobalConfig:
         assert "http://localhost:3000" in origins
         assert "http://localhost:5173" in origins
 
-    def test_log_level_validation(self):
+    def test_log_level_validation(self, monkeypatch):
         """Test log level validation."""
-        # Valid log level
-        config = GlobalConfig(log_level="DEBUG")
+        # Valid log level (use env var as that's how BaseSettings works)
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        config = GlobalConfig(_env_file=None)
         assert config.log_level == "DEBUG"
 
         # Case insensitive
-        config = GlobalConfig(log_level="info")
+        monkeypatch.setenv("LOG_LEVEL", "info")
+        config = GlobalConfig(_env_file=None)
         assert config.log_level == "INFO"
 
         # Invalid log level should raise ValueError
+        monkeypatch.setenv("LOG_LEVEL", "INVALID")
         with pytest.raises(ValueError, match="LOG_LEVEL must be one of"):
-            GlobalConfig(log_level="INVALID")
+            GlobalConfig(_env_file=None)
 
-    def test_port_validation(self):
+    def test_port_validation(self, monkeypatch):
         """Test port validation."""
-        # Valid port
-        config = GlobalConfig(api_port=3000)
+        # Valid port (use env var as that's how BaseSettings works)
+        monkeypatch.setenv("API_PORT", "3000")
+        config = GlobalConfig(_env_file=None)
         assert config.api_port == 3000
 
         # Invalid port (too low)
+        monkeypatch.setenv("API_PORT", "0")
         with pytest.raises(ValueError, match="API_PORT must be between"):
-            GlobalConfig(api_port=0)
+            GlobalConfig(_env_file=None)
 
         # Invalid port (too high)
+        monkeypatch.setenv("API_PORT", "99999")
         with pytest.raises(ValueError, match="API_PORT must be between"):
-            GlobalConfig(api_port=99999)
+            GlobalConfig(_env_file=None)
 
-    def test_sprint_1_validation_success(self):
+    def test_sprint_1_validation_success(self, monkeypatch):
         """Test Sprint 1 validation with API key."""
-        config = GlobalConfig(anthropic_api_key="sk-ant-test-key")
+        # Set API key via env var (that's how BaseSettings works)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key")
+
+        config = GlobalConfig(_env_file=None)
         # Should not raise
         config.validate_required_for_sprint(sprint=1)
 
@@ -68,12 +77,16 @@ class TestGlobalConfig:
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY is required"):
             config.validate_required_for_sprint(sprint=1)
 
-    def test_ensure_directories(self, tmp_path):
+    def test_ensure_directories(self, tmp_path, monkeypatch):
         """Test that ensure_directories creates required paths."""
         db_path = tmp_path / "test_db" / "state.db"
         log_path = tmp_path / "logs" / "test.log"
 
-        config = GlobalConfig(database_path=str(db_path), log_file=str(log_path))
+        # Set paths via env var (that's how BaseSettings works)
+        monkeypatch.setenv("DATABASE_PATH", str(db_path))
+        monkeypatch.setenv("LOG_FILE", str(log_path))
+
+        config = GlobalConfig(_env_file=None)
         config.ensure_directories()
 
         assert db_path.parent.exists()

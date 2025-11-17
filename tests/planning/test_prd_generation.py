@@ -206,9 +206,9 @@ class TestPRDPersistence:
 
     @patch.object(AnthropicProvider, "send_message")
     @patch("pathlib.Path.mkdir")
-    @patch("builtins.open", new_callable=mock_open)
+    @patch("pathlib.Path.write_text")
     def test_prd_saved_to_file(
-        self, mock_file, mock_mkdir, mock_send, lead_agent_with_discovery
+        self, mock_write_text, mock_mkdir, mock_send, lead_agent_with_discovery
     ):
         """Test that PRD is saved to .codeframe/memory/prd.md."""
         # Mock Claude response
@@ -221,15 +221,16 @@ class TestPRDPersistence:
         # Generate PRD
         prd_content = lead_agent_with_discovery.generate_prd()
 
-        # Verify file was opened for writing
-        mock_file.assert_called()
+        # Verify Path.write_text was called with the PRD content
+        mock_write_text.assert_called_once()
 
-        # Get the actual file path that was used
-        call_args = mock_file.call_args
-        file_path_str = str(call_args[0][0]) if call_args and call_args[0] else ""
+        # Verify the content that was written
+        call_args = mock_write_text.call_args
+        written_content = call_args[0][0] if call_args and call_args[0] else ""
+        assert written_content == mock_prd
 
-        # Verify path contains expected components
-        assert "prd.md" in file_path_str or mock_file.called
+        # Verify mkdir was called to create the directory
+        mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
     @patch.object(AnthropicProvider, "send_message")
     def test_prd_stored_in_database(self, mock_send, lead_agent_with_discovery, db, project_id):

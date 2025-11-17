@@ -303,6 +303,13 @@ async def create_project(request: ProjectCreateRequest):
             status_code=403, detail="source_type='local_path' not available in hosted mode"
         )
 
+    # Check for duplicate project name
+    existing_projects = app.state.db.list_projects()
+    if any(p["name"] == request.name for p in existing_projects):
+        raise HTTPException(
+            status_code=409, detail=f"Project with name '{request.name}' already exists"
+        )
+
     # Create project record first (to get ID)
     project_id = app.state.db.create_project(
         name=request.name,

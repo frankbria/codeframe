@@ -443,7 +443,10 @@ class TestLeadAgentBlockerHandlingIntegration:
             parent_issue_number="1.0",
             title="Task A",
             description="Will create SYNC blocker",
-            status="pending",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=True,
         )
 
         task_b_id = db.create_task_with_issue(
@@ -453,9 +456,14 @@ class TestLeadAgentBlockerHandlingIntegration:
             parent_issue_number="1.0",
             title="Task B",
             description="Depends on A",
-            status="pending",
-            depends_on="1.1",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=True,
         )
+        # Set dependency
+        db.conn.execute("UPDATE tasks SET depends_on = ? WHERE id = ?", ("1.1", task_b_id))
+        db.conn.commit()
 
         task_c_id = db.create_task_with_issue(
             project_id=project_id,
@@ -464,7 +472,10 @@ class TestLeadAgentBlockerHandlingIntegration:
             parent_issue_number="2.0",
             title="Task C",
             description="Independent task",
-            status="pending",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
+            can_parallelize=True,
         )
 
         # ACT

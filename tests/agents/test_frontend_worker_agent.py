@@ -441,8 +441,11 @@ class TestErrorHandling:
         assert existing_file.read_text() == "original content"
 
     @pytest.mark.asyncio
-    async def test_handle_missing_api_key(self):
+    async def test_handle_missing_api_key(self, monkeypatch):
         """Test agent works without API key (using fallback templates)."""
+        # Ensure environment variable is not used
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
         agent = FrontendWorkerAgent(agent_id="frontend-no-key", api_key=None)
 
         assert agent.client is None
