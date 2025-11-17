@@ -48,18 +48,23 @@ def temp_db_for_lifecycle(tmp_path):
 
 
 @pytest.fixture
-def test_client_with_db(temp_db_path):
+def test_client_with_db(temp_db_path, tmp_path):
     """Create test client with properly initialized database.
 
     Follows the pattern from test_project_creation_api.py:
     1. Set DATABASE_PATH environment variable
-    2. Reload server module to pick up new env var
-    3. Use TestClient which triggers lifespan initialization
+    2. Set WORKSPACE_ROOT to temporary directory to avoid collisions
+    3. Reload server module to pick up new env vars
+    4. Use TestClient which triggers lifespan initialization
     """
-    # Set environment variable
+    # Set environment variables
     os.environ["DATABASE_PATH"] = str(temp_db_path)
 
-    # Reload server to pick up new DATABASE_PATH
+    # Set temporary workspace root to avoid collisions between test runs
+    workspace_root = tmp_path / "workspaces"
+    os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
+    # Reload server to pick up new DATABASE_PATH and WORKSPACE_ROOT
     from codeframe.ui import server
 
     reload(server)
