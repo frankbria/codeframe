@@ -17,7 +17,7 @@ from codeframe.agents.dependency_resolver import DependencyResolver
 from codeframe.agents.simple_assignment import SimpleAgentAssigner
 
 if TYPE_CHECKING:
-    from codeframe.core.project import Project
+    pass
 
 
 logger = logging.getLogger(__name__)
@@ -89,9 +89,11 @@ class LeadAgent:
         import git
 
         project = self.db.get_project(project_id)
-        project_root_str = project.get("root_path")
+        project_root_str = project.get(
+            "workspace_path"
+        )  # Fixed: use workspace_path per migration 002
 
-        # Only initialize GitWorkflowManager if root_path is set and is a valid git repo
+        # Only initialize GitWorkflowManager if workspace_path is set and is a valid git repo
         self.git_workflow = None
         if project_root_str:
             try:
@@ -1082,7 +1084,7 @@ Generate the PRD in markdown format with clear sections and professional languag
         print(f"🔄 DEBUG: Converted {len(tasks)} Task objects")
 
         logger.info(f"🚀 Multi-agent execution started: {len(tasks)} tasks")
-        print(f"🔄 DEBUG: Logged execution start")
+        print("🔄 DEBUG: Logged execution start")
 
         # Build dependency graph
         print("🔄 DEBUG: Building dependency graph...")
@@ -1116,7 +1118,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                     break
 
                 # Get ready tasks (dependencies satisfied, not completed/running)
-                print(f"🔄 DEBUG: Getting ready tasks from dependency_resolver...")
+                print("🔄 DEBUG: Getting ready tasks from dependency_resolver...")
                 ready_task_ids = self.dependency_resolver.get_ready_tasks(exclude_completed=True)
                 print(f"🔄 DEBUG: Got {len(ready_task_ids)} ready task IDs: {ready_task_ids}")
 
@@ -1128,7 +1130,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 print(f"🔄 DEBUG: After filtering: {len(ready_task_ids)} ready tasks")
 
                 # Log loop state
-                print(f"🔄 DEBUG: Calculating loop state...")
+                print("🔄 DEBUG: Calculating loop state...")
                 completed_count = len(
                     [t for t in tasks if t.id in self.dependency_resolver.completed_tasks]
                 )
@@ -1173,13 +1175,13 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 # Wait for at least one task to complete
                 if running_tasks:
-                    print(f"🔄 DEBUG: About to wait for tasks...")
+                    print("🔄 DEBUG: About to wait for tasks...")
                     done, _ = await asyncio.wait(
                         running_tasks.values(), return_when=asyncio.FIRST_COMPLETED
                     )
 
                     # Process completed tasks
-                    print(f"🔄 DEBUG: Processing completed tasks...")
+                    print("🔄 DEBUG: Processing completed tasks...")
                     for completed_future in done:
                         # Find which task this was
                         task_id = next(
@@ -1209,10 +1211,14 @@ Generate the PRD in markdown format with clear sections and professional languag
                                     print(
                                         f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
                                     )
-                            except Exception as e:
+                                    # Reset task status to pending so it can be retried
+                                    self.db.update_task(task_id, {"status": "pending"})
+                            except Exception:
                                 logger.exception(f"Error processing task {task_id}")
                                 retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                 total_retries += 1
+                                # Reset task status to pending so it can be retried
+                                self.db.update_task(task_id, {"status": "pending"})
                 else:
                     # No tasks running and none ready - check if we're stuck
                     if not self._all_tasks_complete():
@@ -1225,16 +1231,22 @@ Generate the PRD in markdown format with clear sections and professional languag
                             # Small delay before checking again
                             await asyncio.sleep(0.1)
 
-        except Exception as e:
+        except Exception:
             logger.exception("Critical error in multi-agent execution")
             raise
 
         # Calculate summary statistics
         execution_time = time.time() - start_time
-        completed_count = len(
-            [t for t in tasks if t.id in self.dependency_resolver.completed_tasks]
-        )
         failed_count = len([t for t in tasks if self.db.get_task(t.id).get("status") == "failed"])
+        # Completed count = tasks in completed_tasks that are not failed
+        completed_count = len(
+            [
+                t
+                for t in tasks
+                if t.id in self.dependency_resolver.completed_tasks
+                and self.db.get_task(t.id).get("status") != "failed"
+            ]
+        )
 
         summary = {
             "total_tasks": len(tasks),
@@ -1324,11 +1336,11 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Task {task.id} execution failed")
 
-            # Update task status
-            self.db.update_task(task.id, {"status": "failed"})
+            # Don't update task status here - let coordination loop decide
+            # whether to retry or mark as permanently failed based on retry_counts
 
             # Mark agent idle if it was assigned
             try:
@@ -1445,7 +1457,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         # Deadlock detection: if all remaining tasks are blocked, we're stuck
         if incomplete and len(blocked) == len(incomplete):
-            print(f"🔍 DEBUG: DEADLOCK DETECTED!")
+            print("🔍 DEBUG: DEADLOCK DETECTED!")
             logger.error(
                 f"❌ DEADLOCK DETECTED: All {len(incomplete)} remaining tasks are blocked: {blocked}"
             )
