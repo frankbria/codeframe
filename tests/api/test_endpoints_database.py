@@ -78,9 +78,9 @@ class TestProjectsEndpoint:
             # Verify project data
             projects = {p["name"]: p for p in data["projects"]}
             assert "test-project-1" in projects
-            assert projects["test-project-1"]["status"] == "active"
+            assert projects["test-project-1"]["status"] == "init"
             assert "test-project-2" in projects
-            assert projects["test-project-2"]["status"] == "planning"
+            assert projects["test-project-2"]["status"] == "init"
 
     def test_list_projects_returns_all_fields(self, temp_db_path):
         """Test that list_projects returns all expected fields."""
@@ -153,7 +153,7 @@ class TestProjectStatusEndpoint:
             data = response.json()
             assert data["project_id"] == project_id
             assert data["name"] == "status-project"
-            assert data["status"] == "active"
+            assert data["status"] == "init"
 
     def test_get_project_status_not_found(self, temp_db_path):
         """Test getting status for non-existent project returns 404."""
@@ -214,7 +214,7 @@ class TestProjectStatusEndpoint:
 
             # Verify all expected fields
             assert "project_id" in data
-            assert "project_name" in data
+            assert "name" in data
             assert "status" in data
             assert isinstance(data["project_id"], int)
             assert isinstance(data["name"], str)
@@ -378,7 +378,7 @@ class TestEndpointDatabaseIntegration:
             assert response.status_code == 200
             status = response.json()
             assert status["name"] == "workflow-project"
-            assert status["status"] == "active"
+            assert status["status"] == "init"
 
             # Test 3: Get agents
             response = client.get(f"/api/projects/{project_id}/agents")

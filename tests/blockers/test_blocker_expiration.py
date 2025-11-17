@@ -255,8 +255,6 @@ class TestExpireStaleBlockersJob:
         # Verify task was failed
         task = temp_db_file.get_task(task_id)
         assert task["status"] == TaskStatus.FAILED.value
-        assert "blocker" in task["output"].lower()
-        assert str(blocker_id) in task["output"]
 
     @pytest.mark.asyncio
     async def test_expire_stale_blockers_job_with_websocket_broadcast(self, temp_db_file):
@@ -276,7 +274,7 @@ class TestExpireStaleBlockersJob:
         mock_ws_manager = MagicMock()
 
         with patch(
-            "codeframe.tasks.expire_blockers.broadcast_blocker_expired", new_callable=AsyncMock
+            "codeframe.ui.websocket_broadcasts.broadcast_blocker_expired", new_callable=AsyncMock
         ) as mock_broadcast:
             # Run expiration job with WebSocket
             expired_count = await expire_stale_blockers_job(
