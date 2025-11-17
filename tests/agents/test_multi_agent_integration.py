@@ -16,11 +16,10 @@ import pytest
 import asyncio
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import Task, ProjectStatus, TaskStatus
+from codeframe.core.models import Task, TaskStatus
 
 
 # Helper function to create Task objects easily
@@ -79,8 +78,8 @@ def project_id(db, temp_project_dir):
     print("🟢 FIXTURE: Creating project in database...")
     project_id = db.create_project("test-project", "Multi-agent test project")
     print(f"🟢 FIXTURE: Project created with ID: {project_id}")
-    # Update project with root_path
-    print(f"🟢 FIXTURE: Updating project root_path to {temp_project_dir}...")
+    # Update project with workspace_path (per migration 002)
+    print(f"🟢 FIXTURE: Updating project workspace_path to {temp_project_dir}...")
     db.update_project(project_id, {"workspace_path": temp_project_dir})
     print("🟢 FIXTURE: Project fixture complete ✅")
     return project_id
@@ -139,8 +138,8 @@ class TestMinimalIntegration:
         # Patch TestWorkerAgent at creation point (in AgentPoolManager)
         # Task will be assigned to test-engineer based on "Test" in description
         with patch("codeframe.agents.agent_pool_manager.TestWorkerAgent") as MockAgent:
-            # Create mock instance
-            mock_agent_instance = Mock()
+            # Create async mock instance (execute_task is async)
+            mock_agent_instance = AsyncMock()
             mock_agent_instance.execute_task.return_value = {
                 "status": "completed",
                 "files_modified": [],
@@ -148,7 +147,7 @@ class TestMinimalIntegration:
                 "error": None,
             }
 
-            # When AgentPoolManager creates BackendWorkerAgent, return our mock
+            # When AgentPoolManager creates TestWorkerAgent, return our mock
             MockAgent.return_value = mock_agent_instance
 
             # Execute with short timeout - should complete quickly
@@ -521,13 +520,13 @@ class TestAgentReuse:
     async def test_agent_reuse_same_type_tasks(self, lead_agent, db, project_id):
         """Test that idle agents are reused for tasks of the same type."""
         # Create 3 backend tasks
-        task1_id = create_test_task(
+        _task1_id = create_test_task(
             db, project_id, "T-001", "Create API endpoint 1", "Backend task 1", status="pending"
         )
-        task2_id = create_test_task(
+        _task2_id = create_test_task(
             db, project_id, "T-002", "Create API endpoint 2", "Backend task 2", status="pending"
         )
-        task3_id = create_test_task(
+        _task3_id = create_test_task(
             db, project_id, "T-003", "Create API endpoint 3", "Backend task 3", status="pending"
         )
 

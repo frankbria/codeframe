@@ -8,12 +8,11 @@ import os
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
 import git
 
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import Issue, TaskStatus, ProjectStatus
+from codeframe.core.models import Issue, TaskStatus
 
 
 @pytest.fixture
@@ -61,7 +60,7 @@ def lead_agent(test_db, temp_git_repo):
     """Create LeadAgent instance with git repo."""
     repo_path, repo = temp_git_repo
 
-    # Create project with root_path
+    # Create project with workspace_path (fixed: per migration 002, root_path was replaced with workspace_path)
     project_id = test_db.create_project("test_project", "Test Project project")
     test_db.update_project(project_id, {"workspace_path": str(repo_path)})
 
