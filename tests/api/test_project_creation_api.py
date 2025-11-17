@@ -25,6 +25,10 @@ class TestProjectCreationAPI:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -35,7 +39,7 @@ class TestProjectCreationAPI:
         # ACT
         with TestClient(app) as client:
             response = client.post(
-                "/api/projects", json={"project_name": "test-api-project", "project_type": "python"}
+                "/api/projects", json={"name": "test-api-project", "description": "Test project"}
             )
 
         # ASSERT
@@ -55,11 +59,15 @@ class TestProjectCreationAPI:
         assert data["id"] > 0
 
     def test_create_project_missing_name(self, temp_db_path):
-        """Test that missing project_name returns 400 Bad Request."""
+        """Test that missing name returns 400 Bad Request."""
         # ARRANGE
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -70,7 +78,7 @@ class TestProjectCreationAPI:
 
         # ACT
         with TestClient(app) as client:
-            response = client.post("/api/projects", json={"project_type": "python"})
+            response = client.post("/api/projects", json={"description": "Test project"})
 
         # ASSERT
         assert response.status_code == 422  # FastAPI validation error
@@ -78,11 +86,15 @@ class TestProjectCreationAPI:
         assert "detail" in data
 
     def test_create_project_empty_name(self, temp_db_path):
-        """Test that empty project_name returns 422 (Pydantic validation error)."""
+        """Test that empty name returns 422 (Pydantic validation error)."""
         # ARRANGE
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -94,7 +106,7 @@ class TestProjectCreationAPI:
         # ACT
         with TestClient(app) as client:
             response = client.post(
-                "/api/projects", json={"project_name": "", "project_type": "python"}
+                "/api/projects", json={"name": "", "description": "Test project"}
             )
 
         # ASSERT
@@ -103,11 +115,15 @@ class TestProjectCreationAPI:
         assert "detail" in data
 
     def test_create_project_invalid_type(self, temp_db_path):
-        """Test that invalid project_type returns 400 Bad Request."""
+        """Test that invalid source_type returns 400 Bad Request."""
         # ARRANGE
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -120,7 +136,7 @@ class TestProjectCreationAPI:
         with TestClient(app) as client:
             response = client.post(
                 "/api/projects",
-                json={"project_name": "test-project", "project_type": "invalid_type"},
+                json={"name": "test-project", "description": "Test project"},
             )
 
         # ASSERT
@@ -135,6 +151,10 @@ class TestProjectCreationAPI:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -146,13 +166,13 @@ class TestProjectCreationAPI:
         with TestClient(app) as client:
             # Create first project
             response1 = client.post(
-                "/api/projects", json={"project_name": "duplicate-test", "project_type": "python"}
+                "/api/projects", json={"name": "duplicate-test", "description": "Test project"}
             )
             assert response1.status_code == 201
 
             # Try to create duplicate
             response2 = client.post(
-                "/api/projects", json={"project_name": "duplicate-test", "project_type": "python"}
+                "/api/projects", json={"name": "duplicate-test", "description": "Test project"}
             )
 
         # ASSERT
@@ -168,6 +188,10 @@ class TestProjectCreationAPI:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -178,7 +202,7 @@ class TestProjectCreationAPI:
         # ACT
         with TestClient(app) as client:
             response = client.post(
-                "/api/projects", json={"project_name": "complete-project", "project_type": "python"}
+                "/api/projects", json={"name": "complete-project", "description": "Test project"}
             )
 
         # ASSERT
@@ -197,11 +221,15 @@ class TestProjectCreationAPI:
         assert isinstance(data["created_at"], str)
 
     def test_create_project_default_type(self, temp_db_path):
-        """Test that project_type defaults to 'python' if not specified."""
+        """Test that source_type defaults to 'python' if not specified."""
         # ARRANGE
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -212,7 +240,7 @@ class TestProjectCreationAPI:
 
         # ACT
         with TestClient(app) as client:
-            response = client.post("/api/projects", json={"project_name": "default-type-project"})
+            response = client.post("/api/projects", json={"name": "default-type-project", "description": "Test project"})
 
         # ASSERT
         assert response.status_code == 201
@@ -231,6 +259,10 @@ class TestProjectCreationIntegration:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -242,7 +274,7 @@ class TestProjectCreationIntegration:
         with TestClient(app) as client:
             # Create project via API
             response = client.post(
-                "/api/projects", json={"project_name": "persist-test", "project_type": "python"}
+                "/api/projects", json={"name": "persist-test", "description": "Test project"}
             )
             assert response.status_code == 201
             created_id = response.json()["id"]
@@ -264,6 +296,10 @@ class TestProjectCreationIntegration:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -306,6 +342,10 @@ class TestProjectCreationIntegration:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -317,7 +357,7 @@ class TestProjectCreationIntegration:
         with TestClient(app) as client:
             # Create project
             create_response = client.post(
-                "/api/projects", json={"project_name": "workflow-test", "project_type": "python"}
+                "/api/projects", json={"name": "workflow-test", "description": "Test project"}
             )
             assert create_response.status_code == 201
             project_id = create_response.json()["id"]
@@ -329,7 +369,7 @@ class TestProjectCreationIntegration:
         assert status_response.status_code == 200
         status_data = status_response.json()
         assert status_data["project_id"] == project_id
-        assert status_data["project_name"] == "workflow-test"
+        assert status_data["name"] == "workflow-test"
         assert status_data["status"] == "init"
 
 
@@ -344,6 +384,10 @@ class TestProjectCreationErrorHandling:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -357,7 +401,7 @@ class TestProjectCreationErrorHandling:
             app.state.db.close()
 
             response = client.post(
-                "/api/projects", json={"project_name": "error-test", "project_type": "python"}
+                "/api/projects", json={"name": "error-test", "description": "Test project"}
             )
 
             # Should return 500 Internal Server Error
@@ -371,6 +415,10 @@ class TestProjectCreationErrorHandling:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload

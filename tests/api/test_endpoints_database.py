@@ -21,6 +21,10 @@ class TestProjectsEndpoint:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -44,6 +48,10 @@ class TestProjectsEndpoint:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -80,6 +88,10 @@ class TestProjectsEndpoint:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -118,6 +130,10 @@ class TestProjectStatusEndpoint:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -136,7 +152,7 @@ class TestProjectStatusEndpoint:
             assert response.status_code == 200
             data = response.json()
             assert data["project_id"] == project_id
-            assert data["project_name"] == "status-project"
+            assert data["name"] == "status-project"
             assert data["status"] == "active"
 
     def test_get_project_status_not_found(self, temp_db_path):
@@ -145,6 +161,10 @@ class TestProjectStatusEndpoint:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -170,6 +190,10 @@ class TestProjectStatusEndpoint:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -193,7 +217,7 @@ class TestProjectStatusEndpoint:
             assert "project_name" in data
             assert "status" in data
             assert isinstance(data["project_id"], int)
-            assert isinstance(data["project_name"], str)
+            assert isinstance(data["name"], str)
             assert isinstance(data["status"], str)
 
 
@@ -207,6 +231,10 @@ class TestAgentsEndpoint:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -234,6 +262,10 @@ class TestAgentsEndpoint:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -272,6 +304,10 @@ class TestAgentsEndpoint:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -312,6 +348,10 @@ class TestEndpointDatabaseIntegration:
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
         from codeframe.ui import server
         from importlib import reload
 
@@ -337,7 +377,7 @@ class TestEndpointDatabaseIntegration:
             response = client.get(f"/api/projects/{project_id}/status")
             assert response.status_code == 200
             status = response.json()
-            assert status["project_name"] == "workflow-project"
+            assert status["name"] == "workflow-project"
             assert status["status"] == "active"
 
             # Test 3: Get agents
@@ -353,6 +393,10 @@ class TestEndpointDatabaseIntegration:
         import os
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Set temporary workspace root to avoid collisions
+        workspace_root = temp_db_path.parent / "workspaces"
+        os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
         from codeframe.ui import server
         from importlib import reload
@@ -375,7 +419,7 @@ class TestEndpointDatabaseIntegration:
                 # Get project status
                 response = client.get(f"/api/projects/{project_id}/status")
                 assert response.status_code == 200
-                assert response.json()["project_name"] == "stable-project"
+                assert response.json()["name"] == "stable-project"
 
                 # Get agents
                 response = client.get(f"/api/projects/{project_id}/agents")
