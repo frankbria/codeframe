@@ -7,9 +7,7 @@ Tests follow RED-GREEN-REFACTOR TDD cycle.
 """
 
 import pytest
-from datetime import datetime, UTC, timezone
-from pathlib import Path
-from unittest.mock import Mock, patch
+from datetime import datetime, UTC
 from fastapi.testclient import TestClient
 
 from codeframe.ui.server import app
@@ -247,7 +245,6 @@ class TestPRDEndpointEdgeCases:
         # Get initial response
         response1 = client.get(f"/api/projects/{project_id}/prd")
         data1 = response1.json()
-        initial_updated_at = data1["updated_at"]
 
         # Since we're just reading, updated_at should equal generated_at
         # In a real scenario, updated_at would change on edits
