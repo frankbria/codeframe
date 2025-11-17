@@ -19,18 +19,16 @@ Definition of Done:
 - ✅ All tests pass (100% pass rate)
 """
 
-import pytest
 import asyncio
 import os
-from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
-from fastapi.testclient import TestClient
-from pathlib import Path
-from importlib import reload
 
-from codeframe.ui.server import app, manager
-from codeframe.persistence.database import Database
+import pytest
+from fastapi.testclient import TestClient
+from importlib import reload
+from unittest.mock import AsyncMock, Mock, patch
+
 from codeframe.core.models import ProjectStatus
-from codeframe.agents.lead_agent import LeadAgent
+from codeframe.persistence.database import Database
 
 
 @pytest.fixture
@@ -75,7 +73,8 @@ def test_client_with_db(temp_db_path):
 def sample_project(test_client_with_db):
     """Create a sample project for lifecycle tests."""
     response = test_client_with_db.post(
-        "/api/projects", json={"project_name": "Lifecycle Test Project"}
+        "/api/projects",
+        json={"name": "Lifecycle Test Project", "description": "Test project for lifecycle tests"},
     )
     assert response.status_code == 201
     return response.json()
@@ -92,6 +91,7 @@ class TestStartAgentEndpoint:
         """
         # ARRANGE
         project_id = sample_project["id"]
+        os.environ["ANTHROPIC_API_KEY"] = "test-api-key"
 
         # ACT
         with patch("codeframe.ui.server.start_agent") as mock_start_agent:
@@ -161,7 +161,7 @@ class TestStartAgentEndpoint:
             mock_bg_instance = Mock()
             mock_bg_tasks.return_value = mock_bg_instance
 
-            with patch("codeframe.ui.server.start_agent") as mock_start_agent:
+            with patch("codeframe.ui.server.start_agent"):
                 response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
@@ -282,7 +282,6 @@ class TestWebSocketMessageProtocol:
         mock_manager.broadcast = AsyncMock()
 
         # ACT
-        import asyncio
 
         message = {"type": "status_update", "project_id": 1, "status": "running"}
         asyncio.run(mock_manager.broadcast(message))
@@ -302,7 +301,6 @@ class TestWebSocketMessageProtocol:
         mock_manager.broadcast = AsyncMock()
 
         # ACT
-        import asyncio
 
         message = {
             "type": "chat_message",
@@ -328,7 +326,6 @@ class TestWebSocketMessageProtocol:
         mock_manager.broadcast = AsyncMock()
 
         # ACT
-        import asyncio
 
         message = {"type": "agent_started", "project_id": 1, "agent_type": "lead"}
         asyncio.run(mock_manager.broadcast(message))
