@@ -32,7 +32,7 @@ def test_project(test_db):
     """Create a test project."""
     from codeframe.core.models import ProjectStatus
 
-    project_id = test_db.create_project("test_project", ProjectStatus.INIT)
+    project_id = test_db.create_project("test_project", "Test Project project")
     return project_id
 
 

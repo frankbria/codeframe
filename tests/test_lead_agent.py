@@ -21,7 +21,7 @@ class TestLeadAgentInitialization:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # ACT
         agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
@@ -36,7 +36,7 @@ class TestLeadAgentInitialization:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # ACT & ASSERT
         with pytest.raises(ValueError) as exc_info:
@@ -49,7 +49,7 @@ class TestLeadAgentInitialization:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         # Add some conversation history
         db.create_memory(project_id, "conversation", "user", "Hello")
@@ -77,7 +77,7 @@ class TestLeadAgentChat:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -102,7 +102,7 @@ class TestLeadAgentChat:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -129,7 +129,7 @@ class TestLeadAgentChat:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -156,7 +156,7 @@ class TestLeadAgentChat:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.side_effect = [
@@ -201,7 +201,7 @@ class TestLeadAgentChat:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.side_effect = Exception("API Error")
@@ -221,7 +221,7 @@ class TestLeadAgentChat:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -245,7 +245,7 @@ class TestLeadAgentConversationPersistence:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -273,7 +273,7 @@ class TestLeadAgentConversationPersistence:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -315,7 +315,7 @@ class TestLeadAgentTokenUsageTracking:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -344,7 +344,7 @@ class TestLeadAgentTokenUsageTracking:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.side_effect = [
@@ -383,7 +383,7 @@ class TestLeadAgentErrorHandling:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -408,7 +408,7 @@ class TestLeadAgentErrorHandling:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.side_effect = Exception("Test error")
@@ -439,7 +439,7 @@ class TestLeadAgentIntegration:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.side_effect = [
@@ -489,7 +489,7 @@ class TestLeadAgentIntegration:
         # ARRANGE
         db = Database(temp_db_path)
         db.initialize()
-        project_id = db.create_project("test-project", ProjectStatus.INIT)
+        project_id = db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.side_effect = [

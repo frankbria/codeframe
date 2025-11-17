@@ -55,8 +55,8 @@ class TestProjectsEndpoint:
         with TestClient(app) as client:
             # Create test projects in database
             db = app.state.db
-            project1_id = db.create_project("test-project-1", ProjectStatus.ACTIVE)
-            project2_id = db.create_project("test-project-2", ProjectStatus.PLANNING)
+            project1_id = db.create_project("test-project-1", "Test Project 1 project")
+            project2_id = db.create_project("test-project-2", "Test Project 2 project")
 
             # ACT
             response = client.get("/api/projects")
@@ -90,7 +90,7 @@ class TestProjectsEndpoint:
 
         with TestClient(app) as client:
             db = app.state.db
-            db.create_project("full-project", ProjectStatus.ACTIVE)
+            db.create_project("full-project", "Full Project project")
 
             # ACT
             response = client.get("/api/projects")
@@ -127,7 +127,7 @@ class TestProjectStatusEndpoint:
 
         with TestClient(app) as client:
             db = app.state.db
-            project_id = db.create_project("status-project", ProjectStatus.ACTIVE)
+            project_id = db.create_project("status-project", "Status Project project")
 
             # ACT
             response = client.get(f"/api/projects/{project_id}/status")
@@ -179,7 +179,7 @@ class TestProjectStatusEndpoint:
 
         with TestClient(app) as client:
             db = app.state.db
-            project_id = db.create_project("complete-project", ProjectStatus.ACTIVE)
+            project_id = db.create_project("complete-project", "Complete Project project")
 
             # ACT
             response = client.get(f"/api/projects/{project_id}/status")
@@ -217,7 +217,7 @@ class TestAgentsEndpoint:
 
         with TestClient(app) as client:
             db = app.state.db
-            project_id = db.create_project("no-agents-project", ProjectStatus.INIT)
+            project_id = db.create_project("no-agents-project", "No Agents Project project")
 
             # ACT
             response = client.get(f"/api/projects/{project_id}/agents")
@@ -244,7 +244,7 @@ class TestAgentsEndpoint:
 
         with TestClient(app) as client:
             db = app.state.db
-            project_id = db.create_project("agents-project", ProjectStatus.ACTIVE)
+            project_id = db.create_project("agents-project", "Agents Project project")
 
             # Create test agents
             db.create_agent("lead-agent", "lead", "claude", AgentMaturity.D3)
@@ -282,7 +282,7 @@ class TestAgentsEndpoint:
 
         with TestClient(app) as client:
             db = app.state.db
-            project_id = db.create_project("full-agents-project", ProjectStatus.ACTIVE)
+            project_id = db.create_project("full-agents-project", "Full Agents Project project")
             db.create_agent("test-agent", "test", "claude", AgentMaturity.D4)
 
             # ACT
@@ -323,7 +323,7 @@ class TestEndpointDatabaseIntegration:
             db = app.state.db
 
             # ACT: Create project and agent
-            project_id = db.create_project("workflow-project", ProjectStatus.ACTIVE)
+            project_id = db.create_project("workflow-project", "Workflow Project project")
             db.create_agent("workflow-lead", "lead", "claude", AgentMaturity.D3)
 
             # Test 1: List projects
@@ -363,7 +363,7 @@ class TestEndpointDatabaseIntegration:
 
         with TestClient(app) as client:
             db = app.state.db
-            project_id = db.create_project("stable-project", ProjectStatus.ACTIVE)
+            project_id = db.create_project("stable-project", "Stable Project project")
 
             # ACT & ASSERT: Make multiple requests
             for _ in range(5):

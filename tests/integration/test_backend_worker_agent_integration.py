@@ -12,10 +12,8 @@ integration works correctly.
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import Mock, patch
 import json
-import tempfile
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
@@ -99,7 +97,7 @@ class TestBackendWorkerAgentIntegration:
         db.initialize()
 
         # Create real project and task
-        project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("integration_test", "Integration test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -160,7 +158,7 @@ class TestBackendWorkerAgentIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("integration_test", "Integration test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -267,7 +265,7 @@ class TestBackendWorkerAgentIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("integration_test", "Integration test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -373,7 +371,7 @@ class TestBackendWorkerAgentIntegration:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("multi_task_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("multi_task_test", "Multi-task integration test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,

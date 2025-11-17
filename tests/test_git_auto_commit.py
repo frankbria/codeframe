@@ -39,7 +39,7 @@ def db(tmp_path):
     database.initialize()
 
     # Create a test project
-    project_id = database.create_project("Test Project", ProjectStatus.ACTIVE)
+    project_id = database.create_project("Test Project", "Test Project project")
 
     yield database
 

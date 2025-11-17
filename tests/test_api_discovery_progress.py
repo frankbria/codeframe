@@ -61,7 +61,7 @@ class TestDiscoveryProgressEndpoint:
         """Test endpoint returns null for discovery when in idle state."""
         # ARRANGE
         # Create project
-        project_id = app.state.db.create_project("test-project", ProjectStatus.INIT)
+        project_id = app.state.db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider_class.return_value = mock_provider
@@ -84,7 +84,7 @@ class TestDiscoveryProgressEndpoint:
         """Test endpoint returns discovery progress when in discovering state."""
         # ARRANGE
         # Create project
-        project_id = app.state.db.create_project("test-project", ProjectStatus.INIT)
+        project_id = app.state.db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -130,7 +130,7 @@ class TestDiscoveryProgressEndpoint:
         """Test endpoint returns 100% progress when discovery completed."""
         # ARRANGE
         # Create project
-        project_id = app.state.db.create_project("test-project", ProjectStatus.INIT)
+        project_id = app.state.db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {
@@ -172,7 +172,7 @@ class TestDiscoveryProgressEndpoint:
         """Test endpoint returns correct phase field matching project.phase."""
         # ARRANGE
         # Create project with specific phase
-        project_id = app.state.db.create_project("test-project", ProjectStatus.INIT)
+        project_id = app.state.db.create_project("test-project", "Test Project project")
 
         # Update project phase to "planning"
         app.state.db.update_project(project_id, {"phase": "planning"})
@@ -195,7 +195,7 @@ class TestDiscoveryProgressEndpoint:
         """Test endpoint does not include the raw answers field for security."""
         # ARRANGE
         # Create project
-        project_id = app.state.db.create_project("test-project", ProjectStatus.INIT)
+        project_id = app.state.db.create_project("test-project", "Test Project project")
 
         mock_provider = Mock()
         mock_provider.send_message.return_value = {

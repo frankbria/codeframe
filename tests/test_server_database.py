@@ -169,7 +169,7 @@ class TestServerDatabaseAccess:
         with TestClient(app) as client:
             # Create a test project in database
             db = app.state.db
-            project_id = db.create_project("test-project", ProjectStatus.INIT)
+            project_id = db.create_project("test-project", "Test Project project")
 
             response = client.get("/api/projects")
             assert response.status_code == 200
@@ -269,7 +269,7 @@ class TestServerDatabaseIntegration:
         with TestClient(app) as client:
             # Create project in database
             db = app.state.db
-            project_id = db.create_project("integration-test", ProjectStatus.ACTIVE)
+            project_id = db.create_project("integration-test", "Integration Test project")
 
             # Verify project was created
             project = db.get_project(project_id)
