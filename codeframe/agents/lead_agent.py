@@ -1211,14 +1211,32 @@ Generate the PRD in markdown format with clear sections and professional languag
                                     print(
                                         f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
                                     )
-                                    # Reset task status to pending so it can be retried
-                                    self.db.update_task(task_id, {"status": "pending"})
+                                    # Check if task has pending SYNC blocker before resetting to pending
+                                    can_assign = await self.can_assign_task(task_id)
+                                    if can_assign:
+                                        # No blocker - reset to pending for retry
+                                        self.db.update_task(task_id, {"status": "pending"})
+                                    else:
+                                        # Has SYNC blocker - keep as blocked
+                                        self.db.update_task(task_id, {"status": "blocked"})
+                                        logger.info(
+                                            f"Task {task_id} kept as blocked due to pending SYNC blocker"
+                                        )
                             except Exception:
                                 logger.exception(f"Error processing task {task_id}")
                                 retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                 total_retries += 1
-                                # Reset task status to pending so it can be retried
-                                self.db.update_task(task_id, {"status": "pending"})
+                                # Check if task has pending SYNC blocker before resetting to pending
+                                can_assign = await self.can_assign_task(task_id)
+                                if can_assign:
+                                    # No blocker - reset to pending for retry
+                                    self.db.update_task(task_id, {"status": "pending"})
+                                else:
+                                    # Has SYNC blocker - keep as blocked
+                                    self.db.update_task(task_id, {"status": "blocked"})
+                                    logger.info(
+                                        f"Task {task_id} kept as blocked due to pending SYNC blocker"
+                                    )
                 else:
                     # No tasks running and none ready - check if we're stuck
                     if not self._all_tasks_complete():
