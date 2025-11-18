@@ -297,7 +297,7 @@ class TestGetPendingBlocker:
             question="First question",
         )
         time.sleep(0.1)  # Ensure different timestamps
-        id2 = db.create_blocker(
+        db.create_blocker(
             agent_id="backend-worker-001",
             project_id=sample_project,
             task_id=sample_task,

@@ -98,7 +98,7 @@ class TestBackendWorkerAgentAnswerInjection:
                 context = {"task": {"id": 42, "title": "Test task"}}
 
                 # Call without explicit task_id
-                enriched_context = await agent.create_blocker_and_wait(
+                await agent.create_blocker_and_wait(
                     question="Test question?", context=context
                 )
 
@@ -127,7 +127,7 @@ class TestBackendWorkerAgentAnswerInjection:
                 context = {"task": {"id": 1}}
 
                 # Call with custom timeouts
-                enriched_context = await agent.create_blocker_and_wait(
+                await agent.create_blocker_and_wait(
                     question="Question?", context=context, poll_interval=2.0, timeout=120.0
                 )
 

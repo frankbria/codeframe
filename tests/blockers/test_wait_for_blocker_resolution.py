@@ -220,7 +220,7 @@ class TestBackendWorkerAgentBlockerResolution:
         with patch(
             "codeframe.ui.websocket_broadcasts.broadcast_agent_resumed", new_callable=AsyncMock
         ) as mock_broadcast:
-            answer = await agent.wait_for_blocker_resolution(
+            await agent.wait_for_blocker_resolution(
                 blocker_id=1, poll_interval=0.05, timeout=5.0
             )
 

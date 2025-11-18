@@ -61,7 +61,7 @@ async def expire_stale_blockers_job(
 
             task_id = blocker.get("task_id")
             agent_id = blocker.get("agent_id")
-            question = blocker.get("question", "")[:100]  # Truncate for logging
+            blocker.get("question", "")[:100]  # Truncate for logging
 
             # Fail associated task (T049)
             if task_id:

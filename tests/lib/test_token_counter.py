@@ -70,8 +70,8 @@ class TestTokenCounterCache:
         """Test that different content creates new cache entries."""
         counter = TokenCounter(cache_enabled=True)
 
-        count1 = counter.count_tokens("First sentence.")
-        count2 = counter.count_tokens("Second sentence.")
+        counter.count_tokens("First sentence.")
+        counter.count_tokens("Second sentence.")
 
         stats = counter.get_cache_stats()
         assert stats["cache_size"] == 2

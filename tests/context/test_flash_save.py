@@ -112,7 +112,7 @@ class TestFlashSave:
         temp_db.conn.commit()
 
         # ACT: Trigger flash save
-        result = context_manager.flash_save(test_project, agent_id)
+        context_manager.flash_save(test_project, agent_id)
 
         # ASSERT: COLD item archived (deleted)
         cold_item_after = temp_db.get_context_item(cold_item_id)

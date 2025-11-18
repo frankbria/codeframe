@@ -146,17 +146,6 @@ def test_example():
 
     def test_handles_non_test_files(self):
         """T018: Test non-test file handling (no false positives)"""
-        code = """
-# This is a utility file, not a test file
-
-def skip_whitespace(text):
-    '''Helper to skip whitespace'''
-    return text.strip()
-
-class SkipProcessor:
-    '''Process skip logic'''
-    pass
-"""
         # Even though this contains "skip", it's not a test file
         # and shouldn't trigger violations
         assert not is_test_file("utils/helper.py")

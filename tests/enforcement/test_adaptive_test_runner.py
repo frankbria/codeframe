@@ -26,7 +26,7 @@ class TestAdaptiveTestRunner:
         with patch("codeframe.enforcement.adaptive_test_runner.subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0, stdout="5 passed in 1.23s", stderr="")
 
-            result = await runner.run_tests()
+            await runner.run_tests()
 
             assert runner.language_info is not None
             assert runner.language_info.language == "python"

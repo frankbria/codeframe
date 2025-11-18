@@ -8,7 +8,6 @@ Tests follow RED-GREEN-REFACTOR TDD cycle.
 
 import pytest
 from datetime import datetime
-from fastapi.testclient import TestClient
 
 from codeframe.core.models import TaskStatus, Issue
 

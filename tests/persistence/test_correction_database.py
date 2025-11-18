@@ -6,7 +6,6 @@ Tests written FIRST following RED-GREEN-REFACTOR methodology.
 
 import pytest
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 
 
 class TestCorrectionAttemptDatabase:
@@ -140,7 +139,7 @@ class TestCorrectionAttemptDatabase:
         )
 
         # Create correction attempt referencing test result
-        attempt_id = db.create_correction_attempt(
+        db.create_correction_attempt(
             task_id=db._test_task_id,
             attempt_number=1,
             error_analysis="Tests failed",

@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -217,7 +217,7 @@ class TestPRDPersistence:
         }
 
         # Generate PRD
-        prd_content = lead_agent_with_discovery.generate_prd()
+        lead_agent_with_discovery.generate_prd()
 
         # Verify Path.write_text was called with the PRD content
         mock_write_text.assert_called_once()

@@ -81,7 +81,7 @@ class TestFiveMinuteTutorial:
     def test_scenario_2_view_blocker_in_dashboard(self, db, sample_project, sample_task):
         """Scenario 2: View blocker in dashboard."""
         # Create blocker
-        blocker_id = db.create_blocker(
+        db.create_blocker(
             agent_id="backend-worker-001",
             project_id=1,
             task_id=sample_task,
@@ -414,7 +414,7 @@ class TestAdvancedUsage:
             blocker_type=BlockerType.SYNC,
             question="Question 1",
         )
-        blocker2 = db.create_blocker(
+        db.create_blocker(
             agent_id="backend-worker-002",
             project_id=1,
             task_id=sample_task,

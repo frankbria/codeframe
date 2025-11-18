@@ -8,7 +8,6 @@ import pytest
 from unittest.mock import Mock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 
 
 @pytest.mark.unit
@@ -141,7 +140,7 @@ class TestLeadAgentChat:
         agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
 
         # ACT
-        response = agent.chat("Hello!")
+        agent.chat("Hello!")
 
         # ASSERT
         conversation = db.get_conversation(project_id)
@@ -175,10 +174,10 @@ class TestLeadAgentChat:
         agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
 
         # ACT - First message
-        response_1 = agent.chat("Hello!")
+        agent.chat("Hello!")
 
         # ACT - Second message
-        response_2 = agent.chat("Can you help me?")
+        agent.chat("Can you help me?")
 
         # ASSERT
         conversation = db.get_conversation(project_id)

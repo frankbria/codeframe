@@ -78,7 +78,7 @@ class WorkspaceManager:
         """
         workspace_path.mkdir(parents=True, exist_ok=True)
         try:
-            result = subprocess.run(
+            subprocess.run(
                 ["git", "init"],
                 cwd=workspace_path,
                 check=True,
@@ -113,7 +113,7 @@ class WorkspaceManager:
             raise ValueError("Git URL is required for GIT_REMOTE source type")
 
         try:
-            result = subprocess.run(
+            subprocess.run(
                 ["git", "clone", "--branch", branch, "--depth", "1", git_url, str(workspace_path)],
                 check=True,
                 capture_output=True,
