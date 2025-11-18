@@ -25,35 +25,22 @@ from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus, AgentMaturity
 
 
-@pytest.fixture
-def test_db():
-    """Create a temporary test database."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
-        db_path = Path(tmp.name)
+def get_app():
+    """Get the current app instance after module reload."""
+    from codeframe.ui.server import app
 
-    db = Database(db_path)
-    db.initialize()
-
-    yield db
-
-    db.close()
-    db_path.unlink()
+    return app
 
 
 @pytest.fixture
-def client(test_db):
-    """Create test client with test database."""
-    app.state.db = test_db
-    return TestClient(app)
-
-
-@pytest.fixture
-def test_project(test_db):
+def test_project(api_client):
     """Create a test project with running Lead Agent."""
-    project_id = test_db.create_project(name="Test Chat Project", description="Test Chat Project project")
+    project_id = get_app().state.db.create_project(
+        name="Test Chat Project", description="Test Chat Project project"
+    )
 
     # Create Lead Agent record
-    test_db.create_agent(
+    get_app().state.db.create_agent(
         agent_id=f"lead-{project_id}",
         agent_type="lead",
         provider="anthropic",
@@ -66,7 +53,7 @@ def test_project(test_db):
 class TestChatEndpoint:
     """Test POST /api/projects/{id}/chat endpoint (cf-14.1)"""
 
-    def test_send_message_success(self, client, test_project):
+    def test_send_message_success(self, api_client, test_project):
         """
         RED Test: Send message and get AI response
 
@@ -96,7 +83,7 @@ class TestChatEndpoint:
                 "codeframe.ui.server.manager.broadcast", new_callable=AsyncMock
             ) as mock_broadcast:
                 # Act
-                response = client.post(
+                response = api_client.post(
                     f"/api/projects/{test_project}/chat", json={"message": user_message}
                 )
 
@@ -120,43 +107,43 @@ class TestChatEndpoint:
             # Clean up
             server.running_agents.pop(test_project, None)
 
-    def test_send_message_empty_validation(self, client, test_project):
+    def test_send_message_empty_validation(self, api_client, test_project):
         """
         RED Test: Reject empty message with 400 Bad Request
         """
         # Act
-        response = client.post(f"/api/projects/{test_project}/chat", json={"message": ""})
+        response = api_client.post(f"/api/projects/{test_project}/chat", json={"message": ""})
 
         # Assert
         assert response.status_code == 400
         assert "empty" in response.json()["detail"].lower()
 
-    def test_send_message_project_not_found(self, client):
+    def test_send_message_project_not_found(self, api_client):
         """
         RED Test: Return 404 for non-existent project
         """
         # Act
-        response = client.post("/api/projects/99999/chat", json={"message": "Hello"})
+        response = api_client.post("/api/projects/99999/chat", json={"message": "Hello"})
 
         # Assert
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_send_message_agent_not_started(self, client, test_db):
+    def test_send_message_agent_not_started(self, api_client, get_app().state.db):
         """
         RED Test: Return 400 if Lead Agent not started for project
         """
         # Arrange: Create project without starting agent
-        project_id = test_db.create_project(name="Project Without Agent", description="Project Without Agent project")
+        project_id = get_app().state.db.create_project(name="Project Without Agent", description="Project Without Agent project")
 
         # Act
-        response = client.post(f"/api/projects/{project_id}/chat", json={"message": "Hello"})
+        response = api_client.post(f"/api/projects/{project_id}/chat", json={"message": "Hello"})
 
         # Assert
         assert response.status_code == 400
         assert "agent not started" in response.json()["detail"].lower()
 
-    def test_send_message_agent_failure(self, client, test_project):
+    def test_send_message_agent_failure(self, api_client, test_project):
         """
         RED Test: Handle agent communication failure with 500
         """
@@ -167,7 +154,7 @@ class TestChatEndpoint:
             mock_agents.get.return_value = mock_agent
 
             # Act
-            response = client.post(f"/api/projects/{test_project}/chat", json={"message": "Hello"})
+            response = api_client.post(f"/api/projects/{test_project}/chat", json={"message": "Hello"})
 
         # Assert
         assert response.status_code == 500
@@ -177,21 +164,21 @@ class TestChatEndpoint:
 class TestChatHistoryEndpoint:
     """Test GET /api/projects/{id}/chat/history endpoint (cf-14.1)"""
 
-    def test_get_history_success(self, client, test_project, test_db):
+    def test_get_history_success(self, api_client, test_project, get_app().state.db):
         """
         RED Test: Retrieve conversation history from database
         """
         # Arrange: Create conversation history
-        test_db.create_memory(
+        get_app().state.db.create_memory(
             project_id=test_project, category="conversation", key="user", value="Hello"
         )
-        test_db.create_memory(
+        get_app().state.db.create_memory(
             project_id=test_project,
             category="conversation",
             key="assistant",
             value="Hi! How can I help?",
         )
-        test_db.create_memory(
+        get_app().state.db.create_memory(
             project_id=test_project,
             category="conversation",
             key="user",
@@ -199,7 +186,7 @@ class TestChatHistoryEndpoint:
         )
 
         # Act
-        response = client.get(f"/api/projects/{test_project}/chat/history")
+        response = api_client.get(f"/api/projects/{test_project}/chat/history")
 
         # Assert
         assert response.status_code == 200
@@ -221,19 +208,19 @@ class TestChatHistoryEndpoint:
         for msg in messages:
             assert "timestamp" in msg
 
-    def test_get_history_pagination(self, client, test_project, test_db):
+    def test_get_history_pagination(self, api_client, test_project, get_app().state.db):
         """
         RED Test: Support pagination with limit and offset
         """
         # Arrange: Create 10 messages
         for i in range(10):
             role = "user" if i % 2 == 0 else "assistant"
-            test_db.create_memory(
+            get_app().state.db.create_memory(
                 project_id=test_project, category="conversation", key=role, value=f"Message {i}"
             )
 
         # Act: Get first 5 messages
-        response = client.get(
+        response = api_client.get(
             f"/api/projects/{test_project}/chat/history", params={"limit": 5, "offset": 0}
         )
 
@@ -244,7 +231,7 @@ class TestChatHistoryEndpoint:
         assert data["messages"][0]["content"] == "Message 0"
 
         # Act: Get next 5 messages
-        response = client.get(
+        response = api_client.get(
             f"/api/projects/{test_project}/chat/history", params={"limit": 5, "offset": 5}
         )
 
@@ -254,23 +241,23 @@ class TestChatHistoryEndpoint:
         assert len(data["messages"]) == 5
         assert data["messages"][0]["content"] == "Message 5"
 
-    def test_get_history_project_not_found(self, client):
+    def test_get_history_project_not_found(self, api_client):
         """
         RED Test: Return 404 for non-existent project
         """
         # Act
-        response = client.get("/api/projects/99999/chat/history")
+        response = api_client.get("/api/projects/99999/chat/history")
 
         # Assert
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_get_history_empty(self, client, test_project):
+    def test_get_history_empty(self, api_client, test_project):
         """
         RED Test: Return empty list for project with no conversation
         """
         # Act
-        response = client.get(f"/api/projects/{test_project}/chat/history")
+        response = api_client.get(f"/api/projects/{test_project}/chat/history")
 
         # Assert
         assert response.status_code == 200
@@ -283,7 +270,7 @@ class TestChatWebSocketIntegration:
     """Test WebSocket broadcasting for chat messages (cf-14.1)"""
 
     @pytest.mark.asyncio
-    async def test_chat_broadcasts_message(self, client, test_project):
+    async def test_chat_broadcasts_message(self, api_client, test_project):
         """
         RED Test: Verify chat message broadcasts via WebSocket
         """
@@ -302,7 +289,7 @@ class TestChatWebSocketIntegration:
                 "codeframe.ui.server.manager.broadcast", new_callable=AsyncMock
             ) as mock_broadcast:
                 # Act
-                response = client.post(
+                response = api_client.post(
                     f"/api/projects/{test_project}/chat", json={"message": "Hello"}
                 )
 
@@ -325,7 +312,7 @@ class TestChatWebSocketIntegration:
             server.running_agents.pop(test_project, None)
 
     @pytest.mark.asyncio
-    async def test_chat_continues_when_broadcast_fails(self, client, test_project):
+    async def test_chat_continues_when_broadcast_fails(self, api_client, test_project):
         """
         Test: Chat continues working even if WebSocket broadcast fails
 
@@ -346,7 +333,7 @@ class TestChatWebSocketIntegration:
                 mock_broadcast.side_effect = Exception("WebSocket connection lost")
 
                 # Act
-                response = client.post(
+                response = api_client.post(
                     f"/api/projects/{test_project}/chat", json={"message": "Test message"}
                 )
 
