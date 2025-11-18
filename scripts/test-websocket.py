@@ -188,7 +188,7 @@ def test_connection_stability(ws_url: str, connection_name: str, duration: int =
             ws.send(json.dumps({"type": "ping"}))
 
             # Wait for pong
-            response = ws.recv()
+            ws.recv()
             print("✓ (pong received)")
 
             # Wait before next ping

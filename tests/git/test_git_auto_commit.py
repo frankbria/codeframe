@@ -36,7 +36,7 @@ def db(tmp_path):
     database.initialize()
 
     # Create a test project
-    project_id = database.create_project(
+    database.create_project(
         name="Test Project", description="Test project for git auto-commit tests"
     )
 
@@ -363,7 +363,7 @@ class TestChangelogIntegration:
             "description": "Test description",
         }
 
-        commit_hash = workflow_manager.commit_task_changes(
+        workflow_manager.commit_task_changes(
             task=task, files_modified=["test.py"], agent_id="test-agent"
         )
 

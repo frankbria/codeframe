@@ -4,18 +4,13 @@ Following TDD: These tests are written FIRST before API implementation.
 Tests verify GET /api/projects/{id}/discovery/progress endpoint.
 """
 
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch
 
 from codeframe.ui.server import app
-from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 
 
 def get_app():
     """Get the current app instance after module reload."""
-    from codeframe.ui.server import app
 
     return app
 

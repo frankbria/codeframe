@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, TaskStatus, Issue
+from codeframe.core.models import TaskStatus, Issue
 
 
 class TestAPIContracts:
@@ -321,7 +321,6 @@ class TestDataIntegrity:
         Frontend Dashboard checks for status === 'completed' exactly.
         """
         # Valid task statuses from TaskStatus enum
-        valid_statuses = ["pending", "assigned", "in_progress", "blocked", "completed", "failed"]
 
         # Given: A database with tasks in various statuses
         db = Database(":memory:")
@@ -416,7 +415,7 @@ class TestEdgeCases:
         db = Database(":memory:")
         db.initialize()
 
-        project_id = db.create_project("Minimal Project", "Minimal Project project")
+        db.create_project("Minimal Project", "Minimal Project project")
 
         # When: We fetch projects
         projects = db.list_projects()

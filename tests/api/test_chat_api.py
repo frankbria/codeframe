@@ -15,19 +15,14 @@ Test Approach: TDD (RED-GREEN-REFACTOR)
 """
 
 import pytest
-from fastapi.testclient import TestClient
-from pathlib import Path
-import tempfile
 from unittest.mock import Mock, patch, AsyncMock
 
 from codeframe.ui.server import app
-from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, AgentMaturity
+from codeframe.core.models import AgentMaturity
 
 
 def get_app():
     """Get the current app instance after module reload."""
-    from codeframe.ui.server import app
 
     return app
 
@@ -129,7 +124,7 @@ class TestChatEndpoint:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_send_message_agent_not_started(self, api_client, get_app().state.db):
+    def test_send_message_agent_not_started(self, api_client):
         """
         RED Test: Return 400 if Lead Agent not started for project
         """
@@ -164,7 +159,7 @@ class TestChatEndpoint:
 class TestChatHistoryEndpoint:
     """Test GET /api/projects/{id}/chat/history endpoint (cf-14.1)"""
 
-    def test_get_history_success(self, api_client, test_project, get_app().state.db):
+    def test_get_history_success(self, api_client, test_project):
         """
         RED Test: Retrieve conversation history from database
         """
@@ -208,7 +203,7 @@ class TestChatHistoryEndpoint:
         for msg in messages:
             assert "timestamp" in msg
 
-    def test_get_history_pagination(self, api_client, test_project, get_app().state.db):
+    def test_get_history_pagination(self, api_client, test_project):
         """
         RED Test: Support pagination with limit and offset
         """

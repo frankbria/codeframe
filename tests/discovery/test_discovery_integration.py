@@ -9,7 +9,6 @@ import pytest
 from unittest.mock import Mock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 from codeframe.discovery.questions import DiscoveryQuestionFramework
 
 
@@ -31,7 +30,7 @@ class TestDiscoveryFlowInitialization:
         agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
 
         # ACT
-        response = agent.start_discovery()
+        agent.start_discovery()
 
         # ASSERT
         status = agent.get_discovery_status()
@@ -630,7 +629,7 @@ class TestDiscoveryEndToEndFlow:
 
         # ACT - Complete discovery flow
         # 1. Start discovery
-        start_response = agent.start_discovery()
+        agent.start_discovery()
         assert agent.get_discovery_status()["state"] == "discovering"
 
         # 2. Answer all required questions

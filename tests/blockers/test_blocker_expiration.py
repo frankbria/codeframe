@@ -242,7 +242,7 @@ class TestExpireStaleBlockersJob:
                RETURNING id""",
             ("backend-worker-1", 1, task_id, "SYNC", "Stale question?", "PENDING", stale_time),
         )
-        blocker_id = cursor_blocker.fetchone()[0]
+        cursor_blocker.fetchone()[0]
         temp_db_file.conn.commit()
 
         # Run expiration job

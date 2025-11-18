@@ -5,9 +5,7 @@ Task: cf-8.2 - Database initialization on server startup
 """
 
 import pytest
-from pathlib import Path
 from fastapi.testclient import TestClient
-from codeframe.core.models import ProjectStatus
 
 
 @pytest.mark.unit
@@ -30,7 +28,7 @@ class TestServerDatabaseInitialization:
         app = server.app
 
         # ACT: Start the app with TestClient to trigger lifespan
-        with TestClient(app) as client:
+        with TestClient(app):
             # ASSERT: Database should be initialized
             assert hasattr(app.state, "db"), "App should have database in state"
             assert app.state.db is not None, "Database should be initialized"
@@ -54,7 +52,7 @@ class TestServerDatabaseInitialization:
         app = server.app
 
         # ACT: Start the app with TestClient to trigger lifespan
-        with TestClient(app) as client:
+        with TestClient(app):
             db = app.state.db
 
             # ASSERT: Verify all tables exist
@@ -115,7 +113,7 @@ class TestServerDatabaseInitialization:
         app = server.app
 
         # ACT: Start the app with TestClient to trigger lifespan
-        with TestClient(app) as client:
+        with TestClient(app):
             # ASSERT: Custom path should be used
             assert custom_db_path.exists(), "Custom database path should be created"
             assert app.state.db.db_path == custom_db_path
@@ -169,7 +167,7 @@ class TestServerDatabaseAccess:
         with TestClient(app) as client:
             # Create a test project in database
             db = app.state.db
-            project_id = db.create_project("test-project", "Test Project project")
+            db.create_project("test-project", "Test Project project")
 
             response = client.get("/api/projects")
             assert response.status_code == 200
@@ -193,7 +191,6 @@ class TestServerDatabaseErrorHandling:
         # ACT & ASSERT: Server should handle error (not crash)
         try:
             reload(server)
-            app = server.app
             # If we get here, error was handled gracefully
             assert True
         except PermissionError:
@@ -220,7 +217,7 @@ class TestServerDatabaseErrorHandling:
 
         try:
             # ACT: Start the app with TestClient to trigger lifespan
-            with TestClient(app) as client:
+            with TestClient(app):
                 # ASSERT: Should use default path under workspace root
                 expected_default = tmp_path / ".codeframe/state.db"
                 assert app.state.db.db_path == expected_default
@@ -280,7 +277,7 @@ class TestServerDatabaseIntegration:
 
         try:
             # ACT & ASSERT: Perform database operations during request
-            with TestClient(app) as client:
+            with TestClient(app):
                 # Create project in database
                 db = app.state.db
                 project_id = db.create_project("integration-test", "Integration Test project")

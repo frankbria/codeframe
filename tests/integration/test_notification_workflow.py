@@ -40,7 +40,7 @@ class TestNotificationWorkflow:
             task_id = await db.create_task(project_id, "Test Task", "test-file.py", "BACKEND")
 
             # Create a SYNC blocker (this should trigger notification)
-            blocker_id = await db.create_blocker(
+            await db.create_blocker(
                 task_id=task_id,
                 blocker_type=BlockerType.SYNC,
                 message="Critical issue found",
@@ -84,7 +84,7 @@ class TestNotificationWorkflow:
             task_id = await db.create_task(project_id, "Test Task", "test-file.py", "BACKEND")
 
             # Create an ASYNC blocker
-            blocker_id = await db.create_blocker(
+            await db.create_blocker(
                 task_id=task_id,
                 blocker_type=BlockerType.ASYNC,
                 message="Non-critical issue found",
@@ -119,7 +119,7 @@ class TestNotificationWorkflow:
             task_id = await db.create_task(project_id, "Implement User Auth", "auth.py", "BACKEND")
 
             # Create a SYNC blocker
-            blocker_id = await db.create_blocker(
+            await db.create_blocker(
                 task_id=task_id,
                 blocker_type=BlockerType.SYNC,
                 message="Security vulnerability detected",
@@ -161,7 +161,7 @@ class TestNotificationWorkflow:
             task_id = await db.create_task(project_id, "Test Task", "test-file.py", "BACKEND")
 
             # Create a SYNC blocker
-            blocker_id = await db.create_blocker(
+            await db.create_blocker(
                 task_id=task_id,
                 blocker_type=BlockerType.SYNC,
                 message="Critical issue found",

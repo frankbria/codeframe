@@ -30,7 +30,6 @@ def test_db():
 @pytest.fixture
 def test_project(test_db):
     """Create a test project."""
-    from codeframe.core.models import ProjectStatus
 
     project_id = test_db.create_project("test_project", "Test Project project")
     return project_id
@@ -310,7 +309,7 @@ class TestGetAllBranchesForIssue:
         """Test getting all branches (active and merged) for an issue."""
         # Create multiple branches
         id1 = test_db.create_git_branch(test_issue, "branch-1")
-        id2 = test_db.create_git_branch(test_issue, "branch-2")
+        test_db.create_git_branch(test_issue, "branch-2")
 
         # Merge one
         test_db.mark_branch_merged(id1, "abc123")

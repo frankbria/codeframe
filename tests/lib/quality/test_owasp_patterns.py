@@ -229,7 +229,7 @@ def get_sensitive_data():
         findings = checker.check_file(weak_password_check)
 
         # Should detect weak validation
-        weak_findings = [
+        [
             f
             for f in findings
             if "password" in f.message.lower()

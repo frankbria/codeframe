@@ -14,7 +14,7 @@ Requirements from CONCEPTS_RESOLVED.md:
 import pytest
 from datetime import datetime
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, TaskStatus, Issue
+from codeframe.core.models import TaskStatus, Issue
 
 
 @pytest.mark.unit
@@ -997,7 +997,7 @@ class TestIssueTaskIntegration:
         project_id = db.create_project("test-project", "Test Project project")
 
         # Create issues with hierarchical numbers
-        issue1_id = db.create_issue(
+        db.create_issue(
             Issue(
                 project_id=project_id,
                 issue_number="1",
@@ -1017,7 +1017,7 @@ class TestIssueTaskIntegration:
                 priority=1,
             )
         )
-        issue3_id = db.create_issue(
+        db.create_issue(
             Issue(
                 project_id=project_id,
                 issue_number="1.2",
@@ -1027,7 +1027,7 @@ class TestIssueTaskIntegration:
                 priority=1,
             )
         )
-        issue4_id = db.create_issue(
+        db.create_issue(
             Issue(
                 project_id=project_id,
                 issue_number="2",

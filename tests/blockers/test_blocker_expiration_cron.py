@@ -121,7 +121,7 @@ class TestExpireStaleBlockersCronJob:
                    VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id""",
                 ("backend-worker-1", project_id, task_id, "SYNC", "Stale?", "PENDING", stale_time),
             )
-            blocker_id = cursor.fetchone()[0]
+            cursor.fetchone()[0]
             db.conn.commit()
             db.close()
 
@@ -179,7 +179,8 @@ class TestExpireStaleBlockersCronJob:
             mock_ws_manager = MagicMock()
 
             with patch(
-                "codeframe.ui.websocket_broadcasts.broadcast_blocker_expired", new_callable=AsyncMock
+                "codeframe.ui.websocket_broadcasts.broadcast_blocker_expired",
+                new_callable=AsyncMock,
             ) as mock_broadcast:
                 # Run cron job with WebSocket
                 expired_count = await expire_stale_blockers_job(
@@ -209,7 +210,9 @@ class TestExpireStaleBlockersCronJob:
             db.initialize(run_migrations=False)
 
             # Create project first (required by FOREIGN KEY)
-            project_id = db.create_project(name="Test Project", description="Test project for blocker tests")
+            project_id = db.create_project(
+                name="Test Project", description="Test project for blocker tests"
+            )
 
             # Create stale blocker without task_id
             stale_time = (datetime.now() - timedelta(hours=25)).isoformat()

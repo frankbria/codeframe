@@ -238,7 +238,7 @@ class TestAgentCRUD:
         db.initialize()
 
         # Create project first
-        project_id = db.create_project("test-project", "Test Project project")
+        db.create_project("test-project", "Test Project project")
 
         # Create agent
         agent_id = db.create_agent(
@@ -300,7 +300,7 @@ class TestAgentCRUD:
         db = Database(temp_db_path)
         db.initialize()
 
-        project_id = db.create_project("test-project", "Test Project project")
+        db.create_project("test-project", "Test Project project")
 
         # Create multiple agents (for now, agents aren't project-specific in schema)
         # But we'll add project_id to agents table later

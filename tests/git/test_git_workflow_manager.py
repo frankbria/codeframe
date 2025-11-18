@@ -377,10 +377,10 @@ class TestMergeToMain:
         repo.git.checkout(branch_name)
         (repo_path / "test.txt").write_text("test")
         repo.index.add(["test.txt"])
-        commit = repo.index.commit("Test commit")
+        repo.index.commit("Test commit")
         repo.git.checkout("main")
 
-        result = workflow_manager.merge_to_main("2.1")
+        workflow_manager.merge_to_main("2.1")
 
         # Check database was updated
         # get_all_branches_for_issue returns all branches (including merged)

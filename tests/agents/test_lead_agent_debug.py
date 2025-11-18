@@ -6,7 +6,6 @@ import pytest
 import os
 import tempfile
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 from codeframe.agents.lead_agent import LeadAgent
 
 

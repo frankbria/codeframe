@@ -9,7 +9,7 @@ RED Phase: This test should FAIL initially, demonstrating the bug.
 """
 
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus, TaskStatus, Issue
+from codeframe.core.models import TaskStatus, Issue
 
 
 def test_list_projects_includes_progress_metrics():
@@ -145,7 +145,7 @@ def test_list_projects_progress_with_no_tasks():
     db = Database(":memory:")
     db.initialize()
 
-    project_id = db.create_project("Empty Project", "Empty Project project")
+    db.create_project("Empty Project", "Empty Project project")
 
     # When: We fetch the project list
     projects = db.list_projects()

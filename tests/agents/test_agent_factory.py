@@ -176,7 +176,6 @@ class TestAgentFactory:
         from codeframe.agents.backend_worker_agent import BackendWorkerAgent
         from codeframe.persistence.database import Database
         from codeframe.indexing.codebase_index import CodebaseIndex
-        from codeframe.core.models import ProjectStatus
 
         # Create minimal dependencies
         db = Database(":memory:")
