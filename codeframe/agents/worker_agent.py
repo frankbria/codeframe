@@ -69,6 +69,9 @@ class WorkerAgent:
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
+        if self.project_id is None:
+            raise ValueError("project_id is required to flash_save")
+
         from codeframe.lib.context_manager import ContextManager
 
         # Create context manager and execute flash save
@@ -97,6 +100,9 @@ class WorkerAgent:
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
+        if self.project_id is None:
+            raise ValueError("project_id is required to should_flash_save")
+
         from codeframe.lib.context_manager import ContextManager
 
         # Create context manager and check threshold
@@ -118,6 +124,9 @@ class WorkerAgent:
         """
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
+
+        if self.project_id is None:
+            raise ValueError("project_id is required to save_context_item")
 
         if not content or not content.strip():
             raise ValueError("Content cannot be empty")
@@ -148,6 +157,9 @@ class WorkerAgent:
         """
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
+
+        if self.project_id is None:
+            raise ValueError("project_id is required to load_context")
 
         # Call database list_context_items with:
         # - project_id=self.project_id
@@ -216,6 +228,9 @@ class WorkerAgent:
         """
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
+
+        if self.project_id is None:
+            raise ValueError("project_id is required to update_tiers")
 
         from codeframe.lib.context_manager import ContextManager
 

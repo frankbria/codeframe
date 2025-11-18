@@ -118,7 +118,7 @@ class TestFrontendWorkerAgentBlockerTypeValidation:
         agent.db = Mock(spec=Database)
         agent.db.create_blocker.return_value = 1
         agent.project_id = 1
-        agent.ws_manager = None  # No WebSocket manager in test
+        agent.websocket_manager = None  # No WebSocket manager in test
 
         blocker_id = await agent.create_blocker(
             question="Critical frontend issue?", blocker_type="SYNC"
@@ -135,7 +135,7 @@ class TestFrontendWorkerAgentBlockerTypeValidation:
         agent = FrontendWorkerAgent(agent_id="frontend-001", project_id=1)
         agent.db = Mock(spec=Database)
         agent.project_id = 1
-        agent.ws_manager = None
+        agent.websocket_manager = None
 
         with pytest.raises(ValueError) as exc_info:
             await agent.create_blocker(question="Question?", blocker_type="MEDIUM")
@@ -153,7 +153,7 @@ class TestTestWorkerAgentBlockerTypeValidation:
         db = Mock(spec=Database)
         db.create_blocker.return_value = 1
         agent = TestWorkerAgent(agent_id="test-001", project_id=1, db=db)
-        agent.ws_manager = None  # No WebSocket manager in test
+        agent.websocket_manager = None  # No WebSocket manager in test
 
         blocker_id = await agent.create_blocker(
             question="Critical test issue?", blocker_type="SYNC"
@@ -169,7 +169,7 @@ class TestTestWorkerAgentBlockerTypeValidation:
         """Test create_blocker rejects invalid blocker type."""
         db = Mock(spec=Database)
         agent = TestWorkerAgent(agent_id="test-001", project_id=1, db=db)
-        agent.ws_manager = None  # No WebSocket manager in test
+        agent.websocket_manager = None  # No WebSocket manager in test
 
         with pytest.raises(ValueError) as exc_info:
             await agent.create_blocker(question="Question?", blocker_type="HIGH")

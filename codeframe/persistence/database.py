@@ -1,5 +1,6 @@
 """Database management for CodeFRAME state."""
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -1634,17 +1635,18 @@ class Database:
                 for task_row in task_rows:
                     task_dict = dict(task_row)
 
-                    # Parse depends_on if it's a string
+                    # Parse depends_on from JSON
                     depends_on = []
-                    if task_dict.get("depends_on"):
-                        # depends_on might be a comma-separated string or single value
-                        depends_on_str = task_dict["depends_on"]
-                        if depends_on_str:
-                            depends_on = (
-                                [depends_on_str]
-                                if "," not in depends_on_str
-                                else depends_on_str.split(",")
-                            )
+                    depends_on_str = task_dict.get("depends_on")
+                    if depends_on_str:
+                        try:
+                            depends_on = json.loads(depends_on_str)
+                            # Ensure it's a list
+                            if not isinstance(depends_on, list):
+                                depends_on = []
+                        except (json.JSONDecodeError, TypeError):
+                            # If parsing fails, return empty list
+                            depends_on = []
 
                     formatted_task = {
                         "id": str(task_dict["id"]),
@@ -2068,8 +2070,6 @@ class Database:
         row = cursor.fetchone()
 
         if row and row[0]:
-            import json
-
             depends_on = json.loads(row[0]) if row[0] else []
         else:
             depends_on = []
@@ -2151,8 +2151,6 @@ class Database:
         row = cursor.fetchone()
 
         if row and row[0]:
-            import json
-
             depends_on = json.loads(row[0]) if row[0] else []
             if depends_on_task_id in depends_on:
                 depends_on.remove(depends_on_task_id)

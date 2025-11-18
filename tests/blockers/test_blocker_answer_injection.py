@@ -98,7 +98,7 @@ class TestBackendWorkerAgentAnswerInjection:
                 context = {"task": {"id": 42, "title": "Test task"}}
 
                 # Call without explicit task_id
-                await agent.create_blocker_and_wait(
+                enriched_context = await agent.create_blocker_and_wait(
                     question="Test question?", context=context
                 )
 
@@ -106,6 +106,14 @@ class TestBackendWorkerAgentAnswerInjection:
                 mock_create.assert_called_once_with(
                     question="Test question?", blocker_type="ASYNC", task_id=42
                 )
+
+                # Verify context was enriched with blocker information
+                assert enriched_context["blocker_answer"] == "Answer"
+                assert enriched_context["blocker_question"] == "Test question?"
+                assert enriched_context["blocker_id"] == 456
+
+                # Verify original context fields preserved
+                assert enriched_context["task"] == {"id": 42, "title": "Test task"}
 
     @pytest.mark.asyncio
     async def test_create_blocker_and_wait_uses_custom_timeouts(self, tmp_path):
@@ -127,12 +135,20 @@ class TestBackendWorkerAgentAnswerInjection:
                 context = {"task": {"id": 1}}
 
                 # Call with custom timeouts
-                await agent.create_blocker_and_wait(
+                enriched_context = await agent.create_blocker_and_wait(
                     question="Question?", context=context, poll_interval=2.0, timeout=120.0
                 )
 
                 # Verify custom timeouts were passed to wait_for_blocker_resolution
                 mock_wait.assert_called_once_with(blocker_id=789, poll_interval=2.0, timeout=120.0)
+
+                # Verify context was enriched with blocker information
+                assert enriched_context["blocker_answer"] == "Custom answer"
+                assert enriched_context["blocker_question"] == "Question?"
+                assert enriched_context["blocker_id"] == 789
+
+                # Verify original context fields preserved
+                assert enriched_context["task"] == {"id": 1}
 
 
 class TestFrontendWorkerAgentAnswerInjection:
