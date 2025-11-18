@@ -146,7 +146,7 @@ Now decompose the issue above into {self._estimate_task_count(issue)} atomic tas
         tasks = []
         for idx, match in enumerate(matches, start=1):
             if len(match) >= 2:
-                task_num_str = match[0]
+                match[0]
                 title = match[1].strip()
                 description = match[2].strip() if len(match) > 2 and match[2] else title
 

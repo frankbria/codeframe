@@ -293,7 +293,7 @@ async def test_mvp_completion_workflow_with_notification(
     )
 
     # STEP 1: Create SYNC blocker (simulating quality gate failure)
-    blocker_id = test_db.create_blocker(
+    test_db.create_blocker(
         agent_id=backend_agent.agent_id,
         project_id=project_id,
         task_id=task_id,

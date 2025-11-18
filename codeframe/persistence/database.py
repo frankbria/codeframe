@@ -1,5 +1,6 @@
 """Database management for CodeFRAME state."""
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -581,8 +582,8 @@ class Database:
         cursor.execute(
             """
             INSERT INTO tasks (
-                project_id, title, description, status, priority, workflow_step, requires_mcp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                project_id, title, description, status, priority, workflow_step, requires_mcp, depends_on
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 task.project_id,
@@ -592,6 +593,7 @@ class Database:
                 task.priority,
                 task.workflow_step,
                 task.requires_mcp,
+                task.depends_on,
             ),
         )
         self.conn.commit()
@@ -604,7 +606,7 @@ class Database:
             "SELECT * FROM tasks WHERE project_id = ? AND status = ?",
             (project_id, TaskStatus.PENDING.value),
         )
-        rows = cursor.fetchall()
+        _rows = cursor.fetchall()
         # TODO: Convert rows to Task objects
         return []
 
@@ -753,12 +755,15 @@ class Database:
         Returns:
             True if blocker was resolved, False if already resolved or not found
         """
+        from datetime import datetime, UTC
+
         cursor = self.conn.cursor()
+        resolved_at = datetime.now(UTC).isoformat()
         cursor.execute(
             """UPDATE blockers
-               SET answer = ?, status = 'RESOLVED', resolved_at = CURRENT_TIMESTAMP
+               SET answer = ?, status = 'RESOLVED', resolved_at = ?
                WHERE id = ? AND status = 'PENDING'""",
-            (answer, blocker_id),
+            (answer, resolved_at, blocker_id),
         )
         self.conn.commit()
         return cursor.rowcount > 0
@@ -944,10 +949,17 @@ class Database:
                 resolved_count += 1
                 # Calculate resolution time
                 if created_at and resolved_at:
-                    from datetime import datetime
+                    from datetime import datetime, timezone
 
                     created = datetime.fromisoformat(created_at)
                     resolved = datetime.fromisoformat(resolved_at)
+
+                    # Normalize both to timezone-aware (assume UTC if naive)
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    if resolved.tzinfo is None:
+                        resolved = resolved.replace(tzinfo=timezone.utc)
+
                     resolution_time_seconds = (resolved - created).total_seconds()
                     resolution_times.append(resolution_time_seconds)
             elif status == "EXPIRED":
@@ -1517,7 +1529,7 @@ class Database:
                 # SQLite format: "2025-10-17 22:01:56"
                 dt = datetime.fromisoformat(timestamp_str)
                 return dt.isoformat() + "Z"
-            except:
+            except ValueError:
                 return timestamp_str
 
         # Determine generated_at
@@ -1576,7 +1588,7 @@ class Database:
             try:
                 dt = datetime.fromisoformat(timestamp_str)
                 return dt.isoformat() + "Z"
-            except:
+            except ValueError:
                 return timestamp_str
 
         # Format issues according to API contract
@@ -1623,17 +1635,18 @@ class Database:
                 for task_row in task_rows:
                     task_dict = dict(task_row)
 
-                    # Parse depends_on if it's a string
+                    # Parse depends_on from JSON
                     depends_on = []
-                    if task_dict.get("depends_on"):
-                        # depends_on might be a comma-separated string or single value
-                        depends_on_str = task_dict["depends_on"]
-                        if depends_on_str:
-                            depends_on = (
-                                [depends_on_str]
-                                if "," not in depends_on_str
-                                else depends_on_str.split(",")
-                            )
+                    depends_on_str = task_dict.get("depends_on")
+                    if depends_on_str:
+                        try:
+                            depends_on = json.loads(depends_on_str)
+                            # Ensure it's a list
+                            if not isinstance(depends_on, list):
+                                depends_on = []
+                        except (json.JSONDecodeError, TypeError):
+                            # If parsing fails, return empty list
+                            depends_on = []
 
                     formatted_task = {
                         "id": str(task_dict["id"]),
@@ -2057,8 +2070,6 @@ class Database:
         row = cursor.fetchone()
 
         if row and row[0]:
-            import json
-
             depends_on = json.loads(row[0]) if row[0] else []
         else:
             depends_on = []
@@ -2140,8 +2151,6 @@ class Database:
         row = cursor.fetchone()
 
         if row and row[0]:
-            import json
-
             depends_on = json.loads(row[0]) if row[0] else []
             if depends_on_task_id in depends_on:
                 depends_on.remove(depends_on_task_id)

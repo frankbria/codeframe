@@ -1,7 +1,7 @@
 """FastAPI Status Server for CodeFRAME."""
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
@@ -67,14 +67,24 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
     # Startup: Initialize database
-    db_path_str = os.environ.get("DATABASE_PATH", ".codeframe/state.db")
-    db_path = Path(db_path_str)
+    # If DATABASE_PATH is not set, use default relative to WORKSPACE_ROOT
+    db_path_str = os.environ.get("DATABASE_PATH")
+    if db_path_str:
+        db_path = Path(db_path_str)
+    else:
+        # Use WORKSPACE_ROOT if set, otherwise use current directory
+        workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "."))
+        db_path = workspace_root / ".codeframe" / "state.db"
 
     app.state.db = Database(db_path)
     app.state.db.initialize()
 
     # Initialize workspace manager
-    workspace_root = Path.cwd() / ".codeframe" / "workspaces"
+    # Allow WORKSPACE_ROOT override for testing
+    workspace_root_str = os.environ.get(
+        "WORKSPACE_ROOT", str(Path.cwd() / ".codeframe" / "workspaces")
+    )
+    workspace_root = Path(workspace_root_str)
     app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     yield
@@ -300,6 +310,13 @@ async def create_project(request: ProjectCreateRequest):
     if is_hosted_mode() and request.source_type == SourceType.LOCAL_PATH:
         raise HTTPException(
             status_code=403, detail="source_type='local_path' not available in hosted mode"
+        )
+
+    # Check for duplicate project name
+    existing_projects = app.state.db.list_projects()
+    if any(p["name"] == request.name for p in existing_projects):
+        raise HTTPException(
+            status_code=409, detail=f"Project with name '{request.name}' already exists"
         )
 
     # Create project record first (to get ID)

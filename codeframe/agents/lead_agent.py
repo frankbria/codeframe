@@ -1,5 +1,6 @@
 """Lead Agent orchestrator for CodeFRAME."""
 
+import json
 import logging
 import asyncio
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
@@ -89,9 +90,11 @@ class LeadAgent:
         import git
 
         project = self.db.get_project(project_id)
-        project_root_str = project.get("root_path")
+        project_root_str = project.get(
+            "workspace_path"
+        )  # Fixed: use workspace_path per migration 002
 
-        # Only initialize GitWorkflowManager if root_path is set and is a valid git repo
+        # Only initialize GitWorkflowManager if workspace_path is set and is a valid git repo
         self.git_workflow = None
         if project_root_str:
             try:
@@ -1209,10 +1212,32 @@ Generate the PRD in markdown format with clear sections and professional languag
                                     print(
                                         f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
                                     )
+                                    # Check if task has pending SYNC blocker before resetting to pending
+                                    can_assign = await self.can_assign_task(task_id)
+                                    if can_assign:
+                                        # No blocker - reset to pending for retry
+                                        self.db.update_task(task_id, {"status": "pending"})
+                                    else:
+                                        # Has SYNC blocker - keep as blocked
+                                        self.db.update_task(task_id, {"status": "blocked"})
+                                        logger.info(
+                                            f"Task {task_id} kept as blocked due to pending SYNC blocker"
+                                        )
                             except Exception:
                                 logger.exception(f"Error processing task {task_id}")
                                 retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                 total_retries += 1
+                                # Check if task has pending SYNC blocker before resetting to pending
+                                can_assign = await self.can_assign_task(task_id)
+                                if can_assign:
+                                    # No blocker - reset to pending for retry
+                                    self.db.update_task(task_id, {"status": "pending"})
+                                else:
+                                    # Has SYNC blocker - keep as blocked
+                                    self.db.update_task(task_id, {"status": "blocked"})
+                                    logger.info(
+                                        f"Task {task_id} kept as blocked due to pending SYNC blocker"
+                                    )
                 else:
                     # No tasks running and none ready - check if we're stuck
                     if not self._all_tasks_complete():
@@ -1231,10 +1256,16 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         # Calculate summary statistics
         execution_time = time.time() - start_time
-        completed_count = len(
-            [t for t in tasks if t.id in self.dependency_resolver.completed_tasks]
-        )
         failed_count = len([t for t in tasks if self.db.get_task(t.id).get("status") == "failed"])
+        # Completed count = tasks in completed_tasks that are not failed
+        completed_count = len(
+            [
+                t
+                for t in tasks
+                if t.id in self.dependency_resolver.completed_tasks
+                and self.db.get_task(t.id).get("status") != "failed"
+            ]
+        )
 
         summary = {
             "total_tasks": len(tasks),
@@ -1364,8 +1395,8 @@ Generate the PRD in markdown format with clear sections and professional languag
         except Exception:
             logger.exception(f"Task {task.id} execution failed")
 
-            # Update task status
-            self.db.update_task(task.id, {"status": "failed"})
+            # Don't update task status here - let coordination loop decide
+            # whether to retry or mark as permanently failed based on retry_counts
 
             # Mark agent idle if it was assigned
             try:
@@ -1411,24 +1442,41 @@ Generate the PRD in markdown format with clear sections and professional languag
                 return False
 
         # Check if task depends on tasks with pending SYNC blockers
-        depends_on = task.get("depends_on", "")
-        if depends_on:
-            # Get all project tasks to resolve dependencies
-            all_tasks = self.db.get_project_tasks(self.project_id)
+        depends_on_str = task.get("depends_on", "")
+        if depends_on_str and depends_on_str.strip():
+            # Parse depends_on field (JSON array or comma-separated format)
+            # Similar to dependency_resolver.py lines 71-83
+            depends_on_str = depends_on_str.strip()
+            dep_ids = []
 
-            # Find the task this depends on
-            dependency_task = None
-            for t in all_tasks:
-                if t["task_number"] == depends_on:
-                    dependency_task = t
-                    break
+            if depends_on_str.startswith("[") and depends_on_str.endswith("]"):
+                # JSON array format: "[1, 2, 3]"
+                try:
+                    dep_ids = json.loads(depends_on_str)
+                    # Normalize to integers
+                    dep_ids = [int(dep_id) for dep_id in dep_ids]
+                except (json.JSONDecodeError, ValueError, TypeError) as e:
+                    logger.warning(
+                        f"Invalid JSON in depends_on for task {task_id}: {depends_on_str}. Error: {e}"
+                    )
+                    dep_ids = []
+            else:
+                # Comma-separated format or single value
+                try:
+                    dep_ids = [int(x.strip()) for x in depends_on_str.split(",") if x.strip()]
+                except ValueError:
+                    logger.warning(
+                        f"Invalid depends_on format for task {task_id}: {depends_on_str}"
+                    )
+                    dep_ids = []
 
-            if dependency_task:
+            # Check each dependency for SYNC blockers
+            for dep_id in dep_ids:
                 # Recursively check if dependency is blocked
-                can_assign_dependency = await self.can_assign_task(dependency_task["id"])
+                can_assign_dependency = await self.can_assign_task(dep_id)
                 if not can_assign_dependency:
                     logger.debug(
-                        f"Task {task_id} blocked: depends on task {dependency_task['id']} "
+                        f"Task {task_id} blocked: depends on task {dep_id} "
                         f"which has pending SYNC blocker"
                     )
                     return False
@@ -1436,11 +1484,11 @@ Generate the PRD in markdown format with clear sections and professional languag
                 # Also check if dependency task has pending SYNC blocker
                 for blocker in blockers.get("blockers", []):
                     if (
-                        blocker.get("task_id") == dependency_task["id"]
+                        blocker.get("task_id") == dep_id
                         and blocker.get("blocker_type") == "SYNC"
                     ):
                         logger.debug(
-                            f"Task {task_id} blocked: dependency task {dependency_task['id']} "
+                            f"Task {task_id} blocked: dependency task {dep_id} "
                             f"has pending SYNC blocker {blocker.get('id')}"
                         )
                         return False

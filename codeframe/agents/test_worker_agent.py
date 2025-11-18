@@ -35,6 +35,8 @@ class TestWorkerAgent(WorkerAgent):
     - Integrate with WebSocket broadcasts for test results
     """
 
+    __test__ = False  # Not a test class - it's an agent that generates tests
+
     def __init__(
         self,
         agent_id: str,
@@ -72,8 +74,6 @@ class TestWorkerAgent(WorkerAgent):
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.websocket_manager = websocket_manager
         self.max_correction_attempts = max_correction_attempts
-        self.db = db
-        self.project_id = project_id
         self.project_root = Path(__file__).parent.parent.parent
         self.tests_dir = self.project_root / "tests"
 

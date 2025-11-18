@@ -73,3 +73,5 @@ Thumbs.db
 # Beads
 .beads/
 !.beads/*.jsonl
+.codeframe/
+.agent-tasks/

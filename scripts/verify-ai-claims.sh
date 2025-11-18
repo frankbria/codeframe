@@ -97,11 +97,30 @@ echo "📁 Artifacts: $ARTIFACTS_DIR"
 echo ""
 
 # Activate virtualenv
-if [ -f venv/bin/activate ]; then
-    source venv/bin/activate
-elif [ -f .venv/bin/activate ]; then
-    source .venv/bin/activate
+if command -v uv &> /dev/null; then
+    # Use uv if available
+    TEST_PREFIX="uv run"
+else
+
+    if [ -f venv/bin/activate ]; then
+        source venv/bin/activate
+    elif [ -f .venv/bin/activate ]; then
+       source .venv/bin/activate
+    fi
+    TEST_PREFIX=""
 fi
+
+# Pre-flight check: Verify required commands are available
+echo -e "${BLUE}🔍 Pre-flight check: Verifying dependencies...${NC}"
+for cmd in pytest black ruff; do
+    if ! command -v $cmd &> /dev/null; then
+         echo -e "${RED}❌  Required command not found: $cmd${NC}"
+         echo -e "${YELLOW}Install it with: pip install $cmd${NC}"
+         exit 1
+    fi
+done
+echo -e "${GREEN}✅ All required commands available${NC}"
+echo ""
 
 # Step 1: Run test suite
 if [ "$RUN_TESTS" = true ]; then
@@ -112,10 +131,10 @@ if [ "$RUN_TESTS" = true ]; then
 
     # Run pytest with JSON report
     if [ "$VERBOSE" = true ]; then
-        pytest -v --json-report --json-report-file="$ARTIFACTS_DIR/test-report.json" 2>&1 | tee "$ARTIFACTS_DIR/test-output.txt"
+        $TEST_PREFIX pytest -v --json-report --json-report-file="$ARTIFACTS_DIR/test-report.json" 2>&1 | tee "$ARTIFACTS_DIR/test-output.txt"
         TEST_EXIT=${PIPESTATUS[0]}
     else
-        pytest -v --json-report --json-report-file="$ARTIFACTS_DIR/test-report.json" > "$ARTIFACTS_DIR/test-output.txt" 2>&1
+        $TEST_PREFIX pytest -v --json-report --json-report-file="$ARTIFACTS_DIR/test-report.json" > "$ARTIFACTS_DIR/test-output.txt" 2>&1
         TEST_EXIT=$?
 
         # Show summary
@@ -127,8 +146,10 @@ if [ "$RUN_TESTS" = true ]; then
 
     # Parse results
     TEST_OUTPUT=$(cat "$ARTIFACTS_DIR/test-output.txt")
-    PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= passed)' | head -1 || echo "0")
-    FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= failed)' | head -1 || echo "0")
+    PASSED_TESTS=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= passed)' | head -1)
+    PASSED_TESTS=${PASSED_TESTS:-0}
+    FAILED_TESTS=$(echo "$TEST_OUTPUT" | grep -oP '\d+(?= failed)' | head -1)
+    FAILED_TESTS=${FAILED_TESTS:-0}
 
     if [ "$TEST_EXIT" -eq 0 ]; then
         echo -e "${GREEN}✅ Step 1: PASSED${NC} ($PASSED_TESTS tests, 0 failures, ${DURATION}s)"

@@ -61,19 +61,22 @@ async def expire_stale_blockers_job(
 
             task_id = blocker.get("task_id")
             agent_id = blocker.get("agent_id")
-            question = blocker.get("question", "")[:100]  # Truncate for logging
+            blocker.get("question", "")[:100]  # Truncate for logging
 
             # Fail associated task (T049)
             if task_id:
                 try:
                     task = db.get_task(task_id)
                     if task and task.get("status") != TaskStatus.FAILED.value:
-                        db.update_task_status(
+                        db.update_task(
                             task_id=task_id,
-                            status=TaskStatus.FAILED.value,
-                            output=f"Task failed: blocker {blocker_id} expired after {hours}h without resolution. Question: {blocker.get('question', 'N/A')}",
+                            updates={
+                                "status": TaskStatus.FAILED.value,
+                            },
                         )
-                        logger.info(f"Failed task {task_id} due to expired blocker {blocker_id}")
+                        logger.info(
+                            f"Failed task {task_id} due to expired blocker {blocker_id}: {blocker.get('question', 'N/A')}"
+                        )
                 except Exception as e:
                     logger.error(f"Failed to update task {task_id} status: {e}")
 

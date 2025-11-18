@@ -130,7 +130,7 @@ class TestScoreRecalculationIntegration:
 
         # Get initial score (before recalculation)
         item_before = temp_db.get_context_item(item_id)
-        initial_score = item_before["importance_score"]
+        item_before["importance_score"]
 
         # Recalculate
         context_manager.recalculate_scores_for_agent(test_project, agent_id)

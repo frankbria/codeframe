@@ -100,7 +100,7 @@ class TestContextStats:
         # ACT: Get context stats
         from codeframe.lib.context_manager import ContextManager
 
-        context_mgr = ContextManager(db=temp_db)
+        ContextManager(db=temp_db)
 
         # Calculate stats manually for now (implementation will be in T067)
         hot_items = temp_db.list_context_items(

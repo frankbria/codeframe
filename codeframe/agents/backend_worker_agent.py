@@ -851,20 +851,19 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         )
 
         # Create blocker for manual intervention
-        cursor = self.db.conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO blockers (task_id, severity, reason, question)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                task_id,
-                "sync",
-                f"Tests still failing after {max_attempts} self-correction attempts",
-                "Please review the test failures and correction attempts, then provide manual fix.",
-            ),
+        agent_id = getattr(self, "id", None) or f"backend-worker-{self.project_id}"
+        question = (
+            f"Tests still failing after {max_attempts} self-correction attempts. "
+            "Please review the test failures and correction attempts, then provide manual fix."
         )
-        self.db.conn.commit()
+
+        self.db.create_blocker(
+            agent_id=agent_id,
+            project_id=self.project_id,
+            task_id=task_id,
+            blocker_type="SYNC",
+            question=question,
+        )
 
         return False
 

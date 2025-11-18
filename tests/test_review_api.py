@@ -326,7 +326,7 @@ class TestReviewAPI:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data["has_review"] == False
+        assert not data["has_review"]
         assert data["status"] is None
         assert data["overall_score"] is None
 
