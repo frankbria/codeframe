@@ -3,14 +3,9 @@ Tests for Agent Pool Manager (Sprint 4: cf-24).
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-import asyncio
+from unittest.mock import Mock, patch, AsyncMock
 
 from codeframe.agents.agent_pool_manager import AgentPoolManager
-from codeframe.agents.backend_worker_agent import BackendWorkerAgent
-from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
-from codeframe.agents.test_worker_agent import TestWorkerAgent
 
 
 @pytest.fixture

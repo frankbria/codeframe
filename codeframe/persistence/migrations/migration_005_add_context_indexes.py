@@ -73,11 +73,11 @@ class AddContextIndexes(Migration):
         """
         cursor = conn.cursor()
 
-        # Create composite index on agent_id and tier
+        # Create composite index on agent_id and current_tier
         cursor.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_context_agent_tier
-            ON context_items(agent_id, tier)
+            ON context_items(agent_id, current_tier)
         """
         )
         logger.info("Created index: idx_context_agent_tier")

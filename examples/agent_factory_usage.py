@@ -5,7 +5,6 @@ This file demonstrates how to use the new Agent Factory system
 to create and manage agents in CodeFRAME.
 """
 
-from pathlib import Path
 from codeframe.agents import AgentFactory
 from codeframe.core.models import AgentMaturity
 
@@ -78,7 +77,7 @@ def example_query_capabilities():
 
     # Get full definition
     definition = factory.get_agent_definition(agent_type)
-    print(f"\nDefinition details:")
+    print("\nDefinition details:")
     print(f"  - Name: {definition.name}")
     print(f"  - Type: {definition.type}")
     print(f"  - Maturity: {definition.maturity.value}")
@@ -152,7 +151,7 @@ def example_agent_metadata():
     for tool in agent.tools:
         print(f"  - {tool}")
 
-    print(f"\nConstraints:")
+    print("\nConstraints:")
     for key, value in agent.constraints.items():
         print(f"  - {key}: {value}")
 

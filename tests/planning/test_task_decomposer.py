@@ -14,8 +14,7 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 from codeframe.planning.task_decomposer import TaskDecomposer
 from codeframe.core.models import Issue, Task, TaskStatus
 from codeframe.providers.anthropic import AnthropicProvider

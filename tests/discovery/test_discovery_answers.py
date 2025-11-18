@@ -4,7 +4,6 @@ This module implements comprehensive tests for the answer capture system
 following TDD (Test-Driven Development) principles.
 """
 
-import pytest
 from codeframe.discovery.answers import AnswerCapture
 
 

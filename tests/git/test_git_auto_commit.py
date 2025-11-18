@@ -1,12 +1,9 @@
 """Tests for Git Auto-Commit functionality (cf-44)."""
 
 import pytest
-import tempfile
 import git
-from pathlib import Path
 from codeframe.git.workflow_manager import GitWorkflowManager
 from codeframe.persistence.database import Database
-from codeframe.core.models import ProjectStatus
 
 
 @pytest.fixture
@@ -39,7 +36,9 @@ def db(tmp_path):
     database.initialize()
 
     # Create a test project
-    project_id = database.create_project("Test Project", "Test Project project")
+    project_id = database.create_project(
+        name="Test Project", description="Test project for git auto-commit tests"
+    )
 
     yield database
 

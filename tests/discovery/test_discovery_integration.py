@@ -7,12 +7,10 @@ Target: 10-12 tests, 100% pass rate after implementation.
 
 import pytest
 from unittest.mock import Mock, patch
-from pathlib import Path
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus
 from codeframe.discovery.questions import DiscoveryQuestionFramework
-from codeframe.discovery.answers import AnswerCapture
 
 
 @pytest.mark.integration

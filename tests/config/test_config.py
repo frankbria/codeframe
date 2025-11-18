@@ -1,7 +1,6 @@
 """Tests for configuration management."""
 
 import os
-import tempfile
 from pathlib import Path
 import pytest
 from codeframe.core.config import Config, GlobalConfig, load_environment

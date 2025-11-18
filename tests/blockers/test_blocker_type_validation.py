@@ -12,8 +12,7 @@ Following strict TDD methodology (RED-GREEN-REFACTOR).
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent

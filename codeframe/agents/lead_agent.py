@@ -1345,7 +1345,44 @@ Generate the PRD in markdown format with clear sections and professional languag
             # Worker agents now use async execute_task - no threading needed
             await agent_instance.execute_task(task_dict)
 
-            # Task succeeded
+            # Step 11: Code Review (Sprint 9)
+            # Review the code changes before marking task as completed
+            logger.info(f"Initiating code review for task {task.id}")
+            try:
+                # Get or create review agent
+                review_agent_id = self.agent_pool_manager.get_or_create_agent("review")
+                review_agent = self.agent_pool_manager.get_agent_instance(review_agent_id)
+
+                # Execute review
+                review_report = await review_agent.execute_task(task_dict)
+
+                logger.info(
+                    f"Review completed: status={review_report.status}, "
+                    f"score={review_report.overall_score:.1f}"
+                )
+
+                # If review rejected or needs changes, blocker already created by ReviewWorkerAgent
+                # Don't mark task as completed yet - wait for blocker resolution
+                if review_report.status in ["rejected", "changes_requested"]:
+                    logger.warning(
+                        f"Task {task.id} review failed: {review_report.status}. "
+                        f"Blocker created, task remains in_progress."
+                    )
+                    # Mark review agent idle
+                    self.agent_pool_manager.mark_agent_idle(review_agent_id)
+                    # Mark worker agent idle
+                    self.agent_pool_manager.mark_agent_idle(agent_id)
+                    return False  # Task not completed due to review failure
+
+                # Mark review agent idle
+                self.agent_pool_manager.mark_agent_idle(review_agent_id)
+
+            except Exception as e:
+                logger.error(f"Code review failed for task {task.id}: {e}")
+                # Continue with task completion even if review fails (graceful degradation)
+                # In production, you might want to create an ASYNC blocker here
+
+            # Task succeeded and passed review
             self.db.update_task(task.id, {"status": "completed"})
             logger.info(f"Task {task.id} completed successfully by agent {agent_id}")
 
@@ -1422,7 +1459,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 if not can_assign_dependency:
                     logger.debug(
                         f"Task {task_id} blocked: depends on task {dependency_task['id']} "
-                        f"which has SYNC blocker"
+                        f"which has pending SYNC blocker"
                     )
                     return False
 
@@ -1434,7 +1471,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                     ):
                         logger.debug(
                             f"Task {task_id} blocked: dependency task {dependency_task['id']} "
-                            f"has SYNC blocker {blocker.get('id')}"
+                            f"has pending SYNC blocker {blocker.get('id')}"
                         )
                         return False
 

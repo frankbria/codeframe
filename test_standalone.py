@@ -93,10 +93,10 @@ async def main():
                 summary = await asyncio.wait_for(
                     lead_agent.start_multi_agent_execution(max_concurrent=1), timeout=5.0
                 )
-                print(f"\n✅ EXECUTION COMPLETE!")
+                print("\n✅ EXECUTION COMPLETE!")
                 print(f"Summary: {summary}")
             except asyncio.TimeoutError:
-                print(f"\n❌ TIMEOUT after 5 seconds!")
+                print("\n❌ TIMEOUT after 5 seconds!")
                 print("The hang occurred inside start_multi_agent_execution")
             except Exception as e:
                 print(f"\n❌ ERROR: {type(e).__name__}: {e}")

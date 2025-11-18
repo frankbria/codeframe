@@ -12,7 +12,7 @@ Future Enhancement: Will be replaced by capability-based routing in Sprint 5+
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 

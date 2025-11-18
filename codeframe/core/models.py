@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
@@ -399,3 +399,166 @@ class FlashSaveCompleted(BaseModel):
     reduction_percentage: float
     items_archived: int
     timestamp: datetime = Field(default_factory=lambda: datetime.now())
+
+
+# Sprint 9: MVP Completion Models
+
+
+class LintResult(BaseModel):
+    """Lint execution result.
+
+    Stores results from linting tools (ruff, eslint) for tracking quality trends
+    over time and enforcing quality gates.
+
+    Attributes:
+        id: Database ID (auto-generated)
+        task_id: Task that was linted
+        linter: Tool used (ruff, eslint, other)
+        error_count: Number of critical errors (block task completion)
+        warning_count: Number of non-blocking warnings
+        files_linted: Number of files checked
+        output: Full lint output (JSON or text)
+        created_at: When lint was executed
+    """
+
+    id: Optional[int] = None
+    task_id: Optional[int] = Field(None, description="Task ID (optional for in-memory results)")
+    linter: Literal["ruff", "eslint", "other"] = Field(..., description="Linter tool")
+    error_count: int = Field(0, ge=0, description="Number of errors")
+    warning_count: int = Field(0, ge=0, description="Number of warnings")
+    files_linted: int = Field(0, ge=0, description="Number of files checked")
+    output: Optional[str] = Field(None, description="Full lint output (JSON or text)")
+    created_at: Optional[datetime] = None
+
+    @property
+    def has_critical_errors(self) -> bool:
+        """Check if lint found critical errors that block task."""
+        return self.error_count > 0
+
+    @property
+    def total_issues(self) -> int:
+        """Total issues (errors + warnings)."""
+        return self.error_count + self.warning_count
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for database storage."""
+        return {
+            "task_id": self.task_id,
+            "linter": self.linter,
+            "error_count": self.error_count,
+            "warning_count": self.warning_count,
+            "files_linted": self.files_linted,
+            "output": self.output,
+        }
+
+
+class ReviewFinding(BaseModel):
+    """Individual review finding.
+
+    Represents a single code quality issue found during code review
+    (complexity, security, style, or duplication).
+
+    Attributes:
+        category: Type of issue (complexity, security, style, duplication)
+        severity: Criticality level (critical, high, medium, low)
+        file_path: File containing the issue
+        line_number: Line number (optional)
+        message: Human-readable description
+        suggestion: Recommended fix (optional)
+        tool: Tool that detected issue (radon, bandit, etc.)
+    """
+
+    category: Literal["complexity", "security", "style", "duplication"] = Field(
+        ..., description="Finding category"
+    )
+    severity: Literal["critical", "high", "medium", "low"] = Field(
+        ..., description="Severity level"
+    )
+    file_path: str = Field(..., description="File with issue")
+    line_number: Optional[int] = Field(None, description="Line number (if applicable)")
+    message: str = Field(..., description="Human-readable description")
+    suggestion: Optional[str] = Field(None, description="Recommended fix")
+    tool: str = Field(..., description="Tool that detected issue (radon, bandit, etc.)")
+
+    def to_markdown(self) -> str:
+        """Format finding as markdown for blocker display."""
+        severity_emoji = {
+            "critical": "🔴",
+            "high": "🟠",
+            "medium": "🟡",
+            "low": "⚪",
+        }
+
+        location = f"{self.file_path}:{self.line_number}" if self.line_number else self.file_path
+
+        md = f"{severity_emoji[self.severity]} **{self.severity.upper()}** [{self.category}] {location}\n"
+        md += f"   {self.message}\n"
+
+        if self.suggestion:
+            md += f"   💡 Suggestion: {self.suggestion}\n"
+
+        return md
+
+
+class ReviewReport(BaseModel):
+    """Complete review report for a task.
+
+    Aggregates all review findings into a comprehensive quality assessment
+    with scoring and approve/reject decision.
+
+    Attributes:
+        task_id: Task that was reviewed
+        reviewer_agent_id: Agent that performed review
+        overall_score: Overall quality score (0-100)
+        complexity_score: Complexity subscore (0-100)
+        security_score: Security subscore (0-100)
+        style_score: Style subscore (0-100)
+        status: Review decision (approved, changes_requested, rejected)
+        findings: List of individual findings
+        summary: Human-readable summary
+    """
+
+    task_id: int
+    reviewer_agent_id: str
+    overall_score: float = Field(..., ge=0, le=100, description="Overall quality score (0-100)")
+    complexity_score: float = Field(..., ge=0, le=100)
+    security_score: float = Field(..., ge=0, le=100)
+    style_score: float = Field(..., ge=0, le=100)
+    status: Literal["approved", "changes_requested", "rejected"]
+    findings: List[ReviewFinding] = Field(default_factory=list)
+    summary: str = Field(..., description="Human-readable summary")
+
+    @property
+    def has_critical_findings(self) -> bool:
+        """Check if any findings are critical severity."""
+        return any(f.severity == "critical" for f in self.findings)
+
+    @property
+    def critical_count(self) -> int:
+        """Count critical findings."""
+        return sum(1 for f in self.findings if f.severity == "critical")
+
+    @property
+    def high_count(self) -> int:
+        """Count high severity findings."""
+        return sum(1 for f in self.findings if f.severity == "high")
+
+    def to_blocker_message(self) -> str:
+        """Format review report as blocker message."""
+        msg = f"## Code Review: {self.status.replace('_', ' ').title()}\n\n"
+        msg += f"**Overall Score**: {self.overall_score:.1f}/100\n\n"
+
+        if self.findings:
+            msg += f"**Findings**: {len(self.findings)} issues ({self.critical_count} critical, {self.high_count} high)\n\n"
+
+            # Group by severity
+            for severity in ["critical", "high", "medium", "low"]:
+                severity_findings = [f for f in self.findings if f.severity == severity]
+                if severity_findings:
+                    msg += f"### {severity.upper()} Issues\n\n"
+                    for finding in severity_findings:
+                        msg += finding.to_markdown() + "\n"
+
+        msg += f"\n---\n\n{self.summary}"
+
+        return msg
