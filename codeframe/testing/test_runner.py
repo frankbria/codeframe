@@ -30,6 +30,8 @@ class TestRunner:
         print(f"Status: {result.status}, Passed: {result.passed}/{result.total}")
     """
 
+    __test__ = False  # Not a test class - it's a utility that runs tests
+
     def __init__(self, project_root: Path = Path("."), timeout: int = 300):
         """
         Initialize TestRunner.

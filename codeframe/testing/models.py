@@ -25,6 +25,8 @@ class TestResult:
         output: Raw output or structured data from test run
     """
 
+    __test__ = False  # Not a test class - it's a data model for test results
+
     status: str
     total: int = 0
     passed: int = 0

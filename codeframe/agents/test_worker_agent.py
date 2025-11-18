@@ -35,6 +35,8 @@ class TestWorkerAgent(WorkerAgent):
     - Integrate with WebSocket broadcasts for test results
     """
 
+    __test__ = False  # Not a test class - it's an agent that generates tests
+
     def __init__(
         self,
         agent_id: str,
