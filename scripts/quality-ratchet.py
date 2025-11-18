@@ -91,7 +91,7 @@ def run_tests() -> Dict[str, float]:
     report_file = Path(".report.json")
 
     # Run pytest with JSON report
-    result = subprocess.run(
+    subprocess.run(
         ["pytest", "--json-report", f"--json-report-file={report_file}"],
         capture_output=True,
         text=True,

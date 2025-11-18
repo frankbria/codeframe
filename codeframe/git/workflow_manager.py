@@ -82,7 +82,7 @@ class GitWorkflowManager:
             raise ValueError(f"Branch '{branch_name}' already exists")
 
         # Create branch from current HEAD
-        new_branch = self.repo.create_head(branch_name)
+        self.repo.create_head(branch_name)
 
         logger.info(f"Created feature branch: {branch_name}")
 

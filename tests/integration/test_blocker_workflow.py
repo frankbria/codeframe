@@ -234,7 +234,7 @@ class TestSyncBlockerPausingDependentTasks:
     def test_sync_blocker_pauses_dependent_tasks(self, db, sample_project, sample_tasks):
         """Test that SYNC blocker on task 1 pauses dependent task 2."""
         task1_id = sample_tasks["task1"]
-        task2_id = sample_tasks["task2"]  # Depends on task1
+        sample_tasks["task2"]  # Depends on task1
 
         # Task 1 agent creates SYNC blocker
         blocker_id = db.create_blocker(
@@ -266,7 +266,7 @@ class TestSyncBlockerPausingDependentTasks:
     def test_sync_blocker_does_not_affect_independent_tasks(self, db, sample_project, sample_tasks):
         """Test that SYNC blocker on task 1 does NOT pause independent task 3."""
         task1_id = sample_tasks["task1"]
-        task3_id = sample_tasks["task3"]  # Independent (no dependencies)
+        sample_tasks["task3"]  # Independent (no dependencies)
 
         # Task 1 creates SYNC blocker
         blocker_id = db.create_blocker(
@@ -306,7 +306,7 @@ class TestAsyncBlockerAllowingParallelWork:
 
         # Agent should be able to continue with other work
         # Create another task and start working on it
-        task4_id = db.create_task_with_issue(
+        db.create_task_with_issue(
             project_id=sample_project,
             issue_id=db.create_issue(
                 {

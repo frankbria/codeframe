@@ -65,8 +65,6 @@ class FrontendWorkerAgent(WorkerAgent):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         self.websocket_manager = websocket_manager
-        self.db = db
-        self.project_id = project_id
         self.project_root = Path(__file__).parent.parent.parent  # codeframe/
         self.web_ui_root = self.project_root / "web-ui"
         self.components_dir = self.web_ui_root / "src" / "components"

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class TaskStatus(Enum):
@@ -220,6 +220,14 @@ class BlockerResolve(BaseModel):
     """Request model for resolving a blocker."""
 
     answer: str = Field(..., min_length=1, max_length=5000)
+
+    @field_validator("answer")
+    @classmethod
+    def validate_answer_not_whitespace(cls, v: str) -> str:
+        """Validate that answer is not empty or whitespace-only."""
+        if not v.strip():
+            raise ValueError("Answer cannot be empty or whitespace-only")
+        return v
 
 
 class BlockerListResponse(BaseModel):

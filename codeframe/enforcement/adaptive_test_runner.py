@@ -63,6 +63,8 @@ SAFE_COMMANDS = {
 class TestResult:
     """Results from running tests."""
 
+    __test__ = False  # Not a test class - it's a data model for test results
+
     success: bool  # True if all tests passed
     total_tests: int  # Total number of tests
     passed_tests: int  # Number of passed tests

@@ -110,7 +110,7 @@ async def test_broadcast_test_result(mock_manager):
         passed=15,
         failed=0,
         errors=0,
-        total=15,
+        skipped=0,
         duration=3.5,
     )
 
@@ -124,7 +124,7 @@ async def test_broadcast_test_result(mock_manager):
     assert message["passed"] == 15
     assert message["failed"] == 0
     assert message["errors"] == 0
-    assert message["total"] == 15
+    assert message["skipped"] == 0
     assert message["duration"] == 3.5
 
 
@@ -184,7 +184,7 @@ async def test_broadcast_activity_update(mock_manager):
     assert message["type"] == "activity_update"
     assert message["project_id"] == 1
     assert message["activity_type"] == "task_completed"
-    assert message["agent"] == "backend-worker"
+    assert message["agent_id"] == "backend-worker"
     assert message["message"] == "Completed task #42: Implement login"
     assert message["task_id"] == 42
 
@@ -193,7 +193,7 @@ async def test_broadcast_activity_update(mock_manager):
 async def test_broadcast_progress_update(mock_manager):
     """Test broadcasting project progress update."""
     await broadcast_progress_update(
-        mock_manager, project_id=1, completed_tasks=25, total_tasks=100, percentage=25.0
+        mock_manager, project_id=1, completed=25, total=100, percentage=25.0
     )
 
     mock_manager.broadcast.assert_called_once()
@@ -201,8 +201,8 @@ async def test_broadcast_progress_update(mock_manager):
 
     assert message["type"] == "progress_update"
     assert message["project_id"] == 1
-    assert message["completed_tasks"] == 25
-    assert message["total_tasks"] == 100
+    assert message["completed"] == 25
+    assert message["total"] == 100
     assert message["percentage"] == 25.0
 
 

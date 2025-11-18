@@ -178,7 +178,7 @@ class LanguageDetector:
     def _detect_typescript(self) -> Optional[LanguageInfo]:
         """Detect TypeScript projects."""
         tsconfig = self.project_path / "tsconfig.json"
-        package_json = self.project_path / "package.json"
+        self.project_path / "package.json"
 
         if not tsconfig.exists():
             return None
