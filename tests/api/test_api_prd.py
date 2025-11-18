@@ -17,7 +17,6 @@ from codeframe.core.models import ProjectStatus
 
 def get_app():
     """Get the current app instance after module reload."""
-    from codeframe.ui.server import app
 
     return app
 
