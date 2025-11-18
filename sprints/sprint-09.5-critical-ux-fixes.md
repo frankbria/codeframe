@@ -1,22 +1,23 @@
 # Sprint 9.5: Critical UX Fixes
 
 **Status**: 📋 Planned (Inserted between Sprint 9 and Sprint 10)
-**Duration**: 2 days (15 hours)
+**Duration**: 2.5 days (18 hours)
 **Goal**: Fix critical UX blockers preventing new user onboarding and core workflow completion
 
 ---
 
 ## Overview
 
-Sprint 9.5 addresses four **showstopper UX gaps** identified in the comprehensive UX audit conducted on 2025-11-15. These gaps make CodeFRAME unusable for new users despite having robust backend functionality (87% test coverage, 450+ tests passing).
+Sprint 9.5 addresses **five showstopper UX gaps** identified in the comprehensive UX audit conducted on 2025-11-15. These gaps make CodeFRAME unusable for new users despite having robust backend functionality (87% test coverage, 450+ tests passing).
 
-**Context**: UX analysis revealed a 3-point maturity gap between backend (8/10) and frontend (5/10), with 4 critical blockers preventing basic workflows:
+**Context**: UX analysis revealed a 3-point maturity gap between backend (8/10) and frontend (5/10), with 5 critical blockers preventing basic workflows:
 1. Users cannot start the dashboard (no `serve` command)
 2. Users cannot create projects via UI (dashboard assumes project exists)
 3. Users cannot answer discovery questions (UI shows questions but no input)
 4. Users cannot see context management (ContextPanel exists but hidden)
+5. Users lose context between sessions (no session lifecycle management)
 
-**Why Sprint 9.5?**: These issues must be fixed BEFORE Sprint 10 E2E testing. You cannot write E2E tests for workflows that don't exist or are broken. This 2-day sprint closes the gap between backend and frontend, bringing Technical User readiness from 50% to 65%.
+**Why Sprint 9.5?**: These issues must be fixed BEFORE Sprint 10 E2E testing. You cannot write E2E tests for workflows that don't exist or are broken. This 2.5-day sprint closes the gap between backend and frontend, bringing Technical User readiness from 50% to 70%.
 
 ---
 
@@ -27,13 +28,15 @@ Sprint 9.5 addresses four **showstopper UX gaps** identified in the comprehensiv
 2. ✅ Implement project creation flow in dashboard root route
 3. ✅ Add discovery question answer input to DiscoveryProgress component
 4. ✅ Integrate ContextPanel into Dashboard with tabbed interface
+5. ✅ Implement session lifecycle management for workflow continuity
 
 ### Success Criteria
 - [ ] New user can run `codeframe serve` and access dashboard at localhost:8080
 - [ ] Dashboard root route (`/`) shows project creation form for new users
 - [ ] Users can answer discovery questions directly in DiscoveryProgress UI
 - [ ] Context visualization accessible via "Context" tab in Dashboard
-- [ ] All 4 features have ≥85% test coverage
+- [ ] Session state persists between CLI restarts with restore on startup
+- [ ] All 5 features have ≥85% test coverage
 - [ ] Zero regressions in existing functionality
 - [ ] Manual testing validates complete new user workflow end-to-end
 
@@ -1058,6 +1061,475 @@ export function AgentCard({ agent, onClick }: AgentCardProps) {
 
 ---
 
+### Feature 5: Session Lifecycle Management 🔄 CONTINUITY
+
+**Effort**: 3 hours
+**Priority**: P0 - Enables async workflow continuity
+**Issue**: Users lose context between sessions, breaking autonomous agent workflow
+
+#### Problem Statement
+
+**Current Behavior**:
+```bash
+$ codeframe start my-app
+🚀 Agents working on Task #27: JWT refresh tokens
+... user closes terminal ...
+
+# Next day
+$ codeframe start my-app
+🚀 Starting project my-app...
+# Where was I? What was I working on? What's next?
+# User has to check dashboard, read logs, re-orient (5-10 minutes wasted)
+```
+
+**Expected Behavior**:
+```bash
+$ codeframe start my-app
+📋 Restoring session...
+
+Last Session:
+  Summary: Completed Task #27 (JWT refresh tokens)
+  Status: 3 tests failing in auth module
+  Time: 2 hours ago
+
+Next Actions:
+  1. Fix JWT validation in kong-gateway.ts
+  2. Add refresh token tests
+  3. Update auth documentation
+
+Progress: 68% (27/40 tasks complete)
+Blockers: None
+
+Press Enter to continue or Ctrl+C to cancel...
+```
+
+#### Scope
+
+**Backend Changes**:
+
+1. **Create SessionManager Class** (`codeframe/core/session_manager.py`):
+
+```python
+"""Session state persistence for continuous workflow."""
+
+import json
+import os
+from datetime import datetime
+from typing import Dict, List, Optional
+
+
+class SessionManager:
+    """Manages session state persistence between CLI restarts.
+    
+    Stores session context in .codeframe/session_state.json including:
+    - Last session summary
+    - Next actions queue
+    - Current plan/task
+    - Active blockers
+    - Progress percentage
+    """
+    
+    def __init__(self, project_path: str):
+        """Initialize session manager.
+        
+        Args:
+            project_path: Absolute path to project directory
+        """
+        self.project_path = project_path
+        self.state_file = os.path.join(project_path, ".codeframe", "session_state.json")
+    
+    def save_session(self, state: Dict) -> None:
+        """Save session state to file.
+        
+        Args:
+            state: Session state dictionary containing:
+                - summary (str): Summary of last session
+                - completed_tasks (List[int]): Completed task IDs
+                - next_actions (List[str]): Next action items
+                - current_plan (str): Current task/plan
+                - active_blockers (List[Dict]): Active blocker info
+                - progress_pct (float): Progress percentage
+        """
+        session_data = {
+            'last_session': {
+                'summary': state.get('summary', 'No activity'),
+                'completed_tasks': state.get('completed_tasks', []),
+                'timestamp': datetime.now().isoformat()
+            },
+            'next_actions': state.get('next_actions', []),
+            'current_plan': state.get('current_plan'),
+            'active_blockers': state.get('active_blockers', []),
+            'progress_pct': state.get('progress_pct', 0)
+        }
+        
+        # Ensure .codeframe directory exists
+        os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
+        
+        # Write state file
+        with open(self.state_file, 'w') as f:
+            json.dump(session_data, f, indent=2)
+    
+    def load_session(self) -> Optional[Dict]:
+        """Load session state from file.
+        
+        Returns:
+            Session state dictionary or None if no state exists
+        """
+        if not os.path.exists(self.state_file):
+            return None
+        
+        try:
+            with open(self.state_file, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Failed to load session state: {e}")
+            return None
+    
+    def clear_session(self) -> None:
+        """Clear session state file."""
+        if os.path.exists(self.state_file):
+            os.remove(self.state_file)
+```
+
+2. **Integrate with Lead Agent** (`codeframe/agents/lead_agent.py`):
+
+Add session lifecycle methods:
+
+```python
+from codeframe.core.session_manager import SessionManager
+
+class LeadAgent:
+    def __init__(self, project_id: int):
+        self.project_id = project_id
+        self.db = Database()
+        project = self.db.get_project(project_id)
+        self.session_mgr = SessionManager(project['path'])
+        # ... existing init code ...
+    
+    async def on_session_start(self) -> None:
+        """Restore session state and display to user.
+        
+        Auto-executes when CLI starts to restore context from previous session.
+        Shows summary of last session, next actions, progress, and blockers.
+        """
+        session = self.session_mgr.load_session()
+        
+        if not session:
+            print("\n🚀 Starting new session...\n")
+            return
+        
+        # Display session restoration info
+        print("\n📋 Restoring session...\n")
+        
+        # Last session info
+        print("Last Session:")
+        print(f"  Summary: {session['last_session']['summary']}")
+        timestamp = datetime.fromisoformat(session['last_session']['timestamp'])
+        time_ago = self._format_time_ago(timestamp)
+        print(f"  Time: {time_ago}")
+        
+        # Next actions
+        if session.get('next_actions'):
+            print("\nNext Actions:")
+            for i, action in enumerate(session['next_actions'][:5], 1):
+                print(f"  {i}. {action}")
+        
+        # Progress
+        print(f"\nProgress: {session.get('progress_pct', 0):.0f}%")
+        
+        # Blockers
+        blocker_count = len(session.get('active_blockers', []))
+        if blocker_count > 0:
+            print(f"Blockers: {blocker_count} active")
+        else:
+            print("Blockers: None")
+        
+        print("\nPress Enter to continue or Ctrl+C to cancel...")
+        try:
+            input()
+        except KeyboardInterrupt:
+            print("\n✓ Cancelled")
+            raise
+    
+    async def on_session_end(self) -> None:
+        """Save session state before CLI exit.
+        
+        Captures current state including completed tasks, next actions,
+        and active blockers for restoration in next session.
+        """
+        # Gather session state
+        state = {
+            'summary': await self._get_session_summary(),
+            'completed_tasks': await self._get_completed_task_ids(),
+            'next_actions': await self._get_pending_actions(),
+            'current_plan': self.current_task,
+            'active_blockers': await self._get_blocker_summaries(),
+            'progress_pct': await self._get_progress_percentage()
+        }
+        
+        # Save to file
+        self.session_mgr.save_session(state)
+    
+    def _format_time_ago(self, timestamp: datetime) -> str:
+        """Format timestamp as human-readable 'time ago' string."""
+        now = datetime.now()
+        delta = now - timestamp.replace(tzinfo=None)
+        
+        if delta.days > 0:
+            return f"{delta.days} day{'s' if delta.days != 1 else ''} ago"
+        elif delta.seconds >= 3600:
+            hours = delta.seconds // 3600
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif delta.seconds >= 60:
+            minutes = delta.seconds // 60
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        else:
+            return "just now"
+    
+    async def _get_session_summary(self) -> str:
+        """Generate summary of current session activity."""
+        # Get recently completed tasks
+        completed = await self.db.get_recently_completed_tasks(self.project_id, limit=3)
+        if completed:
+            task_names = [t['title'] for t in completed]
+            return f"Completed: {', '.join(task_names)}"
+        return "No activity this session"
+    
+    async def _get_completed_task_ids(self) -> List[int]:
+        """Get IDs of completed tasks from current session."""
+        tasks = await self.db.get_recently_completed_tasks(self.project_id, limit=10)
+        return [t['id'] for t in tasks]
+    
+    async def _get_pending_actions(self) -> List[str]:
+        """Get list of next pending actions/tasks."""
+        pending_tasks = await self.db.get_pending_tasks(self.project_id, limit=5)
+        return [f"{t['title']} (Task #{t['id']})" for t in pending_tasks]
+    
+    async def _get_blocker_summaries(self) -> List[Dict]:
+        """Get summaries of active blockers."""
+        blockers = await self.db.list_blockers(self.project_id, resolved=False)
+        return [{
+            'id': b['id'],
+            'question': b['question'],
+            'priority': b['priority']
+        } for b in blockers]
+    
+    async def _get_progress_percentage(self) -> float:
+        """Calculate current project progress percentage."""
+        stats = await self.db.get_project_stats(self.project_id)
+        total = stats.get('total_tasks', 0)
+        completed = stats.get('completed_tasks', 0)
+        return (completed / total * 100) if total > 0 else 0
+```
+
+3. **Update CLI Commands** (`codeframe/cli.py`):
+
+```python
+@app.command()
+def start(project_name: Optional[str] = None):
+    """Start/resume project execution."""
+    project = load_project(project_name)
+    lead_agent = LeadAgent(project.id)
+    
+    try:
+        # Restore session context
+        asyncio.run(lead_agent.on_session_start())
+        
+        # Run execution loop
+        asyncio.run(lead_agent.run())
+        
+    except KeyboardInterrupt:
+        console.print("\n⏸  Pausing...")
+    finally:
+        # Save session state
+        asyncio.run(lead_agent.on_session_end())
+        console.print("✓ Session saved")
+
+@app.command()
+def resume(project_name: Optional[str] = None):
+    """Resume paused project (alias for start)."""
+    start(project_name)
+
+@app.command()
+def clear_session(project_name: Optional[str] = None):
+    """Clear saved session state."""
+    project = load_project(project_name)
+    session_mgr = SessionManager(project.path)
+    session_mgr.clear_session()
+    console.print("✓ Session state cleared")
+```
+
+**Frontend Changes**:
+
+4. **Add SessionStatus Component** (`web-ui/src/components/SessionStatus.tsx`):
+
+```tsx
+import { useState, useEffect } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+
+interface SessionState {
+  last_session: {
+    summary: string;
+    timestamp: string;
+  };
+  next_actions: string[];
+  progress_pct: number;
+  active_blockers: Array<any>;
+}
+
+interface SessionStatusProps {
+  projectId: number;
+}
+
+export function SessionStatus({ projectId }: SessionStatusProps) {
+  const [session, setSession] = useState<SessionState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSession = async () => {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/session`);
+        if (response.ok) {
+          const data = await response.json();
+          setSession(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch session state:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSession();
+  }, [projectId]);
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!session) {
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+        <p className="text-sm text-gray-600">🚀 Starting new session...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+      <h3 className="font-semibold text-blue-900 mb-3 flex items-center">
+        📋 Session Context
+      </h3>
+      
+      <div className="space-y-2 text-sm">
+        <div>
+          <span className="font-medium text-gray-700">Last session:</span>
+          <p className="text-gray-900 mt-1">{session.last_session.summary}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {formatDistanceToNow(new Date(session.last_session.timestamp), { addSuffix: true })}
+          </p>
+        </div>
+
+        {session.next_actions.length > 0 && (
+          <div className="mt-3">
+            <span className="font-medium text-gray-700">Next up:</span>
+            <ul className="mt-1 space-y-1">
+              {session.next_actions.slice(0, 3).map((action, idx) => (
+                <li key={idx} className="text-gray-900 flex items-start">
+                  <span className="text-blue-600 mr-2">→</span>
+                  {action}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center justify-between">
+          <span className="text-xs font-medium text-gray-600">
+            Progress: {session.progress_pct.toFixed(0)}%
+          </span>
+          {session.active_blockers.length > 0 && (
+            <span className="text-xs text-orange-600">
+              ⚠️ {session.active_blockers.length} blocker(s)
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+5. **Integrate into Dashboard** (`web-ui/src/components/Dashboard.tsx`):
+
+```tsx
+import { SessionStatus } from './SessionStatus';
+
+// In the Overview tab, add SessionStatus above DiscoveryProgress:
+<Tab.Panel>
+  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="lg:col-span-2 space-y-6">
+      {/* Session Status - NEW */}
+      <SessionStatus projectId={projectId} />
+      
+      {/* Existing components */}
+      {progress && <ProgressBar {...progress} />}
+      {phase === 'discovery' && <DiscoveryProgress projectId={projectId} />}
+      {/* ... rest of components ... */}
+    </div>
+  </div>
+</Tab.Panel>
+```
+
+6. **Add API Endpoint** (`codeframe/ui/app.py`):
+
+```python
+@app.get("/api/projects/{project_id}/session")
+async def get_session_state(project_id: int):
+    """Get current session state for project."""
+    project = await db.get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Project not found")
+    
+    session_mgr = SessionManager(project['path'])
+    session = session_mgr.load_session()
+    
+    if not session:
+        return {
+            "last_session": {
+                "summary": "No previous session",
+                "timestamp": datetime.now().isoformat()
+            },
+            "next_actions": [],
+            "progress_pct": 0,
+            "active_blockers": []
+        }
+    
+    return session
+```
+
+#### Deliverables
+- [ ] SessionManager class with save/load methods
+- [ ] Lead Agent on_session_start() and on_session_end() hooks
+- [ ] CLI integration (start/resume commands)
+- [ ] SessionStatus React component
+- [ ] GET `/api/projects/:id/session` endpoint
+- [ ] Dashboard integration (shows session context)
+- [ ] Unit tests (≥85% coverage)
+- [ ] Integration test: save session → restart → restore session
+
+#### Test Coverage
+- SessionManager save/load operations
+- Session state format validation
+- Lead Agent session lifecycle hooks
+- CLI start/resume/clear-session commands
+- SessionStatus component rendering
+- API endpoint response format
+- Session restoration with missing state file
+- Time ago formatting edge cases
+
+---
+
 ## Technical Architecture
 
 ### Component Diagram
@@ -1307,7 +1779,7 @@ describe('Dashboard - Tabs', () => {
 - Implement answer submission logic
 - (Continue to Day 2)
 
-**Day 2 (7 hours)**:
+**Day 2 (8 hours)**:
 
 **Hours 1-3: Complete Discovery Answer UI**
 - Finish UI rendering (textarea, buttons)
@@ -1322,7 +1794,20 @@ describe('Dashboard - Tabs', () => {
 - Add click handler to AgentCard
 - Write unit tests
 
-**Hour 7: Final Testing & Polish**
+**Hours 7-8: Session Lifecycle Management (Part 1)**
+- Create SessionManager class
+- Implement save/load methods
+- Write unit tests
+- (Continue to Day 3)
+
+**Day 3 (2 hours)**:
+
+**Hours 1-2: Session Lifecycle Management (Part 2)**
+- Integrate with Lead Agent (on_session_start/end)
+- Update CLI commands (start/resume/clear-session)
+- Add SessionStatus component
+- Add API endpoint
+- Write integration tests
 - Run full manual testing checklist
 - Fix any bugs discovered
 - Update documentation

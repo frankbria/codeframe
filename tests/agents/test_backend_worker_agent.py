@@ -13,15 +13,13 @@ Following strict TDD methodology (RED-GREEN-REFACTOR).
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch, AsyncMock
-import tempfile
+from unittest.mock import Mock, patch, AsyncMock
 import json
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
-from codeframe.core.models import Task, TaskStatus, ProjectStatus
+from codeframe.core.models import TaskStatus
 
 
 class TestBackendWorkerAgentInitialization:

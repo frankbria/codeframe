@@ -4,9 +4,8 @@ Following TDD: These tests are written FIRST, before implementation.
 Target: >90% coverage for anthropic.py module.
 """
 
-import json
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from codeframe.providers.anthropic import AnthropicProvider
 
 

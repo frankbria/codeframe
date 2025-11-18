@@ -4,8 +4,8 @@ Task: cf-11.1 - Request/Response models for project creation
 """
 
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
-from typing import Optional
+from pydantic import BaseModel, Field, model_validator, ConfigDict
+from typing import Optional, List
 
 
 class SourceType(str, Enum):
@@ -48,6 +48,17 @@ class ProjectCreateRequest(BaseModel):
         if self.source_type != SourceType.EMPTY and not self.source_location:
             raise ValueError(f"source_location required when source_type={self.source_type}")
         return self
+
+
+class ReviewRequest(BaseModel):
+    """Request model for triggering code review.
+
+    Sprint 9 - User Story 1: Review Agent API (T056)
+    """
+
+    task_id: int = Field(..., description="Task ID to review")
+    project_id: int = Field(..., description="Project ID")
+    files_modified: List[str] = Field(..., description="List of file paths to review")
 
 
 class ProjectResponse(BaseModel):

@@ -12,7 +12,6 @@ Requirements from CONCEPTS_RESOLVED.md:
 """
 
 import pytest
-from pathlib import Path
 from datetime import datetime
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus, TaskStatus, Issue

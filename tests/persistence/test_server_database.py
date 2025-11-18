@@ -7,7 +7,7 @@ Task: cf-8.2 - Database initialization on server startup
 import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
-from codeframe.core.models import ProjectStatus, AgentMaturity
+from codeframe.core.models import ProjectStatus
 
 
 @pytest.mark.unit

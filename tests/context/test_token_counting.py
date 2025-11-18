@@ -9,7 +9,6 @@ Tests the TokenCounter class methods:
 Part of 007-context-management Phase 6 (US4 - Flash Save).
 """
 
-import pytest
 from codeframe.lib.token_counter import TokenCounter
 
 

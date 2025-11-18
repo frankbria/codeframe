@@ -4,9 +4,8 @@ Tests for Frontend Worker Agent (Sprint 4: cf-48).
 
 import pytest
 import json
-from pathlib import Path
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-from anthropic.types import Message, TextBlock, Usage
+from unittest.mock import Mock, patch, AsyncMock
+from anthropic.types import Message, TextBlock
 
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
 from codeframe.core.models import Task, AgentMaturity

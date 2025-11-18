@@ -9,7 +9,7 @@ Manages git branching and merge workflows:
 import re
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 import git
 
 from codeframe.persistence.database import Database
@@ -331,7 +331,7 @@ class GitWorkflowManager:
             Commit SHA hash
 
         Raises:
-            ValueError: If files_modified is empty
+            ValueError: If files_modified is empty or working tree is dirty
             KeyError: If task missing required fields
             git.GitCommandError: If git operations fail
         """
@@ -344,6 +344,23 @@ class GitWorkflowManager:
         for field in required_fields:
             if field not in task:
                 raise KeyError(f"Task missing required field: {field}")
+
+        # T079: Check for dirty working tree BEFORE staging files
+        # Note: We allow modified files that we're about to stage, but not untracked files
+        # or other modifications that aren't part of files_modified
+        if self.repo.is_dirty(untracked_files=True):
+            # Check if the dirty files are the ones we're about to commit
+            dirty_files = [item.a_path for item in self.repo.index.diff(None)]
+            dirty_files.extend(self.repo.untracked_files)
+
+            # Remove files we're about to stage from dirty list
+            non_staged_dirty = [f for f in dirty_files if f not in files_modified]
+
+            if non_staged_dirty:
+                raise ValueError(
+                    f"Working tree is dirty - cannot commit. "
+                    f"Unrelated changes detected: {', '.join(non_staged_dirty[:3])}"
+                )
 
         # Generate commit message
         commit_message = self._generate_commit_message(task, files_modified)

@@ -8,7 +8,6 @@ Tests the tier assignment logic based on importance scores:
 Part of 007-context-management Phase 5 (US3 - Automatic Tier Assignment).
 """
 
-import pytest
 from codeframe.lib.importance_scorer import assign_tier
 
 

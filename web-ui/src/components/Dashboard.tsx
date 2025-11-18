@@ -18,6 +18,8 @@ import DiscoveryProgress from './DiscoveryProgress';
 import AgentCard from './AgentCard';
 import BlockerPanel from './BlockerPanel';
 import { BlockerModal } from './BlockerModal';
+import ReviewResultsPanel from './review/ReviewResultsPanel';
+import { LintTrendChart } from './lint/LintTrendChart';
 
 interface DashboardProps {
   projectId: number;
@@ -30,6 +32,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const [showChat, setShowChat] = useState(false);
   const [showPRD, setShowPRD] = useState(false);
   const [selectedBlocker, setSelectedBlocker] = useState<Blocker | null>(null);
+  const [selectedTaskForReview, setSelectedTaskForReview] = useState<number | null>(null);
 
   // Memoize filtered agent lists for performance (T111)
   const activeAgents = useMemo(
@@ -91,6 +94,16 @@ export default function Dashboard({ projectId }: DashboardProps) {
         // Agent status card will be automatically updated by AgentStateProvider
         // Add activity feed entry for agent resume (T034)
         console.log(`Agent ${message.agent_id} resumed after blocker ${message.blocker_id} resolved`);
+      }
+
+      // Handle review events (T059, Sprint 9 Phase 3)
+      if (message.type === 'review_approved' || 
+          message.type === 'review_changes_requested' || 
+          message.type === 'review_rejected') {
+        // Auto-open review panel when review completes
+        if (message.task_id) {
+          setSelectedTaskForReview(message.task_id);
+        }
       }
     };
 
@@ -279,6 +292,25 @@ export default function Dashboard({ projectId }: DashboardProps) {
           <BlockerPanel
             blockers={blockersData || []}
             onBlockerClick={(blocker) => setSelectedBlocker(blocker)}
+          />
+        </div>
+
+        {/* Review Results Section (T065, Sprint 9 Phase 3) */}
+        {selectedTaskForReview && (
+          <div className="mb-6">
+            <ReviewResultsPanel
+              taskId={selectedTaskForReview}
+              onClose={() => setSelectedTaskForReview(null)}
+            />
+          </div>
+        )}
+
+        {/* Lint Quality Trend (T124, Sprint 9 Phase 5) */}
+        <div className="mb-6">
+          <LintTrendChart
+            projectId={projectId}
+            days={7}
+            refreshInterval={30000}
           />
         </div>
 

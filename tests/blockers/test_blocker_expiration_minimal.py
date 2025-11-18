@@ -2,9 +2,6 @@
 
 import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
-
-import pytest
 
 
 def test_expire_stale_blockers_direct_sql():

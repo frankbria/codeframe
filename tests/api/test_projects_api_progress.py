@@ -8,7 +8,6 @@ and `percentage`, but the API was only returning raw database rows.
 RED Phase: This test should FAIL initially, demonstrating the bug.
 """
 
-import pytest
 from codeframe.persistence.database import Database
 from codeframe.core.models import ProjectStatus, TaskStatus, Issue
 

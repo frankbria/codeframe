@@ -6,7 +6,6 @@ Following TDD approach:
 3. REFACTOR: Optimize for quality
 """
 
-import pytest
 from codeframe.discovery.questions import DiscoveryQuestionFramework
 
 

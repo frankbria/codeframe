@@ -33,7 +33,7 @@ def main() -> None:
     print(f"Type: {backend_def.type}")
     print(f"Maturity: {backend_def.maturity}")
     print(f"Description: {backend_def.description}")
-    print(f"\nCapabilities:")
+    print("\nCapabilities:")
     for capability in backend_def.capabilities:
         print(f"  - {capability}")
     print(f"\nTools: {backend_def.tools}")
@@ -52,7 +52,7 @@ def main() -> None:
 
     # Access definition through agent
     if hasattr(agent, "definition"):
-        print(f"\nSystem prompt (first 200 chars):")
+        print("\nSystem prompt (first 200 chars):")
         print(f"{agent.definition.system_prompt[:200]}...\n")
 
     # Query by type category

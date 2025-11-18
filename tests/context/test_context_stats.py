@@ -11,7 +11,6 @@ Part of 007-context-management Phase 7 (US5 - Context Visualization).
 import pytest
 import tempfile
 from pathlib import Path
-from datetime import datetime, UTC
 
 from codeframe.persistence.database import Database
 from codeframe.core.models import ContextItemType

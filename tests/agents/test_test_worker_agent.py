@@ -3,12 +3,11 @@ Tests for Test Worker Agent (Sprint 4: cf-49).
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 from anthropic.types import Message, TextBlock
 
 from codeframe.agents.test_worker_agent import TestWorkerAgent
-from codeframe.core.models import Task, AgentMaturity
+from codeframe.core.models import Task
 
 
 @pytest.fixture
