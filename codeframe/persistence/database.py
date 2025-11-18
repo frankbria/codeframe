@@ -936,10 +936,17 @@ class Database:
                 resolved_count += 1
                 # Calculate resolution time
                 if created_at and resolved_at:
-                    from datetime import datetime
+                    from datetime import datetime, timezone
 
                     created = datetime.fromisoformat(created_at)
                     resolved = datetime.fromisoformat(resolved_at)
+
+                    # Normalize both to timezone-aware (assume UTC if naive)
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    if resolved.tzinfo is None:
+                        resolved = resolved.replace(tzinfo=timezone.utc)
+
                     resolution_time_seconds = (resolved - created).total_seconds()
                     resolution_times.append(resolution_time_seconds)
             elif status == "EXPIRED":
