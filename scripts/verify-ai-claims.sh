@@ -97,9 +97,9 @@ echo "📁 Artifacts: $ARTIFACTS_DIR"
 echo ""
 
 # Activate virtualenv
-if command -v uv &> /dev/null; then 
+if command -v uv &> /dev/null; then
     # Use uv if available
-    TEST_PREFIX = "uv run"
+    TEST_PREFIX="uv run"
 else
 
     if [ -f venv/bin/activate ]; then
@@ -107,9 +107,20 @@ else
     elif [ -f .venv/bin/activate ]; then
        source .venv/bin/activate
     fi
-    TEST_PREFIX = ""
+    TEST_PREFIX=""
 fi
 
+# Pre-flight check: Verify required commands are available
+echo -e "${BLUE}🔍 Pre-flight check: Verifying dependencies...${NC}"
+for cmd in pytest black ruff; do
+    if ! command -v $cmd &> /dev/null; then
+         echo -e "${RED}❌  Required command not found: $cmd${NC}"
+         echo -e "${YELLOW}Install it with: pip install $cmd${NC}"
+         exit 1
+    fi
+done
+echo -e "${GREEN}✅ All required commands available${NC}"
+echo ""
 
 # Step 1: Run test suite
 if [ "$RUN_TESTS" = true ]; then
@@ -129,13 +140,6 @@ if [ "$RUN_TESTS" = true ]; then
         # Show summary
         tail -n 20 "$ARTIFACTS_DIR/test-output.txt"
     fi
-
-    for cmd in pytest black ruff; do
-        if ! command -v $cmd &> /dev/null; then
-             echo -e "${RED}❌  Required command not found: $cmd${NC}"
-             exit 1
-        fi
-    done
 
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))

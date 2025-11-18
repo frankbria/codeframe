@@ -9,13 +9,16 @@ Tests follow RED-GREEN-REFACTOR TDD cycle.
 import pytest
 from datetime import datetime
 
-from codeframe.ui.server import app
 from codeframe.core.models import BlockerType, BlockerStatus
 
 
 def get_app():
-    """Get the current app instance after module reload."""
+    """Get the current app instance after module reload.
 
+    Imports app locally to ensure we get the freshly reloaded instance
+    after api_client fixture reloads codeframe.ui.server.
+    """
+    from codeframe.ui.server import app
     return app
 
 
