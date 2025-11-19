@@ -25,12 +25,12 @@
 
 **Purpose**: Project verification and test infrastructure setup
 
-- [ ] T001 Verify existing project structure matches plan.md expectations
-- [ ] T002 [P] Verify frontend dependencies (React 18, Next.js 14, Tailwind CSS, Jest/Vitest)
-- [ ] T003 [P] Verify backend dependencies (FastAPI, Pydantic, aiosqlite, pytest)
-- [ ] T004 [P] Check existing components (ProjectCreationForm, ProjectList) in web-ui/src/components/
-- [ ] T005 [P] Check existing backend endpoint POST /api/projects in codeframe/ui/server.py
-- [ ] T006 [P] Verify database schema (projects table) in codeframe/persistence/database.py
+- [X] T001 Verify existing project structure matches plan.md expectations
+- [X] T002 [P] Verify frontend dependencies (React 18, Next.js 14, Tailwind CSS, Jest/Vitest)
+- [X] T003 [P] Verify backend dependencies (FastAPI, Pydantic, aiosqlite, pytest)
+- [X] T004 [P] Check existing components (ProjectCreationForm, ProjectList) in web-ui/src/components/
+- [X] T005 [P] Check existing backend endpoint POST /api/projects in codeframe/ui/server.py
+- [X] T006 [P] Verify database schema (projects table) in codeframe/persistence/database.py
 
 ---
 
@@ -40,10 +40,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T007 [P] Create TypeScript types for ProjectCreationFormProps in web-ui/src/types/project.ts
-- [ ] T008 [P] Create TypeScript types for SpinnerProps in web-ui/src/types/project.ts
-- [ ] T009 [P] Setup Jest test configuration for new test files in web-ui/__tests__/
-- [ ] T010 Verify backend Pydantic models (ProjectCreateRequest, ProjectResponse) in codeframe/ui/models.py
+- [X] T007 [P] Create TypeScript types for ProjectCreationFormProps in web-ui/src/types/project.ts
+- [X] T008 [P] Create TypeScript types for SpinnerProps in web-ui/src/types/project.ts
+- [X] T009 [P] Setup Jest test configuration for new test files in web-ui/__tests__/
+- [X] T010 Verify backend Pydantic models (ProjectCreateRequest, ProjectResponse) in codeframe/ui/models.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -68,10 +68,10 @@
 
 ### Implementation for User Story 5
 
-- [ ] T015 [US5] Create Spinner component in web-ui/src/components/Spinner.tsx
-- [ ] T016 [US5] Add Tailwind animate-spin animation with blue-600 color
-- [ ] T017 [US5] Add size variants (sm: 16px, md: 32px, lg: 48px)
-- [ ] T018 [US5] Add accessibility attributes (role="status", aria-label="Loading")
+- [X] T015 [US5] Create Spinner component in web-ui/src/components/Spinner.tsx
+- [X] T016 [US5] Add Tailwind animate-spin animation with blue-600 color
+- [X] T017 [US5] Add size variants (sm: 16px, md: 32px, lg: 48px)
+- [X] T018 [US5] Add accessibility attributes (role="status", aria-label="Loading")
 - [ ] T019 [US5] Verify all tests pass for US5
 
 **Checkpoint**: Spinner component complete and tested - can be used by US1 and US3
@@ -96,16 +96,16 @@
 
 ### Implementation for User Story 1
 
-- [ ] T025 [US1] Update HomePage root route in web-ui/src/app/page.tsx
-- [ ] T026 [US1] Add welcome header with heading and tagline to HomePage
-- [ ] T027 [US1] Add useState hook for isCreating state in HomePage
-- [ ] T028 [US1] Add useRouter hook for navigation in HomePage
-- [ ] T029 [US1] Add handleProjectCreated callback that calls router.push in HomePage
-- [ ] T030 [US1] Add handleSubmit callback that sets isCreating=true in HomePage
-- [ ] T031 [US1] Add handleError callback that sets isCreating=false in HomePage
-- [ ] T032 [US1] Conditionally render Spinner when isCreating=true in HomePage
-- [ ] T033 [US1] Conditionally render ProjectCreationForm when isCreating=false in HomePage
-- [ ] T034 [US1] Add Tailwind responsive classes (min-h-screen, flex, items-center, justify-center) in HomePage
+- [X] T025 [US1] Update HomePage root route in web-ui/src/app/page.tsx
+- [X] T026 [US1] Add welcome header with heading and tagline to HomePage
+- [X] T027 [US1] Add useState hook for isCreating state in HomePage
+- [X] T028 [US1] Add useRouter hook for navigation in HomePage
+- [X] T029 [US1] Add handleProjectCreated callback that calls router.push in HomePage
+- [X] T030 [US1] Add handleSubmit callback that sets isCreating=true in HomePage
+- [X] T031 [US1] Add handleError callback that sets isCreating=false in HomePage
+- [X] T032 [US1] Conditionally render Spinner when isCreating=true in HomePage
+- [X] T033 [US1] Conditionally render ProjectCreationForm when isCreating=false in HomePage
+- [X] T034 [US1] Add Tailwind responsive classes (min-h-screen, flex, items-center, justify-center) in HomePage
 - [ ] T035 [US1] Verify all tests pass for US1
 
 **Checkpoint**: Welcome page displays correctly, Spinner shows/hides based on state
@@ -134,19 +134,19 @@
 
 ### Implementation for User Story 2
 
-- [ ] T045 [US2] Add description state variable to ProjectCreationForm in web-ui/src/components/ProjectCreationForm.tsx
-- [ ] T046 [US2] Add errors state object (Record<string, string>) to ProjectCreationForm
-- [ ] T047 [US2] Add validateName function with regex /^[a-z0-9-_]+$/ to ProjectCreationForm
-- [ ] T048 [US2] Add validateDescription function with min 10 chars check to ProjectCreationForm
-- [ ] T049 [US2] Add description textarea field to ProjectCreationForm JSX
-- [ ] T050 [US2] Add character counter below description (0 / 500 characters) to ProjectCreationForm
-- [ ] T051 [US2] Add onBlur handler to name input that calls validateName in ProjectCreationForm
-- [ ] T052 [US2] Add onBlur handler to description textarea that calls validateDescription in ProjectCreationForm
-- [ ] T053 [US2] Add conditional CSS classes for error states (border-red-500) to ProjectCreationForm inputs
-- [ ] T054 [US2] Add inline error message display below each field to ProjectCreationForm
-- [ ] T055 [US2] Add submit button disabled logic (disabled={!isFormValid}) to ProjectCreationForm
-- [ ] T056 [US2] Update submit button text to "Create Project & Start Discovery" in ProjectCreationForm
-- [ ] T057 [US2] Add hint text "After creation, you'll begin Socratic discovery..." below button in ProjectCreationForm
+- [X] T045 [US2] Add description state variable to ProjectCreationForm in web-ui/src/components/ProjectCreationForm.tsx
+- [X] T046 [US2] Add errors state object (Record<string, string>) to ProjectCreationForm
+- [X] T047 [US2] Add validateName function with regex /^[a-z0-9-_]+$/ to ProjectCreationForm
+- [X] T048 [US2] Add validateDescription function with min 10 chars check to ProjectCreationForm
+- [X] T049 [US2] Add description textarea field to ProjectCreationForm JSX
+- [X] T050 [US2] Add character counter below description (0 / 500 characters) to ProjectCreationForm
+- [X] T051 [US2] Add onBlur handler to name input that calls validateName in ProjectCreationForm
+- [X] T052 [US2] Add onBlur handler to description textarea that calls validateDescription in ProjectCreationForm
+- [X] T053 [US2] Add conditional CSS classes for error states (border-red-500) to ProjectCreationForm inputs
+- [X] T054 [US2] Add inline error message display below each field to ProjectCreationForm
+- [X] T055 [US2] Add submit button disabled logic (disabled={!isFormValid}) to ProjectCreationForm
+- [X] T056 [US2] Update submit button text to "Create Project & Start Discovery" in ProjectCreationForm
+- [X] T057 [US2] Add hint text "After creation, you'll begin Socratic discovery..." below button in ProjectCreationForm
 - [ ] T058 [US2] Verify all tests pass for US2
 
 **Checkpoint**: Form validates all fields correctly, shows helpful error messages
@@ -181,21 +181,21 @@
 
 ### Implementation for User Story 3
 
-- [ ] T071 [US3] Update ProjectCreationForm props interface to include onSubmit, onSuccess, onError in web-ui/src/components/ProjectCreationForm.tsx
-- [ ] T072 [US3] Add isSubmitting state variable to ProjectCreationForm
-- [ ] T073 [US3] Update handleSubmit to call validateName() and validateDescription() before submitting in ProjectCreationForm
-- [ ] T074 [US3] Update handleSubmit to call onSubmit?.() callback before API request in ProjectCreationForm
-- [ ] T075 [US3] Update handleSubmit to include description in API request body in ProjectCreationForm
-- [ ] T076 [US3] Update handleSubmit to call onSuccess(response.data.id) on 201 response in ProjectCreationForm
-- [ ] T077 [US3] Update handleSubmit to call onError(error) on API failure in ProjectCreationForm
-- [ ] T078 [US3] Add error handling for 409 Conflict (duplicate name) in ProjectCreationForm
-- [ ] T079 [US3] Add error handling for 400/422 validation errors in ProjectCreationForm
-- [ ] T080 [US3] Add error handling for 500 server errors in ProjectCreationForm
-- [ ] T081 [US3] Set isSubmitting=true at start of handleSubmit in ProjectCreationForm
-- [ ] T082 [US3] Set isSubmitting=false in catch block of handleSubmit in ProjectCreationForm
-- [ ] T083 [US3] Add disabled={isSubmitting} to all form inputs in ProjectCreationForm
-- [ ] T084 [US3] Update projectsApi.createProject() to accept description parameter in web-ui/src/lib/api.ts
-- [ ] T085 [US3] Verify backend endpoint POST /api/projects accepts description (already exists)
+- [X] T071 [US3] Update ProjectCreationForm props interface to include onSubmit, onSuccess, onError in web-ui/src/components/ProjectCreationForm.tsx
+- [X] T072 [US3] Add isSubmitting state variable to ProjectCreationForm
+- [X] T073 [US3] Update handleSubmit to call validateName() and validateDescription() before submitting in ProjectCreationForm
+- [X] T074 [US3] Update handleSubmit to call onSubmit?.() callback before API request in ProjectCreationForm
+- [X] T075 [US3] Update handleSubmit to include description in API request body in ProjectCreationForm
+- [X] T076 [US3] Update handleSubmit to call onSuccess(response.data.id) on 201 response in ProjectCreationForm
+- [X] T077 [US3] Update handleSubmit to call onError(error) on API failure in ProjectCreationForm
+- [X] T078 [US3] Add error handling for 409 Conflict (duplicate name) in ProjectCreationForm
+- [X] T079 [US3] Add error handling for 400/422 validation errors in ProjectCreationForm
+- [X] T080 [US3] Add error handling for 500 server errors in ProjectCreationForm
+- [X] T081 [US3] Set isSubmitting=true at start of handleSubmit in ProjectCreationForm
+- [X] T082 [US3] Set isSubmitting=false in catch block of handleSubmit in ProjectCreationForm
+- [X] T083 [US3] Add disabled={isSubmitting} to all form inputs in ProjectCreationForm
+- [X] T084 [US3] Update projectsApi.createProject() to accept description parameter in web-ui/src/lib/api.ts
+- [X] T085 [US3] Verify backend endpoint POST /api/projects accepts description (already exists)
 - [ ] T086 [US3] Verify all frontend tests pass for US3
 - [ ] T087 [US3] Verify all backend tests pass for US3
 
@@ -224,8 +224,8 @@
 
 ### Implementation for User Story 4
 
-- [ ] T093 [US4] Verify HomePage handleProjectCreated calls router.push(`/projects/${projectId}`) in web-ui/src/app/page.tsx
-- [ ] T094 [US4] Verify ProjectCreationForm onSuccess prop passes projectId to HomePage in web-ui/src/components/ProjectCreationForm.tsx
+- [X] T093 [US4] Verify HomePage handleProjectCreated calls router.push(`/projects/${projectId}`) in web-ui/src/app/page.tsx
+- [X] T094 [US4] Verify ProjectCreationForm onSuccess prop passes projectId to HomePage in web-ui/src/components/ProjectCreationForm.tsx
 - [ ] T095 [US4] Test redirect manually: create project → verify Dashboard loads
 - [ ] T096 [US4] Verify all tests pass for US4
 
@@ -237,8 +237,8 @@
 
 **Purpose**: Code quality, documentation, and final validation
 
-- [ ] T097 [P] Remove console.log statements from production code in web-ui/src/
-- [ ] T098 [P] Verify no TypeScript `any` types used in web-ui/src/
+- [X] T097 [P] Remove console.log statements from production code in web-ui/src/
+- [X] T098 [P] Verify no TypeScript `any` types used in web-ui/src/
 - [ ] T099 [P] Run eslint and fix any linting errors in web-ui/
 - [ ] T100 [P] Run ruff and fix any linting errors in codeframe/
 - [ ] T101 [P] Verify test coverage ≥85% for frontend tests
@@ -278,7 +278,7 @@ US1: Welcome Page (Phase 4) - Depends on US5 (uses Spinner)
     ↓ (parallel)
 US2: Form Validation (Phase 5) - No dependencies on other stories
     ↓
-US3: Form Submission (Phase 6) - Depends on US2 (validation logic)
+US3: Form Submission (Phase 6) - Depends on Foundational + US2 (validation logic)
     ↓
 US4: Redirect (Phase 7) - Depends on US1 + US3 (HomePage + submission)
     ↓
