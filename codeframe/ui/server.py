@@ -583,6 +583,25 @@ async def get_chat_history(project_id: int, limit: int = 100, offset: int = 0):
     return {"messages": messages}
 
 
+@app.post("/api/projects/{project_id}/discovery/answer")
+async def submit_discovery_answer(project_id: int):
+    """Submit answer to current discovery question (Feature: 012-discovery-answer-ui).
+
+    This is a stub endpoint that returns 501 Not Implemented.
+    Full implementation will be added in later tasks following TDD approach.
+
+    Args:
+        project_id: Project ID
+
+    Returns:
+        501 Not Implemented
+    """
+    raise HTTPException(
+        status_code=501,
+        detail="Discovery answer submission endpoint not yet implemented. Will be completed in Phase 6 (US5)."
+    )
+
+
 @app.get("/api/projects/{project_id}/prd")
 async def get_project_prd(project_id: int):
     """Get PRD for a project (cf-26).

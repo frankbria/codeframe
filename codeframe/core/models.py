@@ -562,3 +562,83 @@ class ReviewReport(BaseModel):
         msg += f"\n---\n\n{self.summary}"
 
         return msg
+
+
+# ============================================================================
+# Discovery Answer UI Models (Feature: 012-discovery-answer-ui)
+# ============================================================================
+
+
+class DiscoveryAnswer(BaseModel):
+    """Request model for discovery answer submission."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    answer: str = Field(
+        ...,
+        min_length=1,
+        max_length=5000,
+        description="User's answer to the current discovery question"
+    )
+
+    @field_validator('answer')
+    @classmethod
+    def validate_answer(cls, v: str) -> str:
+        """Ensure answer is not empty after trimming."""
+        trimmed = v.strip()
+        if not trimmed:
+            raise ValueError("Answer cannot be empty or whitespace only")
+        if len(trimmed) > 5000:
+            raise ValueError("Answer cannot exceed 5000 characters")
+        return trimmed
+
+
+class DiscoveryAnswerResponse(BaseModel):
+    """Response model for discovery answer submission."""
+
+    success: bool = Field(
+        ...,
+        description="Whether the answer was successfully processed"
+    )
+
+    next_question: Optional[str] = Field(
+        None,
+        description="Next discovery question text (null if discovery complete)"
+    )
+
+    is_complete: bool = Field(
+        ...,
+        description="Whether the discovery phase is complete"
+    )
+
+    current_index: int = Field(
+        ...,
+        ge=0,
+        description="Current question index (0-based)"
+    )
+
+    total_questions: int = Field(
+        ...,
+        gt=0,
+        description="Total number of discovery questions"
+    )
+
+    progress_percentage: float = Field(
+        ...,
+        ge=0.0,
+        le=100.0,
+        description="Discovery completion percentage (0.0 - 100.0)"
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "next_question": "What tech stack are you planning to use?",
+                "is_complete": False,
+                "current_index": 3,
+                "total_questions": 20,
+                "progress_percentage": 15.0
+            }
+        }
+    )

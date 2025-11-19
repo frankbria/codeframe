@@ -470,4 +470,40 @@ describe('DiscoveryProgress Component', () => {
       });
     });
   });
+
+  // ============================================================================
+  // Feature: 012-discovery-answer-ui - TDD Tests
+  // ============================================================================
+
+  describe('Answer Input (US1)', () => {
+    it('should render answer textarea with correct attributes', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 10,
+          answered_count: 2,
+          total_required: 20,
+          current_question: {
+            category: 'problem',
+            question: 'What problem does your project solve?',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        const textarea = screen.getByPlaceholderText(/type your answer here/i);
+        expect(textarea).toBeInTheDocument();
+        expect(textarea).toHaveAttribute('maxLength', '5000');
+        expect(textarea).toHaveAttribute('rows', '6');
+        expect(textarea).toHaveClass('resize-none');
+        expect(textarea).toHaveClass('w-full');
+      });
+    });
+  });
 });

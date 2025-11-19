@@ -20,6 +20,12 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Feature: 012-discovery-answer-ui - Answer submission state (T014)
+  const [answer, setAnswer] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
   // Fetch discovery progress
   const fetchProgress = async () => {
     try {
@@ -109,6 +115,23 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                 <div className="text-sm text-gray-900">
                   {discovery.current_question.question}
                 </div>
+              </div>
+            )}
+
+            {/* Feature: 012-discovery-answer-ui - Answer Input (T015, T016) */}
+            {discovery.current_question && (
+              <div className="mt-4">
+                <textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  placeholder="Type your answer here... (Ctrl+Enter to submit)"
+                  rows={6}
+                  maxLength={5000}
+                  disabled={isSubmitting}
+                  className={`w-full resize-none rounded-lg border px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none ${
+                    submissionError ? 'border-red-500' : 'border-gray-300'
+                  } ${isSubmitting ? 'bg-gray-100' : 'bg-white'}`}
+                />
               </div>
             )}
           </>
