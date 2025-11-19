@@ -249,10 +249,29 @@ npm run dev
 
 ## Quick Start
 
-### 1. Create a Project via API
+### 1. Start the Dashboard
 
 ```bash
-curl -X POST http://localhost:8000/api/projects \
+codeframe serve
+```
+
+This will:
+- Start the FastAPI server on port 8080
+- Automatically open your browser to the dashboard
+- Display real-time project status
+
+Press Ctrl+C to stop the server.
+
+**Options**:
+- `--port 3000` - Use custom port
+- `--no-browser` - Don't auto-open browser
+- `--reload` - Enable auto-reload (development)
+- `--host 127.0.0.1` - Bind to specific host
+
+### 2. Create a Project via API
+
+```bash
+curl -X POST http://localhost:8080/api/projects \
   -H "Content-Type: application/json" \
   -d '{
     "name": "My AI Project",
@@ -262,10 +281,10 @@ curl -X POST http://localhost:8000/api/projects \
   }'
 ```
 
-### 2. Submit a PRD (Product Requirements Document)
+### 3. Submit a PRD (Product Requirements Document)
 
 ```bash
-curl -X POST http://localhost:8000/api/projects/1/prd \
+curl -X POST http://localhost:8080/api/projects/1/prd \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Build a user authentication system with JWT tokens, \
@@ -273,9 +292,9 @@ curl -X POST http://localhost:8000/api/projects/1/prd \
   }'
 ```
 
-### 3. Watch Agents Work
+### 4. Watch Agents Work
 
-Navigate to `http://localhost:5173` to see:
+Navigate to `http://localhost:8080` to see:
 - **Agent Pool**: Active agents and their current tasks
 - **Task Progress**: Real-time task completion updates
 - **Blockers**: Questions agents need answered
@@ -283,14 +302,14 @@ Navigate to `http://localhost:5173` to see:
 - **Lint Results**: Code quality metrics and trends
 - **Review Findings**: Security vulnerabilities and quality issues
 
-### 4. Answer Blockers When Needed
+### 5. Answer Blockers When Needed
 
 ```bash
 # List current blockers
-curl http://localhost:8000/api/projects/1/blockers
+curl http://localhost:8080/api/projects/1/blockers
 
 # Answer a blocker
-curl -X POST http://localhost:8000/api/blockers/1/answer \
+curl -X POST http://localhost:8080/api/blockers/1/answer \
   -H "Content-Type: application/json" \
   -d '{"answer": "Use bcrypt for password hashing with salt rounds=12"}'
 ```
