@@ -26,6 +26,73 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
+  const submitAnswer = async () => {
+    // Client-side validation
+    const trimmedAnswer = answer.trim();
+    if (!trimmedAnswer || trimmedAnswer.length > 5000) {
+      setSubmissionError('Answer must be between 1 and 5000 characters');
+      return;
+    }
+
+    // Start submission
+    setIsSubmitting(true);
+    setSubmissionError(null);
+    setSuccessMessage(null);
+
+    try {
+      // T038: POST request to backend
+      const response = await fetch(`/api/projects/${projectId}/discovery/answer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ answer: trimmedAnswer }),
+      });
+
+      // T040: Error handling
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `Server error: ${response.status}`);
+      }
+
+      // T039: Parse response
+      const data = await response.json();
+
+      // Success - show message and refresh
+      setSuccessMessage('Answer submitted! Loading next question...');
+      setAnswer(''); // Clear textarea
+      setSubmissionError(null);
+
+      // Refresh discovery state after 1 second
+      setTimeout(() => {
+        fetchProgress();
+        setSuccessMessage(null);
+      }, 1000);
+
+    } catch (error) {
+      // T040: Handle network and API errors
+      console.error('Failed to submit answer:', error);
+      if (error instanceof Error) {
+        setSubmissionError(error.message);
+      } else {
+        setSubmissionError('Failed to submit answer. Please check your connection.');
+      }
+      // Keep answer in textarea for retry
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Feature: 012-discovery-answer-ui - Keyboard Shortcut (T049)
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Check for Ctrl+Enter
+    if (e.key === 'Enter' && e.ctrlKey) {
+      e.preventDefault(); // Prevent default Enter behavior
+      submitAnswer();
+    }
+  };
+
   // Fetch discovery progress
   const fetchProgress = async () => {
     try {
@@ -124,6 +191,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                 <textarea
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
+                  onKeyDown={handleKeyPress}
                   placeholder="Type your answer here... (Ctrl+Enter to submit)"
                   rows={6}
                   maxLength={5000}
@@ -132,6 +200,46 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                     submissionError ? 'border-red-500' : 'border-gray-300'
                   } ${isSubmitting ? 'bg-gray-100' : 'bg-white'}`}
                 />
+
+                {/* Feature: 012-discovery-answer-ui - Character Counter (T020, T021) */}
+                <div className="mt-2 flex items-center justify-between">
+                  <span className={`text-sm ${answer.length > 4500 ? 'text-red-600' : 'text-gray-500'}`}>
+                    {answer.length} / 5000 characters
+                  </span>
+
+                  {/* Feature: 012-discovery-answer-ui - Submit Button (T026, T027, T028) */}
+                  <button
+                    type="button"
+                    onClick={submitAnswer}
+                    disabled={isSubmitting || !answer.trim()}
+                    className={`py-2 px-6 rounded-lg font-semibold transition-colors ${
+                      isSubmitting || !answer.trim()
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                    }`}
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Submit Answer'}
+                  </button>
+                </div>
+
+                {/* Feature: 012-discovery-answer-ui - Success Message (US6, will be added in next phase) */}
+                {successMessage && (
+                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
+                    {successMessage}
+                  </div>
+                )}
+
+                {/* Feature: 012-discovery-answer-ui - Error Message (US7, will be added in next phase) */}
+                {submissionError && (
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                    {submissionError}
+                  </div>
+                )}
+
+                {/* Feature: 012-discovery-answer-ui - Keyboard Shortcut Hint (T050) */}
+                <div className="mt-2 text-center text-xs text-gray-500">
+                  💡 Tip: Press <kbd className="px-2 py-1 bg-gray-100 border border-gray-300 rounded">Ctrl+Enter</kbd> to submit
+                </div>
               </div>
             )}
           </>
