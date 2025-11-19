@@ -1,10 +1,16 @@
 """Command-line interface for CodeFRAME."""
 
+import subprocess
+import threading
+import time
+import webbrowser
 from pathlib import Path
 from typing import Optional
+
 import typer
 from rich.console import Console
 
+from codeframe.core.port_utils import check_port_availability, validate_port_range
 from codeframe.core.project import Project
 
 app = typer.Typer(
@@ -161,6 +167,92 @@ def agents(
 ):
     """Manage agents."""
     console.print(f"Agents {action} - [yellow]Not implemented yet[/yellow]")
+
+
+@app.command()
+def serve(
+    port: int = typer.Option(8080, "--port", "-p", help="Port to run server on"),
+    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    open_browser: bool = typer.Option(
+        True, "--open-browser/--no-browser", help="Auto-open browser"
+    ),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (development)"),
+):
+    """Start the CodeFRAME dashboard server.
+
+    The server will run on the specified port and automatically open
+    your browser to the dashboard. Press Ctrl+C to stop the server.
+
+    Examples:
+
+      codeframe serve
+
+      codeframe serve --port 3000 --no-browser
+
+      codeframe serve --reload
+    """
+    # Validate port range
+    valid, msg = validate_port_range(port)
+    if not valid:
+        console.print(f"[red]Error:[/red] {msg}")
+        raise typer.Exit(1)
+
+    # Check port availability
+    available, msg = check_port_availability(port, host)
+    if not available:
+        console.print(f"[red]Error:[/red] {msg}")
+        raise typer.Exit(1)
+
+    # Build uvicorn command
+    cmd = [
+        "uvicorn",
+        "codeframe.ui.server:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+
+    if reload:
+        cmd.append("--reload")
+
+    # Print startup message
+    console.print("🌐 Starting dashboard server...")
+    console.print(f"   URL: [bold cyan]http://localhost:{port}[/bold cyan]")
+    console.print("   Press [bold]Ctrl+C[/bold] to stop\n")
+
+    # Open browser in background thread (if enabled)
+    if open_browser:
+
+        def open_in_browser():
+            """Open browser after delay to ensure server is ready."""
+            time.sleep(1.5)
+            try:
+                webbrowser.open(f"http://localhost:{port}")
+            except Exception as e:
+                console.print(f"[yellow]Warning:[/yellow] Could not open browser: {e}")
+                console.print(f"Please open http://localhost:{port} manually")
+
+        browser_thread = threading.Thread(target=open_in_browser, daemon=True)
+        browser_thread.start()
+
+    # Start server (blocking call)
+    # Note: We don't capture output so uvicorn logs are visible to the user
+    try:
+        subprocess.run(cmd, check=True)
+    except KeyboardInterrupt:
+        console.print("\n✓ Server stopped")
+    except FileNotFoundError:
+        console.print("[red]Error:[/red] uvicorn not found. Install with: pip install uvicorn")
+        raise typer.Exit(1)
+    except subprocess.CalledProcessError:
+        # Server failed - uvicorn's error output is already visible to user
+        console.print(
+            f"\n[red]Server failed to start.[/red] Common issues:"
+        )
+        console.print(f"  • Port {port} may be in use (try --port {port + 1})")
+        console.print(f"  • Check the error message above for details")
+        raise typer.Exit(1)
 
 
 @app.command()
