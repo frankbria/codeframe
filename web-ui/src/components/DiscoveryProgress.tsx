@@ -196,6 +196,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                   rows={6}
                   maxLength={5000}
                   disabled={isSubmitting}
+                  aria-label="Discovery question answer"
+                  aria-describedby={submissionError ? 'answer-error' : undefined}
+                  aria-invalid={submissionError ? 'true' : 'false'}
                   className={`w-full resize-none rounded-lg border px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none ${
                     submissionError ? 'border-red-500' : 'border-gray-300'
                   } ${isSubmitting ? 'bg-gray-100' : 'bg-white'}`}
@@ -222,16 +225,25 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                   </button>
                 </div>
 
-                {/* Feature: 012-discovery-answer-ui - Success Message (US6, will be added in next phase) */}
+                {/* Feature: 012-discovery-answer-ui - Success Message (US6, T091) */}
                 {successMessage && (
-                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm">
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm"
+                  >
                     {successMessage}
                   </div>
                 )}
 
-                {/* Feature: 012-discovery-answer-ui - Error Message (US7, will be added in next phase) */}
+                {/* Feature: 012-discovery-answer-ui - Error Message (US7, T091) */}
                 {submissionError && (
-                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+                  <div
+                    id="answer-error"
+                    role="alert"
+                    aria-live="assertive"
+                    className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm"
+                  >
                     {submissionError}
                   </div>
                 )}
