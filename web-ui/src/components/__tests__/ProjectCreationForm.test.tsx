@@ -1,7 +1,12 @@
+/**
+ * Tests for ProjectCreationForm Component
+ * Feature: 011-project-creation-flow
+ * Sprint: 9.5 - Critical UX Fixes
+ */
+
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useRouter } from 'next/navigation';
 import ProjectCreationForm from '../ProjectCreationForm';
 
 // Create mock functions
@@ -25,390 +30,480 @@ jest.mock('axios', () => {
   };
 });
 
-// Mock Next.js router
-const mockPush = jest.fn();
-jest.mock('next/navigation', () => ({
-  useRouter: jest.fn(),
-}));
-
-// Import after mocks are set up
-import { projectsApi } from '@/lib/api';
-
 describe('ProjectCreationForm', () => {
+  const mockOnSuccess = jest.fn();
+  const mockOnSubmit = jest.fn();
+  const mockOnError = jest.fn();
+
   beforeEach(() => {
     mockPost.mockReset();
-    mockPush.mockClear();
-    (useRouter as jest.Mock).mockReturnValue({
-      push: mockPush,
+    mockOnSuccess.mockClear();
+    mockOnSubmit.mockClear();
+    mockOnError.mockClear();
+  });
+
+  describe('Basic Rendering', () => {
+    test('renders form with all required fields', () => {
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      expect(screen.getByLabelText(/project name/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /create project & start discovery/i })).toBeInTheDocument();
+    });
+
+    test('shows character counter for description', () => {
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      expect(screen.getByText(/0 \/ 500 characters \(min 10\)/i)).toBeInTheDocument();
+    });
+
+    test('shows hint text below submit button', () => {
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      expect(screen.getByText(/after creation, you'll begin socratic discovery/i)).toBeInTheDocument();
     });
   });
 
-  test('renders form with name input and type select dropdown', () => {
-    render(<ProjectCreationForm />);
+  describe('Validation - Project Name', () => {
+    test('shows error when name is empty on blur', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
 
-    expect(screen.getByLabelText(/project name/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/project type/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /create project/i })).toBeInTheDocument();
-  });
+      const nameInput = screen.getByLabelText(/project name/i);
+      await user.click(nameInput);
+      await user.tab(); // Blur
 
-  test('defaults project type to python', () => {
-    render(<ProjectCreationForm />);
-
-    const selectElement = screen.getByLabelText(/project type/i) as HTMLSelectElement;
-    expect(selectElement.value).toBe('python');
-  });
-
-  test('shows all project type options', () => {
-    render(<ProjectCreationForm />);
-
-    const selectElement = screen.getByLabelText(/project type/i);
-    const options = Array.from(selectElement.querySelectorAll('option')).map(opt => opt.value);
-
-    expect(options).toEqual(['python', 'javascript', 'typescript', 'java', 'go', 'rust']);
-  });
-
-  test('shows validation error when submitting with empty name', async () => {
-    const user = userEvent.setup();
-    render(<ProjectCreationForm />);
-
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
-
-    expect(await screen.findByText(/project name cannot be empty/i)).toBeInTheDocument();
-  });
-
-  test('calls createProject with correct data on valid submit', async () => {
-    const user = userEvent.setup();
-
-    mockPost.mockResolvedValueOnce({
-      status: 201,
-      data: {
-        id: 1,
-        name: 'Test Project',
-        project_type: 'typescript',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
+      expect(await screen.findByText(/project name is required/i)).toBeInTheDocument();
     });
 
-    render(<ProjectCreationForm />);
+    test('shows error when name is too short on blur', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
 
-    const nameInput = screen.getByLabelText(/project name/i);
-    const typeSelect = screen.getByLabelText(/project type/i);
+      const nameInput = screen.getByLabelText(/project name/i);
+      await user.type(nameInput, 'ab');
+      await user.tab(); // Blur
 
-    await user.type(nameInput, 'Test Project');
-    await user.selectOptions(typeSelect, 'typescript');
+      expect(await screen.findByText(/project name must be at least 3 characters/i)).toBeInTheDocument();
+    });
 
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
+    test('shows error when name has invalid characters on blur', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
 
-    await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith('/api/projects', {
-        project_name: 'Test Project',
-        project_type: 'typescript',
+      const nameInput = screen.getByLabelText(/project name/i);
+      await user.type(nameInput, 'My Project!');
+      await user.tab(); // Blur
+
+      expect(await screen.findByText(/only lowercase letters, numbers, hyphens, and underscores allowed/i)).toBeInTheDocument();
+    });
+
+    test('shows error when name has uppercase letters', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      await user.type(nameInput, 'MyProject');
+      await user.tab(); // Blur
+
+      expect(await screen.findByText(/only lowercase letters, numbers, hyphens, and underscores allowed/i)).toBeInTheDocument();
+    });
+
+    test('accepts valid name with lowercase, numbers, hyphens, underscores', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      await user.type(nameInput, 'my-project_123');
+      await user.tab(); // Blur
+
+      expect(screen.queryByText(/project name/i, { selector: '.text-red-600' })).not.toBeInTheDocument();
+    });
+
+    test('shows red border on name field when error exists', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      await user.type(nameInput, 'AB');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(nameInput).toHaveClass('border-red-500');
+      });
+    });
+  });
+
+  describe('Validation - Description', () => {
+    test('shows error when description is empty on blur', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const descInput = screen.getByLabelText(/description/i);
+      await user.click(descInput);
+      await user.tab(); // Blur
+
+      expect(await screen.findByText(/project description is required/i)).toBeInTheDocument();
+    });
+
+    test('shows error when description is too short on blur', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const descInput = screen.getByLabelText(/description/i);
+      await user.type(descInput, 'Short');
+      await user.tab(); // Blur
+
+      expect(await screen.findByText(/description must be at least 10 characters/i)).toBeInTheDocument();
+    });
+
+    test('updates character counter as user types', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const descInput = screen.getByLabelText(/description/i);
+      await user.type(descInput, 'Test description');
+
+      expect(screen.getByText(/16 \/ 500 characters/i)).toBeInTheDocument();
+    });
+
+    test('shows red border on description field when error exists', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const descInput = screen.getByLabelText(/description/i);
+      await user.type(descInput, 'Short');
+      await user.tab();
+
+      await waitFor(() => {
+        expect(descInput).toHaveClass('border-red-500');
+      });
+    });
+  });
+
+  describe('Submit Button State', () => {
+    test('submit button is disabled when form is invalid', () => {
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      expect(submitButton).toBeDisabled();
+    });
+
+    test('submit button is enabled when form is valid', async () => {
+      const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
+
+      await user.type(nameInput, 'my-project');
+      await user.type(descInput, 'This is a valid description');
+
+      await waitFor(() => {
+        const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+        expect(submitButton).not.toBeDisabled();
       });
     });
 
-    expect(await screen.findByText(/project created successfully/i)).toBeInTheDocument();
-  });
+    test('submit button is disabled during submission', async () => {
+      const user = userEvent.setup();
 
-  test('shows loading state (disabled submit button) while submitting', async () => {
-    const user = userEvent.setup();
+      let resolvePost: any;
+      const postPromise = new Promise((resolve) => {
+        resolvePost = resolve;
+      });
+      mockPost.mockReturnValueOnce(postPromise);
 
-    // Create a delayed resolution
-    let resolvePost: any;
-    const postPromise = new Promise((resolve) => {
-      resolvePost = resolve;
-    });
-    mockPost.mockReturnValueOnce(postPromise);
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
 
-    render(<ProjectCreationForm />);
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
 
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'Test Project');
+      await user.type(nameInput, 'my-project');
+      await user.type(descInput, 'This is a valid description');
 
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
 
-    // Button should be disabled during submission
-    expect(submitButton).toBeDisabled();
+      expect(submitButton).toBeDisabled();
+      expect(submitButton).toHaveTextContent(/creating/i);
 
-    // Resolve the promise and wait for state update
-    resolvePost({
-      status: 201,
-      data: {
-        id: 1,
-        name: 'Test Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
-    });
-
-    // Wait for the form to process the response
-    await waitFor(() => {
-      expect(screen.getByText(/project created successfully/i)).toBeInTheDocument();
-    });
-  });
-
-  test('shows error message on 400 Bad Request', async () => {
-    const user = userEvent.setup();
-
-    mockPost.mockRejectedValueOnce({
-      response: {
-        status: 400,
-        data: { detail: 'Project name cannot be empty' },
-      },
+      // Resolve the promise
+      resolvePost({
+        status: 201,
+        data: {
+          id: 1,
+          name: 'my-project',
+          status: 'init',
+          phase: 'discovery',
+          created_at: '2025-01-15T10:00:00Z',
+        },
+      });
     });
 
-    render(<ProjectCreationForm />);
+    test('all inputs are disabled during submission', async () => {
+      const user = userEvent.setup();
 
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'Test');
-    await user.clear(nameInput);
+      let resolvePost: any;
+      const postPromise = new Promise((resolve) => {
+        resolvePost = resolve;
+      });
+      mockPost.mockReturnValueOnce(postPromise);
 
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
 
-    expect(await screen.findByText(/project name cannot be empty/i)).toBeInTheDocument();
-  });
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
 
-  test('shows error message on 409 Conflict', async () => {
-    const user = userEvent.setup();
+      await user.type(nameInput, 'my-project');
+      await user.type(descInput, 'This is a valid description');
 
-    mockPost.mockRejectedValueOnce({
-      response: {
-        status: 409,
-        data: { detail: 'Project with this name already exists' },
-      },
-    });
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
 
-    render(<ProjectCreationForm />);
+      expect(nameInput).toBeDisabled();
+      expect(descInput).toBeDisabled();
 
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'duplicate-project');
-
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
-
-    expect(await screen.findByText(/project with this name already exists/i)).toBeInTheDocument();
-  });
-
-  test('shows error message on 500 Internal Server Error', async () => {
-    const user = userEvent.setup();
-
-    mockPost.mockRejectedValueOnce({
-      response: {
-        status: 500,
-        data: { detail: 'Internal server error' },
-      },
-    });
-
-    render(<ProjectCreationForm />);
-
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'server-error');
-
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
-
-    expect(await screen.findByText(/internal server error/i)).toBeInTheDocument();
-  });
-
-  test('shows success state with created project details', async () => {
-    const user = userEvent.setup();
-
-    mockPost.mockResolvedValueOnce({
-      status: 201,
-      data: {
-        id: 1,
-        name: 'My New Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
-    });
-
-    render(<ProjectCreationForm />);
-
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'My New Project');
-
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
-
-    await waitFor(() => {
-      expect(screen.getByText(/project created successfully/i)).toBeInTheDocument();
-      expect(screen.getByText(/my new project/i)).toBeInTheDocument();
+      // Resolve the promise
+      resolvePost({
+        status: 201,
+        data: {
+          id: 1,
+          name: 'my-project',
+          status: 'init',
+          phase: 'discovery',
+          created_at: '2025-01-15T10:00:00Z',
+        },
+      });
     });
   });
 
-  test('shows Start Project button after successful creation', async () => {
-    const user = userEvent.setup();
+  describe('Form Submission', () => {
+    test('calls API with correct data on valid submit', async () => {
+      const user = userEvent.setup();
 
-    mockPost.mockResolvedValueOnce({
-      status: 201,
-      data: {
-        id: 1,
-        name: 'Test Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
+      mockPost.mockResolvedValueOnce({
+        status: 201,
+        data: {
+          id: 1,
+          name: 'test-project',
+          status: 'init',
+          phase: 'discovery',
+          created_at: '2025-01-15T10:00:00Z',
+        },
+      });
+
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
+
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'This is a test project description');
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockPost).toHaveBeenCalledWith('/api/projects', {
+          name: 'test-project',
+          description: 'This is a test project description',
+          source_type: 'empty',
+        });
+      });
     });
 
-    render(<ProjectCreationForm />);
+    test('calls onSubmit callback before API request', async () => {
+      const user = userEvent.setup();
 
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'Test Project');
+      mockPost.mockResolvedValueOnce({
+        status: 201,
+        data: {
+          id: 1,
+          name: 'test-project',
+          status: 'init',
+          phase: 'discovery',
+          created_at: '2025-01-15T10:00:00Z',
+        },
+      });
 
-    const submitButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(submitButton);
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} onSubmit={mockOnSubmit} />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /start project/i })).toBeInTheDocument();
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
+
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'This is a test project description');
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockOnSubmit).toHaveBeenCalled();
+      });
+    });
+
+    test('calls onSuccess with project ID on successful creation', async () => {
+      const user = userEvent.setup();
+
+      mockPost.mockResolvedValueOnce({
+        status: 201,
+        data: {
+          id: 42,
+          name: 'test-project',
+          status: 'init',
+          phase: 'discovery',
+          created_at: '2025-01-15T10:00:00Z',
+        },
+      });
+
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
+
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'This is a test project description');
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockOnSuccess).toHaveBeenCalledWith(42);
+      });
+    });
+
+    test('does not submit if name validation fails', async () => {
+      const user = userEvent.setup();
+
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
+
+      await user.type(nameInput, 'ab'); // Too short
+      await user.type(descInput, 'This is a valid description');
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
+
+      expect(mockPost).not.toHaveBeenCalled();
+    });
+
+    test('does not submit if description validation fails', async () => {
+      const user = userEvent.setup();
+
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
+
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'Short'); // Too short
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
+
+      expect(mockPost).not.toHaveBeenCalled();
     });
   });
 
-  test('calls startProject when Start button is clicked', async () => {
-    const user = userEvent.setup();
+  describe('Error Handling', () => {
+    test('shows error for duplicate project name (409)', async () => {
+      const user = userEvent.setup();
 
-    // Mock create project response
-    mockPost.mockResolvedValueOnce({
-      status: 201,
-      data: {
-        id: 1,
-        name: 'Test Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
+      mockPost.mockRejectedValueOnce({
+        response: {
+          status: 409,
+          data: { detail: "Project with name 'test-project' already exists" },
+        },
+      });
+
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} onError={mockOnError} />);
+
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
+
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'This is a test project description');
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
+
+      expect(await screen.findByText(/project 'test-project' already exists/i)).toBeInTheDocument();
+      expect(mockOnError).toHaveBeenCalled();
     });
 
-    render(<ProjectCreationForm />);
+    test('shows error for validation error (400)', async () => {
+      const user = userEvent.setup();
 
-    // Create project first
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'Test Project');
+      mockPost.mockRejectedValueOnce({
+        response: {
+          status: 400,
+          data: { detail: 'Invalid project name format' },
+        },
+      });
 
-    const createButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(createButton);
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} onError={mockOnError} />);
 
-    // Wait for Start Project button to appear
-    const startButton = await screen.findByRole('button', { name: /start project/i });
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
 
-    // Mock start project response
-    mockPost.mockResolvedValueOnce({
-      status: 202,
-      data: {
-        message: 'Starting Lead Agent for project 1',
-        status: 'starting',
-      },
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'This is a test project description');
+
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
+
+      expect(await screen.findByText(/invalid project name format/i)).toBeInTheDocument();
+      expect(mockOnError).toHaveBeenCalled();
     });
 
-    await user.click(startButton);
+    test('shows error for server error (500)', async () => {
+      const user = userEvent.setup();
 
-    await waitFor(() => {
-      expect(mockPost).toHaveBeenCalledWith('/api/projects/1/start');
-    });
-  });
+      mockPost.mockRejectedValueOnce({
+        response: {
+          status: 500,
+          data: { detail: 'Internal server error' },
+        },
+      });
 
-  test('navigates to project page after starting project', async () => {
-    const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} onError={mockOnError} />);
 
-    // Mock create project response
-    mockPost.mockResolvedValueOnce({
-      status: 201,
-      data: {
-        id: 1,
-        name: 'Test Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
-    });
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
 
-    render(<ProjectCreationForm />);
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'This is a test project description');
 
-    // Create project
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'Test Project');
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
 
-    const createButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(createButton);
-
-    // Start project
-    const startButton = await screen.findByRole('button', { name: /start project/i });
-
-    // Mock start project response
-    mockPost.mockResolvedValueOnce({
-      status: 202,
-      data: {
-        message: 'Starting Lead Agent for project 1',
-        status: 'starting',
-      },
+      expect(await screen.findByText(/server error occurred/i)).toBeInTheDocument();
+      expect(mockOnError).toHaveBeenCalled();
     });
 
-    await user.click(startButton);
+    test('shows error for network failure', async () => {
+      const user = userEvent.setup();
 
-    // Should navigate to project page
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith('/projects/1');
-    });
-  });
+      mockPost.mockRejectedValueOnce({
+        message: 'Network Error',
+      });
 
-  test('shows loading state while starting project', async () => {
-    const user = userEvent.setup();
+      render(<ProjectCreationForm onSuccess={mockOnSuccess} onError={mockOnError} />);
 
-    // Mock create project response
-    mockPost.mockResolvedValueOnce({
-      status: 201,
-      data: {
-        id: 1,
-        name: 'Test Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
-    });
+      const nameInput = screen.getByLabelText(/project name/i);
+      const descInput = screen.getByLabelText(/description/i);
 
-    render(<ProjectCreationForm />);
+      await user.type(nameInput, 'test-project');
+      await user.type(descInput, 'This is a test project description');
 
-    // Create project
-    const nameInput = screen.getByLabelText(/project name/i);
-    await user.type(nameInput, 'Test Project');
+      const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
+      await user.click(submitButton);
 
-    const createButton = screen.getByRole('button', { name: /create project/i });
-    await user.click(createButton);
-
-    // Start project
-    const startButton = await screen.findByRole('button', { name: /start project/i });
-
-    // Create a promise we can control for start project
-    let resolveStart: any;
-    const startPromise = new Promise((resolve) => {
-      resolveStart = resolve;
-    });
-    mockPost.mockReturnValueOnce(startPromise);
-
-    await user.click(startButton);
-
-    // Button should be disabled while starting
-    expect(startButton).toBeDisabled();
-
-    // Resolve the promise
-    resolveStart({
-      status: 202,
-      data: {
-        message: 'Starting Lead Agent for project 1',
-        status: 'starting',
-      },
-    });
-
-    // Should navigate after completion
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith('/projects/1');
+      expect(await screen.findByText(/failed to create project.*check your connection/i)).toBeInTheDocument();
+      expect(mockOnError).toHaveBeenCalled();
     });
   });
 });
