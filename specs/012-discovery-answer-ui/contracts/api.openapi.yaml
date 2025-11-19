@@ -1,0 +1,270 @@
+openapi: 3.1.0
+info:
+  title: Discovery Answer API
+  description: |
+    API endpoint for submitting user answers during the discovery phase.
+    This feature enables users to answer Socratic discovery questions through an interactive UI.
+  version: 1.0.0
+  contact:
+    name: CodeFRAME Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: http://localhost:3000
+    description: Frontend development proxy
+
+tags:
+  - name: Discovery
+    description: Discovery phase operations
+
+paths:
+  /api/projects/{project_id}/discovery/answer:
+    post:
+      summary: Submit Discovery Answer
+      description: |
+        Submit user's answer to the current discovery question.
+
+        **Workflow**:
+        1. User types answer in textarea (1-5000 chars)
+        2. User clicks Submit or presses Ctrl+Enter
+        3. Frontend sends POST request
+        4. Backend validates answer and project state
+        5. Lead Agent processes answer and advances to next question
+        6. WebSocket broadcasts notify connected clients
+        7. Response includes next question or completion state
+
+        **State Transitions**:
+        - Answer submitted → Next question presented (if questions remaining)
+        - Final answer submitted → Discovery complete → PRD generation begins
+      operationId: submitDiscoveryAnswer
+      tags:
+        - Discovery
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          description: Unique identifier of the project
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            example: 123
+      requestBody:
+        required: true
+        description: User's answer to the current discovery question
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiscoveryAnswer'
+            examples:
+              valid_answer:
+                summary: Valid answer submission
+                value:
+                  answer: "Build a task management system for remote teams with real-time collaboration features."
+              short_answer:
+                summary: Short valid answer
+                value:
+                  answer: "Yes, we plan to use TypeScript and React."
+              long_answer:
+                summary: Long valid answer (max 5000 chars)
+                value:
+                  answer: "Our target users are software development teams working remotely across different time zones. They need a tool that enables asynchronous collaboration, provides clear task visibility, and integrates with existing development workflows. The system should support multiple project types, allow flexible task organization, and provide real-time notifications without being intrusive. Key pain points include: scattered communication across tools, lack of context in task assignments, difficulty tracking progress across time zones, and integration overhead with existing tools like GitHub, Slack, and Jira..."
+      responses:
+        '200':
+          description: Answer successfully processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscoveryAnswerResponse'
+              examples:
+                next_question:
+                  summary: More questions remaining
+                  value:
+                    success: true
+                    next_question: "What tech stack are you planning to use?"
+                    is_complete: false
+                    current_index: 3
+                    total_questions: 20
+                    progress_percentage: 15.0
+                discovery_complete:
+                  summary: All questions answered
+                  value:
+                    success: true
+                    next_question: null
+                    is_complete: true
+                    current_index: 20
+                    total_questions: 20
+                    progress_percentage: 100.0
+        '400':
+          description: Validation error or invalid project state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                empty_answer:
+                  summary: Empty or whitespace-only answer
+                  value:
+                    detail: "Answer must be between 1 and 5000 characters"
+                too_long:
+                  summary: Answer exceeds maximum length
+                  value:
+                    detail: "Answer must be between 1 and 5000 characters"
+                wrong_phase:
+                  summary: Project not in discovery phase
+                  value:
+                    detail: "Project is not in discovery phase"
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_found:
+                  summary: Project does not exist
+                  value:
+                    detail: "Project not found"
+        '422':
+          description: Request validation failed (Pydantic)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                missing_field:
+                  summary: Required field missing
+                  value:
+                    detail:
+                      - loc: ["body", "answer"]
+                        msg: "Field required"
+                        type: "missing"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                server_error:
+                  summary: Unexpected server error
+                  value:
+                    detail: "Internal server error"
+
+components:
+  schemas:
+    DiscoveryAnswer:
+      type: object
+      required:
+        - answer
+      properties:
+        answer:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          description: |
+            User's answer to the current discovery question.
+            Whitespace is automatically trimmed before validation.
+          example: "Build a task management system for remote teams with real-time collaboration features."
+      additionalProperties: false
+
+    DiscoveryAnswerResponse:
+      type: object
+      required:
+        - success
+        - is_complete
+        - current_index
+        - total_questions
+        - progress_percentage
+      properties:
+        success:
+          type: boolean
+          description: Whether the answer was successfully processed
+          example: true
+        next_question:
+          type: string
+          nullable: true
+          description: |
+            Next discovery question text.
+            Null when discovery is complete.
+          example: "What tech stack are you planning to use?"
+        is_complete:
+          type: boolean
+          description: Whether the discovery phase is complete
+          example: false
+        current_index:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Current question index (0-based)
+          example: 3
+        total_questions:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Total number of discovery questions
+          example: 20
+        progress_percentage:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: Discovery completion percentage (0.0 - 100.0)
+          example: 15.0
+      additionalProperties: false
+
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+          example: "Project is not in discovery phase"
+      additionalProperties: false
+
+    ValidationError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: array
+          description: List of validation errors
+          items:
+            type: object
+            required:
+              - loc
+              - msg
+              - type
+            properties:
+              loc:
+                type: array
+                description: Location of the error (path to field)
+                items:
+                  type: string
+                example: ["body", "answer"]
+              msg:
+                type: string
+                description: Error message
+                example: "Field required"
+              type:
+                type: string
+                description: Error type identifier
+                example: "missing"
+      additionalProperties: false
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        API key authentication (if enabled in production).
+        Local development typically does not require authentication.
+
+security:
+  - {}  # No authentication required for local development
+  - ApiKeyAuth: []  # Optional API key for production

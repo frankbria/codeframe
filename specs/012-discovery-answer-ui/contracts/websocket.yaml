@@ -1,0 +1,241 @@
+asyncapi: 2.6.0
+info:
+  title: Discovery WebSocket Events
+  version: 1.0.0
+  description: |
+    WebSocket event specifications for discovery answer real-time updates.
+    The frontend subscribes to these events to update the UI in real-time as users submit answers.
+
+servers:
+  development:
+    url: ws://localhost:8080/ws
+    protocol: ws
+    description: Local development WebSocket server
+
+channels:
+  discovery/events:
+    description: Discovery-related real-time events
+    subscribe:
+      summary: Subscribe to discovery events
+      message:
+        oneOf:
+          - $ref: '#/components/messages/DiscoveryAnswerSubmitted'
+          - $ref: '#/components/messages/DiscoveryQuestionPresented'
+          - $ref: '#/components/messages/DiscoveryProgressUpdated'
+          - $ref: '#/components/messages/DiscoveryCompleted'
+
+components:
+  messages:
+    DiscoveryAnswerSubmitted:
+      name: discovery_answer_submitted
+      title: Discovery Answer Submitted
+      summary: Broadcasted when a user submits a discovery answer
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DiscoveryAnswerSubmittedPayload'
+      examples:
+        - name: answer_submitted
+          summary: User submitted answer to question 3
+          payload:
+            type: discovery_answer_submitted
+            project_id: 123
+            question_id: q_target_users
+            answer_preview: "Developers building web applications..."
+            progress:
+              current: 3
+              total: 20
+              percentage: 15.0
+            timestamp: "2025-11-19T14:30:00Z"
+
+    DiscoveryQuestionPresented:
+      name: discovery_question_presented
+      title: Discovery Question Presented
+      summary: Broadcasted when next discovery question is presented to user
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DiscoveryQuestionPresentedPayload'
+      examples:
+        - name: next_question
+          summary: Next question presented after answer submission
+          payload:
+            type: discovery_question_presented
+            project_id: 123
+            question_id: q_tech_stack
+            question_text: "What tech stack are you planning to use?"
+            current_index: 4
+            total_questions: 20
+            timestamp: "2025-11-19T14:30:01Z"
+
+    DiscoveryProgressUpdated:
+      name: discovery_progress_updated
+      title: Discovery Progress Updated
+      summary: Broadcasted when discovery progress percentage changes
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DiscoveryProgressUpdatedPayload'
+      examples:
+        - name: progress_update
+          summary: Progress updated after answer submission
+          payload:
+            type: discovery_progress_updated
+            project_id: 123
+            progress:
+              current: 5
+              total: 20
+              percentage: 25.0
+            timestamp: "2025-11-19T14:35:00Z"
+
+    DiscoveryCompleted:
+      name: discovery_completed
+      title: Discovery Completed
+      summary: Broadcasted when all discovery questions have been answered
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/DiscoveryCompletedPayload'
+      examples:
+        - name: discovery_complete
+          summary: All 20 questions answered, moving to PRD generation
+          payload:
+            type: discovery_completed
+            project_id: 123
+            total_answers: 20
+            next_phase: prd_generation
+            timestamp: "2025-11-19T15:00:00Z"
+
+  schemas:
+    DiscoveryAnswerSubmittedPayload:
+      type: object
+      required:
+        - type
+        - project_id
+        - question_id
+        - answer_preview
+        - progress
+        - timestamp
+      properties:
+        type:
+          type: string
+          const: discovery_answer_submitted
+        project_id:
+          type: integer
+          description: ID of the project
+        question_id:
+          type: string
+          description: Unique identifier of the answered question
+        answer_preview:
+          type: string
+          maxLength: 100
+          description: First 100 characters of the answer
+        progress:
+          $ref: '#/components/schemas/ProgressInfo'
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp (UTC with Z suffix)
+
+    DiscoveryQuestionPresentedPayload:
+      type: object
+      required:
+        - type
+        - project_id
+        - question_id
+        - question_text
+        - current_index
+        - total_questions
+        - timestamp
+      properties:
+        type:
+          type: string
+          const: discovery_question_presented
+        project_id:
+          type: integer
+          description: ID of the project
+        question_id:
+          type: string
+          description: Unique identifier of the question
+        question_text:
+          type: string
+          description: Full text of the question
+        current_index:
+          type: integer
+          minimum: 1
+          description: Current question number (1-based for display)
+        total_questions:
+          type: integer
+          minimum: 1
+          description: Total number of questions
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp (UTC with Z suffix)
+
+    DiscoveryProgressUpdatedPayload:
+      type: object
+      required:
+        - type
+        - project_id
+        - progress
+        - timestamp
+      properties:
+        type:
+          type: string
+          const: discovery_progress_updated
+        project_id:
+          type: integer
+          description: ID of the project
+        progress:
+          $ref: '#/components/schemas/ProgressInfo'
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp (UTC with Z suffix)
+
+    DiscoveryCompletedPayload:
+      type: object
+      required:
+        - type
+        - project_id
+        - total_answers
+        - next_phase
+        - timestamp
+      properties:
+        type:
+          type: string
+          const: discovery_completed
+        project_id:
+          type: integer
+          description: ID of the project
+        total_answers:
+          type: integer
+          minimum: 1
+          description: Total number of answers collected
+        next_phase:
+          type: string
+          enum: [prd_generation, planning]
+          description: Next project phase after discovery
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp (UTC with Z suffix)
+
+    ProgressInfo:
+      type: object
+      required:
+        - current
+        - total
+        - percentage
+      properties:
+        current:
+          type: integer
+          minimum: 0
+          description: Current question index (0-based internally)
+        total:
+          type: integer
+          minimum: 1
+          description: Total number of questions
+        percentage:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 100.0
+          description: Completion percentage (0.0 - 100.0)
