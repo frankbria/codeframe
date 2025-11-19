@@ -17,10 +17,11 @@ const api = axios.create({
 
 export const projectsApi = {
   list: () => api.get<{ projects: Project[] }>('/api/projects'),
-  createProject: (name: string, type: string) =>
+  createProject: (name: string, type: string, description: string) =>
     api.post<ProjectResponse>('/api/projects', {
-      project_name: name,
-      project_type: type,
+      name,
+      description,
+      source_type: 'empty',
     }),
   startProject: (projectId: number) =>
     api.post<StartProjectResponse>(`/api/projects/${projectId}/start`),

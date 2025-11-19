@@ -50,12 +50,13 @@ describe('projectsApi.createProject', () => {
       data: mockResponse,
     });
 
-    const result = await projectsApi.createProject('Test Project', 'python');
+    const result = await projectsApi.createProject('Test Project', 'python', 'Test project description');
 
     // Verify POST was called with correct endpoint and payload
     expect(mockPost).toHaveBeenCalledWith('/api/projects', {
-      project_name: 'Test Project',
-      project_type: 'python',
+      name: 'Test Project',
+      description: 'Test project description',
+      source_type: 'empty',
     });
 
     // Verify response
@@ -74,7 +75,7 @@ describe('projectsApi.createProject', () => {
     mockPost.mockRejectedValueOnce(errorResponse);
 
     await expect(
-      projectsApi.createProject('', 'python')
+      projectsApi.createProject('', 'python', 'Test description')
     ).rejects.toMatchObject(errorResponse);
   });
 
@@ -89,7 +90,7 @@ describe('projectsApi.createProject', () => {
     mockPost.mockRejectedValueOnce(errorResponse);
 
     await expect(
-      projectsApi.createProject('Existing Project', 'python')
+      projectsApi.createProject('Existing Project', 'python', 'A project that already exists')
     ).rejects.toMatchObject(errorResponse);
   });
 
@@ -104,7 +105,7 @@ describe('projectsApi.createProject', () => {
     mockPost.mockRejectedValueOnce(errorResponse);
 
     await expect(
-      projectsApi.createProject('Test Project', 'python')
+      projectsApi.createProject('Test Project', 'python', 'Test project description')
     ).rejects.toMatchObject(errorResponse);
   });
 
@@ -122,11 +123,12 @@ describe('projectsApi.createProject', () => {
         },
       });
 
-      await projectsApi.createProject(`Test ${type} Project`, type);
+      await projectsApi.createProject(`Test ${type} Project`, type, `A ${type} project for testing`);
 
       expect(mockPost).toHaveBeenCalledWith('/api/projects', {
-        project_name: `Test ${type} Project`,
-        project_type: type,
+        name: `Test ${type} Project`,
+        description: `A ${type} project for testing`,
+        source_type: 'empty',
       });
     }
   });
@@ -367,22 +369,22 @@ describe('blockersApi (T019 - 049-human-in-loop)', () => {
       const mockResponse = { data: { success: true } };
       mockPost.mockResolvedValue(mockResponse);
 
-      await blockersApi.resolve(1, 123, 'Use SQLite');
+      await blockersApi.resolve(123, 'Use SQLite');
 
       expect(mockPost).toHaveBeenCalledWith(
-        '/api/projects/1/blockers/123/resolve',
+        '/api/blockers/123/resolve',
         { answer: 'Use SQLite' }
       );
     });
 
-    it('should work with different project and blocker IDs', async () => {
+    it('should work with different blocker IDs', async () => {
       const mockResponse = { data: { success: true } };
       mockPost.mockResolvedValue(mockResponse);
 
-      await blockersApi.resolve(42, 999, 'Test answer');
+      await blockersApi.resolve(999, 'Test answer');
 
       expect(mockPost).toHaveBeenCalledWith(
-        '/api/projects/42/blockers/999/resolve',
+        '/api/blockers/999/resolve',
         { answer: 'Test answer' }
       );
     });
@@ -407,7 +409,7 @@ describe('blockersApi (T019 - 049-human-in-loop)', () => {
       const mockError = new Error('Unauthorized');
       mockPost.mockRejectedValue(mockError);
 
-      await expect(blockersApi.resolve(1, 123, 'answer')).rejects.toThrow('Unauthorized');
+      await expect(blockersApi.resolve(123, 'answer')).rejects.toThrow('Unauthorized');
     });
   });
 });
