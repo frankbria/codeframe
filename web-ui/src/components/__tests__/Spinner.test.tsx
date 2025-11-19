@@ -14,7 +14,7 @@ describe('Spinner', () => {
 
     const spinner = screen.getByTestId('spinner');
     expect(spinner).toBeInTheDocument();
-    expect(spinner).toHaveClass('w-8', 'h-8', 'border-3');
+    expect(spinner).toHaveClass('w-8', 'h-8', 'border-4');
   });
 
   test('renders with small size', () => {
@@ -29,6 +29,14 @@ describe('Spinner', () => {
 
     const spinner = screen.getByTestId('spinner');
     expect(spinner).toHaveClass('w-12', 'h-12', 'border-4');
+  });
+
+  test('defaults to medium size for invalid size values', () => {
+    // @ts-expect-error - Testing runtime fallback for invalid size
+    render(<Spinner size="invalid" />);
+
+    const spinner = screen.getByTestId('spinner');
+    expect(spinner).toHaveClass('w-8', 'h-8', 'border-4');
   });
 
   test('has correct accessibility attributes', () => {
