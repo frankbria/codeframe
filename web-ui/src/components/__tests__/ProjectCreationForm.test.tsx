@@ -47,25 +47,8 @@ describe('ProjectCreationForm', () => {
       render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
 
       expect(screen.getByLabelText(/project name/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/project type/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /create project & start discovery/i })).toBeInTheDocument();
-    });
-
-    test('defaults project type to python', () => {
-      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
-
-      const selectElement = screen.getByLabelText(/project type/i) as HTMLSelectElement;
-      expect(selectElement.value).toBe('python');
-    });
-
-    test('shows all project type options', () => {
-      render(<ProjectCreationForm onSuccess={mockOnSuccess} />);
-
-      const selectElement = screen.getByLabelText(/project type/i);
-      const options = Array.from(selectElement.querySelectorAll('option')).map(opt => opt.value);
-
-      expect(options).toEqual(['python', 'typescript', 'fullstack', 'other']);
     });
 
     test('shows character counter for description', () => {
@@ -271,7 +254,6 @@ describe('ProjectCreationForm', () => {
 
       const nameInput = screen.getByLabelText(/project name/i);
       const descInput = screen.getByLabelText(/description/i);
-      const typeSelect = screen.getByLabelText(/project type/i);
 
       await user.type(nameInput, 'my-project');
       await user.type(descInput, 'This is a valid description');
@@ -281,7 +263,6 @@ describe('ProjectCreationForm', () => {
 
       expect(nameInput).toBeDisabled();
       expect(descInput).toBeDisabled();
-      expect(typeSelect).toBeDisabled();
 
       // Resolve the promise
       resolvePost({
@@ -316,11 +297,9 @@ describe('ProjectCreationForm', () => {
 
       const nameInput = screen.getByLabelText(/project name/i);
       const descInput = screen.getByLabelText(/description/i);
-      const typeSelect = screen.getByLabelText(/project type/i);
 
       await user.type(nameInput, 'test-project');
       await user.type(descInput, 'This is a test project description');
-      await user.selectOptions(typeSelect, 'typescript');
 
       const submitButton = screen.getByRole('button', { name: /create project & start discovery/i });
       await user.click(submitButton);

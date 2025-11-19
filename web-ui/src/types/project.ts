@@ -7,11 +7,6 @@
 import { ProjectResponse } from './index';
 
 /**
- * Project type enum for creation form
- */
-export type ProjectType = 'python' | 'typescript' | 'fullstack' | 'other';
-
-/**
  * Props for ProjectCreationForm component
  */
 export interface ProjectCreationFormProps {
@@ -60,7 +55,6 @@ export interface FormErrors {
  */
 export interface ProjectFormState {
   name: string;
-  projectType: ProjectType;
   description: string;
   errors: FormErrors;
   isSubmitting: boolean;

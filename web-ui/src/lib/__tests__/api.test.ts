@@ -50,7 +50,7 @@ describe('projectsApi.createProject', () => {
       data: mockResponse,
     });
 
-    const result = await projectsApi.createProject('Test Project', 'python', 'Test project description');
+    const result = await projectsApi.createProject('Test Project', 'Test project description');
 
     // Verify POST was called with correct endpoint and payload
     expect(mockPost).toHaveBeenCalledWith('/api/projects', {
@@ -75,7 +75,7 @@ describe('projectsApi.createProject', () => {
     mockPost.mockRejectedValueOnce(errorResponse);
 
     await expect(
-      projectsApi.createProject('', 'python', 'Test description')
+      projectsApi.createProject('', 'Test description')
     ).rejects.toMatchObject(errorResponse);
   });
 
@@ -90,7 +90,7 @@ describe('projectsApi.createProject', () => {
     mockPost.mockRejectedValueOnce(errorResponse);
 
     await expect(
-      projectsApi.createProject('Existing Project', 'python', 'A project that already exists')
+      projectsApi.createProject('Existing Project', 'A project that already exists')
     ).rejects.toMatchObject(errorResponse);
   });
 
@@ -105,32 +105,8 @@ describe('projectsApi.createProject', () => {
     mockPost.mockRejectedValueOnce(errorResponse);
 
     await expect(
-      projectsApi.createProject('Test Project', 'python', 'Test project description')
+      projectsApi.createProject('Test Project', 'Test project description')
     ).rejects.toMatchObject(errorResponse);
-  });
-
-  it('should support all project types', async () => {
-    const projectTypes = ['python', 'javascript', 'typescript', 'java', 'go', 'rust'];
-
-    for (const type of projectTypes) {
-      mockPost.mockResolvedValueOnce({
-        status: 201,
-        data: {
-          id: 1,
-          name: `Test ${type} Project`,
-          status: 'init',
-          created_at: '2025-10-17T12:00:00Z',
-        },
-      });
-
-      await projectsApi.createProject(`Test ${type} Project`, type, `A ${type} project for testing`);
-
-      expect(mockPost).toHaveBeenCalledWith('/api/projects', {
-        name: `Test ${type} Project`,
-        description: `A ${type} project for testing`,
-        source_type: 'empty',
-      });
-    }
   });
 });
 
