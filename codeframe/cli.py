@@ -237,23 +237,21 @@ def serve(
         browser_thread.start()
 
     # Start server (blocking call)
+    # Note: We don't capture output so uvicorn logs are visible to the user
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True)
     except KeyboardInterrupt:
         console.print("\n✓ Server stopped")
     except FileNotFoundError:
         console.print("[red]Error:[/red] uvicorn not found. Install with: pip install uvicorn")
         raise typer.Exit(1)
-    except subprocess.CalledProcessError as e:
-        # Check if error is due to port conflict (race condition after our check)
-        error_output = e.stderr.lower() if e.stderr else ""
-        if "address already in use" in error_output or "port is already allocated" in error_output:
-            console.print(
-                f"[red]Error:[/red] Port {port} became unavailable after check (rare race condition)."
-            )
-            console.print(f"       Another process grabbed the port. Try again or use --port {port + 1}")
-        else:
-            console.print(f"[red]Server error:[/red] {e.stderr if e.stderr else e}")
+    except subprocess.CalledProcessError:
+        # Server failed - uvicorn's error output is already visible to user
+        console.print(
+            f"\n[red]Server failed to start.[/red] Common issues:"
+        )
+        console.print(f"  • Port {port} may be in use (try --port {port + 1})")
+        console.print(f"  • Check the error message above for details")
         raise typer.Exit(1)
 
 
