@@ -584,21 +584,106 @@ async def get_chat_history(project_id: int, limit: int = 100, offset: int = 0):
 
 
 @app.post("/api/projects/{project_id}/discovery/answer")
-async def submit_discovery_answer(project_id: int):
-    """Submit answer to current discovery question (Feature: 012-discovery-answer-ui).
+async def submit_discovery_answer(project_id: int, answer_data: "DiscoveryAnswer"):
+    """Submit answer to current discovery question (Feature: 012-discovery-answer-ui, US5).
 
-    This is a stub endpoint that returns 501 Not Implemented.
-    Full implementation will be added in later tasks following TDD approach.
+    Implementation following TDD approach (T041-T044):
+    - Validates project exists and is in discovery phase
+    - Processes answer through Lead Agent
+    - Broadcasts WebSocket events for real-time UI updates
+    - Returns updated discovery status
 
     Args:
         project_id: Project ID
+        answer_data: Answer submission data (Pydantic model with validation)
 
     Returns:
-        501 Not Implemented
+        DiscoveryAnswerResponse with next question and progress
+
+    Raises:
+        HTTPException:
+            - 400: Validation error or wrong phase
+            - 404: Project not found
     """
-    raise HTTPException(
-        status_code=501,
-        detail="Discovery answer submission endpoint not yet implemented. Will be completed in Phase 6 (US5)."
+    from codeframe.core.models import DiscoveryAnswer, DiscoveryAnswerResponse
+    from codeframe.ui.websocket_broadcasts import (
+        broadcast_discovery_answer_submitted,
+        broadcast_discovery_question_presented,
+        broadcast_discovery_completed,
+    )
+
+    # T041: Validate project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # T041: Validate project is in discovery phase
+    if project.get("phase") != "discovery":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project is not in discovery phase. Current phase: {project.get('phase')}"
+        )
+
+    # T042: Get Lead Agent and process answer
+    try:
+        agent = LeadAgent(
+            project_id=project_id,
+            db=app.state.db,
+            api_key=os.environ.get("ANTHROPIC_API_KEY")
+        )
+
+        # Process the answer (trimmed by Pydantic validator)
+        agent.process_discovery_answer(answer_data.answer)
+
+        # Get updated discovery status
+        status = agent.get_discovery_status()
+
+    except Exception as e:
+        logger.error(f"Failed to process discovery answer for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process answer: {str(e)}")
+
+    # T043: Broadcast WebSocket events
+    try:
+        # Broadcast answer submitted event
+        await broadcast_discovery_answer_submitted(
+            manager=app.state.websocket_manager,
+            project_id=project_id,
+            question_id=status.get("current_question_id", ""),
+            answer_preview=answer_data.answer[:100],  # First 100 chars
+            current_index=status["current_question_index"],
+            total_questions=status["total_questions"],
+        )
+
+        # Broadcast appropriate follow-up event
+        if status["is_complete"]:
+            await broadcast_discovery_completed(
+                manager=app.state.websocket_manager,
+                project_id=project_id,
+                total_answers=status["answered_count"],
+                next_phase="prd_generation",
+            )
+        else:
+            await broadcast_discovery_question_presented(
+                manager=app.state.websocket_manager,
+                project_id=project_id,
+                question_id=status.get("current_question_id", ""),
+                question_text=status.get("current_question", ""),
+                current_index=status["current_question_index"],
+                total_questions=status["total_questions"],
+            )
+
+    except Exception as e:
+        logger.warning(f"Failed to broadcast WebSocket events for project {project_id}: {e}")
+        # Non-fatal - continue with response
+
+    # T044: Generate and return response
+    return DiscoveryAnswerResponse(
+        success=True,
+        next_question=status.get("current_question") if not status["is_complete"] else None,
+        is_complete=status["is_complete"],
+        current_index=status["current_question_index"],
+        total_questions=status["total_questions"],
+        progress_percentage=status["progress_percentage"],
     )
 
 

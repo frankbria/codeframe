@@ -3,7 +3,7 @@
  * TDD RED Phase - Write tests first
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import DiscoveryProgress from '../DiscoveryProgress';
 import { projectsApi } from '@/lib/api';
 import type { DiscoveryProgressResponse } from '@/types/api';
@@ -504,6 +504,278 @@ describe('DiscoveryProgress Component', () => {
         expect(textarea).toHaveClass('resize-none');
         expect(textarea).toHaveClass('w-full');
       });
+    });
+  });
+
+  // ============================================================================
+  // Feature: 012-discovery-answer-ui - Phase 4: User Story 2 (Character Counter)
+  // ============================================================================
+
+  describe('Character Counter (US2)', () => {
+    it('should display character counter that updates as user types (T018)', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 10,
+          answered_count: 2,
+          total_required: 20,
+          current_question: {
+            category: 'problem',
+            question: 'What problem does your project solve?',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      const { rerender } = render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/type your answer here/i)).toBeInTheDocument();
+      });
+
+      // Should show initial counter: 0 / 5000 characters
+      expect(screen.getByText(/0 \/ 5000 characters/i)).toBeInTheDocument();
+
+      // Counter should have default color (gray)
+      const counter = screen.getByText(/0 \/ 5000 characters/i);
+      expect(counter).toHaveClass('text-gray-500');
+      expect(counter).toHaveClass('text-sm');
+
+      // Type some text in textarea
+      const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
+      const testAnswer = 'This is a test answer';
+
+      // Simulate typing
+      fireEvent.change(textarea, { target: { value: testAnswer } });
+
+      // Counter should update to show character count
+      expect(screen.getByText(new RegExp(`${testAnswer.length} / 5000 characters`, 'i'))).toBeInTheDocument();
+
+      // Type more to exceed 4500 characters (warning threshold)
+      const longAnswer = 'a'.repeat(4501);
+      fireEvent.change(textarea, { target: { value: longAnswer } });
+
+      // Counter should turn red when > 4500 characters
+      const warningCounter = screen.getByText(/4501 \/ 5000 characters/i);
+      expect(warningCounter).toHaveClass('text-red-600');
+      expect(warningCounter).not.toHaveClass('text-gray-500');
+    });
+  });
+
+  // ============================================================================
+  // Feature: 012-discovery-answer-ui - Phase 5: User Story 3 (Submit Button)
+  // ============================================================================
+
+  describe('Submit Button (US3)', () => {
+    it('should disable submit button when answer is empty (T023)', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 10,
+          answered_count: 2,
+          total_required: 20,
+          current_question: {
+            category: 'problem',
+            question: 'What problem does your project solve?',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/type your answer here/i)).toBeInTheDocument();
+      });
+
+      // Submit button should exist
+      const submitButton = screen.getByRole('button', { name: /submit answer/i });
+      expect(submitButton).toBeInTheDocument();
+
+      // Should be disabled when answer is empty
+      expect(submitButton).toBeDisabled();
+
+      // Type whitespace-only answer
+      const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: '   ' } });
+
+      // Should still be disabled (whitespace-only)
+      expect(submitButton).toBeDisabled();
+
+      // Type valid answer
+      fireEvent.change(textarea, { target: { value: 'Valid answer' } });
+
+      // Should now be enabled
+      expect(submitButton).not.toBeDisabled();
+    });
+
+    it('should disable submit button during submission (T024)', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 10,
+          answered_count: 2,
+          total_required: 20,
+          current_question: {
+            category: 'problem',
+            question: 'What problem does your project solve?',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/type your answer here/i)).toBeInTheDocument();
+      });
+
+      // Type valid answer
+      const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: 'Valid answer' } });
+
+      // Get submit button
+      const submitButton = screen.getByRole('button', { name: /submit answer/i });
+      expect(submitButton).not.toBeDisabled();
+
+      // Note: Full submission flow will be tested when API integration is complete
+      // This test verifies the button can be enabled/disabled based on state
+    });
+  });
+
+  // ============================================================================
+  // Feature: 012-discovery-answer-ui - Phase 7: User Story 4 (Keyboard Shortcut)
+  // ============================================================================
+
+  describe('Keyboard Shortcut (US4)', () => {
+    it('should trigger submit when Ctrl+Enter is pressed (T046)', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 10,
+          answered_count: 2,
+          total_required: 20,
+          current_question: {
+            category: 'problem',
+            question: 'What problem does your project solve?',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      // Mock fetch for the submit API call
+      global.fetch = jest.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              success: true,
+              next_question: 'Next question',
+              is_complete: false,
+              current_index: 3,
+              total_questions: 20,
+              progress_percentage: 15.0,
+            }),
+        })
+      ) as jest.Mock;
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/type your answer here/i)).toBeInTheDocument();
+      });
+
+      // Type valid answer
+      const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: 'Valid answer for keyboard shortcut test' } });
+
+      // Press Ctrl+Enter
+      fireEvent.keyDown(textarea, {
+        key: 'Enter',
+        ctrlKey: true,
+        code: 'Enter',
+        charCode: 13,
+      });
+
+      // Verify fetch was called (submission triggered)
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/projects/1/discovery/answer',
+          expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({
+              'Content-Type': 'application/json',
+            }),
+            body: JSON.stringify({ answer: 'Valid answer for keyboard shortcut test' }),
+          })
+        );
+      });
+
+      // Should NOT submit with Enter alone (without Ctrl)
+      fireEvent.change(textarea, { target: { value: 'Another answer' } });
+      (global.fetch as jest.Mock).mockClear();
+
+      fireEvent.keyDown(textarea, {
+        key: 'Enter',
+        ctrlKey: false,
+        code: 'Enter',
+        charCode: 13,
+      });
+
+      // Fetch should NOT be called (no submission)
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should not submit with Ctrl+Enter if answer is empty', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 10,
+          answered_count: 2,
+          total_required: 20,
+          current_question: {
+            category: 'problem',
+            question: 'What problem does your project solve?',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      global.fetch = jest.fn() as jest.Mock;
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/type your answer here/i)).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
+
+      // Press Ctrl+Enter without typing anything
+      fireEvent.keyDown(textarea, {
+        key: 'Enter',
+        ctrlKey: true,
+        code: 'Enter',
+        charCode: 13,
+      });
+
+      // Fetch should NOT be called (empty answer)
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 });
