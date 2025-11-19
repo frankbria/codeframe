@@ -74,6 +74,7 @@ python scripts/quality-ratchet.py show
 **Auto-suggestion**: When quality degrades >10%, the tool recommends context reset with handoff template from `.claude/rules.md`.
 
 ## Recent Changes
+- 010-server-start-command: Added CLI 'serve' command (--port, --reload, --no-browser flags), port validation utilities (port_utils.py), 19 tests with 100% coverage on utilities, no database changes
 - 2025-11-14: 007-context-management - **CRITICAL ARCHITECTURAL FIX** 🎯
   * **Multi-Agent Support**: Multiple agents can now collaborate on same project
   * Added `agent_id` column to `context_items` schema
@@ -91,10 +92,6 @@ python scripts/quality-ratchet.py show
   * Phase 5: Automatic tier assignment HOT/WARM/COLD (T037-T043, T046)
   * **Formula**: score = 0.4 × type_weight + 0.4 × age_decay + 0.2 × access_boost
   * **Tiers**: HOT (≥0.8), WARM (0.4-0.8), COLD (<0.4)
-- 2025-11-14: 007-context-management - Implemented T012 and T013 database methods for context items and checkpoints
-- 007-context-management: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting)
-- 049-human-in-loop: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, websockets
-- 2025-11-08: Restructured documentation (SPRINTS.md, AGENTS.md, sprints/ directory)
 
 <!-- MANUAL ADDITIONS START -->
 ## Frontend State Management Architecture (Phase 5.2)
