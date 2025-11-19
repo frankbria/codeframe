@@ -238,14 +238,22 @@ def serve(
 
     # Start server (blocking call)
     try:
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
     except KeyboardInterrupt:
         console.print("\n✓ Server stopped")
     except FileNotFoundError:
         console.print("[red]Error:[/red] uvicorn not found. Install with: pip install uvicorn")
         raise typer.Exit(1)
     except subprocess.CalledProcessError as e:
-        console.print(f"[red]Server error:[/red] {e}")
+        # Check if error is due to port conflict (race condition after our check)
+        error_output = e.stderr.lower() if e.stderr else ""
+        if "address already in use" in error_output or "port is already allocated" in error_output:
+            console.print(
+                f"[red]Error:[/red] Port {port} became unavailable after check (rare race condition)."
+            )
+            console.print(f"       Another process grabbed the port. Try again or use --port {port + 1}")
+        else:
+            console.print(f"[red]Server error:[/red] {e.stderr if e.stderr else e}")
         raise typer.Exit(1)
 
 

@@ -35,6 +35,13 @@ def check_port_availability(port: int, host: str = "0.0.0.0") -> Tuple[bool, str
         Tuple of (available: bool, message: str)
         If available, message is empty string.
         If not available, message contains helpful error text.
+
+    Note:
+        KNOWN LIMITATION - Race Condition: There is a small time window between
+        this check and actual server startup where another process could bind to
+        the port. This is a TOCTOU (time-of-check-time-of-use) issue inherent to
+        pre-flight port checking. The server startup code handles this case with
+        improved error messaging. The race window is typically <100ms.
     """
     if port < 1024:
         return (

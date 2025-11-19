@@ -1,5 +1,6 @@
 """Tests for the serve CLI command."""
 
+import subprocess
 from unittest.mock import Mock, patch
 
 from typer.testing import CliRunner
@@ -102,6 +103,30 @@ class TestServeCustomPort:
         assert result.exit_code != 0
         # Should not attempt to start server
         assert not mock_run.called
+
+    @patch("codeframe.cli.subprocess.run")
+    @patch("codeframe.cli.check_port_availability")
+    def test_serve_race_condition_port_conflict(self, mock_port_check, mock_run):
+        """Test error handling when port becomes unavailable after check (race condition)."""
+        from codeframe.cli import app
+
+        # Port check passes
+        mock_port_check.return_value = (True, "")
+
+        # But uvicorn fails due to race condition
+        mock_error = Mock()
+        mock_error.stderr = "Error: [Errno 48] Address already in use"
+        mock_error.returncode = 1
+        mock_run.side_effect = subprocess.CalledProcessError(1, "uvicorn", stderr=mock_error.stderr)
+
+        # Run command
+        result = runner.invoke(app, ["serve", "--no-browser"])
+
+        # Should exit with error
+        assert result.exit_code != 0
+        # Should show race condition message
+        assert "race condition" in result.stdout.lower()
+        assert "became unavailable" in result.stdout.lower()
 
 
 class TestServeBrowserOpening:
