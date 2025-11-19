@@ -17,7 +17,7 @@ const api = axios.create({
 
 export const projectsApi = {
   list: () => api.get<{ projects: Project[] }>('/api/projects'),
-  createProject: (name: string, type: string, description: string) =>
+  createProject: (name: string, description: string) =>
     api.post<ProjectResponse>('/api/projects', {
       name,
       description,
