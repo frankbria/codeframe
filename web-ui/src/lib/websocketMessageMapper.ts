@@ -7,7 +7,7 @@
  * Phase 4: WebSocket Integration (T062-T072)
  */
 
-import type { AgentAction } from '@/types/agentState';
+import type { AgentAction, AgentType } from '@/types/agentState';
 import type { WebSocketMessage } from '@/types';
 
 /**
@@ -21,6 +21,48 @@ function parseTimestamp(timestamp: string | number): number {
     return timestamp;
   }
   return new Date(timestamp).getTime();
+}
+
+/**
+ * Validate and coerce agent type to a known type
+ *
+ * @param agentType - Agent type from backend
+ * @returns Valid AgentType or 'lead' as fallback
+ */
+function validateAgentType(agentType: unknown): AgentType {
+  const validTypes: AgentType[] = ['lead', 'backend-worker', 'frontend-specialist', 'test-engineer'];
+
+  if (typeof agentType === 'string' && validTypes.includes(agentType as AgentType)) {
+    return agentType as AgentType;
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(`[WebSocketMapper] Invalid agent_type: ${agentType}, defaulting to 'lead'`);
+  }
+
+  return 'lead';
+}
+
+/**
+ * Normalize value to a number, with fallback to default
+ *
+ * @param value - Value to normalize
+ * @param defaultValue - Default value if normalization fails
+ * @returns Normalized number
+ */
+function normalizeNumber(value: unknown, defaultValue: number = 0): number {
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return defaultValue;
 }
 
 /**
@@ -44,16 +86,25 @@ export function mapWebSocketMessageToAction(
 
     case 'agent_created': {
       const msg = message as WebSocketMessage;
+
+      // Validate required agent_id field
+      if (!msg.agent_id || typeof msg.agent_id !== 'string') {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[WebSocketMapper] agent_created message missing required agent_id, skipping');
+        }
+        return null;
+      }
+
       return {
         type: 'AGENT_CREATED',
         payload: {
-          id: msg.agent_id!,
-          type: msg.agent_type as any,
+          id: msg.agent_id,
+          type: validateAgentType(msg.agent_type),
           status: 'idle',
-          provider: 'anthropic',
+          provider: msg.provider || 'anthropic',
           maturity: 'directive',
-          context_tokens: 0,
-          tasks_completed: msg.tasks_completed || 0,
+          context_tokens: normalizeNumber(msg.context_tokens, 0),
+          tasks_completed: normalizeNumber(msg.tasks_completed, 0),
           timestamp,
         },
       };
