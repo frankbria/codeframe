@@ -257,15 +257,21 @@ async def broadcast_progress_update(
         total: Total number of tasks
         percentage: Optional progress percentage (auto-calculated if not provided)
     """
-    if percentage is None and total > 0:
-        percentage = int((completed / total) * 100)
+    # Calculate progress percentage with safety checks
+    if percentage is None:
+        if total <= 0:
+            percentage = 0.0
+        else:
+            percentage = round((float(completed) / float(total)) * 100, 1)
+            # Clamp to [0.0, 100.0] range
+            percentage = max(0.0, min(100.0, percentage))
 
     message = {
         "type": "progress_update",
         "project_id": project_id,
         "completed": completed,
         "total": total,
-        "percentage": percentage if percentage is not None else 0,
+        "percentage": percentage,
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
@@ -650,6 +656,15 @@ async def broadcast_discovery_answer_submitted(
         current_index: Current question index (0-based)
         total_questions: Total number of questions
     """
+    # Calculate progress percentage with safety checks
+    if total_questions <= 0:
+        percentage = 0.0
+    else:
+        # Ensure values are treated as numbers and compute percentage
+        percentage = round((float(current_index) / float(total_questions)) * 100, 1)
+        # Clamp to [0.0, 100.0] range
+        percentage = max(0.0, min(100.0, percentage))
+
     message = {
         "type": "discovery_answer_submitted",
         "project_id": project_id,
@@ -658,7 +673,7 @@ async def broadcast_discovery_answer_submitted(
         "progress": {
             "current": current_index,
             "total": total_questions,
-            "percentage": round((current_index / total_questions) * 100, 1),
+            "percentage": percentage,
         },
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
