@@ -328,11 +328,15 @@ class TestTaskExecution:
         assert "status" in result
         assert "test_file" in result or "error" in result
 
+    @patch("codeframe.agents.test_worker_agent.TestWorkerAgent._run_and_check_linting")
     @patch("codeframe.agents.test_worker_agent.TestWorkerAgent._execute_tests")
     @pytest.mark.asyncio
-    async def test_execute_task_success(self, mock_execute, test_agent, sample_task):
+    async def test_execute_task_success(self, mock_execute, mock_lint, test_agent, sample_task):
         """Test successful task execution with mocked test execution."""
         test_agent.client = None
+
+        # Mock successful linting (no-op - doesn't raise)
+        mock_lint.return_value = None
 
         # Mock successful test execution
         mock_execute.return_value = (
