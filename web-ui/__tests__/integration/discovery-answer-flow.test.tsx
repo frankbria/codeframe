@@ -56,7 +56,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
           answered_count: 0,
           total_required: 20,
           current_question: {
-            id: "test-question-id",
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -73,7 +72,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
           answered_count: 1,
           total_required: 20,
           current_question: {
-            id: "test-question-id",
             category: 'target_users',
             question: 'Who are your target users?',
           },
@@ -182,7 +180,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
               answered_count: 0,
               total_required: 20,
               current_question: {
-            id: "test-question-id",
                 category: 'q1',
                 question: 'Question 1',
               },
@@ -200,7 +197,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
               answered_count: 1,
               total_required: 20,
               current_question: {
-            id: "test-question-id",
                 category: 'q2',
                 question: 'Question 2',
               },
@@ -218,7 +214,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
               answered_count: 2,
               total_required: 20,
               current_question: {
-            id: "test-question-id",
                 category: 'q3',
                 question: 'Question 3',
               },
@@ -287,7 +282,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
           answered_count: 5,
           total_required: 20,
           current_question: {
-            id: "test-question-id",
             category: 'tech_stack',
             question: 'What technologies will you use?',
           },
@@ -303,7 +297,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
           answered_count: 6,
           total_required: 20,
           current_question: {
-            id: "test-question-id",
             category: 'timeline',
             question: 'What is your timeline?',
           },
@@ -418,7 +411,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
           answered_count: 10,
           total_required: 20,
           current_question: {
-            id: "test-question-id",
             category: 'monetization',
             question: 'How will you make money?',
           },
@@ -434,7 +426,6 @@ describe('Discovery Answer Flow - Integration Tests', () => {
           answered_count: 11,
           total_required: 20,
           current_question: {
-            id: "test-question-id",
             category: 'competition',
             question: 'Who are your competitors?',
           },

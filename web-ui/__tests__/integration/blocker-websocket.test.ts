@@ -126,14 +126,14 @@ describe('Blocker WebSocket Integration', () => {
         created_at: '2025-11-08T12:36:00Z',
       };
 
-      const dashboardUpdateHandler = jest.fn((data: any) => {
+      const dashboardUpdateHandler = jest.fn((data) => {
         expect(data.type).toBe('blocker_created');
         expect(dashboardUpdateHandler).toHaveBeenCalledTimes(1);
         done();
       });
 
       mockWs.onmessage = (event) => {
-        const data = JSON.parse(event.data) as any;
+        const data = JSON.parse(event.data);
         dashboardUpdateHandler(data);
       };
 
@@ -174,7 +174,7 @@ describe('Blocker WebSocket Integration', () => {
         resolved_at: '2025-11-08T12:45:30Z',
       };
 
-      const panelUpdateHandler = jest.fn((data: any) => {
+      const panelUpdateHandler = jest.fn((data) => {
         expect(data.type).toBe('blocker_resolved');
         expect(data.blocker_id).toBe(123);
         // In real implementation, this would trigger removal from panel
@@ -182,7 +182,7 @@ describe('Blocker WebSocket Integration', () => {
       });
 
       mockWs.onmessage = (event) => {
-        const data = JSON.parse(event.data) as any;
+        const data = JSON.parse(event.data);
         panelUpdateHandler(data);
       };
 
@@ -246,14 +246,14 @@ describe('Blocker WebSocket Integration', () => {
         resumed_at: '2025-11-08T12:45:35Z',
       };
 
-      const statusUpdateHandler = jest.fn((data: any) => {
+      const statusUpdateHandler = jest.fn((data) => {
         expect(data.agent_id).toBe('backend-worker-001');
         // In real implementation, this would update agent status from 'blocked' to 'working'
         done();
       });
 
       mockWs.onmessage = (event) => {
-        const data = JSON.parse(event.data) as any;
+        const data = JSON.parse(event.data);
         statusUpdateHandler(data);
       };
 
@@ -271,7 +271,7 @@ describe('Blocker WebSocket Integration', () => {
         resumed_at: '2025-11-08T12:46:00Z',
       };
 
-      const activityFeedHandler = jest.fn((data: any) => {
+      const activityFeedHandler = jest.fn((data) => {
         expect(data.type).toBe('agent_resumed');
         // In real implementation, this would add entry like:
         // "Frontend Worker #1 resumed work on Task 457 after blocker resolution"
@@ -279,7 +279,7 @@ describe('Blocker WebSocket Integration', () => {
       });
 
       mockWs.onmessage = (event) => {
-        const data = JSON.parse(event.data) as any;
+        const data = JSON.parse(event.data);
         activityFeedHandler(data);
       };
 
@@ -317,7 +317,7 @@ describe('Blocker WebSocket Integration', () => {
         task_id: 459,
       };
 
-      const panelUpdateHandler = jest.fn((data: any) => {
+      const panelUpdateHandler = jest.fn((data) => {
         expect(data.type).toBe('blocker_expired');
         expect(data.blocker_id).toBe(127);
         // Should remove blocker from panel
@@ -325,7 +325,7 @@ describe('Blocker WebSocket Integration', () => {
       });
 
       mockWs.onmessage = (event) => {
-        const data = JSON.parse(event.data) as any;
+        const data = JSON.parse(event.data);
         panelUpdateHandler(data);
       };
 
@@ -341,14 +341,14 @@ describe('Blocker WebSocket Integration', () => {
         task_id: 460,
       };
 
-      const taskStatusHandler = jest.fn((data: any) => {
+      const taskStatusHandler = jest.fn((data) => {
         expect(data.task_id).toBe(460);
         // In real implementation, task status would update to FAILED
         done();
       });
 
       mockWs.onmessage = (event) => {
-        const data = JSON.parse(event.data) as any;
+        const data = JSON.parse(event.data);
         taskStatusHandler(data);
       };
 

@@ -6,8 +6,17 @@
  */
 
 import { mapWebSocketMessageToAction } from '@/lib/websocketMessageMapper';
-import type { WebSocketMessage } from '@/types';
-import type { AgentAction } from '@/types/agentState';
+import type {
+  AgentCreatedMessage,
+  AgentStatusChangedMessage,
+  AgentRetiredMessage,
+  TaskAssignedMessage,
+  TaskStatusChangedMessage,
+  TaskBlockedMessage,
+  TaskUnblockedMessage,
+  ActivityUpdateMessage,
+  ProgressUpdateMessage,
+} from '@/types/agentState';
 
 describe('mapWebSocketMessageToAction', () => {
   const projectId = 1;
@@ -15,10 +24,10 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('agent_created message (T050)', () => {
     it('should map agent_created message with all fields', () => {
-      const message: any = {
+      const message: AgentCreatedMessage = {
         type: 'agent_created',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         agent_id: 'backend-worker-1',
         agent_type: 'backend-worker',
         provider: 'anthropic',
@@ -36,16 +45,16 @@ describe('mapWebSocketMessageToAction', () => {
           maturity: 'directive',
           context_tokens: 0,
           tasks_completed: 0,
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
 
     it('should default provider to "anthropic" if not provided', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: AgentCreatedMessage = {
         type: 'agent_created',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         agent_id: 'lead-1',
         agent_type: 'lead',
       };
@@ -58,7 +67,7 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should parse string timestamp to number', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: AgentCreatedMessage = {
         type: 'agent_created',
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
@@ -71,16 +80,16 @@ describe('mapWebSocketMessageToAction', () => {
       expect(action?.payload).toMatchObject({
         timestamp: expect.any(Number),
       });
-      expect((action?.payload as any).timestamp).toBeGreaterThan(0);
+      expect(action?.payload.timestamp).toBeGreaterThan(0);
     });
   });
 
   describe('agent_status_changed message (T051)', () => {
     it('should map agent_status_changed message with status only', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: AgentStatusChangedMessage = {
         type: 'agent_status_changed',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         agent_id: 'backend-worker-1',
         status: 'working',
       };
@@ -94,16 +103,16 @@ describe('mapWebSocketMessageToAction', () => {
           updates: {
             status: 'working',
           },
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
 
     it('should include current_task when provided', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: AgentStatusChangedMessage = {
         type: 'agent_status_changed',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         agent_id: 'frontend-specialist-1',
         status: 'working',
         current_task: {
@@ -126,10 +135,10 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should include progress when provided', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: AgentStatusChangedMessage = {
         type: 'agent_status_changed',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         agent_id: 'test-engineer-1',
         status: 'working',
         progress: 75,
@@ -148,10 +157,10 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('agent_retired message (T052)', () => {
     it('should map agent_retired message', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: AgentRetiredMessage = {
         type: 'agent_retired',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         agent_id: 'backend-worker-1',
       };
 
@@ -161,7 +170,7 @@ describe('mapWebSocketMessageToAction', () => {
         type: 'AGENT_RETIRED',
         payload: {
           agentId: 'backend-worker-1',
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
@@ -169,10 +178,10 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('task_assigned message (T053)', () => {
     it('should map task_assigned message with task title', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: TaskAssignedMessage = {
         type: 'task_assigned',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         task_id: 456,
         agent_id: 'backend-worker-1',
         task_title: 'Implement authentication',
@@ -186,16 +195,16 @@ describe('mapWebSocketMessageToAction', () => {
           taskId: 456,
           agentId: 'backend-worker-1',
           taskTitle: 'Implement authentication',
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
 
     it('should handle task_assigned without task title', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: TaskAssignedMessage = {
         type: 'task_assigned',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         task_id: 789,
         agent_id: 'frontend-specialist-1',
       };
@@ -208,7 +217,7 @@ describe('mapWebSocketMessageToAction', () => {
           taskId: 789,
           agentId: 'frontend-specialist-1',
           taskTitle: undefined,
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
@@ -216,10 +225,10 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('task_status_changed message (T054)', () => {
     it('should map task_status_changed message with progress', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: TaskStatusChangedMessage = {
         type: 'task_status_changed',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         task_id: 123,
         status: 'in_progress',
         progress: 50,
@@ -233,16 +242,16 @@ describe('mapWebSocketMessageToAction', () => {
           taskId: 123,
           status: 'in_progress',
           progress: 50,
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
 
     it('should map task_status_changed without progress', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: TaskStatusChangedMessage = {
         type: 'task_status_changed',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         task_id: 456,
         status: 'completed',
       };
@@ -255,7 +264,7 @@ describe('mapWebSocketMessageToAction', () => {
           taskId: 456,
           status: 'completed',
           progress: undefined,
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
@@ -263,10 +272,10 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('task_blocked and task_unblocked messages (T055)', () => {
     it('should map task_blocked message', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: TaskBlockedMessage = {
         type: 'task_blocked',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         task_id: 789,
         blocked_by: [123, 456],
       };
@@ -278,16 +287,16 @@ describe('mapWebSocketMessageToAction', () => {
         payload: {
           taskId: 789,
           blockedBy: [123, 456],
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
 
     it('should map task_unblocked message', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: TaskUnblockedMessage = {
         type: 'task_unblocked',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         task_id: 789,
       };
 
@@ -297,7 +306,7 @@ describe('mapWebSocketMessageToAction', () => {
         type: 'TASK_UNBLOCKED',
         payload: {
           taskId: 789,
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
         },
       });
     });
@@ -305,7 +314,7 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('activity_update message (T056)', () => {
     it('should map activity_update message with all fields', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: ActivityUpdateMessage = {
         type: 'activity_update',
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
@@ -328,7 +337,7 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should default activity_type to "activity_update" if not provided', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: ActivityUpdateMessage = {
         type: 'activity_update',
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
@@ -345,7 +354,7 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should default agent to "system" if not provided', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: ActivityUpdateMessage = {
         type: 'activity_update',
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
@@ -363,10 +372,10 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('progress_update message (T057)', () => {
     it('should map progress_update message', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: ProgressUpdateMessage = {
         type: 'progress_update',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         completed_tasks: 25,
         total_tasks: 100,
         percentage: 25,
@@ -385,10 +394,10 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should handle progress_update with 100% completion', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: ProgressUpdateMessage = {
         type: 'progress_update',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         completed_tasks: 50,
         total_tasks: 50,
         percentage: 100,
@@ -414,7 +423,7 @@ describe('mapWebSocketMessageToAction', () => {
 
       const action = mapWebSocketMessageToAction(message);
 
-      expect((action?.payload as any).timestamp).toBe(new Date('2023-11-14T12:00:00Z').getTime());
+      expect(action?.payload.timestamp).toBe(new Date('2023-11-14T12:00:00Z').getTime());
     });
 
     it('should pass through numeric timestamp unchanged', () => {
@@ -428,7 +437,7 @@ describe('mapWebSocketMessageToAction', () => {
 
       const action = mapWebSocketMessageToAction(message);
 
-      expect((action?.payload as any).timestamp).toBe(1699999999000);
+      expect(action?.payload.timestamp).toBe(1699999999000);
     });
 
     it('should handle ISO 8601 timestamp with milliseconds', () => {
@@ -442,7 +451,7 @@ describe('mapWebSocketMessageToAction', () => {
 
       const action = mapWebSocketMessageToAction(message);
 
-      expect((action?.payload as any).timestamp).toBe(new Date('2023-11-14T12:00:00.123Z').getTime());
+      expect(action?.payload.timestamp).toBe(new Date('2023-11-14T12:00:00.123Z').getTime());
     });
   });
 
@@ -451,7 +460,7 @@ describe('mapWebSocketMessageToAction', () => {
       const message = {
         type: 'unknown_message_type',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
       };
 
       const action = mapWebSocketMessageToAction(message);
@@ -460,12 +469,18 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should log warning for unknown message type', () => {
+      // Save original NODE_ENV
+      const originalEnv = process.env.NODE_ENV;
+      
+      // Set to development to enable logging
+      process.env.NODE_ENV = 'development';
+      
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
       const message = {
         type: 'invalid_type',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
       };
 
       mapWebSocketMessageToAction(message);
@@ -475,6 +490,9 @@ describe('mapWebSocketMessageToAction', () => {
       );
 
       consoleSpy.mockRestore();
+      
+      // Restore original NODE_ENV
+      process.env.NODE_ENV = originalEnv;
     });
   });
 
@@ -483,7 +501,7 @@ describe('mapWebSocketMessageToAction', () => {
       const message = {
         type: 'agent_created',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         // Missing agent_id and agent_type
       };
 
@@ -507,14 +525,14 @@ describe('mapWebSocketMessageToAction', () => {
 
       // Should still parse, Date constructor returns NaN for invalid dates
       expect(action).toBeTruthy();
-      expect((action?.payload as any).timestamp).toBeNaN();
+      expect(action?.payload.timestamp).toBeNaN();
     });
 
     it('should handle empty blocked_by array', () => {
-      const message: Partial<WebSocketMessage> = {
+      const message: TaskBlockedMessage = {
         type: 'task_blocked',
         project_id: projectId,
-        timestamp: baseTimestamp.toString(),
+        timestamp: baseTimestamp,
         task_id: 123,
         blocked_by: [],
       };
@@ -533,14 +551,14 @@ describe('mapWebSocketMessageToAction', () => {
         {
           type: 'agent_created',
           project_id: projectId,
-          timestamp: baseTimestamp.toString(),
+          timestamp: baseTimestamp,
           agent_id: 'agent-1',
           agent_type: 'lead' as const,
         },
         {
           type: 'task_assigned',
           project_id: projectId,
-          timestamp: (baseTimestamp + 1000).toString(),
+          timestamp: baseTimestamp + 1000,
           task_id: 1,
           agent_id: 'agent-1',
           task_title: 'Task 1',
@@ -548,7 +566,7 @@ describe('mapWebSocketMessageToAction', () => {
         {
           type: 'task_status_changed',
           project_id: projectId,
-          timestamp: (baseTimestamp + 2000).toString(),
+          timestamp: baseTimestamp + 2000,
           task_id: 1,
           status: 'completed' as const,
         },
@@ -567,14 +585,14 @@ describe('mapWebSocketMessageToAction', () => {
         {
           type: 'agent_status_changed',
           project_id: projectId,
-          timestamp: (baseTimestamp + 2000).toString(), // Newer
+          timestamp: baseTimestamp + 2000, // Newer
           agent_id: 'agent-1',
           status: 'working' as const,
         },
         {
           type: 'agent_status_changed',
           project_id: projectId,
-          timestamp: (baseTimestamp + 1000).toString(), // Older
+          timestamp: baseTimestamp + 1000, // Older
           agent_id: 'agent-1',
           status: 'idle' as const,
         },
@@ -583,8 +601,8 @@ describe('mapWebSocketMessageToAction', () => {
       const actions = messages.map(mapWebSocketMessageToAction);
 
       // Both should map successfully
-      expect((actions[0]?.payload as any).timestamp).toBe(baseTimestamp + 2000);
-      expect((actions[1]?.payload as any).timestamp).toBe(baseTimestamp + 1000);
+      expect(actions[0]?.payload.timestamp).toBe(baseTimestamp + 2000);
+      expect(actions[1]?.payload.timestamp).toBe(baseTimestamp + 1000);
 
       // Reducer will handle conflict resolution based on timestamps
     });
@@ -593,7 +611,7 @@ describe('mapWebSocketMessageToAction', () => {
       const messages = Array.from({ length: 10 }, (_, i) => ({
         type: 'agent_status_changed',
         project_id: projectId,
-        timestamp: (baseTimestamp + i * 100).toString(),
+        timestamp: baseTimestamp + i * 100,
         agent_id: `agent-${i}`,
         status: 'working' as const,
       }));
@@ -603,7 +621,7 @@ describe('mapWebSocketMessageToAction', () => {
       expect(actions).toHaveLength(10);
       actions.forEach((action, i) => {
         expect(action?.type).toBe('AGENT_UPDATED');
-        expect((action?.payload as any).agentId).toBe(`agent-${i}`);
+        expect(action?.payload.agentId).toBe(`agent-${i}`);
       });
     });
   });
