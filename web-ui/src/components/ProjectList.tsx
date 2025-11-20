@@ -35,7 +35,7 @@ export default function ProjectList() {
     router.push(`/projects/${projectId}`);
   };
 
-  const handleProjectCreated = (project: ProjectResponse) => {
+  const handleProjectCreated = (projectId: number) => {
     // Hide form
     setShowForm(false);
     // Refresh project list

@@ -19,7 +19,7 @@ import { agentsApi, tasksApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
 import { processWebSocketMessage } from '@/lib/websocketMessageMapper';
 import { fullStateResyncWithRetry } from '@/lib/agentStateSync';
-import type { Agent, Task, ActivityItem } from '@/types';
+import type { Agent, Task, ActivityItem } from '@/types/agentState';
 
 /**
  * Props for AgentStateProvider
@@ -111,7 +111,7 @@ export function AgentStateProvider({
     if (agentsData?.data?.agents) {
       // Transform API agents to include timestamp if missing
       const agentsWithTimestamp: Agent[] = agentsData.data.agents.map(
-        (agent) => ({
+        (agent: any) => ({
           ...agent,
           timestamp: agent.timestamp || Date.now(),
         })
@@ -142,7 +142,7 @@ export function AgentStateProvider({
   useEffect(() => {
     if (activityData?.data?.activity) {
       // Add each activity item
-      activityData.data.activity.forEach((item: ActivityItem) => {
+      (activityData.data.activity as any[]).forEach((item: ActivityItem) => {
         dispatch({
           type: 'ACTIVITY_ADDED',
           payload: item,
