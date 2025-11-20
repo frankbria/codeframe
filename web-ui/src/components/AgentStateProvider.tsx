@@ -19,7 +19,7 @@ import { agentsApi, tasksApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
 import { processWebSocketMessage } from '@/lib/websocketMessageMapper';
 import { fullStateResyncWithRetry } from '@/lib/agentStateSync';
-import type { Agent, Task, ActivityItem } from '@/types';
+import type { Agent, Task, ActivityItem } from '@/types/agentState';
 
 /**
  * Props for AgentStateProvider
@@ -33,22 +33,13 @@ export interface AgentStateProviderProps {
 }
 
 /**
- * Agent State Provider
+ * Provides centralized agent state management and real-time synchronization to descendant components.
  *
- * Provides centralized agent state management to all child components.
- * Uses useReducer for state management and SWR for initial data fetching.
+ * Initializes state via SWR, keeps it current via WebSocket messages and reconnect resyncs, and exposes
+ * the reducer state and dispatch through AgentStateContext.
  *
- * Usage:
- * ```tsx
- * <AgentStateProvider projectId={1}>
- *   <Dashboard />
- * </AgentStateProvider>
- * ```
- *
- * Children can access state via useAgentState hook:
- * ```tsx
- * const { agents, tasks, activity } = useAgentState();
- * ```
+ * @param projectId - Numeric project identifier used to scope SWR fetches and WebSocket subscriptions.
+ * @param children - React children that will receive the agent state context.
  */
 export function AgentStateProvider({
   projectId,
@@ -111,7 +102,7 @@ export function AgentStateProvider({
     if (agentsData?.data?.agents) {
       // Transform API agents to include timestamp if missing
       const agentsWithTimestamp: Agent[] = agentsData.data.agents.map(
-        (agent) => ({
+        (agent: any) => ({
           ...agent,
           timestamp: agent.timestamp || Date.now(),
         })
@@ -142,7 +133,7 @@ export function AgentStateProvider({
   useEffect(() => {
     if (activityData?.data?.activity) {
       // Add each activity item
-      activityData.data.activity.forEach((item: ActivityItem) => {
+      (activityData.data.activity as any[]).forEach((item: ActivityItem) => {
         dispatch({
           type: 'ACTIVITY_ADDED',
           payload: item,

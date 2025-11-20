@@ -7,19 +7,8 @@
  * Phase 4: WebSocket Integration (T062-T072)
  */
 
-import type {
-  AgentAction,
-  WebSocketMessage,
-  AgentCreatedMessage,
-  AgentStatusChangedMessage,
-  AgentRetiredMessage,
-  TaskAssignedMessage,
-  TaskStatusChangedMessage,
-  TaskBlockedMessage,
-  TaskUnblockedMessage,
-  ActivityUpdateMessage,
-  ProgressUpdateMessage,
-} from '@/types/agentState';
+import type { AgentAction, AgentType } from '@/types/agentState';
+import type { WebSocketMessage } from '@/types';
 
 /**
  * Parse timestamp from WebSocket message to Unix milliseconds
@@ -32,6 +21,48 @@ function parseTimestamp(timestamp: string | number): number {
     return timestamp;
   }
   return new Date(timestamp).getTime();
+}
+
+/**
+ * Validate and coerce agent type to a known type
+ *
+ * @param agentType - Agent type from backend
+ * @returns Valid AgentType or 'lead' as fallback
+ */
+function validateAgentType(agentType: unknown): AgentType {
+  const validTypes: AgentType[] = ['lead', 'backend-worker', 'frontend-specialist', 'test-engineer'];
+
+  if (typeof agentType === 'string' && validTypes.includes(agentType as AgentType)) {
+    return agentType as AgentType;
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.warn(`[WebSocketMapper] Invalid agent_type: ${agentType}, defaulting to 'lead'`);
+  }
+
+  return 'lead';
+}
+
+/**
+ * Normalize value to a number, with fallback to default
+ *
+ * @param value - Value to normalize
+ * @param defaultValue - Default value if normalization fails
+ * @returns Normalized number
+ */
+function normalizeNumber(value: unknown, defaultValue: number = 0): number {
+  if (typeof value === 'number' && !isNaN(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return defaultValue;
 }
 
 /**
@@ -54,24 +85,33 @@ export function mapWebSocketMessageToAction(
     // ========================================================================
 
     case 'agent_created': {
-      const msg = message as AgentCreatedMessage;
+      const msg = message as WebSocketMessage;
+
+      // Validate required agent_id field
+      if (!msg.agent_id || typeof msg.agent_id !== 'string') {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[WebSocketMapper] agent_created message missing required agent_id, skipping');
+        }
+        return null;
+      }
+
       return {
         type: 'AGENT_CREATED',
         payload: {
           id: msg.agent_id,
-          type: msg.agent_type,
+          type: validateAgentType(msg.agent_type),
           status: 'idle',
           provider: msg.provider || 'anthropic',
           maturity: 'directive',
-          context_tokens: 0,
-          tasks_completed: 0,
+          context_tokens: normalizeNumber(msg.context_tokens, 0),
+          tasks_completed: normalizeNumber(msg.tasks_completed, 0),
           timestamp,
         },
       };
     }
 
     case 'agent_status_changed': {
-      const msg = message as AgentStatusChangedMessage;
+      const msg = message as WebSocketMessage;
       const updates: any = {
         status: msg.status,
       };
@@ -87,7 +127,7 @@ export function mapWebSocketMessageToAction(
       return {
         type: 'AGENT_UPDATED',
         payload: {
-          agentId: msg.agent_id,
+          agentId: msg.agent_id!,
           updates,
           timestamp,
         },
@@ -95,11 +135,11 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'agent_retired': {
-      const msg = message as AgentRetiredMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'AGENT_RETIRED',
         payload: {
-          agentId: msg.agent_id,
+          agentId: msg.agent_id!,
           timestamp,
         },
       };
@@ -110,12 +150,12 @@ export function mapWebSocketMessageToAction(
     // ========================================================================
 
     case 'task_assigned': {
-      const msg = message as TaskAssignedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_ASSIGNED',
         payload: {
-          taskId: msg.task_id,
-          agentId: msg.agent_id,
+          taskId: msg.task_id!,
+          agentId: msg.agent_id!,
           taskTitle: msg.task_title,
           timestamp,
         },
@@ -123,12 +163,12 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'task_status_changed': {
-      const msg = message as TaskStatusChangedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_STATUS_CHANGED',
         payload: {
-          taskId: msg.task_id,
-          status: msg.status,
+          taskId: msg.task_id!,
+          status: msg.status as any,
           progress: msg.progress,
           timestamp,
         },
@@ -136,23 +176,23 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'task_blocked': {
-      const msg = message as TaskBlockedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_BLOCKED',
         payload: {
-          taskId: msg.task_id,
-          blockedBy: msg.blocked_by,
+          taskId: msg.task_id!,
+          blockedBy: msg.blocked_by || [],
           timestamp,
         },
       };
     }
 
     case 'task_unblocked': {
-      const msg = message as TaskUnblockedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_UNBLOCKED',
         payload: {
-          taskId: msg.task_id,
+          taskId: msg.task_id!,
           timestamp,
         },
       };
@@ -163,14 +203,14 @@ export function mapWebSocketMessageToAction(
     // ========================================================================
 
     case 'activity_update': {
-      const msg = message as ActivityUpdateMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'ACTIVITY_ADDED',
         payload: {
           timestamp: message.timestamp.toString(),
-          type: msg.activity_type || 'activity_update',
+          type: (msg.activity_type || 'activity_update') as any,
           agent: msg.agent || 'system',
-          message: msg.message,
+          message: msg.message || '',
         },
       };
     }
@@ -180,25 +220,26 @@ export function mapWebSocketMessageToAction(
     case 'correction_attempt': {
       // These are special activity message types
       // Map them to activity updates
+      const msg = message as WebSocketMessage;
       return {
         type: 'ACTIVITY_ADDED',
         payload: {
           timestamp: message.timestamp.toString(),
           type: message.type as any,
-          agent: message.agent || 'system',
-          message: message.message || `${message.type} event`,
+          agent: msg.agent || 'system',
+          message: msg.message || `${message.type} event`,
         },
       };
     }
 
     case 'progress_update': {
-      const msg = message as ProgressUpdateMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'PROGRESS_UPDATED',
         payload: {
-          completed_tasks: msg.completed_tasks,
-          total_tasks: msg.total_tasks,
-          percentage: msg.percentage,
+          completed_tasks: msg.completed_tasks || 0,
+          total_tasks: msg.total_tasks || 0,
+          percentage: msg.percentage || 0,
         },
       };
     }
