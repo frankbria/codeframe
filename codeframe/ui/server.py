@@ -632,10 +632,19 @@ async def submit_discovery_answer(project_id: int, answer_data: "DiscoveryAnswer
             api_key=os.environ.get("ANTHROPIC_API_KEY")
         )
 
+        # CRITICAL: Validate discovery is active before processing answer
+        status = agent.get_discovery_status()
+        if status.get('state') != 'discovering':
+            raise HTTPException(
+                status_code=400,
+                detail=f"Discovery is not active. Current state: {status.get('state')}. "
+                       f"Please start discovery first by calling POST /api/projects/{project_id}/discovery/start"
+            )
+
         # Process the answer (trimmed by Pydantic validator)
         agent.process_discovery_answer(answer_data.answer)
 
-        # Get updated discovery status
+        # Get updated discovery status after processing
         status = agent.get_discovery_status()
 
     except Exception as e:

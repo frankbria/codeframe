@@ -135,6 +135,31 @@ class TestDiscoveryAnswerEndpoint:
         assert "not in discovery phase" in response.json()["detail"].lower()
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_discovery_not_started_returns_400(
+        self, mock_provider_class, api_client
+    ):
+        """Test endpoint returns 400 when discovery state is 'idle' (not started)."""
+        # ARRANGE
+        # Create project in discovery phase but DON'T start discovery
+        project_id = get_app().state.db.create_project("test-project", "Test Project")
+        get_app().state.db.update_project(project_id, {"phase": "discovery"})
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        # ACT
+        response = api_client.post(
+            f"/api/projects/{project_id}/discovery/answer",
+            json={"answer": "This is a valid answer."},
+        )
+
+        # ASSERT
+        assert response.status_code == 400
+        response_data = response.json()
+        assert "discovery is not active" in response_data["detail"].lower()
+        assert "idle" in response_data["detail"].lower()
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
     def test_lead_agent_process_discovery_answer_called_correctly(
         self, mock_provider_class, api_client
     ):
