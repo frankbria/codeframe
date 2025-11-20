@@ -6,10 +6,20 @@ Tests cover:
 """
 
 import pytest
+import pytest_asyncio
 from unittest.mock import Mock, patch, AsyncMock
 
 from codeframe.persistence.database import Database
-from codeframe.core.models import BlockerType
+from codeframe.core.models import BlockerType, Task, TaskStatus
+
+
+@pytest_asyncio.fixture
+async def db():
+    """Create a test database"""
+    db = Database(":memory:")
+    db.initialize()
+    yield db
+    db.close()
 
 
 class TestNotificationWorkflow:
@@ -36,15 +46,35 @@ class TestNotificationWorkflow:
             router = NotificationRouter(desktop_enabled=True)
 
             # Create a project and task
-            project_id = await db.create_project("Test Project")
-            task_id = await db.create_task(project_id, "Test Task", "test-file.py", "BACKEND")
+            project_id = db.create_project("Test Project", "Test project description")
+
+            task = Task(
+                project_id=project_id,
+                issue_id=1,
+                task_number="1.1",
+                parent_issue_number="1",
+                title="Test Task",
+                description="Test task description",
+                status=TaskStatus.PENDING,
+                assigned_to=None,
+                depends_on=None,
+                can_parallelize=True,
+                priority=1,
+                workflow_step=1,
+                requires_mcp=False,
+                estimated_tokens=1000,
+                actual_tokens=0,
+                created_at="2025-01-01T00:00:00"
+            )
+            task_id = db.create_task(task)
 
             # Create a SYNC blocker (this should trigger notification)
-            await db.create_blocker(
+            db.create_blocker(
+                agent_id="test-agent-001",
+                project_id=project_id,
                 task_id=task_id,
-                blocker_type=BlockerType.SYNC,
-                message="Critical issue found",
-                details={"error": "Syntax error in test-file.py"},
+                blocker_type=BlockerType.SYNC.value,
+                question="Critical issue found: Syntax error in test-file.py",
             )
 
             # Manually trigger notification (simulating what create_blocker would do)
@@ -80,15 +110,35 @@ class TestNotificationWorkflow:
             router = NotificationRouter(desktop_enabled=True, sync_only=True)
 
             # Create a project and task
-            project_id = await db.create_project("Test Project")
-            task_id = await db.create_task(project_id, "Test Task", "test-file.py", "BACKEND")
+            project_id = db.create_project("Test Project", "Test project description")
+
+            task = Task(
+                project_id=project_id,
+                issue_id=1,
+                task_number="1.1",
+                parent_issue_number="1",
+                title="Test Task",
+                description="Test task description",
+                status=TaskStatus.PENDING,
+                assigned_to=None,
+                depends_on=None,
+                can_parallelize=True,
+                priority=1,
+                workflow_step=1,
+                requires_mcp=False,
+                estimated_tokens=1000,
+                actual_tokens=0,
+                created_at="2025-01-01T00:00:00"
+            )
+            task_id = db.create_task(task)
 
             # Create an ASYNC blocker
-            await db.create_blocker(
+            db.create_blocker(
+                agent_id="test-agent-001",
+                project_id=project_id,
                 task_id=task_id,
-                blocker_type=BlockerType.ASYNC,
-                message="Non-critical issue found",
-                details={"warning": "Deprecated API usage"},
+                blocker_type=BlockerType.ASYNC.value,
+                question="Non-critical issue found: Deprecated API usage",
             )
 
             # Try to send notification (should be filtered out)
@@ -115,32 +165,52 @@ class TestNotificationWorkflow:
             router = NotificationRouter(desktop_enabled=True)
 
             # Create a project and task
-            project_id = await db.create_project("Test Project")
-            task_id = await db.create_task(project_id, "Implement User Auth", "auth.py", "BACKEND")
+            project_id = db.create_project("Test Project", "Test project description")
+
+            task = Task(
+                project_id=project_id,
+                issue_id=1,
+                task_number="1.1",
+                parent_issue_number="1",
+                title="Implement User Auth",
+                description="Implement user authentication",
+                status=TaskStatus.PENDING,
+                assigned_to=None,
+                depends_on=None,
+                can_parallelize=True,
+                priority=1,
+                workflow_step=1,
+                requires_mcp=False,
+                estimated_tokens=1000,
+                actual_tokens=0,
+                created_at="2025-01-01T00:00:00"
+            )
+            task_id = db.create_task(task)
 
             # Create a SYNC blocker
-            await db.create_blocker(
+            db.create_blocker(
+                agent_id="test-agent-001",
+                project_id=project_id,
                 task_id=task_id,
-                blocker_type=BlockerType.SYNC,
-                message="Security vulnerability detected",
-                details={"vulnerability": "SQL injection risk"},
+                blocker_type=BlockerType.SYNC.value,
+                question="Security vulnerability detected: SQL injection risk",
             )
 
             # Get task details
-            task = await db.get_task(task_id)
+            task_data = db.get_task(task_id)
 
             # Send notification with context
             await router.send(
                 blocker_type=BlockerType.SYNC,
-                title=f"🚨 SYNC Blocker in {task['file_path']}",
-                message=f"Task: {task['description']}\n\nSecurity vulnerability detected",
+                title=f"🚨 SYNC Blocker in {task_data['title']}",
+                message=f"Task: {task_data['description']}\n\nSecurity vulnerability detected",
             )
 
             # Verify notification includes context
             mock_desktop_instance.send_notification.assert_called_once()
             call_args = mock_desktop_instance.send_notification.call_args[0]
-            assert "auth.py" in call_args[0]
-            assert "Implement User Auth" in call_args[1]
+            assert "Implement User Auth" in call_args[0]
+            assert "Implement user authentication" in call_args[1]
             assert "Security vulnerability detected" in call_args[1]
 
     @pytest.mark.asyncio
@@ -157,15 +227,35 @@ class TestNotificationWorkflow:
             router = NotificationRouter(desktop_enabled=True)
 
             # Create a project and task
-            project_id = await db.create_project("Test Project")
-            task_id = await db.create_task(project_id, "Test Task", "test-file.py", "BACKEND")
+            project_id = db.create_project("Test Project", "Test project description")
+
+            task = Task(
+                project_id=project_id,
+                issue_id=1,
+                task_number="1.1",
+                parent_issue_number="1",
+                title="Test Task",
+                description="Test task description",
+                status=TaskStatus.PENDING,
+                assigned_to=None,
+                depends_on=None,
+                can_parallelize=True,
+                priority=1,
+                workflow_step=1,
+                requires_mcp=False,
+                estimated_tokens=1000,
+                actual_tokens=0,
+                created_at="2025-01-01T00:00:00"
+            )
+            task_id = db.create_task(task)
 
             # Create a SYNC blocker
-            await db.create_blocker(
+            db.create_blocker(
+                agent_id="test-agent-001",
+                project_id=project_id,
                 task_id=task_id,
-                blocker_type=BlockerType.SYNC,
-                message="Critical issue found",
-                details={"error": "Syntax error"},
+                blocker_type=BlockerType.SYNC.value,
+                question="Critical issue found: Syntax error",
             )
 
             # Try to send notification (should not raise exception)
@@ -178,12 +268,3 @@ class TestNotificationWorkflow:
             # Should have checked availability but not sent
             mock_desktop_instance.is_available.assert_called()
             mock_desktop_instance.send_notification.assert_not_called()
-
-
-@pytest.fixture
-async def db():
-    """Create a test database"""
-    db = Database(":memory:")
-    await db.initialize()
-    yield db
-    await db.close()
