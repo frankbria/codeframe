@@ -74,6 +74,7 @@ python scripts/quality-ratchet.py show
 **Auto-suggestion**: When quality degrades >10%, the tool recommends context reset with handoff template from `.claude/rules.md`.
 
 ## Recent Changes
+- 014-session-lifecycle: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 - 010-server-start-command: Added CLI 'serve' command (--port, --reload, --no-browser flags), port validation utilities (port_utils.py), 19 tests with 100% coverage on utilities, no database changes
 - 2025-11-14: 007-context-management - **CRITICAL ARCHITECTURAL FIX** 🎯
   * **Multi-Agent Support**: Multiple agents can now collaborate on same project

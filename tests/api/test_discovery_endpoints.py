@@ -6,11 +6,11 @@ Tests verify POST /api/projects/{id}/discovery/answer endpoint.
 
 from unittest.mock import Mock, patch
 
-from codeframe.ui.server import app
-
 
 def get_app():
     """Get the current app instance after module reload."""
+    from codeframe.ui.server import app
+
     return app
 
 
