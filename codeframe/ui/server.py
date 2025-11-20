@@ -18,6 +18,8 @@ from codeframe.core.models import (
     BlockerResolve,
     ContextItemCreateModel,
     ContextItemResponse,
+    DiscoveryAnswer,
+    DiscoveryAnswerResponse,
 )
 from codeframe.persistence.database import Database
 from codeframe.ui.models import (
@@ -584,7 +586,7 @@ async def get_chat_history(project_id: int, limit: int = 100, offset: int = 0):
 
 
 @app.post("/api/projects/{project_id}/discovery/answer")
-async def submit_discovery_answer(project_id: int, answer_data: "DiscoveryAnswer"):
+async def submit_discovery_answer(project_id: int, answer_data: DiscoveryAnswer):
     """Submit answer to current discovery question (Feature: 012-discovery-answer-ui, US5).
 
     Implementation following TDD approach (T041-T044):
@@ -604,8 +606,8 @@ async def submit_discovery_answer(project_id: int, answer_data: "DiscoveryAnswer
         HTTPException:
             - 400: Validation error or wrong phase
             - 404: Project not found
+            - 500: Missing API key or processing error
     """
-    from codeframe.core.models import DiscoveryAnswer, DiscoveryAnswerResponse
     from codeframe.ui.websocket_broadcasts import (
         broadcast_discovery_answer_submitted,
         broadcast_discovery_question_presented,
@@ -624,12 +626,20 @@ async def submit_discovery_answer(project_id: int, answer_data: "DiscoveryAnswer
             detail=f"Project is not in discovery phase. Current phase: {project.get('phase')}"
         )
 
+    # T042: Validate ANTHROPIC_API_KEY is available
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY environment variable is not set. Cannot process discovery answers."
+        )
+
     # T042: Get Lead Agent and process answer
     try:
         agent = LeadAgent(
             project_id=project_id,
             db=app.state.db,
-            api_key=os.environ.get("ANTHROPIC_API_KEY")
+            api_key=api_key
         )
 
         # CRITICAL: Validate discovery is active before processing answer
@@ -647,38 +657,50 @@ async def submit_discovery_answer(project_id: int, answer_data: "DiscoveryAnswer
         # Get updated discovery status after processing
         status = agent.get_discovery_status()
 
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is
+        raise
     except Exception as e:
         logger.error(f"Failed to process discovery answer for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process answer: {str(e)}")
+
+    # T043: Compute derived values from status to match LeadAgent.get_discovery_status() format
+    is_complete = status.get("state") == "completed"
+    total_questions = status.get("total_required", 0)
+    answered_count = status.get("answered_count", 0)
+    current_question_index = answered_count  # Index is based on how many answered
+    current_question_id = status.get("current_question", {}).get("id", "")
+    current_question_text = status.get("current_question", {}).get("question", "")
+    progress_percentage = status.get("progress_percentage", 0.0)
 
     # T043: Broadcast WebSocket events
     try:
         # Broadcast answer submitted event
         await broadcast_discovery_answer_submitted(
-            manager=app.state.websocket_manager,
+            manager=manager,
             project_id=project_id,
-            question_id=status.get("current_question_id", ""),
+            question_id=current_question_id,
             answer_preview=answer_data.answer[:100],  # First 100 chars
-            current_index=status["current_question_index"],
-            total_questions=status["total_questions"],
+            current_index=current_question_index,
+            total_questions=total_questions,
         )
 
         # Broadcast appropriate follow-up event
-        if status["is_complete"]:
+        if is_complete:
             await broadcast_discovery_completed(
-                manager=app.state.websocket_manager,
+                manager=manager,
                 project_id=project_id,
-                total_answers=status["answered_count"],
+                total_answers=answered_count,
                 next_phase="prd_generation",
             )
         else:
             await broadcast_discovery_question_presented(
-                manager=app.state.websocket_manager,
+                manager=manager,
                 project_id=project_id,
-                question_id=status.get("current_question_id", ""),
-                question_text=status.get("current_question", ""),
-                current_index=status["current_question_index"],
-                total_questions=status["total_questions"],
+                question_id=current_question_id,
+                question_text=current_question_text,
+                current_index=current_question_index,
+                total_questions=total_questions,
             )
 
     except Exception as e:
@@ -688,11 +710,11 @@ async def submit_discovery_answer(project_id: int, answer_data: "DiscoveryAnswer
     # T044: Generate and return response
     return DiscoveryAnswerResponse(
         success=True,
-        next_question=status.get("current_question") if not status["is_complete"] else None,
-        is_complete=status["is_complete"],
-        current_index=status["current_question_index"],
-        total_questions=status["total_questions"],
-        progress_percentage=status["progress_percentage"],
+        next_question=current_question_text if not is_complete else None,
+        is_complete=is_complete,
+        current_index=current_question_index,
+        total_questions=total_questions,
+        progress_percentage=progress_percentage,
     )
 
 
