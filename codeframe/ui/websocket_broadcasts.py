@@ -257,15 +257,21 @@ async def broadcast_progress_update(
         total: Total number of tasks
         percentage: Optional progress percentage (auto-calculated if not provided)
     """
-    if percentage is None and total > 0:
-        percentage = int((completed / total) * 100)
+    # Calculate progress percentage with safety checks
+    if percentage is None:
+        if total <= 0:
+            percentage = 0.0
+        else:
+            percentage = round((float(completed) / float(total)) * 100, 1)
+            # Clamp to [0.0, 100.0] range
+            percentage = max(0.0, min(100.0, percentage))
 
     message = {
         "type": "progress_update",
         "project_id": project_id,
         "completed": completed,
         "total": total,
-        "percentage": percentage if percentage is not None else 0,
+        "percentage": percentage,
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
@@ -624,3 +630,157 @@ async def broadcast_blocker_expired(
         logger.debug(f"Broadcast blocker_expired: blocker {blocker_id} by {agent_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast blocker expired: {e}")
+
+
+# ============================================================================
+# Discovery Answer UI Broadcasts (Feature: 012-discovery-answer-ui)
+# ============================================================================
+
+
+async def broadcast_discovery_answer_submitted(
+    manager,
+    project_id: int,
+    question_id: str,
+    answer_preview: str,
+    current_index: int,
+    total_questions: int,
+) -> None:
+    """
+    Broadcast when user submits discovery answer.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        question_id: Unique identifier of the answered question
+        answer_preview: First 100 chars of the answer
+        current_index: Current question index (0-based)
+        total_questions: Total number of questions
+    """
+    # Calculate progress percentage with safety checks
+    if total_questions <= 0:
+        percentage = 0.0
+    else:
+        # Ensure values are treated as numbers and compute percentage
+        percentage = round((float(current_index) / float(total_questions)) * 100, 1)
+        # Clamp to [0.0, 100.0] range
+        percentage = max(0.0, min(100.0, percentage))
+
+    message = {
+        "type": "discovery_answer_submitted",
+        "project_id": project_id,
+        "question_id": question_id,
+        "answer_preview": answer_preview[:100],  # Limit to 100 chars
+        "progress": {
+            "current": current_index,
+            "total": total_questions,
+            "percentage": percentage,
+        },
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast discovery_answer_submitted: question {question_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast discovery answer submission: {e}")
+
+
+async def broadcast_discovery_question_presented(
+    manager,
+    project_id: int,
+    question_id: str,
+    question_text: str,
+    current_index: int,
+    total_questions: int,
+) -> None:
+    """
+    Broadcast when next discovery question is presented.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        question_id: Unique identifier of the question
+        question_text: Full text of the question
+        current_index: Current question number (1-based for display)
+        total_questions: Total number of questions
+    """
+    message = {
+        "type": "discovery_question_presented",
+        "project_id": project_id,
+        "question_id": question_id,
+        "question_text": question_text,
+        "current_index": current_index,
+        "total_questions": total_questions,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast discovery_question_presented: {question_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast discovery question presented: {e}")
+
+
+async def broadcast_discovery_progress_updated(
+    manager,
+    project_id: int,
+    current_index: int,
+    total_questions: int,
+    percentage: float,
+) -> None:
+    """
+    Broadcast discovery progress updates.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        current_index: Current question index (0-based)
+        total_questions: Total number of questions
+        percentage: Completion percentage (0.0 - 100.0)
+    """
+    message = {
+        "type": "discovery_progress_updated",
+        "project_id": project_id,
+        "progress": {
+            "current": current_index,
+            "total": total_questions,
+            "percentage": percentage,
+        },
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast discovery_progress_updated: {percentage}%")
+    except Exception as e:
+        logger.error(f"Failed to broadcast discovery progress update: {e}")
+
+
+async def broadcast_discovery_completed(
+    manager,
+    project_id: int,
+    total_answers: int,
+    next_phase: str = "prd_generation",
+) -> None:
+    """
+    Broadcast when discovery phase is completed.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        total_answers: Total number of answers collected
+        next_phase: Next project phase (default: prd_generation)
+    """
+    message = {
+        "type": "discovery_completed",
+        "project_id": project_id,
+        "total_answers": total_answers,
+        "next_phase": next_phase,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message)
+        logger.debug(f"Broadcast discovery_completed: {total_answers} answers")
+    except Exception as e:
+        logger.error(f"Failed to broadcast discovery completion: {e}")
