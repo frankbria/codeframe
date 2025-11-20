@@ -9,18 +9,21 @@ import { AgentStateProvider } from '@/components/AgentStateProvider';
 import * as api from '@/lib/api';
 import * as websocket from '@/lib/websocket';
 
+// Create a shared mock WebSocket client that will be used across all tests
+const sharedMockWsClient = {
+  connect: jest.fn(),
+  disconnect: jest.fn(),
+  subscribe: jest.fn(),
+  onMessage: jest.fn(() => jest.fn()),
+  offMessage: jest.fn(),
+  onReconnect: jest.fn(() => jest.fn()),
+  onConnectionChange: jest.fn(() => jest.fn()),
+};
+
 // Mock dependencies
 jest.mock('@/lib/api');
 jest.mock('@/lib/websocket', () => ({
-  getWebSocketClient: jest.fn(() => ({
-    connect: jest.fn(),
-    disconnect: jest.fn(),
-    subscribe: jest.fn(),
-    onMessage: jest.fn(() => jest.fn()),
-    offMessage: jest.fn(),
-    onReconnect: jest.fn(() => jest.fn()),
-    onConnectionChange: jest.fn(() => jest.fn()),
-  })),
+  getWebSocketClient: jest.fn(() => sharedMockWsClient),
 }));
 jest.mock('@/components/ChatInterface', () => ({
   __esModule: true,
@@ -66,19 +69,6 @@ jest.mock('swr', () => {
   };
 });
 
-// Mock WebSocket client globally before any tests run
-const mockWsClientGlobal = {
-  connect: jest.fn(),
-  disconnect: jest.fn(),
-  subscribe: jest.fn(),
-  onMessage: jest.fn(() => jest.fn()),
-  offMessage: jest.fn(),
-  onReconnect: jest.fn(() => jest.fn()),
-  onConnectionChange: jest.fn(() => jest.fn()),
-};
-
-// Set up websocket mock to return our mock client
-(websocket.getWebSocketClient as jest.Mock) = jest.fn(() => mockWsClientGlobal);
 
 const mockProjectData = {
   id: 1,
@@ -142,16 +132,16 @@ describe('Dashboard with AgentStateProvider', () => {
     // Reset mocks
     jest.clearAllMocks();
 
-    // Mock WebSocket client
-    mockWsClient = {
-      connect: jest.fn(),
-      disconnect: jest.fn(),
-      subscribe: jest.fn(),
-      onMessage: jest.fn(() => jest.fn()), // Returns unsubscribe function
-      onReconnect: jest.fn(() => jest.fn()),
-      onConnectionChange: jest.fn(() => jest.fn()), // Add missing method
-    };
-    (websocket.getWebSocketClient as jest.Mock).mockReturnValue(mockWsClient);
+    // Use the shared mock WebSocket client
+    mockWsClient = sharedMockWsClient;
+
+    // Reset the mock functions on the shared client
+    mockWsClient.connect.mockClear();
+    mockWsClient.disconnect.mockClear();
+    mockWsClient.subscribe.mockClear();
+    mockWsClient.onMessage.mockClear();
+    mockWsClient.onReconnect.mockClear();
+    mockWsClient.onConnectionChange.mockClear();
 
     // Mock API calls
     (api.projectsApi.getStatus as jest.Mock).mockResolvedValue({
@@ -485,7 +475,6 @@ describe('Dashboard with AgentStateProvider', () => {
     it('should cleanup WebSocket listener on unmount', async () => {
       const unsubscribeMock = jest.fn();
       mockWsClient.onMessage.mockReturnValue(unsubscribeMock);
-      mockWsClient.offMessage = jest.fn();
 
       const { unmount } = render(
         <AgentStateProvider projectId={1}>
@@ -500,8 +489,8 @@ describe('Dashboard with AgentStateProvider', () => {
       // Unmount the component
       unmount();
 
-      // Verify cleanup was called
-      expect(mockWsClient.offMessage).toHaveBeenCalled();
+      // Verify cleanup function was called (onMessage returns cleanup function)
+      expect(unsubscribeMock).toHaveBeenCalled();
     });
   });
 
@@ -511,7 +500,9 @@ describe('Dashboard with AgentStateProvider', () => {
         {
           id: 1,
           agent_id: 'test-agent',
+          agent_name: 'Test Agent',
           task_id: 123,
+          task_title: 'Test Task',
           blocker_type: 'SYNC',
           question: 'Test blocker question?',
           answer: null,
