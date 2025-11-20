@@ -6,22 +6,20 @@
 import { validateAgentCount, validateActivitySize } from '@/lib/validation';
 
 describe('Validation Functions', () => {
-  // Save original console.warn and NODE_ENV
-  const originalWarn = console.warn;
-  const originalNodeEnv = process.env.NODE_ENV;
   let warnSpy: jest.SpyInstance;
+  const originalEnv = process.env;
 
   beforeEach(() => {
-    // Set NODE_ENV to development for warnings to appear
-    process.env.NODE_ENV = 'development';
+    // Mock process.env with NODE_ENV set to development
+    process.env = { ...originalEnv, NODE_ENV: 'development' };
     // Mock console.warn to capture warnings
     warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    // Restore original console.warn and NODE_ENV
+    // Restore original console.warn and process.env
     warnSpy.mockRestore();
-    process.env.NODE_ENV = originalNodeEnv;
+    process.env = originalEnv;
   });
 
   describe('T119: validateAgentCount', () => {

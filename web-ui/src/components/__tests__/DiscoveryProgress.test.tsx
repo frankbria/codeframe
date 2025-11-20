@@ -486,6 +486,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -522,6 +523,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -580,6 +582,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -625,6 +628,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -667,6 +671,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -748,6 +753,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -794,6 +800,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -863,6 +870,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -923,6 +931,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -961,6 +970,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -1022,6 +1032,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -1086,6 +1097,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -1140,6 +1152,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -1156,6 +1169,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 3,
           total_required: 20,
           current_question: {
+            id: 'q2',
             category: 'tech_stack',
             question: 'What tech stack are you planning to use?',
           },
@@ -1235,6 +1249,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 4,
           total_required: 20,
           current_question: {
+            id: 'q5',
             category: 'problem',
             question: 'Question 5',
           },
@@ -1251,6 +1266,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 5,
           total_required: 20,
           current_question: {
+            id: 'q6',
             category: 'solution',
             question: 'Question 6',
           },
@@ -1316,6 +1332,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 2,
           total_required: 20,
           current_question: {
+            id: 'q1',
             category: 'problem',
             question: 'What problem does your project solve?',
           },
@@ -1331,6 +1348,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 3,
           total_required: 20,
           current_question: {
+            id: 'q2',
             category: 'tech_stack',
             question: 'What tech stack are you planning to use?',
           },
@@ -1400,6 +1418,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 10,
           total_required: 20,
           current_question: {
+            id: 'q11',
             category: 'problem',
             question: 'Question 11: What is your target market?',
           },
@@ -1415,6 +1434,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 11,
           total_required: 20,
           current_question: {
+            id: 'q12',
             category: 'solution',
             question: 'Question 12: How will you monetize?',
           },
@@ -1483,6 +1503,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 17,
           total_required: 20,
           current_question: {
+            id: 'q18',
             category: 'timeline',
             question: 'When do you plan to launch?',
           },
@@ -1498,6 +1519,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 18,
           total_required: 20,
           current_question: {
+            id: 'q19',
             category: 'risks',
             question: 'What are the biggest risks?',
           },
@@ -1568,6 +1590,7 @@ describe('DiscoveryProgress Component', () => {
           answered_count: 19,
           total_required: 20,
           current_question: {
+            id: 'q20',
             category: 'final',
             question: 'Any final thoughts or concerns?',
           },
