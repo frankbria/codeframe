@@ -33,22 +33,13 @@ export interface AgentStateProviderProps {
 }
 
 /**
- * Agent State Provider
+ * Provides centralized agent state management and real-time synchronization to descendant components.
  *
- * Provides centralized agent state management to all child components.
- * Uses useReducer for state management and SWR for initial data fetching.
+ * Initializes state via SWR, keeps it current via WebSocket messages and reconnect resyncs, and exposes
+ * the reducer state and dispatch through AgentStateContext.
  *
- * Usage:
- * ```tsx
- * <AgentStateProvider projectId={1}>
- *   <Dashboard />
- * </AgentStateProvider>
- * ```
- *
- * Children can access state via useAgentState hook:
- * ```tsx
- * const { agents, tasks, activity } = useAgentState();
- * ```
+ * @param projectId - Numeric project identifier used to scope SWR fetches and WebSocket subscriptions.
+ * @param children - React children that will receive the agent state context.
  */
 export function AgentStateProvider({
   projectId,

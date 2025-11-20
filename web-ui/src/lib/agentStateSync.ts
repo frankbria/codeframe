@@ -21,32 +21,11 @@ export interface FullResyncPayload {
 }
 
 /**
- * Perform a full state resynchronization by fetching all data from APIs
+ * Rebuilds the complete frontend state for a project by fetching agents, tasks, and recent activity.
  *
- * This function is called after WebSocket reconnection to ensure the frontend
- * has the latest state from the backend. It fetches agents, tasks, and activity
- * in parallel for optimal performance.
- *
- * **Features**:
- * - Parallel API fetches using Promise.all (T086)
- * - Error handling with descriptive messages (T087)
- * - Handles empty or missing data gracefully (T087)
- * - Generates timestamp for conflict resolution
- *
- * **Usage**:
- * ```typescript
- * try {
- *   const freshState = await fullStateResync(projectId);
- *   dispatch({ type: 'FULL_RESYNC', payload: freshState });
- * } catch (error) {
- *   console.error('Resync failed:', error);
- *   // Handle error (show notification, retry, etc.)
- * }
- * ```
- *
- * @param projectId - Project ID to fetch data for
- * @returns Promise resolving to complete state with timestamp
- * @throws Error if any API call fails
+ * @param projectId - ID of the project to resynchronize
+ * @returns An object containing `agents`, `tasks`, `activity`, and a `timestamp` (milliseconds since the Unix epoch)
+ * @throws Error if any API call fails; the thrown error includes the project ID and the original error message when available
  */
 export async function fullStateResync(
   projectId: number
