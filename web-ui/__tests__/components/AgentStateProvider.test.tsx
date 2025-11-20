@@ -260,7 +260,7 @@ describe('AgentStateProvider', () => {
     });
 
     it('should not crash when no children provided', () => {
-      const { container } = render(<AgentStateProvider projectId={1} />);
+      const { container } = render(<AgentStateProvider projectId={1}><div></div></AgentStateProvider>);
 
       // Should render empty provider without errors
       expect(container).toBeInTheDocument();

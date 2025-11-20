@@ -112,9 +112,11 @@ describe('BlockerPanel', () => {
       render(<BlockerPanel blockers={[olderSync, newerSync]} />);
 
       const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons (All, SYNC, ASYNC)
+      const blockerButtons = buttons.slice(3);
       // Newer should be first
-      expect(buttons[0].textContent).toContain(newerSync.question);
-      expect(buttons[1].textContent).toContain(olderSync.question);
+      expect(blockerButtons[0].textContent).toContain(newerSync.question);
+      expect(blockerButtons[1].textContent).toContain(olderSync.question);
     });
 
     it('sorts ASYNC blockers by created_at DESC (newest first)', () => {
@@ -122,9 +124,11 @@ describe('BlockerPanel', () => {
       render(<BlockerPanel blockers={[olderAsync, newerAsync]} />);
 
       const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons (All, SYNC, ASYNC)
+      const blockerButtons = buttons.slice(3);
       // Newer should be first
-      expect(buttons[0].textContent).toContain(newerAsync.question);
-      expect(buttons[1].textContent).toContain(olderAsync.question);
+      expect(blockerButtons[0].textContent).toContain(newerAsync.question);
+      expect(blockerButtons[1].textContent).toContain(olderAsync.question);
     });
 
     it('maintains SYNC before ASYNC regardless of timestamps', () => {
@@ -135,9 +139,11 @@ describe('BlockerPanel', () => {
       render(<BlockerPanel blockers={[newerAsync, olderSync]} />);
 
       const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons (All, SYNC, ASYNC)
+      const blockerButtons = buttons.slice(3);
       // SYNC should still be first even though it's older
-      expect(buttons[0].textContent).toContain(olderSync.question);
-      expect(buttons[1].textContent).toContain(newerAsync.question);
+      expect(blockerButtons[0].textContent).toContain(olderSync.question);
+      expect(blockerButtons[1].textContent).toContain(newerAsync.question);
     });
   });
 
@@ -178,8 +184,9 @@ describe('BlockerPanel', () => {
       const mockOnClick = jest.fn();
       render(<BlockerPanel blockers={[mockSyncBlocker]} onBlockerClick={mockOnClick} />);
 
-      const button = screen.getByRole('button');
-      fireEvent.click(button);
+      const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons, click the first blocker button
+      fireEvent.click(buttons[3]);
 
       expect(mockOnClick).toHaveBeenCalledTimes(1);
       expect(mockOnClick).toHaveBeenCalledWith(mockSyncBlocker);
@@ -195,11 +202,13 @@ describe('BlockerPanel', () => {
       );
 
       const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons
+      const blockerButtons = buttons.slice(3);
 
-      fireEvent.click(buttons[0]);
+      fireEvent.click(blockerButtons[0]);
       expect(mockOnClick).toHaveBeenLastCalledWith(mockSyncBlocker);
 
-      fireEvent.click(buttons[1]);
+      fireEvent.click(blockerButtons[1]);
       expect(mockOnClick).toHaveBeenLastCalledWith(mockAsyncBlocker);
 
       expect(mockOnClick).toHaveBeenCalledTimes(2);
@@ -208,8 +217,9 @@ describe('BlockerPanel', () => {
     it('does not error when onBlockerClick is undefined', () => {
       render(<BlockerPanel blockers={[mockSyncBlocker]} />);
 
-      const button = screen.getByRole('button');
-      expect(() => fireEvent.click(button)).not.toThrow();
+      const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons, click the first blocker button
+      expect(() => fireEvent.click(buttons[3])).not.toThrow();
     });
   });
 
@@ -232,9 +242,11 @@ describe('BlockerPanel', () => {
 
     it('does not show task separator when task_title is missing', () => {
       render(<BlockerPanel blockers={[mockBlockerWithoutTask]} />);
-      const button = screen.getByRole('button');
+      const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons, get the first blocker button
+      const blockerButton = buttons[3];
       // Should not have the '•' separator for task
-      expect(button.textContent).not.toMatch(/🤖.*•.*Implement/);
+      expect(blockerButton.textContent).not.toMatch(/🤖.*•.*Implement/);
     });
 
     it('displays robot emoji for agent', () => {
@@ -302,8 +314,10 @@ describe('BlockerPanel', () => {
   describe('UI styling and structure', () => {
     it('applies hover styles to blocker buttons', () => {
       render(<BlockerPanel blockers={[mockSyncBlocker]} />);
-      const button = screen.getByRole('button');
-      expect(button).toHaveClass('hover:bg-gray-50');
+      const buttons = screen.getAllByRole('button');
+      // Skip first 3 filter buttons, check the first blocker button
+      const blockerButton = buttons[3];
+      expect(blockerButton).toHaveClass('hover:bg-gray-50');
     });
 
     it('renders header with correct styling', () => {

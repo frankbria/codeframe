@@ -6,17 +6,6 @@
  */
 
 import { mapWebSocketMessageToAction } from '@/lib/websocketMessageMapper';
-import type {
-  AgentCreatedMessage,
-  AgentStatusChangedMessage,
-  AgentRetiredMessage,
-  TaskAssignedMessage,
-  TaskStatusChangedMessage,
-  TaskBlockedMessage,
-  TaskUnblockedMessage,
-  ActivityUpdateMessage,
-  ProgressUpdateMessage,
-} from '@/types/agentState';
 
 describe('mapWebSocketMessageToAction', () => {
   const projectId = 1;
@@ -24,8 +13,8 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('agent_created message (T050)', () => {
     it('should map agent_created message with all fields', () => {
-      const message: AgentCreatedMessage = {
-        type: 'agent_created',
+      const message = {
+        type: 'agent_created' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         agent_id: 'backend-worker-1',
@@ -51,8 +40,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should default provider to "anthropic" if not provided', () => {
-      const message: AgentCreatedMessage = {
-        type: 'agent_created',
+      const message = {
+        type: 'agent_created' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         agent_id: 'lead-1',
@@ -67,8 +56,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should parse string timestamp to number', () => {
-      const message: AgentCreatedMessage = {
-        type: 'agent_created',
+      const message = {
+        type: 'agent_created' as const,
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
         agent_id: 'test-engineer-1',
@@ -80,14 +69,14 @@ describe('mapWebSocketMessageToAction', () => {
       expect(action?.payload).toMatchObject({
         timestamp: expect.any(Number),
       });
-      expect(action?.payload.timestamp).toBeGreaterThan(0);
+      expect((action?.payload as any).timestamp).toBeGreaterThan(0);
     });
   });
 
   describe('agent_status_changed message (T051)', () => {
     it('should map agent_status_changed message with status only', () => {
-      const message: AgentStatusChangedMessage = {
-        type: 'agent_status_changed',
+      const message = {
+        type: 'agent_status_changed' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         agent_id: 'backend-worker-1',
@@ -109,8 +98,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should include current_task when provided', () => {
-      const message: AgentStatusChangedMessage = {
-        type: 'agent_status_changed',
+      const message = {
+        type: 'agent_status_changed' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         agent_id: 'frontend-specialist-1',
@@ -135,8 +124,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should include progress when provided', () => {
-      const message: AgentStatusChangedMessage = {
-        type: 'agent_status_changed',
+      const message = {
+        type: 'agent_status_changed' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         agent_id: 'test-engineer-1',
@@ -157,8 +146,8 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('agent_retired message (T052)', () => {
     it('should map agent_retired message', () => {
-      const message: AgentRetiredMessage = {
-        type: 'agent_retired',
+      const message = {
+        type: 'agent_retired' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         agent_id: 'backend-worker-1',
@@ -178,8 +167,8 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('task_assigned message (T053)', () => {
     it('should map task_assigned message with task title', () => {
-      const message: TaskAssignedMessage = {
-        type: 'task_assigned',
+      const message = {
+        type: 'task_assigned' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         task_id: 456,
@@ -201,8 +190,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should handle task_assigned without task title', () => {
-      const message: TaskAssignedMessage = {
-        type: 'task_assigned',
+      const message = {
+        type: 'task_assigned' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         task_id: 789,
@@ -225,8 +214,8 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('task_status_changed message (T054)', () => {
     it('should map task_status_changed message with progress', () => {
-      const message: TaskStatusChangedMessage = {
-        type: 'task_status_changed',
+      const message = {
+        type: 'task_status_changed' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         task_id: 123,
@@ -248,8 +237,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should map task_status_changed without progress', () => {
-      const message: TaskStatusChangedMessage = {
-        type: 'task_status_changed',
+      const message = {
+        type: 'task_status_changed' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         task_id: 456,
@@ -272,8 +261,8 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('task_blocked and task_unblocked messages (T055)', () => {
     it('should map task_blocked message', () => {
-      const message: TaskBlockedMessage = {
-        type: 'task_blocked',
+      const message = {
+        type: 'task_blocked' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         task_id: 789,
@@ -293,8 +282,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should map task_unblocked message', () => {
-      const message: TaskUnblockedMessage = {
-        type: 'task_unblocked',
+      const message = {
+        type: 'task_unblocked' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         task_id: 789,
@@ -314,8 +303,8 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('activity_update message (T056)', () => {
     it('should map activity_update message with all fields', () => {
-      const message: ActivityUpdateMessage = {
-        type: 'activity_update',
+      const message = {
+        type: 'activity_update' as const,
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
         activity_type: 'task_completed',
@@ -337,8 +326,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should default activity_type to "activity_update" if not provided', () => {
-      const message: ActivityUpdateMessage = {
-        type: 'activity_update',
+      const message = {
+        type: 'activity_update' as const,
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
         message: 'System maintenance completed',
@@ -354,8 +343,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should default agent to "system" if not provided', () => {
-      const message: ActivityUpdateMessage = {
-        type: 'activity_update',
+      const message = {
+        type: 'activity_update' as const,
         project_id: projectId,
         timestamp: '2023-11-14T12:00:00Z',
         activity_type: 'blocker_resolved',
@@ -372,8 +361,8 @@ describe('mapWebSocketMessageToAction', () => {
 
   describe('progress_update message (T057)', () => {
     it('should map progress_update message', () => {
-      const message: ProgressUpdateMessage = {
-        type: 'progress_update',
+      const message = {
+        type: 'progress_update' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         completed_tasks: 25,
@@ -394,8 +383,8 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should handle progress_update with 100% completion', () => {
-      const message: ProgressUpdateMessage = {
-        type: 'progress_update',
+      const message = {
+        type: 'progress_update' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         completed_tasks: 50,
@@ -423,7 +412,7 @@ describe('mapWebSocketMessageToAction', () => {
 
       const action = mapWebSocketMessageToAction(message);
 
-      expect(action?.payload.timestamp).toBe(new Date('2023-11-14T12:00:00Z').getTime());
+      expect((action?.payload as any).timestamp).toBe(new Date('2023-11-14T12:00:00Z').getTime());
     });
 
     it('should pass through numeric timestamp unchanged', () => {
@@ -437,7 +426,7 @@ describe('mapWebSocketMessageToAction', () => {
 
       const action = mapWebSocketMessageToAction(message);
 
-      expect(action?.payload.timestamp).toBe(1699999999000);
+      expect((action?.payload as any).timestamp).toBe(1699999999000);
     });
 
     it('should handle ISO 8601 timestamp with milliseconds', () => {
@@ -451,7 +440,7 @@ describe('mapWebSocketMessageToAction', () => {
 
       const action = mapWebSocketMessageToAction(message);
 
-      expect(action?.payload.timestamp).toBe(new Date('2023-11-14T12:00:00.123Z').getTime());
+      expect((action?.payload as any).timestamp).toBe(new Date('2023-11-14T12:00:00.123Z').getTime());
     });
   });
 
@@ -469,12 +458,12 @@ describe('mapWebSocketMessageToAction', () => {
     });
 
     it('should log warning for unknown message type', () => {
-      // Save original NODE_ENV
-      const originalEnv = process.env.NODE_ENV;
-      
+      // Save original process.env
+      const originalEnv = process.env;
+
       // Set to development to enable logging
-      process.env.NODE_ENV = 'development';
-      
+      process.env = { ...originalEnv, NODE_ENV: 'development' };
+
       const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
       const message = {
@@ -490,26 +479,25 @@ describe('mapWebSocketMessageToAction', () => {
       );
 
       consoleSpy.mockRestore();
-      
-      // Restore original NODE_ENV
-      process.env.NODE_ENV = originalEnv;
+
+      // Restore original process.env
+      process.env = originalEnv;
     });
   });
 
   describe('edge cases and error handling', () => {
-    it('should handle message with missing required fields gracefully', () => {
+    it('should return null when agent_id is missing (required field)', () => {
       const message = {
         type: 'agent_created',
         project_id: projectId,
         timestamp: baseTimestamp,
-        // Missing agent_id and agent_type
+        // Missing agent_id (required)
       };
 
       const action = mapWebSocketMessageToAction(message);
 
-      // Should still create action, even if data is incomplete
-      expect(action).toBeTruthy();
-      expect(action?.type).toBe('AGENT_CREATED');
+      // Should return null when required field is missing
+      expect(action).toBeNull();
     });
 
     it('should handle malformed timestamp gracefully', () => {
@@ -525,12 +513,12 @@ describe('mapWebSocketMessageToAction', () => {
 
       // Should still parse, Date constructor returns NaN for invalid dates
       expect(action).toBeTruthy();
-      expect(action?.payload.timestamp).toBeNaN();
+      expect((action?.payload as any).timestamp).toBeNaN();
     });
 
     it('should handle empty blocked_by array', () => {
-      const message: TaskBlockedMessage = {
-        type: 'task_blocked',
+      const message = {
+        type: 'task_blocked' as const,
         project_id: projectId,
         timestamp: baseTimestamp,
         task_id: 123,
@@ -542,6 +530,82 @@ describe('mapWebSocketMessageToAction', () => {
       expect(action?.payload).toMatchObject({
         blockedBy: [],
       });
+    });
+
+    it('should validate and coerce invalid agent_type to "lead"', () => {
+      const message = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'invalid-type', // Invalid type
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeTruthy();
+      expect((action?.payload as any).type).toBe('lead'); // Fallback to 'lead'
+    });
+
+    it('should use provider from message with fallback to anthropic', () => {
+      const messageWithProvider = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'backend-worker',
+        provider: 'openai',
+      };
+
+      const actionWithProvider = mapWebSocketMessageToAction(messageWithProvider);
+      expect((actionWithProvider?.payload as any).provider).toBe('openai');
+
+      const messageWithoutProvider = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-2',
+        agent_type: 'backend-worker',
+      };
+
+      const actionWithoutProvider = mapWebSocketMessageToAction(messageWithoutProvider);
+      expect((actionWithoutProvider?.payload as any).provider).toBe('anthropic');
+    });
+
+    it('should normalize context_tokens and tasks_completed to numbers', () => {
+      const message = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'backend-worker',
+        context_tokens: '1500', // String instead of number
+        tasks_completed: '5',   // String instead of number
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect((action?.payload as any).context_tokens).toBe(1500);
+      expect((action?.payload as any).tasks_completed).toBe(5);
+      expect(typeof (action?.payload as any).context_tokens).toBe('number');
+      expect(typeof (action?.payload as any).tasks_completed).toBe('number');
+    });
+
+    it('should default to 0 for invalid numeric fields', () => {
+      const message = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'backend-worker',
+        context_tokens: 'invalid',
+        tasks_completed: null,
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect((action?.payload as any).context_tokens).toBe(0);
+      expect((action?.payload as any).tasks_completed).toBe(0);
     });
   });
 
@@ -601,8 +665,8 @@ describe('mapWebSocketMessageToAction', () => {
       const actions = messages.map(mapWebSocketMessageToAction);
 
       // Both should map successfully
-      expect(actions[0]?.payload.timestamp).toBe(baseTimestamp + 2000);
-      expect(actions[1]?.payload.timestamp).toBe(baseTimestamp + 1000);
+      expect((actions[0]?.payload as any).timestamp).toBe(baseTimestamp + 2000);
+      expect((actions[1]?.payload as any).timestamp).toBe(baseTimestamp + 1000);
 
       // Reducer will handle conflict resolution based on timestamps
     });
@@ -621,7 +685,7 @@ describe('mapWebSocketMessageToAction', () => {
       expect(actions).toHaveLength(10);
       actions.forEach((action, i) => {
         expect(action?.type).toBe('AGENT_UPDATED');
-        expect(action?.payload.agentId).toBe(`agent-${i}`);
+        expect((action?.payload as any).agentId).toBe(`agent-${i}`);
       });
     });
   });
