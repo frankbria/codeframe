@@ -173,6 +173,8 @@ export interface WebSocketMessage {
 
   // Sprint 4: Multi-Agent Coordination fields
   agent_type?: string;           // agent_created
+  provider?: string;             // agent_created
+  context_tokens?: number;       // agent_created
   tasks_completed?: number;      // agent_created, agent_retired
   task_title?: string;           // task_assigned, task_blocked, task_unblocked
   blocked_by?: number[];         // task_blocked

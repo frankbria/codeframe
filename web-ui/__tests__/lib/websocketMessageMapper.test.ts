@@ -486,19 +486,18 @@ describe('mapWebSocketMessageToAction', () => {
   });
 
   describe('edge cases and error handling', () => {
-    it('should handle message with missing required fields gracefully', () => {
+    it('should return null when agent_id is missing (required field)', () => {
       const message = {
         type: 'agent_created',
         project_id: projectId,
         timestamp: baseTimestamp,
-        // Missing agent_id and agent_type
+        // Missing agent_id (required)
       };
 
       const action = mapWebSocketMessageToAction(message);
 
-      // Should still create action, even if data is incomplete
-      expect(action).toBeTruthy();
-      expect(action?.type).toBe('AGENT_CREATED');
+      // Should return null when required field is missing
+      expect(action).toBeNull();
     });
 
     it('should handle malformed timestamp gracefully', () => {
@@ -531,6 +530,82 @@ describe('mapWebSocketMessageToAction', () => {
       expect(action?.payload).toMatchObject({
         blockedBy: [],
       });
+    });
+
+    it('should validate and coerce invalid agent_type to "lead"', () => {
+      const message = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'invalid-type', // Invalid type
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeTruthy();
+      expect((action?.payload as any).type).toBe('lead'); // Fallback to 'lead'
+    });
+
+    it('should use provider from message with fallback to anthropic', () => {
+      const messageWithProvider = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'backend-worker',
+        provider: 'openai',
+      };
+
+      const actionWithProvider = mapWebSocketMessageToAction(messageWithProvider);
+      expect((actionWithProvider?.payload as any).provider).toBe('openai');
+
+      const messageWithoutProvider = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-2',
+        agent_type: 'backend-worker',
+      };
+
+      const actionWithoutProvider = mapWebSocketMessageToAction(messageWithoutProvider);
+      expect((actionWithoutProvider?.payload as any).provider).toBe('anthropic');
+    });
+
+    it('should normalize context_tokens and tasks_completed to numbers', () => {
+      const message = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'backend-worker',
+        context_tokens: '1500', // String instead of number
+        tasks_completed: '5',   // String instead of number
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect((action?.payload as any).context_tokens).toBe(1500);
+      expect((action?.payload as any).tasks_completed).toBe(5);
+      expect(typeof (action?.payload as any).context_tokens).toBe('number');
+      expect(typeof (action?.payload as any).tasks_completed).toBe('number');
+    });
+
+    it('should default to 0 for invalid numeric fields', () => {
+      const message = {
+        type: 'agent_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        agent_id: 'test-agent-1',
+        agent_type: 'backend-worker',
+        context_tokens: 'invalid',
+        tasks_completed: null,
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect((action?.payload as any).context_tokens).toBe(0);
+      expect((action?.payload as any).tasks_completed).toBe(0);
     });
   });
 
