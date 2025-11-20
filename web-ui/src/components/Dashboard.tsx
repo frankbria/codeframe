@@ -23,6 +23,7 @@ import { BlockerModal } from './BlockerModal';
 import ReviewResultsPanel from './review/ReviewResultsPanel';
 import { LintTrendChart } from './lint/LintTrendChart';
 import { ContextPanel } from './context/ContextPanel';
+import { SessionStatus } from './SessionStatus';
 
 interface DashboardProps {
   projectId: number;
@@ -234,6 +235,11 @@ export default function Dashboard({ projectId }: DashboardProps) {
           <div role="tabpanel" id="overview-panel" aria-labelledby="overview-tab">
             {/* Discovery Progress (cf-17.2) */}
             <DiscoveryProgress projectId={projectId} />
+
+            {/* Session Status (T029, 014-session-lifecycle) */}
+            <div className="mb-6">
+              <SessionStatus projectId={projectId} />
+            </div>
 
             {/* Chat Interface (cf-14.2) */}
             {showChat && (

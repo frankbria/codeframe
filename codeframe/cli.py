@@ -255,6 +255,28 @@ def serve(
         raise typer.Exit(1)
 
 
+@app.command(name="clear-session")
+def clear_session(
+    project: Optional[str] = typer.Argument(None, help="Project name or directory"),
+):
+    """Clear saved session state."""
+    try:
+        from codeframe.core.session_manager import SessionManager
+
+        project_dir = Path(project) if project else Path.cwd()
+
+        # Initialize SessionManager
+        session_mgr = SessionManager(str(project_dir))
+
+        # Clear session
+        session_mgr.clear_session()
+
+        console.print("✓ Session state cleared")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 @app.command()
 def version():
     """Show CodeFRAME version."""

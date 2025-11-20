@@ -17,12 +17,12 @@ Test Approach: TDD (RED-GREEN-REFACTOR)
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 
-from codeframe.ui.server import app
 from codeframe.core.models import AgentMaturity
 
 
 def get_app():
     """Get the current app instance after module reload."""
+    from codeframe.ui.server import app
 
     return app
 

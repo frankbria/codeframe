@@ -1,0 +1,183 @@
+openapi: 3.0.3
+info:
+  title: Session Lifecycle Management API
+  description: API endpoints for session state management in CodeFRAME
+  version: 1.0.0
+  contact:
+    name: CodeFRAME Development Team
+
+servers:
+  - url: http://localhost:8080/api
+    description: Local development server
+
+paths:
+  /projects/{project_id}/session:
+    get:
+      summary: Get session state for a project
+      description: |
+        Retrieves the current session state for a project, including last session summary,
+        next actions queue, progress percentage, and active blockers.
+
+        If no session state exists (first run or after clear-session), returns an empty
+        state with default values.
+      operationId: getSessionState
+      tags:
+        - Session
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          description: ID of the project to get session state for
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+          example: 123
+      responses:
+        '200':
+          description: Session state retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionState'
+              examples:
+                with_session:
+                  summary: Session state with previous session
+                  value:
+                    last_session:
+                      summary: "Completed Task #27 (JWT refresh tokens), Task #28 (Add token validation)"
+                      timestamp: "2025-11-20T10:30:00"
+                    next_actions:
+                      - "Fix JWT validation in kong-gateway.ts (Task #29)"
+                      - "Add refresh token tests (Task #30)"
+                      - "Update auth documentation (Task #31)"
+                    progress_pct: 68.5
+                    active_blockers:
+                      - id: 5
+                        question: "Which OAuth provider should we use for SSO?"
+                        priority: "high"
+                no_session:
+                  summary: Empty session state (first run)
+                  value:
+                    last_session:
+                      summary: "No previous session"
+                      timestamp: "2025-11-20T10:00:00"
+                    next_actions: []
+                    progress_pct: 0.0
+                    active_blockers: []
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Project not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Failed to load session state"
+
+components:
+  schemas:
+    SessionState:
+      type: object
+      description: Current session state for a project
+      required:
+        - last_session
+        - next_actions
+        - progress_pct
+        - active_blockers
+      properties:
+        last_session:
+          $ref: '#/components/schemas/LastSession'
+        next_actions:
+          type: array
+          description: Next 5 pending actions in priority order
+          maxItems: 5
+          items:
+            type: string
+            maxLength: 200
+          example:
+            - "Fix JWT validation in kong-gateway.ts (Task #29)"
+            - "Add refresh token tests (Task #30)"
+            - "Update auth documentation (Task #31)"
+        progress_pct:
+          type: number
+          format: float
+          description: Overall project progress percentage
+          minimum: 0.0
+          maximum: 100.0
+          example: 68.5
+        active_blockers:
+          type: array
+          description: Active blockers requiring user input
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/Blocker'
+
+    LastSession:
+      type: object
+      description: Information about the previous session
+      required:
+        - summary
+        - timestamp
+      properties:
+        summary:
+          type: string
+          description: Human-readable summary of completed tasks in last session
+          maxLength: 500
+          example: "Completed Task #27 (JWT refresh tokens), Task #28 (Add token validation)"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of session end
+          example: "2025-11-20T10:30:00"
+
+    Blocker:
+      type: object
+      description: A blocker requiring user input to proceed
+      required:
+        - id
+        - question
+        - priority
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique blocker ID
+          example: 5
+        question:
+          type: string
+          description: The question or issue blocking progress
+          maxLength: 500
+          example: "Which OAuth provider should we use for SSO?"
+        priority:
+          type: string
+          enum:
+            - low
+            - medium
+            - high
+          description: Priority level of the blocker
+          example: "high"
+
+    Error:
+      type: object
+      description: Error response
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+          example: "Project not found"
+
+  securitySchemes: {}
+
+tags:
+  - name: Session
+    description: Session lifecycle management endpoints

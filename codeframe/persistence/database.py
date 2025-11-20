@@ -2645,3 +2645,75 @@ class Database:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    def get_recently_completed_tasks(self, project_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recently completed tasks for session summary.
+
+        Args:
+            project_id: Project ID
+            limit: Maximum number of tasks to return
+
+        Returns:
+            List of dicts with keys: id, title, status, completed_at
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, title, status, completed_at
+            FROM tasks
+            WHERE project_id = ? AND status = 'completed'
+            ORDER BY completed_at DESC
+            LIMIT ?
+            """,
+            (project_id, limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_pending_tasks(self, project_id: int, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get next pending tasks for next actions queue.
+
+        Args:
+            project_id: Project ID
+            limit: Maximum number of tasks to return
+
+        Returns:
+            Prioritized list with keys: id, title, priority, created_at
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, title, priority, created_at
+            FROM tasks
+            WHERE project_id = ? AND status = 'pending'
+            ORDER BY priority DESC, created_at ASC
+            LIMIT ?
+            """,
+            (project_id, limit),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_project_stats(self, project_id: int) -> Dict[str, int]:
+        """Get project statistics for progress calculation.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dict with keys: total_tasks, completed_tasks
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) as total_tasks,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks
+            FROM tasks
+            WHERE project_id = ?
+            """,
+            (project_id,),
+        )
+        row = cursor.fetchone()
+        return {
+            'total_tasks': row['total_tasks'] or 0,
+            'completed_tasks': row['completed_tasks'] or 0
+        }

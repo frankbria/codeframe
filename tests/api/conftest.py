@@ -92,6 +92,7 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
     # Clean the database after the test completes
     # Get the app from the client
     from codeframe.ui import server
+    import shutil
 
     # Clear all data from database after each test
     # Delete in reverse dependency order to avoid foreign key constraint violations
@@ -110,3 +111,9 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         cursor.execute("DELETE FROM projects")
 
         db.conn.commit()
+
+    # Clean up workspace files
+    workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "/tmp/workspaces"))
+    if workspace_root.exists():
+        shutil.rmtree(workspace_root)
+        workspace_root.mkdir(parents=True, exist_ok=True)

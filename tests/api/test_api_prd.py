@@ -9,11 +9,10 @@ Tests follow RED-GREEN-REFACTOR TDD cycle.
 import pytest
 from datetime import datetime, UTC
 
-from codeframe.ui.server import app
-
 
 def get_app():
     """Get the current app instance after module reload."""
+    from codeframe.ui.server import app
 
     return app
 

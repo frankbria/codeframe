@@ -1290,6 +1290,78 @@ async def run_lint_manual(request: Request):
     }
 
 
+# Session Lifecycle endpoints (014-session-lifecycle)
+
+
+@app.get("/api/projects/{project_id}/session", tags=["session"])
+async def get_session_state(project_id: int):
+    """Get current session state for project (T028).
+
+    Args:
+        project_id: Project ID
+
+    Returns:
+        Session state with last session summary, next actions, progress, blockers
+        Returns empty state if no session file exists
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+
+    Example:
+        GET /api/projects/1/session
+    """
+    from codeframe.core.session_manager import SessionManager
+
+    # Get project
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404, detail={"error": "Project not found", "project_id": project_id}
+        )
+
+    # Get project path
+    workspace_path = project.get("workspace_path")
+    if not workspace_path:
+        # Return empty state if no workspace path
+        return {
+            "last_session": {
+                "summary": "No previous session",
+                "timestamp": datetime.now().isoformat()
+            },
+            "next_actions": [],
+            "progress_pct": 0.0,
+            "active_blockers": []
+        }
+
+    # Load session state
+    session_mgr = SessionManager(workspace_path)
+    session = session_mgr.load_session()
+
+    if not session:
+        # Return empty state
+        return {
+            "last_session": {
+                "summary": "No previous session",
+                "timestamp": datetime.now().isoformat()
+            },
+            "next_actions": [],
+            "progress_pct": 0.0,
+            "active_blockers": []
+        }
+
+    # Return session state (omit completed_tasks and current_plan for API response)
+    return {
+        "last_session": {
+            "summary": session["last_session"]["summary"],
+            "timestamp": session["last_session"]["timestamp"]
+        },
+        "next_actions": session.get("next_actions", []),
+        "progress_pct": session.get("progress_pct", 0.0),
+        "active_blockers": session.get("active_blockers", [])
+    }
+
+
 # Context Management endpoints (007-context-management)
 
 
