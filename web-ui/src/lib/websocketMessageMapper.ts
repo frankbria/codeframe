@@ -7,19 +7,8 @@
  * Phase 4: WebSocket Integration (T062-T072)
  */
 
-import type {
-  AgentAction,
-  WebSocketMessage,
-  AgentCreatedMessage,
-  AgentStatusChangedMessage,
-  AgentRetiredMessage,
-  TaskAssignedMessage,
-  TaskStatusChangedMessage,
-  TaskBlockedMessage,
-  TaskUnblockedMessage,
-  ActivityUpdateMessage,
-  ProgressUpdateMessage,
-} from '@/types/agentState';
+import type { AgentAction } from '@/types/agentState';
+import type { WebSocketMessage } from '@/types';
 
 /**
  * Parse timestamp from WebSocket message to Unix milliseconds
@@ -54,24 +43,24 @@ export function mapWebSocketMessageToAction(
     // ========================================================================
 
     case 'agent_created': {
-      const msg = message as AgentCreatedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'AGENT_CREATED',
         payload: {
-          id: msg.agent_id,
-          type: msg.agent_type,
+          id: msg.agent_id!,
+          type: msg.agent_type as any,
           status: 'idle',
-          provider: msg.provider || 'anthropic',
+          provider: 'anthropic',
           maturity: 'directive',
           context_tokens: 0,
-          tasks_completed: 0,
+          tasks_completed: msg.tasks_completed || 0,
           timestamp,
         },
       };
     }
 
     case 'agent_status_changed': {
-      const msg = message as AgentStatusChangedMessage;
+      const msg = message as WebSocketMessage;
       const updates: any = {
         status: msg.status,
       };
@@ -87,7 +76,7 @@ export function mapWebSocketMessageToAction(
       return {
         type: 'AGENT_UPDATED',
         payload: {
-          agentId: msg.agent_id,
+          agentId: msg.agent_id!,
           updates,
           timestamp,
         },
@@ -95,11 +84,11 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'agent_retired': {
-      const msg = message as AgentRetiredMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'AGENT_RETIRED',
         payload: {
-          agentId: msg.agent_id,
+          agentId: msg.agent_id!,
           timestamp,
         },
       };
@@ -110,12 +99,12 @@ export function mapWebSocketMessageToAction(
     // ========================================================================
 
     case 'task_assigned': {
-      const msg = message as TaskAssignedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_ASSIGNED',
         payload: {
-          taskId: msg.task_id,
-          agentId: msg.agent_id,
+          taskId: msg.task_id!,
+          agentId: msg.agent_id!,
           taskTitle: msg.task_title,
           timestamp,
         },
@@ -123,12 +112,12 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'task_status_changed': {
-      const msg = message as TaskStatusChangedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_STATUS_CHANGED',
         payload: {
-          taskId: msg.task_id,
-          status: msg.status,
+          taskId: msg.task_id!,
+          status: msg.status as any,
           progress: msg.progress,
           timestamp,
         },
@@ -136,23 +125,23 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'task_blocked': {
-      const msg = message as TaskBlockedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_BLOCKED',
         payload: {
-          taskId: msg.task_id,
-          blockedBy: msg.blocked_by,
+          taskId: msg.task_id!,
+          blockedBy: msg.blocked_by || [],
           timestamp,
         },
       };
     }
 
     case 'task_unblocked': {
-      const msg = message as TaskUnblockedMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'TASK_UNBLOCKED',
         payload: {
-          taskId: msg.task_id,
+          taskId: msg.task_id!,
           timestamp,
         },
       };
@@ -163,14 +152,14 @@ export function mapWebSocketMessageToAction(
     // ========================================================================
 
     case 'activity_update': {
-      const msg = message as ActivityUpdateMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'ACTIVITY_ADDED',
         payload: {
           timestamp: message.timestamp.toString(),
-          type: msg.activity_type || 'activity_update',
+          type: (msg.activity_type || 'activity_update') as any,
           agent: msg.agent || 'system',
-          message: msg.message,
+          message: msg.message || '',
         },
       };
     }
@@ -180,25 +169,26 @@ export function mapWebSocketMessageToAction(
     case 'correction_attempt': {
       // These are special activity message types
       // Map them to activity updates
+      const msg = message as WebSocketMessage;
       return {
         type: 'ACTIVITY_ADDED',
         payload: {
           timestamp: message.timestamp.toString(),
           type: message.type as any,
-          agent: message.agent || 'system',
-          message: message.message || `${message.type} event`,
+          agent: msg.agent || 'system',
+          message: msg.message || `${message.type} event`,
         },
       };
     }
 
     case 'progress_update': {
-      const msg = message as ProgressUpdateMessage;
+      const msg = message as WebSocketMessage;
       return {
         type: 'PROGRESS_UPDATED',
         payload: {
-          completed_tasks: msg.completed_tasks,
-          total_tasks: msg.total_tasks,
-          percentage: msg.percentage,
+          completed_tasks: msg.completed_tasks || 0,
+          total_tasks: msg.total_tasks || 0,
+          percentage: msg.percentage || 0,
         },
       };
     }

@@ -63,9 +63,9 @@ export async function fullStateResync(
     ]);
 
     // Extract data from responses, handling undefined/null gracefully (T087)
-    const agents = agentsRes.data?.agents || [];
-    const tasks = tasksRes.data?.tasks || [];
-    const activity = activityRes.data?.activity || [];
+    const agents = (agentsRes.data?.agents || []) as unknown as Agent[];
+    const tasks = (tasksRes.data?.tasks || []) as unknown as Task[];
+    const activity = (activityRes.data?.activity || []) as unknown as ActivityItem[];
 
     // Return complete state payload
     return {
