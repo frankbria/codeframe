@@ -21,6 +21,14 @@ const formatDate = (dateString: string): string => {
   });
 };
 
+/**
+ * Renders the user's projects list with controls to create a new project and navigate to project details.
+ *
+ * Shows loading and error states, an empty placeholder when no projects exist, a responsive grid of project cards,
+ * and a toggleable project creation form that hides on success and refreshes the project list.
+ *
+ * @returns The rendered project list UI including loading/error states, creation form, empty-state placeholder, and project cards.
+ */
 export default function ProjectList() {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);

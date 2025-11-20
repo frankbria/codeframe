@@ -28,6 +28,16 @@ interface DashboardProps {
   projectId: number;
 }
 
+/**
+ * Render the main dashboard UI for a given project, including Overview and Context tabs.
+ *
+ * The component orchestrates data fetching (project status, blockers, PRD, issues), derives
+ * agent lists, and renders progress, issues, agents, blockers, recent activity, and context
+ * views. It also subscribes to real-time events to refresh blockers and open review panels.
+ *
+ * @param projectId - The numeric ID of the project to display
+ * @returns The dashboard's rendered React element
+ */
 export default function Dashboard({ projectId }: DashboardProps) {
   // Tab state management (T008 - Feature 013)
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
