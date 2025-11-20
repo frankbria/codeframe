@@ -28,6 +28,11 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
+    // Guard: Prevent duplicate concurrent submissions
+    if (isSubmitting) {
+      return;
+    }
+
     // Client-side validation
     const trimmedAnswer = answer.trim();
     if (!trimmedAnswer || trimmedAnswer.length > 5000) {
