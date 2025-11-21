@@ -65,6 +65,11 @@ export function formatTimestamp(timestamp: number): string {
  * @returns true if timestamp is within acceptable range
  */
 export function isValidTimestamp(timestamp: number, maxAgeMs: number = 24 * 60 * 60 * 1000): boolean {
+  // Check for invalid numbers (NaN, Infinity, -Infinity)
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
   const now = Date.now();
   const age = now - timestamp;
   const futureOffset = timestamp - now;

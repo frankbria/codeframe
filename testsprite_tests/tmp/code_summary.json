@@ -1,0 +1,204 @@
+{
+  "tech_stack": [
+    "TypeScript 5.3.3",
+    "React 18.2.0",
+    "Next.js 14.1.0",
+    "Node.js 20.11.5",
+    "Tailwind CSS 3.4.1",
+    "Jest 30.2.0",
+    "React Testing Library 16.3.0",
+    "SWR 2.2.4",
+    "Axios 1.6.5",
+    "WebSocket",
+    "Recharts 3.4.1",
+    "date-fns 3.3.1"
+  ],
+  "features": [
+    {
+      "name": "Multi-Agent State Management",
+      "description": "Centralized state management using React Context + useReducer pattern with real-time WebSocket synchronization. Supports up to 10 concurrent agents with independent state tracking, automatic reconnection with exponential backoff, and timestamp-based conflict resolution.",
+      "files": [
+        "web-ui/src/contexts/AgentStateContext.ts",
+        "web-ui/src/reducers/agentReducer.ts",
+        "web-ui/src/hooks/useAgentState.ts",
+        "web-ui/src/components/AgentStateProvider.tsx",
+        "web-ui/src/types/agentState.ts",
+        "web-ui/src/lib/websocketMessageMapper.ts",
+        "web-ui/src/lib/agentStateSync.ts",
+        "web-ui/src/lib/validation.ts"
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "description": "Main project dashboard with Overview and Context tabs. Displays project progress, agent status cards, task tree, blockers panel, recent activity feed, review results, lint quality trends, and session status. Supports real-time updates via WebSocket and multi-agent visualization.",
+      "files": [
+        "web-ui/src/components/Dashboard.tsx",
+        "web-ui/src/types/dashboard.ts"
+      ]
+    },
+    {
+      "name": "WebSocket Client",
+      "description": "Real-time WebSocket client with singleton pattern, exponential backoff reconnection (1s → 30s), connection status tracking, message handler registration, and project-specific subscriptions. Supports 19 message types for agent/task/blocker/review events.",
+      "files": [
+        "web-ui/src/lib/websocket.ts",
+        "web-ui/src/types/index.ts"
+      ]
+    },
+    {
+      "name": "Agent Management",
+      "description": "Agent card visualization showing agent type, status, current task, tasks completed, and blocker status. Clickable cards navigate to Context tab for detailed agent memory view.",
+      "files": [
+        "web-ui/src/components/AgentCard.tsx"
+      ]
+    },
+    {
+      "name": "Context Management UI",
+      "description": "Tiered memory visualization (HOT/WARM/COLD) showing agent context items, token usage, and tier distribution. Auto-refreshes every 5 seconds. Includes context panel, tier chart, and item list with filtering and pagination.",
+      "files": [
+        "web-ui/src/components/context/ContextPanel.tsx",
+        "web-ui/src/components/context/ContextTierChart.tsx",
+        "web-ui/src/components/context/ContextItemList.tsx",
+        "web-ui/src/api/context.ts",
+        "web-ui/src/types/context.ts"
+      ]
+    },
+    {
+      "name": "Blocker Management",
+      "description": "Human-in-the-loop blocker system with SYNC/ASYNC priority, filtering, sorting (SYNC first, then newest), and resolution modal. Displays blocker question, agent info, task title, and time waiting. Real-time updates via WebSocket.",
+      "files": [
+        "web-ui/src/components/BlockerPanel.tsx",
+        "web-ui/src/components/BlockerBadge.tsx",
+        "web-ui/src/components/BlockerModal.tsx",
+        "web-ui/src/types/blocker.ts"
+      ]
+    },
+    {
+      "name": "Session Lifecycle",
+      "description": "Session state visualization showing last session summary, next actions, progress percentage, and active blockers. Auto-refreshes every 30 seconds. Displays time since last session and progress bar.",
+      "files": [
+        "web-ui/src/components/SessionStatus.tsx"
+      ]
+    },
+    {
+      "name": "Task Management",
+      "description": "Hierarchical task tree view with collapsible issues, task status badges, progress indicators, and dependency visualization. Supports issue/task nesting and drag-drop reordering (future).",
+      "files": [
+        "web-ui/src/components/TaskTreeView.tsx"
+      ]
+    },
+    {
+      "name": "Code Review Integration",
+      "description": "Review results panel with score visualization (overall, complexity, security, style), findings list with severity badges, file path links, and line numbers. Auto-opens on review_approved/changes_requested/rejected WebSocket events.",
+      "files": [
+        "web-ui/src/components/review/ReviewResultsPanel.tsx",
+        "web-ui/src/components/review/ReviewScoreChart.tsx",
+        "web-ui/src/components/review/ReviewFindingsList.tsx",
+        "web-ui/src/api/review.ts",
+        "web-ui/src/types/review.ts"
+      ]
+    },
+    {
+      "name": "Lint Quality Tracking",
+      "description": "Lint quality trend chart showing error/warning counts over time (7-day default). Supports ruff (Python) and ESLint (JavaScript/TypeScript). Auto-refreshes every 30 seconds. Uses Recharts for visualization.",
+      "files": [
+        "web-ui/src/components/lint/LintTrendChart.tsx",
+        "web-ui/src/components/lint/LintResultsTable.tsx",
+        "web-ui/src/api/lint.ts",
+        "web-ui/src/types/lint.ts"
+      ]
+    },
+    {
+      "name": "Chat Interface",
+      "description": "Real-time chat with lead agent. Message history, auto-scroll to latest, typing indicators, and markdown support. Integrates with WebSocket for instant message delivery.",
+      "files": [
+        "web-ui/src/components/ChatInterface.tsx"
+      ]
+    },
+    {
+      "name": "PRD Viewer",
+      "description": "Product Requirements Document modal viewer with markdown rendering. Displays PRD sections, goals, requirements, and acceptance criteria. Fetches PRD data from API.",
+      "files": [
+        "web-ui/src/components/PRDModal.tsx",
+        "web-ui/src/types/api.ts"
+      ]
+    },
+    {
+      "name": "Discovery Progress",
+      "description": "Progress indicator for project discovery phase. Shows current step, total steps, percentage complete, and estimated time remaining. Displays discovery questions and answers.",
+      "files": [
+        "web-ui/src/components/DiscoveryProgress.tsx",
+        "web-ui/src/types/discovery.ts"
+      ]
+    },
+    {
+      "name": "Project Creation",
+      "description": "Project creation form with name and description inputs. Validates inputs, shows loading spinner during creation, and auto-redirects to dashboard on success. Error handling with user feedback.",
+      "files": [
+        "web-ui/src/components/ProjectCreationForm.tsx",
+        "web-ui/src/app/page.tsx"
+      ]
+    },
+    {
+      "name": "Project List",
+      "description": "List of all projects with status badges, progress bars, creation dates, and navigation to project dashboard. Supports filtering by status (active, completed, paused).",
+      "files": [
+        "web-ui/src/components/ProjectList.tsx",
+        "web-ui/src/types/project.ts"
+      ]
+    },
+    {
+      "name": "API Client",
+      "description": "Centralized API client using Axios with typed endpoints for projects, agents, tasks, blockers, activity, chat, context, review, and lint. Base URL configurable via NEXT_PUBLIC_API_URL env var.",
+      "files": [
+        "web-ui/src/lib/api.ts",
+        "web-ui/src/api/context.ts",
+        "web-ui/src/api/review.ts",
+        "web-ui/src/api/lint.ts"
+      ]
+    },
+    {
+      "name": "UI Components",
+      "description": "Reusable UI components including progress bars, phase indicators, spinners, error boundaries, and utility components. Supports consistent styling and accessibility.",
+      "files": [
+        "web-ui/src/components/ProgressBar.tsx",
+        "web-ui/src/components/PhaseIndicator.tsx",
+        "web-ui/src/components/Spinner.tsx",
+        "web-ui/src/components/ErrorBoundary.tsx"
+      ]
+    },
+    {
+      "name": "Type Definitions",
+      "description": "Comprehensive TypeScript type definitions for all domain entities including agents, tasks, projects, blockers, context, review, lint, discovery, and WebSocket messages. Ensures type safety across the application.",
+      "files": [
+        "web-ui/src/types/index.ts",
+        "web-ui/src/types/agentState.ts",
+        "web-ui/src/types/blocker.ts",
+        "web-ui/src/types/context.ts",
+        "web-ui/src/types/review.ts",
+        "web-ui/src/types/lint.ts",
+        "web-ui/src/types/discovery.ts",
+        "web-ui/src/types/dashboard.ts",
+        "web-ui/src/types/project.ts",
+        "web-ui/src/types/api.ts"
+      ]
+    },
+    {
+      "name": "Utility Functions",
+      "description": "Shared utility functions for timestamp handling, validation, error handling, and formatting. Includes timestamp conflict resolution and date-fns integration.",
+      "files": [
+        "web-ui/src/lib/timestampUtils.ts",
+        "web-ui/src/lib/validation.ts"
+      ]
+    },
+    {
+      "name": "Routing",
+      "description": "Next.js App Router with pages for home (project creation), project detail (dashboard), and API health check endpoint. Supports dynamic routing for project-specific views.",
+      "files": [
+        "web-ui/src/app/page.tsx",
+        "web-ui/src/app/layout.tsx",
+        "web-ui/src/app/projects/[projectId]/page.tsx",
+        "web-ui/src/app/api/health/route.ts"
+      ]
+    }
+  ]
+}

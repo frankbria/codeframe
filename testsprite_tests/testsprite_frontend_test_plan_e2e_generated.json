@@ -1,0 +1,479 @@
+[
+  {
+    "id": "TC001",
+    "title": "Project Creation with Valid Inputs",
+    "description": "Verify that a user can successfully create a new project by providing valid name and description, and is redirected to the dashboard.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to project creation page"
+      },
+      {
+        "type": "action",
+        "description": "Input valid project name and description"
+      },
+      {
+        "type": "action",
+        "description": "Submit the project creation form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify loading spinner appears during creation"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify project is created successfully and user is redirected to project dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify new project appears in project list with correct status and details"
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Project Creation Input Validation and Error Handling",
+    "description": "Check that invalid project inputs (empty name or description) trigger proper validation errors and prevent submission.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to project creation page"
+      },
+      {
+        "type": "action",
+        "description": "Leave project name empty and input description"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to submit the form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify validation error for project name is displayed and form is not submitted"
+      },
+      {
+        "type": "action",
+        "description": "Input project name but leave description empty"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to submit the form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify validation error for project description is displayed and form is not submitted"
+      },
+      {
+        "type": "action",
+        "description": "Input excessively long project name and description"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to submit the form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify appropriate validation error message and form rejection"
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Multi-Agent State Synchronization via WebSocket",
+    "description": "Validate that the multi-agent state management system synchronizes agent states correctly over the WebSocket connection with conflict resolution.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Establish WebSocket connection to backend"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify connection status is 'connected' with appropriate retry backoff on disconnect"
+      },
+      {
+        "type": "action",
+        "description": "Simulate state updates from multiple agents concurrently"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify agent states are updated accurately in the global state context with timestamp-based conflict resolution"
+      },
+      {
+        "type": "action",
+        "description": "Force WebSocket disconnection and reconnection"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify exponential backoff reconnection attempts and eventual successful resubscription"
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Dashboard Real-Time Updates and Visualization",
+    "description": "Ensure that the dashboard reflects real-time multi-agent states, task statuses, blocker panels, discovery progress, and session status accurately.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the project dashboard page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify overview tab displays project progress, agent statuses, and task tree correctly"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify blockers panel reflects active blockers with updated information"
+      },
+      {
+        "type": "action",
+        "description": "Trigger simulated agent state and task status changes via WebSocket"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that data on dashboard updates in real-time accordingly"
+      },
+      {
+        "type": "action",
+        "description": "Open context tab and check tiered memory visualization"
+      },
+      {
+        "type": "assertion",
+        "description": "Ensure auto-refresh occurs every 5 seconds with correct token usage and tier distribution"
+      },
+      {
+        "type": "action",
+        "description": "Check session lifecycle visualization updates every 30 seconds"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify last session summary, progress percentage, active blockers, and time since last session are accurate"
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Human-in-the-Loop Blocker Creation, Display, and Resolution",
+    "description": "Verify blocker system supports creation with SYNC/ASYNC priorities, displays blockers correctly, and allows user to resolve blockers unblocking agent progress.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Create a SYNC priority human-in-the-loop blocker from an agent"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify blocker appears in blocker panel sorted before ASYNC blockers"
+      },
+      {
+        "type": "action",
+        "description": "Create an ASYNC priority blocker and ensure sorting order places it after SYNC blockers"
+      },
+      {
+        "type": "action",
+        "description": "Open blocker resolution modal from blocker panel"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify blocker details (question, agent, task title, time waiting) display correctly"
+      },
+      {
+        "type": "action",
+        "description": "Submit resolution input with valid data"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify blocker is marked resolved and removed from active blockers panel"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to submit empty or invalid resolution input"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm validation errors prevent resolution submission"
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Hierarchical Task Management and Dependency Visualization",
+    "description": "Ensure that the task tree view properly displays issues and nested tasks, allows collapsing/expanding, shows task status badges and progress indicators, and visualizes dependencies.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Load project dashboard with hierarchical tasks"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify tasks are nested correctly under issues"
+      },
+      {
+        "type": "action",
+        "description": "Expand and collapse task branches"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm UI updates to show or hide nested tasks accordingly"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify status badges and progress indicators display accurately for tasks and issues"
+      },
+      {
+        "type": "assertion",
+        "description": "Check that task dependencies are visualized correctly (lines/arrows between tasks)"
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Code Review Panel Auto-Update and Details Display",
+    "description": "Validate that the code review results panel updates automatically upon review events and displays scores, findings with severity badges, file paths, and line numbers.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Trigger review_approved WebSocket event for a task"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify review results panel auto-opens showing overall and aspect scores"
+      },
+      {
+        "type": "assertion",
+        "description": "Check findings list displays items with correct severity badges"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify each finding links to correct file path and line number"
+      },
+      {
+        "type": "action",
+        "description": "Trigger changes_requested and rejected review events"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm UI updates correspondingly and findings list refreshes"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Lint Quality Tracking Updates and Visualization",
+    "description": "Test that lint quality trend chart and results table update every 30 seconds reflecting error and warning counts for multiple languages.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to lint quality tracking section within the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify chart displays 7-day error and warning trends for supported languages"
+      },
+      {
+        "type": "action",
+        "description": "Simulate lint results update via WebSocket or API"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm the chart and table auto-refresh within 30 seconds to show updated results"
+      },
+      {
+        "type": "action",
+        "description": "Change lint type filter between ruff and ESLint"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify chart and table update correctly per selected filter"
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Discovery Phase Q&A and PRD Generation Workflow",
+    "description": "Validate the discovery phase interaction, question-answer progression, and PRD generation and viewing on the dashboard.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Create a new project and navigate to discovery Q&A interface"
+      },
+      {
+        "type": "action",
+        "description": "Answer discovery questions presented by Lead Agent through the dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify progress indicator updates with current step, percent complete, and estimated time remaining"
+      },
+      {
+        "type": "action",
+        "description": "Complete all discovery questions"
+      },
+      {
+        "type": "assertion",
+        "description": "Check that PRD is generated and stored"
+      },
+      {
+        "type": "action",
+        "description": "Open PRD viewer modal"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify markdown rendered PRD sections, goals, requirements, and acceptance criteria appear accurately"
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Session Lifecycle Persistence and Resumption",
+    "description": "Verify that session lifecycle management correctly saves work state, shows last session info, and allows resuming work exactly from where left off with accurate progress visualization.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Begin a session by creating a project and progressing through tasks with blockers and agent states"
+      },
+      {
+        "type": "action",
+        "description": "Stop the session and close the dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Re-open the dashboard and load the project"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify session status panel shows last session summary, progress percent, next actions, and active blockers"
+      },
+      {
+        "type": "action",
+        "description": "Resume the session"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm work state, including multi-agent contexts and task statuses, is restored precisely"
+      },
+      {
+        "type": "action",
+        "description": "Verify auto-refresh of session status every 30 seconds reflects real-time updates"
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "API Client Response and Type Safety Validation",
+    "description": "Ensure all typed API client endpoints respond within performance thresholds and preserve type-safe contracts for core domain entities.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Make requests to projects, agents, tasks, blockers, activity, chat, context, review, and lint API endpoints through the client"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify each endpoint responds with correct data structure within p95 latency under 500ms"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm API responses conform to corresponding TypeScript defined types without type errors"
+      },
+      {
+        "type": "action",
+        "description": "Introduce invalid data or missing fields in requests"
+      },
+      {
+        "type": "assertion",
+        "description": "Check API client properly handles validation errors and reports them gracefully"
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Code Review and Lint Quality Gate Enforcement",
+    "description": "Test that agents cannot mark tasks complete unless all testing, linting, and review quality gates pass as per policy, and that auto-correction loops trigger as needed.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Simulate agent task completion attempt"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify tasks with failed lint or code review fail to transition to complete status"
+      },
+      {
+        "type": "action",
+        "description": "Trigger auto-correction process for lint errors or review findings"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm corrections are applied and quality gates are reevaluated"
+      },
+      {
+        "type": "action",
+        "description": "Repeat until all quality gates are passed"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify task is allowed to be marked complete after passing all gates"
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Chat Interface Real-Time Messaging and Markdown Support",
+    "description": "Verify the chat interface supports instant messaging with lead agent via WebSocket, typing indicators, message history, auto-scroll, and markdown rendering.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open chat interface in dashboard"
+      },
+      {
+        "type": "action",
+        "description": "Send a message with markdown syntax"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify message appears in chat with correct markdown rendering"
+      },
+      {
+        "type": "action",
+        "description": "Simulate incoming message from lead agent"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm message appears in real-time with typing indicator before arrival"
+      },
+      {
+        "type": "action",
+        "description": "Scroll messages up and down"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify auto-scroll to latest message when new messages arrive"
+      }
+    ]
+  }
+]

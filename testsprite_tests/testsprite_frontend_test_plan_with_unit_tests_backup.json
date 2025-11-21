@@ -1,0 +1,365 @@
+[
+  {
+    "id": "TC001",
+    "title": "Project Creation Success",
+    "description": "Verify that a user can successfully create a new project with valid name and description via the UI and is redirected to the project dashboard.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC001_Project_Creation_Success.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC002",
+    "title": "Project Creation Input Validation",
+    "description": "Verify that project creation form validates inputs and provides user feedback for invalid or missing data.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC002_Project_Creation_Input_Validation.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC003",
+    "title": "Discovery Q&A Completion Workflow",
+    "description": "Verify that the discovery Q&A process via the Lead Agent on the dashboard completes successfully and produces a valid PRD.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC003_Discovery_QA_Completion_Workflow.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC004",
+    "title": "PRD Viewer Rendering",
+    "description": "Verify that the generated Product Requirements Document (PRD) is correctly rendered in markdown format within the PRD modal viewer.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC004_PRD_Viewer_Rendering.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC005",
+    "title": "Hierarchical Task Management Display and Interaction",
+    "description": "Verify that issues and nested tasks are displayed correctly in the task tree with collapsible views and status badges.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC005_Hierarchical_Task_Management_Display_and_Interaction.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC006",
+    "title": "Multi-Agent Concurrent Execution and Status Updates",
+    "description": "Verify that multiple agents execute assigned tasks concurrently respecting dependencies and real-time status updates are reflected on the dashboard.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC006_Multi_Agent_Concurrent_Execution_and_Status_Updates.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC007",
+    "title": "Human-in-the-Loop Blocker Creation and Resolution",
+    "description": "Verify creation, display, filtering, sorting, and resolution of human-in-the-loop blockers with correct synchronization across backend, agents, and UI.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC007_Human_in_the_Loop_Blocker_Creation_and_Resolution.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC008",
+    "title": "Session Lifecycle Management - Save and Resume",
+    "description": "Verify that current session state including project progress, blockers, and active agents is saved, persisted, and can be resumed accurately with correct progress visualization.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC008_Session_Lifecycle_Management___Save_and_Resume.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC009",
+    "title": "Quality Gates Enforcement Before Task Completion",
+    "description": "Verify that tasks cannot be marked complete by agents unless all related tests, linting, and code review quality gates have passed.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC009_Quality_Gates_Enforcement_Before_Task_Completion.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC010",
+    "title": "Code Review Panel Updates on WebSocket Events",
+    "description": "Verify that the code review panel auto-updates including score visualizations and findings lists upon receiving relevant WebSocket events (approval, changes requested, rejection).",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC010_Code_Review_Panel_Updates_on_WebSocket_Events.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC011",
+    "title": "Lint Quality Trend Chart Auto-Refresh and Visualization",
+    "description": "Verify that lint quality trend charts display accurate error/warning counts over time and auto-refresh every 30 seconds with the latest data.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC011_Lint_Quality_Trend_Chart_Auto_Refresh_and_Visualization.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC012",
+    "title": "Real-Time Chat Interface with Lead Agent",
+    "description": "Verify that the real-time chat interface with typing indicators, markdown support, and message history functions correctly with WebSocket integration.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC012_Real_Time_Chat_Interface_with_Lead_Agent.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC013",
+    "title": "API Client Endpoint Response and Type Safety",
+    "description": "Verify that all typed API client endpoints respond correctly within performance thresholds and maintain expected type-safe contracts.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC013_API_Client_Endpoint_Response_and_Type_Safety.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC014",
+    "title": "Robust Context Memory Management and Visualization",
+    "description": "Verify tiered (HOT/WARM/COLD) context memory visualization updates automatically with accurate token usage and supports filtering and pagination.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC014_Robust_Context_Memory_Management_and_Visualization.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC015",
+    "title": "WebSocket Client Connection Management and Message Handling",
+    "description": "Verify that the WebSocket client maintains connection with exponential backoff reconnection strategy and correctly processes all supported message types including conflict resolution.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC015_WebSocket_Client_Connection_Management_and_Message_Handling.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC016",
+    "title": "User Input Validation on Blocker Resolution Modal",
+    "description": "Verify that blocker resolution modal input fields validate user input and show clear feedback preventing invalid submissions.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC016_User_Input_Validation_on_Blocker_Resolution_Modal.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC017",
+    "title": "Dashboard Real-Time Status Update Consistency",
+    "description": "Verify that the dashboard overview, agent cards, task tree, blockers panel, review results, lint trends, and session status update consistently and real-time with WebSocket events.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "High",
+    "test_file": "testsprite_tests/TC017_Dashboard_Real_Time_Status_Update_Consistency.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC018",
+    "title": "API and UI Robustness Against Session File Corruption",
+    "description": "Verify that corrupted session files or invalid session data do not cause application crashes and that recovery or graceful error handling occurs.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC018_API_and_UI_Robustness_Against_Session_File_Corruption.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC019",
+    "title": "Agent Management UI Navigation and Info Accuracy",
+    "description": "Verify agent cards display accurate info and clicking navigates to detailed context memory views correctly.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Medium",
+    "test_file": "testsprite_tests/TC019_Agent_Management_UI_Navigation_and_Info_Accuracy.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC020",
+    "title": "Documentation and Type Definitions Synchronization",
+    "description": "Verify that the TypeScript type definitions align with the API and UI implementations ensuring type safety and preventing drift.",
+    "category": "e2e",
+    "test_type": "playwright",
+    "priority": "Low",
+    "test_file": "testsprite_tests/TC020_Documentation_and_Type_Definitions_Synchronization.py",
+    "status": "passing"
+  },
+  {
+    "id": "TC021",
+    "title": "ChatInterface Unit Tests",
+    "description": "Unit tests for ChatInterface component covering message display, user interactions, agent status, error handling, WebSocket integration, optimistic UI updates, and loading states.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "ChatInterface.tsx",
+    "test_file": "web-ui/__tests__/components/ChatInterface.test.tsx",
+    "test_count": 23,
+    "coverage": {
+      "statements": 96.49,
+      "branches": 95,
+      "functions": 100,
+      "lines": 96.49
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC022",
+    "title": "ErrorBoundary Unit Tests",
+    "description": "Unit tests for ErrorBoundary component covering normal rendering, error catching, error UI display, retry button, error recovery, lifecycle methods, different error types, nested boundaries, accessibility, and edge cases.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "ErrorBoundary.tsx",
+    "test_file": "web-ui/__tests__/components/ErrorBoundary.test.tsx",
+    "test_count": 42,
+    "coverage": {
+      "statements": 93.33,
+      "branches": 100,
+      "functions": 80,
+      "lines": 93.33
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC023",
+    "title": "ContextItemList Unit Tests",
+    "description": "Unit tests for ContextItemList component covering data loading, pagination, tier filtering, empty state, loading state, error handling, auto-refresh, row styling, and content tooltips.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "ContextItemList.tsx",
+    "test_file": "web-ui/__tests__/components/context/ContextItemList.test.tsx",
+    "test_count": 35,
+    "coverage": {
+      "statements": 98.14,
+      "branches": 95.83,
+      "functions": 100,
+      "lines": 100
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC024",
+    "title": "ContextTierChart Unit Tests",
+    "description": "Unit tests for ContextTierChart component covering rendering with valid data, tier counts display, legend display, token distribution, empty/zero data handling, edge cases, color coding, and component structure.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "ContextTierChart.tsx",
+    "test_file": "web-ui/__tests__/components/context/ContextTierChart.test.tsx",
+    "test_count": 37,
+    "coverage": {
+      "statements": 87.5,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC025",
+    "title": "LintResultsTable Unit Tests",
+    "description": "Unit tests for LintResultsTable component covering data loading & display, linter badges, error/warning styling, state handling, edge cases, layout & styling, and component lifecycle.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "LintResultsTable.tsx",
+    "test_file": "web-ui/__tests__/components/lint/LintResultsTable.test.tsx",
+    "test_count": 39,
+    "coverage": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC026",
+    "title": "ReviewResultsPanel Unit Tests",
+    "description": "Unit tests for ReviewResultsPanel component covering loading/error/no-review states, score display with color coding, status badges, close functionality, API integration, accessibility, and edge cases.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "ReviewResultsPanel.tsx",
+    "test_file": "web-ui/__tests__/components/review/ReviewResultsPanel.test.tsx",
+    "test_count": 47,
+    "coverage": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC027",
+    "title": "ReviewScoreChart Unit Tests",
+    "description": "Unit tests for ReviewScoreChart component covering overall score with color coding, score breakdown, progress bar visualizations, status badge display, summary text rendering, score precision, and edge cases.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "ReviewScoreChart.tsx",
+    "test_file": "web-ui/__tests__/components/review/ReviewScoreChart.test.tsx",
+    "test_count": 45,
+    "coverage": {
+      "statements": 92.3,
+      "branches": 90,
+      "functions": 100,
+      "lines": 90
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC028",
+    "title": "ReviewFindingsList Unit Tests",
+    "description": "Unit tests for ReviewFindingsList component covering findings list rendering, severity badges (5 levels), category icons (6 types), file paths/line numbers, suggestions, and edge cases.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "ReviewFindingsList.tsx",
+    "test_file": "web-ui/__tests__/components/review/ReviewFindingsList.test.tsx",
+    "test_count": 36,
+    "coverage": {
+      "statements": 94.11,
+      "branches": 93.33,
+      "functions": 100,
+      "lines": 94.11
+    },
+    "status": "passing"
+  },
+  {
+    "id": "TC029",
+    "title": "timestampUtils Unit Tests",
+    "description": "Unit tests for timestampUtils utility covering parseTimestamp, getCurrentTimestamp, isNewerTimestamp, formatTimestamp, isValidTimestamp (with custom max age), integration tests, and type safety/error handling.",
+    "category": "unit",
+    "test_type": "jest",
+    "priority": "High",
+    "component": "timestampUtils.ts",
+    "test_file": "web-ui/__tests__/lib/timestampUtils.test.ts",
+    "test_count": 65,
+    "coverage": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "status": "passing",
+    "bug_fixed": "Added Number.isFinite() check to handle NaN, Infinity, and -Infinity values in isValidTimestamp()"
+  }
+]

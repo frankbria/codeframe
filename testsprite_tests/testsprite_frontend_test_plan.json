@@ -1,0 +1,359 @@
+[
+  {
+    "id": "TC001",
+    "title": "Project Creation with Valid Inputs",
+    "description": "Verify that a user can successfully create a new project by providing valid name and description, and is redirected to the dashboard.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to project creation page"},
+      {"type": "action", "description": "Input valid project name and description"},
+      {"type": "action", "description": "Submit the project creation form"},
+      {"type": "assertion", "description": "Verify loading spinner appears during creation"},
+      {"type": "assertion", "description": "Verify project is created successfully and user is redirected to project dashboard"},
+      {"type": "assertion", "description": "Verify new project appears in project list with correct status and details"}
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Project Creation Input Validation and Error Handling",
+    "description": "Check that invalid project inputs trigger proper validation errors and prevent submission.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to project creation page"},
+      {"type": "action", "description": "Leave project name empty and input description"},
+      {"type": "action", "description": "Attempt to submit the form"},
+      {"type": "assertion", "description": "Verify validation error for project name is displayed"},
+      {"type": "action", "description": "Input project name but leave description empty"},
+      {"type": "action", "description": "Attempt to submit the form"},
+      {"type": "assertion", "description": "Verify validation error for project description is displayed"}
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Multi-Agent State Synchronization via WebSocket",
+    "description": "Validate that the multi-agent state management system synchronizes agent states correctly over WebSocket.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to project dashboard"},
+      {"type": "assertion", "description": "Verify WebSocket connection status shows as connected"},
+      {"type": "action", "description": "Trigger multiple agent state updates concurrently"},
+      {"type": "assertion", "description": "Verify agent cards update in real-time with correct status"},
+      {"type": "assertion", "description": "Verify timestamp-based conflict resolution works correctly"}
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Dashboard Real-Time Updates and Visualization",
+    "description": "Ensure dashboard reflects real-time multi-agent states, task statuses, and blocker panels accurately.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to project dashboard"},
+      {"type": "assertion", "description": "Verify overview tab displays project progress correctly"},
+      {"type": "assertion", "description": "Verify agent cards show current status and task count"},
+      {"type": "assertion", "description": "Verify blockers panel displays active blockers"},
+      {"type": "action", "description": "Wait for WebSocket state update events"},
+      {"type": "assertion", "description": "Verify all dashboard panels update in real-time"}
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Human-in-the-Loop Blocker Creation and Resolution",
+    "description": "Verify blocker creation, display, filtering, sorting, and resolution workflow.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to project dashboard"},
+      {"type": "action", "description": "Create a SYNC priority blocker from agent"},
+      {"type": "assertion", "description": "Verify blocker appears in blockers panel"},
+      {"type": "action", "description": "Click on blocker to open resolution modal"},
+      {"type": "assertion", "description": "Verify blocker details display correctly"},
+      {"type": "action", "description": "Enter resolution text and submit"},
+      {"type": "assertion", "description": "Verify blocker is marked resolved and removed from active list"}
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Hierarchical Task Management Display",
+    "description": "Ensure task tree displays nested tasks with collapsible views and status badges.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to project dashboard"},
+      {"type": "assertion", "description": "Verify task tree displays with hierarchical structure"},
+      {"type": "action", "description": "Click to expand a parent task"},
+      {"type": "assertion", "description": "Verify nested child tasks become visible"},
+      {"type": "action", "description": "Click to collapse the parent task"},
+      {"type": "assertion", "description": "Verify child tasks are hidden"},
+      {"type": "assertion", "description": "Verify status badges display correct colors for task states"}
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Code Review Panel Auto-Updates",
+    "description": "Validate code review panel updates automatically upon receiving WebSocket review events.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {"type": "action", "description": "Navigate to project dashboard"},
+      {"type": "action", "description": "Trigger review_approved WebSocket event"},
+      {"type": "assertion", "description": "Verify review panel opens automatically"},
+      {"type": "assertion", "description": "Verify overall review score displays with color coding"},
+      {"type": "assertion", "description": "Verify findings list shows items with severity badges"},
+      {"type": "assertion", "description": "Verify file paths and line numbers are clickable"}
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Lint Quality Tracking and Visualization",
+    "description": "Test lint quality trend chart displays error/warning counts with auto-refresh.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {"type": "action", "description": "Navigate to project dashboard lint quality section"},
+      {"type": "assertion", "description": "Verify chart displays 7-day error and warning trends"},
+      {"type": "assertion", "description": "Verify linter badges show for ruff and ESLint"},
+      {"type": "action", "description": "Filter by specific linter type"},
+      {"type": "assertion", "description": "Verify chart updates to show only selected linter results"},
+      {"type": "assertion", "description": "Verify error counts display in red and warnings in yellow"}
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Discovery Q&A and PRD Generation Workflow",
+    "description": "Validate discovery Q&A interaction and PRD generation through the dashboard.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Create new project and navigate to discovery interface"},
+      {"type": "action", "description": "Answer discovery questions from Lead Agent"},
+      {"type": "assertion", "description": "Verify progress indicator updates with completion percentage"},
+      {"type": "action", "description": "Complete all discovery questions"},
+      {"type": "assertion", "description": "Verify PRD is generated successfully"},
+      {"type": "action", "description": "Open PRD viewer modal"},
+      {"type": "assertion", "description": "Verify PRD markdown renders correctly with all sections"}
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Session Lifecycle Persistence and Resumption",
+    "description": "Verify session state saves and restores correctly with accurate progress visualization.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Create project and progress through multiple tasks"},
+      {"type": "action", "description": "Close browser and restart session"},
+      {"type": "assertion", "description": "Verify session status panel shows last session summary"},
+      {"type": "assertion", "description": "Verify progress percentage displays correctly"},
+      {"type": "assertion", "description": "Verify next actions list shows pending tasks"},
+      {"type": "assertion", "description": "Verify active blockers are restored"}
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "API Client Response and Type Safety",
+    "description": "Ensure all API endpoints respond within performance thresholds with correct data types.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to project dashboard"},
+      {"type": "action", "description": "Trigger API calls to projects endpoint"},
+      {"type": "assertion", "description": "Verify response time is under 500ms"},
+      {"type": "assertion", "description": "Verify response data structure matches expected types"},
+      {"type": "action", "description": "Trigger API calls to agents, tasks, blockers endpoints"},
+      {"type": "assertion", "description": "Verify all endpoints return valid typed responses"}
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Quality Gates Enforcement",
+    "description": "Test that tasks cannot be marked complete unless all quality gates pass.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to task with failing lint results"},
+      {"type": "action", "description": "Attempt to mark task as complete"},
+      {"type": "assertion", "description": "Verify task remains incomplete with quality gate failure message"},
+      {"type": "action", "description": "Fix lint errors and re-run quality checks"},
+      {"type": "assertion", "description": "Verify quality gates now pass"},
+      {"type": "action", "description": "Mark task as complete"},
+      {"type": "assertion", "description": "Verify task transitions to completed status"}
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Chat Interface Real-Time Messaging",
+    "description": "Verify chat interface supports real-time messaging with markdown rendering and typing indicators.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {"type": "action", "description": "Open chat interface in dashboard"},
+      {"type": "action", "description": "Type and send a message with markdown syntax"},
+      {"type": "assertion", "description": "Verify message appears with markdown rendered correctly"},
+      {"type": "action", "description": "Wait for agent response"},
+      {"type": "assertion", "description": "Verify typing indicator appears before message"},
+      {"type": "assertion", "description": "Verify agent message displays in chat history"},
+      {"type": "assertion", "description": "Verify auto-scroll to latest message works"}
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "ChatInterface Component Message Display",
+    "description": "Verify ChatInterface displays message history, handles user input, and shows agent status correctly.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to page containing ChatInterface component"},
+      {"type": "assertion", "description": "Verify message history displays with correct timestamps"},
+      {"type": "action", "description": "Type a message in the input field"},
+      {"type": "assertion", "description": "Verify input field accepts text and shows character count"},
+      {"type": "action", "description": "Submit message with empty input"},
+      {"type": "assertion", "description": "Verify validation prevents empty message submission"},
+      {"type": "action", "description": "Submit valid message"},
+      {"type": "assertion", "description": "Verify message appears immediately with optimistic UI update"},
+      {"type": "assertion", "description": "Verify agent status indicator shows online/offline state"}
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "ErrorBoundary Component Error Handling",
+    "description": "Verify ErrorBoundary catches component errors, displays error UI, and provides retry functionality.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to page with component wrapped in ErrorBoundary"},
+      {"type": "action", "description": "Trigger a component error by providing invalid props"},
+      {"type": "assertion", "description": "Verify error boundary catches error and displays fallback UI"},
+      {"type": "assertion", "description": "Verify error message displays to user"},
+      {"type": "assertion", "description": "Verify retry button is visible and accessible"},
+      {"type": "action", "description": "Click retry button"},
+      {"type": "assertion", "description": "Verify component attempts to re-render"},
+      {"type": "assertion", "description": "Verify error is logged to console for debugging"}
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Context Memory Item List with Pagination",
+    "description": "Verify ContextItemList displays context items with pagination, filtering by tier (HOT/WARM/COLD), and handles loading/error states.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to context memory panel for an agent"},
+      {"type": "assertion", "description": "Verify context items list displays with 20 items per page"},
+      {"type": "assertion", "description": "Verify each item shows type, content preview, tier badge, and timestamp"},
+      {"type": "action", "description": "Click on HOT tier filter"},
+      {"type": "assertion", "description": "Verify list filters to show only HOT tier items"},
+      {"type": "action", "description": "Click pagination next button"},
+      {"type": "assertion", "description": "Verify page 2 loads with next 20 items"},
+      {"type": "action", "description": "Click pagination previous button"},
+      {"type": "assertion", "description": "Verify returns to page 1"}
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "Context Tier Distribution Chart",
+    "description": "Verify ContextTierChart displays tier distribution with token counts and percentages.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to context memory panel"},
+      {"type": "assertion", "description": "Verify chart displays three bars for HOT, WARM, COLD tiers"},
+      {"type": "assertion", "description": "Verify each bar shows item count and token count"},
+      {"type": "assertion", "description": "Verify percentage labels display on bars"},
+      {"type": "assertion", "description": "Verify HOT tier bar displays in red color"},
+      {"type": "assertion", "description": "Verify WARM tier bar displays in yellow color"},
+      {"type": "assertion", "description": "Verify COLD tier bar displays in blue color"},
+      {"type": "assertion", "description": "Verify legend displays with tier definitions"}
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "Lint Results Table Display",
+    "description": "Verify LintResultsTable displays lint errors and warnings with proper badges and styling.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to lint quality section of dashboard"},
+      {"type": "assertion", "description": "Verify table displays with columns for linter, file, line, severity, message"},
+      {"type": "assertion", "description": "Verify ruff linter badge displays for Python files"},
+      {"type": "assertion", "description": "Verify ESLint linter badge displays for JavaScript/TypeScript files"},
+      {"type": "assertion", "description": "Verify error severity displays in red text"},
+      {"type": "assertion", "description": "Verify warning severity displays in yellow text"},
+      {"type": "assertion", "description": "Verify file paths are clickable links"}
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Review Results Panel Display",
+    "description": "Verify ReviewResultsPanel displays code review scores, status badges, and findings with proper color coding.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to dashboard and trigger code review event"},
+      {"type": "assertion", "description": "Verify review panel opens with overall score displayed prominently"},
+      {"type": "assertion", "description": "Verify score displays in green if approved (≥80)"},
+      {"type": "assertion", "description": "Verify score displays in yellow if changes requested (60-79)"},
+      {"type": "assertion", "description": "Verify score displays in red if rejected (<60)"},
+      {"type": "assertion", "description": "Verify status badge shows 'Approved', 'Changes Requested', or 'Rejected'"},
+      {"type": "assertion", "description": "Verify findings list displays with severity badges"},
+      {"type": "action", "description": "Click close button"},
+      {"type": "assertion", "description": "Verify panel closes smoothly"}
+    ]
+  },
+  {
+    "id": "TC020",
+    "title": "Review Score Chart Breakdown",
+    "description": "Verify ReviewScoreChart displays score breakdown with progress bars for code quality, security, performance, and maintainability.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to review results panel"},
+      {"type": "assertion", "description": "Verify overall score displays as large number with color coding"},
+      {"type": "assertion", "description": "Verify score breakdown section shows four aspect scores"},
+      {"type": "assertion", "description": "Verify code quality progress bar displays with percentage"},
+      {"type": "assertion", "description": "Verify security progress bar displays with percentage"},
+      {"type": "assertion", "description": "Verify performance progress bar displays with percentage"},
+      {"type": "assertion", "description": "Verify maintainability progress bar displays with percentage"},
+      {"type": "assertion", "description": "Verify summary text displays review status message"}
+    ]
+  },
+  {
+    "id": "TC021",
+    "title": "Review Findings List with Severity Badges",
+    "description": "Verify ReviewFindingsList displays findings with 5 severity levels, 6 category icons, file paths, line numbers, and suggestions.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to review results panel findings section"},
+      {"type": "assertion", "description": "Verify findings list displays with items in order"},
+      {"type": "assertion", "description": "Verify critical severity displays with red badge"},
+      {"type": "assertion", "description": "Verify high severity displays with orange badge"},
+      {"type": "assertion", "description": "Verify medium severity displays with yellow badge"},
+      {"type": "assertion", "description": "Verify low severity displays with blue badge"},
+      {"type": "assertion", "description": "Verify info severity displays with gray badge"},
+      {"type": "assertion", "description": "Verify category icons display for bug, security, style, performance, complexity, and documentation"},
+      {"type": "assertion", "description": "Verify file path and line number are clickable"},
+      {"type": "assertion", "description": "Verify suggestion text displays for each finding"}
+    ]
+  },
+  {
+    "id": "TC022",
+    "title": "Timestamp Utilities Validation and Formatting",
+    "description": "Verify timestamp utilities correctly parse, validate, compare, and format timestamps with proper NaN/Infinity handling.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {"type": "action", "description": "Navigate to any page displaying timestamps (chat, context items, session status)"},
+      {"type": "assertion", "description": "Verify timestamps display in human-readable format (e.g., '2 hours ago', 'just now')"},
+      {"type": "assertion", "description": "Verify ISO 8601 timestamps are parsed correctly"},
+      {"type": "assertion", "description": "Verify Unix millisecond timestamps are parsed correctly"},
+      {"type": "assertion", "description": "Verify invalid timestamps (NaN, Infinity, -Infinity) are rejected"},
+      {"type": "assertion", "description": "Verify negative timestamps are handled correctly"},
+      {"type": "assertion", "description": "Verify timestamp comparison works for conflict resolution"},
+      {"type": "assertion", "description": "Verify timestamps update dynamically as time passes"}
+    ]
+  }
+]

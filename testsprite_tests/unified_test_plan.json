@@ -1,0 +1,92 @@
+{
+  "test_suites": {
+    "e2e": {
+      "framework": "TestSprite + Playwright",
+      "test_plan_file": "testsprite_tests/testsprite_frontend_test_plan.json",
+      "execution_command": "node ~/.npm/_npx/8ddf6bea01b2519d/node_modules/@testsprite/testsprite-mcp/dist/index.js generateCodeAndExecute",
+      "test_count": 20,
+      "tests": ["TC001", "TC002", "TC003", "TC004", "TC005", "TC006", "TC007", "TC008", "TC009", "TC010", "TC011", "TC012", "TC013", "TC014", "TC015", "TC016", "TC017", "TC018", "TC019", "TC020"]
+    },
+    "unit": {
+      "framework": "Jest + React Testing Library",
+      "test_directory": "web-ui/__tests__/",
+      "execution_command": "cd web-ui && npm test",
+      "coverage_command": "cd web-ui && npm run test:coverage",
+      "test_count": 701,
+      "test_suites": [
+        {
+          "id": "TC021",
+          "file": "web-ui/__tests__/components/ChatInterface.test.tsx",
+          "component": "ChatInterface.tsx",
+          "test_count": 23,
+          "coverage": {"statements": 96.49, "branches": 95, "functions": 100, "lines": 96.49}
+        },
+        {
+          "id": "TC022",
+          "file": "web-ui/__tests__/components/ErrorBoundary.test.tsx",
+          "component": "ErrorBoundary.tsx",
+          "test_count": 42,
+          "coverage": {"statements": 93.33, "branches": 100, "functions": 80, "lines": 93.33}
+        },
+        {
+          "id": "TC023",
+          "file": "web-ui/__tests__/components/context/ContextItemList.test.tsx",
+          "component": "ContextItemList.tsx",
+          "test_count": 35,
+          "coverage": {"statements": 98.14, "branches": 95.83, "functions": 100, "lines": 100}
+        },
+        {
+          "id": "TC024",
+          "file": "web-ui/__tests__/components/context/ContextTierChart.test.tsx",
+          "component": "ContextTierChart.tsx",
+          "test_count": 37,
+          "coverage": {"statements": 87.5, "branches": 100, "functions": 100, "lines": 100}
+        },
+        {
+          "id": "TC025",
+          "file": "web-ui/__tests__/components/lint/LintResultsTable.test.tsx",
+          "component": "LintResultsTable.tsx",
+          "test_count": 39,
+          "coverage": {"statements": 100, "branches": 100, "functions": 100, "lines": 100}
+        },
+        {
+          "id": "TC026",
+          "file": "web-ui/__tests__/components/review/ReviewResultsPanel.test.tsx",
+          "component": "ReviewResultsPanel.tsx",
+          "test_count": 47,
+          "coverage": {"statements": 100, "branches": 100, "functions": 100, "lines": 100}
+        },
+        {
+          "id": "TC027",
+          "file": "web-ui/__tests__/components/review/ReviewScoreChart.test.tsx",
+          "component": "ReviewScoreChart.tsx",
+          "test_count": 45,
+          "coverage": {"statements": 92.3, "branches": 90, "functions": 100, "lines": 90}
+        },
+        {
+          "id": "TC028",
+          "file": "web-ui/__tests__/components/review/ReviewFindingsList.test.tsx",
+          "component": "ReviewFindingsList.tsx",
+          "test_count": 36,
+          "coverage": {"statements": 94.11, "branches": 93.33, "functions": 100, "lines": 94.11}
+        },
+        {
+          "id": "TC029",
+          "file": "web-ui/__tests__/lib/timestampUtils.test.ts",
+          "component": "timestampUtils.ts",
+          "test_count": 65,
+          "coverage": {"statements": 100, "branches": 100, "functions": 100, "lines": 100},
+          "bug_fixed": "Added Number.isFinite() check to handle NaN, Infinity, and -Infinity values"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_tests": 721,
+    "e2e_tests": 20,
+    "unit_tests": 701,
+    "overall_pass_rate": "100%",
+    "component_coverage": "89.29%",
+    "overall_coverage": "81.61%"
+  }
+}
