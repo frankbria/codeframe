@@ -134,6 +134,14 @@ class Database:
         """
         )
 
+        # Create composite index for get_pending_tasks query optimization
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
+            ON tasks(project_id, status, priority, created_at)
+        """
+        )
+
         # Agents table
         cursor.execute(
             """
@@ -598,17 +606,6 @@ class Database:
         )
         self.conn.commit()
         return cursor.lastrowid
-
-    def get_pending_tasks(self, project_id: int) -> List[Task]:
-        """Get all pending tasks for a project."""
-        cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM tasks WHERE project_id = ? AND status = ?",
-            (project_id, TaskStatus.PENDING.value),
-        )
-        _rows = cursor.fetchall()
-        # TODO: Convert rows to Task objects
-        return []
 
     def get_project_tasks(self, project_id: int) -> List[Dict[str, Any]]:
         """Get all tasks for a project (all statuses).
@@ -2646,7 +2643,9 @@ class Database:
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def get_recently_completed_tasks(self, project_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_recently_completed_tasks(
+        self, project_id: int, limit: int = 10
+    ) -> List[Dict[str, Any]]:
         """Get recently completed tasks for session summary.
 
         Args:
@@ -2678,6 +2677,7 @@ class Database:
 
         Returns:
             Prioritized list with keys: id, title, priority, created_at
+            (Ordered by priority: 0=Critical, 1=High, 2=Medium, 3=Low, 4=Nice-to-have)
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -2685,7 +2685,7 @@ class Database:
             SELECT id, title, priority, created_at
             FROM tasks
             WHERE project_id = ? AND status = 'pending'
-            ORDER BY priority DESC, created_at ASC
+            ORDER BY priority ASC, created_at ASC
             LIMIT ?
             """,
             (project_id, limit),
@@ -2714,6 +2714,6 @@ class Database:
         )
         row = cursor.fetchone()
         return {
-            'total_tasks': row['total_tasks'] or 0,
-            'completed_tasks': row['completed_tasks'] or 0
+            "total_tasks": row["total_tasks"] or 0,
+            "completed_tasks": row["completed_tasks"] or 0,
         }
