@@ -75,3 +75,9 @@ Thumbs.db
 !.beads/*.jsonl
 .codeframe/
 .agent-tasks/
+<<<<<<< Updated upstream
+=======
+
+# TestSprite Specific
+>>>>>>> Stashed changes
+testsprite_tests/tmp/config.json
