@@ -1,4 +1,4 @@
-# Sprint 9: Review & Polish
+# Sprint 10: Review & Polish
 
 **Status**: 📋 Planned
 **Duration**: Week 9 (Planned)
@@ -19,6 +19,7 @@ As a developer, I want a Review Agent to check code quality before tasks are mar
   - Performance checks
   - NOTE: No review_agent.py exists, no review.yaml definition
   - Demo: Review agent analyzes code
+  - Can we use built in Claude agent or skills for this? Or do we need to write our own?
 
 - [ ] **cf-NEW-41**: Quality gates (Status: Not started)
   - Block completion if tests fail
@@ -33,12 +34,14 @@ As a developer, I want a Review Agent to check code quality before tasks are mar
   - NOTE: checkpoints table exists, Project.resume() has TODO (project.py:76-77)
   - NOTE: Server restore has TODO (server.py:866)
   - Demo: Pause, resume days later
+  - Is there room for beads DB in here? Or do we need to store more?
 
 - [ ] **cf-NEW-44**: End-to-end integration testing (Status: Not started)
   - Full workflow test (discovery → tasks → execution → completion)
   - All features working together
   - No regressions
   - Demo: Complete project start to finish
+  - NOTE: Use TestSprite to build and manage all testing. TestSprite will build the E2E Test Suite and maintain it.
 
 ### Enhancements (P1)
 - [ ] **cf-NEW-43**: Metrics and cost tracking (Status: Not started)
@@ -86,9 +89,9 @@ As a developer, I want a Review Agent to check code quality before tasks are mar
 - Cost tracking: Real-time vs. batch calculation (TBD)
 
 **Dependencies**:
-- Sprint 6 (Human in the Loop) - REQUIRED for complete workflow
-- Sprint 7 (Context Management) - REQUIRED for long-running sessions
-- Sprint 8 (Agent Maturity) - RECOMMENDED for quality improvements
+- Sprint 6 (Human in the Loop) - REQUIRED for complete workflow - DONE
+- Sprint 7 (Context Management) - REQUIRED for long-running sessions - DONE
+- Sprint 8 (Agent Maturity) - RECOMMENDED for quality improvements - DONE
 
 **MVP Milestone**:
 This sprint marks the completion of the full MVP as originally envisioned in AGILE_SPRINTS.md.
@@ -96,7 +99,7 @@ However, currently only 6/10 MVP features are complete (60%), so MVP is not yet 
 
 ## References
 - **Feature Specs**: (Will be created in specs/009-review-polish/)
-- **Dependencies**: Sprints 6, 7, 8 (all deferred)
+- **Dependencies**: Sprints 6, 7, 8 - DONE
 - **Database Schema**: codeframe/database/schema.py lines 186-195
 - **Stub Code**: codeframe/core/project.py lines 76-77, codeframe/ui/server.py line 866
 - **Target**: Full MVP completion

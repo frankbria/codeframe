@@ -29,6 +29,10 @@ CodeFRAME is an autonomous AI coding system that manages software development th
 13. [API Specifications](#api-specifications)
 14. [MVP Scope & Roadmap](#mvp-scope--roadmap)
 
+> NOTE: This is a **technical design** document. For up-to-date product requirements,
+> user workflows, and E2E scenarios, see [PRD.md](../PRD.md). Sections below are
+> annotated with implementation status as of 2025-11-21.
+
 ---
 
 ## Architecture Overview
@@ -614,6 +618,11 @@ def detect_bottlenecks() -> List[Bottleneck]:
 
 ## Notification System
 
+**Implementation Status (2025-11-21)**: Implemented for desktop notifications and async
+webhook delivery for SYNC blockers (see `codeframe/notifications/*` and Sprint 9 in
+`SPRINTS.md`). Direct Email/SMS integrations and dedicated Slack/Discord clients are
+**future work**; they are currently achievable via generic webhooks.
+
 ### Multi-Channel Architecture
 
 ```
@@ -692,6 +701,12 @@ def send_via_zapier(notification: Notification) -> None:
 
 ## State Persistence & Recovery
 
+**Implementation Status (2025-11-21)**: Flash save, context checkpoints, and session
+lifecycle are implemented (see `codeframe/lib/context_manager.py`,
+`codeframe/core/session_manager.py`, and Sprints 7 & 9.5 in `SPRINTS.md`). The
+`codeframe checkpoint`/`rollback` CLI commands and full git+DB rollback workflow are
+**future work**.
+
 ### Flash Save System
 
 **Triggers**:
@@ -759,6 +774,11 @@ Simple implementation: Restore DB + git reset to checkpoint commit.
 ---
 
 ## Multi-Provider Support
+
+**Implementation Status (2025-11-21)**: Single-provider support via Anthropic Claude is
+implemented (see `codeframe/providers/anthropic.py`). The generic `AgentProvider`
+interface and additional providers (e.g., GPT‑4) described below are **future
+architecture** and are not yet wired into the running system.
 
 ### Provider Interface
 

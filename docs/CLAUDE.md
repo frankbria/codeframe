@@ -199,17 +199,17 @@ codeframe/
 ### Git Workflow
 - **Branches**: Feature branches from `main`
 - **Commits**: Conventional commits format: `feat(scope): description`, `fix(scope): description`
-- **Agile**: Always update `AGILE_SPRINTS.md` with each commit to reflect true codebase state
+- **Agile**: Keep `SPRINTS.md` and `sprints/` up to date with sprint progress
 
 ### Documentation
-- **Comprehensive Spec**: See `CODEFRAME_SPEC.md` for complete technical specification
-- **Sprint Planning**: See `AGILE_SPRINTS.md` for detailed sprint progress
+- **Comprehensive Spec**: See `specs/CODEFRAME_SPEC.md` for complete technical specification
+- **Sprint Planning**: See `SPRINTS.md` and `sprints/` for detailed sprint progress
 - **Testing Guide**: See `TESTING.md` for manual testing checklist
 - **Code Comments**: Explain WHY not WHAT (code should be self-documenting)
 
 ## Important Notes
 
-- Always update `AGILE_SPRINTS.md` with each commit to remote to ensure it reflects the true state of the codebase
+- `AGILE_SPRINTS.md` is archived under `docs/archive/` as historical documentation; `SPRINTS.md` is the primary sprint index
 - The project uses aggressive context optimization - avoid loading unnecessary files
 - WebSocket connection required for real-time dashboard updates
 - Database schema managed via SQLAlchemy models, check `codeframe/core/models.py` for latest schema

@@ -1,5 +1,8 @@
 # API Contract Evolution Roadmap
 
+> Only **Sprint 2 contracts** in this document are implemented today. Later sections
+> (Sprint 3+) are a forward-looking roadmap and may not reflect the current code.
+
 **Purpose**: Track planned API enhancements across sprints to prevent refactoring.
 
 **Philosophy**: Additive changes only - never break existing contracts.

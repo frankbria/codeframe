@@ -1,5 +1,8 @@
 # CodeFRAME Agile Sprint Plan
 
+> Historical sprint planning document; superseded by [`SPRINTS.md`](../../SPRINTS.md)
+> and the detailed files in the `sprints/` directory.
+
 **Philosophy**: Every sprint delivers a functional, working demo you can interact with and review - even if features are incomplete or use mock data.
 
 ---

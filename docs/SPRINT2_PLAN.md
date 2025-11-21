@@ -1,5 +1,9 @@
 # Sprint 2: Socratic Discovery - Implementation Plan
 
+> Historical plan for Sprint 2; actual implementation is documented in
+> [`sprints/sprint-02-socratic-discovery.md`](../sprints/sprint-02-socratic-discovery.md)
+> and the Sprint 2 section of [`SPRINTS.md`](../SPRINTS.md).
+
 **Sprint Duration**: Week 2
 **Sprint Goal**: Enable Lead Agent to conduct intelligent requirements gathering through Socratic dialogue
 **Status**: 🚀 **READY TO START**

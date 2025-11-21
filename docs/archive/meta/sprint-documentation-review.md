@@ -1,5 +1,10 @@
 # Sprint Documentation Review & Alignment Report
 
+> This review covers **Sprints 0–5** and predates the final implementation of
+> Sprints 6–9.5 (Human in the Loop, Context Management, AI Quality Enforcement,
+> MVP Completion, and Critical UX Fixes). For current sprint status, see
+> [`SPRINTS.md`](../SPRINTS.md) and the `sprints/` directory.
+
 **Date**: 2025-11-08
 **Reviewer**: Claude Code
 **Scope**: Sprints 0-5 (Completed), Sprints 6-9 (Planned)

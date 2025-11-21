@@ -1,7 +1,9 @@
 # CodeFRAME: The Big Picture
 
-**Last Updated**: 2025-10-18
-**Current State**: Sprint 3 Complete - Full Autonomous Execution with Real-Time Dashboard
+> High-level vision; see [PRD.md](../PRD.md) for current product requirements and E2E workflows.
+
+**Last Updated**: 2025-11-21
+**Current State**: Sprints 0–9.5 Complete – MVP and Critical UX Fixes delivered; preparing E2E testing (Sprint 10).
 
 ---
 
@@ -175,7 +177,7 @@ Test Agent: Completed Task 1.4 ✅
 
 **Demo Goal**: ✅ Watch Backend Agent write code and fix its own bugs!
 
-### **Sprint 4: Multi-Agent Coordination**
+### **Sprint 4: Multi-Agent Coordination** ✅ COMPLETE
 - 3 agents working in parallel (Backend, Frontend, Test)
 - Task dependency resolution (DAG)
 - Bottleneck detection
@@ -183,7 +185,7 @@ Test Agent: Completed Task 1.4 ✅
 
 **Demo Goal**: 3 agents working simultaneously on independent tasks!
 
-### **Sprint 5: Human in the Loop**
+### **Sprint 5: Human in the Loop** ✅ COMPLETE (implemented as Sprint 6 in [SPRINTS.md](../SPRINTS.md))
 - Blockers (SYNC vs ASYNC)
 - Dashboard blocker UI
 - Agent resume after answer
@@ -191,7 +193,7 @@ Test Agent: Completed Task 1.4 ✅
 
 **Demo Goal**: Agent asks you a question, you answer, it continues!
 
-### **Sprint 6: Context Management**
+### **Sprint 6: Context Management** ✅ COMPLETE (see Sprint 7 in [SPRINTS.md](../SPRINTS.md))
 - Flash save before context limit
 - HOT/WARM/COLD tiering
 - Context diffing
@@ -199,7 +201,7 @@ Test Agent: Completed Task 1.4 ✅
 
 **Demo Goal**: Agents work on long tasks without forgetting!
 
-### **Sprint 7: Agent Maturity**
+### **Sprint 7: Agent Maturity** 🔮 FUTURE (deferred; see "Agent Maturity" future sprint in [SPRINTS.md](../SPRINTS.md))
 - Metrics tracking (success rate, blockers, test pass rate)
 - Maturity levels (D1-D4)
 - Adaptive instructions (detailed → autonomous)
@@ -207,7 +209,7 @@ Test Agent: Completed Task 1.4 ✅
 
 **Demo Goal**: Watch agents learn and improve over time!
 
-### **Sprint 8: Review & Polish**
+### **Sprint 8: Review & Polish** ✅ COMPLETE (mapped across AI Quality Enforcement, MVP Completion, and Critical UX Fixes in [SPRINTS.md](../SPRINTS.md))
 - Review Agent (code quality gates)
 - End-to-end workflows
 - Production deployment
@@ -219,7 +221,9 @@ Test Agent: Completed Task 1.4 ✅
 
 ## Current State: Where We Are
 
-### ✅ **What's Working Right Now**
+As of Sprint 9.5 (Critical UX Fixes), Sprints 0–9.5 in [SPRINTS.md](../SPRINTS.md) are complete: single-agent execution, multi-agent coordination, async workers, human-in-the-loop blockers, context management, AI quality enforcement, MVP completion, and critical UX fixes (server command, project creation UI, discovery answers, context panel, and session lifecycle).
+
+### ✅ **What's Working Right Now** (original Sprint 3 snapshot)
 
 **Discovery Flow**:
 ```bash
@@ -280,16 +284,15 @@ codeframe start
 ## The Technology Stack
 
 ### **Backend**
-- **Python 3.13** with uv package manager
+- **Python 3.11+** with uv package manager
 - **FastAPI** for REST APIs
 - **SQLite** database (simple, embedded)
 - **Tree-sitter** for code parsing
-- **Anthropic Claude** for LLM (Sonnet 4)
+- **Anthropic Claude** for LLM
 - **GitPython** for git operations
 
 ### **Frontend**
-- **Next.js 14** (React framework)
-- **TypeScript** for type safety
+- **React + TypeScript** (`web-ui` app)
 - **Tailwind CSS** for styling
 - **SWR** for data fetching
 - **React Testing Library** for tests

@@ -1,5 +1,10 @@
 # CodeFRAME Testing Guide
 
+> Sprint 1 manual testing checklist; for current test organization and counts see
+> [`README.md`](README.md) and [`SPRINTS.md`](SPRINTS.md). For the canonical E2E
+> workflows that Sprint 10 tests should exercise, see the E2E section in
+> [`PRD.md`](PRD.md).
+
 ## Sprint 1 Manual Test Checklist
 
 ### Setup Requirements

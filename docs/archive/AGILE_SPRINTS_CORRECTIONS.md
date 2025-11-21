@@ -1,4 +1,7 @@
 # AGILE_SPRINTS.md Required Corrections
+
+> Historical corrections to `AGILE_SPRINTS.md`. For the current sprint plan, see
+> [`SPRINTS.md`](../../SPRINTS.md) and the `sprints/` directory.
 ## Quick Reference Guide for Updates
 
 **Date**: 2025-11-08

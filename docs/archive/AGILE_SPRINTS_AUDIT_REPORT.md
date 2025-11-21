@@ -1,4 +1,7 @@
 # AGILE_SPRINTS.md Audit Report
+
+> Historical audit of `AGILE_SPRINTS.md` (pre-SPRINTS.md). For up-to-date sprint
+> documentation, see [`SPRINTS.md`](../../SPRINTS.md) and the `sprints/` directory.
 ## Sprints 5-9 and Execution Guidelines
 **Generated**: 2025-11-08
 **Auditor**: Claude Code

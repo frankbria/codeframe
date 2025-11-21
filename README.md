@@ -708,6 +708,7 @@ If pre-commit fails, fix the issues and re-commit.
 
 For detailed architecture documentation, see:
 
+- **Product Requirements**: [PRD.md](PRD.md) – Single source of user workflows and E2E scenarios
 - **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
 - **Sprint Planning**: [SPRINTS.md](SPRINTS.md)
 - **Feature Specs**: `specs/{feature}/spec.md`

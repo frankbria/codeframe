@@ -29,27 +29,27 @@ Development process and setup documentation:
 - `TDD_WORKFLOW.md` - Test-Driven Development workflow guide
 - `WEB_UI_SETUP.md` - Web UI setup and configuration guide
 
-### Root-Level Active Docs
-Current active documentation maintained in `/docs/`:
-- `API_CONTRACT_ROADMAP.md` - API contract design and roadmap
-- `BIG_PICTURE.md` - High-level architecture and vision
+### Root-Level Active Docs (this `docs/` directory)
+Current active documentation in `docs/`:
+- `API_CONTRACT_ROADMAP.md` - Sprint 2 foundation API contract and future API roadmap
+- `BIG_PICTURE.md` - High-level architecture and vision (historical context; see `PRD.md` for current requirements)
 - `CF-41_BACKEND_WORKER_AGENT_DESIGN.md` - Backend worker agent design (cf-41)
 - `CLAUDE.md` - Claude-specific development notes and guidelines
 - `REMOTE_STAGING_DEPLOYMENT.md` - Remote staging deployment guide
-- `SPRINT2_PLAN.md` - Sprint 2 planning documentation
+- `SPRINT2_PLAN.md` - Sprint 2 planning documentation (historical)
 - `STAGING_SERVER.md` - Staging server configuration and setup
 - `nginx-websocket-config.md` - Nginx WebSocket configuration guide
 - `self_correction_workflow.md` - Self-correction workflow documentation
 
-## Current Active Documentation
+## Current Active Documentation (project root)
 
-Active documentation is kept in the project root directory:
+The canonical, up-to-date docs live at the project root:
 - `README.md` - Project overview and quick start
-- `CODEFRAME_SPEC.md` - Complete technical specification
-- `AGILE_SPRINTS.md` - Sprint plan and progress tracking
+- `PRD.md` - Product requirements, core workflows, and E2E scenarios
+- `specs/CODEFRAME_SPEC.md` - Complete technical specification / architecture
+- `SPRINTS.md` - Sprint plan and progress tracking
 - `TESTING.md` - Manual testing guide and checklist
 - `CONTRIBUTING.md` - Contribution guidelines
-- `CONCEPTS_INTEGRATION.md` - General concepts integration analysis
 
 ## Archive Policy
 
