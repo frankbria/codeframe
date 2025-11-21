@@ -79,7 +79,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   // Fetch blockers
   const { data: blockersData, mutate: mutateBlockers } = useSWR(
     `/projects/${projectId}/blockers`,
-    () => blockersApi.list(projectId).then((res) => res.data.blockers)
+    () => blockersApi.list(projectId).then((res) => res.data?.blockers || [])
   );
 
   // Fetch PRD data (cf-26)

@@ -48,6 +48,9 @@ jest.mock('@/components/context/ContextPanel', () => ({
     </div>
   )),
 }));
+jest.mock('@/components/SessionStatus', () => ({
+  SessionStatus: jest.fn(() => <div data-testid="session-status">Session Status Mock</div>),
+}));
 
 // Mock SWR to disable caching
 jest.mock('swr', () => {
@@ -513,6 +516,8 @@ describe('Dashboard with AgentStateProvider', () => {
         },
       ];
 
+      // Clear and reset the mock to ensure clean state
+      (api.blockersApi.list as jest.Mock).mockClear();
       (api.blockersApi.list as jest.Mock).mockResolvedValue({
         data: { blockers: mockBlockers },
       });
@@ -529,6 +534,8 @@ describe('Dashboard with AgentStateProvider', () => {
     });
 
     it('should pass empty array when blockersData is null', async () => {
+      // Clear and reset the mock to ensure clean state
+      (api.blockersApi.list as jest.Mock).mockClear();
       (api.blockersApi.list as jest.Mock).mockResolvedValue({
         data: null,
       });

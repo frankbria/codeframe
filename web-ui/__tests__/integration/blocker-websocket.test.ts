@@ -56,7 +56,10 @@ describe('Blocker WebSocket Integration', () => {
   });
 
   afterEach(() => {
+    // Clear message handlers to prevent cross-test contamination
     if (mockWs) {
+      mockWs.onmessage = null;
+      mockWs.onopen = null;
       mockWs.close();
     }
     jest.clearAllMocks();
@@ -559,23 +562,22 @@ describe('Blocker WebSocket Integration', () => {
   describe('real-time dashboard updates', () => {
     it('updates blocker count in dashboard header', (done) => {
       let blockerCount = 0;
+      // Create a new WebSocket instance for this test to avoid contamination
+      const testWs = new MockWebSocket('ws://localhost:8000/ws');
 
-      mockWs.onmessage = (event) => {
+      testWs.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.type === 'blocker_created') {
+        if (data.type === 'blocker_created' && data.blocker_id === 400) {
           blockerCount++;
-        } else if (data.type === 'blocker_resolved') {
+        } else if (data.type === 'blocker_resolved' && data.blocker_id === 400) {
           blockerCount--;
-        }
-
-        if (data.type === 'blocker_resolved') {
           expect(blockerCount).toBe(0);
           done();
         }
       };
 
-      mockWs.onopen = () => {
-        mockWs.simulateMessage({
+      testWs.onopen = () => {
+        testWs.simulateMessage({
           type: 'blocker_created',
           blocker_id: 400,
           agent_id: 'test-agent',
@@ -586,7 +588,7 @@ describe('Blocker WebSocket Integration', () => {
         });
 
         setTimeout(() => {
-          mockWs.simulateMessage({
+          testWs.simulateMessage({
             type: 'blocker_resolved',
             blocker_id: 400,
             answer: 'Answer',
@@ -598,27 +600,26 @@ describe('Blocker WebSocket Integration', () => {
 
     it('updates blocker panel in real-time', (done) => {
       const panelBlockers: number[] = [];
+      // Create a new WebSocket instance for this test to avoid contamination
+      const testWs = new MockWebSocket('ws://localhost:8000/ws');
 
-      mockWs.onmessage = (event) => {
+      testWs.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
-        if (data.type === 'blocker_created') {
+        if (data.type === 'blocker_created' && data.blocker_id === 500) {
           panelBlockers.push(data.blocker_id);
-        } else if (data.type === 'blocker_resolved') {
+        } else if (data.type === 'blocker_resolved' && data.blocker_id === 500) {
           const index = panelBlockers.indexOf(data.blocker_id);
           if (index > -1) {
             panelBlockers.splice(index, 1);
           }
-        }
-
-        if (data.type === 'blocker_resolved') {
           expect(panelBlockers.length).toBe(0);
           done();
         }
       };
 
-      mockWs.onopen = () => {
-        mockWs.simulateMessage({
+      testWs.onopen = () => {
+        testWs.simulateMessage({
           type: 'blocker_created',
           blocker_id: 500,
           agent_id: 'test-agent',
@@ -629,7 +630,7 @@ describe('Blocker WebSocket Integration', () => {
         });
 
         setTimeout(() => {
-          mockWs.simulateMessage({
+          testWs.simulateMessage({
             type: 'blocker_resolved',
             blocker_id: 500,
             answer: 'Answer',
