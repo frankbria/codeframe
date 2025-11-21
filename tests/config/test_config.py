@@ -95,8 +95,12 @@ class TestGlobalConfig:
 class TestConfig:
     """Test Config manager class."""
 
-    def test_load_environment(self, tmp_path):
+    def test_load_environment(self, tmp_path, monkeypatch):
         """Test environment file loading."""
+        # Clear any existing values to ensure clean test
+        monkeypatch.delenv("TEST_VAR", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        
         env_file = tmp_path / ".env"
         env_file.write_text("TEST_VAR=test_value\nANTHROPIC_API_KEY=sk-test")
 
@@ -109,9 +113,6 @@ class TestConfig:
             assert os.getenv("ANTHROPIC_API_KEY") == "sk-test"
         finally:
             os.chdir(original_cwd)
-            # Clean up environment
-            os.environ.pop("TEST_VAR", None)
-            os.environ.pop("ANTHROPIC_API_KEY", None)
 
     def test_config_initialization(self, tmp_path):
         """Test Config initialization."""
@@ -142,10 +143,13 @@ class TestConfig:
 class TestEnvironmentLoading:
     """Test environment variable loading."""
 
-    def test_load_from_env_file(self, tmp_path):
+    def test_load_from_env_file(self, tmp_path, monkeypatch):
         """Test loading from .env file."""
+        # Clear any existing value to ensure clean test
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        
         env_file = tmp_path / ".env"
-        env_file.write_text("ANTHROPIC_API_KEY=sk-from-env-file")
+        env_file.write_text("ANTHROPIC_API_KEY=****************")
 
         original_cwd = Path.cwd()
         try:
@@ -153,10 +157,9 @@ class TestEnvironmentLoading:
             load_environment()
 
             config = GlobalConfig()
-            assert config.anthropic_api_key == "sk-from-env-file"
+            assert config.anthropic_api_key == "****************"
         finally:
             os.chdir(original_cwd)
-            os.environ.pop("ANTHROPIC_API_KEY", None)
 
     def test_env_override(self, tmp_path, monkeypatch):
         """Test that environment variables override .env file."""
