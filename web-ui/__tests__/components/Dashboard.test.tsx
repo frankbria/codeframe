@@ -3,7 +3,7 @@
  * Tests Dashboard integration with AgentStateProvider
  */
 
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import Dashboard from '@/components/Dashboard';
 import { AgentStateProvider } from '@/components/AgentStateProvider';
 import * as api from '@/lib/api';
@@ -165,6 +165,13 @@ describe('Dashboard with AgentStateProvider', () => {
     (api.projectsApi.getIssues as jest.Mock).mockResolvedValue({
       data: { issues: [], total_issues: 0, total_tasks: 0 },
     });
+  });
+
+  afterEach(() => {
+    // Clean up rendered components to prevent cross-test contamination
+    cleanup();
+    // Clear all mocks to prevent contamination
+    jest.clearAllMocks();
   });
 
   describe('T096: Rendering with Context', () => {
@@ -516,8 +523,8 @@ describe('Dashboard with AgentStateProvider', () => {
         },
       ];
 
-      // Clear and reset the mock to ensure clean state
-      (api.blockersApi.list as jest.Mock).mockClear();
+      // Reset the mock implementation completely to avoid SWR cache issues
+      (api.blockersApi.list as jest.Mock).mockReset();
       (api.blockersApi.list as jest.Mock).mockResolvedValue({
         data: { blockers: mockBlockers },
       });
@@ -528,14 +535,20 @@ describe('Dashboard with AgentStateProvider', () => {
         </AgentStateProvider>
       );
 
+      // Wait for project to load first
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Then wait for blocker to appear
       await waitFor(() => {
         expect(screen.getByText(/Test blocker question\?/i)).toBeInTheDocument();
-      });
+      }, { timeout: 3000 });
     });
 
     it('should pass empty array when blockersData is null', async () => {
-      // Clear and reset the mock to ensure clean state
-      (api.blockersApi.list as jest.Mock).mockClear();
+      // Reset the mock implementation completely to avoid SWR cache issues
+      (api.blockersApi.list as jest.Mock).mockReset();
       (api.blockersApi.list as jest.Mock).mockResolvedValue({
         data: null,
       });
