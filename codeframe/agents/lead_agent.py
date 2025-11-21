@@ -1499,10 +1499,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 # Also check if dependency task has pending SYNC blocker
                 for blocker in blockers.get("blockers", []):
-                    if (
-                        blocker.get("task_id") == dep_id
-                        and blocker.get("blocker_type") == "SYNC"
-                    ):
+                    if blocker.get("task_id") == dep_id and blocker.get("blocker_type") == "SYNC":
                         logger.debug(
                             f"Task {task_id} blocked: dependency task {dep_id} "
                             f"has pending SYNC blocker {blocker.get('id')}"
@@ -1587,7 +1584,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             List of task IDs
         """
         tasks = self.db.get_recently_completed_tasks(self.project_id, limit=10)
-        return [task['id'] for task in tasks]
+        return [task["id"] for task in tasks]
 
     def _format_time_ago(self, timestamp: str) -> str:
         """Format ISO timestamp as 'X hours/days ago'.
@@ -1617,7 +1614,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 days = delta.days
                 return f"{days} day{'s' if days != 1 else ''} ago"
             else:
-                return timestamp.split('T')[0]  # Just return date
+                return timestamp.split("T")[0]  # Just return date
         except (ValueError, AttributeError):
             return "unknown time"
 
@@ -1639,14 +1636,17 @@ Generate the PRD in markdown format with clear sections and professional languag
         Returns:
             List of blocker dicts with id, question, priority
         """
-        blockers = self.db.list_blockers(self.project_id, resolved=False)
+        resp = self.db.list_blockers(self.project_id, status="PENDING")
+        blockers = resp.get("blockers", [])
         summaries = []
         for blocker in blockers[:10]:  # Max 10 blockers
-            summaries.append({
-                'id': blocker['id'],
-                'question': blocker['question'],
-                'priority': blocker.get('priority', 'medium')
-            })
+            summaries.append(
+                {
+                    "id": blocker["id"],
+                    "question": blocker["question"],
+                    "priority": blocker.get("priority", "medium"),
+                }
+            )
         return summaries
 
     def _get_progress_percentage(self) -> float:
@@ -1656,8 +1656,8 @@ Generate the PRD in markdown format with clear sections and professional languag
             Progress percentage (0-100)
         """
         stats = self.db.get_project_stats(self.project_id)
-        total = stats['total_tasks']
-        completed = stats['completed_tasks']
+        total = stats["total_tasks"]
+        completed = stats["completed_tasks"]
 
         if total == 0:
             return 0.0
@@ -1676,27 +1676,76 @@ Generate the PRD in markdown format with clear sections and professional languag
             print("\n🚀 Starting new session...\n")
             return
 
-        # Display formatted session context
+        # Validate session structure
+        if not isinstance(session, dict):
+            logger.warning("Session data is not a dict, treating as new session")
+            print("\n🚀 Starting new session...\n")
+            return
+
+        # Validate last_session structure
+        last_session = session.get("last_session")
+        if (
+            not isinstance(last_session, dict)
+            or "summary" not in last_session
+            or "timestamp" not in last_session
+        ):
+            logger.warning("Session missing valid 'last_session' data, treating as new session")
+            print("\n🚀 Starting new session...\n")
+            return
+
+        # Display formatted session context with safe access
         print("\n📋 Restoring session...\n")
         print("Last Session:")
-        print(f"  Summary: {session['last_session']['summary']}")
-        print(f"  Time: {self._format_time_ago(session['last_session']['timestamp'])}")
+
+        # Safe summary access
+        summary = last_session.get("summary", "No activity")
+        if not isinstance(summary, str):
+            summary = str(summary) if summary else "No activity"
+        print(f"  Summary: {summary}")
+
+        # Safe timestamp formatting
+        timestamp = last_session.get("timestamp", "")
+        try:
+            time_ago = self._format_time_ago(timestamp) if timestamp else "Unknown time"
+        except (ValueError, TypeError, KeyError) as e:
+            logger.debug(f"Failed to format timestamp: {e}")
+            time_ago = "Recently"
+        print(f"  Time: {time_ago}")
         print()
 
         # Display next actions if available
-        if session.get('next_actions'):
+        next_actions = session.get("next_actions", [])
+        if isinstance(next_actions, list) and next_actions:
             print("Next Actions:")
-            for i, action in enumerate(session['next_actions'][:5], 1):
-                print(f"  {i}. {action}")
+            for i, action in enumerate(next_actions[:5], 1):
+                # Ensure action is printable
+                action_str = str(action) if action else ""
+                if action_str:
+                    print(f"  {i}. {action_str}")
             print()
 
-        # Display progress
-        progress_pct = session.get('progress_pct', 0)
-        stats = self.db.get_project_stats(self.project_id)
-        print(f"Progress: {round(progress_pct)}% ({stats['completed_tasks']}/{stats['total_tasks']} tasks complete)")
+        # Display progress with safe access
+        progress_pct = session.get("progress_pct", 0)
+        if not isinstance(progress_pct, (int, float)):
+            try:
+                progress_pct = float(progress_pct)
+            except (ValueError, TypeError):
+                progress_pct = 0
 
-        # Display blockers
-        active_blockers = session.get('active_blockers', [])
+        try:
+            stats = self.db.get_project_stats(self.project_id)
+            completed = stats.get("completed_tasks", 0)
+            total = stats.get("total_tasks", 0)
+            print(f"Progress: {round(progress_pct)}% ({completed}/{total} tasks complete)")
+        except Exception as e:
+            logger.debug(f"Failed to get project stats: {e}")
+            print(f"Progress: {round(progress_pct)}%")
+
+        # Display blockers with safe access
+        active_blockers = session.get("active_blockers", [])
+        if not isinstance(active_blockers, list):
+            active_blockers = []
+
         if active_blockers:
             print(f"Blockers: {len(active_blockers)} active")
         else:
@@ -1720,12 +1769,12 @@ Generate the PRD in markdown format with clear sections and professional languag
         try:
             # Gather session state
             state = {
-                'summary': self._get_session_summary(),
-                'completed_tasks': self._get_completed_task_ids(),
-                'next_actions': self._get_pending_actions(),
-                'current_plan': self.current_task,
-                'active_blockers': self._get_blocker_summaries(),
-                'progress_pct': self._get_progress_percentage()
+                "summary": self._get_session_summary(),
+                "completed_tasks": self._get_completed_task_ids(),
+                "next_actions": self._get_pending_actions(),
+                "current_plan": self.current_task,
+                "active_blockers": self._get_blocker_summaries(),
+                "progress_pct": self._get_progress_percentage(),
             }
 
             # Save to file
