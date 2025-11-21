@@ -53,6 +53,13 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     Yields:
         Configured TestClient instance for making API requests
     """
+    # Capture original environment state for cleanup
+    env_vars_to_restore = ["DATABASE_PATH", "WORKSPACE_ROOT", "ANTHROPIC_API_KEY"]
+    original_env = {}
+    for var in env_vars_to_restore:
+        if var in os.environ:
+            original_env[var] = os.environ[var]
+    
     # Set environment variables for this test class
     os.environ["DATABASE_PATH"] = str(class_temp_db_path)
 
@@ -70,6 +77,13 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     # Create and yield TestClient
     with TestClient(server.app) as client:
         yield client
+    
+    # Restore original environment state
+    for var in env_vars_to_restore:
+        if var in original_env:
+            os.environ[var] = original_env[var]
+        elif var in os.environ:
+            os.environ.pop(var)
 
 
 @pytest.fixture(autouse=True)
@@ -92,6 +106,7 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
     # Clean the database after the test completes
     # Get the app from the client
     from codeframe.ui import server
+    import shutil
 
     # Clear all data from database after each test
     # Delete in reverse dependency order to avoid foreign key constraint violations
@@ -110,3 +125,9 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         cursor.execute("DELETE FROM projects")
 
         db.conn.commit()
+
+    # Clean up workspace files
+    workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "/tmp/workspaces"))
+    if workspace_root.exists():
+        shutil.rmtree(workspace_root)
+        workspace_root.mkdir(parents=True, exist_ok=True)

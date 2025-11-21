@@ -12,13 +12,46 @@ integration works correctly.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 import json
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.core.models import TaskStatus, ProjectStatus
+
+
+@pytest.fixture
+def real_db():
+    """Create a real in-memory database with lint_results table."""
+    db = Database(":memory:")
+    db.initialize()
+
+    # Manually create lint_results table (migrations skipped for :memory: databases)
+    cursor = db.conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lint_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            linter TEXT NOT NULL CHECK(linter IN ('ruff', 'eslint', 'other')),
+            error_count INTEGER NOT NULL DEFAULT 0,
+            warning_count INTEGER NOT NULL DEFAULT 0,
+            files_linted INTEGER NOT NULL DEFAULT 0,
+            output TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+        )
+    """
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_lint_results_task ON lint_results(task_id)")
+    db.conn.commit()
+
+    yield db
+
+    # Cleanup
+    if db.conn:
+        db.conn.close()
 
 
 class TestBackendWorkerAgentIntegration:
@@ -90,14 +123,12 @@ class TestBackendWorkerAgentIntegration:
         assert not (tmp_path / "tests" / "test_user.py").exists()
         assert (tmp_path / "src" / "models" / "user.py").exists()  # Other files still exist
 
-    def test_update_task_status_real_database(self, tmp_path):
+    def test_update_task_status_real_database(self, tmp_path, real_db):
         """Test update_task_status with real SQLite database."""
-        # Create real database instance
-        db = Database(":memory:")
-        db.initialize()
+        db = real_db
 
         # Create real project and task
-        project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("integration_test", "Integration test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -152,13 +183,12 @@ class TestBackendWorkerAgentIntegration:
         completed_at = datetime.fromisoformat(row["completed_at"])
         assert completed_at is not None
 
-    def test_execute_task_integration_with_mocked_llm(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_execute_task_integration_with_mocked_llm(self, tmp_path, real_db):
         """Test execute_task with real database and file I/O, mocked LLM."""
-        # Create real database
-        db = Database(":memory:")
-        db.initialize()
+        db = real_db
 
-        project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("integration_test", "Integration test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -197,8 +227,8 @@ class TestBackendWorkerAgentIntegration:
         )
 
         # Mock Anthropic API to return realistic code
-        with patch("anthropic.Anthropic") as mock_anthropic_class:
-            mock_client = Mock()
+        with patch("anthropic.AsyncAnthropic") as mock_anthropic_class:
+            mock_client = AsyncMock()
             mock_anthropic_class.return_value = mock_client
 
             mock_response = Mock()
@@ -230,8 +260,16 @@ class TestBackendWorkerAgentIntegration:
             cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
             task = dict(cursor.fetchone())
 
-            # Execute task
-            result = agent.execute_task(task)
+            # Mock test execution to avoid pytest finding issues in temp directory
+            with patch("codeframe.testing.test_runner.TestRunner.run_tests") as mock_run_tests:
+                from codeframe.testing.models import TestResult
+
+                mock_run_tests.return_value = TestResult(
+                    status="passed", total=2, passed=2, failed=0, errors=0, skipped=0, duration=0.5
+                )
+
+                # Execute task
+                result = await agent.execute_task(task)
 
             # Verify execution succeeded
             assert result["status"] == "completed"
@@ -259,13 +297,12 @@ class TestBackendWorkerAgentIntegration:
             assert updated_task["status"] == "completed"
             assert updated_task["completed_at"] is not None
 
-    def test_execute_task_handles_file_operation_errors(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_execute_task_handles_file_operation_errors(self, tmp_path, real_db):
         """Test execute_task properly handles file operation failures."""
-        # Create real database
-        db = Database(":memory:")
-        db.initialize()
+        db = real_db
 
-        project_id = db.create_project("integration_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("integration_test", "Integration test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -302,8 +339,8 @@ class TestBackendWorkerAgentIntegration:
         )
 
         # Mock API to return a modify operation on non-existent file
-        with patch("anthropic.Anthropic") as mock_anthropic_class:
-            mock_client = Mock()
+        with patch("anthropic.AsyncAnthropic") as mock_anthropic_class:
+            mock_client = AsyncMock()
             mock_anthropic_class.return_value = mock_client
 
             mock_response = Mock()
@@ -331,7 +368,7 @@ class TestBackendWorkerAgentIntegration:
             task = dict(cursor.fetchone())
 
             # Execute task - should fail gracefully
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
 
             # Verify failure was handled properly
             assert result["status"] == "failed"
@@ -365,13 +402,12 @@ class TestBackendWorkerAgentIntegration:
         if etc_dir.exists():
             assert not (etc_dir / "passwd").exists()
 
-    def test_multiple_task_execution_sequence(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_multiple_task_execution_sequence(self, tmp_path, real_db):
         """Test executing multiple tasks in sequence with real database and files."""
-        # Create real database
-        db = Database(":memory:")
-        db.initialize()
+        db = real_db
 
-        project_id = db.create_project("multi_task_test", ProjectStatus.ACTIVE)
+        project_id = db.create_project("multi_task_test", "Multi-task test project")
         issue_id = db.create_issue(
             {
                 "project_id": project_id,
@@ -422,8 +458,8 @@ class TestBackendWorkerAgentIntegration:
         )
 
         # Mock API for task 1
-        with patch("anthropic.Anthropic") as mock_anthropic_class:
-            mock_client = Mock()
+        with patch("anthropic.AsyncAnthropic") as mock_anthropic_class:
+            mock_client = AsyncMock()
             mock_anthropic_class.return_value = mock_client
 
             # Task 1: Create User model
@@ -471,22 +507,30 @@ class TestBackendWorkerAgentIntegration:
 
             mock_client.messages.create.side_effect = [mock_response1, mock_response2]
 
-            # Execute task 1
-            cursor = db.conn.cursor()
-            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task1_id,))
-            task1 = dict(cursor.fetchone())
+            # Mock test execution for both tasks
+            with patch("codeframe.testing.test_runner.TestRunner.run_tests") as mock_run_tests:
+                from codeframe.testing.models import TestResult
 
-            result1 = agent.execute_task(task1)
-            assert result1["status"] == "completed"
-            assert (tmp_path / "user.py").exists()
+                mock_run_tests.return_value = TestResult(
+                    status="passed", total=2, passed=2, failed=0, errors=0, skipped=0, duration=0.5
+                )
 
-            # Execute task 2
-            cursor.execute("SELECT * FROM tasks WHERE id = ?", (task2_id,))
-            task2 = dict(cursor.fetchone())
+                # Execute task 1
+                cursor = db.conn.cursor()
+                cursor.execute("SELECT * FROM tasks WHERE id = ?", (task1_id,))
+                task1 = dict(cursor.fetchone())
 
-            result2 = agent.execute_task(task2)
-            assert result2["status"] == "completed"
-            assert (tmp_path / "repository.py").exists()
+                result1 = await agent.execute_task(task1)
+                assert result1["status"] == "completed"
+                assert (tmp_path / "user.py").exists()
+
+                # Execute task 2
+                cursor.execute("SELECT * FROM tasks WHERE id = ?", (task2_id,))
+                task2 = dict(cursor.fetchone())
+
+                result2 = await agent.execute_task(task2)
+                assert result2["status"] == "completed"
+                assert (tmp_path / "repository.py").exists()
 
             # Verify user.py was modified
             user_content = (tmp_path / "user.py").read_text()

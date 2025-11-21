@@ -83,7 +83,12 @@ async def test_test_worker_commits_after_successful_task(
     def mock_execute_tests(test_file):
         return True, "1 passed", {"passed": 1, "failed": 0, "errors": 0, "total": 1}
 
+    # Mock linting to pass without errors
+    async def mock_lint(task, test_file, project_id):
+        pass  # No-op, doesn't raise
+
     test_agent._execute_tests = mock_execute_tests
+    test_agent._run_and_check_linting = mock_lint
     test_agent.client = None  # Use fallback template
 
     # Act
@@ -157,6 +162,12 @@ async def test_test_worker_commits_even_after_test_correction(
 
     test_agent._execute_tests = mock_execute_tests_with_retry
     test_agent.client = None
+
+    # Mock linting to pass without errors
+    async def mock_lint(task, test_file, project_id):
+        pass  # No-op, doesn't raise
+
+    test_agent._run_and_check_linting = mock_lint
 
     # Mock correction to return fixed code
     async def mock_correct(orig, error, spec, analysis):

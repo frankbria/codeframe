@@ -88,7 +88,7 @@ class TestLeadAgentSyncBlockerHandling:
             "1.2",
             "Add user profile",
             TaskStatus.PENDING,
-            depends_on="1.1",
+            depends_on=str(task_a_id),
         )
 
         # Create SYNC blocker for Task A
@@ -148,7 +148,7 @@ class TestLeadAgentSyncBlockerHandling:
             db, project_id, issue_id, "1.1", "Setup database", TaskStatus.IN_PROGRESS
         )
         task_b_id = self._create_test_task(
-            db, project_id, issue_id, "1.2", "Add users table", TaskStatus.PENDING, depends_on="1.1"
+            db, project_id, issue_id, "1.2", "Add users table", TaskStatus.PENDING, depends_on=str(task_a_id)
         )
         task_c_id = self._create_test_task(
             db,
@@ -157,7 +157,7 @@ class TestLeadAgentSyncBlockerHandling:
             "1.3",
             "Add user migration",
             TaskStatus.PENDING,
-            depends_on="1.2",
+            depends_on=str(task_b_id),
         )
         task_d_id = self._create_test_task(
             db,
@@ -166,7 +166,7 @@ class TestLeadAgentSyncBlockerHandling:
             "1.4",
             "Add sessions table",
             TaskStatus.PENDING,
-            depends_on="1.1",
+            depends_on=str(task_a_id),
         )
 
         # Create SYNC blocker for Task A
@@ -221,7 +221,7 @@ class TestLeadAgentSyncBlockerHandling:
             db, project_id, issue_id, "1.1", "Backend auth", TaskStatus.IN_PROGRESS
         )
         task_b_id = self._create_test_task(
-            db, project_id, issue_id, "1.2", "User profile", TaskStatus.PENDING, depends_on="1.1"
+            db, project_id, issue_id, "1.2", "User profile", TaskStatus.PENDING, depends_on=str(task_a_id)
         )
         task_c_id = self._create_test_task(
             db, project_id, issue_id, "2.1", "Frontend styling", TaskStatus.PENDING
@@ -318,7 +318,7 @@ class TestLeadAgentAsyncBlockerHandling:
             "1.2",
             "Add search filters",
             TaskStatus.PENDING,
-            depends_on="1.1",
+            depends_on=str(task_a_id),
         )
 
         # Create ASYNC blocker for Task A (informational question)
@@ -368,10 +368,10 @@ class TestLeadAgentAsyncBlockerHandling:
             db, project_id, issue_id, "1.1", "Implement API endpoint", TaskStatus.IN_PROGRESS
         )
         task_b_id = self._create_test_task(
-            db, project_id, issue_id, "1.2", "Add API tests", TaskStatus.PENDING, depends_on="1.1"
+            db, project_id, issue_id, "1.2", "Add API tests", TaskStatus.PENDING, depends_on=str(task_a_id)
         )
         task_c_id = self._create_test_task(
-            db, project_id, issue_id, "1.3", "Add API docs", TaskStatus.PENDING, depends_on="1.1"
+            db, project_id, issue_id, "1.3", "Add API docs", TaskStatus.PENDING, depends_on=str(task_a_id)
         )
 
         # Create ASYNC blocker for Task A

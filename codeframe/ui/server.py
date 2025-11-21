@@ -623,7 +623,7 @@ async def submit_discovery_answer(project_id: int, answer_data: DiscoveryAnswer)
     if project.get("phase") != "discovery":
         raise HTTPException(
             status_code=400,
-            detail=f"Project is not in discovery phase. Current phase: {project.get('phase')}"
+            detail=f"Project is not in discovery phase. Current phase: {project.get('phase')}",
         )
 
     # T042: Validate ANTHROPIC_API_KEY is available
@@ -631,24 +631,20 @@ async def submit_discovery_answer(project_id: int, answer_data: DiscoveryAnswer)
     if not api_key:
         raise HTTPException(
             status_code=500,
-            detail="ANTHROPIC_API_KEY environment variable is not set. Cannot process discovery answers."
+            detail="ANTHROPIC_API_KEY environment variable is not set. Cannot process discovery answers.",
         )
 
     # T042: Get Lead Agent and process answer
     try:
-        agent = LeadAgent(
-            project_id=project_id,
-            db=app.state.db,
-            api_key=api_key
-        )
+        agent = LeadAgent(project_id=project_id, db=app.state.db, api_key=api_key)
 
         # CRITICAL: Validate discovery is active before processing answer
         status = agent.get_discovery_status()
-        if status.get('state') != 'discovering':
+        if status.get("state") != "discovering":
             raise HTTPException(
                 status_code=400,
                 detail=f"Discovery is not active. Current state: {status.get('state')}. "
-                       f"Please start discovery first by calling POST /api/projects/{project_id}/discovery/start"
+                f"Please start discovery first by calling POST /api/projects/{project_id}/discovery/start",
             )
 
         # Process the answer (trimmed by Pydantic validator)
@@ -1287,6 +1283,78 @@ async def run_lint_manual(request: Request):
             }
             for r in results
         ],
+    }
+
+
+# Session Lifecycle endpoints (014-session-lifecycle)
+
+
+@app.get("/api/projects/{project_id}/session", tags=["session"])
+async def get_session_state(project_id: int):
+    """Get current session state for project (T028).
+
+    Args:
+        project_id: Project ID
+
+    Returns:
+        Session state with last session summary, next actions, progress, blockers
+        Returns empty state if no session file exists
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+
+    Example:
+        GET /api/projects/1/session
+    """
+    from codeframe.core.session_manager import SessionManager
+
+    # Get project
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404, detail={"error": "Project not found", "project_id": project_id}
+        )
+
+    # Get project path
+    workspace_path = project.get("workspace_path")
+    if not workspace_path:
+        # Return empty state if no workspace path
+        return {
+            "last_session": {
+                "summary": "No previous session",
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+            "next_actions": [],
+            "progress_pct": 0.0,
+            "active_blockers": [],
+        }
+
+    # Load session state
+    session_mgr = SessionManager(workspace_path)
+    session = session_mgr.load_session()
+
+    if not session:
+        # Return empty state
+        return {
+            "last_session": {
+                "summary": "No previous session",
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+            "next_actions": [],
+            "progress_pct": 0.0,
+            "active_blockers": [],
+        }
+
+    # Return session state (omit completed_tasks and current_plan for API response)
+    return {
+        "last_session": {
+            "summary": session["last_session"]["summary"],
+            "timestamp": session["last_session"]["timestamp"],
+        },
+        "next_actions": session.get("next_actions", []),
+        "progress_pct": session.get("progress_pct", 0.0),
+        "active_blockers": session.get("active_blockers", []),
     }
 
 

@@ -109,6 +109,22 @@ class LeadAgent:
                     f"Unexpected error initializing GitWorkflowManager: {e}. Git features will be disabled."
                 )
 
+        # Session lifecycle manager (014-session-lifecycle)
+        from codeframe.core.session_manager import SessionManager
+
+        self.session_manager = None
+        if project_root_str:
+            try:
+                self.session_manager = SessionManager(project_root_str)
+                logger.debug(f"Initialized SessionManager for project at {project_root_str}")
+            except Exception as e:
+                logger.warning(
+                    f"Could not initialize SessionManager: {e}. Session features will be disabled."
+                )
+
+        # Track current task/plan for session state
+        self.current_task: Optional[str] = None
+
         # Load discovery state from database
         self._load_discovery_state()
 
@@ -1483,10 +1499,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 # Also check if dependency task has pending SYNC blocker
                 for blocker in blockers.get("blockers", []):
-                    if (
-                        blocker.get("task_id") == dep_id
-                        and blocker.get("blocker_type") == "SYNC"
-                    ):
+                    if blocker.get("task_id") == dep_id and blocker.get("blocker_type") == "SYNC":
                         logger.debug(
                             f"Task {task_id} blocked: dependency task {dep_id} "
                             f"has pending SYNC blocker {blocker.get('id')}"
@@ -1538,3 +1551,234 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         logger.debug(f"Tasks remaining: {len(incomplete)} ({len(blocked)} blocked)")
         return False
+
+    # ============================================================================
+    # Session Lifecycle Management (014-session-lifecycle)
+    # ============================================================================
+
+    def _get_session_summary(self) -> str:
+        """Generate summary of completed tasks in last session.
+
+        Returns:
+            Human-readable summary string
+        """
+        tasks = self.db.get_recently_completed_tasks(self.project_id, limit=10)
+        if not tasks:
+            return "No tasks completed"
+
+        # Build summary from task titles
+        task_summaries = []
+        for task in tasks[:3]:  # Show max 3 tasks in summary
+            task_summaries.append(f"Task #{task['id']} ({task['title']})")
+
+        summary = f"Completed {', '.join(task_summaries)}"
+        if len(tasks) > 3:
+            summary += f" and {len(tasks) - 3} more"
+
+        return summary
+
+    def _get_completed_task_ids(self) -> List[int]:
+        """Get IDs of recently completed tasks.
+
+        Returns:
+            List of task IDs
+        """
+        tasks = self.db.get_recently_completed_tasks(self.project_id, limit=10)
+        return [task["id"] for task in tasks]
+
+    def _format_time_ago(self, timestamp: str) -> str:
+        """Format ISO timestamp as 'X hours/days ago'.
+
+        Args:
+            timestamp: ISO 8601 timestamp string
+
+        Returns:
+            Human-readable time ago string
+        """
+        from datetime import datetime, timedelta
+
+        try:
+            dt = datetime.fromisoformat(timestamp)
+            now = datetime.now()
+            delta = now - dt
+
+            if delta < timedelta(minutes=1):
+                return "just now"
+            elif delta < timedelta(hours=1):
+                minutes = int(delta.total_seconds() / 60)
+                return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+            elif delta < timedelta(days=1):
+                hours = int(delta.total_seconds() / 3600)
+                return f"{hours} hour{'s' if hours != 1 else ''} ago"
+            elif delta < timedelta(days=30):
+                days = delta.days
+                return f"{days} day{'s' if days != 1 else ''} ago"
+            else:
+                return timestamp.split("T")[0]  # Just return date
+        except (ValueError, AttributeError):
+            return "unknown time"
+
+    def _get_pending_actions(self) -> List[str]:
+        """Get next pending actions for next actions queue.
+
+        Returns:
+            List of action strings (max 5)
+        """
+        tasks = self.db.get_pending_tasks(self.project_id, limit=5)
+        actions = []
+        for task in tasks:
+            actions.append(f"{task['title']} (Task #{task['id']})")
+        return actions
+
+    def _get_blocker_summaries(self) -> List[Dict]:
+        """Get active blocker summaries.
+
+        Returns:
+            List of blocker dicts with id, question, priority
+        """
+        resp = self.db.list_blockers(self.project_id, status="PENDING")
+        blockers = resp.get("blockers", [])
+        summaries = []
+        for blocker in blockers[:10]:  # Max 10 blockers
+            summaries.append(
+                {
+                    "id": blocker["id"],
+                    "question": blocker["question"],
+                    "priority": blocker.get("priority", "medium"),
+                }
+            )
+        return summaries
+
+    def _get_progress_percentage(self) -> float:
+        """Calculate project progress percentage.
+
+        Returns:
+            Progress percentage (0-100)
+        """
+        stats = self.db.get_project_stats(self.project_id)
+        total = stats["total_tasks"]
+        completed = stats["completed_tasks"]
+
+        if total == 0:
+            return 0.0
+
+        return (completed / total) * 100
+
+    def on_session_start(self) -> None:
+        """Restore and display session context on CLI startup."""
+        if not self.session_manager:
+            logger.debug("SessionManager not initialized, skipping session restoration")
+            return
+
+        session = self.session_manager.load_session()
+
+        if not session:
+            print("\n🚀 Starting new session...\n")
+            return
+
+        # Validate session structure
+        if not isinstance(session, dict):
+            logger.warning("Session data is not a dict, treating as new session")
+            print("\n🚀 Starting new session...\n")
+            return
+
+        # Validate last_session structure
+        last_session = session.get("last_session")
+        if (
+            not isinstance(last_session, dict)
+            or "summary" not in last_session
+            or "timestamp" not in last_session
+        ):
+            logger.warning("Session missing valid 'last_session' data, treating as new session")
+            print("\n🚀 Starting new session...\n")
+            return
+
+        # Display formatted session context with safe access
+        print("\n📋 Restoring session...\n")
+        print("Last Session:")
+
+        # Safe summary access
+        summary = last_session.get("summary", "No activity")
+        if not isinstance(summary, str):
+            summary = str(summary) if summary else "No activity"
+        print(f"  Summary: {summary}")
+
+        # Safe timestamp formatting
+        timestamp = last_session.get("timestamp", "")
+        try:
+            time_ago = self._format_time_ago(timestamp) if timestamp else "Unknown time"
+        except (ValueError, TypeError, KeyError) as e:
+            logger.debug(f"Failed to format timestamp: {e}")
+            time_ago = "Recently"
+        print(f"  Time: {time_ago}")
+        print()
+
+        # Display next actions if available
+        next_actions = session.get("next_actions", [])
+        if isinstance(next_actions, list) and next_actions:
+            print("Next Actions:")
+            for i, action in enumerate(next_actions[:5], 1):
+                # Ensure action is printable
+                action_str = str(action) if action else ""
+                if action_str:
+                    print(f"  {i}. {action_str}")
+            print()
+
+        # Display progress with safe access
+        progress_pct = session.get("progress_pct", 0)
+        if not isinstance(progress_pct, (int, float)):
+            try:
+                progress_pct = float(progress_pct)
+            except (ValueError, TypeError):
+                progress_pct = 0
+
+        try:
+            stats = self.db.get_project_stats(self.project_id)
+            completed = stats.get("completed_tasks", 0)
+            total = stats.get("total_tasks", 0)
+            print(f"Progress: {round(progress_pct)}% ({completed}/{total} tasks complete)")
+        except Exception as e:
+            logger.debug(f"Failed to get project stats: {e}")
+            print(f"Progress: {round(progress_pct)}%")
+
+        # Display blockers with safe access
+        active_blockers = session.get("active_blockers", [])
+        if not isinstance(active_blockers, list):
+            active_blockers = []
+
+        if active_blockers:
+            print(f"Blockers: {len(active_blockers)} active")
+        else:
+            print("Blockers: None")
+        print()
+
+        # Prompt to continue
+        print("Press Enter to continue or Ctrl+C to cancel...")
+        try:
+            input()
+        except KeyboardInterrupt:
+            print("\n✓ Cancelled")
+            raise
+
+    def on_session_end(self) -> None:
+        """Save session state before CLI exit."""
+        if not self.session_manager:
+            logger.debug("SessionManager not initialized, skipping session save")
+            return
+
+        try:
+            # Gather session state
+            state = {
+                "summary": self._get_session_summary(),
+                "completed_tasks": self._get_completed_task_ids(),
+                "next_actions": self._get_pending_actions(),
+                "current_plan": self.current_task,
+                "active_blockers": self._get_blocker_summaries(),
+                "progress_pct": self._get_progress_percentage(),
+            }
+
+            # Save to file
+            self.session_manager.save_session(state)
+            logger.debug("Session state saved successfully")
+        except Exception as e:
+            logger.error(f"Failed to save session state: {e}")
