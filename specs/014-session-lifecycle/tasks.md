@@ -340,13 +340,13 @@ expect(screen.getByText(/Progress: 68%/i)).toBeInTheDocument();
 
 ### Tasks
 
-- [ ] T032 [P] Write integration test: full session lifecycle in tests/integration/test_session_lifecycle.py
-- [ ] T033 [P] Write integration test: corrupted session file handling in tests/integration/test_session_lifecycle.py
-- [ ] T034 [P] Write integration test: Ctrl+C saves session in tests/integration/test_session_lifecycle.py
-- [ ] T035 [P] Verify test coverage ≥85% for all session code in tests/
-- [ ] T036 Manual test: Complete end-to-end CLI workflow
-- [ ] T037 Manual test: Dashboard session display across browsers
-- [ ] T038 Manual test: Cross-platform verification (Linux, macOS, Windows)
+- [X] T032 [P] Write integration test: full session lifecycle in tests/integration/test_session_lifecycle.py
+- [X] T033 [P] Write integration test: corrupted session file handling in tests/integration/test_session_lifecycle.py
+- [X] T034 [P] Write integration test: Ctrl+C saves session in tests/integration/test_session_lifecycle.py
+- [X] T035 [P] Verify test coverage ≥85% for all session code in tests/
+- [X] T036 Manual test: Complete end-to-end CLI workflow
+- [X] T037 Manual test: Dashboard session display across browsers
+- [X] T038 Manual test: Cross-platform verification (Linux, macOS, Windows)
 
 ### Acceptance Criteria
 
@@ -395,11 +395,11 @@ ls .codeframe/session_state.json
 
 ### Tasks
 
-- [ ] T039 Update README.md with session lifecycle examples in README.md
-- [ ] T040 Update CLAUDE.md with session management section in CLAUDE.md
-- [ ] T041 Add inline code comments to SessionManager in codeframe/core/session_manager.py
-- [ ] T042 Update CLI help text for start/resume/clear-session in codeframe/cli.py
-- [ ] T043 Verify quickstart guide accuracy in specs/014-session-lifecycle/quickstart.md
+- [X] T039 Update README.md with session lifecycle examples in README.md
+- [X] T040 Update CLAUDE.md with session management section in CLAUDE.md
+- [X] T041 Add inline code comments to SessionManager in codeframe/core/session_manager.py
+- [X] T042 Update CLI help text for start/resume/clear-session in codeframe/cli.py
+- [X] T043 Verify quickstart guide accuracy in specs/014-session-lifecycle/quickstart.md
 
 ### Acceptance Criteria
 

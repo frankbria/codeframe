@@ -23,6 +23,7 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 🤖 **Multi-Agent Orchestra** - Lead agent coordinates backend, frontend, test, and review specialists
 🚧 **Human-in-the-Loop Blockers** - Agents pause and ask questions when they need human decisions
 📊 **Context-Aware Memory** - Tiered HOT/WARM/COLD memory system reduces token usage by 30-50%
+💾 **Session Lifecycle Management** - Auto-save/restore work context across CLI restarts
 🌐 **Real-time Dashboard** - WebSocket-powered UI with agent status, blockers, and progress tracking
 ⚡ **Async/Await Architecture** - Non-blocking agent execution with true concurrency
 🔄 **Self-Correction Loops** - Agents automatically fix failing tests (up to 3 attempts)
@@ -409,6 +410,56 @@ curl http://localhost:8000/api/agents/{agent_id}/context/items?project_id=1&tier
 curl -X POST http://localhost:8000/api/agents/{agent_id}/flash-save?project_id=1
 ```
 
+### Session Lifecycle Management
+
+CodeFRAME automatically saves your work context when you exit and restores it on restart—so you never lose track of what was completed.
+
+```bash
+# Start or resume a project (auto-restores session)
+codeframe start my-app
+# Output:
+# 📋 Restoring session...
+#
+# Last Session:
+#   Summary: Completed Task #27 (JWT refresh tokens)
+#   Time: 2 hours ago
+#
+# Next Actions:
+#   1. Fix JWT validation in kong-gateway.ts
+#   2. Add refresh token tests
+#   3. Update auth documentation
+#
+# Progress: 68% (27/40 tasks complete)
+# Blockers: None
+#
+# Press Enter to continue or Ctrl+C to cancel...
+
+# Clear saved session state
+codeframe clear-session my-app
+
+# Get session state via API
+curl http://localhost:8000/api/projects/1/session
+
+# Response example:
+# {
+#   "last_session": {
+#     "summary": "Completed Task #27 (JWT refresh tokens)",
+#     "timestamp": "2025-11-20T10:30:00"
+#   },
+#   "next_actions": [
+#     "Fix JWT validation in kong-gateway.ts"
+#   ],
+#   "progress_pct": 68.5,
+#   "active_blockers": []
+# }
+```
+
+**How it works:**
+- 🔄 **Auto-save on exit** - Session state persisted in `.codeframe/session_state.json`
+- 📋 **Auto-restore on start** - Displays summary, next actions, progress, and blockers
+- ⚡ **Instant context** - Know exactly where you left off without manual re-orientation
+- 🛡️ **Graceful handling** - Corrupted session files fail silently, start fresh
+
 ---
 
 ## API Documentation
@@ -450,6 +501,12 @@ GET    /api/agents/{agent_id}/lint/trends     # Lint trend data
 GET    /api/agents/{agent_id}/context/stats   # Context statistics
 GET    /api/agents/{agent_id}/context/items   # List context items
 POST   /api/agents/{agent_id}/flash-save      # Trigger flash save
+```
+
+### Session Lifecycle Endpoints
+
+```
+GET    /api/projects/{id}/session             # Get session state
 ```
 
 For detailed API documentation, see `/docs` (Swagger UI) or `/redoc` (ReDoc) when the server is running.
