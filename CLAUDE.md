@@ -24,6 +24,8 @@ Quick reference:
 - SQLite with async support (aiosqlite) - blockers table schema already exists (049-human-in-loop)
 - Python 3.11+ (backend), TypeScript 5.3+ (frontend dashboard) + FastAPI, AsyncAnthropic, React 18, aiosqlite, tiktoken (for token counting) (007-context-management)
 - SQLite with async support (aiosqlite) - context_items table schema already exists (007-context-management)
+- Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, tiktoken, TestSprite (MCP) (015-review-polish)
+- SQLite (state.db) + file system (.codeframe/checkpoints/, git commits) (015-review-polish)
 
 ## Project Structure
 ```
@@ -74,9 +76,9 @@ python scripts/quality-ratchet.py show
 **Auto-suggestion**: When quality degrades >10%, the tool recommends context reset with handoff template from `.claude/rules.md`.
 
 ## Recent Changes
+- 015-review-polish: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend) + FastAPI, AsyncAnthropic, React 18, Tailwind CSS, aiosqlite, tiktoken, TestSprite (MCP)
 - 014-session-lifecycle: Added Session Lifecycle Management - Auto-save/restore work context across CLI restarts (file-based storage in `.codeframe/session_state.json`)
 - 010-server-start-command: Added CLI 'serve' command (--port, --reload, --no-browser flags), port validation utilities (port_utils.py), 19 tests with 100% coverage on utilities, no database changes
-- 2025-11-14: 007-context-management - **CRITICAL ARCHITECTURAL FIX** 🎯
   * **Multi-Agent Support**: Multiple agents can now collaborate on same project
   * Added `agent_id` column to `context_items` schema
   * Updated all database methods to accept `(project_id, agent_id)` scoping
