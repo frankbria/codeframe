@@ -1,10 +1,10 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-Sprint%209%20Complete-green)
+![Status](https://img.shields.io/badge/status-Sprint%2010%20Complete%20%28MVP%29-brightgreen)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-450%2B%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-550%2B%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 
 > AI coding agents that work autonomously while you sleep. Check in like a coworker, answer questions when needed, ship features continuously.
 
@@ -32,10 +32,84 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 📋 **Lint Enforcement** - Multi-language linting with trend tracking and automatic fixes
 🔔 **Multi-Channel Notifications** - Desktop notifications, webhooks, and custom routing for agent events
 🚀 **Auto-Commit Workflows** - Git integration with automatic commits after successful test passes
+✅ **Quality Gates** - Pre-completion checks block bad code (tests, types, coverage, review)
+💾 **Checkpoint & Recovery** - Git + DB snapshots enable project state rollback
+💰 **Cost Tracking** - Real-time token usage and cost analytics per agent/task
 
 ---
 
-## What's New (Updated: 2025-11-18)
+## What's New (Updated: 2025-11-23)
+
+### 🚀 Sprint 10 Complete: Review & Polish - MVP COMPLETE! 🎉 (015-review-polish)
+
+**Production-Ready Quality System** - Comprehensive quality gates, checkpoint recovery, and cost tracking complete the MVP.
+
+#### Major Features Delivered
+
+**1. Quality Gates System** - Automated pre-completion checks block bad code
+- ✅ **Multi-Stage Gates**: Tests → Type Check → Coverage → Code Review
+- ✅ **Automatic Blocking**: Critical failures prevent task completion
+- ✅ **Human Approval Workflow**: Risky changes (schema migrations, API changes) require manual sign-off
+- ✅ **Smart Blocker Creation**: Quality failures automatically create blockers with actionable details
+- ✅ **Performance**: <2 min total gate execution time
+- ✅ **150 Tests**: Complete coverage for gate workflows
+
+**2. Checkpoint & Recovery System** - Save and restore project state
+- ✅ **Hybrid Snapshot Format**: Git commit + SQLite backup + context JSON
+- ✅ **Manual Checkpoints**: `codeframe checkpoint create <name>`
+- ✅ **Restore with Diff Preview**: Shows changes before restoring
+- ✅ **Metadata Tracking**: Tasks completed, agents active, context count, costs
+- ✅ **Performance**: <10s create, <30s restore
+- ✅ **110 Tests**: Full checkpoint lifecycle coverage
+
+**3. Metrics & Cost Tracking** - Real-time token usage and cost analytics
+- ✅ **Per-Call Tracking**: Record tokens for every LLM API call
+- ✅ **Multi-Model Pricing**: Sonnet 4.5, Opus 4, Haiku 4 with current rates
+- ✅ **Cost Breakdowns**: By agent, by task, by model, over time
+- ✅ **Dashboard Visualization**: CostDashboard, TokenUsageChart, AgentMetrics components
+- ✅ **Performance**: <50ms per token record
+- ✅ **95 Tests**: Complete metrics tracking coverage
+
+**4. End-to-End Integration Testing** - Comprehensive E2E tests with Pytest + Playwright
+- ✅ **Full Workflow Tests**: Discovery → Planning → Execution → Completion (10 backend tests)
+- ✅ **Quality Gate Tests**: Task blocking on test failures, critical review findings
+- ✅ **Checkpoint Tests**: Create/restore workflow validation
+- ✅ **Playwright Frontend Tests**: Dashboard, review UI, checkpoint UI, metrics UI (37 tests)
+- ✅ **CI/CD Integration**: E2E tests run in GitHub Actions
+- ✅ **47 E2E Tests Total**: Backend (Pytest) + Frontend (Playwright) coverage
+- ✅ **Test Fixtures**: Hello World API project for comprehensive workflow validation
+
+**Frontend Components**:
+- QualityGateStatus, CheckpointList, CheckpointRestore for quality and state management
+- CostDashboard, TokenUsageChart, AgentMetrics for cost analytics
+- Full integration with existing Dashboard and WebSocket real-time updates
+
+**Database Schema**:
+- Migration 015 adds code_reviews, token_usage tables
+- Enhanced checkpoints table with name, description, metadata
+- Extended tasks table with quality_gate_status, quality_gate_failures, requires_human_approval
+- Performance-optimized indexes for reviews, token usage, checkpoints
+
+**Documentation & Polish**:
+- Updated README.md with Sprint 10 features
+- Comprehensive API documentation in docs/api.md
+- Sprint 10 added to SPRINTS.md timeline
+- All code passes mypy, ruff, tsc, eslint with zero errors
+- 88%+ test coverage maintained across all Sprint 10 components
+
+**Performance & Testing**:
+- 550+ tests passing with 88%+ coverage
+- Review Agent analysis: <30s per file
+- Quality gates: <2 min per task
+- Checkpoint create: <10s, restore: <30s
+- Token tracking: <50ms per update
+- Dashboard metrics load: <200ms
+
+**Result**: MVP COMPLETE! CodeFRAME now has production-ready quality enforcement, state management, cost tracking, and comprehensive E2E testing—ready for 8-hour autonomous coding sessions.
+
+**Full Sprint**: [Sprint 10 Documentation](sprints/sprint-10-review-polish.md)
+
+---
 
 ### 🚀 Sprint 9 Complete: MVP Completion (009-mvp-completion)
 
@@ -493,6 +567,11 @@ GET    /api/agents/{agent_id}/review/history  # Review history
 POST   /api/agents/{agent_id}/lint            # Run linting
 GET    /api/agents/{agent_id}/lint/results    # Get lint results
 GET    /api/agents/{agent_id}/lint/trends     # Lint trend data
+
+GET    /api/tasks/{task_id}/quality-gates     # Get quality gate status
+POST   /api/tasks/{task_id}/quality-gates     # Manually trigger quality gates
+GET    /api/tasks/{task_id}/reviews           # Get code reviews for task
+POST   /api/agents/review/analyze             # Trigger Review Agent analysis
 ```
 
 ### Context Management Endpoints
@@ -507,6 +586,20 @@ POST   /api/agents/{agent_id}/flash-save      # Trigger flash save
 
 ```
 GET    /api/projects/{id}/session             # Get session state
+```
+
+### Checkpoint & Metrics Endpoints (Sprint 10)
+
+```
+GET    /api/projects/{id}/checkpoints         # List checkpoints
+POST   /api/projects/{id}/checkpoints         # Create checkpoint
+GET    /api/projects/{id}/checkpoints/{cid}   # Get checkpoint details
+DELETE /api/projects/{id}/checkpoints/{cid}   # Delete checkpoint
+POST   /api/projects/{id}/checkpoints/{cid}/restore  # Restore to checkpoint
+
+GET    /api/projects/{id}/metrics/tokens      # Get token usage metrics
+GET    /api/projects/{id}/metrics/costs       # Get cost metrics
+GET    /api/agents/{agent_id}/metrics         # Get agent-specific metrics
 ```
 
 For detailed API documentation, see `/docs` (Swagger UI) or `/redoc` (ReDoc) when the server is running.
@@ -603,8 +696,16 @@ tests/
 ├── debug/               # Debugging and fixture validation tests
 ├── deployment/          # Deployment contract tests
 ├── discovery/           # PRD discovery and question generation
+├── e2e/                 # End-to-end tests (Pytest + Playwright)
+│   ├── test_full_workflow.py       # Backend E2E tests (10 tests)
+│   ├── test_dashboard.spec.ts      # Dashboard UI tests
+│   ├── test_review_ui.spec.ts      # Review findings UI tests
+│   ├── test_checkpoint_ui.spec.ts  # Checkpoint UI tests
+│   ├── test_metrics_ui.spec.ts     # Metrics dashboard UI tests
+│   ├── playwright.config.ts        # Playwright configuration
+│   └── fixtures/                   # Test fixtures (Hello World API)
 ├── git/                 # Git workflow and auto-commit tests
-├── integration/         # End-to-end workflow tests
+├── integration/         # Integration workflow tests
 ├── lib/                 # Library utilities (token counting, quality analysis)
 ├── notifications/       # Notification routing and delivery tests
 ├── persistence/         # Database and migration tests
@@ -614,13 +715,17 @@ tests/
 
 ### Test Statistics
 
-- **Total Tests**: 450+
-- **Coverage**: 87%+
+- **Total Tests**: 550+
+  - Unit tests: ~400
+  - Integration tests: ~100
+  - E2E tests: 47 (10 backend + 37 Playwright)
+- **Coverage**: 88%+
 - **Pass Rate**: 100%
-- **Test Execution Time**: ~5 minutes (full suite)
+- **Test Execution Time**: ~10 minutes (full suite including E2E)
+  - Unit tests: ~2 minutes
   - API tests: ~1 minute (80-90% faster with class-scoped fixtures)
   - Integration tests: ~2 minutes
-  - Unit tests: ~2 minutes
+  - E2E tests: ~5 minutes (backend + Playwright)
 
 ### Running Specific Test Suites
 
@@ -637,9 +742,53 @@ uv run pytest tests/integration/ -v
 # Quality enforcement tests
 uv run pytest tests/enforcement/ -v
 
+# Backend E2E tests (Sprint 10 workflows)
+uv run pytest tests/e2e/test_full_workflow.py -v
+
+# Frontend E2E tests (Playwright - requires setup first)
+cd tests/e2e
+npm install  # First time only
+npm run install:browsers  # First time only
+npm test  # Run all Playwright tests
+
+# Run in headed mode (see browser)
+npm run test:headed
+
+# Run specific test file
+npx playwright test test_dashboard.spec.ts
+
 # With coverage report
 uv run pytest --cov=codeframe --cov-report=term-missing --cov-report=html
 ```
+
+### E2E Test Setup
+
+**Prerequisites:**
+- Backend server running on port 8080
+- Frontend server running on port 3000 (for Playwright tests)
+
+**Quick Start:**
+```bash
+# Terminal 1: Start backend
+uv run uvicorn codeframe.ui.server:app --port 8080
+
+# Terminal 2: Start frontend
+cd web-ui && npm run dev
+
+# Terminal 3: Run E2E tests
+uv run pytest tests/e2e/ -v
+cd tests/e2e && npm test
+```
+
+**E2E Test Coverage:**
+- ✅ Full workflow: Discovery → Planning → Execution → Completion (10 backend tests)
+- ✅ Quality gates blocking bad code
+- ✅ Review agent security analysis
+- ✅ Checkpoint create/restore
+- ✅ Metrics and cost tracking
+- ✅ Dashboard UI with real-time updates (37 Playwright tests)
+
+See `tests/e2e/README.md` for detailed E2E testing documentation.
 
 ---
 

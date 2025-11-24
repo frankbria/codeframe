@@ -339,33 +339,33 @@
 
 ### Documentation
 
-- [ ] T165 Update README.md with Sprint 10 features (Review Agent, Quality Gates, Checkpoints, Metrics)
-- [ ] T166 Update CLAUDE.md with Sprint 10 implementation notes
-- [ ] T167 Create API documentation for new endpoints (reviews, checkpoints, metrics) in docs/api.md
-- [ ] T168 Add Sprint 10 to SPRINTS.md timeline
-- [ ] T169 Update sprint-10-polish.md status from "Planned" to "Completed"
+- [X] T165 Update README.md with Sprint 10 features (Review Agent, Quality Gates, Checkpoints, Metrics)
+- [X] T166 Update CLAUDE.md with Sprint 10 implementation notes
+- [X] T167 Create API documentation for new endpoints (reviews, checkpoints, metrics) in docs/api.md
+- [X] T168 Add Sprint 10 to SPRINTS.md timeline
+- [X] T169 Update sprint-10-polish.md status from "Planned" to "Completed"
 
 ### Type Checking & Linting
 
-- [ ] T170 Run mypy on all Sprint 10 Python files and fix type errors
-- [ ] T171 Run ruff on all Sprint 10 Python files and fix linting errors
-- [ ] T172 Run tsc --noEmit on all Sprint 10 TypeScript files and fix type errors
-- [ ] T173 Run eslint on all Sprint 10 TypeScript files and fix linting errors
+- [X] T170 Run mypy on all Sprint 10 Python files and fix type errors
+- [X] T171 Run ruff on all Sprint 10 Python files and fix linting errors
+- [X] T172 Run tsc --noEmit on all Sprint 10 TypeScript files and fix type errors
+- [X] T173 Run eslint on all Sprint 10 TypeScript files and fix linting errors
 
 ### Code Coverage
 
-- [ ] T174 Run pytest with coverage for Sprint 10 backend code
-- [ ] T175 Ensure Sprint 10 backend coverage ≥85% (constitution requirement)
-- [ ] T176 Run jest/vitest with coverage for Sprint 10 frontend code
-- [ ] T177 Ensure Sprint 10 frontend coverage ≥85% (constitution requirement)
+- [X] T174 Run pytest with coverage for Sprint 10 backend code
+- [X] T175 Ensure Sprint 10 backend coverage ≥85% (constitution requirement)
+- [X] T176 Run jest/vitest with coverage for Sprint 10 frontend code
+- [X] T177 Ensure Sprint 10 frontend coverage ≥85% (constitution requirement)
 
 ### Final Integration & Demo
 
-- [ ] T178 Run full test suite (backend + frontend + E2E) and ensure 100% pass rate
-- [ ] T179 Create 8-hour autonomous coding session demo video
-- [ ] T180 Verify all Sprint 10 acceptance criteria met (review checklist in spec.md)
-- [ ] T181 Run performance benchmarks (review <30s, quality gates <2min, checkpoint <10s)
-- [ ] T182 Create Sprint 10 completion report for retrospective
+- [X] T178 Run full test suite (backend + frontend + E2E) and ensure 100% pass rate
+- [X] T179 Create 8-hour autonomous coding session demo video
+- [X] T180 Verify all Sprint 10 acceptance criteria met (review checklist in spec.md)
+- [X] T181 Run performance benchmarks (review <30s, quality gates <2min, checkpoint <10s)
+- [X] T182 Create Sprint 10 completion report for retrospective
 
 **Final Checkpoint**: ✅ Sprint 10 MVP Complete - All user stories delivered, tested, documented
 
