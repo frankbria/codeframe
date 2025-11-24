@@ -15,11 +15,64 @@ env:
 
 jobs:
   # ============================================
-  # Backend Unit Tests
+  # Code Quality Checks (Run First - Fast Fail)
+  # ============================================
+  code-quality:
+    name: Code Quality (Lint + Type Check)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Create virtual environment
+        run: uv venv
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run ruff (linting)
+        run: uv run ruff check .
+
+      - name: Run mypy (type checking)
+        run: uv run mypy codeframe/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/package-lock.json'
+
+      - name: Install frontend dependencies
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: web-ui
+        run: npm run lint
+
+      - name: Run TypeScript type checking
+        working-directory: web-ui
+        run: npm run type-check
+
+  # ============================================
+  # Backend Unit Tests (After Code Quality)
   # ============================================
   backend-tests:
     name: Backend Unit Tests
     runs-on: ubuntu-latest
+    needs: code-quality
 
     steps:
       - name: Checkout code
@@ -70,11 +123,12 @@ jobs:
           name: backend-coverage
 
   # ============================================
-  # Frontend Unit Tests
+  # Frontend Unit Tests (After Code Quality)
   # ============================================
   frontend-tests:
     name: Frontend Unit Tests
     runs-on: ubuntu-latest
+    needs: code-quality
 
     steps:
       - name: Checkout code
@@ -265,58 +319,6 @@ jobs:
           fi
 
   # ============================================
-  # Code Quality Checks
-  # ============================================
-  code-quality:
-    name: Code Quality (Lint + Type Check)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-
-      - name: Create virtual environment
-        run: uv venv
-
-      - name: Install dependencies
-        run: uv sync --extra dev
-
-      - name: Run ruff (linting)
-        run: uv run ruff check .
-
-      - name: Run mypy (type checking)
-        run: uv run mypy codeframe/
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Install frontend dependencies
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Run ESLint
-        working-directory: web-ui
-        run: npm run lint
-
-      - name: Run TypeScript type checking
-        working-directory: web-ui
-        run: npm run type-check
-
-  # ============================================
   # TestSprite E2E Tests (Optional)
   # ============================================
   testsprite-e2e:
@@ -381,13 +383,13 @@ jobs:
         run: |
           echo "## Test Suite Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Code Quality: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Backend Tests: ${{ needs.backend-tests.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend Tests: ${{ needs.frontend-tests.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Code Quality: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.backend-tests.result }}" == "failure" ] || \
-             [ "${{ needs.frontend-tests.result }}" == "failure" ] || \
-             [ "${{ needs.code-quality.result }}" == "failure" ]; then
+          if [ "${{ needs.code-quality.result }}" == "failure" ] || \
+             [ "${{ needs.backend-tests.result }}" == "failure" ] || \
+             [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "❌ Some tests failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
             exit 1

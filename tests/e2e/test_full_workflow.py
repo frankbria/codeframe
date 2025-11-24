@@ -5,15 +5,13 @@ Tests the complete autonomous coding workflow using the actual CodeFRAME API.
 These tests validate Sprint 10 features with the real implementation.
 """
 
-import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
-from codeframe.core.models import ProjectStatus, TaskStatus, Task
-from codeframe.core.project import Project
+from codeframe.core.models import TaskStatus, Task
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.persistence.database import Database
 

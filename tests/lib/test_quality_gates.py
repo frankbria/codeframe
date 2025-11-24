@@ -12,9 +12,7 @@ Quality gates ensure code quality by blocking task completion when:
 """
 
 import pytest
-import asyncio
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 from codeframe.lib.quality_gates import QualityGates, QualityGateResult
 from codeframe.core.models import (
     Task,
@@ -250,13 +248,15 @@ def test_add():
             # Configure different returns based on command
             def side_effect(*args, **kwargs):
                 cmd = args[0] if args else kwargs.get("args", [])
-                if "pytest" in cmd or "jest" in cmd:
+                cmd_str = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
+                if "--cov" in cmd_str:
+                    # Coverage command (pytest with --cov)
+                    return Mock(returncode=0, stdout="All tests passed\nTOTAL coverage: 92%", stderr="")
+                elif "pytest" in cmd_str or "jest" in cmd_str:
                     return Mock(returncode=0, stdout="All tests passed", stderr="")
-                elif "mypy" in cmd or "tsc" in cmd:
+                elif "mypy" in cmd_str or "tsc" in cmd_str:
                     return Mock(returncode=0, stdout="Success: no issues found", stderr="")
-                elif "coverage" in cmd:
-                    return Mock(returncode=0, stdout="TOTAL coverage: 92%", stderr="")
-                elif "ruff" in cmd or "eslint" in cmd:
+                elif "ruff" in cmd_str or "eslint" in cmd_str:
                     return Mock(returncode=0, stdout="All checks passed", stderr="")
                 return Mock(returncode=0, stdout="", stderr="")
 

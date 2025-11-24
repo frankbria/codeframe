@@ -7,14 +7,11 @@ All tests should fail initially (TDD approach).
 import json
 import shutil
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import Mock, patch, MagicMock
 
 import pytest
 
-from codeframe.core.models import Checkpoint, CheckpointMetadata
+from codeframe.core.models import Checkpoint
 from codeframe.lib.checkpoint_manager import CheckpointManager
 from codeframe.persistence.database import Database
 

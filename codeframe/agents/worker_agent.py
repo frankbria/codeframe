@@ -37,9 +37,28 @@ class WorkerAgent:
 
         Returns:
             Task execution result
+
+        Note:
+            When LLM integration is added, token usage should be recorded using:
+
+            >>> from codeframe.lib.metrics_tracker import MetricsTracker
+            >>> from codeframe.core.models import CallType
+            >>>
+            >>> # After LLM call:
+            >>> tracker = MetricsTracker(db=self.db)
+            >>> await tracker.record_token_usage(
+            ...     task_id=task.id,
+            ...     agent_id=self.agent_id,
+            ...     project_id=self.project_id,
+            ...     model_name="claude-sonnet-4-5",
+            ...     input_tokens=response.usage.input_tokens,
+            ...     output_tokens=response.usage.output_tokens,
+            ...     call_type=CallType.TASK_EXECUTION
+            ... )
         """
         self.current_task = task
         # TODO: Implement task execution with LLM provider
+        # TODO: Add token tracking after LLM call (see docstring example)
         return {"status": "completed", "output": "Task executed successfully"}
 
     def assess_maturity(self) -> None:

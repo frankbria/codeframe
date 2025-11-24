@@ -5,9 +5,6 @@ Expected result: ALL TESTS FAIL (RED phase) until ReviewAgent is implemented.
 """
 
 import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 from codeframe.core.models import (
     Task,
     TaskStatus,

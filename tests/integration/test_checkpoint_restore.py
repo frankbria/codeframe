@@ -4,7 +4,6 @@ Tests the complete checkpoint creation → modification → restore workflow
 to ensure all components work together correctly.
 """
 
-import json
 import subprocess
 from pathlib import Path
 
