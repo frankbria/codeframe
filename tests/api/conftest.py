@@ -67,6 +67,9 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     workspace_root = class_temp_db_path.parent / "workspaces"
     os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
+    # Set test API key for discovery endpoints
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
     # Reload server module to pick up environment changes
     # This happens ONCE per test class instead of per test
     from codeframe.ui import server

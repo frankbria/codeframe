@@ -670,7 +670,7 @@ async def submit_discovery_answer(project_id: int, answer_data: DiscoveryAnswer)
     answered_count = status.get("answered_count", 0)
     current_question_index = answered_count  # Index is based on how many answered
     current_question_id = status.get("current_question", {}).get("id", "")
-    current_question_text = status.get("current_question", {}).get("question", "")
+    current_question_text = status.get("current_question", {}).get("text", "")
     progress_percentage = status.get("progress_percentage", 0.0)
 
     # T043: Broadcast WebSocket events
