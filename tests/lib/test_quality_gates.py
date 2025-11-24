@@ -113,10 +113,12 @@ def test_failing():
             result = await quality_gates.run_tests_gate(task)
 
             assert result.status == "failed"
-            assert result.gate == QualityGateType.TESTS
-            assert "test" in result.reason.lower()
-            assert result.details is not None
-            assert "1 == 2" in result.details
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.TESTS
+            assert "test" in failure.reason.lower()
+            assert failure.details is not None
+            assert "1 == 2" in failure.details
 
     # ========================================================================
     # T046: test_block_on_type_errors - Gate blocks when mypy/tsc has errors
@@ -148,10 +150,12 @@ result: int = add("hello", "world")  # Type error: str instead of int
             result = await quality_gates.run_type_check_gate(task)
 
             assert result.status == "failed"
-            assert result.gate == QualityGateType.TYPE_CHECK
-            assert "type" in result.reason.lower()
-            assert result.details is not None
-            assert "incompatible type" in result.details
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.TYPE_CHECK
+            assert "type" in failure.reason.lower()
+            assert failure.details is not None
+            assert "incompatible type" in failure.details
 
     # ========================================================================
     # T047: test_block_on_low_coverage - Gate blocks when coverage < 85%
@@ -171,10 +175,12 @@ result: int = add("hello", "world")  # Type error: str instead of int
             result = await quality_gates.run_coverage_gate(task)
 
             assert result.status == "failed"
-            assert result.gate == QualityGateType.COVERAGE
-            assert "coverage" in result.reason.lower()
-            assert "85%" in result.reason or "72%" in result.reason
-            assert result.severity == Severity.HIGH
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.COVERAGE
+            assert "coverage" in failure.reason.lower()
+            assert "85%" in failure.reason or "72%" in failure.reason
+            assert failure.severity == Severity.HIGH
 
     # ========================================================================
     # T048: test_block_on_critical_review - Gate blocks on critical review findings
@@ -202,10 +208,12 @@ result: int = add("hello", "world")  # Type error: str instead of int
             result = await quality_gates.run_review_gate(task)
 
             assert result.status == "failed"
-            assert result.gate == QualityGateType.CODE_REVIEW
-            assert "critical" in result.reason.lower() or "review" in result.reason.lower()
-            assert result.severity == Severity.CRITICAL
-            assert "SQL injection" in result.details
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.CODE_REVIEW
+            assert "critical" in failure.reason.lower() or "review" in failure.reason.lower()
+            assert failure.severity == Severity.CRITICAL
+            assert "SQL injection" in failure.details
 
     # ========================================================================
     # T049: test_pass_all_gates - All gates pass, task can complete
@@ -366,9 +374,11 @@ def bad_function( ):
             result = await quality_gates.run_linting_gate(task)
 
             assert result.status == "failed"
-            assert result.gate == QualityGateType.LINTING
-            assert "lint" in result.reason.lower() or "style" in result.reason.lower()
-            assert result.severity == Severity.MEDIUM  # Linting is usually medium severity
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.LINTING
+            assert "lint" in failure.reason.lower() or "style" in failure.reason.lower()
+            assert failure.severity == Severity.MEDIUM  # Linting is usually medium severity
 
 
 # ============================================================================

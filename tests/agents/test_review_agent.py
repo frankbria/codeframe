@@ -5,6 +5,8 @@ Expected result: ALL TESTS FAIL (RED phase) until ReviewAgent is implemented.
 """
 
 import pytest
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from codeframe.core.models import (
     Task,
@@ -13,6 +15,31 @@ from codeframe.core.models import (
     Severity,
     ReviewCategory,
 )
+from codeframe.persistence.database import Database
+
+
+@pytest.fixture
+def db():
+    """Create a test database in memory."""
+    database = Database(":memory:")
+    database.initialize()
+
+    # Manually apply Sprint 10 migration for in-memory database
+    from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
+        migration as migration_007
+    )
+    if migration_007.can_apply(database.conn):
+        migration_007.apply(database.conn)
+
+    # Create test project
+    cursor = database.conn.cursor()
+    cursor.execute(
+        "INSERT INTO projects (name, description, workspace_path, status) VALUES (?, ?, ?, ?)",
+        ("test-project", "Test project", "/tmp/test", "active")
+    )
+    database.conn.commit()
+
+    return database
 
 
 @pytest.fixture
@@ -45,13 +72,53 @@ def find_duplicates(items):
 @pytest.fixture
 def sample_task_with_code(db, sample_code_with_sql_injection):
     """Create a task with code files for review."""
-    task = Task(
-        id=1,
+    # Create an issue first (required by foreign key)
+    from codeframe.core.models import Issue
+
+    issue = Issue(
         project_id=1,
+        issue_number="1.1",
+        title="User Management",
+        status=TaskStatus.IN_PROGRESS,
+        priority=0,
+        workflow_step=1,
+    )
+    issue_id = db.create_issue(issue)
+
+    # Create the task in the database
+    task_id = db.create_task_with_issue(
+        project_id=1,
+        issue_id=issue_id,
+        task_number="1.1.1",
+        parent_issue_number="1.1",
         title="Implement user search",
         description="Add database query for user search",
         status=TaskStatus.IN_PROGRESS,
-        assigned_to="backend-001"
+        priority=0,
+        workflow_step=1,
+        can_parallelize=False,
+    )
+
+    # Create Task object with the created task_id
+    task = Task(
+        id=task_id,
+        project_id=1,
+        issue_id=issue_id,
+        task_number="1.1.1",
+        parent_issue_number="1.1",
+        title="Implement user search",
+        description="Add database query for user search",
+        status=TaskStatus.IN_PROGRESS,
+        assigned_to="backend-001",
+        depends_on="",
+        can_parallelize=False,
+        priority=2,
+        workflow_step=1,
+        requires_mcp=False,
+        estimated_tokens=0,
+        actual_tokens=None,
+        created_at=None,
+        completed_at=None,
     )
 
     # Mock file content that would be extracted from task
@@ -102,13 +169,51 @@ async def test_detect_performance_issue(db, sample_code_with_performance_issue):
     Expected: FAIL - ReviewAgent not implemented yet
     """
     from codeframe.agents.review_agent import ReviewAgent
+    from codeframe.core.models import Issue
 
-    task = Task(
-        id=2,
+    # Create issue and task in database
+    issue = Issue(
         project_id=1,
+        issue_number="1.2",
+        title="Performance Optimization",
+        status=TaskStatus.IN_PROGRESS,
+        priority=0,
+        workflow_step=1,
+    )
+    issue_id = db.create_issue(issue)
+
+    task_id = db.create_task_with_issue(
+        project_id=1,
+        issue_id=issue_id,
+        task_number="1.2.1",
+        parent_issue_number="1.2",
         title="Implement duplicate finder",
         description="Find duplicates in list",
-        status=TaskStatus.IN_PROGRESS
+        status=TaskStatus.IN_PROGRESS,
+        priority=0,
+        workflow_step=1,
+        can_parallelize=False,
+    )
+
+    task = Task(
+        id=task_id,
+        project_id=1,
+        issue_id=issue_id,
+        task_number="1.2.1",
+        parent_issue_number="1.2",
+        title="Implement duplicate finder",
+        description="Find duplicates in list",
+        status=TaskStatus.IN_PROGRESS,
+        assigned_to="backend-001",
+        depends_on="",
+        can_parallelize=False,
+        priority=2,
+        workflow_step=1,
+        requires_mcp=False,
+        estimated_tokens=0,
+        actual_tokens=None,
+        created_at=None,
+        completed_at=None,
     )
     task._test_code_files = [
         {
@@ -167,11 +272,9 @@ async def test_block_on_critical_finding(db, sample_task_with_code):
     assert result.status == "blocked", "Task should be blocked"
 
     # Should create a blocker for human attention
-    blockers = db.get_pending_blockers(agent_id="review-001")
-    assert len(blockers) > 0, "Should create blocker for critical issue"
-
-    blocker = blockers[0]
-    assert "security" in blocker.question.lower() or "sql" in blocker.question.lower()
+    blocker = db.get_pending_blocker(agent_id="review-001")
+    assert blocker is not None, "Should create blocker for critical issue"
+    assert "security" in blocker.get("question", "").lower() or "sql" in blocker.get("question", "").lower()
 
 
 @pytest.mark.asyncio

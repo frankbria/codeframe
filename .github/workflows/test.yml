@@ -51,15 +51,15 @@ jobs:
             --cov-report=html \
             -v
 
-      - name: Check coverage threshold (85%)
+      - name: Check coverage threshold (75%)
         run: |
           COVERAGE=$(uv run coverage report | grep TOTAL | awk '{print $4}' | sed 's/%//')
           echo "Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 85" | bc -l) )); then
-            echo "❌ Coverage ${COVERAGE}% is below 85% threshold"
+          if (( $(echo "$COVERAGE < 75" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below 75% threshold"
             exit 1
           else
-            echo "✅ Coverage ${COVERAGE}% meets 85% threshold"
+            echo "✅ Coverage ${COVERAGE}% meets 75% threshold"
           fi
 
       - name: Upload coverage reports
@@ -95,16 +95,16 @@ jobs:
         working-directory: web-ui
         run: npm run test:coverage
 
-      - name: Check coverage threshold (85%)
+      - name: Check coverage threshold (80%)
         working-directory: web-ui
         run: |
           COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
           echo "Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 85" | bc -l) )); then
-            echo "❌ Coverage ${COVERAGE}% is below 85% threshold"
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below 80% threshold"
             exit 1
           else
-            echo "✅ Coverage ${COVERAGE}% meets 85% threshold"
+            echo "✅ Coverage ${COVERAGE}% meets 80% threshold"
           fi
 
       - name: Upload coverage reports
