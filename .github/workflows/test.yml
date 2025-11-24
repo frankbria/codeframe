@@ -39,7 +39,7 @@ jobs:
         run: uv venv
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra dev
 
       - name: Run pytest with coverage
         run: |
@@ -141,7 +141,7 @@ jobs:
         run: uv venv
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra dev
 
       - name: Initialize git for E2E tests
         run: |
@@ -289,7 +289,7 @@ jobs:
         run: uv venv
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra dev
 
       - name: Run ruff (linting)
         run: uv run ruff check .
