@@ -16,6 +16,11 @@ def test_client():
     db_path = temp_dir / "test.db"
     workspace_root = temp_dir / "workspaces"
 
+    # Save original app.state
+    original_db = getattr(app.state, 'db', None)
+    original_workspace_root = getattr(app.state, 'workspace_root', None)
+    original_workspace_manager = getattr(app.state, 'workspace_manager', None)
+
     # Override database and workspace paths
     db = Database(db_path)
     db.initialize()
@@ -34,7 +39,15 @@ def test_client():
 
     # Cleanup
     db.close()
-    shutil.rmtree(temp_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Delete app.state attributes (DON'T restore them - causes closed DB reuse)
+    if hasattr(app.state, 'db'):
+        delattr(app.state, 'db')
+    if hasattr(app.state, 'workspace_root'):
+        delattr(app.state, 'workspace_root')
+    if hasattr(app.state, 'workspace_manager'):
+        delattr(app.state, 'workspace_manager')
 
 
 def test_create_project_minimal(test_client):

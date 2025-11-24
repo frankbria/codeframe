@@ -17,6 +17,11 @@ def test_client_hosted():
     db_path = temp_dir / "test.db"
     workspace_root = temp_dir / "workspaces"
 
+    # Save original app.state
+    original_db = getattr(app.state, 'db', None)
+    original_workspace_root = getattr(app.state, 'workspace_root', None)
+    original_workspace_manager = getattr(app.state, 'workspace_manager', None)
+
     # Override database and workspace paths
     db = Database(db_path)
     db.initialize()
@@ -35,9 +40,18 @@ def test_client_hosted():
     yield client
 
     # Cleanup
-    del os.environ["CODEFRAME_DEPLOYMENT_MODE"]
+    if "CODEFRAME_DEPLOYMENT_MODE" in os.environ:
+        del os.environ["CODEFRAME_DEPLOYMENT_MODE"]
     db.close()
-    shutil.rmtree(temp_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Delete app.state attributes (DON'T restore them - causes closed DB reuse)
+    if hasattr(app.state, 'db'):
+        delattr(app.state, 'db')
+    if hasattr(app.state, 'workspace_root'):
+        delattr(app.state, 'workspace_root')
+    if hasattr(app.state, 'workspace_manager'):
+        delattr(app.state, 'workspace_manager')
 
 
 @pytest.fixture
@@ -46,6 +60,11 @@ def test_client_self_hosted():
     temp_dir = Path(tempfile.mkdtemp())
     db_path = temp_dir / "test.db"
     workspace_root = temp_dir / "workspaces"
+
+    # Save original app.state
+    original_db = getattr(app.state, 'db', None)
+    original_workspace_root = getattr(app.state, 'workspace_root', None)
+    original_workspace_manager = getattr(app.state, 'workspace_manager', None)
 
     # Override database and workspace paths
     db = Database(db_path)
@@ -65,9 +84,18 @@ def test_client_self_hosted():
     yield client
 
     # Cleanup
-    del os.environ["CODEFRAME_DEPLOYMENT_MODE"]
+    if "CODEFRAME_DEPLOYMENT_MODE" in os.environ:
+        del os.environ["CODEFRAME_DEPLOYMENT_MODE"]
     db.close()
-    shutil.rmtree(temp_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Delete app.state attributes (DON'T restore them - causes closed DB reuse)
+    if hasattr(app.state, 'db'):
+        delattr(app.state, 'db')
+    if hasattr(app.state, 'workspace_root'):
+        delattr(app.state, 'workspace_root')
+    if hasattr(app.state, 'workspace_manager'):
+        delattr(app.state, 'workspace_manager')
 
 
 def test_hosted_mode_blocks_local_path(test_client_hosted):

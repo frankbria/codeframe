@@ -24,20 +24,27 @@ def db():
     yield db
 
     # Cleanup
+    db.close()
     Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
 def client(db):
     """Create a test client with database."""
+    # Save original app.state
+    original_db = getattr(app.state, 'db', None)
+
     app.state.db = db
 
     # Clear review cache before each test
     from codeframe.ui import server
-
     server.review_cache.clear()
 
-    return TestClient(app)
+    yield TestClient(app)
+
+    # Delete app.state attributes (DON'T restore them - causes closed DB reuse)
+    if hasattr(app.state, 'db'):
+        delattr(app.state, 'db')
 
 
 @pytest.fixture
