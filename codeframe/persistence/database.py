@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import logging
@@ -2798,6 +2799,120 @@ class Database:
         """
         return self.get_code_reviews(project_id=project_id, severity=severity)
 
+    # ========================================================================
+    # Quality Gate Methods (Sprint 10 Phase 3 - US-2)
+    # ========================================================================
+
+    def update_quality_gate_status(
+        self,
+        task_id: int,
+        status: str,
+        failures: List['QualityGateFailure'],
+    ) -> None:
+        """Update task quality gate status and failures.
+
+        This method is called by QualityGates after running all gates to store
+        the results in the tasks table. The status is stored in quality_gate_status
+        column and failures are stored as JSON in quality_gate_failures column.
+
+        Args:
+            task_id: Task ID to update
+            status: Gate status - 'pending', 'running', 'passed', or 'failed'
+            failures: List of QualityGateFailure objects (empty if passed)
+
+        Example:
+            >>> from codeframe.core.models import QualityGateFailure, QualityGateType, Severity
+            >>> failure = QualityGateFailure(
+            ...     gate=QualityGateType.TESTS,
+            ...     reason="2 tests failed",
+            ...     severity=Severity.HIGH
+            ... )
+            >>> db.update_quality_gate_status(task_id=123, status='failed', failures=[failure])
+        """
+        from codeframe.core.models import QualityGateFailure
+
+        cursor = self.conn.cursor()
+
+        # Serialize failures to JSON
+        failures_json = json.dumps([
+            {
+                'gate': f.gate.value if hasattr(f.gate, 'value') else f.gate,
+                'reason': f.reason,
+                'details': f.details,
+                'severity': f.severity.value if hasattr(f.severity, 'value') else f.severity,
+            }
+            for f in failures
+        ])
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET quality_gate_status = ?,
+                quality_gate_failures = ?
+            WHERE id = ?
+            """,
+            (status, failures_json, task_id),
+        )
+        self.conn.commit()
+
+        logger.info(
+            f"Updated quality gate status for task {task_id}: "
+            f"status={status}, failures={len(failures)}"
+        )
+
+    def get_quality_gate_status(self, task_id: int) -> Dict[str, Any]:
+        """Get quality gate status for a task.
+
+        Args:
+            task_id: Task ID to query
+
+        Returns:
+            Dictionary with keys:
+            - status: Gate status ('pending', 'running', 'passed', 'failed', or None)
+            - failures: List of failure dictionaries (empty if passed or None if not run)
+            - requires_human_approval: Boolean indicating if task requires approval
+
+        Example:
+            >>> result = db.get_quality_gate_status(task_id=123)
+            >>> if result['status'] == 'failed':
+            ...     for failure in result['failures']:
+            ...         print(f"{failure['gate']}: {failure['reason']}")
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT quality_gate_status, quality_gate_failures, requires_human_approval
+            FROM tasks
+            WHERE id = ?
+            """,
+            (task_id,),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            return {
+                'status': None,
+                'failures': [],
+                'requires_human_approval': False,
+            }
+
+        status, failures_json, requires_approval = row
+
+        # Parse failures JSON
+        failures = []
+        if failures_json:
+            try:
+                failures = json.loads(failures_json)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse quality_gate_failures JSON for task {task_id}")
+                failures = []
+
+        return {
+            'status': status,
+            'failures': failures,
+            'requires_human_approval': bool(requires_approval),
+        }
+
     def get_pending_tasks(self, project_id: int, limit: int = 5) -> List[Dict[str, Any]]:
         """Get next pending tasks for next actions queue.
 
@@ -2847,3 +2962,145 @@ class Database:
             "total_tasks": row["total_tasks"] or 0,
             "completed_tasks": row["completed_tasks"] or 0,
         }
+
+    # Checkpoint Management Methods (Sprint 10 Phase 4: US-3)
+
+    def save_checkpoint(
+        self,
+        project_id: int,
+        name: str,
+        description: Optional[str],
+        trigger: str,
+        git_commit: str,
+        database_backup_path: str,
+        context_snapshot_path: str,
+        metadata: 'CheckpointMetadata'
+    ) -> int:
+        """Save a checkpoint to database.
+
+        Args:
+            project_id: Project ID
+            name: Checkpoint name (max 100 chars)
+            description: Optional description (max 500 chars)
+            trigger: Trigger type (manual, auto, phase_transition)
+            git_commit: Git commit SHA
+            database_backup_path: Path to database backup file
+            context_snapshot_path: Path to context snapshot JSON
+            metadata: CheckpointMetadata object
+
+        Returns:
+            Created checkpoint ID
+        """
+        from codeframe.core.models import CheckpointMetadata
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO checkpoints (
+                project_id, name, description, trigger, git_commit,
+                database_backup_path, context_snapshot_path, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                name,
+                description,
+                trigger,
+                git_commit,
+                database_backup_path,
+                context_snapshot_path,
+                json.dumps(metadata.model_dump())
+            )
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_checkpoints(self, project_id: int) -> List['Checkpoint']:
+        """Get all checkpoints for a project, sorted by created_at DESC.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of Checkpoint objects, most recent first
+        """
+        from codeframe.core.models import Checkpoint, CheckpointMetadata
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id, project_id, name, description, trigger, git_commit,
+                database_backup_path, context_snapshot_path, metadata, created_at
+            FROM checkpoints
+            WHERE project_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (project_id,)
+        )
+
+        checkpoints = []
+        for row in cursor.fetchall():
+            # Parse metadata JSON
+            metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
+            metadata = CheckpointMetadata(**metadata_dict)
+
+            checkpoint = Checkpoint(
+                id=row["id"],
+                project_id=row["project_id"],
+                name=row["name"],
+                description=row["description"],
+                trigger=row["trigger"],
+                git_commit=row["git_commit"],
+                database_backup_path=row["database_backup_path"],
+                context_snapshot_path=row["context_snapshot_path"],
+                metadata=metadata,
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc)
+            )
+            checkpoints.append(checkpoint)
+
+        return checkpoints
+
+    def get_checkpoint_by_id(self, checkpoint_id: int) -> Optional['Checkpoint']:
+        """Get a checkpoint by ID.
+
+        Args:
+            checkpoint_id: Checkpoint ID
+
+        Returns:
+            Checkpoint object or None if not found
+        """
+        from codeframe.core.models import Checkpoint, CheckpointMetadata
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id, project_id, name, description, trigger, git_commit,
+                database_backup_path, context_snapshot_path, metadata, created_at
+            FROM checkpoints
+            WHERE id = ?
+            """,
+            (checkpoint_id,)
+        )
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        # Parse metadata JSON
+        metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
+        metadata = CheckpointMetadata(**metadata_dict)
+
+        return Checkpoint(
+            id=row["id"],
+            project_id=row["project_id"],
+            name=row["name"],
+            description=row["description"],
+            trigger=row["trigger"],
+            git_commit=row["git_commit"],
+            database_backup_path=row["database_backup_path"],
+            context_snapshot_path=row["context_snapshot_path"],
+            metadata=metadata,
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc)
+        )

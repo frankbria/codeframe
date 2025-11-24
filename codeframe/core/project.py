@@ -71,11 +71,69 @@ class Project:
         self._status = ProjectStatus.PAUSED
         print("⏸️ Project paused")
 
-    def resume(self) -> None:
-        """Resume project execution from checkpoint."""
-        # TODO: Implement checkpoint recovery
-        self._status = ProjectStatus.ACTIVE
-        print("▶️ Resuming project...")
+    def resume(self, checkpoint_id: Optional[int] = None) -> None:
+        """Resume project execution from checkpoint.
+
+        Args:
+            checkpoint_id: Optional checkpoint ID to restore from.
+                          If None, restores from most recent checkpoint.
+
+        Raises:
+            ValueError: If no checkpoints exist or checkpoint_id not found
+            RuntimeError: If checkpoint restoration fails
+        """
+        from codeframe.lib.checkpoint_manager import CheckpointManager
+
+        if not self.db:
+            raise RuntimeError("Database not initialized. Call Project.create() first.")
+
+        # Get project ID from database
+        cursor = self.db.conn.cursor()
+        cursor.execute(
+            "SELECT id FROM projects WHERE name = ?",
+            (self.config.load().project_name,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError("Project not found in database")
+
+        project_id = row["id"]
+
+        # Initialize checkpoint manager
+        checkpoint_mgr = CheckpointManager(
+            db=self.db,
+            project_root=self.project_dir,
+            project_id=project_id
+        )
+
+        # Get checkpoint to restore
+        if checkpoint_id:
+            checkpoint = self.db.get_checkpoint_by_id(checkpoint_id)
+            if not checkpoint:
+                raise ValueError(f"Checkpoint {checkpoint_id} not found")
+        else:
+            # Get most recent checkpoint
+            checkpoints = checkpoint_mgr.list_checkpoints()
+            if not checkpoints:
+                raise ValueError("No checkpoints available to restore from")
+            checkpoint = checkpoints[0]  # Most recent
+
+        print(f"▶️ Resuming project from checkpoint: {checkpoint.name}")
+        print(f"   Created: {checkpoint.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"   Commit: {checkpoint.git_commit[:7]}")
+
+        # Restore checkpoint
+        result = checkpoint_mgr.restore_checkpoint(
+            checkpoint_id=checkpoint.id,
+            confirm=True
+        )
+
+        if result["success"]:
+            self._status = ProjectStatus.ACTIVE
+            print(f"✓ Project resumed successfully from '{checkpoint.name}'")
+            print(f"   {result.get('items_restored', 0)} context items restored")
+        else:
+            raise RuntimeError("Checkpoint restoration failed")
 
     def get_status(self) -> dict:
         """Get current project status."""

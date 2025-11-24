@@ -7,6 +7,7 @@
 
 import { useState, memo } from 'react';
 import type { Issue, Task, WorkStatus } from '@/types/api';
+import QualityGateStatus from './quality-gates/QualityGateStatus';
 
 interface TaskTreeViewProps {
   issues: Issue[];
@@ -14,6 +15,7 @@ interface TaskTreeViewProps {
 
 const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
   const [expandedIssues, setExpandedIssues] = useState<Set<string>>(new Set());
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
   // Toggle issue expansion
   const toggleIssue = (issueId: string) => {
@@ -23,6 +25,19 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
         newSet.delete(issueId);
       } else {
         newSet.add(issueId);
+      }
+      return newSet;
+    });
+  };
+
+  // Toggle task expansion (for quality gates section)
+  const toggleTask = (taskId: string) => {
+    setExpandedTasks((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
       }
       return newSet;
     });
@@ -255,6 +270,29 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                           {task.description && (
                             <div className="ml-14 mt-2 text-xs text-gray-600">
                               {task.description}
+                            </div>
+                          )}
+
+                          {/* Quality Gates Section */}
+                          {(task.status === 'completed' || task.status === 'in_progress') && (
+                            <div className="ml-14 mt-3 border-t border-gray-200 pt-3">
+                              <button
+                                onClick={() => toggleTask(task.id)}
+                                className="flex items-center gap-2 text-xs font-medium text-gray-700 hover:text-gray-900 mb-2"
+                                aria-expanded={expandedTasks.has(task.id)}
+                              >
+                                <span>{expandedTasks.has(task.id) ? '▼' : '▶'}</span>
+                                <span>Quality Gates</span>
+                              </button>
+                              {expandedTasks.has(task.id) && (
+                                <div className="mt-2">
+                                  <QualityGateStatus
+                                    taskId={parseInt(task.id, 10)}
+                                    autoRefresh={true}
+                                    refreshInterval={5000}
+                                  />
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

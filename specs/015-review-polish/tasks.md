@@ -27,24 +27,24 @@
 
 **⚠️ Foundational Tasks**: Must complete before user story implementation
 
-- [ ] T001 Create database migration file for Sprint 10 schema changes in codeframe/persistence/migration_015_sprint10.py
-- [ ] T002 Add code_reviews table to database schema in codeframe/persistence/database.py
-- [ ] T003 Add token_usage table to database schema in codeframe/persistence/database.py
-- [ ] T004 Add quality_gate_status, quality_gate_failures, requires_human_approval columns to tasks table in codeframe/persistence/database.py
-- [ ] T005 Add name, description, database_backup_path, context_snapshot_path, metadata columns to checkpoints table in codeframe/persistence/database.py
-- [ ] T006 Create database indexes (idx_reviews_task, idx_token_usage_agent, idx_checkpoints_project) in codeframe/persistence/database.py
-- [ ] T007 [P] Add Severity enum to codeframe/core/models.py
-- [ ] T008 [P] Add ReviewCategory enum to codeframe/core/models.py
-- [ ] T009 [P] Add QualityGateType enum to codeframe/core/models.py
-- [ ] T010 [P] Add CallType enum for token tracking to codeframe/core/models.py
-- [ ] T011 Create CodeReview Pydantic model in codeframe/core/models.py
-- [ ] T012 Create TokenUsage Pydantic model in codeframe/core/models.py
-- [ ] T013 Create QualityGateResult Pydantic model in codeframe/core/models.py
-- [ ] T014 Create QualityGateFailure Pydantic model in codeframe/core/models.py
-- [ ] T015 Create CheckpointMetadata Pydantic model in codeframe/core/models.py
-- [ ] T016 Update Checkpoint Pydantic model with new fields in codeframe/core/models.py
-- [ ] T017 Run database migration to apply Sprint 10 schema changes
-- [ ] T018 Verify all Sprint 10 tables and columns exist using pytest test
+- [X] T001 Create database migration file for Sprint 10 schema changes in codeframe/persistence/migration_015_sprint10.py
+- [X] T002 Add code_reviews table to database schema in codeframe/persistence/database.py
+- [X] T003 Add token_usage table to database schema in codeframe/persistence/database.py
+- [X] T004 Add quality_gate_status, quality_gate_failures, requires_human_approval columns to tasks table in codeframe/persistence/database.py
+- [X] T005 Add name, description, database_backup_path, context_snapshot_path, metadata columns to checkpoints table in codeframe/persistence/database.py
+- [X] T006 Create database indexes (idx_reviews_task, idx_token_usage_agent, idx_checkpoints_project) in codeframe/persistence/database.py
+- [X] T007 [P] Add Severity enum to codeframe/core/models.py
+- [X] T008 [P] Add ReviewCategory enum to codeframe/core/models.py
+- [X] T009 [P] Add QualityGateType enum to codeframe/core/models.py
+- [X] T010 [P] Add CallType enum for token tracking to codeframe/core/models.py
+- [X] T011 Create CodeReview Pydantic model in codeframe/core/models.py
+- [X] T012 Create TokenUsage Pydantic model in codeframe/core/models.py
+- [X] T013 Create QualityGateResult Pydantic model in codeframe/core/models.py
+- [X] T014 Create QualityGateFailure Pydantic model in codeframe/core/models.py
+- [X] T015 Create CheckpointMetadata Pydantic model in codeframe/core/models.py
+- [X] T016 Update Checkpoint Pydantic model with new fields in codeframe/core/models.py
+- [X] T017 Run database migration to apply Sprint 10 schema changes
+- [X] T018 Verify all Sprint 10 tables and columns exist using pytest test
 
 **Checkpoint**: ✅ Database schema ready for Sprint 10 features
 
@@ -62,42 +62,42 @@
 
 **RED Phase**: Write tests that FAIL before implementation
 
-- [ ] T019 [P] [US1] Write failing test: Review Agent detects SQL injection in tests/agents/test_review_agent.py::test_detect_sql_injection
-- [ ] T020 [P] [US1] Write failing test: Review Agent detects performance issue (O(n²) algorithm) in tests/agents/test_review_agent.py::test_detect_performance_issue
-- [ ] T021 [P] [US1] Write failing test: Review Agent stores findings in database in tests/agents/test_review_agent.py::test_store_review_findings
-- [ ] T022 [P] [US1] Write failing test: Review Agent blocks task on critical severity in tests/agents/test_review_agent.py::test_block_on_critical_finding
-- [ ] T023 [P] [US1] Write failing test: Review Agent passes task on low severity in tests/agents/test_review_agent.py::test_pass_on_low_severity
-- [ ] T024 [P] [US1] Write failing integration test: Full review workflow in tests/integration/test_review_workflow.py::test_full_review_workflow
+- [X] T019 [P] [US1] Write failing test: Review Agent detects SQL injection in tests/agents/test_review_agent.py::test_detect_sql_injection
+- [X] T020 [P] [US1] Write failing test: Review Agent detects performance issue (O(n²) algorithm) in tests/agents/test_review_agent.py::test_detect_performance_issue
+- [X] T021 [P] [US1] Write failing test: Review Agent stores findings in database in tests/agents/test_review_agent.py::test_store_review_findings
+- [X] T022 [P] [US1] Write failing test: Review Agent blocks task on critical severity in tests/agents/test_review_agent.py::test_block_on_critical_finding
+- [X] T023 [P] [US1] Write failing test: Review Agent passes task on low severity in tests/agents/test_review_agent.py::test_pass_on_low_severity
+- [X] T024 [P] [US1] Write failing integration test: Full review workflow in tests/integration/test_review_workflow.py::test_full_review_workflow
 
 **Run tests - Expected: ALL FAIL (RED) ❌**
 
 ### GREEN Phase: Implementation for User Story 1
 
-- [ ] T025 [US1] Create ReviewAgent class extending WorkerAgent in codeframe/agents/review_agent.py
-- [ ] T026 [US1] Implement _get_changed_files() method to extract code from task in codeframe/agents/review_agent.py
-- [ ] T027 [US1] Implement _invoke_reviewing_skill() to call Claude Code reviewing-code skill in codeframe/agents/review_agent.py
-- [ ] T028 [US1] Implement _parse_review_findings() to structure review output in codeframe/agents/review_agent.py
-- [ ] T029 [US1] Implement execute_task() method with review logic in codeframe/agents/review_agent.py
-- [ ] T030 [US1] Add save_code_review() method to database.py for persisting findings in codeframe/persistence/database.py
-- [ ] T031 [US1] Add get_code_reviews() method to database.py for retrieving findings in codeframe/persistence/database.py
-- [ ] T032 [US1] Add get_code_reviews_by_severity() method to database.py in codeframe/persistence/database.py
-- [ ] T033 [US1] Implement WebSocket broadcast for review findings in codeframe/agents/review_agent.py
-- [ ] T034 [P] [US1] Add POST /api/agents/review/analyze endpoint in codeframe/ui/server.py
-- [ ] T035 [P] [US1] Add GET /api/tasks/{task_id}/reviews endpoint in codeframe/ui/server.py
-- [ ] T036 [P] [US1] Create ReviewFindings React component in web-ui/src/components/reviews/ReviewFindings.tsx
-- [ ] T037 [P] [US1] Create ReviewSummary React component in web-ui/src/components/reviews/ReviewSummary.tsx
-- [ ] T038 [P] [US1] Create reviews API client in web-ui/src/api/reviews.ts
-- [ ] T039 [P] [US1] Create CodeReview TypeScript type in web-ui/src/types/reviews.ts
-- [ ] T040 [P] [US1] Add frontend tests for ReviewFindings in web-ui/__tests__/components/ReviewFindings.test.tsx
-- [ ] T041 [P] [US1] Add frontend tests for ReviewSummary in web-ui/__tests__/components/ReviewSummary.test.tsx
+- [X] T025 [US1] Create ReviewAgent class extending WorkerAgent in codeframe/agents/review_agent.py
+- [X] T026 [US1] Implement _get_changed_files() method to extract code from task in codeframe/agents/review_agent.py
+- [X] T027 [US1] Implement _invoke_reviewing_skill() to call Claude Code reviewing-code skill in codeframe/agents/review_agent.py
+- [X] T028 [US1] Implement _parse_review_findings() to structure review output in codeframe/agents/review_agent.py
+- [X] T029 [US1] Implement execute_task() method with review logic in codeframe/agents/review_agent.py
+- [X] T030 [US1] Add save_code_review() method to database.py for persisting findings in codeframe/persistence/database.py
+- [X] T031 [US1] Add get_code_reviews() method to database.py for retrieving findings in codeframe/persistence/database.py
+- [X] T032 [US1] Add get_code_reviews_by_severity() method to database.py in codeframe/persistence/database.py
+- [X] T033 [US1] Implement WebSocket broadcast for review findings in codeframe/agents/review_agent.py
+- [X] T034 [P] [US1] Add POST /api/agents/review/analyze endpoint in codeframe/ui/server.py
+- [X] T035 [P] [US1] Add GET /api/tasks/{task_id}/reviews endpoint in codeframe/ui/server.py
+- [X] T036 [P] [US1] Create ReviewFindings React component in web-ui/src/components/reviews/ReviewFindings.tsx
+- [X] T037 [P] [US1] Create ReviewSummary React component in web-ui/src/components/reviews/ReviewSummary.tsx
+- [X] T038 [P] [US1] Create reviews API client in web-ui/src/api/reviews.ts
+- [X] T039 [P] [US1] Create CodeReview TypeScript type in web-ui/src/types/reviews.ts
+- [X] T040 [P] [US1] Add frontend tests for ReviewFindings in web-ui/__tests__/components/ReviewFindings.test.tsx
+- [X] T041 [P] [US1] Add frontend tests for ReviewSummary in web-ui/__tests__/components/ReviewSummary.test.tsx
 
 **Run tests - Expected: ALL PASS (GREEN) ✅**
 
 ### REFACTOR Phase
 
-- [ ] T042 [US1] Refactor: Extract code review parsing logic into separate module if needed
-- [ ] T043 [US1] Refactor: Add type hints and improve code clarity in review_agent.py
-- [ ] T044 [US1] Add comprehensive docstrings to all Review Agent methods
+- [X] T042 [US1] Refactor: Extract code review parsing logic into separate module if needed
+- [X] T043 [US1] Refactor: Add type hints and improve code clarity in review_agent.py
+- [X] T044 [US1] Add comprehensive docstrings to all Review Agent methods
 
 **Checkpoint**: ✅ US-1 Complete - Review Agent operational, findings stored, dashboard displays results
 
@@ -115,43 +115,43 @@
 
 **RED Phase**: Write tests that FAIL before implementation
 
-- [ ] T045 [P] [US2] Write failing test: Quality gate blocks on test failure in tests/lib/test_quality_gates.py::test_block_on_test_failure
-- [ ] T046 [P] [US2] Write failing test: Quality gate blocks on type errors in tests/lib/test_quality_gates.py::test_block_on_type_errors
-- [ ] T047 [P] [US2] Write failing test: Quality gate blocks on low coverage (<85%) in tests/lib/test_quality_gates.py::test_block_on_low_coverage
-- [ ] T048 [P] [US2] Write failing test: Quality gate blocks on critical review finding in tests/lib/test_quality_gates.py::test_block_on_critical_review
-- [ ] T049 [P] [US2] Write failing test: Quality gate passes all checks in tests/lib/test_quality_gates.py::test_pass_all_gates
-- [ ] T050 [P] [US2] Write failing test: Quality gate creates blocker with details in tests/lib/test_quality_gates.py::test_create_blocker_on_failure
-- [ ] T051 [P] [US2] Write failing test: Task requires human approval for risky changes in tests/lib/test_quality_gates.py::test_require_human_approval
-- [ ] T052 [P] [US2] Write failing integration test: Full quality gate workflow in tests/integration/test_quality_gates_integration.py::test_quality_gate_workflow
+- [X] T045 [P] [US2] Write failing test: Quality gate blocks on test failure in tests/lib/test_quality_gates.py::test_block_on_test_failure
+- [X] T046 [P] [US2] Write failing test: Quality gate blocks on type errors in tests/lib/test_quality_gates.py::test_block_on_type_errors
+- [X] T047 [P] [US2] Write failing test: Quality gate blocks on low coverage (<85%) in tests/lib/test_quality_gates.py::test_block_on_low_coverage
+- [X] T048 [P] [US2] Write failing test: Quality gate blocks on critical review finding in tests/lib/test_quality_gates.py::test_block_on_critical_review
+- [X] T049 [P] [US2] Write failing test: Quality gate passes all checks in tests/lib/test_quality_gates.py::test_pass_all_gates
+- [X] T050 [P] [US2] Write failing test: Quality gate creates blocker with details in tests/lib/test_quality_gates.py::test_create_blocker_on_failure
+- [X] T051 [P] [US2] Write failing test: Task requires human approval for risky changes in tests/lib/test_quality_gates.py::test_require_human_approval
+- [X] T052 [P] [US2] Write failing integration test: Full quality gate workflow in tests/integration/test_quality_gates_integration.py::test_quality_gate_workflow
 
 **Run tests - Expected: ALL FAIL (RED) ❌**
 
 ### GREEN Phase: Implementation for User Story 2
 
-- [ ] T053 [US2] Create QualityGates class in codeframe/lib/quality_gates.py
-- [ ] T054 [US2] Implement run_tests_gate() method to execute pytest/jest in codeframe/lib/quality_gates.py
-- [ ] T055 [US2] Implement run_type_check_gate() method to run mypy/tsc in codeframe/lib/quality_gates.py
-- [ ] T056 [US2] Implement run_coverage_gate() method to check ≥85% coverage in codeframe/lib/quality_gates.py
-- [ ] T057 [US2] Implement run_review_gate() method to trigger Review Agent in codeframe/lib/quality_gates.py
-- [ ] T058 [US2] Implement run_linting_gate() method to run ruff/eslint in codeframe/lib/quality_gates.py
-- [ ] T059 [US2] Implement run_all_gates() orchestrator method in codeframe/lib/quality_gates.py
-- [ ] T060 [US2] Add pre-completion hook to WorkerAgent.complete_task() in codeframe/agents/worker_agent.py
-- [ ] T061 [US2] Implement _create_quality_blocker() helper method in codeframe/agents/worker_agent.py
-- [ ] T062 [US2] Add update_quality_gate_status() method to database.py in codeframe/persistence/database.py
-- [ ] T063 [US2] Add get_quality_gate_status() method to database.py in codeframe/persistence/database.py
-- [ ] T064 [P] [US2] Add GET /api/tasks/{task_id}/quality-gates endpoint in codeframe/ui/server.py
-- [ ] T065 [P] [US2] Add POST /api/tasks/{task_id}/quality-gates endpoint (manual trigger) in codeframe/ui/server.py
-- [ ] T066 [P] [US2] Create QualityGateStatus React component in web-ui/src/components/quality-gates/QualityGateStatus.tsx
-- [ ] T067 [P] [US2] Add quality gate status to task detail view in web-ui/src/components/tasks/TaskDetail.tsx
-- [ ] T068 [P] [US2] Add frontend tests for quality gate components in web-ui/__tests__/components/QualityGateStatus.test.tsx
+- [X] T053 [US2] Create QualityGates class in codeframe/lib/quality_gates.py
+- [X] T054 [US2] Implement run_tests_gate() method to execute pytest/jest in codeframe/lib/quality_gates.py
+- [X] T055 [US2] Implement run_type_check_gate() method to run mypy/tsc in codeframe/lib/quality_gates.py
+- [X] T056 [US2] Implement run_coverage_gate() method to check ≥85% coverage in codeframe/lib/quality_gates.py
+- [X] T057 [US2] Implement run_review_gate() method to trigger Review Agent in codeframe/lib/quality_gates.py
+- [X] T058 [US2] Implement run_linting_gate() method to run ruff/eslint in codeframe/lib/quality_gates.py
+- [X] T059 [US2] Implement run_all_gates() orchestrator method in codeframe/lib/quality_gates.py
+- [X] T060 [US2] Add pre-completion hook to WorkerAgent.complete_task() in codeframe/agents/worker_agent.py
+- [X] T061 [US2] Implement _create_quality_blocker() helper method in codeframe/agents/worker_agent.py
+- [X] T062 [US2] Add update_quality_gate_status() method to database.py in codeframe/persistence/database.py
+- [X] T063 [US2] Add get_quality_gate_status() method to database.py in codeframe/persistence/database.py
+- [X] T064 [P] [US2] Add GET /api/tasks/{task_id}/quality-gates endpoint in codeframe/ui/server.py
+- [X] T065 [P] [US2] Add POST /api/tasks/{task_id}/quality-gates endpoint (manual trigger) in codeframe/ui/server.py
+- [X] T066 [P] [US2] Create QualityGateStatus React component in web-ui/src/components/quality-gates/QualityGateStatus.tsx
+- [X] T067 [P] [US2] Add quality gate status to task detail view in web-ui/src/components/tasks/TaskDetail.tsx
+- [X] T068 [P] [US2] Add frontend tests for quality gate components in web-ui/__tests__/components/QualityGateStatus.test.tsx
 
 **Run tests - Expected: ALL PASS (GREEN) ✅**
 
 ### REFACTOR Phase
 
-- [ ] T069 [US2] Refactor: Extract gate execution into individual gate classes if needed
-- [ ] T070 [US2] Refactor: Improve error messages for failed gates (actionable guidance)
-- [ ] T071 [US2] Add comprehensive logging for quality gate execution
+- [X] T069 [US2] Refactor: Extract gate execution into individual gate classes if needed
+- [X] T070 [US2] Refactor: Improve error messages for failed gates (actionable guidance)
+- [X] T071 [US2] Add comprehensive logging for quality gate execution
 
 **Checkpoint**: ✅ US-2 Complete - Quality gates operational, bad code blocked, blockers created
 
@@ -169,52 +169,52 @@
 
 **RED Phase**: Write tests that FAIL before implementation
 
-- [ ] T072 [P] [US3] Write failing test: Create checkpoint saves git + DB + context in tests/lib/test_checkpoint_manager.py::test_create_checkpoint
-- [ ] T073 [P] [US3] Write failing test: List checkpoints sorted by date in tests/lib/test_checkpoint_manager.py::test_list_checkpoints
-- [ ] T074 [P] [US3] Write failing test: Restore checkpoint reverts all changes in tests/lib/test_checkpoint_manager.py::test_restore_checkpoint
-- [ ] T075 [P] [US3] Write failing test: Restore shows diff of changes in tests/lib/test_checkpoint_manager.py::test_restore_shows_diff
-- [ ] T076 [P] [US3] Write failing test: Invalid checkpoint fails gracefully in tests/lib/test_checkpoint_manager.py::test_invalid_checkpoint_fails
-- [ ] T077 [P] [US3] Write failing test: Checkpoint includes context snapshot in tests/lib/test_checkpoint_manager.py::test_checkpoint_context_snapshot
-- [ ] T078 [P] [US3] Write failing integration test: Full checkpoint workflow in tests/integration/test_checkpoint_restore.py::test_checkpoint_restore_workflow
+- [X] T072 [P] [US3] Write failing test: Create checkpoint saves git + DB + context in tests/lib/test_checkpoint_manager.py::test_create_checkpoint
+- [X] T073 [P] [US3] Write failing test: List checkpoints sorted by date in tests/lib/test_checkpoint_manager.py::test_list_checkpoints
+- [X] T074 [P] [US3] Write failing test: Restore checkpoint reverts all changes in tests/lib/test_checkpoint_manager.py::test_restore_checkpoint
+- [X] T075 [P] [US3] Write failing test: Restore shows diff of changes in tests/lib/test_checkpoint_manager.py::test_restore_shows_diff
+- [X] T076 [P] [US3] Write failing test: Invalid checkpoint fails gracefully in tests/lib/test_checkpoint_manager.py::test_invalid_checkpoint_fails
+- [X] T077 [P] [US3] Write failing test: Checkpoint includes context snapshot in tests/lib/test_checkpoint_manager.py::test_checkpoint_context_snapshot
+- [X] T078 [P] [US3] Write failing integration test: Full checkpoint workflow in tests/integration/test_checkpoint_restore.py::test_checkpoint_restore_workflow
 
 **Run tests - Expected: ALL FAIL (RED) ❌**
 
 ### GREEN Phase: Implementation for User Story 3
 
-- [ ] T079 [US3] Create CheckpointManager class in codeframe/lib/checkpoint_manager.py
-- [ ] T080 [US3] Implement create_checkpoint() method with git commit in codeframe/lib/checkpoint_manager.py
-- [ ] T081 [US3] Implement _snapshot_database() to backup SQLite in codeframe/lib/checkpoint_manager.py
-- [ ] T082 [US3] Implement _snapshot_context() to save context items in codeframe/lib/checkpoint_manager.py
-- [ ] T083 [US3] Implement list_checkpoints() method in codeframe/lib/checkpoint_manager.py
-- [ ] T084 [US3] Implement restore_checkpoint() method in codeframe/lib/checkpoint_manager.py
-- [ ] T085 [US3] Implement _validate_checkpoint() to check file integrity in codeframe/lib/checkpoint_manager.py
-- [ ] T086 [US3] Implement _show_diff() to display changes since checkpoint in codeframe/lib/checkpoint_manager.py
-- [ ] T087 [US3] Implement Project.resume() method (currently TODO stub) in codeframe/core/project.py
-- [ ] T088 [US3] Add save_checkpoint() method to database.py in codeframe/persistence/database.py
-- [ ] T089 [US3] Add get_checkpoints() method to database.py in codeframe/persistence/database.py
-- [ ] T090 [US3] Add get_checkpoint_by_id() method to database.py in codeframe/persistence/database.py
-- [ ] T091 [US3] Create .codeframe/checkpoints/ directory if not exists in CheckpointManager.__init__()
-- [ ] T092 [P] [US3] Add GET /api/projects/{id}/checkpoints endpoint in codeframe/ui/server.py
-- [ ] T093 [P] [US3] Add POST /api/projects/{id}/checkpoints endpoint in codeframe/ui/server.py
-- [ ] T094 [P] [US3] Add GET /api/projects/{id}/checkpoints/{cid} endpoint in codeframe/ui/server.py
-- [ ] T095 [P] [US3] Add DELETE /api/projects/{id}/checkpoints/{cid} endpoint in codeframe/ui/server.py
-- [ ] T096 [P] [US3] Add POST /api/projects/{id}/checkpoints/{cid}/restore endpoint in codeframe/ui/server.py
-- [ ] T097 [P] [US3] Implement server.py restore endpoint (currently TODO stub at line 866) in codeframe/ui/server.py
-- [ ] T098 [P] [US3] Create CheckpointList React component in web-ui/src/components/checkpoints/CheckpointList.tsx
-- [ ] T099 [P] [US3] Create CheckpointRestore React component in web-ui/src/components/checkpoints/CheckpointRestore.tsx
-- [ ] T100 [P] [US3] Create checkpoints API client in web-ui/src/api/checkpoints.ts
-- [ ] T101 [P] [US3] Create Checkpoint TypeScript type in web-ui/src/types/checkpoints.ts
-- [ ] T102 [P] [US3] Add frontend tests for CheckpointList in web-ui/__tests__/components/CheckpointList.test.tsx
-- [ ] T103 [P] [US3] Add frontend tests for CheckpointRestore in web-ui/__tests__/components/CheckpointRestore.test.tsx
-- [ ] T104 [P] [US3] Add API client tests in web-ui/__tests__/api/checkpoints.test.ts
+- [X] T079 [US3] Create CheckpointManager class in codeframe/lib/checkpoint_manager.py
+- [X] T080 [US3] Implement create_checkpoint() method with git commit in codeframe/lib/checkpoint_manager.py
+- [X] T081 [US3] Implement _snapshot_database() to backup SQLite in codeframe/lib/checkpoint_manager.py
+- [X] T082 [US3] Implement _snapshot_context() to save context items in codeframe/lib/checkpoint_manager.py
+- [X] T083 [US3] Implement list_checkpoints() method in codeframe/lib/checkpoint_manager.py
+- [X] T084 [US3] Implement restore_checkpoint() method in codeframe/lib/checkpoint_manager.py
+- [X] T085 [US3] Implement _validate_checkpoint() to check file integrity in codeframe/lib/checkpoint_manager.py
+- [X] T086 [US3] Implement _show_diff() to display changes since checkpoint in codeframe/lib/checkpoint_manager.py
+- [X] T087 [US3] Implement Project.resume() method (currently TODO stub) in codeframe/core/project.py
+- [X] T088 [US3] Add save_checkpoint() method to database.py in codeframe/persistence/database.py
+- [X] T089 [US3] Add get_checkpoints() method to database.py in codeframe/persistence/database.py
+- [X] T090 [US3] Add get_checkpoint_by_id() method to database.py in codeframe/persistence/database.py
+- [X] T091 [US3] Create .codeframe/checkpoints/ directory if not exists in CheckpointManager.__init__()
+- [X] T092 [P] [US3] Add GET /api/projects/{id}/checkpoints endpoint in codeframe/ui/server.py
+- [X] T093 [P] [US3] Add POST /api/projects/{id}/checkpoints endpoint in codeframe/ui/server.py
+- [X] T094 [P] [US3] Add GET /api/projects/{id}/checkpoints/{cid} endpoint in codeframe/ui/server.py
+- [X] T095 [P] [US3] Add DELETE /api/projects/{id}/checkpoints/{cid} endpoint in codeframe/ui/server.py
+- [X] T096 [P] [US3] Add POST /api/projects/{id}/checkpoints/{cid}/restore endpoint in codeframe/ui/server.py
+- [X] T097 [P] [US3] Implement server.py restore endpoint (currently TODO stub at line 866) in codeframe/ui/server.py
+- [X] T098 [P] [US3] Create CheckpointList React component in web-ui/src/components/checkpoints/CheckpointList.tsx
+- [X] T099 [P] [US3] Create CheckpointRestore React component in web-ui/src/components/checkpoints/CheckpointRestore.tsx
+- [X] T100 [P] [US3] Create checkpoints API client in web-ui/src/api/checkpoints.ts
+- [X] T101 [P] [US3] Create Checkpoint TypeScript type in web-ui/src/types/checkpoints.ts
+- [X] T102 [P] [US3] Add frontend tests for CheckpointList in web-ui/__tests__/components/CheckpointList.test.tsx
+- [X] T103 [P] [US3] Add frontend tests for CheckpointRestore in web-ui/__tests__/components/CheckpointRestore.test.tsx
+- [X] T104 [P] [US3] Add API client tests in web-ui/__tests__/api/checkpoints.test.ts
 
 **Run tests - Expected: ALL PASS (GREEN) ✅**
 
 ### REFACTOR Phase
 
-- [ ] T105 [US3] Refactor: Extract git operations into separate GitManager if complex
-- [ ] T106 [US3] Refactor: Add validation for checkpoint naming conventions
-- [ ] T107 [US3] Add comprehensive error handling for checkpoint restore failures
+- [X] T105 [US3] Refactor: Extract git operations into separate GitManager if complex
+- [X] T106 [US3] Refactor: Add validation for checkpoint naming conventions
+- [X] T107 [US3] Add comprehensive error handling for checkpoint restore failures
 
 **Checkpoint**: ✅ US-3 Complete - Checkpoint/restore operational, state recovery works
 

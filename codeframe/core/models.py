@@ -1,7 +1,7 @@
 """Core data models for CodeFRAME."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict, field_validator
@@ -702,7 +702,7 @@ class CodeReview(BaseModel):
     message: str = Field(..., min_length=10, description="Description of the issue")
     recommendation: Optional[str] = Field(None, description="How to fix it")
     code_snippet: Optional[str] = Field(None, description="Offending code for context")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(use_enum_values=True)
 
@@ -725,7 +725,7 @@ class TokenUsage(BaseModel):
     estimated_cost_usd: float = Field(..., ge=0.0)
     actual_cost_usd: Optional[float] = Field(None, ge=0.0)
     call_type: CallType = CallType.OTHER
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(use_enum_values=True)
 
@@ -780,7 +780,7 @@ class QualityGateResult(BaseModel):
     status: str = Field(..., description="passed or failed")
     failures: List[QualityGateFailure] = Field(default_factory=list)
     execution_time_seconds: float = Field(..., ge=0.0)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def passed(self) -> bool:
@@ -818,7 +818,7 @@ class Checkpoint(BaseModel):
     database_backup_path: str = Field(..., description="Path to .sqlite backup")
     context_snapshot_path: str = Field(..., description="Path to context JSON")
     metadata: CheckpointMetadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def validate_files_exist(self) -> bool:
         """Check if all checkpoint files exist."""
