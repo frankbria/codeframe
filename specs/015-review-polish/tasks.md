@@ -234,49 +234,49 @@
 
 **RED Phase**: Write tests that FAIL before implementation
 
-- [ ] T108 [P] [US5] Write failing test: Record token usage after LLM call in tests/lib/test_metrics_tracker.py::test_record_token_usage
-- [ ] T109 [P] [US5] Write failing test: Calculate cost correctly for Sonnet 4.5 in tests/lib/test_metrics_tracker.py::test_calculate_cost_sonnet
-- [ ] T110 [P] [US5] Write failing test: Calculate cost correctly for Opus 4 in tests/lib/test_metrics_tracker.py::test_calculate_cost_opus
-- [ ] T111 [P] [US5] Write failing test: Calculate cost correctly for Haiku 4 in tests/lib/test_metrics_tracker.py::test_calculate_cost_haiku
-- [ ] T112 [P] [US5] Write failing test: Get project total cost in tests/lib/test_metrics_tracker.py::test_get_project_total_cost
-- [ ] T113 [P] [US5] Write failing test: Get cost breakdown by agent in tests/lib/test_metrics_tracker.py::test_get_cost_by_agent
-- [ ] T114 [P] [US5] Write failing test: Get cost breakdown by model in tests/lib/test_metrics_tracker.py::test_get_cost_by_model
-- [ ] T115 [P] [US5] Write failing test: Get token usage over time in tests/lib/test_metrics_tracker.py::test_get_token_usage_timeline
+- [X] T108 [P] [US5] Write failing test: Record token usage after LLM call in tests/lib/test_metrics_tracker.py::test_record_token_usage
+- [X] T109 [P] [US5] Write failing test: Calculate cost correctly for Sonnet 4.5 in tests/lib/test_metrics_tracker.py::test_calculate_cost_sonnet
+- [X] T110 [P] [US5] Write failing test: Calculate cost correctly for Opus 4 in tests/lib/test_metrics_tracker.py::test_calculate_cost_opus
+- [X] T111 [P] [US5] Write failing test: Calculate cost correctly for Haiku 4 in tests/lib/test_metrics_tracker.py::test_calculate_cost_haiku
+- [X] T112 [P] [US5] Write failing test: Get project total cost in tests/lib/test_metrics_tracker.py::test_get_project_total_cost
+- [X] T113 [P] [US5] Write failing test: Get cost breakdown by agent in tests/lib/test_metrics_tracker.py::test_get_cost_by_agent
+- [X] T114 [P] [US5] Write failing test: Get cost breakdown by model in tests/lib/test_metrics_tracker.py::test_get_cost_by_model
+- [X] T115 [P] [US5] Write failing test: Get token usage over time in tests/lib/test_metrics_tracker.py::test_get_token_usage_timeline
 
 **Run tests - Expected: ALL FAIL (RED) ❌**
 
 ### GREEN Phase: Implementation for User Story 5
 
-- [ ] T116 [US5] Create MetricsTracker class in codeframe/lib/metrics_tracker.py
-- [ ] T117 [US5] Define MODEL_PRICING dictionary with current pricing in codeframe/lib/metrics_tracker.py
-- [ ] T118 [US5] Implement calculate_cost() static method in codeframe/lib/metrics_tracker.py
-- [ ] T119 [US5] Implement record_token_usage() method in codeframe/lib/metrics_tracker.py
-- [ ] T120 [US5] Implement get_project_costs() method in codeframe/lib/metrics_tracker.py
-- [ ] T121 [US5] Implement get_agent_costs() method in codeframe/lib/metrics_tracker.py
-- [ ] T122 [US5] Implement get_token_usage_stats() method in codeframe/lib/metrics_tracker.py
-- [ ] T123 [US5] Add token tracking hook to WorkerAgent after LLM call in codeframe/agents/worker_agent.py
-- [ ] T124 [US5] Add save_token_usage() method to database.py in codeframe/persistence/database.py
-- [ ] T125 [US5] Add get_token_usage() method to database.py in codeframe/persistence/database.py
-- [ ] T126 [US5] Add get_project_costs_aggregate() method to database.py in codeframe/persistence/database.py
-- [ ] T127 [P] [US5] Add GET /api/projects/{id}/metrics/tokens endpoint in codeframe/ui/server.py
-- [ ] T128 [P] [US5] Add GET /api/projects/{id}/metrics/costs endpoint in codeframe/ui/server.py
-- [ ] T129 [P] [US5] Add GET /api/agents/{agent_id}/metrics endpoint in codeframe/ui/server.py
-- [ ] T130 [P] [US5] Create CostDashboard React component in web-ui/src/components/metrics/CostDashboard.tsx
-- [ ] T131 [P] [US5] Create TokenUsageChart React component in web-ui/src/components/metrics/TokenUsageChart.tsx
-- [ ] T132 [P] [US5] Create AgentMetrics React component in web-ui/src/components/metrics/AgentMetrics.tsx
-- [ ] T133 [P] [US5] Create metrics API client in web-ui/src/api/metrics.ts
-- [ ] T134 [P] [US5] Create TokenUsage, CostMetrics TypeScript types in web-ui/src/types/metrics.ts
-- [ ] T135 [P] [US5] Add frontend tests for CostDashboard in web-ui/__tests__/components/CostDashboard.test.tsx
-- [ ] T136 [P] [US5] Add frontend tests for TokenUsageChart in web-ui/__tests__/components/TokenUsageChart.test.tsx
-- [ ] T137 [P] [US5] Add API client tests in web-ui/__tests__/api/metrics.test.ts
+- [X] T116 [US5] Create MetricsTracker class in codeframe/lib/metrics_tracker.py
+- [X] T117 [US5] Define MODEL_PRICING dictionary with current pricing in codeframe/lib/metrics_tracker.py
+- [X] T118 [US5] Implement calculate_cost() static method in codeframe/lib/metrics_tracker.py
+- [X] T119 [US5] Implement record_token_usage() method in codeframe/lib/metrics_tracker.py
+- [X] T120 [US5] Implement get_project_costs() method in codeframe/lib/metrics_tracker.py
+- [X] T121 [US5] Implement get_agent_costs() method in codeframe/lib/metrics_tracker.py
+- [X] T122 [US5] Implement get_token_usage_stats() method in codeframe/lib/metrics_tracker.py
+- [X] T123 [US5] Add token tracking hook to WorkerAgent after LLM call in codeframe/agents/worker_agent.py
+- [X] T124 [US5] Add save_token_usage() method to database.py in codeframe/persistence/database.py
+- [X] T125 [US5] Add get_token_usage() method to database.py in codeframe/persistence/database.py
+- [X] T126 [US5] Add get_project_costs_aggregate() method to database.py in codeframe/persistence/database.py
+- [X] T127 [P] [US5] Add GET /api/projects/{id}/metrics/tokens endpoint in codeframe/ui/server.py
+- [X] T128 [P] [US5] Add GET /api/projects/{id}/metrics/costs endpoint in codeframe/ui/server.py
+- [X] T129 [P] [US5] Add GET /api/agents/{agent_id}/metrics endpoint in codeframe/ui/server.py
+- [X] T130 [P] [US5] Create CostDashboard React component in web-ui/src/components/metrics/CostDashboard.tsx
+- [X] T131 [P] [US5] Create TokenUsageChart React component in web-ui/src/components/metrics/TokenUsageChart.tsx
+- [X] T132 [P] [US5] Create AgentMetrics React component in web-ui/src/components/metrics/AgentMetrics.tsx
+- [X] T133 [P] [US5] Create metrics API client in web-ui/src/api/metrics.ts
+- [X] T134 [P] [US5] Create TokenUsage, CostMetrics TypeScript types in web-ui/src/types/metrics.ts
+- [X] T135 [P] [US5] Add frontend tests for CostDashboard in web-ui/__tests__/components/CostDashboard.test.tsx
+- [X] T136 [P] [US5] Add frontend tests for TokenUsageChart in web-ui/__tests__/components/TokenUsageChart.test.tsx
+- [X] T137 [P] [US5] Add API client tests in web-ui/__tests__/api/metrics.test.ts
 
 **Run tests - Expected: ALL PASS (GREEN) ✅**
 
 ### REFACTOR Phase
 
-- [ ] T138 [US5] Refactor: Extract pricing into config file for easier updates
-- [ ] T139 [US5] Refactor: Add token counting using tiktoken for accuracy
-- [ ] T140 [US5] Add CSV export functionality for cost reports
+- [X] T138 [US5] Refactor: Extract pricing into config file for easier updates
+- [X] T139 [US5] Refactor: Add token counting using tiktoken for accuracy
+- [X] T140 [US5] Add CSV export functionality for cost reports
 
 **Checkpoint**: ✅ US-5 Complete - Metrics tracking operational, costs displayed accurately
 
@@ -294,38 +294,38 @@
 
 ### E2E Test Setup
 
-- [ ] T141 Create TestSprite E2E test fixtures directory at tests/e2e/fixtures/
-- [ ] T142 Create sample project fixture: Hello World REST API with 3 endpoints in tests/e2e/fixtures/hello_world_api/
-- [ ] T143 [P] Install and configure TestSprite MCP for E2E test generation
-- [ ] T144 [P] Install and configure Playwright for browser automation
+- [X] T141 Create TestSprite E2E test fixtures directory at tests/e2e/fixtures/
+- [X] T142 Create sample project fixture: Hello World REST API with 3 endpoints in tests/e2e/fixtures/hello_world_api/
+- [X] T143 [P] Install and configure TestSprite MCP for E2E test generation
+- [X] T144 [P] Install and configure Playwright for browser automation
 
 ### E2E Tests (Using TestSprite + Playwright)
 
 **Generate tests with TestSprite, then implement**
 
-- [ ] T145 [P] [US4] Generate E2E test plan with TestSprite: Full workflow test (Discovery → Completion)
-- [ ] T146 [US4] Implement E2E test: Discovery phase (Socratic Q&A) in tests/e2e/test_full_workflow.py::test_discovery_phase
-- [ ] T147 [US4] Implement E2E test: Task generation phase in tests/e2e/test_full_workflow.py::test_task_generation
-- [ ] T148 [US4] Implement E2E test: Multi-agent execution phase in tests/e2e/test_full_workflow.py::test_multi_agent_execution
-- [ ] T149 [US4] Implement E2E test: Quality gates block bad code in tests/e2e/test_full_workflow.py::test_quality_gates_block
-- [ ] T150 [US4] Implement E2E test: Review agent finds issues in tests/e2e/test_full_workflow.py::test_review_agent_analysis
-- [ ] T151 [US4] Implement E2E test: Checkpoint creation and restore in tests/e2e/test_full_workflow.py::test_checkpoint_restore
-- [ ] T152 [US4] Implement E2E test: Human-in-the-loop blocker resolution in tests/e2e/test_full_workflow.py::test_blocker_resolution
-- [ ] T153 [US4] Implement E2E test: Context management (flash save) in tests/e2e/test_full_workflow.py::test_context_flash_save
-- [ ] T154 [US4] Implement E2E test: Session lifecycle (pause/resume) in tests/e2e/test_full_workflow.py::test_session_lifecycle
-- [ ] T155 [US4] Implement E2E test: Cost tracking accuracy in tests/e2e/test_full_workflow.py::test_cost_tracking_accuracy
-- [ ] T156 [US4] Implement E2E test: Complete Hello World API project in tests/e2e/test_hello_world_project.py::test_complete_hello_world
-- [ ] T157 [P] [US4] Add Playwright frontend E2E test: Dashboard displays all features in tests/e2e/test_dashboard.spec.ts
-- [ ] T158 [P] [US4] Add Playwright frontend E2E test: Review findings display in tests/e2e/test_review_ui.spec.ts
-- [ ] T159 [P] [US4] Add Playwright frontend E2E test: Checkpoint UI workflow in tests/e2e/test_checkpoint_ui.spec.ts
-- [ ] T160 [P] [US4] Add Playwright frontend E2E test: Metrics dashboard in tests/e2e/test_metrics_ui.spec.ts
+- [X] T145 [P] [US4] Generate E2E test plan with TestSprite: Full workflow test (Discovery → Completion)
+- [X] T146 [US4] Implement E2E test: Discovery phase (Socratic Q&A) in tests/e2e/test_full_workflow.py::test_discovery_phase
+- [X] T147 [US4] Implement E2E test: Task generation phase in tests/e2e/test_full_workflow.py::test_task_generation
+- [X] T148 [US4] Implement E2E test: Multi-agent execution phase in tests/e2e/test_full_workflow.py::test_multi_agent_execution
+- [X] T149 [US4] Implement E2E test: Quality gates block bad code in tests/e2e/test_full_workflow.py::test_quality_gates_block
+- [X] T150 [US4] Implement E2E test: Review agent finds issues in tests/e2e/test_full_workflow.py::test_review_agent_analysis
+- [X] T151 [US4] Implement E2E test: Checkpoint creation and restore in tests/e2e/test_full_workflow.py::test_checkpoint_restore
+- [X] T152 [US4] Implement E2E test: Human-in-the-loop blocker resolution in tests/e2e/test_full_workflow.py::test_blocker_resolution
+- [X] T153 [US4] Implement E2E test: Context management (flash save) in tests/e2e/test_full_workflow.py::test_context_flash_save
+- [X] T154 [US4] Implement E2E test: Session lifecycle (pause/resume) in tests/e2e/test_full_workflow.py::test_session_lifecycle
+- [X] T155 [US4] Implement E2E test: Cost tracking accuracy in tests/e2e/test_full_workflow.py::test_cost_tracking_accuracy
+- [X] T156 [US4] Implement E2E test: Complete Hello World API project in tests/e2e/test_hello_world_project.py::test_complete_hello_world
+- [X] T157 [P] [US4] Add Playwright frontend E2E test: Dashboard displays all features in tests/e2e/test_dashboard.spec.ts
+- [X] T158 [P] [US4] Add Playwright frontend E2E test: Review findings display in tests/e2e/test_review_ui.spec.ts
+- [X] T159 [P] [US4] Add Playwright frontend E2E test: Checkpoint UI workflow in tests/e2e/test_checkpoint_ui.spec.ts
+- [X] T160 [P] [US4] Add Playwright frontend E2E test: Metrics dashboard in tests/e2e/test_metrics_ui.spec.ts
 
 ### CI/CD Integration
 
-- [ ] T161 Add pytest E2E tests to CI/CD pipeline in .github/workflows/test.yml
-- [ ] T162 Add Playwright E2E tests to CI/CD pipeline in .github/workflows/test.yml
-- [ ] T163 Configure E2E tests to run against real FastAPI server in CI
-- [ ] T164 Add E2E test reporting and artifacts upload to CI
+- [X] T161 Add pytest E2E tests to CI/CD pipeline in .github/workflows/test.yml
+- [X] T162 Add Playwright E2E tests to CI/CD pipeline in .github/workflows/test.yml
+- [X] T163 Configure E2E tests to run against real FastAPI server in CI
+- [X] T164 Add E2E test reporting and artifacts upload to CI
 
 **Run ALL E2E tests - Expected: 100% PASS ✅**
 
