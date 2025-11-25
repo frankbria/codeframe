@@ -270,7 +270,7 @@ describe('Checkpoints API Client', () => {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirm: true }),
+          body: JSON.stringify({ confirm_restore: true }),
         }
       );
       expect(result).toEqual(mockResponse);
