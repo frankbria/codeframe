@@ -38,7 +38,7 @@ export default function ProjectList() {
     () => projectsApi.list().then((res) => res.data.projects)
   );
 
-  const handleProjectClick = (_projectId: number) => {
+  const handleProjectClick = (projectId: number) => {
     router.push(`/projects/${projectId}`);
   };
 

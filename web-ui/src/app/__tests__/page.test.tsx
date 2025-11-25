@@ -150,7 +150,7 @@ describe('HomePage', () => {
       render(<HomePage />);
 
       // Trigger onError
-      const _errorButton = screen.getByText('Trigger onError');
+      const errorButton = screen.getByText('Trigger onError');
       await user.click(errorButton);
 
       await waitFor(() => {
