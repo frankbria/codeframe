@@ -3,7 +3,8 @@
  * Used across review component tests
  */
 
-import type { CodeReview, ReviewResult, Severity } from '@/types/reviews';
+import type { CodeReview, ReviewResult } from '@/types/reviews';
+import { Severity, ReviewCategory } from '@/types/reviews';
 
 /**
  * Mock critical security finding
@@ -15,8 +16,8 @@ export const mockCriticalSecurityFinding: CodeReview = {
   project_id: 1,
   file_path: 'src/auth/login.ts',
   line_number: 45,
-  severity: 'critical' as Severity,
-  category: 'security',
+  severity: Severity.CRITICAL,
+  category: ReviewCategory.SECURITY,
   message: 'SQL injection vulnerability detected in login query',
   recommendation: 'Use parameterized queries instead of string concatenation',
   code_snippet: 'const query = `SELECT * FROM users WHERE username="${username}"`',
@@ -33,8 +34,8 @@ export const mockHighPerformanceFinding: CodeReview = {
   project_id: 1,
   file_path: 'src/utils/data.ts',
   line_number: 120,
-  severity: 'high' as Severity,
-  category: 'performance',
+  severity: Severity.HIGH,
+  category: ReviewCategory.PERFORMANCE,
   message: 'N+1 query detected in loop - fetching user data for each item',
   recommendation: 'Batch fetch all user IDs before the loop',
   code_snippet: null,
@@ -51,8 +52,8 @@ export const mockMediumQualityFinding: CodeReview = {
   project_id: 1,
   file_path: 'src/components/Dashboard.tsx',
   line_number: 200,
-  severity: 'medium' as Severity,
-  category: 'quality',
+  severity: Severity.MEDIUM,
+  category: ReviewCategory.QUALITY,
   message: 'Component complexity exceeds threshold (cyclomatic complexity: 15)',
   recommendation: 'Split into smaller sub-components',
   code_snippet: null,
@@ -69,8 +70,8 @@ export const mockLowMaintainabilityFinding: CodeReview = {
   project_id: 1,
   file_path: 'src/lib/utils.ts',
   line_number: 78,
-  severity: 'low' as Severity,
-  category: 'maintainability',
+  severity: Severity.LOW,
+  category: ReviewCategory.MAINTAINABILITY,
   message: 'Magic number detected - use named constant',
   recommendation: 'Define constant MAX_RETRY_ATTEMPTS = 3',
   code_snippet: 'const maxRetries = 3; // Magic number',
@@ -87,8 +88,8 @@ export const mockInfoStyleFinding: CodeReview = {
   project_id: 1,
   file_path: 'src/api/client.ts',
   line_number: null,
-  severity: 'info' as Severity,
-  category: 'style',
+  severity: Severity.INFO,
+  category: ReviewCategory.STYLE,
   message: 'Consider adding JSDoc comments to exported functions',
   recommendation: null,
   code_snippet: null,
@@ -105,8 +106,8 @@ export const mockFileLevelFinding: CodeReview = {
   project_id: 1,
   file_path: 'src/config/database.ts',
   line_number: null,
-  severity: 'high' as Severity,
-  category: 'security',
+  severity: Severity.HIGH,
+  category: ReviewCategory.SECURITY,
   message: 'Database credentials hardcoded in source file',
   recommendation: 'Move credentials to environment variables',
   code_snippet: null,
