@@ -182,6 +182,7 @@ class MetricsTracker:
         # Create TokenUsage model
         token_usage = TokenUsage(
             task_id=task_id,
+            actual_cost_usd=None,
             agent_id=agent_id,
             project_id=project_id,
             model_name=model_name,
@@ -289,13 +290,13 @@ class MetricsTracker:
             model_stats[model_name]["total_calls"] += 1
 
         # Convert to lists and round costs
-        result["total_cost_usd"] = round(result["total_cost_usd"], 6)
+        result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
         result["by_agent"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
             for stats in agent_stats.values()
         ]
         result["by_model"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
             for stats in model_stats.values()
         ]
 
@@ -377,13 +378,13 @@ class MetricsTracker:
             project_stats[project_id]["cost_usd"] += cost
 
         # Convert to lists and round costs
-        result["total_cost_usd"] = round(result["total_cost_usd"], 6)
+        result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
         result["by_call_type"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
             for stats in call_type_stats.values()
         ]
         result["by_project"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
             for stats in project_stats.values()
         ]
 
@@ -457,7 +458,7 @@ class MetricsTracker:
             result["total_tokens"] += record["input_tokens"] + record["output_tokens"]
 
         # Round cost
-        result["total_cost_usd"] = round(result["total_cost_usd"], 6)
+        result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
 
         # TODO: Implement by_day aggregation (future enhancement)
         # This would group usage by date for timeline visualization

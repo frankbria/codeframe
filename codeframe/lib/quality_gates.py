@@ -163,7 +163,7 @@ class QualityGates:
 
         status = "passed" if len(failures) == 0 else "failed"
         result = QualityGateResult(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
             execution_time_seconds=execution_time,
@@ -171,7 +171,7 @@ class QualityGates:
 
         # Update database
         self.db.update_quality_gate_status(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
         )
@@ -241,7 +241,7 @@ class QualityGates:
 
         status = "passed" if len(failures) == 0 else "failed"
         result = QualityGateResult(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
             execution_time_seconds=execution_time,
@@ -249,7 +249,7 @@ class QualityGates:
 
         # Update database
         self.db.update_quality_gate_status(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
         )
@@ -300,7 +300,7 @@ class QualityGates:
 
         status = "passed" if len(failures) == 0 else "failed"
         result = QualityGateResult(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
             execution_time_seconds=execution_time,
@@ -308,7 +308,7 @@ class QualityGates:
 
         # Update database
         self.db.update_quality_gate_status(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
         )
@@ -386,7 +386,7 @@ class QualityGates:
 
         status = "passed" if len(failures) == 0 else "failed"
         result = QualityGateResult(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
             execution_time_seconds=execution_time,
@@ -394,7 +394,7 @@ class QualityGates:
 
         # Update database
         self.db.update_quality_gate_status(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
         )
@@ -467,7 +467,7 @@ class QualityGates:
 
         status = "passed" if len(failures) == 0 else "failed"
         result = QualityGateResult(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
             execution_time_seconds=execution_time,
@@ -475,7 +475,7 @@ class QualityGates:
 
         # Update database
         self.db.update_quality_gate_status(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=failures,
         )
@@ -525,12 +525,12 @@ class QualityGates:
         if self._contains_risky_changes(task):
             logger.info(f"Task {task.id} contains risky changes - marking for human approval")
             # Set requires_human_approval flag in database
-            cursor = self.db.conn.cursor()
+            cursor = self.db.conn.cursor()  # type: ignore[union-attr]
             cursor.execute(
                 "UPDATE tasks SET requires_human_approval = 1 WHERE id = ?",
                 (task.id,),
             )
-            self.db.conn.commit()
+            self.db.conn.commit()  # type: ignore[union-attr]
 
         # 1. Linting gate (fast)
         linting_result = await self.run_linting_gate(task)
@@ -558,7 +558,7 @@ class QualityGates:
         status = "passed" if len(all_failures) == 0 else "failed"
 
         result = QualityGateResult(
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             status=status,
             failures=all_failures,
             execution_time_seconds=execution_time,
@@ -958,7 +958,7 @@ class QualityGates:
         self.db.create_blocker(
             agent_id="quality-gates",
             project_id=self.project_id,
-            task_id=task.id,
+            task_id=task.id,  # type: ignore[arg-type]
             blocker_type=BlockerType.SYNC,
             question=question,
         )

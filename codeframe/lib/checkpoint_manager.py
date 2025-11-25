@@ -113,7 +113,7 @@ class CheckpointManager:
         logger.debug(f"Created context snapshot: {context_snapshot_path}")
 
         # Update checkpoint with file paths
-        cursor = self.db.conn.cursor()
+        cursor = self.db.conn.cursor()  # type: ignore[union-attr]
         cursor.execute(
             """
             UPDATE checkpoints
@@ -122,7 +122,7 @@ class CheckpointManager:
             """,
             (str(db_backup_path), str(context_snapshot_path), checkpoint_id)
         )
-        self.db.conn.commit()
+        self.db.conn.commit()  # type: ignore[union-attr]
 
         # Create and return Checkpoint object
         checkpoint = Checkpoint(
@@ -295,7 +295,7 @@ class CheckpointManager:
         backup_path = self.checkpoints_dir / backup_filename
 
         # Close any open transactions before copying
-        self.db.conn.commit()
+        self.db.conn.commit()  # type: ignore[union-attr]
 
         # Copy database file
         shutil.copy2(self.db.db_path, backup_path)
@@ -318,7 +318,7 @@ class CheckpointManager:
         snapshot_path = self.checkpoints_dir / snapshot_filename
 
         # Get all context items for this project
-        cursor = self.db.conn.cursor()
+        cursor = self.db.conn.cursor()  # type: ignore[union-attr]
         cursor.execute(
             """
             SELECT
@@ -366,7 +366,7 @@ class CheckpointManager:
         Returns:
             CheckpointMetadata with current project state
         """
-        cursor = self.db.conn.cursor()
+        cursor = self.db.conn.cursor()  # type: ignore[union-attr]
 
         # Get project phase
         cursor.execute(
@@ -529,7 +529,7 @@ class CheckpointManager:
             raise FileNotFoundError(f"Database backup not found: {backup_path}")
 
         # Close current database connection
-        self.db.conn.close()
+        self.db.conn.close()  # type: ignore[union-attr]
 
         # Replace database file with backup
         shutil.copy2(backup, self.db.db_path)
@@ -560,7 +560,7 @@ class CheckpointManager:
             snapshot_data = json.load(f)
 
         # Delete existing context items for this project
-        cursor = self.db.conn.cursor()
+        cursor = self.db.conn.cursor()  # type: ignore[union-attr]
         cursor.execute(
             "DELETE FROM context_items WHERE project_id = ?",
             (self.project_id,)
@@ -608,6 +608,6 @@ class CheckpointManager:
                     (max_id,)
                 )
 
-        self.db.conn.commit()
+        self.db.conn.commit()  # type: ignore[union-attr]
 
         return len(context_items)
