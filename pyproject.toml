@@ -44,6 +44,7 @@ dependencies = [
     "tree-sitter-typescript>=0.20.3",
     "tiktoken>=0.12.0",
     "radon>=6.0.1",
+    "pytest>=8.4.2",
 ]
 
 [project.optional-dependencies]
