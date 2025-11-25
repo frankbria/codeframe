@@ -275,6 +275,7 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 - Python 3.11+
 - Node.js 18+ (for frontend)
 - Git
+- SQLite 3.37.0+ (required for Sprint 10 database migrations)
 - Anthropic API key
 
 ### Backend Setup

@@ -204,7 +204,7 @@ class GitWorkflowManager:
             # Abort merge
             try:
                 self.repo.git.merge("--abort")
-            except:
+            except Exception:  # noqa: S110
                 pass
             raise
 

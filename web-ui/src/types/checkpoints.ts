@@ -34,7 +34,7 @@ export interface CreateCheckpointRequest {
 }
 
 export interface RestoreCheckpointRequest {
-  confirm: boolean;
+  confirm_restore: boolean;
 }
 
 export interface RestoreCheckpointResponse {

@@ -566,17 +566,23 @@ class CheckpointManager:
             (self.project_id,)
         )
 
-        # Restore context items from snapshot
+        # Restore context items from snapshot with original IDs
         context_items = snapshot_data.get("context_items", [])
+        max_id = 0
         for item in context_items:
+            item_id = item.get("id")
+            if item_id and item_id > max_id:
+                max_id = item_id
+
             cursor.execute(
                 """
                 INSERT INTO context_items
-                (agent_id, project_id, item_type, content, importance_score,
+                (id, agent_id, project_id, item_type, content, importance_score,
                  current_tier, access_count, created_at, last_accessed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    item_id,
                     item["agent_id"],
                     item["project_id"],
                     item["item_type"],
@@ -588,6 +594,19 @@ class CheckpointManager:
                     item["last_accessed"]
                 )
             )
+
+        # Update SQLite sequence to prevent future PK collisions
+        if max_id > 0:
+            cursor.execute(
+                "UPDATE sqlite_sequence SET seq = ? WHERE name = 'context_items'",
+                (max_id,)
+            )
+            # If no row exists for context_items in sqlite_sequence, insert it
+            if cursor.rowcount == 0:
+                cursor.execute(
+                    "INSERT INTO sqlite_sequence (name, seq) VALUES ('context_items', ?)",
+                    (max_id,)
+                )
 
         self.db.conn.commit()
 

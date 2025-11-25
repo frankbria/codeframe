@@ -4,9 +4,12 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 import logging
 from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue, CallType
+
+if TYPE_CHECKING:
+    from codeframe.core.models import CodeReview, QualityGateFailure, Checkpoint, CheckpointMetadata, TokenUsage
 
 logger = logging.getLogger(__name__)
 

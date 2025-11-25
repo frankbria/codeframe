@@ -199,8 +199,8 @@ class AgentMetrics:
 
 
 @dataclass
-class Checkpoint:
-    """State snapshot for recovery."""
+class StateCheckpoint:
+    """Legacy state snapshot for recovery (deprecated - use Checkpoint Pydantic model instead)."""
 
     id: str
     project_id: int
@@ -709,7 +709,10 @@ class CodeReview(BaseModel):
     @property
     def is_blocking(self) -> bool:
         """Whether this finding should block task completion."""
-        return self.severity in [Severity.CRITICAL, Severity.HIGH]
+        # Handle both enum and string values (use_enum_values=True converts to strings)
+        blocking_severities = [Severity.CRITICAL.value, Severity.HIGH.value]
+        severity_value = self.severity if isinstance(self.severity, str) else self.severity.value
+        return severity_value in blocking_severities
 
 
 class TokenUsage(BaseModel):

@@ -111,7 +111,7 @@ export async function deleteCheckpoint(
 export async function restoreCheckpoint(
   projectId: number,
   checkpointId: number,
-  confirm: boolean
+  confirmRestore: boolean
 ): Promise<RestoreCheckpointResponse> {
   const response = await fetch(
     `${API_BASE_URL}/api/projects/${projectId}/checkpoints/${checkpointId}/restore`,
@@ -120,7 +120,7 @@ export async function restoreCheckpoint(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ confirm }),
+      body: JSON.stringify({ confirm_restore: confirmRestore }),
     }
   );
 

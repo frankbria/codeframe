@@ -45,8 +45,27 @@ class Sprint10ReviewPolish(Migration):
         return True
 
     def apply(self, conn: sqlite3.Connection) -> None:
-        """Apply the migration."""
+        """Apply the migration.
+
+        Requires SQLite 3.37.0+ for ALTER TABLE with inline CHECK constraints.
+        """
         cursor = conn.cursor()
+
+        # Check SQLite version
+        sqlite_version = sqlite3.sqlite_version_info
+        min_version = (3, 37, 0)
+
+        if sqlite_version < min_version:
+            version_str = ".".join(map(str, sqlite_version))
+            min_version_str = ".".join(map(str, min_version))
+            raise RuntimeError(
+                f"Migration 007 requires SQLite {min_version_str} or higher. "
+                f"Current version: {version_str}. "
+                f"Please upgrade SQLite to continue. "
+                f"See: https://www.sqlite.org/download.html"
+            )
+
+        logger.info(f"SQLite version {'.'.join(map(str, sqlite_version))} detected (>= 3.37.0 required)")
 
         # 1. Create code_reviews table
         logger.info("Migration 007: Creating code_reviews table")

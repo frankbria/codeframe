@@ -15,6 +15,7 @@ import os
 
 from codeframe.core.models import (
     ProjectStatus,
+    TaskStatus,
     BlockerResolve,
     ContextItemCreateModel,
     ContextItemResponse,
@@ -2015,7 +2016,7 @@ async def analyze_code_review(request: Request, background_tasks: BackgroundTask
                     title=task_data.get("title", ""),
                     description=task_data.get("description", ""),
                     project_id=project_id,
-                    status=task_data.get("status", "pending"),
+                    status=TaskStatus(task_data.get("status", "pending")),
                     priority=task_data.get("priority", 0)
                 )
 
@@ -2433,7 +2434,7 @@ async def trigger_quality_gates(
         task_number=task_data.get("task_number", "unknown"),
         title=task_data.get("title", ""),
         description=task_data.get("description", ""),
-        status=task_data.get("status", "pending"),
+        status=TaskStatus(task_data.get("status", "pending")),
     )
 
     # Determine which gates to run

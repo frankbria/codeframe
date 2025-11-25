@@ -118,6 +118,8 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         cursor = db.conn.cursor()
 
         # Delete all rows from tables (in reverse dependency order)
+        cursor.execute("DELETE FROM code_reviews")
+        cursor.execute("DELETE FROM token_usage")
         cursor.execute("DELETE FROM context_items")
         cursor.execute("DELETE FROM checkpoints")
         cursor.execute("DELETE FROM memory")
