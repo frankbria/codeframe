@@ -12,6 +12,7 @@ Quality gates ensure code quality by blocking task completion when:
 """
 
 import pytest
+import subprocess
 from unittest.mock import Mock, AsyncMock, patch
 from codeframe.lib.quality_gates import QualityGates, QualityGateResult
 from codeframe.core.models import (
@@ -430,3 +431,582 @@ class TestQualityGateResult:
             execution_time_seconds=3.0,
         )
         assert result.has_critical_failures is True
+
+
+# ============================================================================
+# Additional tests for missing coverage lines
+# ============================================================================
+
+
+class TestQualityGatesErrorHandling:
+    """Tests for error handling and edge cases in QualityGates."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Create temporary database."""
+        db_path = tmp_path / "test.db"
+        db = Database(db_path)
+        db.initialize()
+        return db
+
+    @pytest.fixture
+    def project_root(self, tmp_path):
+        """Create temporary project root directory."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        return project_dir
+
+    @pytest.fixture
+    def project_id(self, db, project_root):
+        """Create test project."""
+        return db.create_project(
+            name="Test Project",
+            description="Quality gate test project",
+            workspace_path=str(project_root),
+        )
+
+    @pytest.fixture
+    def task(self, db, project_id):
+        """Create test task."""
+        cursor = db.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tasks (project_id, task_number, title, description, status)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, "1.1.1", "Test task", "Implement feature", "in_progress"),
+        )
+        db.conn.commit()
+        task_id = cursor.lastrowid
+
+        task_obj = Task(
+            id=task_id,
+            project_id=project_id,
+            task_number="1.1.1",
+            title="Test task",
+            description="Implement feature",
+            status=TaskStatus.IN_PROGRESS,
+        )
+        return task_obj
+
+    @pytest.fixture
+    def quality_gates(self, db, project_id, project_root):
+        """Create QualityGates instance."""
+        return QualityGates(db=db, project_id=project_id, project_root=project_root)
+
+    # ========================================================================
+    # Test JavaScript/TypeScript file detection (lines 151-153)
+    # ========================================================================
+
+    @pytest.mark.asyncio
+    async def test_jest_failure(self, quality_gates, task, project_root):
+        """Test Jest test failures are properly reported."""
+        # Set task to have JavaScript files
+        task._test_files = ["src/feature.js"]
+
+        # Mock subprocess to simulate Jest failure
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=1,  # Jest failed
+                stdout="FAIL src/feature.test.js\n  ✕ test_feature (5 ms)\nTests: 1 failed, 1 total",
+                stderr="",
+            )
+
+            result = await quality_gates.run_tests_gate(task)
+
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.TESTS
+            assert "jest" in failure.reason.lower()
+
+    # ========================================================================
+    # Test TypeScript type checking (lines 229-231)
+    # ========================================================================
+
+    @pytest.mark.asyncio
+    async def test_tsc_failure(self, quality_gates, task, project_root):
+        """Test TypeScript compiler errors are properly reported."""
+        # Set task to have TypeScript files
+        task._test_files = ["src/feature.ts"]
+
+        # Mock subprocess to simulate tsc error
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=1,  # tsc found errors
+                stdout='src/feature.ts:42:5 - error TS2322: Type "string" is not assignable to type "number".\n',
+                stderr="",
+            )
+
+            result = await quality_gates.run_type_check_gate(task)
+
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.TYPE_CHECK
+            assert "typescript" in failure.reason.lower()
+
+    # ========================================================================
+    # Test ESLint failures (lines 455-457)
+    # ========================================================================
+
+    @pytest.mark.asyncio
+    async def test_eslint_failure(self, quality_gates, task, project_root):
+        """Test ESLint failures are properly reported."""
+        # Set task to have JavaScript files
+        task._test_files = ["src/feature.js"]
+
+        # Mock subprocess to simulate ESLint error
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=1,  # ESLint found errors
+                stdout="src/feature.js: line 1, col 1, Error - 'console' is not defined (no-undef)\n2 problems",
+                stderr="",
+            )
+
+            result = await quality_gates.run_linting_gate(task)
+
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            failure = result.failures[0]
+            assert failure.gate == QualityGateType.LINTING
+            assert "eslint" in failure.reason.lower()
+
+    # ========================================================================
+    # Test file type detection edge cases (lines 582, 588, 594, 608)
+    # ========================================================================
+
+    def test_task_has_python_files_default(self, quality_gates, task):
+        """Test default behavior when task has no _test_files attribute."""
+        # Remove _test_files attribute
+        if hasattr(task, "_test_files"):
+            delattr(task, "_test_files")
+
+        result = quality_gates._task_has_python_files(task)
+        assert result is True  # Defaults to Python
+
+    def test_task_has_javascript_files_default(self, quality_gates, task):
+        """Test default behavior for JavaScript files."""
+        # Remove _test_files attribute
+        if hasattr(task, "_test_files"):
+            delattr(task, "_test_files")
+
+        result = quality_gates._task_has_javascript_files(task)
+        assert result is False  # Defaults to False
+
+    def test_task_has_typescript_files_default(self, quality_gates, task):
+        """Test default behavior for TypeScript files."""
+        # Remove _test_files attribute
+        if hasattr(task, "_test_files"):
+            delattr(task, "_test_files")
+
+        result = quality_gates._task_has_typescript_files(task)
+        assert result is False  # Defaults to False
+
+    def test_contains_risky_changes_no_files(self, quality_gates, task):
+        """Test risky changes detection with no files."""
+        # Remove _test_files attribute
+        if hasattr(task, "_test_files"):
+            delattr(task, "_test_files")
+
+        result = quality_gates._contains_risky_changes(task)
+        assert result is False
+
+    # ========================================================================
+    # Test timeout handling (lines 647-654, 662-686, 711-718, 726-750, 776-783, 808-815, 823-847)
+    # ========================================================================
+
+    @pytest.mark.asyncio
+    async def test_pytest_timeout(self, quality_gates, task):
+        """Test pytest timeout handling."""
+        task._test_files = ["src/feature.py"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="pytest", timeout=300)
+
+            result = await quality_gates.run_tests_gate(task)
+
+            # Timeout should be treated as a failure
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            assert "timeout" in result.failures[0].reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_pytest_not_found(self, quality_gates, task):
+        """Test behavior when pytest is not installed."""
+        task._test_files = ["src/feature.py"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+
+            result = await quality_gates.run_tests_gate(task)
+
+            # Should pass if pytest not found (don't fail build)
+            assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_jest_timeout(self, quality_gates, task):
+        """Test Jest timeout handling."""
+        task._test_files = ["src/feature.js"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="npm test", timeout=300)
+
+            result = await quality_gates.run_tests_gate(task)
+
+            # Timeout should be treated as a failure
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            assert "timeout" in result.failures[0].reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_jest_not_found(self, quality_gates, task):
+        """Test behavior when Jest is not installed."""
+        task._test_files = ["src/feature.js"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+
+            result = await quality_gates.run_tests_gate(task)
+
+            # Should pass if Jest not found
+            assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_mypy_timeout(self, quality_gates, task):
+        """Test mypy timeout handling."""
+        task._test_files = ["src/feature.py"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="mypy", timeout=120)
+
+            result = await quality_gates.run_type_check_gate(task)
+
+            # Timeout should be treated as a failure
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            assert "timeout" in result.failures[0].reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_mypy_not_found(self, quality_gates, task):
+        """Test behavior when mypy is not installed."""
+        task._test_files = ["src/feature.py"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+
+            result = await quality_gates.run_type_check_gate(task)
+
+            # Should pass if mypy not found
+            assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_tsc_timeout(self, quality_gates, task):
+        """Test TypeScript compiler timeout handling."""
+        task._test_files = ["src/feature.ts"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="tsc", timeout=120)
+
+            result = await quality_gates.run_type_check_gate(task)
+
+            # Timeout should be treated as a failure
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            assert "timeout" in result.failures[0].reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_tsc_not_found(self, quality_gates, task):
+        """Test behavior when tsc is not installed."""
+        task._test_files = ["src/feature.ts"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+
+            result = await quality_gates.run_type_check_gate(task)
+
+            # Should pass if tsc not found
+            assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_coverage_timeout(self, quality_gates, task):
+        """Test coverage timeout handling."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="pytest --cov", timeout=300)
+
+            result = await quality_gates.run_coverage_gate(task)
+
+            # Timeout should be treated as a failure
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            assert "0" in str(result.failures[0].reason) or "timeout" in result.failures[0].reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_coverage_not_found(self, quality_gates, task):
+        """Test behavior when pytest/coverage is not installed."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+
+            result = await quality_gates.run_coverage_gate(task)
+
+            # Should pass if coverage tool not found (100% default)
+            assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_ruff_timeout(self, quality_gates, task):
+        """Test ruff timeout handling."""
+        task._test_files = ["src/feature.py"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="ruff", timeout=60)
+
+            result = await quality_gates.run_linting_gate(task)
+
+            # Timeout should be treated as a failure
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            assert "timeout" in result.failures[0].reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_ruff_not_found(self, quality_gates, task):
+        """Test behavior when ruff is not installed."""
+        task._test_files = ["src/feature.py"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+
+            result = await quality_gates.run_linting_gate(task)
+
+            # Should pass if ruff not found
+            assert result.status == "passed"
+
+    @pytest.mark.asyncio
+    async def test_eslint_timeout(self, quality_gates, task):
+        """Test ESLint timeout handling."""
+        task._test_files = ["src/feature.js"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="eslint", timeout=60)
+
+            result = await quality_gates.run_linting_gate(task)
+
+            # Timeout should be treated as a failure
+            assert result.status == "failed"
+            assert len(result.failures) > 0
+            assert "timeout" in result.failures[0].reason.lower()
+
+    @pytest.mark.asyncio
+    async def test_eslint_not_found(self, quality_gates, task):
+        """Test behavior when ESLint is not installed."""
+        task._test_files = ["src/feature.js"]
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = FileNotFoundError()
+
+            result = await quality_gates.run_linting_gate(task)
+
+            # Should pass if ESLint not found
+            assert result.status == "passed"
+
+    # ========================================================================
+    # Test output parsing edge cases (lines 862, 867-870, 882-885, 907-910)
+    # ========================================================================
+
+    def test_extract_pytest_summary_no_match(self, quality_gates):
+        """Test pytest summary extraction when no pattern matches."""
+        output = "Some random output without test results"
+        result = quality_gates._extract_pytest_summary(output)
+        assert result == "Unknown"
+
+    def test_extract_pytest_summary_success(self, quality_gates):
+        """Test pytest summary extraction with successful match."""
+        output = "tests/test_feature.py ... 5 passed in 2.0s"
+        result = quality_gates._extract_pytest_summary(output)
+        assert result == "5 passed"
+
+    def test_extract_jest_summary_no_match(self, quality_gates):
+        """Test Jest summary extraction when no pattern matches."""
+        output = "Some random output without test results"
+        result = quality_gates._extract_jest_summary(output)
+        assert result == "Unknown"
+
+    def test_extract_mypy_summary_no_errors(self, quality_gates):
+        """Test mypy summary extraction with no errors."""
+        output = "Success: no issues found in 10 source files"
+        result = quality_gates._extract_mypy_summary(output)
+        assert result == "No errors"
+
+    def test_extract_tsc_summary_no_errors(self, quality_gates):
+        """Test tsc summary extraction with no errors."""
+        output = "Success: no issues found"
+        result = quality_gates._extract_tsc_summary(output)
+        assert result == "No errors"
+
+    def test_extract_eslint_summary_no_match(self, quality_gates):
+        """Test ESLint summary extraction when no pattern matches."""
+        output = "All files pass linting"
+        result = quality_gates._extract_eslint_summary(output)
+        assert result == "Unknown"
+
+    # ========================================================================
+    # Test blocker creation edge case (line 926)
+    # ========================================================================
+
+    def test_create_quality_blocker_no_failures(self, quality_gates, task):
+        """Test blocker creation with empty failures list."""
+        # Should not create blocker if no failures
+        quality_gates._create_quality_blocker(task, [])
+
+        # Verify no blocker was created
+        cursor = quality_gates.db.conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM blockers WHERE task_id = ?", (task.id,))
+        count = cursor.fetchone()[0]
+        assert count == 0
+
+
+# ============================================================================
+# Integration tests for quality gates workflow
+# ============================================================================
+
+
+class TestQualityGatesIntegration:
+    """Integration tests for full quality gates workflow."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Create temporary database."""
+        db_path = tmp_path / "test.db"
+        db = Database(db_path)
+        db.initialize()
+        return db
+
+    @pytest.fixture
+    def project_root(self, tmp_path):
+        """Create temporary project root directory."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        return project_dir
+
+    @pytest.fixture
+    def project_id(self, db, project_root):
+        """Create test project."""
+        return db.create_project(
+            name="Test Project",
+            description="Quality gate test project",
+            workspace_path=str(project_root),
+        )
+
+    @pytest.fixture
+    def task(self, db, project_id):
+        """Create test task."""
+        cursor = db.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tasks (project_id, task_number, title, description, status)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, "1.1.1", "Test task", "Implement feature", "in_progress"),
+        )
+        db.conn.commit()
+        task_id = cursor.lastrowid
+
+        task_obj = Task(
+            id=task_id,
+            project_id=project_id,
+            task_number="1.1.1",
+            title="Test task",
+            description="Implement feature",
+            status=TaskStatus.IN_PROGRESS,
+        )
+        task_obj._test_files = ["src/payment.py", "src/authentication.py"]
+        return task_obj
+
+    @pytest.fixture
+    def quality_gates(self, db, project_id, project_root):
+        """Create QualityGates instance."""
+        return QualityGates(db=db, project_id=project_id, project_root=project_root)
+
+    @pytest.mark.asyncio
+    async def test_multiple_gate_failures(self, quality_gates, task):
+        """Test that multiple gate failures are aggregated correctly."""
+        # Mock all gates to fail
+        with patch("subprocess.run") as mock_run:
+            # All subprocess calls fail
+            mock_run.return_value = Mock(
+                returncode=1,
+                stdout="Multiple errors found",
+                stderr="",
+            )
+
+            # Mock Review Agent to fail
+            with patch("codeframe.agents.review_agent.ReviewAgent") as MockReviewAgent:
+                mock_agent = MockReviewAgent.return_value
+                mock_result = Mock()
+                mock_result.status = "blocked"
+                mock_result.findings = [
+                    Mock(
+                        severity=Severity.CRITICAL,
+                        category="security",
+                        message="Security issue",
+                        file_path="src/payment.py",
+                        line_number=10,
+                        recommendation="Fix it",
+                        code_snippet="bad_code()",
+                    )
+                ]
+                mock_agent.execute_task = AsyncMock(return_value=mock_result)
+
+                result = await quality_gates.run_all_gates(task)
+
+                # Should fail with multiple failures
+                assert result.status == "failed"
+                assert len(result.failures) > 3  # Multiple gates failed
+
+    @pytest.mark.asyncio
+    async def test_risky_file_patterns(self, quality_gates, task, db):
+        """Test that all risky file patterns trigger human approval."""
+        risky_files = [
+            "src/auth.py",
+            "src/authentication.py",
+            "src/password.py",
+            "src/payment.py",
+            "src/billing.py",
+            "src/security.py",
+            "src/crypto.py",
+            "src/secret.py",
+            "src/token.py",
+            "src/session.py",
+        ]
+
+        for risky_file in risky_files:
+            # Reset task
+            task._test_files = [risky_file]
+
+            # Reset requires_human_approval flag
+            cursor = db.conn.cursor()
+            cursor.execute(
+                "UPDATE tasks SET requires_human_approval = 0 WHERE id = ?",
+                (task.id,),
+            )
+            db.conn.commit()
+
+            # Mock all gates to pass (so we only test risky file detection)
+            with patch("subprocess.run") as mock_run:
+                mock_run.return_value = Mock(returncode=0, stdout="Success", stderr="")
+
+                with patch("codeframe.agents.review_agent.ReviewAgent") as MockReviewAgent:
+                    mock_agent = MockReviewAgent.return_value
+                    mock_result = Mock()
+                    mock_result.status = "completed"
+                    mock_result.findings = []
+                    mock_agent.execute_task = AsyncMock(return_value=mock_result)
+
+                    await quality_gates.run_all_gates(task)
+
+                    # Check that requires_human_approval flag is set
+                    cursor.execute(
+                        "SELECT requires_human_approval FROM tasks WHERE id = ?",
+                        (task.id,),
+                    )
+                    row = cursor.fetchone()
+                    assert row[0] == 1, f"Risky file {risky_file} should require human approval"
