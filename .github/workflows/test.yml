@@ -60,7 +60,7 @@ jobs:
 
       - name: Run ESLint
         working-directory: web-ui
-        run: npm run lint
+        run: npm run lint -- --strict
 
       - name: Run TypeScript type checking
         working-directory: web-ui
