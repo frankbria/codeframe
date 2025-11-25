@@ -8,6 +8,13 @@ import userEvent from '@testing-library/user-event';
 import TaskTreeView from './TaskTreeView';
 import type { Issue, Task } from '@/types/api';
 
+// Mock QualityGateStatus component to avoid async issues in tests
+jest.mock('./quality-gates/QualityGateStatus', () => {
+  return function QualityGateStatus() {
+    return 'Quality Gate Status Mock';
+  };
+});
+
 describe('TaskTreeView', () => {
   const mockTasks: Task[] = [
     {
@@ -397,6 +404,280 @@ describe('TaskTreeView', () => {
       // Use getAllByText since "depends on" text might appear multiple times
       const multiDepElements = screen.getAllByText(/depends on.*task-1.*task-3.*task-5/i);
       expect(multiDepElements.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Task Status Variations', () => {
+    it('should display failed status correctly', async () => {
+      const user = userEvent.setup();
+
+      const failedTask: Task = {
+        ...mockTasks[0],
+        status: 'failed',
+      };
+
+      const issueWithFailedTask: Issue[] = [
+        {
+          ...mockIssues[0],
+          tasks: [failedTask],
+        },
+      ];
+
+      render(<TaskTreeView issues={issueWithFailedTask} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      const failedBadge = screen.getByText(/failed/i);
+      expect(failedBadge).toHaveClass('bg-red-100');
+      expect(failedBadge).toHaveClass('text-red-800');
+    });
+
+    it('should display assigned status correctly', async () => {
+      const user = userEvent.setup();
+
+      const assignedTask: Task = {
+        ...mockTasks[0],
+        status: 'assigned',
+      };
+
+      const issueWithAssignedTask: Issue[] = [
+        {
+          ...mockIssues[0],
+          tasks: [assignedTask],
+        },
+      ];
+
+      render(<TaskTreeView issues={issueWithAssignedTask} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      const assignedBadge = screen.getByText(/assigned/i);
+      expect(assignedBadge).toHaveClass('bg-yellow-100');
+      expect(assignedBadge).toHaveClass('text-yellow-800');
+    });
+
+    it('should display blocked status correctly', async () => {
+      const user = userEvent.setup();
+
+      const blockedTask: Task = {
+        ...mockTasks[0],
+        status: 'blocked',
+      };
+
+      const issueWithBlockedTask: Issue[] = [
+        {
+          ...mockIssues[0],
+          tasks: [blockedTask],
+        },
+      ];
+
+      render(<TaskTreeView issues={issueWithBlockedTask} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      const blockedBadge = screen.getByText(/blocked/i);
+      expect(blockedBadge).toHaveClass('bg-red-100');
+      expect(blockedBadge).toHaveClass('text-red-800');
+    });
+  });
+
+  describe('Priority Variations', () => {
+    it('should display priority 2 correctly', () => {
+      render(<TaskTreeView issues={mockIssues} />);
+
+      const priority2Badge = screen.getByText(/Priority:.*2/i);
+      expect(priority2Badge).toHaveClass('bg-orange-100');
+      expect(priority2Badge).toHaveClass('text-orange-800');
+    });
+
+    it('should display priority 3 correctly', () => {
+      const priority3Issue: Issue[] = [
+        {
+          ...mockIssues[0],
+          priority: 3,
+        },
+      ];
+
+      render(<TaskTreeView issues={priority3Issue} />);
+
+      const priority3Badge = screen.getByText(/Priority:.*3/i);
+      expect(priority3Badge).toHaveClass('bg-yellow-100');
+      expect(priority3Badge).toHaveClass('text-yellow-800');
+    });
+
+    it('should display priority 4+ correctly', () => {
+      const priority4Issue: Issue[] = [
+        {
+          ...mockIssues[0],
+          priority: 4,
+        },
+      ];
+
+      render(<TaskTreeView issues={priority4Issue} />);
+
+      const priority4Badge = screen.getByText(/Priority:.*4/i);
+      expect(priority4Badge).toHaveClass('bg-gray-100');
+      expect(priority4Badge).toHaveClass('text-gray-800');
+    });
+  });
+
+  describe('Quality Gates', () => {
+    it('should show quality gates section for completed tasks', async () => {
+      const user = userEvent.setup();
+
+      render(<TaskTreeView issues={mockIssues} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      // Wait for tasks to be visible
+      await waitFor(() => {
+        expect(screen.getByText('Implement authentication')).toBeInTheDocument();
+      });
+
+      // Quality gates section should be visible for completed task
+      const qualityGatesButtons = screen.getAllByText(/Quality Gates/i);
+      expect(qualityGatesButtons.length).toBeGreaterThan(0);
+    });
+
+    it('should toggle quality gates section when clicked', async () => {
+      const user = userEvent.setup();
+
+      render(<TaskTreeView issues={mockIssues} />);
+
+      // Expand issue
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      // Wait for tasks to be visible
+      await waitFor(() => {
+        expect(screen.getByText('Implement authentication')).toBeInTheDocument();
+      });
+
+      // Click quality gates button
+      const qualityGatesButton = screen.getAllByText(/Quality Gates/i)[0];
+      await user.click(qualityGatesButton);
+
+      // QualityGateStatus component should be rendered (mocked)
+      await waitFor(() => {
+        expect(screen.queryByText(/Quality Gate Status Mock/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should not show quality gates for pending tasks', async () => {
+      const user = userEvent.setup();
+
+      const pendingTask: Task = {
+        ...mockTasks[0],
+        status: 'pending',
+      };
+
+      const issueWithPendingTask: Issue[] = [
+        {
+          ...mockIssues[0],
+          tasks: [pendingTask],
+        },
+      ];
+
+      render(<TaskTreeView issues={issueWithPendingTask} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      // Quality gates should not be visible for pending task
+      expect(screen.queryByText(/Quality Gates/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Task Dependencies and Blocking', () => {
+    it('should show dependency indicator for tasks with dependencies', async () => {
+      const user = userEvent.setup();
+
+      render(<TaskTreeView issues={mockIssues} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      // Task 2 has dependencies - should show link emoji
+      const linkEmojis = screen.getAllByText('🔗');
+      expect(linkEmojis.length).toBeGreaterThan(0);
+    });
+
+    it('should show dependency count for tasks with dependencies', async () => {
+      const user = userEvent.setup();
+
+      render(<TaskTreeView issues={mockIssues} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      // Should show dependency count
+      const depCount = screen.getByText(/1 dependency/i);
+      expect(depCount).toBeInTheDocument();
+    });
+
+    it('should mark task as blocked when dependencies are not completed', async () => {
+      const user = userEvent.setup();
+
+      const incompleteDep: Task = {
+        id: 'task-1',
+        task_number: 'T-001',
+        title: 'Implement authentication',
+        description: 'Add user authentication system',
+        status: 'in_progress', // Not completed
+        depends_on: [],
+        proposed_by: 'agent',
+        created_at: '2025-10-15T10:00:00Z',
+        updated_at: '2025-10-16T10:00:00Z',
+        completed_at: null,
+      };
+
+      const blockedTask: Task = {
+        id: 'task-2',
+        task_number: 'T-002',
+        title: 'Add login UI',
+        description: 'Create login form component',
+        status: 'pending', // Blocked status
+        depends_on: ['task-1'],
+        proposed_by: 'human',
+        created_at: '2025-10-16T10:00:00Z',
+        updated_at: '2025-10-17T10:00:00Z',
+        completed_at: null,
+      };
+
+      const issueWithBlockedTask: Issue[] = [
+        {
+          ...mockIssues[0],
+          tasks: [incompleteDep, blockedTask],
+        },
+      ];
+
+      render(<TaskTreeView issues={issueWithBlockedTask} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      // Should show blocked badge
+      const blockedBadge = screen.getByText(/🚫 Blocked/i);
+      expect(blockedBadge).toBeInTheDocument();
+      expect(blockedBadge).toHaveClass('bg-red-100');
+    });
+
+    it('should not mark task as blocked when dependencies are completed', async () => {
+      const user = userEvent.setup();
+
+      // Task 1 is completed in mockTasks
+      render(<TaskTreeView issues={mockIssues} />);
+
+      const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
+      await user.click(expandButton);
+
+      // Task 2 depends on completed task-1, so should not show blocked badge
+      const blockedBadges = screen.queryAllByText(/🚫 Blocked/i);
+      expect(blockedBadges.length).toBe(0);
     });
   });
 });

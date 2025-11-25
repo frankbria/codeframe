@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { ContextItem, ContextTier } from '../../types/context';
+import type { ContextItem } from '../../types/context';
 import { fetchContextItems } from '../../api/context';
 
 interface ContextItemListProps {

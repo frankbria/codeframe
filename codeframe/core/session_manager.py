@@ -3,7 +3,7 @@
 import json
 import os
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 
 class SessionManager:

@@ -18,7 +18,7 @@ import type {
   Task,
   ActivityItem,
   ProjectProgress,
-  AgentStatus,
+
   TaskStatus,
 } from '@/types/agentState';
 

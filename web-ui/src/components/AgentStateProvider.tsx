@@ -19,7 +19,7 @@ import { agentsApi, tasksApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
 import { processWebSocketMessage } from '@/lib/websocketMessageMapper';
 import { fullStateResyncWithRetry } from '@/lib/agentStateSync';
-import type { Agent, Task, ActivityItem } from '@/types/agentState';
+import type { Agent, ActivityItem } from '@/types/agentState';
 
 /**
  * Props for AgentStateProvider
@@ -102,6 +102,7 @@ export function AgentStateProvider({
     if (agentsData?.data?.agents) {
       // Transform API agents to include timestamp if missing
       const agentsWithTimestamp: Agent[] = agentsData.data.agents.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (agent: any) => ({
           ...agent,
           timestamp: agent.timestamp || Date.now(),
@@ -133,6 +134,7 @@ export function AgentStateProvider({
   useEffect(() => {
     if (activityData?.data?.activity) {
       // Add each activity item
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (activityData.data.activity as any[]).forEach((item: ActivityItem) => {
         dispatch({
           type: 'ACTIVITY_ADDED',
@@ -163,6 +165,7 @@ export function AgentStateProvider({
     ws.subscribe(projectId);
 
     // Handle incoming messages (T073-T074)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const unsubscribeMessages = ws.onMessage((message: any) => {
       // Filter by project ID (T074)
       if (message.project_id && message.project_id !== projectId) {

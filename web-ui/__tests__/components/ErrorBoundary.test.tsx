@@ -14,6 +14,17 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { ReactNode } from 'react';
 
 /**
+ * Helper to set NODE_ENV for testing (process.env.NODE_ENV is read-only)
+ */
+function setNodeEnv(env: string) {
+  Object.defineProperty(process.env, 'NODE_ENV', {
+    value: env,
+    writable: true,
+    configurable: true,
+  });
+}
+
+/**
  * Component that throws an error when shouldThrow is true
  */
 interface ThrowErrorProps {
@@ -62,7 +73,7 @@ describe('ErrorBoundary', () => {
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     // Set NODE_ENV to development for testing error details
-    process.env.NODE_ENV = 'development';
+    setNodeEnv('development');
   });
 
   afterEach(() => {
@@ -198,7 +209,7 @@ describe('ErrorBoundary', () => {
     });
 
     it('should display error details in development mode', () => {
-      process.env.NODE_ENV = 'development';
+      setNodeEnv('development');
 
       render(
         <ErrorBoundary>
@@ -215,7 +226,7 @@ describe('ErrorBoundary', () => {
     });
 
     it('should NOT display error details in production mode', () => {
-      process.env.NODE_ENV = 'production';
+      setNodeEnv('production');
 
       render(
         <ErrorBoundary>
@@ -228,7 +239,7 @@ describe('ErrorBoundary', () => {
     });
 
     it('should display error stack trace in development mode', () => {
-      process.env.NODE_ENV = 'development';
+      setNodeEnv('development');
 
       const errorWithStack = new Error('Error with stack');
       errorWithStack.stack = 'Error: Error with stack\n    at TestComponent\n    at ErrorBoundary';
@@ -331,7 +342,7 @@ describe('ErrorBoundary', () => {
     });
 
     it('should capture error object in state', () => {
-      process.env.NODE_ENV = 'development';
+      setNodeEnv('development');
       const customError = new Error('Captured in state error');
 
       render(
@@ -350,7 +361,7 @@ describe('ErrorBoundary', () => {
   // ==========================================================================
   describe('componentDidCatch Lifecycle', () => {
     it('should log error to console in development mode', () => {
-      process.env.NODE_ENV = 'development';
+      setNodeEnv('development');
 
       render(
         <ErrorBoundary>
@@ -362,15 +373,15 @@ describe('ErrorBoundary', () => {
       expect(consoleErrorSpy).toHaveBeenCalled();
 
       // Find the calls that match our error boundary logging
-      const errorBoundaryCalls = consoleErrorSpy.mock.calls.filter(call =>
-        call.some(arg => typeof arg === 'string' && arg.includes('[ErrorBoundary]'))
+      const errorBoundaryCalls = consoleErrorSpy.mock.calls.filter((call: any[]) =>
+        call.some((arg: any) => typeof arg === 'string' && arg.includes('[ErrorBoundary]'))
       );
 
       expect(errorBoundaryCalls.length).toBeGreaterThan(0);
     });
 
     it('should NOT log error to console in production mode', () => {
-      process.env.NODE_ENV = 'production';
+      setNodeEnv('production');
       consoleErrorSpy.mockClear();
 
       render(
@@ -380,7 +391,7 @@ describe('ErrorBoundary', () => {
       );
 
       // React still calls console.error, but ErrorBoundary should not add extra logs
-      const errorBoundaryCalls = consoleErrorSpy.mock.calls.filter(call =>
+      const errorBoundaryCalls = consoleErrorSpy.mock.calls.filter((call: any[]) =>
         call.some(arg => typeof arg === 'string' && arg.includes('[ErrorBoundary]'))
       );
 
@@ -477,7 +488,7 @@ describe('ErrorBoundary', () => {
     });
 
     it('should handle null error stack gracefully', () => {
-      process.env.NODE_ENV = 'development';
+      setNodeEnv('development');
       const errorWithoutStack = new Error('No stack');
       errorWithoutStack.stack = undefined;
 
@@ -590,7 +601,7 @@ describe('ErrorBoundary', () => {
     });
 
     it('should provide error details in expandable section', () => {
-      process.env.NODE_ENV = 'development';
+      setNodeEnv('development');
 
       render(
         <ErrorBoundary>
@@ -706,7 +717,7 @@ describe('ErrorBoundary', () => {
     });
 
     it('should handle errors with very long stack traces', () => {
-      process.env.NODE_ENV = 'development';
+      setNodeEnv('development');
 
       const errorWithLongStack = new Error('Long stack error');
       errorWithLongStack.stack = 'Error: Long stack\n' + 'at Function\n'.repeat(100);

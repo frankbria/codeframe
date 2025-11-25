@@ -1,11 +1,11 @@
 """Tests for project API endpoints."""
 
 import pytest
+import os
 import tempfile
 import shutil
 from pathlib import Path
 from fastapi.testclient import TestClient
-from codeframe.ui.server import app
 from codeframe.persistence.database import Database
 
 
@@ -16,25 +16,46 @@ def test_client():
     db_path = temp_dir / "test.db"
     workspace_root = temp_dir / "workspaces"
 
-    # Override database and workspace paths
+    # Save original environment
+    original_db_path = os.environ.get("DATABASE_PATH")
+    original_workspace_root = os.environ.get("WORKSPACE_ROOT")
+
+    # Set environment variables
+    os.environ["DATABASE_PATH"] = str(db_path)
+    os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+
+    # Reload server module to pick up new environment
+    from codeframe.ui import server
+    from importlib import reload
+    reload(server)
+
+    # Initialize database
     db = Database(db_path)
     db.initialize()
-
-    app.state.db = db
-    app.state.workspace_root = workspace_root
+    server.app.state.db = db
 
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
+    server.app.state.workspace_manager = WorkspaceManager(workspace_root)
 
-    app.state.workspace_manager = WorkspaceManager(workspace_root)
-
-    client = TestClient(app)
+    client = TestClient(server.app)
 
     yield client
 
     # Cleanup
     db.close()
-    shutil.rmtree(temp_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Restore original environment
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    else:
+        os.environ.pop("DATABASE_PATH", None)
+
+    if original_workspace_root is not None:
+        os.environ["WORKSPACE_ROOT"] = original_workspace_root
+    else:
+        os.environ.pop("WORKSPACE_ROOT", None)
 
 
 def test_create_project_minimal(test_client):

@@ -1,7 +1,7 @@
 """Core data models for CodeFRAME."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field, ConfigDict, field_validator
@@ -66,6 +66,45 @@ class ContextTier(Enum):
     HOT = "hot"  # Always loaded, ~20K tokens
     WARM = "warm"  # On-demand, ~40K tokens
     COLD = "cold"  # Archived, queryable
+
+
+class Severity(str, Enum):
+    """Code review finding severity levels (Sprint 10)."""
+
+    CRITICAL = "critical"  # Must fix before completion
+    HIGH = "high"  # Should fix before completion
+    MEDIUM = "medium"  # Should fix eventually
+    LOW = "low"  # Nice to fix
+    INFO = "info"  # Informational only
+
+
+class ReviewCategory(str, Enum):
+    """Code review finding categories (Sprint 10)."""
+
+    SECURITY = "security"  # Security vulnerabilities
+    PERFORMANCE = "performance"  # Performance issues
+    QUALITY = "quality"  # Code quality problems
+    MAINTAINABILITY = "maintainability"  # Hard to maintain code
+    STYLE = "style"  # Style/formatting issues
+
+
+class QualityGateType(str, Enum):
+    """Types of quality gates (Sprint 10)."""
+
+    TESTS = "tests"
+    TYPE_CHECK = "type_check"
+    COVERAGE = "coverage"
+    CODE_REVIEW = "code_review"
+    LINTING = "linting"
+
+
+class CallType(str, Enum):
+    """Type of LLM call for categorization (Sprint 10)."""
+
+    TASK_EXECUTION = "task_execution"
+    CODE_REVIEW = "code_review"
+    COORDINATION = "coordination"
+    OTHER = "other"
 
 
 @dataclass
@@ -160,8 +199,8 @@ class AgentMetrics:
 
 
 @dataclass
-class Checkpoint:
-    """State snapshot for recovery."""
+class StateCheckpoint:
+    """Legacy state snapshot for recovery (deprecated - use Checkpoint Pydantic model instead)."""
 
     id: str
     project_id: int
@@ -642,3 +681,151 @@ class DiscoveryAnswerResponse(BaseModel):
             }
         }
     )
+
+
+# ============================================================================
+# Sprint 10 Models (Feature: 015-review-polish)
+# ============================================================================
+
+
+class CodeReview(BaseModel):
+    """Code review finding from Review Agent (Sprint 10)."""
+
+    id: Optional[int] = None
+    task_id: int
+    agent_id: str
+    project_id: int
+    file_path: str = Field(..., description="Relative path from project root")
+    line_number: Optional[int] = Field(None, description="Line number, None for file-level")
+    severity: Severity
+    category: ReviewCategory
+    message: str = Field(..., min_length=10, description="Description of the issue")
+    recommendation: Optional[str] = Field(None, description="How to fix it")
+    code_snippet: Optional[str] = Field(None, description="Offending code for context")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(use_enum_values=True)
+
+    @property
+    def is_blocking(self) -> bool:
+        """Whether this finding should block task completion."""
+        # Handle both enum and string values (use_enum_values=True converts to strings)
+        blocking_severities = [Severity.CRITICAL.value, Severity.HIGH.value]
+        severity_value = self.severity if isinstance(self.severity, str) else self.severity.value
+        return severity_value in blocking_severities
+
+
+class TokenUsage(BaseModel):
+    """Token usage record for a single LLM call (Sprint 10)."""
+
+    id: Optional[int] = None
+    task_id: Optional[int] = None  # None for non-task calls
+    agent_id: str
+    project_id: int
+    model_name: str = Field(..., description="e.g., claude-sonnet-4-5")
+    input_tokens: int = Field(..., ge=0)
+    output_tokens: int = Field(..., ge=0)
+    estimated_cost_usd: float = Field(..., ge=0.0)
+    actual_cost_usd: Optional[float] = Field(None, ge=0.0)
+    call_type: CallType = CallType.OTHER
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = ConfigDict(use_enum_values=True)
+
+    @property
+    def total_tokens(self) -> int:
+        """Total tokens (input + output)."""
+        return self.input_tokens + self.output_tokens
+
+    @staticmethod
+    def calculate_cost(
+        model_name: str,
+        input_tokens: int,
+        output_tokens: int
+    ) -> float:
+        """Calculate estimated cost in USD.
+
+        Pricing as of 2025-11:
+        - Claude Sonnet 4.5: $3.00 input / $15.00 output per MTok
+        - Claude Opus 4: $15.00 input / $75.00 output per MTok
+        - Claude Haiku 4: $0.80 input / $4.00 output per MTok
+        """
+        pricing = {
+            "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
+            "claude-opus-4": {"input": 15.00, "output": 75.00},
+            "claude-haiku-4": {"input": 0.80, "output": 4.00},
+        }
+
+        if model_name not in pricing:
+            raise ValueError(f"Unknown model: {model_name}")
+
+        prices = pricing[model_name]
+        cost = (
+            (input_tokens * prices["input"] / 1_000_000) +
+            (output_tokens * prices["output"] / 1_000_000)
+        )
+        return round(cost, 6)  # 6 decimal places for precision
+
+
+class QualityGateFailure(BaseModel):
+    """Individual quality gate failure (Sprint 10)."""
+
+    gate: QualityGateType
+    reason: str = Field(..., min_length=5)
+    details: Optional[str] = None  # Full error output
+    severity: Severity = Severity.HIGH
+
+
+class QualityGateResult(BaseModel):
+    """Result of running quality gates for a task (Sprint 10)."""
+
+    task_id: int
+    status: str = Field(..., description="passed or failed")
+    failures: List[QualityGateFailure] = Field(default_factory=list)
+    execution_time_seconds: float = Field(..., ge=0.0)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @property
+    def passed(self) -> bool:
+        """Whether all gates passed."""
+        return self.status == "passed" and len(self.failures) == 0
+
+    @property
+    def has_critical_failures(self) -> bool:
+        """Whether any failures are critical."""
+        return any(f.severity == Severity.CRITICAL for f in self.failures)
+
+
+class CheckpointMetadata(BaseModel):
+    """Metadata stored in checkpoint for quick inspection (Sprint 10)."""
+
+    project_id: int
+    phase: str  # discovery, planning, active, review, complete
+    tasks_completed: int
+    tasks_total: int
+    agents_active: List[str]
+    last_task_completed: Optional[str] = None
+    context_items_count: int
+    total_cost_usd: float
+
+
+class Checkpoint(BaseModel):
+    """Project checkpoint for restore operations (Sprint 10)."""
+
+    id: Optional[int] = None
+    project_id: int
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    trigger: str = Field(..., description="manual, auto, phase_transition")
+    git_commit: str = Field(..., min_length=7, max_length=40, description="Git commit SHA")
+    database_backup_path: str = Field(..., description="Path to .sqlite backup")
+    context_snapshot_path: str = Field(..., description="Path to context JSON")
+    metadata: CheckpointMetadata
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def validate_files_exist(self) -> bool:
+        """Check if all checkpoint files exist."""
+        from pathlib import Path
+        db_path = Path(self.database_backup_path)
+        context_path = Path(self.context_snapshot_path)
+        return db_path.exists() and context_path.exists()

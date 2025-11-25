@@ -25,8 +25,8 @@ const onRenderCallback: ProfilerOnRenderCallback = (
   phase,
   actualDuration,
   baseDuration,
-  startTime,
-  commitTime
+  _startTime,
+  _commitTime
 ) => {
   // Only log in development mode
   if (process.env.NODE_ENV === 'development') {

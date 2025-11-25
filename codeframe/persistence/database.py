@@ -2,10 +2,14 @@
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 import logging
-from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue
+from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue, CallType
+
+if TYPE_CHECKING:
+    from codeframe.core.models import CodeReview, QualityGateFailure, Checkpoint, CheckpointMetadata, TokenUsage
 
 logger = logging.getLogger(__name__)
 
@@ -423,6 +427,9 @@ class Database:
             from codeframe.persistence.migrations.migration_006_mvp_completion import (
                 migration as migration_006,
             )
+            from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
+                migration as migration_007,
+            )
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -438,6 +445,7 @@ class Database:
             runner.register(migration_004)
             runner.register(migration_005)
             runner.register(migration_006)
+            runner.register(migration_007)
 
             # Apply all pending migrations
             runner.apply_all()
@@ -2668,6 +2676,244 @@ class Database:
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    # Code Review CRUD operations (Sprint 10: 015-review-polish)
+
+    def save_code_review(self, review: 'CodeReview') -> int:
+        """Save a code review finding to database.
+
+        Args:
+            review: CodeReview object to save
+
+        Returns:
+            ID of the created code_reviews record
+        """
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO code_reviews (
+                task_id, agent_id, project_id, file_path, line_number,
+                severity, category, message, recommendation, code_snippet
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                review.task_id,
+                review.agent_id,
+                review.project_id,
+                review.file_path,
+                review.line_number,
+                review.severity.value if hasattr(review.severity, 'value') else review.severity,
+                review.category.value if hasattr(review.category, 'value') else review.category,
+                review.message,
+                review.recommendation,
+                review.code_snippet,
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_code_reviews(
+        self,
+        task_id: Optional[int] = None,
+        project_id: Optional[int] = None,
+        severity: Optional[str] = None,
+    ) -> List['CodeReview']:
+        """Get code review findings.
+
+        Args:
+            task_id: Filter by task ID
+            project_id: Filter by project ID
+            severity: Filter by severity level
+
+        Returns:
+            List of CodeReview objects
+        """
+        from codeframe.core.models import CodeReview, Severity, ReviewCategory
+
+        cursor = self.conn.cursor()
+
+        # Build query dynamically based on filters
+        conditions = []
+        params = []
+
+        if task_id is not None:
+            conditions.append("task_id = ?")
+            params.append(task_id)
+
+        if project_id is not None:
+            conditions.append("project_id = ?")
+            params.append(project_id)
+
+        if severity is not None:
+            conditions.append("severity = ?")
+            params.append(severity)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        cursor.execute(
+            f"""
+            SELECT id, task_id, agent_id, project_id, file_path, line_number,
+                   severity, category, message, recommendation, code_snippet, created_at
+            FROM code_reviews
+            WHERE {where_clause}
+            ORDER BY created_at DESC
+            """,
+            params,
+        )
+
+        reviews = []
+        for row in cursor.fetchall():
+            row_dict = dict(row)
+            # Convert string severity/category back to enums
+            reviews.append(
+                CodeReview(
+                    id=row_dict['id'],
+                    task_id=row_dict['task_id'],
+                    agent_id=row_dict['agent_id'],
+                    project_id=row_dict['project_id'],
+                    file_path=row_dict['file_path'],
+                    line_number=row_dict['line_number'],
+                    severity=Severity(row_dict['severity']),
+                    category=ReviewCategory(row_dict['category']),
+                    message=row_dict['message'],
+                    recommendation=row_dict['recommendation'],
+                    code_snippet=row_dict['code_snippet'],
+                )
+            )
+
+        return reviews
+
+    def get_code_reviews_by_severity(
+        self,
+        project_id: int,
+        severity: str
+    ) -> List['CodeReview']:
+        """Get code reviews filtered by severity.
+
+        Convenience method that calls get_code_reviews with severity filter.
+
+        Args:
+            project_id: Project ID to filter by
+            severity: Severity level (critical, high, medium, low, info)
+
+        Returns:
+            List of CodeReview objects
+        """
+        return self.get_code_reviews(project_id=project_id, severity=severity)
+
+    # ========================================================================
+    # Quality Gate Methods (Sprint 10 Phase 3 - US-2)
+    # ========================================================================
+
+    def update_quality_gate_status(
+        self,
+        task_id: int,
+        status: str,
+        failures: List['QualityGateFailure'],
+    ) -> None:
+        """Update task quality gate status and failures.
+
+        This method is called by QualityGates after running all gates to store
+        the results in the tasks table. The status is stored in quality_gate_status
+        column and failures are stored as JSON in quality_gate_failures column.
+
+        Args:
+            task_id: Task ID to update
+            status: Gate status - 'pending', 'running', 'passed', or 'failed'
+            failures: List of QualityGateFailure objects (empty if passed)
+
+        Example:
+            >>> from codeframe.core.models import QualityGateFailure, QualityGateType, Severity
+            >>> failure = QualityGateFailure(
+            ...     gate=QualityGateType.TESTS,
+            ...     reason="2 tests failed",
+            ...     severity=Severity.HIGH
+            ... )
+            >>> db.update_quality_gate_status(task_id=123, status='failed', failures=[failure])
+        """
+
+        cursor = self.conn.cursor()
+
+        # Serialize failures to JSON
+        failures_json = json.dumps([
+            {
+                'gate': f.gate.value if hasattr(f.gate, 'value') else f.gate,
+                'reason': f.reason,
+                'details': f.details,
+                'severity': f.severity.value if hasattr(f.severity, 'value') else f.severity,
+            }
+            for f in failures
+        ])
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET quality_gate_status = ?,
+                quality_gate_failures = ?
+            WHERE id = ?
+            """,
+            (status, failures_json, task_id),
+        )
+        self.conn.commit()
+
+        logger.info(
+            f"Updated quality gate status for task {task_id}: "
+            f"status={status}, failures={len(failures)}"
+        )
+
+    def get_quality_gate_status(self, task_id: int) -> Dict[str, Any]:
+        """Get quality gate status for a task.
+
+        Args:
+            task_id: Task ID to query
+
+        Returns:
+            Dictionary with keys:
+            - status: Gate status ('pending', 'running', 'passed', 'failed', or None)
+            - failures: List of failure dictionaries (empty if passed or None if not run)
+            - requires_human_approval: Boolean indicating if task requires approval
+
+        Example:
+            >>> result = db.get_quality_gate_status(task_id=123)
+            >>> if result['status'] == 'failed':
+            ...     for failure in result['failures']:
+            ...         print(f"{failure['gate']}: {failure['reason']}")
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT quality_gate_status, quality_gate_failures, requires_human_approval
+            FROM tasks
+            WHERE id = ?
+            """,
+            (task_id,),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            return {
+                'status': None,
+                'failures': [],
+                'requires_human_approval': False,
+            }
+
+        status, failures_json, requires_approval = row
+
+        # Parse failures JSON
+        failures = []
+        if failures_json:
+            try:
+                failures = json.loads(failures_json)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse quality_gate_failures JSON for task {task_id}")
+                failures = []
+
+        return {
+            'status': status,
+            'failures': failures,
+            'requires_human_approval': bool(requires_approval),
+        }
+
     def get_pending_tasks(self, project_id: int, limit: int = 5) -> List[Dict[str, Any]]:
         """Get next pending tasks for next actions queue.
 
@@ -2716,4 +2962,331 @@ class Database:
         return {
             "total_tasks": row["total_tasks"] or 0,
             "completed_tasks": row["completed_tasks"] or 0,
+        }
+
+    # Checkpoint Management Methods (Sprint 10 Phase 4: US-3)
+
+    def save_checkpoint(
+        self,
+        project_id: int,
+        name: str,
+        description: Optional[str],
+        trigger: str,
+        git_commit: str,
+        database_backup_path: str,
+        context_snapshot_path: str,
+        metadata: 'CheckpointMetadata'
+    ) -> int:
+        """Save a checkpoint to database.
+
+        Args:
+            project_id: Project ID
+            name: Checkpoint name (max 100 chars)
+            description: Optional description (max 500 chars)
+            trigger: Trigger type (manual, auto, phase_transition)
+            git_commit: Git commit SHA
+            database_backup_path: Path to database backup file
+            context_snapshot_path: Path to context snapshot JSON
+            metadata: CheckpointMetadata object
+
+        Returns:
+            Created checkpoint ID
+        """
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO checkpoints (
+                project_id, name, description, trigger, git_commit,
+                database_backup_path, context_snapshot_path, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                project_id,
+                name,
+                description,
+                trigger,
+                git_commit,
+                database_backup_path,
+                context_snapshot_path,
+                json.dumps(metadata.model_dump())
+            )
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_checkpoints(self, project_id: int) -> List['Checkpoint']:
+        """Get all checkpoints for a project, sorted by created_at DESC.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of Checkpoint objects, most recent first
+        """
+        from codeframe.core.models import Checkpoint, CheckpointMetadata
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id, project_id, name, description, trigger, git_commit,
+                database_backup_path, context_snapshot_path, metadata, created_at
+            FROM checkpoints
+            WHERE project_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (project_id,)
+        )
+
+        checkpoints = []
+        for row in cursor.fetchall():
+            # Parse metadata JSON
+            metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
+            metadata = CheckpointMetadata(**metadata_dict)
+
+            checkpoint = Checkpoint(
+                id=row["id"],
+                project_id=row["project_id"],
+                name=row["name"],
+                description=row["description"],
+                trigger=row["trigger"],
+                git_commit=row["git_commit"],
+                database_backup_path=row["database_backup_path"],
+                context_snapshot_path=row["context_snapshot_path"],
+                metadata=metadata,
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc)
+            )
+            checkpoints.append(checkpoint)
+
+        return checkpoints
+
+    def get_checkpoint_by_id(self, checkpoint_id: int) -> Optional['Checkpoint']:
+        """Get a checkpoint by ID.
+
+        Args:
+            checkpoint_id: Checkpoint ID
+
+        Returns:
+            Checkpoint object or None if not found
+        """
+        from codeframe.core.models import Checkpoint, CheckpointMetadata
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id, project_id, name, description, trigger, git_commit,
+                database_backup_path, context_snapshot_path, metadata, created_at
+            FROM checkpoints
+            WHERE id = ?
+            """,
+            (checkpoint_id,)
+        )
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        # Parse metadata JSON
+        metadata_dict = json.loads(row["metadata"]) if row["metadata"] else {}
+        metadata = CheckpointMetadata(**metadata_dict)
+
+        return Checkpoint(
+            id=row["id"],
+            project_id=row["project_id"],
+            name=row["name"],
+            description=row["description"],
+            trigger=row["trigger"],
+            git_commit=row["git_commit"],
+            database_backup_path=row["database_backup_path"],
+            context_snapshot_path=row["context_snapshot_path"],
+            metadata=metadata,
+            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc)
+        )
+
+    # ============================================================================
+    # Token Usage and Metrics Methods (Sprint 10 Phase 5)
+    # ============================================================================
+
+    def save_token_usage(self, token_usage: 'TokenUsage') -> int:
+        """Save a token usage record to the database.
+
+        Args:
+            token_usage: TokenUsage model instance
+
+        Returns:
+            Database ID of the created record
+
+        Example:
+            >>> from codeframe.core.models import TokenUsage, CallType
+            >>> usage = TokenUsage(
+            ...     task_id=27,
+            ...     agent_id="backend-001",
+            ...     project_id=1,
+            ...     model_name="claude-sonnet-4-5",
+            ...     input_tokens=1000,
+            ...     output_tokens=500,
+            ...     estimated_cost_usd=0.0105,
+            ...     call_type=CallType.TASK_EXECUTION
+            ... )
+            >>> usage_id = db.save_token_usage(usage)
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO token_usage (
+                task_id, agent_id, project_id, model_name,
+                input_tokens, output_tokens, estimated_cost_usd,
+                actual_cost_usd, call_type, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                token_usage.task_id,
+                token_usage.agent_id,
+                token_usage.project_id,
+                token_usage.model_name,
+                token_usage.input_tokens,
+                token_usage.output_tokens,
+                token_usage.estimated_cost_usd,
+                token_usage.actual_cost_usd,
+                token_usage.call_type.value if isinstance(token_usage.call_type, CallType) else token_usage.call_type,
+                token_usage.timestamp.isoformat()
+            )
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_token_usage(
+        self,
+        project_id: Optional[int] = None,
+        agent_id: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[Dict[str, Any]]:
+        """Get token usage records with optional filtering.
+
+        Args:
+            project_id: Filter by project ID (optional)
+            agent_id: Filter by agent ID (optional)
+            start_date: Filter by start date (inclusive, optional)
+            end_date: Filter by end date (inclusive, optional)
+
+        Returns:
+            List of token usage records as dictionaries
+
+        Example:
+            >>> # Get all usage for a project
+            >>> usage = db.get_token_usage(project_id=1)
+            >>>
+            >>> # Get usage for an agent in a date range
+            >>> from datetime import datetime, timedelta
+            >>> start = datetime.now() - timedelta(days=7)
+            >>> usage = db.get_token_usage(agent_id="backend-001", start_date=start)
+        """
+        cursor = self.conn.cursor()
+
+        # Build query with filters
+        query = "SELECT * FROM token_usage WHERE 1=1"
+        params = []
+
+        if project_id is not None:
+            query += " AND project_id = ?"
+            params.append(project_id)
+
+        if agent_id is not None:
+            query += " AND agent_id = ?"
+            params.append(agent_id)
+
+        if start_date is not None:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat())
+
+        if end_date is not None:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat())
+
+        query += " ORDER BY timestamp DESC"
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_project_costs_aggregate(self, project_id: int) -> Dict[str, Any]:
+        """Get aggregated cost statistics for a project.
+
+        This is a convenience method that aggregates costs by agent and model
+        in a single database query for better performance.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dictionary with aggregated costs:
+            {
+                "total_cost": float,
+                "total_tokens": int,
+                "by_agent": {...},
+                "by_model": {...}
+            }
+
+        Example:
+            >>> stats = db.get_project_costs_aggregate(project_id=1)
+            >>> print(f"Total: ${stats['total_cost']:.2f}")
+        """
+        cursor = self.conn.cursor()
+
+        # Get overall totals
+        cursor.execute(
+            """
+            SELECT
+                COALESCE(SUM(estimated_cost_usd), 0) as total_cost,
+                COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
+                COUNT(*) as total_calls
+            FROM token_usage
+            WHERE project_id = ?
+            """,
+            (project_id,)
+        )
+        totals = cursor.fetchone()
+
+        # Get breakdown by agent
+        cursor.execute(
+            """
+            SELECT
+                agent_id,
+                SUM(estimated_cost_usd) as cost,
+                SUM(input_tokens + output_tokens) as tokens,
+                COUNT(*) as calls
+            FROM token_usage
+            WHERE project_id = ?
+            GROUP BY agent_id
+            ORDER BY cost DESC
+            """,
+            (project_id,)
+        )
+        by_agent = [dict(row) for row in cursor.fetchall()]
+
+        # Get breakdown by model
+        cursor.execute(
+            """
+            SELECT
+                model_name,
+                SUM(estimated_cost_usd) as cost,
+                SUM(input_tokens + output_tokens) as tokens,
+                COUNT(*) as calls
+            FROM token_usage
+            WHERE project_id = ?
+            GROUP BY model_name
+            ORDER BY cost DESC
+            """,
+            (project_id,)
+        )
+        by_model = [dict(row) for row in cursor.fetchall()]
+
+        return {
+            "total_cost": totals["total_cost"],
+            "total_tokens": totals["total_tokens"],
+            "total_calls": totals["total_calls"],
+            "by_agent": by_agent,
+            "by_model": by_model
         }

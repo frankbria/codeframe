@@ -28,7 +28,7 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
   const [answer, setAnswer] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const [_validationError, setValidationError] = useState<string | null>(null);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -111,6 +111,7 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
       // Call callbacks
       onResolved();
       setTimeout(() => onClose(), 500); // Small delay to show toast
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       // Handle specific error codes
       if (error?.response?.status === 409) {

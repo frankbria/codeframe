@@ -205,7 +205,7 @@ def test_connection_stability(ws_url: str, connection_name: str, duration: int =
         print_error(f"Connection died after {int(time.time() - start_time)}s: {str(e)}")
         try:
             ws.close()
-        except:
+        except Exception:  # noqa: S110
             pass
         return False
 

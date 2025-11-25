@@ -116,6 +116,7 @@ const ChatInterface = memo(function ChatInterface({ projectId, agentStatus = 'id
 
       // Focus back on input
       inputRef.current?.focus();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to send message. Please try again.');
       // Remove optimistic user message on error

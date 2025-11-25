@@ -15,10 +15,23 @@ from codeframe.core.models import BlockerType, TaskStatus
 @pytest_asyncio.fixture
 async def db():
     """Create in-memory database for testing."""
+    import sqlite3
+    # Use check_same_thread=False for threading tests
     database = Database(":memory:")
-    # Initialize schema (migrations should be applied)
     database.initialize()
+
+    # Enable SQLite threading mode for concurrent access
+    if database.conn:
+        database.conn.isolation_level = None  # Autocommit mode
+
     yield database
+
+    # Ensure all pending operations complete
+    if database.conn:
+        try:
+            database.conn.execute("PRAGMA optimize")
+        except sqlite3.Error:
+            pass
     database.close()
 
 
@@ -220,24 +233,36 @@ class TestDuplicateResolution:
         # Simulate concurrent resolutions using threading
         # threading imported at top
         results = []
+        lock = threading.Lock()
 
         def resolve_a():
-            results.append(db.resolve_blocker(blocker_id, "Answer A"))
+            # Add small delay to ensure both threads are ready
+            time.sleep(0.01)
+            result = db.resolve_blocker(blocker_id, "Answer A")
+            with lock:
+                results.append(result)
 
         def resolve_b():
-            results.append(db.resolve_blocker(blocker_id, "Answer B"))
+            # Add small delay to ensure both threads are ready
+            time.sleep(0.01)
+            result = db.resolve_blocker(blocker_id, "Answer B")
+            with lock:
+                results.append(result)
 
         thread_a = threading.Thread(target=resolve_a)
         thread_b = threading.Thread(target=resolve_b)
 
         thread_a.start()
         thread_b.start()
-        thread_a.join()
-        thread_b.join()
+        thread_a.join(timeout=2.0)
+        thread_b.join(timeout=2.0)
+
+        # Wait a bit for any pending database operations
+        time.sleep(0.1)
 
         # Exactly one should succeed
         successes = sum(1 for r in results if r is True)
-        assert successes == 1
+        assert successes == 1, f"Expected 1 success, got {successes}. Results: {results}"
 
         # Verify only one answer was stored
         blocker = db.get_blocker(blocker_id)

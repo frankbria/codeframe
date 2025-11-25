@@ -6,7 +6,6 @@ import tempfile
 import shutil
 from pathlib import Path
 from fastapi.testclient import TestClient
-from codeframe.ui.server import app
 from codeframe.persistence.database import Database
 
 
@@ -17,27 +16,53 @@ def test_client_hosted():
     db_path = temp_dir / "test.db"
     workspace_root = temp_dir / "workspaces"
 
-    # Override database and workspace paths
+    # Save original environment
+    original_db_path = os.environ.get("DATABASE_PATH")
+    original_workspace_root = os.environ.get("WORKSPACE_ROOT")
+    original_deployment_mode = os.environ.get("CODEFRAME_DEPLOYMENT_MODE")
+
+    # Set environment variables
+    os.environ["DATABASE_PATH"] = str(db_path)
+    os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+    os.environ["CODEFRAME_DEPLOYMENT_MODE"] = "hosted"
+
+    # Reload server module to pick up new environment
+    from codeframe.ui import server
+    from importlib import reload
+    reload(server)
+
+    # Initialize database
     db = Database(db_path)
     db.initialize()
-
-    app.state.db = db
-    app.state.workspace_root = workspace_root
+    server.app.state.db = db
 
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
+    server.app.state.workspace_manager = WorkspaceManager(workspace_root)
 
-    app.state.workspace_manager = WorkspaceManager(workspace_root)
-
-    os.environ["CODEFRAME_DEPLOYMENT_MODE"] = "hosted"
-    client = TestClient(app)
+    client = TestClient(server.app)
 
     yield client
 
     # Cleanup
-    del os.environ["CODEFRAME_DEPLOYMENT_MODE"]
     db.close()
-    shutil.rmtree(temp_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Restore original environment
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    else:
+        os.environ.pop("DATABASE_PATH", None)
+
+    if original_workspace_root is not None:
+        os.environ["WORKSPACE_ROOT"] = original_workspace_root
+    else:
+        os.environ.pop("WORKSPACE_ROOT", None)
+
+    if original_deployment_mode is not None:
+        os.environ["CODEFRAME_DEPLOYMENT_MODE"] = original_deployment_mode
+    else:
+        os.environ.pop("CODEFRAME_DEPLOYMENT_MODE", None)
 
 
 @pytest.fixture
@@ -47,27 +72,53 @@ def test_client_self_hosted():
     db_path = temp_dir / "test.db"
     workspace_root = temp_dir / "workspaces"
 
-    # Override database and workspace paths
+    # Save original environment
+    original_db_path = os.environ.get("DATABASE_PATH")
+    original_workspace_root = os.environ.get("WORKSPACE_ROOT")
+    original_deployment_mode = os.environ.get("CODEFRAME_DEPLOYMENT_MODE")
+
+    # Set environment variables
+    os.environ["DATABASE_PATH"] = str(db_path)
+    os.environ["WORKSPACE_ROOT"] = str(workspace_root)
+    os.environ["CODEFRAME_DEPLOYMENT_MODE"] = "self_hosted"
+
+    # Reload server module to pick up new environment
+    from codeframe.ui import server
+    from importlib import reload
+    reload(server)
+
+    # Initialize database
     db = Database(db_path)
     db.initialize()
-
-    app.state.db = db
-    app.state.workspace_root = workspace_root
+    server.app.state.db = db
 
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
+    server.app.state.workspace_manager = WorkspaceManager(workspace_root)
 
-    app.state.workspace_manager = WorkspaceManager(workspace_root)
-
-    os.environ["CODEFRAME_DEPLOYMENT_MODE"] = "self_hosted"
-    client = TestClient(app)
+    client = TestClient(server.app)
 
     yield client
 
     # Cleanup
-    del os.environ["CODEFRAME_DEPLOYMENT_MODE"]
     db.close()
-    shutil.rmtree(temp_dir)
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    # Restore original environment
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    else:
+        os.environ.pop("DATABASE_PATH", None)
+
+    if original_workspace_root is not None:
+        os.environ["WORKSPACE_ROOT"] = original_workspace_root
+    else:
+        os.environ.pop("WORKSPACE_ROOT", None)
+
+    if original_deployment_mode is not None:
+        os.environ["CODEFRAME_DEPLOYMENT_MODE"] = original_deployment_mode
+    else:
+        os.environ.pop("CODEFRAME_DEPLOYMENT_MODE", None)
 
 
 def test_hosted_mode_blocks_local_path(test_client_hosted):

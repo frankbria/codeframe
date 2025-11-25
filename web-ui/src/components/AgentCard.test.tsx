@@ -338,7 +338,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 0,
       };
 
-      const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
+      render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const agentIdElement = screen.getByText(agent.id);
       expect(agentIdElement).toHaveClass('truncate', 'max-w-[150px]');

@@ -4,7 +4,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 try:
-    import anthropic
+    import anthropic  # noqa: F401 - needed for error messages
     from anthropic import (
         Anthropic,
         AuthenticationError,

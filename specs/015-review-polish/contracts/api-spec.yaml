@@ -1,0 +1,813 @@
+openapi: 3.0.3
+info:
+  title: CodeFRAME Sprint 10 API
+  description: |
+    API endpoints for Review & Polish features:
+    - Review Agent code analysis
+    - Quality gate enforcement
+    - Checkpoint create/restore
+    - Token usage and cost metrics
+  version: 1.0.0
+  contact:
+    name: CodeFRAME Team
+
+servers:
+  - url: http://localhost:8000/api
+    description: Local development server
+  - url: https://codeframe.example.com/api
+    description: Production server
+
+tags:
+  - name: Reviews
+    description: Code review operations
+  - name: Checkpoints
+    description: Checkpoint management
+  - name: Metrics
+    description: Token usage and cost tracking
+  - name: Quality Gates
+    description: Quality gate status and results
+
+paths:
+  # ============================================================================
+  # REVIEW AGENT ENDPOINTS
+  # ============================================================================
+
+  /agents/review/analyze:
+    post:
+      tags: [Reviews]
+      summary: Trigger code review for a task
+      description: |
+        Requests the Review Agent to analyze code changes for a specific task.
+        Returns review findings with severity levels.
+      operationId: triggerCodeReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task_id, project_id]
+              properties:
+                task_id:
+                  type: integer
+                  description: Task ID to review
+                  example: 42
+                project_id:
+                  type: integer
+                  description: Project ID
+                  example: 1
+                focus_areas:
+                  type: array
+                  items:
+                    type: string
+                    enum: [security, performance, quality, maintainability, style]
+                  description: Specific areas to focus review on (optional, defaults to all)
+                  example: ["security", "performance"]
+      responses:
+        '202':
+          description: Review request accepted, analysis in progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Code review started for task 42"
+                  review_job_id:
+                    type: string
+                    example: "review-42-20251121103000"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{task_id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Get code review findings for a task
+      description: Returns all code review findings for the specified task
+      operationId: getTaskReviews
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Task ID
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [critical, high, medium, low, info]
+          description: Filter by severity level
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [security, performance, quality, maintainability, style]
+          description: Filter by category
+      responses:
+        '200':
+          description: List of code review findings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: integer
+                    example: 42
+                  total_findings:
+                    type: integer
+                    example: 5
+                  findings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CodeReview'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # CHECKPOINT ENDPOINTS
+  # ============================================================================
+
+  /projects/{project_id}/checkpoints:
+    get:
+      tags: [Checkpoints]
+      summary: List all checkpoints for a project
+      description: Returns a paginated list of checkpoints, sorted by creation date (most recent first)
+      operationId: listCheckpoints
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of checkpoints to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          description: Number of checkpoints to skip
+      responses:
+        '200':
+          description: List of checkpoints
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id:
+                    type: integer
+                    example: 1
+                  total:
+                    type: integer
+                    example: 15
+                  checkpoints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Checkpoint'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Checkpoints]
+      summary: Create a new checkpoint
+      description: |
+        Creates a checkpoint of the current project state:
+        - Auto-commits current changes to git
+        - Snapshots SQLite database
+        - Snapshots context items
+        - Records metadata (tasks completed, agents active, etc.)
+      operationId: createCheckpoint
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: User-friendly checkpoint name
+                  example: "Before refactoring agent coordination"
+                description:
+                  type: string
+                  maxLength: 500
+                  description: Optional notes about the checkpoint
+                  example: "Checkpoint before major async refactor in Sprint 5"
+      responses:
+        '201':
+          description: Checkpoint created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{project_id}/checkpoints/{checkpoint_id}:
+    get:
+      tags: [Checkpoints]
+      summary: Get checkpoint details
+      description: Returns detailed information about a specific checkpoint
+      operationId: getCheckpoint
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: checkpoint_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Checkpoint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Checkpoint'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Checkpoints]
+      summary: Delete a checkpoint
+      description: Deletes a checkpoint and its associated files (database backup, context snapshot)
+      operationId: deleteCheckpoint
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: checkpoint_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Checkpoint deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{project_id}/checkpoints/{checkpoint_id}/restore:
+    post:
+      tags: [Checkpoints]
+      summary: Restore project to checkpoint state
+      description: |
+        Restores the project to the saved checkpoint state:
+        - Checks out git commit
+        - Restores database from backup
+        - Restores context items
+        - Shows diff of what changed since checkpoint
+      operationId: restoreCheckpoint
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: checkpoint_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirm:
+                  type: boolean
+                  description: Must be true to confirm restore operation
+                  example: true
+                create_backup_checkpoint:
+                  type: boolean
+                  default: true
+                  description: Create backup checkpoint before restore
+                  example: true
+      responses:
+        '200':
+          description: Checkpoint restored successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Project restored to checkpoint 3"
+                  checkpoint:
+                    $ref: '#/components/schemas/Checkpoint'
+                  changes_summary:
+                    type: object
+                    properties:
+                      files_changed:
+                        type: integer
+                        example: 12
+                      tasks_reverted:
+                        type: integer
+                        example: 5
+                      git_diff_summary:
+                        type: string
+                        example: "+42 -18 lines across 12 files"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # METRICS ENDPOINTS
+  # ============================================================================
+
+  /projects/{project_id}/metrics/tokens:
+    get:
+      tags: [Metrics]
+      summary: Get token usage statistics for a project
+      description: Returns token usage aggregated by agent, model, and time period
+      operationId: getProjectTokenMetrics
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: agent_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by specific agent
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Start date for metrics (ISO 8601)
+          example: "2025-11-01"
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: End date for metrics (ISO 8601)
+          example: "2025-11-21"
+      responses:
+        '200':
+          description: Token usage statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id:
+                    type: integer
+                    example: 1
+                  total_input_tokens:
+                    type: integer
+                    example: 1250000
+                  total_output_tokens:
+                    type: integer
+                    example: 500000
+                  total_tokens:
+                    type: integer
+                    example: 1750000
+                  by_agent:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        agent_id:
+                          type: string
+                          example: "backend-001"
+                        input_tokens:
+                          type: integer
+                          example: 750000
+                        output_tokens:
+                          type: integer
+                          example: 300000
+                  by_model:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model_name:
+                          type: string
+                          example: "claude-sonnet-4-5"
+                        input_tokens:
+                          type: integer
+                          example: 1000000
+                        output_tokens:
+                          type: integer
+                          example: 400000
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{project_id}/metrics/costs:
+    get:
+      tags: [Metrics]
+      summary: Get cost breakdown for a project
+      description: Returns estimated costs in USD, aggregated by agent and model
+      operationId: getProjectCostMetrics
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: agent_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by specific agent
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Cost breakdown
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id:
+                    type: integer
+                    example: 1
+                  total_cost_usd:
+                    type: number
+                    format: float
+                    example: 42.50
+                  by_agent:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        agent_id:
+                          type: string
+                          example: "backend-001"
+                        cost_usd:
+                          type: number
+                          example: 25.30
+                  by_model:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        model_name:
+                          type: string
+                          example: "claude-sonnet-4-5"
+                        cost_usd:
+                          type: number
+                          example: 38.75
+                  daily_costs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date:
+                          type: string
+                          format: date
+                          example: "2025-11-21"
+                        cost_usd:
+                          type: number
+                          example: 12.45
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agent_id}/metrics:
+    get:
+      tags: [Metrics]
+      summary: Get metrics for a specific agent
+      description: Returns token usage and cost metrics for a single agent
+      operationId: getAgentMetrics
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Agent metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_id:
+                    type: string
+                    example: "backend-001"
+                  project_id:
+                    type: integer
+                    example: 1
+                  total_calls:
+                    type: integer
+                    example: 127
+                  total_input_tokens:
+                    type: integer
+                    example: 750000
+                  total_output_tokens:
+                    type: integer
+                    example: 300000
+                  total_cost_usd:
+                    type: number
+                    example: 25.30
+                  average_tokens_per_call:
+                    type: number
+                    example: 8267.7
+                  tasks_completed:
+                    type: integer
+                    example: 42
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # QUALITY GATES ENDPOINTS
+  # ============================================================================
+
+  /tasks/{task_id}/quality-gates:
+    get:
+      tags: [Quality Gates]
+      summary: Get quality gate status for a task
+      description: Returns the current quality gate status and any failures
+      operationId: getQualityGateStatus
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Quality gate status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: integer
+                    example: 42
+                  status:
+                    type: string
+                    enum: [pending, running, passed, failed]
+                    example: "failed"
+                  failures:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        gate:
+                          type: string
+                          enum: [tests, type_check, coverage, code_review, linting]
+                          example: "tests"
+                        reason:
+                          type: string
+                          example: "3 tests failed"
+                        details:
+                          type: string
+                          example: "test_user_authentication, test_token_refresh, test_logout"
+                        severity:
+                          type: string
+                          enum: [critical, high, medium, low]
+                          example: "high"
+                  last_run:
+                    type: string
+                    format: date-time
+                    example: "2025-11-21T10:30:00Z"
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Quality Gates]
+      summary: Manually trigger quality gates for a task
+      description: Runs quality gates manually (normally triggered automatically on task completion)
+      operationId: runQualityGates
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '202':
+          description: Quality gates started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Quality gates started for task 42"
+                  job_id:
+                    type: string
+                    example: "qg-42-20251121103000"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ============================================================================
+# COMPONENTS
+# ============================================================================
+
+components:
+  schemas:
+    CodeReview:
+      type: object
+      required: [task_id, agent_id, project_id, file_path, severity, category, message]
+      properties:
+        id:
+          type: integer
+          example: 123
+        task_id:
+          type: integer
+          example: 42
+        agent_id:
+          type: string
+          example: "review-001"
+        project_id:
+          type: integer
+          example: 1
+        file_path:
+          type: string
+          description: Relative path from project root
+          example: "codeframe/agents/backend_agent.py"
+        line_number:
+          type: integer
+          nullable: true
+          description: Line number, null for file-level findings
+          example: 127
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+          example: "high"
+        category:
+          type: string
+          enum: [security, performance, quality, maintainability, style]
+          example: "security"
+        message:
+          type: string
+          example: "Potential SQL injection vulnerability"
+        recommendation:
+          type: string
+          nullable: true
+          example: "Use parameterized queries instead of string concatenation"
+        code_snippet:
+          type: string
+          nullable: true
+          example: "query = f\"SELECT * FROM users WHERE id = {user_id}\""
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-11-21T10:30:00Z"
+
+    Checkpoint:
+      type: object
+      required: [project_id, name, git_commit, database_backup_path, context_snapshot_path, metadata]
+      properties:
+        id:
+          type: integer
+          example: 3
+        project_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Before refactoring agent coordination"
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+          example: "Checkpoint before major async refactor in Sprint 5"
+        trigger:
+          type: string
+          enum: [manual, auto, phase_transition]
+          example: "manual"
+        git_commit:
+          type: string
+          example: "a1b2c3d4e5f6"
+        database_backup_path:
+          type: string
+          example: ".codeframe/checkpoints/checkpoint-003-db.sqlite"
+        context_snapshot_path:
+          type: string
+          example: ".codeframe/checkpoints/checkpoint-003-context.json"
+        metadata:
+          type: object
+          properties:
+            project_id:
+              type: integer
+              example: 1
+            phase:
+              type: string
+              example: "active"
+            tasks_completed:
+              type: integer
+              example: 27
+            tasks_total:
+              type: integer
+              example: 40
+            agents_active:
+              type: array
+              items:
+                type: string
+              example: ["backend-001", "frontend-001"]
+            last_task_completed:
+              type: string
+              nullable: true
+              example: "Implement JWT refresh tokens"
+            context_items_count:
+              type: integer
+              example: 145
+            total_cost_usd:
+              type: number
+              example: 42.50
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-11-21T10:30:00Z"
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Invalid request parameters"
+              details:
+                type: string
+                example: "name must be between 1 and 100 characters"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: "Resource not found"
+              details:
+                type: string
+                example: "Task with ID 42 not found"

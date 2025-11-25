@@ -16,6 +16,7 @@ const mockPost = jest.fn();
 jest.mock('axios', () => {
   const mockAxiosInstance = {
     get: jest.fn(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     post: (...args: any[]) => mockPost(...args),
     put: jest.fn(),
     delete: jest.fn(),
@@ -208,6 +209,7 @@ describe('ProjectCreationForm', () => {
     test('submit button is disabled during submission', async () => {
       const user = userEvent.setup();
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let resolvePost: any;
       const postPromise = new Promise((resolve) => {
         resolvePost = resolve;
@@ -244,6 +246,7 @@ describe('ProjectCreationForm', () => {
     test('all inputs are disabled during submission', async () => {
       const user = userEvent.setup();
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let resolvePost: any;
       const postPromise = new Promise((resolve) => {
         resolvePost = resolve;

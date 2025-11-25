@@ -18,7 +18,7 @@ import json
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
-from codeframe.core.models import TaskStatus, ProjectStatus
+from codeframe.core.models import TaskStatus
 
 
 @pytest.fixture

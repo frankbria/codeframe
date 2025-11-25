@@ -532,7 +532,7 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
 
-      const { rerender } = render(<DiscoveryProgress projectId={1} />);
+      const { rerender: _rerender } = render(<DiscoveryProgress projectId={1} />);
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/type your answer here/i)).toBeInTheDocument();

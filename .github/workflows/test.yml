@@ -1,0 +1,404 @@
+name: Test Suite (Unit + E2E)
+
+on:
+  push:
+    branches: [main, develop, '0*']
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run E2E tests nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================
+  # Code Quality Checks (Run First - Fast Fail)
+  # ============================================
+  code-quality:
+    name: Code Quality (Lint + Type Check)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Create virtual environment
+        run: uv venv
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run ruff (linting)
+        run: uv run ruff check .
+
+      - name: Run mypy (type checking)
+        run: uv run mypy codeframe/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/package-lock.json'
+
+      - name: Install frontend dependencies
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: web-ui
+        run: npm run lint -- --strict
+
+      - name: Run TypeScript type checking
+        working-directory: web-ui
+        run: npm run type-check
+
+  # ============================================
+  # Backend Unit Tests (After Code Quality)
+  # ============================================
+  backend-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Create virtual environment
+        run: uv venv
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Configure git for tests
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Run pytest with coverage
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/e2e \
+            --cov=codeframe \
+            --cov-report=term \
+            --cov-report=xml \
+            --cov-report=html \
+            -v
+
+      - name: Check coverage threshold (85%)
+        run: |
+          COVERAGE=$(uv run coverage report | grep TOTAL | awk '{print $4}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 85" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below 85% threshold"
+            exit 1
+          else
+            echo "✅ Coverage ${COVERAGE}% meets 85% threshold"
+          fi
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: backend
+          name: backend-coverage
+
+  # ============================================
+  # Frontend Unit Tests (After Code Quality)
+  # ============================================
+  frontend-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Run Jest tests with coverage
+        working-directory: web-ui
+        run: npm run test:coverage
+
+      - name: Check coverage threshold (80%)
+        working-directory: web-ui
+        run: |
+          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
+          echo "Coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "❌ Coverage ${COVERAGE}% is below 80% threshold"
+            exit 1
+          else
+            echo "✅ Coverage ${COVERAGE}% meets 80% threshold"
+          fi
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          directory: web-ui/coverage
+          flags: frontend
+          name: frontend-coverage
+
+  # ============================================
+  # E2E Backend Tests (Pytest)
+  # ============================================
+  e2e-backend-tests:
+    name: E2E Backend Tests
+    runs-on: ubuntu-latest
+    # Only run on main branch or scheduled runs (not every PR)
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Create virtual environment
+        run: uv venv
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Initialize git for E2E tests
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Start FastAPI server in background
+        run: |
+          uv run uvicorn codeframe.ui.server:app --port 8080 &
+          echo "BACKEND_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for backend to be ready
+        run: |
+          npx wait-on http://localhost:8080/health --timeout 60000
+
+      - name: Run E2E backend tests
+        run: |
+          uv run pytest tests/e2e/ \
+            -v \
+            --tb=short \
+            -m "e2e"
+
+      - name: Stop FastAPI server
+        if: always()
+        run: |
+          if [ -n "$BACKEND_PID" ]; then
+            kill $BACKEND_PID || true
+          fi
+
+      - name: Upload E2E test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-backend-reports
+          path: |
+            tests/e2e/fixtures/
+            .pytest_cache/
+
+  # ============================================
+  # E2E Frontend Tests (Playwright)
+  # ============================================
+  e2e-frontend-tests:
+    name: E2E Frontend Tests (Playwright)
+    runs-on: ubuntu-latest
+    # Only run on main branch or scheduled runs
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'web-ui/package-lock.json'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: |
+          uv venv
+          uv sync
+
+      - name: Install frontend dependencies
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: web-ui
+        run: npx playwright install --with-deps
+
+      - name: Start backend server
+        run: |
+          uv run uvicorn codeframe.ui.server:app --port 8080 &
+          echo "BACKEND_PID=$!" >> $GITHUB_ENV
+
+      - name: Start frontend dev server
+        working-directory: web-ui
+        run: |
+          npm run dev &
+          echo "FRONTEND_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for servers to be ready
+        run: |
+          npx wait-on http://localhost:8080/health --timeout 60000
+          npx wait-on http://localhost:3000 --timeout 60000
+
+      - name: Run Playwright E2E tests
+        working-directory: tests/e2e
+        run: |
+          npx playwright test \
+            --config=playwright.config.ts \
+            *.spec.ts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 30
+
+      - name: Stop servers
+        if: always()
+        run: |
+          if [ -n "$BACKEND_PID" ]; then
+            kill $BACKEND_PID || true
+          fi
+          if [ -n "$FRONTEND_PID" ]; then
+            kill $FRONTEND_PID || true
+          fi
+
+  # ============================================
+  # TestSprite E2E Tests (Optional)
+  # ============================================
+  testsprite-e2e:
+    name: TestSprite E2E Tests
+    runs-on: ubuntu-latest
+    # Only run on scheduled builds (nightly)
+    if: github.event_name == 'schedule'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install frontend dependencies
+        working-directory: web-ui
+        run: npm ci
+
+      - name: Start frontend dev server
+        working-directory: web-ui
+        run: |
+          npm run dev &
+          echo "FRONTEND_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for frontend
+        run: npx wait-on http://localhost:3000 --timeout 60000
+
+      - name: Run TestSprite E2E tests
+        env:
+          TESTSPRITE_API_KEY: ${{ secrets.TESTSPRITE_API_KEY }}
+        run: |
+          npx @testsprite/testsprite-mcp@latest generateCodeAndExecute
+
+      - name: Upload TestSprite results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testsprite-results
+          path: testsprite_tests/
+
+      - name: Stop frontend server
+        if: always()
+        run: |
+          if [ -n "$FRONTEND_PID" ]; then
+            kill $FRONTEND_PID || true
+          fi
+
+  # ============================================
+  # Test Summary
+  # ============================================
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests, code-quality]
+    if: always()
+
+    steps:
+      - name: Report test results
+        run: |
+          echo "## Test Suite Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Code Quality: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend Tests: ${{ needs.backend-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend Tests: ${{ needs.frontend-tests.result }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.code-quality.result }}" == "failure" ] || \
+             [ "${{ needs.backend-tests.result }}" == "failure" ] || \
+             [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Some tests failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+          fi

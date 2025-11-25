@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from typing import List, Dict, Optional
 from enum import Enum
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timezone
 import asyncio
 import json
 import logging
@@ -15,6 +15,7 @@ import os
 
 from codeframe.core.models import (
     ProjectStatus,
+    TaskStatus,
     BlockerResolve,
     ContextItemCreateModel,
     ContextItemResponse,
@@ -27,6 +28,10 @@ from codeframe.ui.models import (
     ProjectResponse,
     SourceType,
     ReviewRequest,
+    QualityGatesRequest,
+    CheckpointCreateRequest,
+    CheckpointResponse,
+    RestoreCheckpointRequest,
 )
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.workspace import WorkspaceManager
@@ -666,7 +671,7 @@ async def submit_discovery_answer(project_id: int, answer_data: DiscoveryAnswer)
     answered_count = status.get("answered_count", 0)
     current_question_index = answered_count  # Index is based on how many answered
     current_question_id = status.get("current_question", {}).get("id", "")
-    current_question_text = status.get("current_question", {}).get("question", "")
+    current_question_text = status.get("current_question", {}).get("text", "")
     progress_percentage = status.get("progress_percentage", 0.0)
 
     # T043: Broadcast WebSocket events
@@ -1932,6 +1937,237 @@ async def get_review_stats(project_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to get review stats: {str(e)}")
 
 
+# Sprint 10 Phase 2: Review Agent API endpoints (T034, T035)
+
+
+@app.post("/api/agents/review/analyze", status_code=202, tags=["review"])
+async def analyze_code_review(request: Request, background_tasks: BackgroundTasks):
+    """Trigger code review analysis for a task (T034).
+
+    Sprint 10 - Phase 2: Review Agent API
+
+    Accepts a task_id and optional project_id, creates a ReviewAgent instance,
+    and executes the review in a background task. Returns immediately with job status.
+
+    Args:
+        request: FastAPI request containing:
+            - task_id: int (required) - Task ID to review
+            - project_id: int (optional) - Project ID for scoping
+
+    Returns:
+        202 Accepted: Review job started
+        {
+            "job_id": str,
+            "status": "started",
+            "message": "Code review analysis started for task {task_id}"
+        }
+
+        400 Bad Request: Invalid request (missing task_id)
+        404 Not Found: Task not found
+
+    Example:
+        POST /api/agents/review/analyze
+        Body: {
+            "task_id": 42,
+            "project_id": 123
+        }
+    """
+    from codeframe.agents.review_agent import ReviewAgent
+    from codeframe.core.models import Task
+    import uuid
+
+    try:
+        # Parse request body
+        data = await request.json()
+        task_id = data.get("task_id")
+        project_id = data.get("project_id")
+
+        # Validate task_id
+        if not task_id:
+            raise HTTPException(status_code=400, detail="task_id is required")
+
+        # Check if task exists
+        task_data = app.state.db.get_task(task_id)
+        if not task_data:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+        # Use project_id from request or task data
+        if not project_id:
+            project_id = task_data.get("project_id")
+
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+
+        # Create background task to run review
+        async def run_review():
+            """Background task to execute code review."""
+            try:
+                # Create ReviewAgent instance
+                review_agent = ReviewAgent(
+                    agent_id=f"review-{job_id[:8]}",
+                    db=app.state.db,
+                    project_id=project_id,
+                    ws_manager=manager
+                )
+
+                # Build Task object from task_data
+                task = Task(
+                    id=task_id,
+                    title=task_data.get("title", ""),
+                    description=task_data.get("description", ""),
+                    project_id=project_id,
+                    status=TaskStatus(task_data.get("status", "pending")),
+                    priority=task_data.get("priority", 0)
+                )
+
+                # Execute review (this saves findings to database)
+                result = await review_agent.execute_task(task)
+
+                logger.info(
+                    f"Review job {job_id} completed: {result.status}, "
+                    f"{len(result.findings)} findings"
+                )
+
+            except Exception as e:
+                logger.error(f"Review job {job_id} failed: {e}", exc_info=True)
+
+        # Add background task
+        background_tasks.add_task(run_review)
+
+        # Return 202 Accepted immediately
+        return {
+            "job_id": job_id,
+            "status": "started",
+            "message": f"Code review analysis started for task {task_id}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start code review: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start review: {str(e)}")
+
+
+@app.get("/api/tasks/{task_id}/reviews", tags=["review"])
+async def get_task_reviews(task_id: int, severity: Optional[str] = None):
+    """Get code review findings for a task (T035).
+
+    Sprint 10 - Phase 2: Review Agent API
+
+    Returns all code review findings for a specific task, optionally filtered by severity.
+    Includes summary statistics (total findings, counts by severity, blocking status).
+
+    Args:
+        task_id: Task ID to get reviews for
+        severity: Optional severity filter (critical, high, medium, low, info)
+
+    Returns:
+        200 OK: Review findings with summary statistics
+        {
+            "task_id": int,
+            "findings": [
+                {
+                    "id": int,
+                    "task_id": int,
+                    "agent_id": str,
+                    "project_id": int,
+                    "file_path": str,
+                    "line_number": int | null,
+                    "severity": str,
+                    "category": str,
+                    "message": str,
+                    "recommendation": str | null,
+                    "code_snippet": str | null,
+                    "created_at": str
+                },
+                ...
+            ],
+            "summary": {
+                "total_findings": int,
+                "by_severity": {
+                    "critical": int,
+                    "high": int,
+                    "medium": int,
+                    "low": int,
+                    "info": int
+                },
+                "has_blocking_issues": bool,
+                "blocking_count": int
+            }
+        }
+
+        400 Bad Request: Invalid severity value
+        404 Not Found: Task not found
+
+    Example:
+        GET /api/tasks/42/reviews
+        GET /api/tasks/42/reviews?severity=critical
+    """
+    # Validate severity if provided
+    valid_severities = ['critical', 'high', 'medium', 'low', 'info']
+    if severity and severity not in valid_severities:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid severity. Must be one of: {', '.join(valid_severities)}"
+        )
+
+    # Check if task exists
+    task = app.state.db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    # Get code reviews from database
+    reviews = app.state.db.get_code_reviews(task_id=task_id, severity=severity)
+
+    # Build summary statistics
+    by_severity = {
+        'critical': 0,
+        'high': 0,
+        'medium': 0,
+        'low': 0,
+        'info': 0
+    }
+
+    for review in reviews:
+        severity_val = review.severity.value
+        if severity_val in by_severity:
+            by_severity[severity_val] += 1
+
+    # Blocking issues are critical or high severity
+    blocking_count = by_severity['critical'] + by_severity['high']
+    has_blocking_issues = blocking_count > 0
+
+    # Convert CodeReview objects to dictionaries
+    findings_data = []
+    for review in reviews:
+        findings_data.append({
+            "id": review.id,
+            "task_id": review.task_id,
+            "agent_id": review.agent_id,
+            "project_id": review.project_id,
+            "file_path": review.file_path,
+            "line_number": review.line_number,
+            "severity": review.severity.value,
+            "category": review.category.value,
+            "message": review.message,
+            "recommendation": review.recommendation,
+            "code_snippet": review.code_snippet,
+            "created_at": review.created_at
+        })
+
+    # Build response
+    return {
+        "task_id": task_id,
+        "findings": findings_data,
+        "summary": {
+            "total_findings": len(reviews),
+            "by_severity": by_severity,
+            "has_blocking_issues": has_blocking_issues,
+            "blocking_count": blocking_count
+        }
+    }
+
+
 @app.get("/api/agents/{agent_id}/context/stats")
 async def get_context_stats(agent_id: str, project_id: int):
     """Get context statistics for an agent (T067).
@@ -2042,6 +2278,1076 @@ async def get_context_items(
     )
 
     return items
+
+
+# Sprint 10 Phase 3: Quality Gates API endpoints (T064, T065)
+
+
+@app.get("/api/tasks/{task_id}/quality-gates", tags=["quality-gates"])
+async def get_quality_gate_status(task_id: int):
+    """Get quality gate status for a task (T064).
+
+    Sprint 10 - Phase 3: Quality Gates API
+
+    Returns the quality gate status for a specific task, including which gates
+    passed/failed and detailed failure information.
+
+    Args:
+        task_id: Task ID to get quality gate status for
+
+    Returns:
+        200 OK: Quality gate status
+        {
+            "task_id": int,
+            "status": str,  # 'pending', 'running', 'passed', 'failed', or None
+            "failures": [
+                {
+                    "gate": str,  # 'tests', 'type_check', 'coverage', 'code_review', 'linting'
+                    "reason": str,  # Short failure reason
+                    "details": str | null,  # Detailed output
+                    "severity": str  # 'critical', 'high', 'medium', 'low'
+                },
+                ...
+            ],
+            "requires_human_approval": bool,
+            "timestamp": str  # ISO timestamp
+        }
+
+        404 Not Found: Task not found
+
+    Example:
+        GET /api/tasks/42/quality-gates
+    """
+    # Check if task exists
+    task = app.state.db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    # Get quality gate status from database
+    status_data = app.state.db.get_quality_gate_status(task_id)
+
+    # Add task_id and timestamp to response
+    return {
+        "task_id": task_id,
+        "status": status_data.get("status"),
+        "failures": status_data.get("failures", []),
+        "requires_human_approval": status_data.get("requires_human_approval", False),
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+@app.post("/api/tasks/{task_id}/quality-gates", status_code=202, tags=["quality-gates"])
+async def trigger_quality_gates(
+    task_id: int, background_tasks: BackgroundTasks, request: QualityGatesRequest = QualityGatesRequest()
+):
+    """Manually trigger quality gates for a task (T065).
+
+    Sprint 10 - Phase 3: Quality Gates API
+
+    Triggers quality gate execution for a specific task. Runs in background and
+    returns immediately with job status. Optionally accepts gate_types to run
+    specific gates only.
+
+    Args:
+        task_id: Task ID to run quality gates for
+        background_tasks: FastAPI background tasks
+        request: QualityGatesRequest with optional gate_types list
+                Valid gate types: 'tests', 'type_check', 'coverage', 'code_review', 'linting'
+
+    Returns:
+        202 Accepted: Quality gates job started
+        {
+            "job_id": str,
+            "task_id": int,
+            "status": "running",
+            "gate_types": list[str],  # Gates being executed
+            "message": str
+        }
+
+        400 Bad Request: Invalid gate_types
+        404 Not Found: Task not found
+        500 Internal Server Error: Missing project workspace or API configuration
+
+    Example:
+        POST /api/tasks/42/quality-gates
+        Body: {
+            "gate_types": ["tests", "coverage"]  # Optional
+        }
+    """
+    from codeframe.lib.quality_gates import QualityGates
+    from codeframe.core.models import Task
+    from pathlib import Path
+    import uuid
+
+    # Extract gate_types from request
+    gate_types = request.gate_types
+
+    # Validate gate_types if provided
+    valid_gate_types = [
+        "tests",
+        "type_check",
+        "coverage",
+        "code_review",
+        "linting",
+    ]
+    if gate_types:
+        invalid_gates = [g for g in gate_types if g not in valid_gate_types]
+        if invalid_gates:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid gate types: {invalid_gates}. Valid types: {valid_gate_types}",
+            )
+
+    # Check if task exists
+    task_data = app.state.db.get_task(task_id)
+    if not task_data:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    # Get project_id from task
+    project_id = task_data.get("project_id")
+    if not project_id:
+        raise HTTPException(
+            status_code=500, detail=f"Task {task_id} has no project_id"
+        )
+
+    # Get project workspace path
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=500, detail=f"Project {project_id} not found"
+        )
+
+    workspace_path = project.get("workspace_path")
+    if not workspace_path:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Project {project_id} has no workspace path configured",
+        )
+
+    # Generate job ID
+    job_id = str(uuid.uuid4())
+
+    # Build Task object for quality gates
+    task = Task(
+        id=task_id,
+        project_id=project_id,
+        task_number=task_data.get("task_number", "unknown"),
+        title=task_data.get("title", ""),
+        description=task_data.get("description", ""),
+        status=TaskStatus(task_data.get("status", "pending")),
+    )
+
+    # Determine which gates to run
+    gates_to_run = gate_types if gate_types else ["all"]
+
+    # Background task to run quality gates
+    async def run_quality_gates():
+        """Background task to execute quality gates."""
+        try:
+            logger.info(
+                f"Quality gates job {job_id} started for task {task_id}, "
+                f"gates={gates_to_run}"
+            )
+
+            # Update task status to 'running'
+            app.state.db.update_quality_gate_status(
+                task_id=task_id, status="running", failures=[]
+            )
+
+            # Broadcast quality_gates_started event
+            try:
+                await manager.broadcast(
+                    {
+                        "type": "quality_gates_started",
+                        "task_id": task_id,
+                        "project_id": project_id,
+                        "job_id": job_id,
+                        "gate_types": gates_to_run,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast quality_gates_started: {e}")
+
+            # Create QualityGates instance
+            quality_gates = QualityGates(
+                db=app.state.db,
+                project_id=project_id,
+                project_root=Path(workspace_path),
+            )
+
+            # Run gates based on gate_types
+            if not gate_types or "all" in gates_to_run:
+                # Run all gates
+                result = await quality_gates.run_all_gates(task)
+            else:
+                # Run specific gates
+                from codeframe.core.models import QualityGateResult
+
+                all_failures = []
+                execution_start = datetime.now(timezone.utc)
+
+                gate_method_map = {
+                    "tests": quality_gates.run_tests_gate,
+                    "type_check": quality_gates.run_type_check_gate,
+                    "coverage": quality_gates.run_coverage_gate,
+                    "code_review": quality_gates.run_review_gate,
+                    "linting": quality_gates.run_linting_gate,
+                }
+
+                for gate_type in gate_types:
+                    gate_method = gate_method_map.get(gate_type)
+                    if gate_method:
+                        gate_result = await gate_method(task)
+                        all_failures.extend(gate_result.failures)
+
+                execution_time = (
+                    datetime.now(timezone.utc) - execution_start
+                ).total_seconds()
+                status = "passed" if len(all_failures) == 0 else "failed"
+
+                result = QualityGateResult(
+                    task_id=task_id,
+                    status=status,
+                    failures=all_failures,
+                    execution_time_seconds=execution_time,
+                )
+
+                # Update database with final result
+                app.state.db.update_quality_gate_status(
+                    task_id=task_id, status=status, failures=all_failures
+                )
+
+            # Broadcast completion event
+            try:
+                event_type = (
+                    "quality_gates_passed"
+                    if result.passed
+                    else "quality_gates_failed"
+                )
+                await manager.broadcast(
+                    {
+                        "type": event_type,
+                        "task_id": task_id,
+                        "project_id": project_id,
+                        "job_id": job_id,
+                        "status": result.status,
+                        "failures_count": len(result.failures),
+                        "execution_time_seconds": result.execution_time_seconds,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast quality_gates_completed: {e}")
+
+            logger.info(
+                f"Quality gates job {job_id} completed: "
+                f"status={result.status}, failures={len(result.failures)}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Quality gates job {job_id} failed: {e}", exc_info=True
+            )
+
+            # Update status to 'failed' with error
+            from codeframe.core.models import QualityGateFailure, QualityGateType, Severity
+
+            error_failure = QualityGateFailure(
+                gate=QualityGateType.TESTS,  # Generic gate type for errors
+                reason=f"Quality gates execution failed: {str(e)}",
+                details=str(e),
+                severity=Severity.CRITICAL,
+            )
+
+            app.state.db.update_quality_gate_status(
+                task_id=task_id, status="failed", failures=[error_failure]
+            )
+
+            # Broadcast failure event
+            try:
+                await manager.broadcast(
+                    {
+                        "type": "quality_gates_error",
+                        "task_id": task_id,
+                        "project_id": project_id,
+                        "job_id": job_id,
+                        "error": str(e),
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                )
+            except Exception as broadcast_error:
+                logger.warning(
+                    f"Failed to broadcast quality_gates_error: {broadcast_error}"
+                )
+
+    # Add background task
+    background_tasks.add_task(run_quality_gates)
+
+    # Return 202 Accepted immediately
+    return {
+        "job_id": job_id,
+        "task_id": task_id,
+        "status": "running",
+        "gate_types": gates_to_run,
+        "message": f"Quality gates execution started for task {task_id}",
+    }
+
+
+# Sprint 10 Phase 4: Checkpoint API endpoints (T092-T097)
+
+
+@app.get("/api/projects/{project_id}/checkpoints", tags=["checkpoints"])
+async def list_checkpoints(project_id: int):
+    """List all checkpoints for a project (T092).
+
+    Sprint 10 - Phase 4: Checkpoint API
+
+    Returns all checkpoints for the specified project, sorted by creation time
+    (most recent first). Includes checkpoint metadata for quick inspection.
+
+    Args:
+        project_id: Project ID to list checkpoints for
+
+    Returns:
+        200 OK: List of checkpoints
+        {
+            "checkpoints": [
+                {
+                    "id": int,
+                    "project_id": int,
+                    "name": str,
+                    "description": str | null,
+                    "trigger": str,
+                    "git_commit": str,
+                    "database_backup_path": str,
+                    "context_snapshot_path": str,
+                    "metadata": {
+                        "project_id": int,
+                        "phase": str,
+                        "tasks_completed": int,
+                        "tasks_total": int,
+                        "agents_active": list[str],
+                        "last_task_completed": str | null,
+                        "context_items_count": int,
+                        "total_cost_usd": float
+                    },
+                    "created_at": str  # ISO 8601
+                },
+                ...
+            ]
+        }
+
+        404 Not Found: Project not found
+
+    Example:
+        GET /api/projects/123/checkpoints
+    """
+
+    # Verify project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Get checkpoints from database
+    checkpoints = app.state.db.get_checkpoints(project_id)
+
+    # Convert to response models
+    checkpoint_responses = []
+    for checkpoint in checkpoints:
+        checkpoint_responses.append(
+            CheckpointResponse(
+                id=checkpoint.id,
+                project_id=checkpoint.project_id,
+                name=checkpoint.name,
+                description=checkpoint.description,
+                trigger=checkpoint.trigger,
+                git_commit=checkpoint.git_commit,
+                database_backup_path=checkpoint.database_backup_path,
+                context_snapshot_path=checkpoint.context_snapshot_path,
+                metadata=checkpoint.metadata.model_dump(),
+                created_at=checkpoint.created_at.isoformat(),
+            )
+        )
+
+    return {"checkpoints": checkpoint_responses}
+
+
+@app.post("/api/projects/{project_id}/checkpoints", status_code=201, tags=["checkpoints"])
+async def create_checkpoint(project_id: int, request: CheckpointCreateRequest):
+    """Create a new checkpoint for a project (T093).
+
+    Sprint 10 - Phase 4: Checkpoint API
+
+    Creates a complete project checkpoint including:
+    - Git commit (code state)
+    - Database backup (tasks, context, metrics)
+    - Context snapshot (agent context items as JSON)
+    - Metadata (progress, costs, active agents)
+
+    Args:
+        project_id: Project ID to create checkpoint for
+        request: CheckpointCreateRequest with name, description, trigger
+
+    Returns:
+        201 Created: Checkpoint created successfully
+        {
+            "id": int,
+            "project_id": int,
+            "name": str,
+            "description": str | null,
+            "trigger": str,
+            "git_commit": str,
+            "database_backup_path": str,
+            "context_snapshot_path": str,
+            "metadata": {
+                "project_id": int,
+                "phase": str,
+                "tasks_completed": int,
+                "tasks_total": int,
+                "agents_active": list[str],
+                "last_task_completed": str | null,
+                "context_items_count": int,
+                "total_cost_usd": float
+            },
+            "created_at": str  # ISO 8601
+        }
+
+        404 Not Found: Project not found
+        500 Internal Server Error: Checkpoint creation failed
+
+    Example:
+        POST /api/projects/123/checkpoints
+        Body: {
+            "name": "Before refactor",
+            "description": "Safety checkpoint before major refactoring",
+            "trigger": "manual"
+        }
+    """
+    from codeframe.lib.checkpoint_manager import CheckpointManager
+    from pathlib import Path
+
+    # Verify project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Get project workspace path
+    workspace_path = project.get("workspace_path")
+    if not workspace_path:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Project {project_id} has no workspace path configured",
+        )
+
+    try:
+        # Create checkpoint manager
+        checkpoint_mgr = CheckpointManager(
+            db=app.state.db,
+            project_root=Path(workspace_path),
+            project_id=project_id,
+        )
+
+        # Create checkpoint
+        checkpoint = checkpoint_mgr.create_checkpoint(
+            name=request.name,
+            description=request.description,
+            trigger=request.trigger,
+        )
+
+        logger.info(f"Created checkpoint {checkpoint.id} for project {project_id}: {checkpoint.name}")
+
+        # Return checkpoint response
+        return CheckpointResponse(
+            id=checkpoint.id,
+            project_id=checkpoint.project_id,
+            name=checkpoint.name,
+            description=checkpoint.description,
+            trigger=checkpoint.trigger,
+            git_commit=checkpoint.git_commit,
+            database_backup_path=checkpoint.database_backup_path,
+            context_snapshot_path=checkpoint.context_snapshot_path,
+            metadata=checkpoint.metadata.model_dump(),
+            created_at=checkpoint.created_at.isoformat(),
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to create checkpoint for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Checkpoint creation failed: {str(e)}")
+
+
+@app.get("/api/projects/{project_id}/checkpoints/{checkpoint_id}", tags=["checkpoints"])
+async def get_checkpoint(project_id: int, checkpoint_id: int):
+    """Get details of a specific checkpoint (T094).
+
+    Sprint 10 - Phase 4: Checkpoint API
+
+    Returns full details of a checkpoint including all metadata.
+
+    Args:
+        project_id: Project ID (for path consistency)
+        checkpoint_id: Checkpoint ID to retrieve
+
+    Returns:
+        200 OK: Checkpoint details
+        {
+            "id": int,
+            "project_id": int,
+            "name": str,
+            "description": str | null,
+            "trigger": str,
+            "git_commit": str,
+            "database_backup_path": str,
+            "context_snapshot_path": str,
+            "metadata": {
+                "project_id": int,
+                "phase": str,
+                "tasks_completed": int,
+                "tasks_total": int,
+                "agents_active": list[str],
+                "last_task_completed": str | null,
+                "context_items_count": int,
+                "total_cost_usd": float
+            },
+            "created_at": str  # ISO 8601
+        }
+
+        404 Not Found: Project or checkpoint not found
+
+    Example:
+        GET /api/projects/123/checkpoints/42
+    """
+
+    # Verify project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Get checkpoint from database
+    checkpoint = app.state.db.get_checkpoint_by_id(checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail=f"Checkpoint {checkpoint_id} not found")
+
+    # Verify checkpoint belongs to this project
+    if checkpoint.project_id != project_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Checkpoint {checkpoint_id} does not belong to project {project_id}",
+        )
+
+    # Return checkpoint response
+    return CheckpointResponse(
+        id=checkpoint.id,
+        project_id=checkpoint.project_id,
+        name=checkpoint.name,
+        description=checkpoint.description,
+        trigger=checkpoint.trigger,
+        git_commit=checkpoint.git_commit,
+        database_backup_path=checkpoint.database_backup_path,
+        context_snapshot_path=checkpoint.context_snapshot_path,
+        metadata=checkpoint.metadata.model_dump(),
+        created_at=checkpoint.created_at.isoformat(),
+    )
+
+
+@app.delete("/api/projects/{project_id}/checkpoints/{checkpoint_id}", status_code=204, tags=["checkpoints"])
+async def delete_checkpoint(project_id: int, checkpoint_id: int):
+    """Delete a checkpoint and its files (T095).
+
+    Sprint 10 - Phase 4: Checkpoint API
+
+    Deletes a checkpoint from the database and removes its backup files
+    (database backup and context snapshot).
+
+    Args:
+        project_id: Project ID (for path consistency)
+        checkpoint_id: Checkpoint ID to delete
+
+    Returns:
+        204 No Content: Checkpoint deleted successfully
+
+        404 Not Found: Project or checkpoint not found
+        500 Internal Server Error: File deletion failed
+
+    Example:
+        DELETE /api/projects/123/checkpoints/42
+    """
+    from pathlib import Path
+
+    # Verify project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Get checkpoint from database
+    checkpoint = app.state.db.get_checkpoint_by_id(checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail=f"Checkpoint {checkpoint_id} not found")
+
+    # Verify checkpoint belongs to this project
+    if checkpoint.project_id != project_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Checkpoint {checkpoint_id} does not belong to project {project_id}",
+        )
+
+    try:
+        # Delete backup files
+        db_backup_path = Path(checkpoint.database_backup_path)
+        context_snapshot_path = Path(checkpoint.context_snapshot_path)
+
+        if db_backup_path.exists():
+            db_backup_path.unlink()
+            logger.debug(f"Deleted database backup: {db_backup_path}")
+
+        if context_snapshot_path.exists():
+            context_snapshot_path.unlink()
+            logger.debug(f"Deleted context snapshot: {context_snapshot_path}")
+
+        # Delete checkpoint from database
+        cursor = app.state.db.conn.cursor()
+        cursor.execute("DELETE FROM checkpoints WHERE id = ?", (checkpoint_id,))
+        app.state.db.conn.commit()
+
+        logger.info(f"Deleted checkpoint {checkpoint_id} for project {project_id}")
+
+        # Return 204 No Content
+        return None
+
+    except Exception as e:
+        logger.error(f"Failed to delete checkpoint {checkpoint_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Checkpoint deletion failed: {str(e)}")
+
+
+@app.post("/api/projects/{project_id}/checkpoints/{checkpoint_id}/restore", status_code=202, tags=["checkpoints"])
+async def restore_checkpoint(
+    project_id: int,
+    checkpoint_id: int,
+    request: RestoreCheckpointRequest = RestoreCheckpointRequest()
+):
+    """Restore project to checkpoint state (T096, T097).
+
+    Sprint 10 - Phase 4: Checkpoint API
+
+    Restores project to a previous checkpoint state. If confirm_restore=False,
+    shows git diff without making changes. If confirm_restore=True, performs
+    the restoration including:
+    - Checking out git commit
+    - Restoring database from backup
+    - Restoring context items
+
+    Args:
+        project_id: Project ID
+        checkpoint_id: Checkpoint ID to restore
+        request: RestoreCheckpointRequest with confirm_restore flag
+
+    Returns:
+        200 OK (if confirm_restore=False): Diff preview
+        {
+            "checkpoint_name": str,
+            "diff": str  # Git diff output
+        }
+
+        202 Accepted (if confirm_restore=True): Restore started
+        {
+            "success": bool,
+            "checkpoint_name": str,
+            "git_commit": str,
+            "items_restored": int
+        }
+
+        404 Not Found: Project or checkpoint not found
+        500 Internal Server Error: Restore failed
+
+    Example:
+        POST /api/projects/123/checkpoints/42/restore
+        Body: {
+            "confirm_restore": false  # Show diff first
+        }
+
+        POST /api/projects/123/checkpoints/42/restore
+        Body: {
+            "confirm_restore": true  # Actually restore
+        }
+    """
+    from codeframe.lib.checkpoint_manager import CheckpointManager
+    from pathlib import Path
+
+    # Verify project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Get project workspace path
+    workspace_path = project.get("workspace_path")
+    if not workspace_path:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Project {project_id} has no workspace path configured",
+        )
+
+    # Verify checkpoint exists
+    checkpoint = app.state.db.get_checkpoint_by_id(checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail=f"Checkpoint {checkpoint_id} not found")
+
+    # Verify checkpoint belongs to this project
+    if checkpoint.project_id != project_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Checkpoint {checkpoint_id} does not belong to project {project_id}",
+        )
+
+    try:
+        # Create checkpoint manager
+        checkpoint_mgr = CheckpointManager(
+            db=app.state.db,
+            project_root=Path(workspace_path),
+            project_id=project_id,
+        )
+
+        # Restore checkpoint (or show diff if not confirmed)
+        result = checkpoint_mgr.restore_checkpoint(
+            checkpoint_id=checkpoint_id,
+            confirm=request.confirm_restore,
+        )
+
+        if request.confirm_restore:
+            logger.info(f"Restored checkpoint {checkpoint_id} for project {project_id}")
+            # Return 202 Accepted for successful restore
+            return result
+        else:
+            # Return 200 OK for diff preview
+            return result
+
+    except ValueError as e:
+        # Checkpoint not found or validation error
+        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError as e:
+        # Backup files missing
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to restore checkpoint {checkpoint_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Checkpoint restore failed: {str(e)}")
+
+
+# Sprint 10 Phase 5: Metrics API endpoints (T127-T129)
+
+
+@app.get("/api/projects/{project_id}/metrics/tokens", tags=["metrics"])
+async def get_project_token_metrics(
+    project_id: int,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """Get token usage metrics for a project (T127).
+
+    Sprint 10 - Phase 5: Metrics & Cost Tracking
+
+    Returns token usage records for a project, optionally filtered by date range.
+    Includes timeline statistics and aggregated token counts.
+
+    Args:
+        project_id: Project ID to get token metrics for
+        start_date: Optional start date (ISO 8601 format, e.g., '2025-11-01T00:00:00Z')
+        end_date: Optional end date (ISO 8601 format, e.g., '2025-11-30T23:59:59Z')
+
+    Returns:
+        200 OK: Token usage records with timeline stats
+        {
+            "project_id": int,
+            "total_tokens": int,
+            "total_calls": int,
+            "total_cost_usd": float,
+            "date_range": {
+                "start": str | null,
+                "end": str | null
+            },
+            "usage_records": [
+                {
+                    "id": int,
+                    "task_id": int | null,
+                    "agent_id": str,
+                    "model_name": str,
+                    "input_tokens": int,
+                    "output_tokens": int,
+                    "estimated_cost_usd": float,
+                    "call_type": str,
+                    "timestamp": str
+                },
+                ...
+            ]
+        }
+        400 Bad Request: Invalid date format
+        404 Not Found: Project not found
+        500 Internal Server Error: Database or processing error
+
+    Example:
+        GET /api/projects/1/metrics/tokens
+        GET /api/projects/1/metrics/tokens?start_date=2025-11-01T00:00:00Z&end_date=2025-11-30T23:59:59Z
+    """
+    from codeframe.lib.metrics_tracker import MetricsTracker
+
+    # Validate project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Parse and validate date parameters
+    start_dt = None
+    end_dt = None
+
+    try:
+        if start_date:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        if end_date:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date format. Use ISO 8601 format (e.g., '2025-11-01T00:00:00Z'): {str(e)}"
+        )
+
+    try:
+        # Get token usage stats using MetricsTracker
+        tracker = MetricsTracker(db=app.state.db)
+        stats = await tracker.get_token_usage_stats(
+            project_id=project_id,
+            start_date=start_dt,
+            end_date=end_dt
+        )
+
+        # Get detailed usage records
+        usage_records = app.state.db.get_token_usage(
+            project_id=project_id,
+            start_date=start_dt,
+            end_date=end_dt
+        )
+
+        # Build response
+        return {
+            "project_id": project_id,
+            "total_tokens": stats["total_tokens"],
+            "total_calls": stats["total_calls"],
+            "total_cost_usd": stats["total_cost_usd"],
+            "date_range": stats["date_range"],
+            "usage_records": usage_records
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get token metrics for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve token metrics: {str(e)}"
+        )
+
+
+@app.get("/api/projects/{project_id}/metrics/costs", tags=["metrics"])
+async def get_project_cost_metrics(project_id: int):
+    """Get cost breakdown for a project (T128).
+
+    Sprint 10 - Phase 5: Metrics & Cost Tracking
+
+    Returns total costs and breakdowns by agent and model for a project.
+    Useful for understanding cost allocation and identifying high-cost operations.
+
+    Args:
+        project_id: Project ID to get cost breakdown for
+
+    Returns:
+        200 OK: Cost breakdown
+        {
+            "project_id": int,
+            "total_cost_usd": float,
+            "total_tokens": int,
+            "total_calls": int,
+            "by_agent": [
+                {
+                    "agent_id": str,
+                    "cost_usd": float,
+                    "tokens": int,
+                    "calls": int
+                },
+                ...
+            ],
+            "by_model": [
+                {
+                    "model_name": str,
+                    "cost_usd": float,
+                    "total_tokens": int,
+                    "total_calls": int
+                },
+                ...
+            ]
+        }
+        404 Not Found: Project not found
+        500 Internal Server Error: Database or processing error
+
+    Example:
+        GET /api/projects/1/metrics/costs
+        Response: {
+            "project_id": 1,
+            "total_cost_usd": 0.125,
+            "total_tokens": 15000,
+            "total_calls": 10,
+            "by_agent": [
+                {"agent_id": "backend-001", "cost_usd": 0.075, "tokens": 9000, "calls": 6},
+                {"agent_id": "review-001", "cost_usd": 0.05, "tokens": 6000, "calls": 4}
+            ],
+            "by_model": [
+                {"model_name": "claude-sonnet-4-5", "cost_usd": 0.125, "total_tokens": 15000, "total_calls": 10}
+            ]
+        }
+    """
+    from codeframe.lib.metrics_tracker import MetricsTracker
+
+    # Validate project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    try:
+        # Get project costs using MetricsTracker
+        tracker = MetricsTracker(db=app.state.db)
+        costs = await tracker.get_project_costs(project_id=project_id)
+
+        logger.info(f"Retrieved cost metrics for project {project_id}: ${costs['total_cost_usd']:.6f}")
+
+        return costs
+
+    except Exception as e:
+        logger.error(f"Failed to get cost metrics for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve cost metrics: {str(e)}"
+        )
+
+
+@app.get("/api/agents/{agent_id}/metrics", tags=["metrics"])
+async def get_agent_metrics(agent_id: str, project_id: Optional[int] = None):
+    """Get metrics for a specific agent (T129).
+
+    Sprint 10 - Phase 5: Metrics & Cost Tracking
+
+    Returns cost and usage statistics for a specific agent, optionally filtered
+    by project. Includes breakdowns by call type and project.
+
+    Args:
+        agent_id: Agent ID to get metrics for
+        project_id: Optional project ID to filter metrics (query parameter)
+
+    Returns:
+        200 OK: Agent metrics
+        {
+            "agent_id": str,
+            "total_cost_usd": float,
+            "total_tokens": int,
+            "total_calls": int,
+            "by_call_type": [
+                {
+                    "call_type": str,
+                    "cost_usd": float,
+                    "calls": int
+                },
+                ...
+            ],
+            "by_project": [
+                {
+                    "project_id": int,
+                    "cost_usd": float
+                },
+                ...
+            ]
+        }
+        500 Internal Server Error: Database or processing error
+
+    Example:
+        GET /api/agents/backend-001/metrics
+        GET /api/agents/backend-001/metrics?project_id=1
+        Response: {
+            "agent_id": "backend-001",
+            "total_cost_usd": 0.085,
+            "total_tokens": 12000,
+            "total_calls": 8,
+            "by_call_type": [
+                {"call_type": "task_execution", "cost_usd": 0.06, "calls": 5},
+                {"call_type": "code_review", "cost_usd": 0.025, "calls": 3}
+            ],
+            "by_project": [
+                {"project_id": 1, "cost_usd": 0.085}
+            ]
+        }
+    """
+    from codeframe.lib.metrics_tracker import MetricsTracker
+
+    try:
+        # Get agent costs using MetricsTracker
+        tracker = MetricsTracker(db=app.state.db)
+        costs = await tracker.get_agent_costs(agent_id=agent_id)
+
+        # If project_id is specified, filter the results
+        if project_id is not None:
+            # Filter by_project to only include the specified project
+            filtered_projects = [
+                p for p in costs["by_project"]
+                if p["project_id"] == project_id
+            ]
+
+            if not filtered_projects:
+                # No data for this agent in this project
+                return {
+                    "agent_id": agent_id,
+                    "total_cost_usd": 0.0,
+                    "total_tokens": 0,
+                    "total_calls": 0,
+                    "by_call_type": [],
+                    "by_project": []
+                }
+
+            # Recalculate totals based on filtered project
+            # We need to get usage records for this specific project
+            usage_records = app.state.db.get_token_usage(
+                agent_id=agent_id,
+                project_id=project_id
+            )
+
+            # Recalculate aggregates
+            total_cost = sum(r["estimated_cost_usd"] for r in usage_records)
+            total_tokens = sum(r["input_tokens"] + r["output_tokens"] for r in usage_records)
+            total_calls = len(usage_records)
+
+            # Aggregate by call type
+            call_type_stats = {}
+            for record in usage_records:
+                call_type = record["call_type"]
+                if call_type not in call_type_stats:
+                    call_type_stats[call_type] = {"call_type": call_type, "cost_usd": 0.0, "calls": 0}
+                call_type_stats[call_type]["cost_usd"] += record["estimated_cost_usd"]
+                call_type_stats[call_type]["calls"] += 1
+
+            # Round costs
+            for stats in call_type_stats.values():
+                stats["cost_usd"] = round(stats["cost_usd"], 6)
+
+            return {
+                "agent_id": agent_id,
+                "total_cost_usd": round(total_cost, 6),
+                "total_tokens": total_tokens,
+                "total_calls": total_calls,
+                "by_call_type": list(call_type_stats.values()),
+                "by_project": [{"project_id": project_id, "cost_usd": round(total_cost, 6)}]
+            }
+
+        logger.info(f"Retrieved metrics for agent {agent_id}: ${costs['total_cost_usd']:.6f}")
+
+        return costs
+
+    except Exception as e:
+        logger.error(f"Failed to get metrics for agent {agent_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve agent metrics: {str(e)}"
+        )
 
 
 @app.post("/api/projects/{project_id}/pause")

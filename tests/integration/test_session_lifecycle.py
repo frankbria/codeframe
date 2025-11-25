@@ -7,18 +7,15 @@ Tests the full end-to-end workflow of session persistence including:
 - Session cleanup on Ctrl+C
 """
 
-import asyncio
 import json
 import os
 import pytest
 import tempfile
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from codeframe.core.session_manager import SessionManager
 from codeframe.agents.lead_agent import LeadAgent
-from codeframe.persistence.database import Database
 
 
 @pytest.fixture

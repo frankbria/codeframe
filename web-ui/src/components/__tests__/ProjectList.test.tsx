@@ -19,6 +19,7 @@ jest.mock('@/lib/api', () => ({
 
 // Mock ProjectCreationForm component
 jest.mock('@/components/ProjectCreationForm', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function MockProjectCreationForm({ onSuccess }: { onSuccess: (project: any) => void }) {
     return (
       <div data-testid="project-creation-form">

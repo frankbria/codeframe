@@ -4,7 +4,6 @@
  * Sprint: 9.5 - Critical UX Fixes
  */
 
-import { ProjectResponse } from './index';
 
 /**
  * Props for ProjectCreationForm component

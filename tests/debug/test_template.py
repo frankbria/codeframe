@@ -204,7 +204,13 @@ class TestPropertyBasedTests:
 
     @given(st.dictionaries(st.text(min_size=1), st.integers()))
     def test_normalize_preserves_values(self, data):
-        """Property: Normalization preserves dictionary values."""
+        """Property: Normalization preserves dictionary values when keys are unique after lowercasing."""
+        # Filter out cases where multiple keys normalize to the same lowercase key
+        lowercase_keys = {k.lower() for k in data.keys()}
+        if len(lowercase_keys) != len(data):
+            # Skip this test case - it has conflicting keys
+            return
+
         normalized = normalize_data(data)
         # Values should be unchanged
         for key, value in data.items():

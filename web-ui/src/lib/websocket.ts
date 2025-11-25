@@ -136,6 +136,7 @@ export class WebSocketClient {
     return () => this.messageHandlers.delete(handler);
   }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
   send(message: any) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));

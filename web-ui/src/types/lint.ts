@@ -18,6 +18,7 @@ export interface LintTrendEntry {
 
 export interface LintConfig {
   project_id: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config: Record<string, any>;
   has_ruff_config: boolean;
   has_eslint_config: boolean;

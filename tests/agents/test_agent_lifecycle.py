@@ -35,6 +35,9 @@ from codeframe.persistence.database import Database
 def temp_db_for_lifecycle(tmp_path):
     """Create temporary database for lifecycle tests."""
     db_path = tmp_path / "test_lifecycle.db"
+
+    # Save original value
+    original_db_path = os.environ.get("DATABASE_PATH")
     os.environ["DATABASE_PATH"] = str(db_path)
 
     db = Database(db_path)
@@ -45,6 +48,12 @@ def temp_db_for_lifecycle(tmp_path):
     db.close()
     if db_path.exists():
         db_path.unlink()
+
+    # Restore original value
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    else:
+        os.environ.pop("DATABASE_PATH", None)
 
 
 @pytest.fixture
@@ -57,6 +66,10 @@ def test_client_with_db(temp_db_path, tmp_path):
     3. Reload server module to pick up new env vars
     4. Use TestClient which triggers lifespan initialization
     """
+    # Save original values
+    original_db_path = os.environ.get("DATABASE_PATH")
+    original_workspace_root = os.environ.get("WORKSPACE_ROOT")
+
     # Set environment variables
     os.environ["DATABASE_PATH"] = str(temp_db_path)
 
@@ -72,6 +85,17 @@ def test_client_with_db(temp_db_path, tmp_path):
     # TestClient will trigger lifespan which initializes app.state.db
     with TestClient(server.app) as client:
         yield client
+
+    # Restore original values
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    else:
+        os.environ.pop("DATABASE_PATH", None)
+
+    if original_workspace_root is not None:
+        os.environ["WORKSPACE_ROOT"] = original_workspace_root
+    else:
+        os.environ.pop("WORKSPACE_ROOT", None)
 
 
 @pytest.fixture
@@ -89,14 +113,14 @@ def sample_project(test_client_with_db):
 class TestStartAgentEndpoint:
     """Test POST /api/projects/{id}/start endpoint (cf-10.2)."""
 
-    def test_start_agent_endpoint_returns_202_accepted(self, test_client_with_db, sample_project):
+    def test_start_agent_endpoint_returns_202_accepted(self, test_client_with_db, sample_project, monkeypatch):
         """Test that start endpoint returns 202 Accepted immediately (non-blocking).
 
         Requirement: cf-10.2 - Return 202 Accepted immediately (non-blocking)
         """
         # ARRANGE
         project_id = sample_project["id"]
-        os.environ["ANTHROPIC_API_KEY"] = "test-api-key"
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
         # ACT
         with patch("codeframe.ui.server.start_agent") as mock_start_agent:
@@ -152,7 +176,7 @@ class TestStartAgentEndpoint:
         )
 
     def test_start_agent_endpoint_triggers_background_task(
-        self, test_client_with_db, sample_project
+        self, test_client_with_db, sample_project, monkeypatch
     ):
         """Test that start endpoint triggers background task execution.
 
@@ -160,6 +184,7 @@ class TestStartAgentEndpoint:
         """
         # ARRANGE
         project_id = sample_project["id"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
         # ACT
         with patch("codeframe.ui.server.BackgroundTasks") as mock_bg_tasks:
@@ -345,7 +370,7 @@ class TestWebSocketMessageProtocol:
 class TestAgentLifecycleIntegration:
     """Integration test for complete agent lifecycle workflow."""
 
-    def test_complete_start_workflow_end_to_end(self, test_client_with_db, sample_project):
+    def test_complete_start_workflow_end_to_end(self, test_client_with_db, sample_project, monkeypatch):
         """Test complete workflow from start request to agent running.
 
         Integration test covering:
@@ -359,6 +384,7 @@ class TestAgentLifecycleIntegration:
         """
         # ARRANGE
         project_id = sample_project["id"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
         # Get db from reloaded server
         from codeframe.ui import server
 

@@ -61,6 +61,19 @@ class ReviewRequest(BaseModel):
     files_modified: List[str] = Field(..., description="List of file paths to review")
 
 
+class QualityGatesRequest(BaseModel):
+    """Request model for triggering quality gates.
+
+    Sprint 10 - Phase 3: Quality Gates API (T065)
+    """
+
+    gate_types: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of gate types to run (default: all gates). "
+        "Valid values: 'tests', 'type_check', 'coverage', 'code_review', 'linting'",
+    )
+
+
 class ProjectResponse(BaseModel):
     """Response model for project data.
 
@@ -79,3 +92,35 @@ class ProjectResponse(BaseModel):
     )
     created_at: str = Field(..., description="ISO timestamp of project creation")
     config: Optional[dict] = Field(default=None, description="Optional project configuration")
+
+
+class CheckpointCreateRequest(BaseModel):
+    """Request model for creating a checkpoint (Sprint 10 Phase 4, T093)."""
+
+    name: str = Field(..., min_length=1, max_length=100, description="Checkpoint name")
+    description: Optional[str] = Field(None, max_length=500, description="Optional description")
+    trigger: str = Field(default="manual", description="Trigger type (manual, auto, phase_transition)")
+
+
+class CheckpointResponse(BaseModel):
+    """Response model for a checkpoint (Sprint 10 Phase 4, T092-T094)."""
+
+    id: int
+    project_id: int
+    name: str
+    description: Optional[str]
+    trigger: str
+    git_commit: str
+    database_backup_path: str
+    context_snapshot_path: str
+    metadata: dict  # CheckpointMetadata as dict
+    created_at: str  # ISO 8601 timestamp
+
+
+class RestoreCheckpointRequest(BaseModel):
+    """Request model for restoring a checkpoint (Sprint 10 Phase 4, T096-T097)."""
+
+    confirm_restore: bool = Field(
+        default=False,
+        description="If False, show diff only. If True, restore checkpoint."
+    )

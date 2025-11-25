@@ -4,11 +4,11 @@ TDD approach: Write tests first, ensure they fail, then implement.
 """
 
 import pytest
+import os
 from fastapi.testclient import TestClient
 from pathlib import Path
 import tempfile
 
-from codeframe.ui.server import app
 from codeframe.persistence.database import Database
 from codeframe.core.models import Task, TaskStatus
 
@@ -24,20 +24,37 @@ def db():
     yield db
 
     # Cleanup
+    db.close()
     Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
 def client(db):
     """Create a test client with database."""
-    app.state.db = db
+    # Save original environment
+    original_db_path = os.environ.get("DATABASE_PATH")
+
+    # Set environment variable
+    os.environ["DATABASE_PATH"] = str(db.db_path)
+
+    # Reload server module to pick up new environment
+    from codeframe.ui import server
+    from importlib import reload
+    reload(server)
+
+    # Set database on app state
+    server.app.state.db = db
 
     # Clear review cache before each test
-    from codeframe.ui import server
-
     server.review_cache.clear()
 
-    return TestClient(app)
+    yield TestClient(server.app)
+
+    # Restore original environment
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    else:
+        os.environ.pop("DATABASE_PATH", None)
 
 
 @pytest.fixture

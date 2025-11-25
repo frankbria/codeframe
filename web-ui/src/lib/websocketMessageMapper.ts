@@ -75,6 +75,7 @@ function normalizeNumber(value: unknown, defaultValue: number = 0): number {
  * @returns Typed reducer action or null if message type is unknown
  */
 export function mapWebSocketMessageToAction(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   message: WebSocketMessage | any
 ): AgentAction | null {
   const timestamp = parseTimestamp(message.timestamp);
@@ -112,6 +113,7 @@ export function mapWebSocketMessageToAction(
 
     case 'agent_status_changed': {
       const msg = message as WebSocketMessage;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updates: any = {
         status: msg.status,
       };
@@ -168,7 +170,9 @@ export function mapWebSocketMessageToAction(
         type: 'TASK_STATUS_CHANGED',
         payload: {
           taskId: msg.task_id!,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
           status: msg.status as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
           progress: msg.progress,
           timestamp,
         },
@@ -208,7 +212,9 @@ export function mapWebSocketMessageToAction(
         type: 'ACTIVITY_ADDED',
         payload: {
           timestamp: message.timestamp.toString(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
           type: (msg.activity_type || 'activity_update') as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
           agent: msg.agent || 'system',
           message: msg.message || '',
         },
@@ -225,7 +231,9 @@ export function mapWebSocketMessageToAction(
         type: 'ACTIVITY_ADDED',
         payload: {
           timestamp: message.timestamp.toString(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
           type: message.type as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
           agent: msg.agent || 'system',
           message: msg.message || `${message.type} event`,
         },

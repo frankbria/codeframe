@@ -3,7 +3,7 @@
  * TDD: RED phase - These tests should fail initially
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PRDModal from './PRDModal';
 import type { PRDResponse } from '@/types/api';

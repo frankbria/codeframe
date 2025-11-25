@@ -122,6 +122,7 @@ export interface WebSocketMessage {
   type: WebSocketMessageType;
   timestamp: string;
   project_id?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any;
 
   // Legacy fields (for backward compatibility)
@@ -191,6 +192,7 @@ export interface ProjectResponse {
   status: ProjectStatus;
   phase?: string;
   created_at: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   config?: Record<string, any>;
 }
 
