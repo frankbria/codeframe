@@ -15,7 +15,7 @@ import React, { useState, useMemo } from 'react';
 import type {
   CodeReview,
   Severity,
-  ReviewCategory,
+
 } from '../../types/reviews';
 import {
   SEVERITY_COLORS,

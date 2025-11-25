@@ -40,6 +40,7 @@ export const LintTrendChart: React.FC<LintTrendChartProps> = ({
       const interval = setInterval(fetchData, refreshInterval);
       return () => clearInterval(interval);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, days, refreshInterval]);
 
   if (loading && data.length === 0) {

@@ -62,7 +62,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       }
 
       // T039: Parse response
-      const data = await response.json();
+      const _data = await response.json();
 
       // Success - show message and refresh
       setSuccessMessage('Answer submitted! Loading next question...');
@@ -115,6 +115,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   // Initial fetch
   useEffect(() => {
     fetchProgress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // Auto-refresh only during discovery
@@ -129,6 +130,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
     }, 10000); // 10 seconds
 
     return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   // Loading state

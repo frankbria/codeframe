@@ -6,7 +6,6 @@
 
 import type {
   TokenUsage,
-  CostMetrics,
   CostBreakdown,
   AgentMetrics,
   TokenUsageTimeSeries,

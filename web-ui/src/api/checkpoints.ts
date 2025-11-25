@@ -6,7 +6,6 @@
 import type {
   Checkpoint,
   CreateCheckpointRequest,
-  RestoreCheckpointRequest,
   RestoreCheckpointResponse,
   CheckpointDiff,
 } from '../types/checkpoints';

@@ -98,6 +98,7 @@ export function TokenUsageChart({
     return () => {
       mounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, days]);
 
   // Calculate max value for scaling

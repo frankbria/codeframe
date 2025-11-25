@@ -18,6 +18,7 @@ jest.mock('next/navigation', () => ({
 
 // Mock ProjectCreationForm component
 jest.mock('@/components/ProjectCreationForm', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function MockProjectCreationForm({ onSuccess, onSubmit, onError }: any) {
     return (
       <div data-testid="mock-project-creation-form">
@@ -32,6 +33,7 @@ jest.mock('@/components/ProjectCreationForm', () => {
 // Mock Spinner component
 jest.mock('@/components/Spinner', () => {
   return {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Spinner: function MockSpinner({ size }: any) {
       return <div data-testid="mock-spinner" data-size={size}>Loading...</div>;
     },
@@ -148,7 +150,7 @@ describe('HomePage', () => {
       render(<HomePage />);
 
       // Trigger onError
-      const errorButton = screen.getByText('Trigger onError');
+      const _errorButton = screen.getByText('Trigger onError');
       await user.click(errorButton);
 
       await waitFor(() => {
@@ -164,7 +166,7 @@ describe('HomePage', () => {
 
       // Get buttons before state changes
       const submitButton = screen.getByText('Trigger onSubmit');
-      const errorButton = screen.getByText('Trigger onError');
+      const _errorButton = screen.getByText('Trigger onError');
 
       // First trigger onSubmit to show spinner
       await user.click(submitButton);

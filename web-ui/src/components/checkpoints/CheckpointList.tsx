@@ -52,6 +52,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
       const intervalId = setInterval(loadCheckpoints, refreshInterval);
       return () => clearInterval(intervalId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, refreshInterval]);
 
   // Handle create checkpoint

@@ -11,7 +11,7 @@
 
 import React, { useMemo } from 'react';
 import type { ReviewResult, Severity, ReviewCategory } from '../../types/reviews';
-import { SEVERITY_COLORS, CATEGORY_ICONS } from '../../types/reviews';
+import { CATEGORY_ICONS } from '../../types/reviews';
 
 interface ReviewSummaryProps {
   /** Review result data */

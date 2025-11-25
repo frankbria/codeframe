@@ -8,7 +8,6 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import useSWR from 'swr';
 import { projectsApi, blockersApi } from '@/lib/api';
 import { useAgentState } from '@/hooks/useAgentState';
-import type { Project, WebSocketMessage } from '@/types';
 import type { Blocker } from '@/types/blocker';
 import type { PRDResponse, IssuesResponse } from '@/types/api';
 import type { DashboardTab } from '@/types/dashboard';
@@ -45,7 +44,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   // Use centralized agent state from Context (Phase 5.2)
-  const { agents, tasks, activity, projectProgress, wsConnected } = useAgentState();
+  const { agents, tasks: _tasks, activity, projectProgress, wsConnected } = useAgentState();
 
   const [showChat, setShowChat] = useState(false);
   const [showPRD, setShowPRD] = useState(false);
@@ -53,12 +52,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const [selectedTaskForReview, setSelectedTaskForReview] = useState<number | null>(null);
 
   // Memoize filtered agent lists for performance (T111)
-  const activeAgents = useMemo(
+  const _activeAgents = useMemo(
     () => agents.filter(a => a.status === 'working' || a.status === 'blocked'),
     [agents]
   );
 
-  const idleAgents = useMemo(
+  const _idleAgents = useMemo(
     () => agents.filter(a => a.status === 'idle'),
     [agents]
   );
@@ -71,7 +70,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   }, []);
 
   // Fetch project status
-  const { data: projectData, mutate: mutateProject } = useSWR(
+  const { data: projectData } = useSWR(
     `/projects/${projectId}/status`,
     () => projectsApi.getStatus(projectId).then((res) => res.data)
   );
@@ -103,6 +102,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   useEffect(() => {
     const ws = getWebSocketClient();
 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleBlockerEvent = (message: any) => {
       if (message.type === 'blocker_created' || message.type === 'blocker_resolved' || message.type === 'blocker_expired') {
         // Refresh blockers list when blocker events occur
@@ -449,7 +449,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 <div className="text-center py-12 text-gray-500">
                   <p className="text-lg mb-2">Select an agent to view context</p>
                   <p className="text-sm">
-                    Context items show what's in agent memory (HOT/WARM/COLD tiers)
+                    Context items show what&apos;s in agent memory (HOT/WARM/COLD tiers)
                   </p>
                 </div>
               )}

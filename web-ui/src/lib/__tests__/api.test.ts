@@ -12,7 +12,9 @@ const mockGet = jest.fn();
 // Mock axios before importing api module
 jest.mock('axios', () => {
   const mockAxiosInstance = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
     get: (...args: any[]) => mockGet(...args),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
     post: (...args: any[]) => mockPost(...args),
     put: jest.fn(),
     delete: jest.fn(),

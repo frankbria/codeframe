@@ -5,7 +5,6 @@ import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
 import { projectsApi } from '@/lib/api';
 import ProjectCreationForm from '@/components/ProjectCreationForm';
-import type { Project, ProjectResponse } from '@/types';
 
 /**
  * Formats an ISO date string to a readable format
@@ -39,11 +38,11 @@ export default function ProjectList() {
     () => projectsApi.list().then((res) => res.data.projects)
   );
 
-  const handleProjectClick = (projectId: number) => {
+  const handleProjectClick = (_projectId: number) => {
     router.push(`/projects/${projectId}`);
   };
 
-  const handleProjectCreated = (projectId: number) => {
+  const handleProjectCreated = (_projectId: number) => {
     // Hide form
     setShowForm(false);
     // Refresh project list

@@ -66,7 +66,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 0,
       };
 
-      const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
+      const { container: _container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
       expect(card).toHaveClass('bg-green-100', 'border-green-500', 'text-green-800');
@@ -82,7 +82,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 3,
       };
 
-      const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
+      const { container: _container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
       expect(card).toHaveClass('bg-yellow-100', 'border-yellow-500', 'text-yellow-800');
@@ -98,7 +98,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 1,
       };
 
-      const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
+      const { container: _container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
       expect(card).toHaveClass('bg-red-100', 'border-red-500', 'text-red-800');
@@ -267,7 +267,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 0,
       };
 
-      const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
+      const { container: _container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
       fireEvent.click(card);
@@ -284,7 +284,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 0,
       };
 
-      const { container } = render(<AgentCard agent={agent} />);
+      const { container: _container } = render(<AgentCard agent={agent} />);
 
       const card = container.firstChild as HTMLElement;
       // Should not throw error when onAgentClick is undefined
@@ -304,7 +304,7 @@ describe('AgentCard Component', () => {
           tasksCompleted: 0,
         };
 
-        const { container } = render(<AgentCard agent={agent} />);
+        const { container: _container } = render(<AgentCard agent={agent} />);
 
         const dot = container.querySelector('.animate-pulse');
         expect(dot).toBeInTheDocument();
@@ -322,7 +322,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 0,
       };
 
-      const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
+      const { container: _container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
       expect(card).toHaveClass('rounded-lg', 'border-2', 'p-4');
@@ -338,7 +338,7 @@ describe('AgentCard Component', () => {
         tasksCompleted: 0,
       };
 
-      const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
+      const { container: _container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const agentIdElement = screen.getByText(agent.id);
       expect(agentIdElement).toHaveClass('truncate', 'max-w-[150px]');

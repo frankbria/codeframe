@@ -7,10 +7,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { ReviewReport, ReviewStatusResponse } from '../../types/review';
+import type { ReviewStatusResponse } from '../../types/review';
 import { fetchReviewStatus } from '../../api/review';
-import ReviewScoreChart from './ReviewScoreChart';
-import ReviewFindingsList from './ReviewFindingsList';
 
 interface ReviewResultsPanelProps {
   taskId: number;
@@ -24,7 +22,7 @@ export default function ReviewResultsPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewStatus, setReviewStatus] = useState<ReviewStatusResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<'scores' | 'findings'>('scores');
+  const [_activeTab, _setActiveTab] = useState<'scores' | 'findings'>('scores');
 
   // Fetch review status on mount
   useEffect(() => {

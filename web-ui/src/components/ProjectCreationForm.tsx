@@ -96,6 +96,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
 
       // US3: Call parent onSuccess callback with project ID
       onSuccess(response.data.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       setIsSubmitting(false);
 
@@ -113,6 +114,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
         if (error.response?.data?.detail) {
           if (Array.isArray(error.response.data.detail)) {
             const errorMsg = error.response.data.detail
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .map((err: any) => err.msg || JSON.stringify(err))
               .join(', ');
             newErrors.submit = errorMsg;
@@ -213,7 +215,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
 
         {/* US2: Hint text below button */}
         <p className="text-xs text-gray-500 text-center">
-          After creation, you'll begin Socratic discovery with AI agents
+          After creation, you&apos;ll begin Socratic discovery with AI agents
         </p>
       </form>
 
