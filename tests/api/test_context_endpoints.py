@@ -3,13 +3,8 @@
 Covers context item CRUD operations, scoring, tiering, and flash save functionality.
 """
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime, UTC
 
 from codeframe.core.models import (
-    TaskStatus,
-    Task,
     ContextItemType,
     AgentMaturity,
 )

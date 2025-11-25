@@ -6,7 +6,7 @@ import tempfile
 import shutil
 import subprocess
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from codeframe.workspace.manager import WorkspaceManager
 from codeframe.ui.models import SourceType
 

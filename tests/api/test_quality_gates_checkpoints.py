@@ -3,16 +3,13 @@
 Covers quality gate status checking, checkpoint creation/restoration, and cost metrics.
 """
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from pathlib import Path
 import tempfile
-import json
 
 from codeframe.core.models import (
     TaskStatus,
     Task,
-    AgentMaturity,
 )
 
 

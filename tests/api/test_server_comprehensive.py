@@ -5,16 +5,12 @@ Focuses on missing coverage lines identified in the coverage report.
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-from pathlib import Path
-import tempfile
-import json
+from unittest.mock import patch, AsyncMock
 
 from codeframe.core.models import (
     TaskStatus,
     Task,
     ProjectStatus,
-    AgentMaturity,
 )
 
 
@@ -36,7 +32,6 @@ class TestStartProjectAgent:
         )
 
         # Mock the start_agent function and running_agents
-        from codeframe.ui import server
 
         with patch('codeframe.ui.server.start_agent', new_callable=AsyncMock) as mock_start:
             # Act
