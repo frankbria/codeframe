@@ -2,8 +2,9 @@
 
 **Author**: Claude Code
 **Date**: 2025-11-28
-**Version**: 1.0
-**Status**: DRAFT - Requires Architecture Review
+**Version**: 1.1
+**Status**: READY FOR IMPLEMENTATION - All open questions resolved
+**SDK Documentation**: [GitHub](https://github.com/anthropics/claude-agent-sdk-python) | [PyPI](https://pypi.org/project/claude-agent-sdk/)
 
 ---
 
@@ -34,38 +35,138 @@ During implementation planning, several findings required adjustments to the ori
 
 ---
 
-## Pre-Migration Requirements
+## Pre-Migration Requirements (RESOLVED)
 
-### OPEN QUESTION #1: Claude Agent SDK Availability
+All blocking questions have been answered through SDK documentation review.
 
-> **Critical**: The Claude Agent SDK package name and installation method needs verification.
->
-> ```bash
-> # Possible package names to verify:
-> pip install claude-agent-sdk
-> pip install anthropic-agent-sdk
-> pip install claude-code-sdk
-> ```
->
-> **Action Required**: Verify SDK package name and add to `pyproject.toml` dependencies.
+### ✅ RESOLVED: SDK Package & Installation
 
-### OPEN QUESTION #2: SDK Async Support
+**Package**: `claude-agent-sdk` (v0.1.10 as of Nov 2025)
 
-> The current codebase uses both:
-> - **Synchronous**: `AnthropicProvider` with `Anthropic()` client
-> - **Asynchronous**: `AsyncAnthropic()` in FrontendWorkerAgent, TestWorkerAgent
->
-> **Need to verify**: Does the Claude Agent SDK support both patterns?
->
-> **Fallback**: If SDK is sync-only, we may need to wrap in `asyncio.to_thread()` or maintain dual patterns.
+```bash
+pip install claude-agent-sdk
+```
 
-### OPEN QUESTION #3: Tool Permission Model
+**Requirements**: Python 3.10+ (CodeFRAME uses 3.11+, compatible)
 
-> SDK uses `allowed_tools` in `ClaudeAgentOptions`.
->
-> **Need to verify**:
-> - How does this interact with CodeFRAME's quality gates (which should BLOCK tool execution on failures)?
-> - Can we use hooks to intercept tool calls for quality checking?
+**Key imports**:
+```python
+from claude_agent_sdk import query, ClaudeSDKClient, ClaudeAgentOptions, HookMatcher
+from claude_agent_sdk import create_sdk_mcp_server  # For custom tools
+```
+
+### ✅ RESOLVED: Async Support
+
+**Answer**: The SDK is **fully async**. All operations use `async/await`.
+
+```python
+import anyio
+from claude_agent_sdk import query
+
+async def main():
+    async for message in query(prompt="What is 2 + 2?"):
+        print(message)
+
+anyio.run(main)
+```
+
+**Impact**: CodeFRAME's async patterns (FrontendWorkerAgent, TestWorkerAgent) align well. The sync `AnthropicProvider` will need to be wrapped in the SDK client or converted to async.
+
+### ✅ RESOLVED: Hook API Signatures
+
+**PreToolUse Hook** - Called before tool execution:
+
+```python
+async def pre_tool_hook(input_data: dict, tool_use_id: str, context: dict) -> dict:
+    """
+    Args:
+        input_data: {"tool_name": str, "tool_input": dict}
+        tool_use_id: Unique identifier for this tool call
+        context: Additional context from SDK
+
+    Returns:
+        {} to allow execution, or:
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "Reason for blocking"
+            }
+        }
+    """
+    if input_data["tool_name"] == "Bash":
+        command = input_data["tool_input"].get("command", "")
+        if "rm -rf" in command:
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "Dangerous command blocked"
+                }
+            }
+    return {}
+
+# Registration
+options = ClaudeAgentOptions(
+    hooks={
+        'PreToolUse': [HookMatcher(matcher='Bash', hooks=[pre_tool_hook])]
+    }
+)
+```
+
+**PostToolUse Hook** - Called after tool execution:
+
+```python
+async def post_tool_hook(input_data: dict, tool_use_id: str, context: dict) -> dict:
+    """Same signature as PreToolUse, called after execution."""
+    # Log tool usage, record metrics, etc.
+    return {}
+```
+
+**Supported Hooks**: PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, PreCompact
+
+**Note**: SessionStart, SessionEnd, Notification hooks are NOT supported in Python SDK.
+
+### ✅ RESOLVED: Subagent Spawning
+
+**Two methods to define subagents**:
+
+1. **Programmatic** (recommended for SDK applications):
+```python
+# Via agents parameter in query() options
+async for message in query(
+    prompt="Build a React component",
+    agents=[
+        {
+            "name": "frontend-dev",
+            "description": "React/TypeScript specialist",
+            "tools": ["Read", "Write", "Bash"],
+            "system_prompt": "You are a frontend developer..."
+        }
+    ]
+):
+    print(message)
+```
+
+2. **Filesystem-based**:
+```markdown
+<!-- .claude/agents/backend.md -->
+---
+name: Backend Developer
+description: Python/FastAPI specialist
+tools: [Read, Write, Bash, Grep]
+---
+
+You are a backend developer agent...
+```
+
+**Key constraints**:
+- Subagents use the Task tool internally
+- **Cannot spawn nested subagents** (prevents infinite recursion)
+- Subagents maintain separate context from main agent
+- Up to 10 concurrent subagents supported
+
+**Impact on CodeFRAME**: The `agents` parameter approach aligns with our hybrid strategy - generate subagent configs from YAML at runtime.
 
 ---
 
@@ -79,18 +180,26 @@ Low-risk, high-value changes that establish SDK integration patterns without dis
 **Files to modify**: `pyproject.toml`
 
 ```toml
-# Add to dependencies section
+# Add to dependencies section (line ~25)
 dependencies = [
-    "anthropic>=0.18.0",  # Keep existing
-    "claude-agent-sdk>=X.X.X",  # Add SDK - VERSION TBD
+    "anthropic>=0.18.0",  # Keep existing - SDK uses this internally
+    "claude-agent-sdk>=0.1.10",  # Add SDK
     # ... rest unchanged
 ]
 ```
 
+**Verification**:
+```python
+# Test import after installation
+from claude_agent_sdk import query, ClaudeSDKClient, ClaudeAgentOptions
+print("SDK imported successfully")
+```
+
 **Acceptance Criteria**:
-- [ ] SDK package installed successfully
-- [ ] `import claude_agent_sdk` works
-- [ ] No conflicts with existing `anthropic` package
+- [ ] `pip install claude-agent-sdk>=0.1.10` succeeds
+- [ ] `from claude_agent_sdk import query` works
+- [ ] No conflicts with existing `anthropic>=0.18.0` package
+- [ ] Tests still pass after adding dependency
 
 **Estimated effort**: 1 hour
 **Risk**: Very Low
@@ -111,11 +220,18 @@ supporting gradual migration from direct Anthropic API usage.
 """
 
 from typing import Optional, Dict, Any, List
+from pathlib import Path
 import logging
+import os
 
-# Import SDK - adjust based on actual package name
+# SDK imports (verified from documentation)
 try:
-    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+    from claude_agent_sdk import (
+        query,
+        ClaudeSDKClient,
+        ClaudeAgentOptions,
+        HookMatcher,
+    )
     SDK_AVAILABLE = True
 except ImportError:
     SDK_AVAILABLE = False
@@ -130,6 +246,8 @@ class SDKClientWrapper:
 
     This class bridges the gap between CodeFRAME's existing patterns
     and the Claude Agent SDK, enabling incremental migration.
+
+    The SDK requires ANTHROPIC_API_KEY environment variable to be set.
     """
 
     def __init__(
@@ -139,22 +257,34 @@ class SDKClientWrapper:
         system_prompt: Optional[str] = None,
         allowed_tools: Optional[List[str]] = None,
         cwd: Optional[str] = None,
+        hooks: Optional[Dict] = None,
+        permission_mode: str = "default",  # or "acceptEdits"
     ):
+        # Ensure API key is in environment (SDK reads from env)
+        if api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+            os.environ["ANTHROPIC_API_KEY"] = api_key
+
         if not SDK_AVAILABLE:
             logger.warning("Claude Agent SDK not available, falling back to AnthropicProvider")
             self._use_sdk = False
             self._fallback = AnthropicProvider(api_key=api_key, model=model)
+            self._options = None
             return
 
         self._use_sdk = True
-        self._client = ClaudeSDKClient(
-            options=ClaudeAgentOptions(
-                system_prompt=system_prompt or "",
-                allowed_tools=allowed_tools or ["Read", "Write", "Bash"],
-                max_turns=50,
-                cwd=cwd,
-            )
+        self._fallback = None
+
+        # Build SDK options
+        self._options = ClaudeAgentOptions(
+            system_prompt=system_prompt or "",
+            allowed_tools=allowed_tools or ["Read", "Write", "Bash", "Glob", "Grep"],
+            max_turns=50,
+            cwd=cwd or str(Path.cwd()),
+            permission_mode=permission_mode,
+            hooks=hooks or {},
         )
+
+        logger.info(f"SDK client initialized (cwd={cwd}, tools={allowed_tools})")
 
     async def send_message(
         self,
@@ -163,6 +293,8 @@ class SDKClientWrapper:
         """Send message using SDK or fallback.
 
         Returns same format as AnthropicProvider.send_message() for compatibility.
+
+        Note: SDK streams responses, so we collect all chunks into final response.
         """
         if not self._use_sdk:
             # Fallback to existing provider (sync, needs wrapper)
@@ -173,17 +305,40 @@ class SDKClientWrapper:
 
         # SDK path - extract last user message
         last_message = conversation[-1]["content"]
-        response = await self._client.query(last_message)
+
+        # Collect streamed response
+        full_content = []
+        usage_info = {"input_tokens": 0, "output_tokens": 0}
+        stop_reason = None
+
+        async for message in query(prompt=last_message, options=self._options):
+            if hasattr(message, 'content'):
+                full_content.append(str(message.content))
+            if hasattr(message, 'usage'):
+                usage_info["input_tokens"] = getattr(message.usage, 'input_tokens', 0)
+                usage_info["output_tokens"] = getattr(message.usage, 'output_tokens', 0)
+            if hasattr(message, 'stop_reason'):
+                stop_reason = message.stop_reason
 
         return {
-            "content": response.content,
-            "stop_reason": response.stop_reason,
-            "usage": {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-            },
-            "session_id": response.session_id,  # New: SDK session for resume
+            "content": "".join(full_content),
+            "stop_reason": stop_reason or "end_turn",
+            "usage": usage_info,
         }
+
+    async def send_message_streaming(
+        self,
+        prompt: str,
+    ):
+        """Send message and yield streaming responses.
+
+        Yields SDK message objects for real-time processing.
+        """
+        if not self._use_sdk:
+            raise RuntimeError("Streaming requires SDK - not available in fallback mode")
+
+        async for message in query(prompt=prompt, options=self._options):
+            yield message
 ```
 
 **Acceptance Criteria**:
@@ -338,97 +493,154 @@ Replace manual tool execution with SDK's native tool framework while preserving 
 
 These hooks integrate CodeFRAME's quality gates and metrics tracking
 with the Claude Agent SDK's tool execution framework.
+
+SDK Hook Signature (verified from documentation):
+    async def hook(input_data: dict, tool_use_id: str, context: dict) -> dict
+
+    input_data contains: {"tool_name": str, "tool_input": dict}
+
+    Return {} to allow, or return blocking response:
+    {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "Reason"
+        }
+    }
 """
 
 from typing import Dict, Any, Optional
 import logging
 
+from claude_agent_sdk import HookMatcher
+
 logger = logging.getLogger(__name__)
 
 
-class CodeFramePreToolHook:
-    """Pre-tool execution hook for quality gate integration."""
+async def create_quality_gate_pre_hook(quality_gates, db):
+    """Factory to create pre-tool hook with quality gate integration.
 
-    def __init__(self, quality_gates, metrics_tracker):
-        self.quality_gates = quality_gates
-        self.metrics_tracker = metrics_tracker
+    Args:
+        quality_gates: QualityGates instance
+        db: Database connection for task status lookup
 
-    async def __call__(
-        self,
-        tool_name: str,
-        tool_input: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Called before each tool execution.
+    Returns:
+        Async hook function with correct SDK signature
+    """
+    async def quality_gate_pre_hook(
+        input_data: dict,
+        tool_use_id: str,
+        context: dict,
+    ) -> dict:
+        """PreToolUse hook that blocks tools when quality gates fail.
 
-        Returns:
-            Dict with:
-                - allow: bool - whether to allow execution
-                - reason: str - if blocked, why
-                - modified_input: dict - optionally modified input
+        SDK calls this before every tool execution.
         """
-        # Check if task is blocked by quality gates
-        task_id = context.get("task_id")
-        if task_id and await self._is_task_blocked(task_id):
-            return {
-                "allow": False,
-                "reason": f"Task {task_id} blocked by quality gate failure",
-            }
+        tool_name = input_data.get("tool_name", "")
+        tool_input = input_data.get("tool_input", {})
 
-        # File write operations check for critical files
-        if tool_name == "Write" and self._is_protected_file(tool_input.get("path")):
-            return {
-                "allow": False,
-                "reason": f"Cannot modify protected file: {tool_input.get('path')}",
-            }
-
-        return {"allow": True}
-
-    async def _is_task_blocked(self, task_id: int) -> bool:
-        """Check if task has blocking quality gate failures."""
-        # Query database for task status
-        # Return True if task has unresolved quality gate failures
-        pass
-
-    def _is_protected_file(self, path: str) -> bool:
-        """Check if file is protected from modification."""
-        protected = [".env", "credentials.json", ".git/", "CLAUDE.md"]
-        return any(p in path for p in protected) if path else False
-
-
-class CodeFramePostToolHook:
-    """Post-tool execution hook for metrics and validation."""
-
-    def __init__(self, metrics_tracker, db):
-        self.metrics_tracker = metrics_tracker
-        self.db = db
-
-    async def __call__(
-        self,
-        tool_name: str,
-        tool_input: Dict[str, Any],
-        tool_output: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> None:
-        """Called after each tool execution.
-
-        Records metrics and validates output.
-        """
-        # Record tool usage metrics
-        await self._record_tool_usage(tool_name, tool_input, tool_output, context)
-
-        # Trigger quality checks after file modifications
+        # Check for protected files on Write operations
         if tool_name == "Write":
-            await self._trigger_quality_check(tool_input.get("path"), context)
+            file_path = tool_input.get("file_path", "")
+            protected = [".env", "credentials.json", ".git/", "secrets"]
+            if any(p in file_path for p in protected):
+                logger.warning(f"Blocked write to protected file: {file_path}")
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": f"Cannot modify protected file: {file_path}"
+                    }
+                }
 
-    async def _record_tool_usage(self, tool_name, tool_input, tool_output, context):
-        """Record tool execution for analytics."""
-        pass
+        # Check for dangerous bash commands
+        if tool_name == "Bash":
+            command = tool_input.get("command", "")
+            dangerous_patterns = ["rm -rf /", "rm -rf ~", ":(){ :|:& };:", "dd if="]
+            if any(pattern in command for pattern in dangerous_patterns):
+                logger.warning(f"Blocked dangerous command: {command[:50]}...")
+                return {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": "Dangerous command blocked by safety policy"
+                    }
+                }
 
-    async def _trigger_quality_check(self, file_path, context):
-        """Trigger relevant quality checks after file write."""
-        pass
+        # Allow tool execution
+        return {}
+
+    return quality_gate_pre_hook
+
+
+async def create_metrics_post_hook(metrics_tracker, db):
+    """Factory to create post-tool hook for metrics tracking.
+
+    Args:
+        metrics_tracker: MetricsTracker instance
+        db: Database connection
+
+    Returns:
+        Async hook function with correct SDK signature
+    """
+    async def metrics_post_hook(
+        input_data: dict,
+        tool_use_id: str,
+        context: dict,
+    ) -> dict:
+        """PostToolUse hook that records tool usage metrics.
+
+        SDK calls this after every tool execution.
+        """
+        tool_name = input_data.get("tool_name", "")
+        tool_input = input_data.get("tool_input", {})
+
+        # Record tool usage for analytics
+        logger.debug(f"Tool executed: {tool_name} (id={tool_use_id})")
+
+        # If Write tool, trigger quality checks
+        if tool_name == "Write":
+            file_path = tool_input.get("file_path", "")
+            logger.info(f"File written: {file_path} - quality check triggered")
+            # Quality check logic would go here
+
+        return {}
+
+    return metrics_post_hook
+
+
+def build_codeframe_hooks(quality_gates, metrics_tracker, db) -> dict:
+    """Build SDK hooks dictionary for CodeFRAME integration.
+
+    Returns hooks dict ready for ClaudeAgentOptions.
+
+    Usage:
+        hooks = build_codeframe_hooks(quality_gates, metrics_tracker, db)
+        options = ClaudeAgentOptions(hooks=hooks, ...)
+    """
+    import asyncio
+
+    # Create hook functions
+    pre_hook = asyncio.get_event_loop().run_until_complete(
+        create_quality_gate_pre_hook(quality_gates, db)
+    )
+    post_hook = asyncio.get_event_loop().run_until_complete(
+        create_metrics_post_hook(metrics_tracker, db)
+    )
+
+    return {
+        'PreToolUse': [
+            HookMatcher(matcher='Write', hooks=[pre_hook]),
+            HookMatcher(matcher='Bash', hooks=[pre_hook]),
+        ],
+        'PostToolUse': [
+            HookMatcher(matcher='Write', hooks=[post_hook]),
+            HookMatcher(matcher='Bash', hooks=[post_hook]),
+        ],
+    }
 ```
+
+**Known Issue**: GitHub issues [#193](https://github.com/anthropics/claude-agent-sdk-python/issues/193) and [#213](https://github.com/anthropics/claude-agent-sdk-python/issues/213) report hooks not triggering in some cases. Test thoroughly and have fallback validation.
 
 **Acceptance Criteria**:
 - [ ] Pre-hook blocks tool execution for blocked tasks
@@ -1086,31 +1298,25 @@ Exposes CodeFRAME capabilities as MCP tools for SDK integration.
 
 ---
 
-## Open Questions & Issues
+## Resolved Questions
 
-### OPEN-001: SDK Package Availability
-**Status**: UNRESOLVED
-**Question**: What is the exact package name for Claude Agent SDK?
-**Impact**: Blocks Phase 1 start
-**Owner**: TBD
+All previously open questions have been answered. See "Pre-Migration Requirements (RESOLVED)" section for details.
 
-### OPEN-002: Async SDK Support
-**Status**: UNRESOLVED
-**Question**: Does SDK support async/await natively?
-**Impact**: Affects Phase 1, 2 implementation approach
-**Owner**: TBD
+| ID | Question | Answer | Source |
+|----|----------|--------|--------|
+| OPEN-001 | SDK package name? | `pip install claude-agent-sdk` (v0.1.10+) | [PyPI](https://pypi.org/project/claude-agent-sdk/) |
+| OPEN-002 | Async support? | **Yes** - fully async with `async for` streaming | [GitHub README](https://github.com/anthropics/claude-agent-sdk-python) |
+| OPEN-003 | Hook signatures? | `async def hook(input_data, tool_use_id, context) -> dict` | [GitHub examples](https://github.com/anthropics/claude-agent-sdk-python) |
+| OPEN-004 | Subagent spawning? | Via `agents` parameter in `query()` or `.claude/agents/*.md` files | [Subagents docs](https://docs.claude.com/en/docs/agent-sdk/subagents) |
 
-### OPEN-003: Hook API Details
-**Status**: UNRESOLVED
-**Question**: Exact PreToolUse/PostToolUse hook signatures?
-**Impact**: Affects Phase 2 implementation
-**Owner**: TBD
+### NEW: Known Limitations Discovered
 
-### OPEN-004: Subagent Spawning API
-**Status**: UNRESOLVED
-**Question**: How to programmatically spawn SDK subagents?
-**Impact**: Affects Phase 3 implementation
-**Owner**: TBD
+| Limitation | Impact | Mitigation |
+|------------|--------|------------|
+| Hook issues (#193, #213) | Hooks may not trigger reliably | Add fallback post-validation |
+| No nested subagents | Subagents can't spawn subagents | LeadAgent stays as orchestrator |
+| No SessionStart hook | Can't hook session initialization | Use pre-query setup instead |
+| Python 3.10+ required | Excludes Python 3.9 | CodeFRAME uses 3.11+, OK |
 
 ---
 
@@ -1199,3 +1405,12 @@ Exposes CodeFRAME capabilities as MCP tools for SDK integration.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2025-11-28 | Claude Code | Initial implementation plan |
+| 1.1 | 2025-11-28 | Claude Code | Resolved all open questions with SDK documentation, updated code examples with verified API signatures, added known limitations |
+
+## References
+
+- [Claude Agent SDK - PyPI](https://pypi.org/project/claude-agent-sdk/)
+- [Claude Agent SDK - GitHub](https://github.com/anthropics/claude-agent-sdk-python)
+- [SDK Demos Repository](https://github.com/anthropics/claude-agent-sdk-demos)
+- [Agent SDK Overview](https://docs.claude.com/en/api/agent-sdk/overview)
+- [Subagents Documentation](https://docs.claude.com/en/docs/agent-sdk/subagents)

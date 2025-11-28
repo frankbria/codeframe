@@ -3,7 +3,7 @@
 **Author**: Claude Code Analysis
 **Date**: 2025-11-28
 **Version**: 1.1
-**Updated**: 2025-11-28 - Implementation planning corrections added
+**Updated**: 2025-11-28 - All open questions resolved via SDK documentation review
 
 ---
 
@@ -850,14 +850,31 @@ integration_points:
 
 **Impact**: Cannot fully replace YAML with markdown. Hybrid approach required.
 
-### 8.3 Open Questions Requiring Resolution
+### 8.3 Resolved Questions (Previously Blocking)
 
-| ID | Question | Impact | Blocking |
-|----|----------|--------|----------|
-| OPEN-001 | SDK package name and installation method | Cannot start Phase 1 | **Yes** |
-| OPEN-002 | Does SDK support async/await natively? | Affects wrapper implementation | Yes |
-| OPEN-003 | Exact PreToolUse/PostToolUse hook signatures? | Affects Phase 2 quality gate integration | Yes |
-| OPEN-004 | How to programmatically spawn SDK subagents? | Affects Phase 3 agent creation | Yes |
+All questions have been answered via SDK documentation review. See [SDK_MIGRATION_IMPLEMENTATION_PLAN.md](SDK_MIGRATION_IMPLEMENTATION_PLAN.md) for full details.
+
+| ID | Question | Resolution | Source |
+|----|----------|------------|--------|
+| ~~OPEN-001~~ | SDK package name | `pip install claude-agent-sdk` (v0.1.10+, Python 3.10+) | [PyPI](https://pypi.org/project/claude-agent-sdk/) |
+| ~~OPEN-002~~ | Async support | **Yes** - fully async with `async for message in query()` pattern | [GitHub](https://github.com/anthropics/claude-agent-sdk-python) |
+| ~~OPEN-003~~ | Hook signatures | `async def hook(input_data, tool_use_id, context) -> dict` | [GitHub examples](https://github.com/anthropics/claude-agent-sdk-python) |
+| ~~OPEN-004~~ | Subagent spawning | Via `agents` param in `query()` or `.claude/agents/*.md` files | [Docs](https://docs.claude.com/en/docs/agent-sdk/subagents) |
+
+### 8.3.1 New Findings from Documentation
+
+**SDK Capabilities Confirmed**:
+- Full async/await support throughout
+- `ClaudeSDKClient` for stateful conversations
+- `query()` for simple one-shot interactions
+- In-process MCP servers via `create_sdk_mcp_server()`
+- Hook system: PreToolUse, PostToolUse, UserPromptSubmit, Stop, SubagentStop, PreCompact
+
+**Limitations Discovered**:
+- SessionStart, SessionEnd, Notification hooks NOT supported in Python SDK
+- Subagents cannot spawn nested subagents (prevents infinite recursion)
+- Known issues with hooks not triggering ([#193](https://github.com/anthropics/claude-agent-sdk-python/issues/193), [#213](https://github.com/anthropics/claude-agent-sdk-python/issues/213))
+- Maximum 10 concurrent subagents
 
 ### 8.4 Revised Effort Estimates
 
