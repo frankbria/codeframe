@@ -2,7 +2,8 @@
 
 **Author**: Claude Code Analysis
 **Date**: 2025-11-28
-**Version**: 1.0
+**Version**: 1.1
+**Updated**: 2025-11-28 - Implementation planning corrections added
 
 ---
 
@@ -791,6 +792,104 @@ You are a backend developer agent...
 - **Avoid**: Migrating quality gates, blockers, or full persistence to SDK
 
 The Claude Agent SDK is a production-tested foundation that can reduce CodeFRAME's maintenance burden while preserving its unique capabilities for autonomous, long-running agent sessions.
+
+---
+
+## 8. Implementation Planning Corrections
+
+> **Note**: This section documents findings discovered during detailed implementation planning.
+> See [SDK_MIGRATION_IMPLEMENTATION_PLAN.md](SDK_MIGRATION_IMPLEMENTATION_PLAN.md) for the full plan.
+
+### 8.1 Corrections to Original Analysis
+
+| Section | Original Statement | Actual Finding | Impact |
+|---------|-------------------|----------------|--------|
+| 1.7 Token Tracking | "Manual extraction from API responses" | **Already uses `response.usage.input_tokens/output_tokens`** (anthropic.py:101-107) | **Simpler** - minimal refactoring needed |
+| 2.1 Tool Framework | "Replace 500-700 lines" | Tools tightly integrated with quality gates, context management | **More complex** - careful extraction required |
+| 2.1 Agent Pattern | "Markdown subagent pattern can replace YAML" | YAML includes maturity_progression, error_recovery, integration_points not expressible in markdown | **Hybrid approach mandatory** |
+| 3.2 Quick Wins | "< 1 week each" | Some dependencies require architecture decisions first | **Sequencing matters** |
+
+### 8.2 Additional Complexity Discovered
+
+#### Dual API Patterns
+The codebase uses **both** synchronous and asynchronous Anthropic clients:
+
+```python
+# Synchronous (codeframe/providers/anthropic.py)
+from anthropic import Anthropic
+self.client = Anthropic(api_key=api_key)
+
+# Asynchronous (codeframe/agents/frontend_worker_agent.py, test_worker_agent.py)
+from anthropic import AsyncAnthropic
+self.client = AsyncAnthropic(api_key=api_key)
+```
+
+**Impact**: Migration must handle both patterns or consolidate to one.
+
+#### Rich YAML Agent Definitions
+Current YAML definitions include features not mappable to SDK markdown:
+
+```yaml
+# From backend.yaml
+maturity_progression:
+  - level: D1
+    description: "Basic task execution with supervision"
+    capabilities: ["simple_functions", "basic_tests"]
+  - level: D4
+    description: "System-level thinking and mentorship"
+    capabilities: ["architectural_design", "code_review"]
+
+error_recovery:
+  max_correction_attempts: 3
+  escalation_policy: "Create blocker for manual intervention"
+
+integration_points:
+  - database: "Task queue, status updates"
+  - codebase_index: "Symbol search, file discovery"
+```
+
+**Impact**: Cannot fully replace YAML with markdown. Hybrid approach required.
+
+### 8.3 Open Questions Requiring Resolution
+
+| ID | Question | Impact | Blocking |
+|----|----------|--------|----------|
+| OPEN-001 | SDK package name and installation method | Cannot start Phase 1 | **Yes** |
+| OPEN-002 | Does SDK support async/await natively? | Affects wrapper implementation | Yes |
+| OPEN-003 | Exact PreToolUse/PostToolUse hook signatures? | Affects Phase 2 quality gate integration | Yes |
+| OPEN-004 | How to programmatically spawn SDK subagents? | Affects Phase 3 agent creation | Yes |
+
+### 8.4 Revised Effort Estimates
+
+| Phase | Original | Revised | Reason |
+|-------|----------|---------|--------|
+| Phase 1: Foundation | 1-2 weeks | **1 week** | Token tracking simpler than expected |
+| Phase 2: Tool Framework | 3-4 weeks | **3-4 weeks** | Unchanged - complexity matches estimate |
+| Phase 3: Agent Pattern | 5-6 weeks | **4-6 weeks** | Hybrid approach adds flexibility |
+| Phase 4: Streaming | 7-8 weeks | **2-3 weeks** | Overestimated - SDK streaming simpler |
+| Phase 5: Optimization | Ongoing | **Ongoing** | Unchanged |
+
+### 8.5 Architecture Decisions Required
+
+Before implementation can proceed, these decisions must be made:
+
+1. **Quality Gate Integration Pattern**
+   - Option A: Pre-tool hooks block execution
+   - Option B: Wrapper tools combine checks + execution
+   - Option C: Post-tool validation
+   - **Recommendation**: Option A with Option C fallback
+
+2. **Maturity Level Preservation**
+   - Option A: Multiple markdown files per maturity level
+   - Option B: Dynamic prompt injection at runtime
+   - Option C: Keep YAML as source of truth, generate SDK prompts
+   - **Recommendation**: Option C (Hybrid)
+
+3. **Async vs Sync Consolidation**
+   - Option A: Migrate all to async SDK
+   - Option B: Keep dual patterns with wrappers
+   - Option C: Consolidate to sync with asyncio.to_thread()
+   - **Recommendation**: Option A if SDK supports async, else Option B
 
 ---
 
