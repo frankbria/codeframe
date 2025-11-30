@@ -728,6 +728,7 @@ class TokenUsage(BaseModel):
     estimated_cost_usd: float = Field(..., ge=0.0)
     actual_cost_usd: Optional[float] = Field(None, ge=0.0)
     call_type: CallType = CallType.OTHER
+    session_id: Optional[str] = Field(None, description="SDK session ID for conversation tracking")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(use_enum_values=True)

@@ -15,6 +15,7 @@ class SessionManager:
     - Current plan/task
     - Active blockers
     - Progress percentage
+    - SDK session IDs per agent (for conversation resume)
     """
 
     def __init__(self, project_path: str):
@@ -37,6 +38,7 @@ class SessionManager:
                 - current_plan (str): Current task/plan
                 - active_blockers (List[Dict]): Active blocker info
                 - progress_pct (float): Progress percentage
+                - sdk_sessions (Dict[str, str]): SDK session IDs per agent (optional)
         """
         session_data = {
             'last_session': {
@@ -47,7 +49,8 @@ class SessionManager:
             'next_actions': state.get('next_actions', []),
             'current_plan': state.get('current_plan'),
             'active_blockers': state.get('active_blockers', []),
-            'progress_pct': state.get('progress_pct', 0)
+            'progress_pct': state.get('progress_pct', 0),
+            'sdk_sessions': state.get('sdk_sessions', {})  # NEW: SDK session tracking
         }
 
         # Ensure .codeframe directory exists
