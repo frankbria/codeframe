@@ -21,6 +21,7 @@ from typing import Dict, Any, Optional, List
 import json
 import asyncio
 from datetime import datetime
+from pathlib import Path
 
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex

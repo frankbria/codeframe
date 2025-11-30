@@ -11,7 +11,6 @@ Tests cover:
 """
 
 import pytest
-from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch
 
 from codeframe.lib.sdk_hooks import (
@@ -19,8 +18,6 @@ from codeframe.lib.sdk_hooks import (
     create_metrics_post_hook,
     build_codeframe_hooks,
     validate_tool_safety_fallback,
-    PROTECTED_FILE_PATTERNS,
-    DANGEROUS_BASH_PATTERNS,
 )
 
 

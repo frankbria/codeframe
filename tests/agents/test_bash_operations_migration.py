@@ -16,12 +16,10 @@ only affects TestWorkerAgent._execute_tests() which currently uses subprocess.
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 from codeframe.agents.test_worker_agent import TestWorkerAgent
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.testing.test_runner import TestRunner
-from codeframe.core.models import Task, AgentMaturity
 
 
 class TestBashOperationsMigration:

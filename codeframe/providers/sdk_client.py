@@ -11,12 +11,7 @@ import os
 
 # SDK imports (verified from documentation)
 try:
-    from claude_agent_sdk import (
-        query,
-        ClaudeSDKClient,
-        ClaudeAgentOptions,
-        HookMatcher,
-    )
+    from claude_agent_sdk import query, ClaudeAgentOptions
 
     SDK_AVAILABLE = True
 except ImportError:

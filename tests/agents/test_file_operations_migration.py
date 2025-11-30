@@ -6,9 +6,7 @@ Tests cover both SDK mode (use_sdk=True) and fallback mode (use_sdk=False).
 
 import pytest
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database

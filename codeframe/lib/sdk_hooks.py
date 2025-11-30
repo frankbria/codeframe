@@ -44,7 +44,6 @@ See Also:
 import logging
 import re
 from typing import Dict, Any, Optional, Callable
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

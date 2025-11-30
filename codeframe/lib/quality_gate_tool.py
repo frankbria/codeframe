@@ -222,7 +222,7 @@ async def _run_specific_gates(
     checks: List[str],
 ) -> QualityGateResult:
     """Run specific subset of quality gates."""
-    from codeframe.core.models import QualityGateResult, QualityGateFailure
+    from codeframe.core.models import QualityGateResult
 
     all_failures = []
     start_time = datetime.now(timezone.utc)

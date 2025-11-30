@@ -1,15 +1,13 @@
 """Tests for Quality Gate MCP Tool (Task 2.4)."""
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 
 from codeframe.lib.quality_gate_tool import run_quality_gates, VALID_CHECKS
 from codeframe.persistence.database import Database
 from codeframe.core.models import (
-    Task,
-    TaskStatus,
     QualityGateType,
     QualityGateFailure,
     QualityGateResult,
