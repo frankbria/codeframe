@@ -17,7 +17,6 @@ Phase 1 Implementation: Foundation (initialization and task fetching)
 
 import logging
 import os
-from pathlib import Path
 from typing import Dict, Any, Optional, List
 import json
 import asyncio
@@ -26,6 +25,7 @@ from datetime import datetime
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.core.models import TaskStatus
+from codeframe.providers.sdk_client import SDKClientWrapper
 
 
 logger = logging.getLogger(__name__)
@@ -59,8 +59,9 @@ class BackendWorkerAgent:
         codebase_index: CodebaseIndex,
         provider: str = "claude",
         api_key: Optional[str] = None,
-        project_root: Path = Path("."),
+        project_root: str = ".",
         ws_manager=None,
+        use_sdk: bool = True,
     ):
         """
         Initialize Backend Worker Agent.
@@ -71,8 +72,9 @@ class BackendWorkerAgent:
             codebase_index: Indexed codebase for context retrieval
             provider: LLM provider (default: "claude")
             api_key: API key for LLM provider (uses ANTHROPIC_API_KEY env var if not provided)
-            project_root: Project root directory for file operations
+            project_root: Project root directory for file operations (string path)
             ws_manager: Optional WebSocket ConnectionManager for real-time updates (cf-45)
+            use_sdk: Whether to use Claude Agent SDK (default: True)
 
         Raises:
             ValueError: If project_id is invalid or database not initialized
@@ -82,8 +84,22 @@ class BackendWorkerAgent:
         self.codebase_index = codebase_index
         self.provider = provider
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.project_root = Path(project_root)
+        self.project_root = project_root  # String path for SDK compatibility
         self.ws_manager = ws_manager
+        self.use_sdk = use_sdk
+
+        # Initialize SDK client if enabled
+        if self.use_sdk:
+            self.sdk_client = SDKClientWrapper(
+                api_key=self.api_key,
+                model="claude-sonnet-4-20250514",
+                system_prompt=self._build_system_prompt(),
+                allowed_tools=["Read", "Write", "Bash", "Glob", "Grep"],
+                cwd=self.project_root,
+                permission_mode="acceptEdits",
+            )
+        else:
+            self.sdk_client = None
 
         # Validate project exists
         if not self.db:
@@ -92,8 +108,41 @@ class BackendWorkerAgent:
         logger.info(
             f"Initialized BackendWorkerAgent: project_id={project_id}, "
             f"provider={provider}, project_root={project_root}, "
-            f"ws_enabled={ws_manager is not None}"
+            f"ws_enabled={ws_manager is not None}, use_sdk={use_sdk}"
         )
+
+    def _build_system_prompt(self) -> str:
+        """Build system prompt for backend agent."""
+        return """You are a Backend Worker Agent in the CodeFRAME autonomous development system.
+
+Your role:
+- Read the task description carefully
+- Analyze existing codebase structure
+- Write clean, tested Python code
+- Follow project conventions and patterns
+
+Important: When writing files, use the Write tool. When reading files, use the Read tool.
+The Write tool automatically creates parent directories and handles file safety.
+
+Output format:
+Return a JSON object with this structure:
+{
+  "files": [
+    {
+      "path": "relative/path/to/file.py",
+      "action": "create" | "modify" | "delete",
+      "content": "file content here"
+    }
+  ],
+  "explanation": "Brief explanation of changes"
+}
+
+Guidelines:
+- Use strict TDD: Write tests before implementation
+- Follow existing code style and patterns
+- Keep functions small and focused
+- Add comprehensive docstrings
+- Handle errors gracefully"""
 
     def fetch_next_task(self) -> Optional[Dict[str, Any]]:
         """
@@ -201,7 +250,7 @@ class BackendWorkerAgent:
         """
         Generate code using LLM based on context.
 
-        Constructs prompts from context and calls Anthropic Claude API
+        Constructs prompts from context and calls Claude API (via SDK or direct)
         to generate code changes.
 
         Args:
@@ -220,41 +269,10 @@ class BackendWorkerAgent:
                 "explanation": str  # What was changed and why
             }
         """
-        from anthropic import AsyncAnthropic
-
         task = context["task"]
         related_symbols = context.get("related_symbols", [])
         related_files = context.get("related_files", [])
         issue_context = context.get("issue_context")
-
-        # Build system prompt
-        system_prompt = """You are a Backend Worker Agent in the CodeFRAME autonomous development system.
-
-Your role:
-- Read the task description carefully
-- Analyze existing codebase structure
-- Write clean, tested Python code
-- Follow project conventions and patterns
-
-Output format:
-Return a JSON object with this structure:
-{
-  "files": [
-    {
-      "path": "relative/path/to/file.py",
-      "action": "create" | "modify" | "delete",
-      "content": "file content here"
-    }
-  ],
-  "explanation": "Brief explanation of changes"
-}
-
-Guidelines:
-- Use strict TDD: Write tests before implementation
-- Follow existing code style and patterns
-- Keep functions small and focused
-- Add comprehensive docstrings
-- Handle errors gracefully"""
 
         # Build user prompt
         user_prompt_parts = [
@@ -288,23 +306,45 @@ Guidelines:
             user_prompt_parts.append("")
 
         user_prompt_parts.append("Please implement this task following TDD methodology.")
+        user_prompt_parts.append("")
+        user_prompt_parts.append("Use the Write tool to create or modify files.")
+        user_prompt_parts.append("Return JSON with the structure specified in the system prompt.")
         user_prompt = "\n".join(user_prompt_parts)
 
-        # Call Anthropic API
-        client = AsyncAnthropic(api_key=self.api_key)
+        logger.debug(f"Generating code for task {task.get('id', 'unknown')} (use_sdk={self.use_sdk})")
 
-        logger.debug(f"Calling Anthropic API for task {task.get('id', 'unknown')}")
+        if self.use_sdk and self.sdk_client:
+            # SDK path - let SDK handle file operations via tools
+            response = await self.sdk_client.send_message([
+                {"role": "user", "content": user_prompt}
+            ])
 
-        response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
+            # Parse JSON response from SDK
+            response_text = response.get("content", "{}")
+            try:
+                result = json.loads(response_text)
+            except json.JSONDecodeError:
+                # Fallback if SDK doesn't return JSON
+                result = {
+                    "files": [],
+                    "explanation": "SDK execution completed but no structured output returned"
+                }
+        else:
+            # Fallback to direct Anthropic API
+            from anthropic import AsyncAnthropic
 
-        # Parse response
-        response_text = response.content[0].text
-        result = json.loads(response_text)
+            client = AsyncAnthropic(api_key=self.api_key)
+
+            response = await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4096,
+                system=self._build_system_prompt(),
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+
+            # Parse response
+            response_text = response.content[0].text
+            result = json.loads(response_text)
 
         logger.info(
             f"Generated {len(result.get('files', []))} file changes for task {task.get('id', 'unknown')}"
@@ -316,8 +356,11 @@ Guidelines:
         """
         Apply file changes to disk.
 
-        Safely writes, modifies, or deletes files with security validation
-        and atomic operations.
+        When using SDK (use_sdk=True), files have already been written by the SDK's
+        Write tool, so this method just validates and returns paths.
+
+        When not using SDK, safely writes, modifies, or deletes files with security
+        validation and atomic operations.
 
         Args:
             files: List of file change dictionaries from generate_code()
@@ -327,8 +370,10 @@ Guidelines:
 
         Raises:
             ValueError: If path traversal or absolute path detected
-            FileNotFoundError: If file to modify/delete doesn't exist
+            FileNotFoundError: If file to modify/delete doesn't exist (non-SDK mode only)
         """
+        from pathlib import Path
+
         modified_paths = []
 
         for file_spec in files:
@@ -337,38 +382,46 @@ Guidelines:
             content = file_spec.get("content", "")
 
             # Security: Validate path (no absolute paths, no traversal)
-            if Path(path).is_absolute():
+            path_obj = Path(path)
+            if path_obj.is_absolute():
                 raise ValueError(f"Absolute path not allowed: {path}")
 
             # Resolve path and check it stays within project_root
-            target_path = (self.project_root / path).resolve()
+            project_root_path = Path(self.project_root)
+            target_path = (project_root_path / path).resolve()
             try:
-                target_path.relative_to(self.project_root.resolve())
+                target_path.relative_to(project_root_path.resolve())
             except ValueError:
                 raise ValueError(f"Path traversal detected: {path}")
 
-            # Perform action
-            if action == "create" or action == "modify":
-                if action == "modify" and not target_path.exists():
-                    raise FileNotFoundError(f"Cannot modify non-existent file: {path}")
+            if self.use_sdk:
+                # SDK mode: Files already written by SDK Write tool
+                # Just validate and track paths
+                logger.info(f"SDK handled {action} for: {path}")
+                modified_paths.append(path)
+            else:
+                # Non-SDK mode: Perform file operations directly
+                if action == "create" or action == "modify":
+                    if action == "modify" and not target_path.exists():
+                        raise FileNotFoundError(f"Cannot modify non-existent file: {path}")
 
-                # Create parent directories if needed
-                target_path.parent.mkdir(parents=True, exist_ok=True)
+                    # Create parent directories if needed
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Write file
-                target_path.write_text(content, encoding="utf-8")
-                logger.info(f"{action.capitalize()}d file: {path}")
+                    # Write file
+                    target_path.write_text(content, encoding="utf-8")
+                    logger.info(f"{action.capitalize()}d file: {path}")
 
-            elif action == "delete":
-                if not target_path.exists():
-                    raise FileNotFoundError(f"Cannot delete non-existent file: {path}")
+                elif action == "delete":
+                    if not target_path.exists():
+                        raise FileNotFoundError(f"Cannot delete non-existent file: {path}")
 
-                target_path.unlink()
-                logger.info(f"Deleted file: {path}")
+                    target_path.unlink()
+                    logger.info(f"Deleted file: {path}")
 
-            modified_paths.append(path)
+                modified_paths.append(path)
 
-        logger.info(f"Applied {len(modified_paths)} file changes")
+        logger.info(f"Applied {len(modified_paths)} file changes (sdk={self.use_sdk})")
         return modified_paths
 
     def update_task_status(

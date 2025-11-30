@@ -1,0 +1,215 @@
+Quality Gate MCP Tool - Execution Flow
+=====================================
+
+┌─────────────────────────────────────────────────────────────────┐
+│ SDK Agent (HybridWorkerAgent)                                   │
+│                                                                  │
+│  async def complete_task(task):                                 │
+│      result = await run_quality_gates(                          │
+│          task_id=42,                                            │
+│          project_id=1,                                          │
+│          checks=["tests", "coverage"]                           │
+│      )                                                          │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            │ (1) Invoke tool
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ codeframe/lib/quality_gate_tool.py                              │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ async def run_quality_gates()                            │  │
+│  │                                                          │  │
+│  │  (2) Validate inputs                                    │  │
+│  │      checks in ["tests", "types", "coverage", ...]      │  │
+│  │                                                          │  │
+│  │  (3) Load task from DB                                  │  │
+│  │      task = _load_task(db, task_id, project_id)         │  │
+│  │                                                          │  │
+│  │  (4) Initialize QualityGates                            │  │
+│  │      gates = QualityGates(db, project_id, root)         │  │
+│  │                                                          │  │
+│  │  (5) Run gates                                          │  │
+│  │      if checks is None:                                 │  │
+│  │          result = await gates.run_all_gates(task)       │  │
+│  │      else:                                              │  │
+│  │          result = await _run_specific_gates(...)        │  │
+│  │                                                          │  │
+│  │  (6) Format results                                     │  │
+│  │      return _format_result(result, ...)                 │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            │ (7) Delegate to existing logic
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ codeframe/lib/quality_gates.py (EXISTING - 969 lines)           │
+│                                                                  │
+│  class QualityGates:                                            │
+│                                                                  │
+│      async def run_all_gates(task):                             │
+│          ├─> run_linting_gate(task)      # 1-5s                │
+│          ├─> run_type_check_gate(task)   # 2-15s               │
+│          ├─> run_tests_gate(task)        # 5-60s               │
+│          ├─> run_coverage_gate(task)     # 5-60s               │
+│          └─> run_review_gate(task)       # 10-30s              │
+│                                                                  │
+│          return QualityGateResult(                              │
+│              status="passed" | "failed",                        │
+│              failures=[...],                                    │
+│              execution_time=81.5                                │
+│          )                                                      │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            │ (8) Write results
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ Database (SQLite)                                                │
+│                                                                  │
+│  tasks.quality_gate_status = "passed" | "failed"                │
+│  tasks.quality_gate_failures = JSON([...])                      │
+│                                                                  │
+│  blockers (if failed):                                          │
+│      blocker_type = "SYNC"                                      │
+│      question = "Quality gates failed: ..."                     │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            │ (9) Return formatted result
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ SDK Agent (receives result)                                     │
+│                                                                  │
+│  {                                                              │
+│      "status": "failed",                                        │
+│      "checks": {                                                │
+│          "tests": {"passed": false, ...},                       │
+│          "coverage": {"passed": false, "percentage": 72.5}      │
+│      },                                                         │
+│      "blocking_failures": [                                     │
+│          {"gate": "tests", "reason": "3 tests failed"},         │
+│          {"gate": "coverage", "reason": "Below 85%"}            │
+│      ],                                                         │
+│      "execution_time_total": 81.5                               │
+│  }                                                              │
+│                                                                  │
+│  if result["status"] == "failed":                               │
+│      # Create blocker, don't complete task                      │
+└─────────────────────────────────────────────────────────────────┘
+
+
+Result Format Examples
+======================
+
+SUCCESS RESPONSE:
+{
+  "status": "passed",
+  "task_id": 42,
+  "project_id": 1,
+  "checks": {
+    "tests": {
+      "passed": true,
+      "details": "150 tests passed",
+      "execution_time": 45.2
+    },
+    "coverage": {
+      "passed": true,
+      "percentage": 87.5,
+      "details": "Coverage: 87.5%",
+      "execution_time": 2.1
+    }
+  },
+  "blocking_failures": [],
+  "execution_time_total": 47.3,
+  "timestamp": "2025-11-30T14:30:00Z"
+}
+
+FAILURE RESPONSE:
+{
+  "status": "failed",
+  "task_id": 42,
+  "project_id": 1,
+  "checks": {
+    "tests": {
+      "passed": false,
+      "details": "3 tests failed: test_auth.py::test_login, ...",
+      "execution_time": 45.2
+    },
+    "coverage": {
+      "passed": false,
+      "percentage": 72.5,
+      "details": "Coverage: 72.5% (required: 85%)",
+      "execution_time": 2.1
+    }
+  },
+  "blocking_failures": [
+    {
+      "gate": "tests",
+      "severity": "high",
+      "reason": "3 tests failed",
+      "details": "test_auth.py::test_login FAILED\n..."
+    },
+    {
+      "gate": "coverage",
+      "severity": "high",
+      "reason": "Coverage 72.5% is below required 85%",
+      "details": "Missing coverage in src/auth.py (15 lines)"
+    }
+  ],
+  "execution_time_total": 47.3,
+  "timestamp": "2025-11-30T14:30:00Z"
+}
+
+ERROR RESPONSE:
+{
+  "status": "error",
+  "error": {
+    "type": "ValueError",
+    "message": "Task 999 not found in project 1",
+    "details": "Ensure task_id and project_id are valid"
+  },
+  "task_id": 999,
+  "project_id": 1,
+  "timestamp": "2025-11-30T14:30:00Z"
+}
+
+
+Code Structure
+==============
+
+codeframe/lib/quality_gate_tool.py (~150 lines)
+├── Imports & Constants (20 lines)
+│   ├── VALID_CHECKS = ["tests", "types", "coverage", "review", "linting"]
+│   └── CHECK_NAME_TO_GATE mapping
+│
+├── run_quality_gates() (50 lines)
+│   ├── Validate inputs
+│   ├── Load task from DB
+│   ├── Initialize QualityGates
+│   ├── Run gates (all or subset)
+│   └── Format & return results
+│
+├── _load_task() (15 lines)
+│   └── Query DB for task by ID
+│
+├── _get_project_root() (10 lines)
+│   └── Query DB for project root path
+│
+├── _run_specific_gates() (30 lines)
+│   ├── Run requested gates only
+│   └── Aggregate results
+│
+├── _format_result() (25 lines)
+│   ├── Group failures by gate type
+│   ├── Build checks dict
+│   ├── Extract coverage percentages
+│   └── Format blocking_failures
+│
+└── Helper Functions (10 lines)
+    ├── _error_response()
+    ├── _format_gate_details()
+    ├── _extract_coverage_pct()
+    └── _format_review_issues()
