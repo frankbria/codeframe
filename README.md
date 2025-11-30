@@ -20,21 +20,28 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ## Key Features
 
-🤖 **Multi-Agent Orchestra** - Lead agent coordinates backend, frontend, test, and review specialists
-🚧 **Human-in-the-Loop Blockers** - Agents pause and ask questions when they need human decisions
-📊 **Context-Aware Memory** - Tiered HOT/WARM/COLD memory system reduces token usage by 30-50%
-💾 **Session Lifecycle Management** - Auto-save/restore work context across CLI restarts
-🌐 **Real-time Dashboard** - WebSocket-powered UI with agent status, blockers, and progress tracking
-⚡ **Async/Await Architecture** - Non-blocking agent execution with true concurrency
-🔄 **Self-Correction Loops** - Agents automatically fix failing tests (up to 3 attempts)
-🛡️ **AI Quality Enforcement** - Dual-layer quality system preventing test skipping and enforcing 85%+ coverage
-🔍 **Automated Code Review** - Security scanning, OWASP pattern detection, and complexity analysis
-📋 **Lint Enforcement** - Multi-language linting with trend tracking and automatic fixes
-🔔 **Multi-Channel Notifications** - Desktop notifications, webhooks, and custom routing for agent events
-🚀 **Auto-Commit Workflows** - Git integration with automatic commits after successful test passes
-✅ **Quality Gates** - Pre-completion checks block bad code (tests, types, coverage, review)
-💾 **Checkpoint & Recovery** - Git + DB snapshots enable project state rollback
-💰 **Cost Tracking** - Real-time token usage and cost analytics per agent/task
+### Multi-Agent System
+- 🤖 **Multi-Agent Orchestra** - Lead agent coordinates backend, frontend, test, and review specialists
+- 🚧 **Human-in-the-Loop Blockers** - Agents pause and ask questions when they need human decisions
+- ⚡ **Async/Await Architecture** - Non-blocking agent execution with true concurrency
+- 🔄 **Self-Correction Loops** - Agents automatically fix failing tests (up to 3 attempts)
+
+### Quality & Review
+- 🛡️ **AI Quality Enforcement** - Dual-layer quality system preventing test skipping and enforcing 85%+ coverage
+- ✅ **Quality Gates** - Pre-completion checks block bad code (tests, types, coverage, review)
+- 🔍 **Automated Code Review** - Security scanning, OWASP pattern detection, and complexity analysis
+- 📋 **Lint Enforcement** - Multi-language linting with trend tracking and automatic fixes
+
+### State & Context Management
+- 📊 **Context-Aware Memory** - Tiered HOT/WARM/COLD memory system reduces token usage by 30-50%
+- 💾 **Session Lifecycle Management** - Auto-save/restore work context across CLI restarts
+- 💾 **Checkpoint & Recovery** - Git + DB snapshots enable project state rollback
+
+### Developer Experience
+- 🌐 **Real-time Dashboard** - WebSocket-powered UI with agent status, blockers, and progress tracking
+- 🔔 **Multi-Channel Notifications** - Desktop notifications, webhooks, and custom routing for agent events
+- 🚀 **Auto-Commit Workflows** - Git integration with automatic commits after successful test passes
+- 💰 **Cost Tracking** - Real-time token usage and cost analytics per agent/task
 
 ---
 
