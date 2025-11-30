@@ -99,6 +99,13 @@ class BackendWorkerAgent:
                 cwd=self.project_root,
                 permission_mode="acceptEdits",
             )
+            # If SDK client is in fallback mode, disable SDK behavior for file operations
+            if not getattr(self.sdk_client, "_use_sdk", True):
+                logger.warning(
+                    "SDK client initialized in fallback mode; disabling SDK behavior "
+                    "for file operations to ensure actual file writes occur."
+                )
+                self.use_sdk = False
         else:
             self.sdk_client = None
 
