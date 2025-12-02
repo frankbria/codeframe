@@ -42,6 +42,8 @@ class LeadAgent:
         model: str = "claude-sonnet-4-20250514",
         ws_manager=None,
         max_agents: int = 10,
+        use_sdk: bool = False,
+        project_root: Optional[str] = None,
     ):
         """Initialize Lead Agent with database and Anthropic provider.
 
@@ -52,6 +54,8 @@ class LeadAgent:
             model: Claude model to use (default: claude-sonnet-4-20250514)
             ws_manager: WebSocket manager for broadcasts (optional)
             max_agents: Maximum number of concurrent agents (default: 10)
+            use_sdk: Use SDK execution mode for worker agents (default: False)
+            project_root: Project root directory for SDK agents (optional, overrides workspace_path)
 
         Raises:
             ValueError: If API key is missing
@@ -73,16 +77,26 @@ class LeadAgent:
         # Codebase indexing
         self.codebase_index: Optional[CodebaseIndex] = None
 
-        # Multi-agent coordination (Sprint 4)
+        # Store SDK mode flag
+        self.use_sdk = use_sdk
+        self._project_root_override = project_root
+
+        # Multi-agent coordination (Sprint 4) with SDK support (Phase 3)
         self.agent_pool_manager = AgentPoolManager(
             project_id=project_id,
             db=db,
             ws_manager=ws_manager,
             max_agents=max_agents,
             api_key=api_key,
+            use_sdk=use_sdk,
+            model=model,
+            cwd=project_root,  # Set after workspace_path resolution below
         )
         self.dependency_resolver = DependencyResolver()
         self.agent_assigner = SimpleAgentAssigner()
+
+        # SDK session tracking (Phase 3)
+        self._sdk_sessions: Dict[str, str] = {}
 
         # Git workflow manager (cf-33)
         from codeframe.git.workflow_manager import GitWorkflowManager
@@ -1356,6 +1370,12 @@ Generate the PRD in markdown format with clear sections and professional languag
             # Get agent instance
             agent_instance = self.agent_pool_manager.get_agent_instance(agent_id)
 
+            # Phase 3: Track SDK session ID for hybrid agents
+            session_id = getattr(agent_instance, "session_id", None)
+            if session_id:
+                self._sdk_sessions[agent_id] = session_id
+                logger.debug(f"Tracking SDK session for {agent_id}: {session_id}")
+
             # Execute task (assuming agents have execute_task method)
             logger.info(f"Agent {agent_id} executing task {task.id}")
 
@@ -1767,6 +1787,9 @@ Generate the PRD in markdown format with clear sections and professional languag
             return
 
         try:
+            # Gather SDK sessions from agent pool
+            sdk_sessions = self._get_sdk_sessions()
+
             # Gather session state
             state = {
                 "summary": self._get_session_summary(),
@@ -1775,10 +1798,38 @@ Generate the PRD in markdown format with clear sections and professional languag
                 "current_plan": self.current_task,
                 "active_blockers": self._get_blocker_summaries(),
                 "progress_pct": self._get_progress_percentage(),
+                "sdk_sessions": sdk_sessions,  # Phase 3: Track SDK sessions for resume
             }
 
             # Save to file
             self.session_manager.save_session(state)
-            logger.debug("Session state saved successfully")
+            logger.debug(f"Session state saved successfully (SDK sessions: {len(sdk_sessions)})")
         except Exception as e:
             logger.error(f"Failed to save session state: {e}")
+
+    def _get_sdk_sessions(self) -> Dict[str, str]:
+        """Get SDK session IDs from all hybrid agents in pool.
+
+        Phase 3: Track SDK sessions for conversation resume capability.
+        Each hybrid agent may have a session_id that allows resuming
+        conversations when the agent is reused.
+
+        Returns:
+            Dictionary mapping agent_id to session_id for hybrid agents
+        """
+        sdk_sessions = {}
+
+        try:
+            agent_status = self.agent_pool_manager.get_agent_status()
+
+            for agent_id, info in agent_status.items():
+                # Only include hybrid agents with valid session IDs
+                if info.get("is_hybrid") and info.get("session_id"):
+                    sdk_sessions[agent_id] = info["session_id"]
+
+            logger.debug(f"Gathered {len(sdk_sessions)} SDK sessions from agent pool")
+
+        except Exception as e:
+            logger.warning(f"Failed to gather SDK sessions: {e}")
+
+        return sdk_sessions

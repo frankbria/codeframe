@@ -330,3 +330,180 @@ class TestLeadAgentSessionLifecycle:
             # Session should be restored
             session = new_agent.session_manager.load_session()
             assert session is not None
+
+
+class TestLeadAgentSDKCoordination:
+    """Tests for Lead Agent SDK coordination features (Phase 3)."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Mock database with test data."""
+        db = Mock(spec=Database)
+        db.get_project.return_value = {"workspace_path": "/tmp/test-project"}
+        db.get_recently_completed_tasks.return_value = []
+        db.get_pending_tasks.return_value = []
+        db.get_project_stats.return_value = {"total_tasks": 0, "completed_tasks": 0}
+        db.list_blockers.return_value = {"blockers": [], "total": 0}
+        return db
+
+    @pytest.fixture
+    def lead_agent(self, mock_db):
+        """Create Lead Agent with mocked dependencies."""
+        with patch("codeframe.agents.lead_agent.AnthropicProvider"):
+            agent = LeadAgent(project_id=1, db=mock_db, api_key="test-key")
+            return agent
+
+    def test_init_with_use_sdk_parameter(self, mock_db):
+        """Test LeadAgent initializes with use_sdk parameter."""
+        with patch("codeframe.agents.lead_agent.AnthropicProvider"):
+            agent = LeadAgent(project_id=1, db=mock_db, api_key="test-key", use_sdk=True)
+
+            assert agent.use_sdk is True
+
+    def test_init_with_project_root_parameter(self, mock_db, tmp_path):
+        """Test LeadAgent initializes with project_root parameter."""
+        with patch("codeframe.agents.lead_agent.AnthropicProvider"):
+            agent = LeadAgent(
+                project_id=1,
+                db=mock_db,
+                api_key="test-key",
+                project_root=str(tmp_path),
+            )
+
+            assert agent._project_root_override == str(tmp_path)
+
+    def test_sdk_sessions_initialized_empty(self, lead_agent):
+        """Test _sdk_sessions dict is initialized empty."""
+        assert hasattr(lead_agent, "_sdk_sessions")
+        assert lead_agent._sdk_sessions == {}
+
+    def test_get_sdk_sessions_returns_empty_dict(self, lead_agent):
+        """Test _get_sdk_sessions() returns empty dict when no hybrid agents."""
+        result = lead_agent._get_sdk_sessions()
+
+        assert result == {}
+
+    def test_get_sdk_sessions_with_hybrid_agents(self, lead_agent):
+        """Test _get_sdk_sessions() returns session IDs from hybrid agents."""
+        # Mock agent pool manager to return hybrid agent status
+        lead_agent.agent_pool_manager.get_agent_status = Mock(
+            return_value={
+                "backend-worker-001": {
+                    "agent_type": "backend",
+                    "status": "idle",
+                    "is_hybrid": True,
+                    "session_id": "sess-123-abc",
+                },
+                "frontend-worker-001": {
+                    "agent_type": "frontend",
+                    "status": "busy",
+                    "is_hybrid": True,
+                    "session_id": "sess-456-def",
+                },
+            }
+        )
+
+        result = lead_agent._get_sdk_sessions()
+
+        assert len(result) == 2
+        assert result["backend-worker-001"] == "sess-123-abc"
+        assert result["frontend-worker-001"] == "sess-456-def"
+
+    def test_get_sdk_sessions_excludes_non_hybrid_agents(self, lead_agent):
+        """Test _get_sdk_sessions() excludes traditional (non-hybrid) agents."""
+        # Mock mix of hybrid and traditional agents
+        lead_agent.agent_pool_manager.get_agent_status = Mock(
+            return_value={
+                "backend-worker-001": {
+                    "agent_type": "backend",
+                    "status": "idle",
+                    "is_hybrid": True,
+                    "session_id": "sess-123",
+                },
+                "frontend-worker-001": {
+                    "agent_type": "frontend",
+                    "status": "idle",
+                    "is_hybrid": False,
+                    "session_id": None,
+                },
+            }
+        )
+
+        result = lead_agent._get_sdk_sessions()
+
+        assert len(result) == 1
+        assert "backend-worker-001" in result
+        assert "frontend-worker-001" not in result
+
+    def test_get_sdk_sessions_excludes_agents_without_session_id(self, lead_agent):
+        """Test _get_sdk_sessions() excludes hybrid agents without session_id."""
+        # Mock hybrid agent that hasn't started a session yet
+        lead_agent.agent_pool_manager.get_agent_status = Mock(
+            return_value={
+                "backend-worker-001": {
+                    "agent_type": "backend",
+                    "status": "idle",
+                    "is_hybrid": True,
+                    "session_id": None,  # No session yet
+                },
+            }
+        )
+
+        result = lead_agent._get_sdk_sessions()
+
+        assert result == {}
+
+    def test_get_sdk_sessions_handles_error(self, lead_agent):
+        """Test _get_sdk_sessions() handles errors gracefully."""
+        # Mock exception from agent pool manager
+        lead_agent.agent_pool_manager.get_agent_status = Mock(side_effect=Exception("Pool error"))
+
+        result = lead_agent._get_sdk_sessions()
+
+        # Should return empty dict, not raise exception
+        assert result == {}
+
+    def test_on_session_end_includes_sdk_sessions(self, lead_agent, tmp_path):
+        """Test on_session_end() includes sdk_sessions in saved state."""
+        # Set up mock session manager with tmp_path
+        from codeframe.core.session_manager import SessionManager
+
+        lead_agent.session_manager = SessionManager(str(tmp_path))
+
+        # Mock SDK sessions
+        lead_agent.agent_pool_manager.get_agent_status = Mock(
+            return_value={
+                "backend-worker-001": {
+                    "is_hybrid": True,
+                    "session_id": "sess-test-123",
+                }
+            }
+        )
+
+        # Save session
+        lead_agent.on_session_end()
+
+        # Load and verify SDK sessions saved
+        session = lead_agent.session_manager.load_session()
+        assert "sdk_sessions" in session
+        assert session["sdk_sessions"]["backend-worker-001"] == "sess-test-123"
+
+    def test_agent_pool_manager_created_with_use_sdk(self, mock_db):
+        """Test AgentPoolManager is created with use_sdk parameter."""
+        with patch("codeframe.agents.lead_agent.AnthropicProvider"):
+            with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+                mock_pool_class.return_value = Mock()
+
+                LeadAgent(
+                    project_id=1,
+                    db=mock_db,
+                    api_key="test-key",
+                    use_sdk=True,
+                    project_root="/test/path",
+                )
+
+                # Verify AgentPoolManager was called with SDK parameters
+                mock_pool_class.assert_called_once()
+                call_kwargs = mock_pool_class.call_args[1]
+                assert call_kwargs["use_sdk"] is True
+                assert call_kwargs["cwd"] == "/test/path"

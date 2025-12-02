@@ -2,10 +2,34 @@
 Agent Pool Manager for parallel task execution (Sprint 4: cf-24).
 
 This module manages a pool of worker agents, enabling reuse and parallel execution.
+Supports both traditional WorkerAgents and HybridWorkerAgents for SDK execution.
+
+Usage with SDK mode:
+--------------------
+```python
+# Create pool with SDK mode enabled
+pool = AgentPoolManager(
+    project_id=1,
+    db=db,
+    use_sdk=True,  # Enable SDK execution
+)
+
+# Create hybrid agent (uses SDK for execution)
+agent_id = pool.create_agent("backend")
+
+# Get agent instance for task execution
+agent = pool.get_agent_instance(agent_id)
+result = await agent.execute_task(task)
+```
+
+Feature flags:
+- `use_sdk=True`: Create HybridWorkerAgent instances (SDK execution)
+- `use_sdk=False`: Create traditional WorkerAgent instances (default)
 """
 
 import logging
 import asyncio
+import os
 from typing import Dict, Optional, Any
 from threading import RLock
 
@@ -13,9 +37,20 @@ from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
 from codeframe.agents.test_worker_agent import TestWorkerAgent
 from codeframe.agents.review_worker_agent import ReviewWorkerAgent
+from codeframe.agents.hybrid_worker import HybridWorkerAgent
+from codeframe.core.models import AgentMaturity
 from codeframe.ui.websocket_broadcasts import broadcast_agent_created, broadcast_agent_retired
 
 logger = logging.getLogger(__name__)
+
+# SDK availability check
+try:
+    from codeframe.providers.sdk_client import SDKClientWrapper
+
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
+    logger.warning("SDK client not available - falling back to traditional agents")
 
 
 class AgentPoolManager:
@@ -38,6 +73,9 @@ class AgentPoolManager:
         ws_manager=None,
         max_agents: int = 10,
         api_key: Optional[str] = None,
+        use_sdk: bool = False,
+        model: str = "claude-sonnet-4-20250514",
+        cwd: Optional[str] = None,
     ):
         """
         Initialize Agent Pool Manager.
@@ -48,12 +86,18 @@ class AgentPoolManager:
             ws_manager: WebSocket manager for broadcasts (optional)
             max_agents: Maximum number of concurrent agents (default: 10)
             api_key: Anthropic API key (optional, will use env var if not provided)
+            use_sdk: Whether to create HybridWorkerAgents with SDK execution (default: False)
+            model: Model to use for SDK agents (default: claude-sonnet-4-20250514)
+            cwd: Working directory for SDK agents (default: current directory)
         """
         self.project_id = project_id
         self.db = db
         self.ws_manager = ws_manager
         self.max_agents = max_agents
-        self.api_key = api_key
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.use_sdk = use_sdk and SDK_AVAILABLE
+        self.model = model
+        self.cwd = cwd or os.getcwd()
 
         # Agent pool: {agent_id: agent_info}
         self.agent_pool: Dict[str, Dict[str, Any]] = {}
@@ -64,16 +108,22 @@ class AgentPoolManager:
         # Thread lock for pool operations (using RLock for reentrancy)
         self.lock = RLock()
 
+        # Log SDK mode status
+        if use_sdk and not SDK_AVAILABLE:
+            logger.warning("SDK requested but not available - using traditional agents")
+
         logger.info(
-            f"Agent Pool Manager initialized: project_id={project_id}, max_agents={max_agents}"
+            f"Agent Pool Manager initialized: project_id={project_id}, "
+            f"max_agents={max_agents}, use_sdk={self.use_sdk}"
         )
 
-    def create_agent(self, agent_type: str) -> str:
+    def create_agent(self, agent_type: str, use_sdk: Optional[bool] = None) -> str:
         """
         Create new worker agent of specified type.
 
         Args:
-            agent_type: Type of agent to create (backend, frontend, test)
+            agent_type: Type of agent to create (backend, frontend, test, review)
+            use_sdk: Override pool's use_sdk setting for this agent (optional)
 
         Returns:
             agent_id: ID of created agent
@@ -82,7 +132,12 @@ class AgentPoolManager:
             ValueError: If unknown agent type
             RuntimeError: If agent pool at maximum capacity
         """
-        print(f"\n🏭 DEBUG: create_agent called with agent_type={agent_type}")
+        # Determine whether to use SDK for this agent
+        create_hybrid = use_sdk if use_sdk is not None else self.use_sdk
+
+        print(
+            f"\n🏭 DEBUG: create_agent called with agent_type={agent_type}, use_sdk={create_hybrid}"
+        )
         with self.lock:
             print("🏭 DEBUG: Acquired lock")
             # Check pool capacity
@@ -98,47 +153,14 @@ class AgentPoolManager:
             self.next_agent_number += 1
             print(f"🏭 DEBUG: Generated agent_id={agent_id}")
 
-            # Create agent instance based on type with correct constructor arguments
-            print(f"🏭 DEBUG: About to create {agent_type} agent instance...")
-            if agent_type == "backend" or agent_type == "backend-worker":
-                print("🏭 DEBUG: Calling BackendWorkerAgent constructor...")
-                agent_instance = BackendWorkerAgent(
-                    project_id=self.project_id,
-                    db=self.db,
-                    codebase_index=None,  # Optional for workers
-                    provider="anthropic",
-                    api_key=self.api_key,
-                )
-            elif agent_type == "frontend" or agent_type == "frontend-specialist":
-                agent_instance = FrontendWorkerAgent(
-                    agent_id=agent_id,
-                    provider="anthropic",
-                    api_key=self.api_key,
-                    websocket_manager=self.ws_manager,
-                )
-            elif agent_type == "test" or agent_type == "test-engineer":
-                print("🏭 DEBUG: Calling TestWorkerAgent constructor...")
-                agent_instance = TestWorkerAgent(
-                    agent_id=agent_id,
-                    provider="anthropic",
-                    api_key=self.api_key,
-                    websocket_manager=self.ws_manager,
-                )
-                print("🏭 DEBUG: TestWorkerAgent created successfully")
-            elif agent_type == "review" or agent_type == "review-worker":
-                print("🏭 DEBUG: Calling ReviewWorkerAgent constructor...")
-                agent_instance = ReviewWorkerAgent(
-                    agent_id=agent_id,
-                    project_id=self.project_id,
-                    db=self.db,
-                    provider="anthropic",
-                )
-                print("🏭 DEBUG: ReviewWorkerAgent created successfully")
+            # Create agent instance based on mode and type
+            if create_hybrid and SDK_AVAILABLE:
+                agent_instance = self._create_hybrid_agent(agent_id, agent_type)
             else:
-                print(f"🏭 DEBUG: Unknown agent type: {agent_type}")
-                raise ValueError(f"Unknown agent type: {agent_type}")
+                agent_instance = self._create_traditional_agent(agent_id, agent_type)
 
-            print(f"🏭 DEBUG: Agent instance created: {type(agent_instance)}")
+            is_hybrid = create_hybrid and SDK_AVAILABLE
+            print(f"🏭 DEBUG: Agent instance created: {type(agent_instance)} (hybrid={is_hybrid})")
 
             # Add to pool
             self.agent_pool[agent_id] = {
@@ -148,9 +170,11 @@ class AgentPoolManager:
                 "agent_type": agent_type,
                 "tasks_completed": 0,
                 "blocked_by": None,
+                "is_hybrid": is_hybrid,
+                "session_id": getattr(agent_instance, "session_id", None),
             }
 
-            logger.info(f"Created agent: {agent_id} (type: {agent_type})")
+            logger.info(f"Created agent: {agent_id} (type: {agent_type}, hybrid={is_hybrid})")
 
             # Broadcast agent creation
             self._broadcast_async(self.project_id, agent_id, agent_type, event_type="agent_created")
@@ -292,6 +316,8 @@ class AgentPoolManager:
                     "current_task": agent_info["current_task"],
                     "tasks_completed": agent_info["tasks_completed"],
                     "blocked_by": agent_info.get("blocked_by"),
+                    "is_hybrid": agent_info.get("is_hybrid", False),
+                    "session_id": agent_info.get("session_id"),
                 }
 
             return status
@@ -346,6 +372,120 @@ class AgentPoolManager:
         except RuntimeError:
             # No event loop running (sync context, testing)
             logger.debug(f"Skipped broadcast: {event_type} for {agent_id} (no event loop)")
+
+    def _create_hybrid_agent(self, agent_id: str, agent_type: str) -> HybridWorkerAgent:
+        """
+        Create a HybridWorkerAgent with SDK client for task execution.
+
+        Args:
+            agent_id: ID for the new agent
+            agent_type: Type of agent (backend, frontend, test, review)
+
+        Returns:
+            HybridWorkerAgent instance configured for SDK execution
+        """
+        # Map agent types to system prompts
+        system_prompts = {
+            "backend": "You are a backend developer specializing in Python, FastAPI, and databases.",
+            "frontend": "You are a frontend developer specializing in React, TypeScript, and Tailwind CSS.",
+            "test": "You are a test engineer specializing in pytest, test automation, and quality assurance.",
+            "review": "You are a code reviewer specializing in security, performance, and best practices.",
+        }
+
+        # Normalize agent type
+        base_type = agent_type.split("-")[0]  # backend-worker -> backend
+        system_prompt = system_prompts.get(base_type, f"You are a {base_type} specialist.")
+
+        # Map to SDK tools
+        tool_sets = {
+            "backend": ["Read", "Write", "Bash", "Glob", "Grep"],
+            "frontend": ["Read", "Write", "Bash", "Glob", "Grep"],
+            "test": ["Read", "Write", "Bash", "Glob", "Grep"],
+            "review": ["Read", "Glob", "Grep", "Bash"],
+        }
+        allowed_tools = tool_sets.get(base_type, ["Read", "Write", "Bash", "Glob", "Grep"])
+
+        logger.debug(f"Creating SDK client for {agent_id} with tools: {allowed_tools}")
+
+        # Create SDK client
+        sdk_client = SDKClientWrapper(
+            api_key=self.api_key,
+            model=self.model,
+            system_prompt=system_prompt,
+            allowed_tools=allowed_tools,
+            cwd=self.cwd,
+        )
+
+        # Create hybrid agent
+        agent = HybridWorkerAgent(
+            agent_id=agent_id,
+            agent_type=base_type,
+            project_id=self.project_id,
+            db=self.db,
+            sdk_client=sdk_client,
+            provider="sdk",
+            maturity=AgentMaturity.D2,  # Default to coaching level
+            system_prompt=system_prompt,
+        )
+
+        logger.info(f"Created HybridWorkerAgent: {agent_id}")
+        return agent
+
+    def _create_traditional_agent(self, agent_id: str, agent_type: str):
+        """
+        Create a traditional WorkerAgent (non-SDK).
+
+        Args:
+            agent_id: ID for the new agent
+            agent_type: Type of agent (backend, frontend, test, review)
+
+        Returns:
+            WorkerAgent instance (BackendWorkerAgent, FrontendWorkerAgent, etc.)
+
+        Raises:
+            ValueError: If unknown agent type
+        """
+        print(f"🏭 DEBUG: About to create traditional {agent_type} agent instance...")
+
+        if agent_type == "backend" or agent_type == "backend-worker":
+            print("🏭 DEBUG: Calling BackendWorkerAgent constructor...")
+            return BackendWorkerAgent(
+                project_id=self.project_id,
+                db=self.db,
+                codebase_index=None,
+                provider="anthropic",
+                api_key=self.api_key,
+            )
+        elif agent_type == "frontend" or agent_type == "frontend-specialist":
+            return FrontendWorkerAgent(
+                agent_id=agent_id,
+                provider="anthropic",
+                api_key=self.api_key,
+                websocket_manager=self.ws_manager,
+            )
+        elif agent_type == "test" or agent_type == "test-engineer":
+            print("🏭 DEBUG: Calling TestWorkerAgent constructor...")
+            agent = TestWorkerAgent(
+                agent_id=agent_id,
+                provider="anthropic",
+                api_key=self.api_key,
+                websocket_manager=self.ws_manager,
+            )
+            print("🏭 DEBUG: TestWorkerAgent created successfully")
+            return agent
+        elif agent_type == "review" or agent_type == "review-worker":
+            print("🏭 DEBUG: Calling ReviewWorkerAgent constructor...")
+            agent = ReviewWorkerAgent(
+                agent_id=agent_id,
+                project_id=self.project_id,
+                db=self.db,
+                provider="anthropic",
+            )
+            print("🏭 DEBUG: ReviewWorkerAgent created successfully")
+            return agent
+        else:
+            print(f"🏭 DEBUG: Unknown agent type: {agent_type}")
+            raise ValueError(f"Unknown agent type: {agent_type}")
 
     def clear(self) -> None:
         """Clear all agents from pool (for testing/reset)."""
