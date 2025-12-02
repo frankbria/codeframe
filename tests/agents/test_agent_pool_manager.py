@@ -419,3 +419,4 @@ class TestAgentStatusWithSDKFields:
 
         assert agent_id in status
         assert "session_id" in status[agent_id]
+        assert status[agent_id]["session_id"] is None  # Traditional agents have no session_id

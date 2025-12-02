@@ -48,7 +48,7 @@ import logging
 import yaml
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 
 logger = logging.getLogger(__name__)
 
@@ -278,11 +278,13 @@ class SubagentGenerator:
                     break
 
         # Build markdown content
+        # Format tools as valid YAML array
+        tools_yaml = "[" + ", ".join(sdk_tools) + "]"
         markdown_parts = [
             "---",
             f"name: {name}",
             f"description: {short_description}",
-            f"tools: {sdk_tools}",
+            f"tools: {tools_yaml}",
             "---",
             "",
             system_prompt,
@@ -369,7 +371,7 @@ class SubagentGenerator:
         Returns:
             Sorted list of unique SDK tool names
         """
-        sdk_tools: set[str] = set()
+        sdk_tools: Set[str] = set()
 
         for tool in yaml_tools:
             if tool in YAML_TO_SDK_TOOL_MAPPING:

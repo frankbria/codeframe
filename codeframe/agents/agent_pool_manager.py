@@ -30,7 +30,7 @@ Feature flags:
 import logging
 import asyncio
 import os
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Union
 from threading import RLock
 
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
@@ -135,11 +135,7 @@ class AgentPoolManager:
         # Determine whether to use SDK for this agent
         create_hybrid = use_sdk if use_sdk is not None else self.use_sdk
 
-        print(
-            f"\n🏭 DEBUG: create_agent called with agent_type={agent_type}, use_sdk={create_hybrid}"
-        )
         with self.lock:
-            print("🏭 DEBUG: Acquired lock")
             # Check pool capacity
             if len(self.agent_pool) >= self.max_agents:
                 raise RuntimeError(
@@ -148,10 +144,8 @@ class AgentPoolManager:
                 )
 
             # Generate agent ID
-            print("🏭 DEBUG: Generating agent ID...")
             agent_id = f"{agent_type}-worker-{self.next_agent_number:03d}"
             self.next_agent_number += 1
-            print(f"🏭 DEBUG: Generated agent_id={agent_id}")
 
             # Create agent instance based on mode and type
             if create_hybrid and SDK_AVAILABLE:
@@ -160,7 +154,6 @@ class AgentPoolManager:
                 agent_instance = self._create_traditional_agent(agent_id, agent_type)
 
             is_hybrid = create_hybrid and SDK_AVAILABLE
-            print(f"🏭 DEBUG: Agent instance created: {type(agent_instance)} (hybrid={is_hybrid})")
 
             # Add to pool
             self.agent_pool[agent_id] = {
@@ -193,21 +186,14 @@ class AgentPoolManager:
         Returns:
             agent_id: ID of available agent
         """
-        print(f"\n🔧 DEBUG: get_or_create_agent called with agent_type={agent_type}")
         with self.lock:
-            print("🔧 DEBUG: Acquired lock in get_or_create_agent")
             # Look for idle agent of this type
-            print(
-                f"🔧 DEBUG: Looking for idle {agent_type} agents in pool (pool size: {len(self.agent_pool)})"
-            )
             for agent_id, agent_info in self.agent_pool.items():
                 if agent_info["agent_type"] == agent_type and agent_info["status"] == "idle":
                     logger.debug(f"Reusing idle agent: {agent_id}")
-                    print(f"🔧 DEBUG: Found idle agent: {agent_id}")
                     return agent_id
 
             # No idle agent found - create new one
-            print(f"🔧 DEBUG: No idle agent found, calling create_agent({agent_type})")
             return self.create_agent(agent_type)
 
     def mark_agent_busy(self, agent_id: str, task_id: int) -> None:
@@ -431,7 +417,9 @@ class AgentPoolManager:
         logger.info(f"Created HybridWorkerAgent: {agent_id}")
         return agent
 
-    def _create_traditional_agent(self, agent_id: str, agent_type: str):
+    def _create_traditional_agent(
+        self, agent_id: str, agent_type: str
+    ) -> Union[BackendWorkerAgent, FrontendWorkerAgent, TestWorkerAgent, ReviewWorkerAgent]:
         """
         Create a traditional WorkerAgent (non-SDK).
 
@@ -445,10 +433,7 @@ class AgentPoolManager:
         Raises:
             ValueError: If unknown agent type
         """
-        print(f"🏭 DEBUG: About to create traditional {agent_type} agent instance...")
-
         if agent_type == "backend" or agent_type == "backend-worker":
-            print("🏭 DEBUG: Calling BackendWorkerAgent constructor...")
             return BackendWorkerAgent(
                 project_id=self.project_id,
                 db=self.db,
@@ -464,27 +449,20 @@ class AgentPoolManager:
                 websocket_manager=self.ws_manager,
             )
         elif agent_type == "test" or agent_type == "test-engineer":
-            print("🏭 DEBUG: Calling TestWorkerAgent constructor...")
-            agent = TestWorkerAgent(
+            return TestWorkerAgent(
                 agent_id=agent_id,
                 provider="anthropic",
                 api_key=self.api_key,
                 websocket_manager=self.ws_manager,
             )
-            print("🏭 DEBUG: TestWorkerAgent created successfully")
-            return agent
         elif agent_type == "review" or agent_type == "review-worker":
-            print("🏭 DEBUG: Calling ReviewWorkerAgent constructor...")
-            agent = ReviewWorkerAgent(
+            return ReviewWorkerAgent(
                 agent_id=agent_id,
                 project_id=self.project_id,
                 db=self.db,
                 provider="anthropic",
             )
-            print("🏭 DEBUG: ReviewWorkerAgent created successfully")
-            return agent
         else:
-            print(f"🏭 DEBUG: Unknown agent type: {agent_type}")
             raise ValueError(f"Unknown agent type: {agent_type}")
 
     def clear(self) -> None:

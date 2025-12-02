@@ -330,7 +330,7 @@ When you have completed the task, provide a summary of what was done."""
                 task_id=task.id,
                 agent_id=self.agent_id,
                 project_id=self.project_id,
-                model_name="claude-sonnet-4-20250514",  # TODO: Get from SDK client
+                model_name=getattr(self.sdk_client, "model", "claude-sonnet-4-20250514"),
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 call_type=CallType.TASK_EXECUTION.value,
