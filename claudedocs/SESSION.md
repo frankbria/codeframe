@@ -464,3 +464,114 @@ Adopt SDK's subagent pattern while preserving CodeFRAME's unique features (matur
 - **Branch**: `feature/sdk-migration-phase-3`
 - **Base**: `main`
 - **PR Target**: `main`
+
+---
+
+## Session: 2025-12-01 (Evening - Test Fixes)
+
+**Duration**: ~1 hour
+**Focus**: Fix failing backend tests after SDK Migration Phase 3 merge
+**Status**: ✅ COMPLETE - Pushed to main
+
+### Repository State
+- **Branch**: `main`
+- **Status**: Clean working tree, up to date with origin/main
+- **Last Commits**:
+  - eeeaf42: fix: Add use_sdk=False to BackendWorkerAgent test instantiations
+  - b159d38: Merge pull request #34 from frankbria/feature/sdk-migration-phase-3
+
+### Session Goals
+
+**Objective**: Fix failing backend tests discovered after PR #34 merge
+
+**Root Cause Analysis**:
+- `BackendWorkerAgent` defaults to `use_sdk=True` (line 65 of backend_worker_agent.py)
+- When `use_sdk=True`, `apply_file_changes()` method (lines 363-433) skips actual file I/O
+- SDK mode assumes the SDK Write tool handles file creation
+- Tests expecting file operations were failing because files weren't being created
+
+### Fixes Applied
+
+**Files Modified** (4):
+1. `tests/agents/test_backend_worker_agent.py` - 17 BackendWorkerAgent instantiations fixed
+2. `tests/integration/test_backend_worker_agent_integration.py` - 6 instances fixed
+3. `tests/integration/test_auto_commit_workflow.py` - 1 instance fixed (in fixture)
+4. `tests/testing/test_self_correction_integration.py` - 4 instances fixed
+
+**Total**: 28 BackendWorkerAgent instantiations updated with `use_sdk=False`
+
+### Test Results
+
+**All 50 backend worker tests now pass**:
+- `tests/agents/test_backend_worker_agent.py`: 37 tests ✅
+- `tests/integration/test_backend_worker_agent_integration.py`: 6 tests ✅
+- `tests/integration/test_auto_commit_workflow.py`: 3 tests ✅
+- `tests/testing/test_self_correction_integration.py`: 4 tests ✅
+
+### Technical Details
+
+**The Issue**:
+```python
+# BackendWorkerAgent defaults to SDK mode
+def __init__(self, ..., use_sdk: bool = True, ...):
+
+# In apply_file_changes():
+if self.use_sdk:
+    # SDK mode: Files already written by SDK Write tool
+    # Just validate and track paths (NO FILE I/O)
+    logger.info(f"SDK handled {action} for: {path}")
+else:
+    # Non-SDK mode: Perform file operations directly
+    target_path.write_text(content, encoding="utf-8")
+```
+
+**The Fix**:
+```python
+# Test instantiations now explicitly disable SDK mode
+agent = BackendWorkerAgent(
+    project_id=1,
+    db=db,
+    codebase_index=index,
+    project_root=tmp_path,
+    use_sdk=False,  # Enable actual file I/O for tests
+)
+```
+
+### Lessons Learned
+
+1. **Default Parameter Change Impact**: Changing default parameter values can cause cascading test failures
+2. **Test Isolation**: Tests should explicitly set behavior-affecting parameters rather than relying on defaults
+3. **SDK vs Non-SDK Paths**: Clear documentation needed for when each path is used
+
+### Dependencies Installed
+
+- `hypothesis==6.148.5` - For property-based testing
+- `pytest-asyncio==1.2.0` - Downgraded from 1.3.0 for compatibility
+
+### Git Status
+
+**Commit**: `eeeaf42`
+```
+fix: Add use_sdk=False to BackendWorkerAgent test instantiations
+
+BackendWorkerAgent defaults to use_sdk=True which skips actual file I/O
+operations (SDK is assumed to write files). Tests expecting file operations
+need use_sdk=False to perform real file I/O.
+
+Fixed 26 BackendWorkerAgent instantiations across 4 test files.
+All 50 backend worker tests now pass.
+```
+
+### Handoff Notes
+
+**For Future Sessions**:
+- When creating new BackendWorkerAgent tests, explicitly set `use_sdk=False` if testing file operations
+- SDK mode tests (in `test_bash_operations_migration.py`) intentionally use `use_sdk=True`
+- CI will run full test suite to verify no regressions
+
+**Blockers**: None
+
+---
+
+**Session closed**: 2025-12-01
+**Next milestone**: Phase 4 - Agent Pool Scaling (if needed) or production testing
