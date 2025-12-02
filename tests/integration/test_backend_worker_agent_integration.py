@@ -63,7 +63,9 @@ class TestBackendWorkerAgentIntegration:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         # Test creating multiple files with nested directories
         files = [
@@ -156,7 +158,7 @@ class TestBackendWorkerAgentIntegration:
         # Create agent with real database
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path
+            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         # Test updating to in_progress
@@ -224,6 +226,7 @@ class TestBackendWorkerAgentIntegration:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock Anthropic API to return realistic code
@@ -336,6 +339,7 @@ class TestBackendWorkerAgentIntegration:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock API to return a modify operation on non-existent file
@@ -385,7 +389,9 @@ class TestBackendWorkerAgentIntegration:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         # Attempt path traversal
         malicious_files = [
@@ -455,6 +461,7 @@ class TestBackendWorkerAgentIntegration:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock API for task 1

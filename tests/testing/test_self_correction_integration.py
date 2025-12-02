@@ -110,6 +110,7 @@ class TestSelfCorrectionLoop:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner: fail initially, then pass after correction
@@ -214,6 +215,7 @@ class TestSelfCorrectionLoop:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner: always fail
@@ -364,6 +366,7 @@ class TestSelfCorrectionLoop:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner: fail twice, then pass
@@ -461,6 +464,7 @@ class TestSelfCorrectionLoop:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner: pass immediately

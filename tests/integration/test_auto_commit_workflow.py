@@ -76,6 +76,7 @@ def backend_agent(temp_git_repo, test_db, git_workflow):
         codebase_index=codebase_index,
         provider="claude",
         project_root=repo_path,
+        use_sdk=False,
     )
 
     # Attach git workflow

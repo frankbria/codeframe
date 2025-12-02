@@ -581,7 +581,12 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
-            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path,
+            use_sdk=False,
         )
 
         context = {
@@ -636,7 +641,12 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
-            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path,
+            use_sdk=False,
         )
 
         context = {
@@ -666,7 +676,12 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_client.messages.create.side_effect = Exception("API timeout")
 
         agent = BackendWorkerAgent(
-            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path,
+            use_sdk=False,
         )
 
         context = {
@@ -696,7 +711,12 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
-            project_id=1, db=db, codebase_index=index, api_key="test-key", project_root=tmp_path
+            project_id=1,
+            db=db,
+            codebase_index=index,
+            api_key="test-key",
+            project_root=tmp_path,
+            use_sdk=False,
         )
 
         context = {
@@ -718,7 +738,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         files = [
             {
@@ -746,7 +768,9 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         files = [
             {
@@ -772,7 +796,9 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         files = [{"path": "codeframe/models/user.py", "action": "delete"}]
 
@@ -787,7 +813,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         files = [
             {
@@ -815,7 +843,9 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         files = [
             {"path": "codeframe/models/user.py", "action": "modify", "content": "# Updated User\n"},
@@ -847,7 +877,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         # Attempt path traversal
         files = [
@@ -864,7 +896,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         # Attempt absolute path
         files = [{"path": "/etc/passwd", "action": "create", "content": "malicious content"}]
@@ -879,7 +913,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         files = [{"path": "nonexistent.py", "action": "modify", "content": "new content"}]
 
@@ -891,7 +927,9 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        )
 
         files = [{"path": "nonexistent.py", "action": "delete"}]
 
@@ -1106,6 +1144,7 @@ class TestBackendWorkerAgentExecution:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner to return passing tests (cf-43: prevents self-correction loop)
@@ -1182,6 +1221,7 @@ class TestBackendWorkerAgentExecution:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Get task from database
@@ -1266,6 +1306,7 @@ class TestBackendWorkerAgentExecution:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Get task from database
@@ -1357,6 +1398,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner
@@ -1458,6 +1500,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner with failures (always returns failed)
@@ -1584,6 +1627,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
+            use_sdk=False,
         )
 
         # Mock test runner with error (always returns error)
