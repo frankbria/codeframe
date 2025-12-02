@@ -42,6 +42,8 @@ class LeadAgent:
         model: str = "claude-sonnet-4-20250514",
         ws_manager=None,
         max_agents: int = 10,
+        use_sdk: bool = False,
+        project_root: Optional[str] = None,
     ):
         """Initialize Lead Agent with database and Anthropic provider.
 
@@ -52,6 +54,8 @@ class LeadAgent:
             model: Claude model to use (default: claude-sonnet-4-20250514)
             ws_manager: WebSocket manager for broadcasts (optional)
             max_agents: Maximum number of concurrent agents (default: 10)
+            use_sdk: Use SDK execution mode for worker agents (default: False)
+            project_root: Project root directory for SDK agents (optional, overrides workspace_path)
 
         Raises:
             ValueError: If API key is missing
@@ -73,16 +77,26 @@ class LeadAgent:
         # Codebase indexing
         self.codebase_index: Optional[CodebaseIndex] = None
 
-        # Multi-agent coordination (Sprint 4)
+        # Store SDK mode flag
+        self.use_sdk = use_sdk
+        self._project_root_override = project_root
+
+        # Multi-agent coordination (Sprint 4) with SDK support (Phase 3)
         self.agent_pool_manager = AgentPoolManager(
             project_id=project_id,
             db=db,
             ws_manager=ws_manager,
             max_agents=max_agents,
             api_key=api_key,
+            use_sdk=use_sdk,
+            model=model,
+            cwd=project_root,  # Set after workspace_path resolution below
         )
         self.dependency_resolver = DependencyResolver()
         self.agent_assigner = SimpleAgentAssigner()
+
+        # SDK session tracking (Phase 3)
+        self._sdk_sessions: Dict[str, str] = {}
 
         # Git workflow manager (cf-33)
         from codeframe.git.workflow_manager import GitWorkflowManager
@@ -1046,14 +1060,10 @@ Generate the PRD in markdown format with clear sections and professional languag
             asyncio.TimeoutError: If execution exceeds timeout
             Exception: If critical execution error occurs
         """
-        print(f"\n🚀 DEBUG: start_multi_agent_execution ENTERED (timeout={timeout})")
         try:
-            print("🚀 DEBUG: Creating asyncio.timeout context...")
             async with asyncio.timeout(timeout):
-                print("🚀 DEBUG: Inside timeout context, calling _execute_coordination_loop...")
                 return await self._execute_coordination_loop(max_retries, max_concurrent)
         except asyncio.TimeoutError:
-            print("❌ DEBUG: Caught TimeoutError!")
             logger.error(f"❌ Multi-agent execution timed out after {timeout}s")
             await self._emergency_shutdown()
             raise
@@ -1062,24 +1072,16 @@ Generate the PRD in markdown format with clear sections and professional languag
         self, max_retries: int = 3, max_concurrent: int = 5
     ) -> Dict[str, Any]:
         """Internal coordination loop extracted for timeout wrapping."""
-        print(
-            f"\n🔄 DEBUG: _execute_coordination_loop ENTERED (max_retries={max_retries}, max_concurrent={max_concurrent})"
-        )
         import time
 
-        print("🔄 DEBUG: Imported time module")
         start_time = time.time()
-        print(f"🔄 DEBUG: Start time: {start_time}")
 
         # Load all tasks for project
-        print(f"🔄 DEBUG: Loading tasks for project {self.project_id}...")
         task_dicts = self.db.get_project_tasks(self.project_id)
-        print(f"🔄 DEBUG: Loaded {len(task_dicts)} task_dicts")
         if not task_dicts:
             raise ValueError(f"No tasks found for project {self.project_id}")
 
         # Convert to Task objects
-        print("🔄 DEBUG: Converting to Task objects...")
         tasks = []
         for task_dict in task_dicts:
             task = Task(
@@ -1098,35 +1100,23 @@ Generate the PRD in markdown format with clear sections and professional languag
                 depends_on=task_dict.get("depends_on", "[]"),
             )
             tasks.append(task)
-        print(f"🔄 DEBUG: Converted {len(tasks)} Task objects")
 
         logger.info(f"🚀 Multi-agent execution started: {len(tasks)} tasks")
-        print("🔄 DEBUG: Logged execution start")
 
         # Build dependency graph
-        print("🔄 DEBUG: Building dependency graph...")
         self.dependency_resolver.build_dependency_graph(tasks)
-        print("🔄 DEBUG: Dependency graph built ✅")
 
         # Track execution state
-        print("🔄 DEBUG: Initializing execution state...")
         retry_counts = {}  # task_id -> retry_count
         running_tasks = {}  # task_id -> asyncio.Task
         total_retries = 0
         iteration_count = 0
         max_iterations = 1000  # Safety watchdog
-        print("🔄 DEBUG: Execution state initialized ✅")
 
-        print("🔄 DEBUG: Entering try block...")
         try:
-            print("🔄 DEBUG: About to enter main while loop...")
             # Main execution loop
             while not self._all_tasks_complete():
-                print(f"🔄 DEBUG: While loop iteration {iteration_count}")
                 iteration_count += 1
-                print(
-                    f"🔄 DEBUG: Checking watchdog (iteration={iteration_count}, max={max_iterations})..."
-                )
                 if iteration_count > max_iterations:
                     logger.error(f"❌ WATCHDOG: Hit max iterations {max_iterations}")
                     logger.error(f"Running tasks: {len(running_tasks)}")
@@ -1135,24 +1125,14 @@ Generate the PRD in markdown format with clear sections and professional languag
                     break
 
                 # Get ready tasks (dependencies satisfied, not completed/running)
-                print("🔄 DEBUG: Getting ready tasks from dependency_resolver...")
                 ready_task_ids = self.dependency_resolver.get_ready_tasks(exclude_completed=True)
-                print(f"🔄 DEBUG: Got {len(ready_task_ids)} ready task IDs: {ready_task_ids}")
 
                 # Filter out already running tasks
-                print(
-                    f"🔄 DEBUG: Filtering out running tasks (currently {len(running_tasks)} running)..."
-                )
                 ready_task_ids = [tid for tid in ready_task_ids if tid not in running_tasks]
-                print(f"🔄 DEBUG: After filtering: {len(ready_task_ids)} ready tasks")
 
                 # Log loop state
-                print("🔄 DEBUG: Calculating loop state...")
                 completed_count = len(
                     [t for t in tasks if t.id in self.dependency_resolver.completed_tasks]
-                )
-                print(
-                    f"🔄 DEBUG: Loop state: ready={len(ready_task_ids)}, running={len(running_tasks)}, completed={completed_count}/{len(tasks)}"
                 )
                 logger.debug(
                     f"🔄 Loop {iteration_count}: {len(ready_task_ids)} ready, "
@@ -1160,12 +1140,9 @@ Generate the PRD in markdown format with clear sections and professional languag
                 )
 
                 # Assign and execute ready tasks (up to max_concurrent)
-                print(f"🔄 DEBUG: About to assign tasks (max_concurrent={max_concurrent})...")
                 for task_id in ready_task_ids[: max_concurrent - len(running_tasks)]:
-                    print(f"🔄 DEBUG: Processing task {task_id}...")
                     task = next((t for t in tasks if t.id == task_id), None)
                     if not task:
-                        print(f"🔄 DEBUG: Task {task_id} not found in tasks list, skipping")
                         continue
 
                     # Check retry limit
@@ -1184,7 +1161,6 @@ Generate the PRD in markdown format with clear sections and professional languag
                         continue
 
                     # Assign and execute task
-                    print(f"🔄 DEBUG: Assigning task {task_id}: {task.title}")
                     task_future = asyncio.create_task(
                         self._assign_and_execute_task(task, retry_counts)
                     )
@@ -1192,13 +1168,11 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 # Wait for at least one task to complete
                 if running_tasks:
-                    print("🔄 DEBUG: About to wait for tasks...")
                     done, _ = await asyncio.wait(
                         running_tasks.values(), return_when=asyncio.FIRST_COMPLETED
                     )
 
                     # Process completed tasks
-                    print("🔄 DEBUG: Processing completed tasks...")
                     for completed_future in done:
                         # Find which task this was
                         task_id = next(
@@ -1214,20 +1188,12 @@ Generate the PRD in markdown format with clear sections and professional languag
                             try:
                                 success = await completed_future
                                 if success:
-                                    print(f"🔄 DEBUG: Task {task_id} completed successfully")
                                     # Unblock dependent tasks
-                                    unblocked = self.dependency_resolver.unblock_dependent_tasks(
-                                        task_id
-                                    )
-                                    if unblocked:
-                                        print(f"🔄 DEBUG: Task {task_id} unblocked: {unblocked}")
+                                    self.dependency_resolver.unblock_dependent_tasks(task_id)
                                 else:
                                     # Task failed - increment retry count
                                     retry_counts[task_id] = retry_counts.get(task_id, 0) + 1
                                     total_retries += 1
-                                    print(
-                                        f"🔄 DEBUG: Task {task_id} failed, retry {retry_counts[task_id]}/{max_retries}"
-                                    )
                                     # Check if task has pending SYNC blocker before resetting to pending
                                     can_assign = await self.can_assign_task(task_id)
                                     if can_assign:
@@ -1355,6 +1321,12 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             # Get agent instance
             agent_instance = self.agent_pool_manager.get_agent_instance(agent_id)
+
+            # Phase 3: Track SDK session ID for hybrid agents
+            session_id = getattr(agent_instance, "session_id", None)
+            if session_id:
+                self._sdk_sessions[agent_id] = session_id
+                logger.debug(f"Tracking SDK session for {agent_id}: {session_id}")
 
             # Execute task (assuming agents have execute_task method)
             logger.info(f"Agent {agent_id} executing task {task.id}")
@@ -1517,33 +1489,24 @@ Generate the PRD in markdown format with clear sections and professional languag
         Returns:
             True if all tasks are in terminal state (completed/failed) OR deadlocked
         """
-        print("🔍 DEBUG: _all_tasks_complete called")
-        print(f"🔍 DEBUG: Getting tasks for project {self.project_id}...")
         task_dicts = self.db.get_project_tasks(self.project_id)
-        print(f"🔍 DEBUG: Got {len(task_dicts)} tasks")
 
         incomplete = []
         blocked = []
 
-        print("🔍 DEBUG: Iterating through tasks...")
         for task_dict in task_dicts:
             status = task_dict.get("status", "pending")
-            print(f"🔍 DEBUG: Task {task_dict['id']}: status={status}")
             if status not in ("completed", "failed"):
                 incomplete.append(task_dict["id"])
                 if status == "blocked":
                     blocked.append(task_dict["id"])
 
-        print(f"🔍 DEBUG: incomplete={incomplete}, blocked={blocked}")
-
         # No incomplete tasks means all done
         if not incomplete:
-            print("🔍 DEBUG: All tasks complete!")
             return True
 
         # Deadlock detection: if all remaining tasks are blocked, we're stuck
         if incomplete and len(blocked) == len(incomplete):
-            print("🔍 DEBUG: DEADLOCK DETECTED!")
             logger.error(
                 f"❌ DEADLOCK DETECTED: All {len(incomplete)} remaining tasks are blocked: {blocked}"
             )
@@ -1767,6 +1730,9 @@ Generate the PRD in markdown format with clear sections and professional languag
             return
 
         try:
+            # Gather SDK sessions from agent pool
+            sdk_sessions = self._get_sdk_sessions()
+
             # Gather session state
             state = {
                 "summary": self._get_session_summary(),
@@ -1775,10 +1741,38 @@ Generate the PRD in markdown format with clear sections and professional languag
                 "current_plan": self.current_task,
                 "active_blockers": self._get_blocker_summaries(),
                 "progress_pct": self._get_progress_percentage(),
+                "sdk_sessions": sdk_sessions,  # Phase 3: Track SDK sessions for resume
             }
 
             # Save to file
             self.session_manager.save_session(state)
-            logger.debug("Session state saved successfully")
+            logger.debug(f"Session state saved successfully (SDK sessions: {len(sdk_sessions)})")
         except Exception as e:
             logger.error(f"Failed to save session state: {e}")
+
+    def _get_sdk_sessions(self) -> Dict[str, str]:
+        """Get SDK session IDs from all hybrid agents in pool.
+
+        Phase 3: Track SDK sessions for conversation resume capability.
+        Each hybrid agent may have a session_id that allows resuming
+        conversations when the agent is reused.
+
+        Returns:
+            Dictionary mapping agent_id to session_id for hybrid agents
+        """
+        sdk_sessions = {}
+
+        try:
+            agent_status = self.agent_pool_manager.get_agent_status()
+
+            for agent_id, info in agent_status.items():
+                # Only include hybrid agents with valid session IDs
+                if info.get("is_hybrid") and info.get("session_id"):
+                    sdk_sessions[agent_id] = info["session_id"]
+
+            logger.debug(f"Gathered {len(sdk_sessions)} SDK sessions from agent pool")
+
+        except Exception as e:
+            logger.warning(f"Failed to gather SDK sessions: {e}")
+
+        return sdk_sessions

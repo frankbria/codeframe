@@ -278,3 +278,189 @@ A  codeframe/persistence/migrations/migration_008_add_session_id.py  (62 lines)
 
 **Session closed**: 2025-11-30
 **Next milestone**: Phase 2 - Tool Framework Migration (Tasks 2.1-2.4)
+
+---
+
+## Session: 2025-12-01
+
+**Duration**: ~4 hours
+**Focus**: SDK Migration Phase 3 - Agent Pattern Migration
+**Status**: ✅ ALL TASKS COMPLETE - Ready for integration testing
+
+### Repository State
+- **Branch**: `main`
+- **Status**: Clean working tree, up to date with origin/main
+- **Last Commits**:
+  - ad818cf: docs: Add comprehensive session summary for 2025-11-30
+  - 012b1b9: Merge pull request #33 from frankbria/feature/sdk-migration-phase-1-2
+
+### Session Goals
+
+**Objective**: Execute Phase 3 of the Claude Agent SDK Migration Implementation Plan (Agent Pattern Migration)
+
+### Phase 3 Overview: Agent Pattern Migration
+Adopt SDK's subagent pattern while preserving CodeFRAME's unique features (maturity levels, project scoping).
+
+**Architecture Decision**: Hybrid approach (Option C)
+- YAML remains source of truth for agent definitions
+- Generate SDK-compatible prompts/markdown at runtime
+- Preserves current configuration richness
+
+### Tasks for This Session:
+
+1. **Task 3.1**: Create Subagent Markdown Generator (`codeframe/agents/subagent_generator.py`)
+   - Generate SDK-compatible markdown from YAML definitions
+   - Include maturity-specific instructions
+   - Map tools correctly to SDK tool names
+   - Output to `.claude/agents/` directory
+   - **Estimated effort**: 1 week
+
+2. **Task 3.2**: Create Hybrid Agent Wrapper (`codeframe/agents/hybrid_worker.py`)
+   - Extend WorkerAgent for SDK execution
+   - Preserve context management integration
+   - Maintain quality gate integration
+   - **Estimated effort**: 1 week
+
+3. **Task 3.3**: Update AgentPoolManager (`codeframe/agents/agent_pool_manager.py`)
+   - Add option to create HybridWorkerAgent vs traditional WorkerAgent
+   - Configure SDK client per agent
+   - Feature flag for SDK vs traditional mode
+   - **Estimated effort**: 3 days
+
+4. **Task 3.4**: Update LeadAgent Coordination (`codeframe/agents/lead_agent.py`)
+   - Coordinate HybridWorkerAgents
+   - Handle SDK session resumption
+   - Preserve existing orchestration logic
+   - **Estimated effort**: 1 week
+
+### Success Criteria:
+- [x] Subagent markdown generator creates valid SDK-compatible files from YAML
+- [x] HybridWorkerAgent executes tasks via SDK while preserving CodeFRAME features
+- [x] AgentPoolManager supports both traditional and hybrid agents
+- [x] LeadAgent coordinates hybrid agents with session ID propagation
+- [x] All existing tests continue to pass
+- [x] New tests cover Phase 3 components (109 new tests total)
+
+### Dependencies:
+- ✅ Phase 1 complete (SDK dependency, integration module, token tracking)
+- ✅ Phase 2 complete (Tool hooks, quality gates MCP)
+
+---
+
+## Session Progress
+
+### Task Status
+| Task | Status | Notes |
+|------|--------|-------|
+| 3.1 Subagent Generator | ✅ Complete | 37 tests, 8 agents generated |
+| 3.2 Hybrid Worker | ✅ Complete | 33 tests, full SDK execution integration |
+| 3.3 Pool Manager Update | ✅ Complete | 29 tests, SDK feature flag support |
+| 3.4 LeadAgent Update | ✅ Complete | 10 tests, SDK session coordination |
+
+### Task 3.1 Completion Summary
+- **File Created**: `codeframe/agents/subagent_generator.py` (380+ lines)
+- **Test File**: `tests/agents/test_subagent_generator.py` (37 tests, 100% pass)
+- **Generated Output**: `.claude/agents/` with 8 markdown files
+- **Tool Mappings**: 30+ YAML tools mapped to SDK tools (Read, Write, Bash, Glob, Grep)
+- **Features**:
+  - Loads YAML agent definitions
+  - Generates SDK-compatible markdown with frontmatter
+  - Includes maturity-specific capabilities (D1-D4)
+  - Handles both dict and list formats for error_recovery/integration_points
+
+### Task 3.2 Completion Summary
+- **File Created**: `codeframe/agents/hybrid_worker.py` (420 lines)
+- **Test File**: `tests/agents/test_hybrid_worker.py` (33 tests, 100% pass)
+- **Features**:
+  - Extends WorkerAgent for SDK execution
+  - `execute_task()`: Loads context (HOT+WARM), builds prompt, executes via SDK
+  - `execute_with_streaming()`: Async generator for real-time UI updates
+  - Token tracking via MetricsTracker
+  - Session ID management for resume capability
+  - `_build_execution_prompt()`: Contextual prompt construction
+  - `_extract_changed_files()`: File path extraction from LLM response
+  - `_summarize_result()`: Result summarization for context storage
+- **Preserved CodeFRAME Features**:
+  - Tiered context management (HOT/WARM/COLD)
+  - Quality gates integration (inherited from WorkerAgent)
+  - Token tracking with session_id support
+  - Flash save checks for context overflow prevention
+- **Infrastructure Updates**:
+  - Added `pytest-asyncio>=1.3.0` for async test support
+  - Updated `pytest.ini` with `asyncio_mode = auto`
+
+### Task 3.3 Completion Summary
+- **File Modified**: `codeframe/agents/agent_pool_manager.py` (~100 lines added)
+- **Test File**: `tests/agents/test_agent_pool_manager.py` (29 tests, 100% pass)
+- **Features**:
+  - `use_sdk` flag to toggle SDK mode (default: False)
+  - `_create_hybrid_agent()`: Creates HybridWorkerAgent with SDK client
+  - `_create_traditional_agent()`: Creates traditional WorkerAgent
+  - Per-agent SDK override: `create_agent(agent_type, use_sdk=True)`
+  - Pool status includes `is_hybrid` and `session_id` fields
+- **Configuration Options**:
+  - `use_sdk`: Enable SDK execution mode
+  - `model`: Model selection (default: claude-sonnet-4-20250514)
+  - `cwd`: Working directory for SDK agents
+- **Acceptance Criteria Met**:
+  - ✅ Pool supports both agent types
+  - ✅ Feature flag for SDK vs traditional
+  - ✅ Existing tests continue to pass (20/20)
+  - ✅ New tests added (9 tests for SDK functionality)
+
+### Task 3.4 Completion Summary
+- **File Modified**: `codeframe/agents/lead_agent.py` (~35 lines added)
+- **Test File**: `tests/agents/test_lead_agent_session.py` (10 new tests, 100% pass)
+- **Features**:
+  - `use_sdk` parameter in `__init__()`: Enable SDK mode for worker agents
+  - `project_root` parameter: Override workspace_path for SDK agents
+  - `_sdk_sessions` dict: Track SDK session IDs throughout execution
+  - `_get_sdk_sessions()`: Gather session IDs from all hybrid agents in pool
+  - SDK session tracking in `_assign_and_execute_task()`: Captures session ID when hybrid agents execute
+  - `on_session_end()`: Saves SDK sessions for conversation resume capability
+- **Updated Integration Points**:
+  - `AgentPoolManager` instantiation with `use_sdk` and `cwd` parameters
+  - Session state includes `sdk_sessions` for persistence
+- **Acceptance Criteria Met**:
+  - ✅ LeadAgent coordinates hybrid agents with SDK parameters
+  - ✅ Session ID propagation and storage
+  - ✅ Existing orchestration logic preserved
+  - ✅ Backward compatible (use_sdk=False default)
+  - ✅ All existing session tests pass (20/20)
+  - ✅ New SDK coordination tests added (10 tests)
+
+---
+
+## Execution Plan (Generated by Workflow Orchestrator)
+
+### Phase Overview
+| Phase | Goal | Agents/Skills | Complexity | Risk |
+|-------|------|---------------|------------|------|
+| **1** | Analysis & Planning | `Explore`, `claude-agent-sdk` skill | 4-6 hrs | Low |
+| **2** | Subagent Generator | `python-expert`, `quality-engineer` | 1 week | Low |
+| **3** | Hybrid Worker Agent | `python-expert`, `fastapi-expert`, `quality-engineer` | 1 week | Medium |
+| **4** | Pool Manager Update | `python-expert`, `backend-architect` | 3 days | Low |
+| **5** | LeadAgent Coordination | `python-expert`, `system-architect`, `quality-engineer` | 1 week | Medium |
+| **6** | Integration Testing | `quality-engineer`, `playwright-expert`, `code-reviewer` | 1 week | Low |
+| **7** | Documentation | `technical-writer`, `managing-gitops-ci` skill | 3 days | Very Low |
+
+### Estimated Token Usage: ~84k tokens total
+
+### Risk Mitigation
+- **Feature flag deployment** (`CODEFRAME_USE_SDK=false` default)
+- **SDK fallback mechanism** already in place from Phase 1
+- **85%+ coverage requirement** before merge
+- **Sequential execution** with validation checkpoints
+
+### Key Deliverables
+| Task | File | Lines |
+|------|------|-------|
+| 3.1 | `codeframe/agents/subagent_generator.py` | ~150 |
+| 3.2 | `codeframe/agents/hybrid_worker.py` | ~120 |
+| 3.3 | `codeframe/agents/agent_pool_manager.py` | ~50 modified |
+| 3.4 | `codeframe/agents/lead_agent.py` | ~80 modified |
+
+### Feature Branch
+- **Branch**: `feature/sdk-migration-phase-3`
+- **Base**: `main`
+- **PR Target**: `main`

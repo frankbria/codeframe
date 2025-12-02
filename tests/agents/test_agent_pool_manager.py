@@ -278,3 +278,145 @@ class TestTasksCompletedTracking:
         agent_id = pool_manager.create_agent("backend")
 
         assert pool_manager.agent_pool[agent_id]["tasks_completed"] == 0
+
+
+# ============================================================================
+# SDK/Hybrid Agent Tests
+# ============================================================================
+
+
+class TestSDKModeInitialization:
+    """Test pool manager SDK mode initialization."""
+
+    def test_initialization_with_use_sdk_false(self, mock_db, mock_ws_manager):
+        """Test pool manager initializes with use_sdk=False by default."""
+        manager = AgentPoolManager(project_id=1, db=mock_db, ws_manager=mock_ws_manager)
+
+        assert manager.use_sdk is False
+
+    def test_initialization_with_use_sdk_true(self, mock_db, mock_ws_manager):
+        """Test pool manager initializes with use_sdk=True when SDK available."""
+        from codeframe.agents.agent_pool_manager import SDK_AVAILABLE
+
+        manager = AgentPoolManager(
+            project_id=1, db=mock_db, ws_manager=mock_ws_manager, use_sdk=True
+        )
+
+        # use_sdk should be True only if SDK is available
+        assert manager.use_sdk == SDK_AVAILABLE
+
+    def test_initialization_with_model(self, mock_db, mock_ws_manager):
+        """Test pool manager initializes with custom model."""
+        manager = AgentPoolManager(
+            project_id=1,
+            db=mock_db,
+            ws_manager=mock_ws_manager,
+            model="claude-haiku-4",
+        )
+
+        assert manager.model == "claude-haiku-4"
+
+    def test_initialization_with_cwd(self, mock_db, mock_ws_manager):
+        """Test pool manager initializes with custom working directory."""
+        manager = AgentPoolManager(
+            project_id=1, db=mock_db, ws_manager=mock_ws_manager, cwd="/custom/path"
+        )
+
+        assert manager.cwd == "/custom/path"
+
+
+class TestHybridAgentCreation:
+    """Test hybrid agent creation."""
+
+    @patch("codeframe.agents.agent_pool_manager.SDK_AVAILABLE", True)
+    @patch("codeframe.agents.agent_pool_manager.SDKClientWrapper")
+    @patch("codeframe.agents.agent_pool_manager.HybridWorkerAgent")
+    def test_create_hybrid_agent_when_use_sdk_true(
+        self, mock_hybrid_class, mock_sdk_class, mock_db, mock_ws_manager
+    ):
+        """Test creating hybrid agent when use_sdk=True."""
+        mock_sdk_class.return_value = Mock()
+        mock_hybrid_class.return_value = Mock(session_id="test-session")
+
+        manager = AgentPoolManager(
+            project_id=1, db=mock_db, ws_manager=mock_ws_manager, use_sdk=True
+        )
+        agent_id = manager.create_agent("backend")
+
+        # Should create SDK client
+        mock_sdk_class.assert_called_once()
+
+        # Should create HybridWorkerAgent
+        mock_hybrid_class.assert_called_once()
+
+        # Pool should track is_hybrid
+        assert manager.agent_pool[agent_id]["is_hybrid"] is True
+
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    def test_create_traditional_agent_when_use_sdk_false(
+        self, mock_backend_class, mock_db, mock_ws_manager
+    ):
+        """Test creating traditional agent when use_sdk=False."""
+        mock_backend_class.return_value = Mock()
+
+        manager = AgentPoolManager(
+            project_id=1, db=mock_db, ws_manager=mock_ws_manager, use_sdk=False
+        )
+        agent_id = manager.create_agent("backend")
+
+        # Should create BackendWorkerAgent
+        mock_backend_class.assert_called_once()
+
+        # Pool should track is_hybrid as False
+        assert manager.agent_pool[agent_id]["is_hybrid"] is False
+
+    @patch("codeframe.agents.agent_pool_manager.SDK_AVAILABLE", True)
+    @patch("codeframe.agents.agent_pool_manager.SDKClientWrapper")
+    @patch("codeframe.agents.agent_pool_manager.HybridWorkerAgent")
+    def test_create_agent_with_use_sdk_override(
+        self, mock_hybrid_class, mock_sdk_class, mock_db, mock_ws_manager
+    ):
+        """Test creating agent with use_sdk override."""
+        mock_sdk_class.return_value = Mock()
+        mock_hybrid_class.return_value = Mock(session_id="test-session")
+
+        manager = AgentPoolManager(
+            project_id=1, db=mock_db, ws_manager=mock_ws_manager, use_sdk=False
+        )
+
+        # Override to use SDK for this specific agent
+        agent_id = manager.create_agent("backend", use_sdk=True)
+
+        # Should create HybridWorkerAgent despite pool default
+        mock_hybrid_class.assert_called_once()
+        assert manager.agent_pool[agent_id]["is_hybrid"] is True
+
+
+class TestAgentStatusWithSDKFields:
+    """Test agent status includes SDK fields."""
+
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    def test_get_agent_status_includes_hybrid_field(self, mock_backend_class, pool_manager):
+        """Test get_agent_status includes is_hybrid field."""
+        mock_backend_class.return_value = Mock()
+
+        agent_id = pool_manager.create_agent("backend")
+        status = pool_manager.get_agent_status()
+
+        assert agent_id in status
+        assert "is_hybrid" in status[agent_id]
+        assert status[agent_id]["is_hybrid"] is False
+
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    def test_get_agent_status_includes_session_id(self, mock_backend_class, pool_manager):
+        """Test get_agent_status includes session_id field."""
+        mock_agent = Mock()
+        mock_agent.session_id = None  # Traditional agents don't have session_id
+        mock_backend_class.return_value = mock_agent
+
+        agent_id = pool_manager.create_agent("backend")
+        status = pool_manager.get_agent_status()
+
+        assert agent_id in status
+        assert "session_id" in status[agent_id]
+        assert status[agent_id]["session_id"] is None  # Traditional agents have no session_id
