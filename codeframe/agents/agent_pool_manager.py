@@ -76,6 +76,7 @@ class AgentPoolManager:
         use_sdk: bool = False,
         model: str = "claude-sonnet-4-20250514",
         cwd: Optional[str] = None,
+        codebase_index=None,
     ):
         """
         Initialize Agent Pool Manager.
@@ -89,6 +90,7 @@ class AgentPoolManager:
             use_sdk: Whether to create HybridWorkerAgents with SDK execution (default: False)
             model: Model to use for SDK agents (default: claude-sonnet-4-20250514)
             cwd: Working directory for SDK agents (default: current directory)
+            codebase_index: CodebaseIndex instance for pattern searching (optional)
         """
         self.project_id = project_id
         self.db = db
@@ -98,6 +100,7 @@ class AgentPoolManager:
         self.use_sdk = use_sdk and SDK_AVAILABLE
         self.model = model
         self.cwd = cwd or os.getcwd()
+        self.codebase_index = codebase_index
 
         # Agent pool: {agent_id: agent_info}
         self.agent_pool: Dict[str, Dict[str, Any]] = {}
@@ -437,7 +440,7 @@ class AgentPoolManager:
             return BackendWorkerAgent(
                 project_id=self.project_id,
                 db=self.db,
-                codebase_index=None,
+                codebase_index=self.codebase_index,
                 provider="anthropic",
                 api_key=self.api_key,
             )
