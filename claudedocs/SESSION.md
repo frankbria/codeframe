@@ -1,123 +1,223 @@
-# Session: Fix Multi-Agent Per Project Architecture
+# Session: Fix E2E Playwright Tests in CI
 
 **Date**: 2025-12-03
-**Branch**: `fix/multi-agent-per-project-architecture` (feature branch)
-**Base Commit**: `8894c89` - fix(e2e): Update Playwright tests to navigate to correct dashboard URL
-**Goal**: Fix architectural issue - refactor from "one project per agent" to "one project with multiple agents"
+**Branch**: `fix/playwright-e2e-tests-ci`
+**Base Commit**: `7f7e895` (main merged into branch)
+**Status**: 🚧 **IN PROGRESS**
 
 ## Problem Statement
 
-Current architecture incorrectly maps one project to one agent. The correct architecture should be:
-- **One project can have multiple agents** (orchestrator, backend, frontend, test, review)
-- **Multiple projects can exist simultaneously**
-- **Each agent has isolated context** scoped by `(project_id, agent_id)`
+E2E Playwright tests are failing in GitHub Actions CI with only 18% pass rate (2/11 tests passing).
 
-This requires changes across:
-- Database schema and CRUD operations
-- API endpoints and business logic
-- Frontend state management and components
-- All test suites (backend, frontend, E2E)
+**Root Cause**: Tests are failing because the test project created in `global-setup.ts` has no data:
+- No agents (empty agent list)
+- No tasks (no task statistics)
+- No metrics (no token usage or cost data)
+- No checkpoints (no checkpoint history)
+- No reviews (no review findings)
+- No quality gates (no gate results)
+- No activity feed (no events)
 
-## Simplifications (Non-Production App)
+**Current Status**:
+- ✅ Test project creation working correctly
+- ✅ Frontend navigation working (2 tests passing)
+- ❌ All feature tests failing due to empty data (9 tests failing)
 
-Since this is not in production:
-- ✅ No backwards compatibility needed
-- ✅ No API contract versioning required
-- ✅ No complex database migration (can recreate schema)
-- ✅ No client-side migration concerns
+## Execution Plan (5 Phases)
 
-## Execution Plan (8 Phases)
+### Phase 1: Investigation & API Verification ⏳
+**Goal**: Validate current test infrastructure and confirm all required API endpoints exist
+**Estimated Time**: 30-45 minutes
+**Status**: In Progress
 
-### Phase 1: Database Schema Investigation & Design ✅
-**Status**: Complete
-**Goal**: Analyze current schema and design proper multi-agent architecture
-**Resources**: `python-expert`, `system-architect`
-**Outcome**:
-- ✅ Discovered agents table already correct (no project_id in actual DB)
-- ✅ Designed `project_agents` junction table for many-to-many
-- ✅ Created 3 comprehensive design documents (650+ lines)
-- **Commit**: 40dde2d
+**Resources**:
+- Agent: `playwright-expert` - Review test failures, analyze Playwright configuration
+- Agent: `fastapi-expert` - Verify all required API endpoints exist
 
-### Phase 2: Database Migration Implementation ✅
-**Status**: Complete
-**Goal**: Implement schema changes and update CRUD methods
-**Resources**: `python-expert`, `pytest-bdd`
+**Tasks**:
+1. Review recent GitHub Actions failure logs (last 5 runs)
+2. Confirm `global-setup.ts` creates test project successfully (already verified ✅)
+3. Verify API endpoints exist for seeding:
+   - `POST /api/agents` (create agents)
+   - `POST /api/tasks` (create tasks)
+   - `POST /api/token-usage` (record token usage)
+   - `POST /api/projects/{id}/checkpoints` (create checkpoints)
+   - `POST /api/reviews` (save review reports)
+   - `POST /api/quality-gates` (save quality gate results)
+   - `POST /api/activity` (add activity events)
+4. Document any missing endpoints
+
 **Expected Outcome**:
-- Updated schema in `database.py`
-- Updated Database class methods for multi-agent support
-- BDD tests for data integrity
+- List of existing vs. missing API endpoints
+- Clear path forward for Phase 2
 
-### Phase 3: API & Business Logic Updates (Parallel) ✅
-**Status**: Complete - 3 agents in parallel
-**Commit**: 1caba28
-**Goal**: Update FastAPI endpoints and agent business logic
-**Resources**: `fastapi-expert`, `python-expert`, `rest-expert` (parallel)
-**Expected Outcome**:
-- New API routes: `GET/POST /projects/{id}/agents`
-- Updated `WorkerAgent.__init__()` to require project_id
-- All agent methods use `(project_id, agent_id)` scoping
+---
 
-### Phase 4: Backend Test Fixes (Parallel) ✅
-**Status**: Complete - Integration tests 100%, Unit tests 85.2%
-**Commit**: a8f453c
-**Goal**: Fix all backend tests
-**Resources**: `python-expert`, `quality-engineer`, `pytest-bdd` (parallel)
-**Expected Outcome**:
-- All unit tests passing (database, agents, lib)
-- All integration tests passing
-- Updated BDD scenarios
-
-### Phase 5: Frontend Updates ✅
-**Status**: Complete - Types, API client, React components
-**Commits**: a25dae1, fbd599e
-**Goal**: Update React components for multi-agent display
-**Resources**: `react-expert`, `typescript-expert`, `rest-expert`
-**Expected Outcome**:
-- Updated types in `web-ui/src/types/`
-- Updated API clients in `web-ui/src/api/`
-- New components: `AgentList`, `AgentSelector`
-
-### Phase 6: Frontend Test Fixes
+### Phase 2: Quick Win Data Seeding (Agents & Tasks)
+**Goal**: Extend `global-setup.ts` to seed agents, tasks, and project progress
+**Estimated Time**: 2-3 hours
+**Target Pass Rate**: 40-50% (4-5 tests passing)
 **Status**: Pending
-**Goal**: Fix Jest tests and validate coverage
-**Resources**: `jest-expert`, `quality-engineer`
-**Expected Outcome**:
-- All frontend unit tests passing
-- 85%+ coverage maintained
 
-### Phase 7: End-to-End Test Fixes
+**Resources**:
+- Agent: `typescript-expert` - Implement TypeScript seeding logic
+- Agent: `playwright-expert` - Validate test improvements
+
+**Tasks**:
+1. Create Python seeding script (`tests/e2e/seed-test-data.py`):
+   - Seed 5 agents (lead, backend, frontend, test, review) with mixed statuses
+   - Seed 10 tasks (3 completed, 2 in-progress, 2 blocked, 3 pending)
+   - Update project progress statistics
+2. Modify `global-setup.ts` to call Python seeding script after project creation
+3. Run tests locally (Chromium only) to validate improvements
+4. Commit changes and push to trigger GitHub Actions run
+
+**Expected Tests Passing**:
+- ✅ Dashboard sections test (already passing)
+- ✅ Navigation test (already passing)
+- ✅ Task statistics test (NEW)
+- ✅ Agent status test (NEW)
+- ✅ Possibly responsive mobile test
+
+**Files Modified**:
+```
+tests/e2e/
+├── global-setup.ts        (MODIFIED) - Add seeding orchestration
+└── seed-test-data.py      (NEW) - Python seeding script
+```
+
+---
+
+### Phase 3: Metrics & Cost Data Seeding
+**Goal**: Seed token usage and cost data to pass metrics-related tests
+**Estimated Time**: 2-3 hours
+**Target Pass Rate**: 65-75% (7-8 tests passing)
 **Status**: Pending
-**Goal**: Fix Playwright E2E tests
-**Resources**: `playwright-expert`, `playwright-skill`
-**Expected Outcome**:
-- Fixed E2E tests for multi-agent workflows
-- New scenarios for agent coordination
 
-### Phase 8: Final Integration & Validation
+**Resources**:
+- Agent: `python-expert` - Extend seeding script with token usage records
+- Agent: `playwright-expert` - Validate metrics tests
+
+**Tasks**:
+1. Extend `seed-test-data.py` to seed:
+   - 15 token usage records across 3 models (Sonnet, Opus, Haiku)
+   - Records distributed across 3 days for time-series data
+   - Total cost ~$4.46 USD (realistic for charts)
+2. Run tests locally to validate metrics panel tests pass
+3. Commit and push to GitHub Actions
+
+**Expected Tests Passing**:
+- ✅ Metrics panel test (NEW)
+- ✅ Cost display test (NEW)
+- ✅ Token stats test (NEW)
+
+---
+
+### Phase 4: Advanced Feature Data Seeding
+**Goal**: Seed checkpoints, reviews, quality gates, and activity feed
+**Estimated Time**: 2-3 hours
+**Target Pass Rate**: 90-100% (9-11 tests passing)
 **Status**: Pending
-**Goal**: Comprehensive quality validation
-**Resources**: `/fhb:code-review`, `reviewing-code`, `quality-engineer`
+
+**Resources**:
+- Agent: `python-expert` - Complete full data seeding
+- Agent: `quality-engineer` - Validate all tests pass and fix weak assertions
+
+**Tasks**:
+1. Extend `seed-test-data.py` to seed:
+   - 3 checkpoints with Git commit SHAs and metadata
+   - 2 review reports (1 approved, 1 changes_requested) with findings
+   - 2 quality gate results (1 passed, 1 failed)
+   - 10 activity feed events
+2. Fix weak test assertions:
+   - Change `count() >= 0` to `count() > 0` where data should exist
+   - Remove unnecessary conditionals in tests
+   - Assert specific WebSocket message types
+3. Run full test suite locally (all browsers: Chromium, Firefox, WebKit)
+4. Commit and push to GitHub Actions
+
+**Expected Tests Passing**:
+- ✅ Review findings panel test (NEW)
+- ✅ Quality gates panel test (NEW)
+- ✅ Checkpoint panel test (NEW)
+- ✅ WebSocket real-time updates test (improved)
+
+**Files Modified**:
+```
+tests/e2e/
+├── seed-test-data.py           (MODIFIED) - Complete seeding
+├── test_dashboard.spec.ts      (MODIFIED) - Fix weak assertions
+├── test_checkpoint_ui.spec.ts  (MODIFIED) - Fix weak assertions
+├── test_metrics_ui.spec.ts     (MODIFIED) - Fix weak assertions
+└── test_review_ui.spec.ts      (MODIFIED) - Fix weak assertions
+```
+
+---
+
+### Phase 5: CI/CD Validation & Documentation
+**Goal**: Ensure tests pass consistently in GitHub Actions and document solution
+**Estimated Time**: 1-2 hours
+**Status**: Pending
+
+**Resources**:
+- Skill: `managing-gitops-ci` - Validate GitHub Actions workflow
+- Agent: `technical-writer` - Document seeding approach
+
+**Tasks**:
+1. Monitor GitHub Actions E2E test runs (3 consecutive passing runs required)
+2. Review Playwright HTML reports uploaded as artifacts
+3. Troubleshoot any CI-specific failures (timing issues, WebSocket problems)
+4. Update project documentation:
+   - Add section to `CLAUDE.md` on E2E test data requirements
+   - Document seeding script usage in `tests/e2e/README.md`
+   - Update `E2E_PLAYWRIGHT_FIX_SUMMARY.md` with final results
+5. Create summary report
+
 **Expected Outcome**:
-- Code review passed
-- OWASP compliance validated
-- All tests passing (100% pass rate)
-- Coverage ≥85%
+- 90-100% test pass rate in GitHub Actions (3+ consecutive runs)
+- Comprehensive documentation of test data seeding
 
-## Estimated Metrics
+**Files Modified**:
+```
+CLAUDE.md                        (MODIFIED) - Add E2E testing guidance
+E2E_PLAYWRIGHT_FIX_SUMMARY.md    (MODIFIED) - Update with final results
+tests/e2e/README.md              (NEW) - Document seeding approach
+```
 
-- **Token Usage**: ~127k tokens total
-- **Risk Level**: Low (non-production, can break things freely)
-- **Expected Improvement**: Proper architectural foundation for multi-agent collaboration
+---
 
-## Validation Strategy
+## Estimated Resources
 
-- ✅ After Phase 1: Approve schema design
-- ✅ After Phase 2: Verify schema works with basic CRUD operations
-- ✅ After Phase 4: All backend tests must pass before frontend work
-- ✅ After Phase 7: All E2E tests must pass before final review
+- **Total Time**: 8-13 hours
+- **Token Usage**: ~58k tokens
+- **Risk Level**: Medium (potential missing API endpoints)
 
-## Notes
+## Success Criteria
 
-- Previous session (Playwright E2E fixes) archived to: `claudedocs/2025-12-03_SESSION_playwright-e2e.md`
-- Testing strategy: Test progressively (DB → API → Frontend) rather than all at end
-- Parallelization: Phases 3 and 4 use parallel agents for independent work
+- ✅ **Primary Goal**: 90-100% E2E test pass rate in GitHub Actions (currently 18%)
+- ✅ **Secondary Goal**: Tests validate all Sprint 10 features
+- ✅ **Tertiary Goal**: Seeding approach documented and maintainable
+
+## Key Technical Decisions
+
+1. **Seeding Strategy**: Python script called from TypeScript `global-setup.ts`
+   - Rationale: Python has better FastAPI/SQLite integration
+   - Alternative: TypeScript seeding (more complex, no benefits)
+
+2. **Seeding Scope**: Comprehensive data across all features
+   - Phase 2: Agents & tasks (quick win)
+   - Phase 3: Metrics & costs (medium complexity)
+   - Phase 4: Advanced features (full coverage)
+
+3. **Assertion Improvements**: Strengthen weak assertions
+   - Change `count() >= 0` to `count() > 0` (expect data to exist)
+   - Remove unnecessary conditionals (data should always exist)
+
+## Next Steps
+
+Starting with Phase 1: Investigation & API Verification
+
+---
+
+**Session Start**: 2025-12-03
+**Current Phase**: Phase 1 (Investigation)
