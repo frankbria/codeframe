@@ -24,6 +24,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   const [showCreateDialog, setShowCreateDialog] = useState<boolean>(false);
   const [newCheckpointName, setNewCheckpointName] = useState<string>('');
   const [newCheckpointDescription, setNewCheckpointDescription] = useState<string>('');
+  const [nameError, setNameError] = useState<string | null>(null);
   const [selectedCheckpoint, setSelectedCheckpoint] = useState<Checkpoint | null>(null);
   const [showRestoreDialog, setShowRestoreDialog] = useState<boolean>(false);
 
@@ -58,12 +59,13 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   // Handle create checkpoint
   const handleCreateCheckpoint = async () => {
     if (!newCheckpointName.trim()) {
-      setError('Checkpoint name is required');
+      setNameError('Checkpoint name is required');
       return;
     }
 
     setCreating(true);
     setError(null);
+    setNameError(null);
 
     try {
       await createCheckpoint(projectId, {
@@ -75,6 +77,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
       // Reset form and reload
       setNewCheckpointName('');
       setNewCheckpointDescription('');
+      setNameError(null);
       setShowCreateDialog(false);
       await loadCheckpoints();
     } catch (err) {
@@ -148,13 +151,14 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="checkpoint-list">
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Checkpoints</h2>
         <button
           onClick={() => setShowCreateDialog(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          data-testid="create-checkpoint-button"
         >
           Create Checkpoint
         </button>
@@ -169,7 +173,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
 
       {/* Create checkpoint dialog */}
       {showCreateDialog && (
-        <div className="bg-white border border-gray-200 rounded-md p-6 shadow-sm">
+        <div className="bg-white border border-gray-200 rounded-md p-6 shadow-sm" data-testid="create-checkpoint-modal">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Checkpoint</h3>
           <div className="space-y-4">
             <div>
@@ -180,11 +184,22 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                 id="checkpoint-name"
                 type="text"
                 value={newCheckpointName}
-                onChange={(e) => setNewCheckpointName(e.target.value)}
+                onChange={(e) => {
+                  setNewCheckpointName(e.target.value);
+                  if (e.target.value.trim()) {
+                    setNameError(null);
+                  }
+                }}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 placeholder="e.g., Sprint 10 Phase 4 Complete"
                 disabled={creating}
+                data-testid="checkpoint-name-input"
               />
+              {nameError && (
+                <p className="mt-1 text-sm text-red-600" data-testid="checkpoint-name-error">
+                  {nameError}
+                </p>
+              )}
             </div>
             <div>
               <label
@@ -201,6 +216,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 placeholder="Brief description of what was completed..."
                 disabled={creating}
+                data-testid="checkpoint-description-input"
               />
             </div>
             <div className="flex justify-end space-x-3">
@@ -209,9 +225,11 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                   setShowCreateDialog(false);
                   setNewCheckpointName('');
                   setNewCheckpointDescription('');
+                  setNameError(null);
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 disabled={creating}
+                data-testid="checkpoint-cancel-button"
               >
                 Cancel
               </button>
@@ -219,6 +237,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                 onClick={handleCreateCheckpoint}
                 disabled={creating || !newCheckpointName.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="checkpoint-save-button"
               >
                 {creating ? 'Creating...' : 'Create'}
               </button>
@@ -229,7 +248,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
 
       {/* Checkpoints list */}
       {checkpoints.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-md">
+        <div className="text-center py-12 bg-gray-50 rounded-md" data-testid="checkpoint-empty-state">
           <p className="text-gray-600">No checkpoints yet. Create your first checkpoint!</p>
         </div>
       ) : (
@@ -238,11 +257,12 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
             <div
               key={checkpoint.id}
               className="bg-white border border-gray-200 rounded-md p-6 hover:shadow-md transition-shadow"
+              data-testid={`checkpoint-item-${checkpoint.id}`}
             >
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">{checkpoint.name}</h3>
+                    <h3 className="text-lg font-semibold text-gray-900" data-testid="checkpoint-name">{checkpoint.name}</h3>
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-medium ${getTriggerBadge(
                         checkpoint.trigger
@@ -257,7 +277,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-500">Created:</span>{' '}
-                      <span className="text-gray-900">{formatDate(checkpoint.created_at)}</span>
+                      <span className="text-gray-900" data-testid="checkpoint-timestamp">{formatDate(checkpoint.created_at)}</span>
                     </div>
                     <div>
                       <span className="text-gray-500">Git Commit:</span>{' '}

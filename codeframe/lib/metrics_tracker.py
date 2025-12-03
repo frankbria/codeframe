@@ -223,11 +223,11 @@ class MetricsTracker:
                 "total_tokens": int,
                 "total_calls": int,
                 "by_agent": [
-                    {"agent_id": str, "cost_usd": float, "tokens": int, "calls": int},
+                    {"agent_id": str, "cost_usd": float, "total_tokens": int, "call_count": int},
                     ...
                 ],
                 "by_model": [
-                    {"model_name": str, "cost_usd": float, "tokens": int, "total_calls": int},
+                    {"model_name": str, "cost_usd": float, "total_tokens": int, "call_count": int},
                     ...
                 ]
             }
@@ -273,12 +273,12 @@ class MetricsTracker:
                 agent_stats[agent_id] = {
                     "agent_id": agent_id,
                     "cost_usd": 0.0,
-                    "tokens": 0,
-                    "calls": 0
+                    "total_tokens": 0,
+                    "call_count": 0
                 }
             agent_stats[agent_id]["cost_usd"] += cost
-            agent_stats[agent_id]["tokens"] += tokens
-            agent_stats[agent_id]["calls"] += 1
+            agent_stats[agent_id]["total_tokens"] += tokens
+            agent_stats[agent_id]["call_count"] += 1
 
             # Update model stats
             if model_name not in model_stats:
@@ -286,11 +286,11 @@ class MetricsTracker:
                     "model_name": model_name,
                     "cost_usd": 0.0,
                     "total_tokens": 0,
-                    "total_calls": 0
+                    "call_count": 0
                 }
             model_stats[model_name]["cost_usd"] += cost
             model_stats[model_name]["total_tokens"] += tokens
-            model_stats[model_name]["total_calls"] += 1
+            model_stats[model_name]["call_count"] += 1
 
         # Convert to lists and round costs
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]

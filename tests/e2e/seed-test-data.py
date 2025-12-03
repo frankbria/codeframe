@@ -61,6 +61,39 @@ def seed_test_data(db_path: str, project_id: int):
             print(f"✅ Seeded {count}/5 agents")
 
         # ========================================
+        # 1.5. Seed Project-Agent Assignments (Critical for Multi-Agent Architecture)
+        # ========================================
+        print("🔗 Seeding project-agent assignments...")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='project_agents'")
+        if not cursor.fetchone():
+            print("⚠️  Warning: project_agents table doesn't exist, skipping assignments")
+        else:
+            # Clear existing assignments for project
+            cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (project_id,))
+
+            # Assign all 5 agents to the project
+            assignments = [
+                (project_id, 'lead-001', 'orchestrator', 1, now_ts),
+                (project_id, 'backend-worker-001', 'backend', 1, now_ts),
+                (project_id, 'frontend-specialist-001', 'frontend', 1, now_ts),
+                (project_id, 'test-engineer-001', 'testing', 1, now_ts),
+                (project_id, 'review-agent-001', 'review', 1, now_ts),
+            ]
+
+            for assignment in assignments:
+                try:
+                    cursor.execute("""
+                        INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, assignment)
+                except sqlite3.Error as e:
+                    print(f"⚠️  Failed to insert project-agent assignment for {assignment[1]}: {e}")
+
+            cursor.execute("SELECT COUNT(*) FROM project_agents WHERE project_id = ?", (project_id,))
+            count = cursor.fetchone()[0]
+            print(f"✅ Seeded {count}/5 project-agent assignments")
+
+        # ========================================
         # 2. Seed Tasks (10)
         # ========================================
         print("📋 Seeding tasks...")
