@@ -27,11 +27,13 @@ db = Database("state.db")
 db.initialize()
 
 # Create an agent (reusable resource)
+from codeframe.core.models import AgentMaturity
+
 agent_id = db.create_agent(
     agent_id="backend-001",
     agent_type="backend",
     provider="claude",
-    maturity_level="delegating"
+    maturity_level=AgentMaturity.D4  # Use enum member, not string
 )
 
 # Assign to projects
@@ -221,56 +223,56 @@ Response: 201 Created
 
 ### Get Agents for Project
 ```http
-GET /api/projects/1/agents?active_only=true
+GET /api/projects/1/agents?is_active=true
 
 Response: 200 OK
-{
-  "agents": [
-    {
-      "agent_id": "backend-001",
-      "type": "backend",
-      "status": "working",
-      "role": "primary_backend",
-      "assigned_at": "2025-12-03T10:30:00Z",
-      "current_task_id": 42
-    },
-    {
-      "agent_id": "frontend-001",
-      "type": "frontend",
-      "status": "idle",
-      "role": "primary_frontend",
-      "assigned_at": "2025-12-03T11:00:00Z",
-      "current_task_id": null
-    }
-  ]
-}
+[
+  {
+    "agent_id": "backend-001",
+    "type": "backend",
+    "status": "working",
+    "role": "primary_backend",
+    "assigned_at": "2025-12-03T10:30:00Z",
+    "current_task_id": 42,
+    "is_active": true
+  },
+  {
+    "agent_id": "frontend-001",
+    "type": "frontend",
+    "status": "idle",
+    "role": "primary_frontend",
+    "assigned_at": "2025-12-03T11:00:00Z",
+    "current_task_id": null,
+    "is_active": true
+  }
+]
 ```
 
 ### Get Projects for Agent
 ```http
-GET /api/agents/backend-001/projects?active_only=true
+GET /api/agents/backend-001/projects?is_active=true
 
 Response: 200 OK
-{
-  "projects": [
-    {
-      "project_id": 1,
-      "name": "API Server",
-      "status": "active",
-      "phase": "active",
-      "role": "primary_backend",
-      "assigned_at": "2025-12-03T10:30:00Z"
-    },
-    {
-      "project_id": 2,
-      "name": "Dashboard",
-      "status": "active",
-      "phase": "planning",
-      "role": "consultant",
-      "assigned_at": "2025-12-03T12:00:00Z"
-    }
-  ]
-}
+[
+  {
+    "project_id": 1,
+    "name": "API Server",
+    "status": "active",
+    "phase": "active",
+    "role": "primary_backend",
+    "assigned_at": "2025-12-03T10:30:00Z",
+    "is_active": true
+  },
+  {
+    "project_id": 2,
+    "name": "Dashboard",
+    "status": "active",
+    "phase": "planning",
+    "role": "consultant",
+    "assigned_at": "2025-12-03T12:00:00Z",
+    "is_active": true
+  }
+]
 ```
 
 ### Remove Agent from Project
@@ -416,7 +418,15 @@ def test_task_assignment_requires_project_membership(db):
 **Before migrating production database**:
 
 - [ ] Backup database: `cp state.db state.db.backup`
-- [ ] Run migration: `python -m codeframe.persistence.migrations.migration_009`
+- [ ] Run migration programmatically:
+  ```python
+  from codeframe.persistence.migrations import MigrationRunner
+  from codeframe.persistence.migrations.migration_009_add_project_agents import migration
+
+  runner = MigrationRunner(db_path="state.db")
+  runner.register(migration)
+  runner.apply_all()
+  ```
 - [ ] Verify schema: `sqlite3 state.db ".schema project_agents"`
 - [ ] Check indexes: `sqlite3 state.db ".indexes project_agents"`
 - [ ] Validate data: Query `project_agents` table for migrated assignments
@@ -447,10 +457,14 @@ assign_task_to_agent(db, task_id=42, agent_id="backend-001", project_id=1)
 
 ### Issue: SQLite error "no such table: project_agents"
 **Cause**: Migration not run yet.
-**Solution**: Run migration:
-```bash
-cd codeframe/persistence/migrations
-python -m codeframe.persistence.migrations.migration_009
+**Solution**: Run migration programmatically:
+```python
+from codeframe.persistence.migrations import MigrationRunner
+from codeframe.persistence.migrations.migration_009_add_project_agents import migration
+
+runner = MigrationRunner(db_path="state.db")
+runner.register(migration)
+runner.apply_all()
 ```
 
 ### Issue: "table agents has no column named project_id"

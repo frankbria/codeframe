@@ -171,6 +171,26 @@ export function agentReducer(
     case 'TASK_ASSIGNED': {
       const { taskId, agentId, projectId, taskTitle, timestamp } = action.payload;
 
+      // Validate projectId before creating task
+      if (projectId <= 0) {
+        console.warn(`Invalid projectId ${projectId} for TASK_ASSIGNED, skipping task creation`);
+        // Only update agent status, don't create task with invalid project_id
+        newState = {
+          ...state,
+          agents: state.agents.map((agent) =>
+            agent.id === agentId
+              ? {
+                  ...agent,
+                  status: 'working',
+                  current_task: { id: taskId, title: taskTitle || `Task #${taskId}` },
+                  timestamp,
+                }
+              : agent
+          ),
+        };
+        break;
+      }
+
       // Check if task already exists, if not create it
       const existingTask = state.tasks.find((t) => t.id === taskId);
       const updatedTasks = existingTask

@@ -494,6 +494,5 @@ def test_unassigned_at_check_constraint(db, sample_project, sample_agents):
             """,
             (sample_project, agent_id)
         )
-        db.conn.commit()
 
     assert "CHECK constraint failed" in str(exc_info.value)

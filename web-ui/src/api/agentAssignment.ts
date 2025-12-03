@@ -20,7 +20,8 @@ import type {
  * Base API URL (from environment or default to localhost)
  */
 const API_BASE_URL =
-  (typeof window !== 'undefined' && (window as any).VITE_API_URL) ||
+  (typeof window !== 'undefined' &&
+    (window as Window & { VITE_API_URL?: string }).VITE_API_URL) ||
   'http://localhost:8002';
 
 /**

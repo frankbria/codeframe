@@ -1,7 +1,7 @@
 """FastAPI Status Server for CodeFRAME."""
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Request, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
@@ -438,7 +438,10 @@ async def get_project_status(project_id: int):
 
 
 @app.get("/api/projects/{project_id}/agents", response_model=List[AgentAssignmentResponse])
-async def get_project_agents(project_id: int, active_only: bool = True):
+async def get_project_agents(
+    project_id: int,
+    active_only: bool = Query(True, alias="is_active"),
+):
     """Get all agents assigned to a project.
 
     Multi-Agent Per Project API (Phase 3) - Updated endpoint.
@@ -561,7 +564,7 @@ async def remove_agent_from_project(project_id: int, agent_id: str):
         raise HTTPException(status_code=500, detail=f"Error removing agent: {str(e)}")
 
 
-@app.patch("/api/projects/{project_id}/agents/{agent_id}", response_model=dict)
+@app.put("/api/projects/{project_id}/agents/{agent_id}/role", response_model=AgentAssignmentResponse)
 async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUpdateRequest):
     """Update an agent's role on a project.
 
@@ -573,7 +576,7 @@ async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUp
         request: New role for the agent
 
     Returns:
-        dict with success message
+        AgentAssignmentResponse with updated assignment details
 
     Raises:
         HTTPException: 404 if assignment not found, 500 on error
@@ -594,9 +597,15 @@ async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUp
 
         logger.info(f"Updated agent {agent_id} role to {request.role} on project {project_id}")
 
-        return {
-            "message": f"Agent {agent_id} role updated to {request.role} on project {project_id}"
-        }
+        # Fetch and return the updated assignment details
+        assignment = app.state.db.get_agent_assignment(project_id, agent_id)
+        if not assignment:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Failed to retrieve updated assignment for agent {agent_id}"
+            )
+
+        return assignment
     except HTTPException:
         raise
     except Exception as e:
@@ -605,7 +614,10 @@ async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUp
 
 
 @app.get("/api/agents/{agent_id}/projects", response_model=List[ProjectAssignmentResponse])
-async def get_agent_projects(agent_id: str, active_only: bool = True):
+async def get_agent_projects(
+    agent_id: str,
+    active_only: bool = Query(True, alias="is_active"),
+):
     """Get all projects an agent is assigned to.
 
     Multi-Agent Per Project API (Phase 3) - New endpoint.

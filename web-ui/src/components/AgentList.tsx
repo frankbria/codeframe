@@ -56,7 +56,7 @@ export function AgentList({
     error: fetchError,
     mutate,
   } = useSWR<AgentAssignment[]>(
-    projectId ? `/projects/${projectId}/agents` : null,
+    projectId ? `/projects/${projectId}/agents?active=${showActiveOnly}` : null,
     () => getAgentsForProject(projectId, showActiveOnly),
     {
       refreshInterval,

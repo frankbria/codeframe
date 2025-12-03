@@ -26,7 +26,6 @@ import { ContextPanel } from './context/ContextPanel';
 import { SessionStatus } from './SessionStatus';
 import { CheckpointList } from './checkpoints/CheckpointList';
 import { CostDashboard } from './metrics/CostDashboard';
-import QualityGateStatus from './quality-gates/QualityGateStatus';
 import { ReviewSummary } from './reviews/ReviewSummary';
 
 interface DashboardProps {
