@@ -17,12 +17,17 @@ import PRDModal from './PRDModal';
 import TaskTreeView from './TaskTreeView';
 import DiscoveryProgress from './DiscoveryProgress';
 import AgentCard from './AgentCard';
+import AgentList from './AgentList';
 import BlockerPanel from './BlockerPanel';
 import { BlockerModal } from './BlockerModal';
 import ReviewResultsPanel from './review/ReviewResultsPanel';
 import { LintTrendChart } from './lint/LintTrendChart';
 import { ContextPanel } from './context/ContextPanel';
 import { SessionStatus } from './SessionStatus';
+import { CheckpointList } from './checkpoints/CheckpointList';
+import { CostDashboard } from './metrics/CostDashboard';
+import QualityGateStatus from './quality-gates/QualityGateStatus';
+import { ReviewSummary } from './reviews/ReviewSummary';
 
 interface DashboardProps {
   projectId: number;
@@ -142,9 +147,9 @@ export default function Dashboard({ projectId }: DashboardProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white border-b border-gray-200" data-testid="dashboard-header">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between" data-testid="project-selector">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
                 CodeFRAME - {projectData.name}
@@ -315,18 +320,27 @@ export default function Dashboard({ projectId }: DashboardProps) {
               <TaskTreeView issues={issuesData?.issues || []} />
             </div>
 
-            {/* Agents Section */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">🤖 Multi-Agent Pool</h2>
-                {agents.length > 0 && (
+            {/* Agents Section - Multi-Agent Per Project Architecture */}
+            <div className="bg-white rounded-lg shadow p-6 mb-6" data-testid="agent-status-panel">
+              <h2 className="text-lg font-semibold mb-4">🤖 Multi-Agent Team</h2>
+              <AgentList
+                projectId={projectId}
+                onAgentClick={handleAgentClick}
+                showActiveOnly={true}
+                refreshInterval={30000}
+              />
+            </div>
+
+            {/* Legacy Agent Cards (from AgentStateProvider) - Keeping for backward compatibility */}
+            {agents.length > 0 && (
+              <div className="bg-white rounded-lg shadow p-6 mb-6" data-testid="agent-state-panel">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">🔄 Agent State (Real-time)</h2>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                     {agents.length} agents active
                   </span>
-                )}
-              </div>
-              
-              {agents.length > 0 ? (
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {agents.map((agent) => (
                     <AgentCard
@@ -343,12 +357,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     />
                   ))}
                 </div>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  No agents active yet. Agents will be created automatically when tasks are assigned.
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Blockers Section (T020, 049-human-in-loop) */}
             <div className="mb-6">
@@ -375,6 +385,41 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 days={7}
                 refreshInterval={30000}
               />
+            </div>
+
+            {/* Sprint 10 Feature Panels */}
+
+            {/* Review Findings Panel (T065, Sprint 10) */}
+            <div className="mb-6" data-testid="review-findings-panel">
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold mb-4">🔍 Code Review Findings</h2>
+                <ReviewSummary reviewResult={null} loading={false} />
+              </div>
+            </div>
+
+            {/* Quality Gates Panel (Sprint 10) */}
+            {/* Note: QualityGateStatus requires taskId, not projectId. Disabled for now until task is selected */}
+            {/* <div className="mb-6" data-testid="quality-gates-panel">
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
+                <QualityGateStatus taskId={0} />
+              </div>
+            </div> */}
+
+            {/* Checkpoint Panel (Sprint 10) */}
+            <div className="mb-6" data-testid="checkpoint-panel">
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold mb-4">💾 Checkpoints</h2>
+                <CheckpointList projectId={projectId} refreshInterval={30000} />
+              </div>
+            </div>
+
+            {/* Metrics Panel (Sprint 10) */}
+            <div className="mb-6" data-testid="metrics-panel">
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold mb-4">📊 Cost & Token Metrics</h2>
+                <CostDashboard projectId={projectId} />
+              </div>
             </div>
 
             {/* Recent Activity */}

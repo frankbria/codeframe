@@ -158,6 +158,7 @@ export function mapWebSocketMessageToAction(
         payload: {
           taskId: msg.task_id!,
           agentId: msg.agent_id!,
+          projectId: msg.project_id || 0,  // Default to 0 if not provided (for backward compatibility)
           taskTitle: msg.task_title,
           timestamp,
         },

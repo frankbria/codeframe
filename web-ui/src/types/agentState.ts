@@ -192,6 +192,7 @@ export interface TaskAssignedAction {
   payload: {
     taskId: number;
     agentId: string;
+    projectId: number;     // Required for multi-agent per project architecture
     taskTitle?: string;
     timestamp: number;
   };

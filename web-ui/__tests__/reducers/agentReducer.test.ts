@@ -403,6 +403,7 @@ describe('agentReducer', () => {
         payload: {
           taskId: 1,
           agentId: 'agent-1',
+          projectId: 1,
           taskTitle: 'Implement authentication',
           timestamp: 2000,
         },
@@ -435,6 +436,7 @@ describe('agentReducer', () => {
         payload: {
           taskId: 42,
           agentId: 'agent-1',
+          projectId: 1,
           timestamp: Date.now(),
         },
       };
@@ -455,6 +457,7 @@ describe('agentReducer', () => {
         payload: {
           taskId: 999,
           agentId: 'agent-1',
+          projectId: 1,
           timestamp: Date.now(),
         },
       };
@@ -480,6 +483,7 @@ describe('agentReducer', () => {
         payload: {
           taskId: 1,
           agentId: 'non-existent',
+          projectId: 1,
           timestamp: Date.now(),
         },
       };

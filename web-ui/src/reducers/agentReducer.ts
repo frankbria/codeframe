@@ -169,21 +169,37 @@ export function agentReducer(
     // T025: TASK_ASSIGNED - Atomic agent + task update
     // ========================================================================
     case 'TASK_ASSIGNED': {
-      const { taskId, agentId, taskTitle, timestamp } = action.payload;
+      const { taskId, agentId, projectId, taskTitle, timestamp } = action.payload;
 
-      // Update task status and agent assignment
+      // Check if task already exists, if not create it
+      const existingTask = state.tasks.find((t) => t.id === taskId);
+      const updatedTasks = existingTask
+        ? state.tasks.map((task) =>
+            task.id === taskId
+              ? {
+                  ...task,
+                  status: 'in_progress' as const,
+                  agent_id: agentId,
+                  timestamp,
+                }
+              : task
+          )
+        : [
+            ...state.tasks,
+            {
+              id: taskId,
+              project_id: projectId,
+              title: taskTitle || `Task #${taskId}`,
+              status: 'in_progress' as const,
+              agent_id: agentId,
+              timestamp,
+            },
+          ];
+
+      // Update agent status and current task
       newState = {
         ...state,
-        tasks: state.tasks.map((task) =>
-          task.id === taskId
-            ? {
-                ...task,
-                status: 'in_progress',
-                agent_id: agentId,
-                timestamp,
-              }
-            : task
-        ),
+        tasks: updatedTasks,
         agents: state.agents.map((agent) =>
           agent.id === agentId
             ? {

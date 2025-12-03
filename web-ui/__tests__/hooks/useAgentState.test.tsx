@@ -321,7 +321,7 @@ describe('useAgentState', () => {
       });
 
       act(() => {
-        result.current.assignTask(1, 'agent-1', 'Test Task', Date.now());
+        result.current.assignTask(1, 'agent-1', 1, 'Test Task', Date.now());
       });
 
       expect(result.current.agents[0].status).toBe('working');
