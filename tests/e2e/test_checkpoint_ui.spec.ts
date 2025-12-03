@@ -11,10 +11,12 @@
 import { test, expect } from '@playwright/test';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
 
 test.describe('Checkpoint UI Workflow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto(FRONTEND_URL);
+    // Navigate to dashboard for test project
+    await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
     // Navigate to checkpoint section

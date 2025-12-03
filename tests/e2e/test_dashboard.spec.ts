@@ -12,6 +12,7 @@ import { test, expect, Page } from '@playwright/test';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
+const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
 
 test.describe('Dashboard - Sprint 10 Features', () => {
   let page: Page;
@@ -19,8 +20,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   test.beforeEach(async ({ page: testPage }) => {
     page = testPage;
 
-    // Navigate to dashboard
-    await page.goto(FRONTEND_URL);
+    // Navigate to dashboard for test project
+    await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
 
     // Wait for dashboard to load
     await page.waitForLoadState('networkidle');

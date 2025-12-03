@@ -8,6 +8,9 @@ export default defineConfig({
   testDir: './',
   testMatch: '*.spec.ts',
 
+  /* Global setup - creates test project */
+  globalSetup: './global-setup.ts',
+
   /* Run tests in files in parallel */
   fullyParallel: true,
 
