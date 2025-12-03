@@ -597,7 +597,7 @@ async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUp
 
         logger.info(f"Updated agent {agent_id} role to {request.role} on project {project_id}")
 
-        # Fetch and return the updated assignment details
+        # Fetch assignment details (junction table fields only)
         assignment = app.state.db.get_agent_assignment(project_id, agent_id)
         if not assignment:
             raise HTTPException(
@@ -605,7 +605,32 @@ async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUp
                 detail=f"Failed to retrieve updated assignment for agent {agent_id}"
             )
 
-        return assignment
+        # Fetch full agent details (type, provider, status, etc.)
+        agent = app.state.db.get_agent(agent_id)
+        if not agent:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Agent {agent_id} not found"
+            )
+
+        # Merge assignment and agent data to create full AgentAssignmentResponse
+        full_assignment = {
+            # From agents table
+            "agent_id": agent["id"],
+            "type": agent["type"],
+            "provider": agent.get("provider"),
+            "maturity_level": agent.get("maturity_level"),
+            "status": agent.get("status"),
+            "current_task_id": agent.get("current_task_id"),
+            "last_heartbeat": agent.get("last_heartbeat"),
+            # From project_agents table
+            "role": assignment["role"],
+            "assigned_at": assignment["assigned_at"],
+            "unassigned_at": assignment.get("unassigned_at"),
+            "is_active": assignment["is_active"],
+        }
+
+        return full_assignment
     except HTTPException:
         raise
     except Exception as e:
