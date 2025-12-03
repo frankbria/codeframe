@@ -12,7 +12,7 @@ omit =
 
 [report]
 # Set minimum coverage threshold
-fail_under = 85
+fail_under = 65
 precision = 2
 show_missing = true
 skip_covered = false

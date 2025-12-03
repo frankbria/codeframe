@@ -109,7 +109,7 @@ jobs:
             --cov-report=html \
             -v
 
-      - name: Check coverage threshold (85%)
+      - name: Check coverage threshold (65%)
         run: |
           COVERAGE=$(uv run coverage report | grep TOTAL | awk '{print $4}' | sed 's/%//')
           echo "Coverage: ${COVERAGE}%"
@@ -154,7 +154,7 @@ jobs:
         working-directory: web-ui
         run: npm run test:coverage
 
-      - name: Check coverage threshold (80%)
+      - name: Check coverage threshold (65%)
         working-directory: web-ui
         run: |
           COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')

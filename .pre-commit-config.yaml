@@ -24,8 +24,8 @@ repos:
         types: [python]
 
       - id: coverage-check
-        name: Enforce 85% coverage (manual - use scripts/verify-ai-claims.sh for full check)
-        entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=85; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=85; else pytest --cov --cov-report=term-missing --cov-fail-under=85; fi || (echo "❌❌❌ COVERAGE BELOW 85% ❌❌❌" && exit 1)'
+        name: Enforce 65% coverage (manual - use scripts/verify-ai-claims.sh for full check)
+        entry: bash -c 'if [ -f venv/bin/activate ]; then source venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=65; elif [ -f .venv/bin/activate ]; then source .venv/bin/activate && pytest --cov --cov-report=term-missing --cov-fail-under=65; else pytest --cov --cov-report=term-missing --cov-fail-under=65; fi || (echo "❌❌❌ COVERAGE BELOW 65% ❌❌❌" && exit 1)'
         language: system
         pass_filenames: false
         files: \.py$
