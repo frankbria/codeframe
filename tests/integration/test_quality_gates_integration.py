@@ -99,15 +99,19 @@ def test_subtract():
 
     @pytest.fixture
     def worker_agent(self, db, project_id):
-        """Create WorkerAgent."""
-        return WorkerAgent(
+        """Create WorkerAgent and assign to project."""
+        agent = WorkerAgent(
             agent_id="backend-001",
             agent_type="backend",
             provider="anthropic",
-            project_id=project_id,
             maturity=AgentMaturity.D2,
             db=db,
         )
+        # Create agent in database first (required for foreign key)
+        db.create_agent(agent.agent_id, agent.agent_type, agent.provider, agent.maturity)
+        # Assign agent to project
+        db.assign_agent_to_project(project_id, agent.agent_id)
+        return agent
 
     # ========================================================================
     # T053: test_quality_gate_workflow - Full workflow from attempt to blocker

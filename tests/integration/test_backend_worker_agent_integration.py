@@ -64,7 +64,7 @@ class TestBackendWorkerAgentIntegration:
         index = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         # Test creating multiple files with nested directories
@@ -158,7 +158,7 @@ class TestBackendWorkerAgentIntegration:
         # Create agent with real database
         index = Mock(spec=CodebaseIndex)
         agent = BackendWorkerAgent(
-            project_id=project_id, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         # Test updating to in_progress
@@ -221,7 +221,6 @@ class TestBackendWorkerAgentIntegration:
 
         # Create agent
         agent = BackendWorkerAgent(
-            project_id=project_id,
             db=db,
             codebase_index=index,
             api_key="test-key",
@@ -334,7 +333,6 @@ class TestBackendWorkerAgentIntegration:
         index.search_pattern.return_value = []
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
             db=db,
             codebase_index=index,
             api_key="test-key",
@@ -390,7 +388,7 @@ class TestBackendWorkerAgentIntegration:
         index = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            project_id=1, db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         # Attempt path traversal
@@ -456,7 +454,6 @@ class TestBackendWorkerAgentIntegration:
         index.search_pattern.return_value = []
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
             db=db,
             codebase_index=index,
             api_key="test-key",

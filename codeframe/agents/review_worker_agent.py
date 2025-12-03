@@ -96,6 +96,28 @@ class ReviewWorkerAgent(WorkerAgent):
         task_id = task.get("id")
         files_modified = task.get("files_modified", [])
 
+        # Get project_id from task dict or database
+        if "project_id" in task:
+            project_id = task["project_id"]
+        elif self.db and task_id:
+            # Fallback: fetch from database
+            task_from_db = self.db.get_task(task_id)
+            project_id = task_from_db.get("project_id") if task_from_db else None
+        else:
+            project_id = None
+
+        # Set current_task to establish project context for blocker creation
+        if project_id:
+            from codeframe.core.models import Task, TaskStatus
+            self.current_task = Task(
+                id=task_id,
+                project_id=project_id,
+                task_number=task.get("task_number", ""),
+                title=task.get("title", ""),
+                description=task.get("description", ""),
+                status=TaskStatus.IN_PROGRESS
+            )
+
         logger.info(f"ReviewWorkerAgent {self.agent_id} reviewing task {task_id}")
 
         # Handle empty files list

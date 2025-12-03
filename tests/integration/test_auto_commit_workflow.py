@@ -71,7 +71,6 @@ def backend_agent(temp_git_repo, test_db, git_workflow):
     codebase_index.search_pattern = Mock(return_value=[])
 
     agent = BackendWorkerAgent(
-        project_id=1,
         db=test_db,
         codebase_index=codebase_index,
         provider="claude",
