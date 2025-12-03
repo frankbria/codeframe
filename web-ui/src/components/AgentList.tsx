@@ -10,7 +10,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import useSWR from 'swr';
 import { getAgentsForProject } from '@/api/agentAssignment';
 import type { AgentAssignment } from '@/types/agentAssignment';
@@ -176,4 +176,4 @@ export function AgentList({
   );
 }
 
-export default AgentList;
+export default React.memo(AgentList);

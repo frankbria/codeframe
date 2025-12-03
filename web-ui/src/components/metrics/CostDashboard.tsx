@@ -224,3 +224,5 @@ export function CostDashboard({
     </div>
   );
 }
+
+export default React.memo(CostDashboard);

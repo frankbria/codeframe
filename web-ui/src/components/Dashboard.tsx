@@ -24,9 +24,9 @@ import ReviewResultsPanel from './review/ReviewResultsPanel';
 import { LintTrendChart } from './lint/LintTrendChart';
 import { ContextPanel } from './context/ContextPanel';
 import { SessionStatus } from './SessionStatus';
-import { CheckpointList } from './checkpoints/CheckpointList';
-import { CostDashboard } from './metrics/CostDashboard';
-import { ReviewSummary } from './reviews/ReviewSummary';
+import CheckpointList from './checkpoints/CheckpointList';
+import CostDashboard from './metrics/CostDashboard';
+import ReviewSummary from './reviews/ReviewSummary';
 
 interface DashboardProps {
   projectId: number;

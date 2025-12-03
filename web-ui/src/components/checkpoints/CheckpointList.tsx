@@ -334,3 +334,5 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
     </div>
   );
 };
+
+export default React.memo(CheckpointList);
