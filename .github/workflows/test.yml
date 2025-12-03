@@ -207,14 +207,55 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-      - name: Start FastAPI server in background
+      - name: Install codeframe package
         run: |
-          uv run uvicorn codeframe.ui.server:app --port 8080 &
+          uv pip install -e .
+          echo "✅ Package installed in editable mode"
+
+      - name: Initialize database
+        run: |
+          mkdir -p .codeframe
+          source .venv/bin/activate
+          python -c "from codeframe.persistence.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
+          echo "✅ Database initialized"
+
+      - name: Start FastAPI server in background
+        env:
+          DATABASE_PATH: ${{ github.workspace }}/.codeframe/state.db
+          WORKSPACE_ROOT: ${{ github.workspace }}
+          CODEFRAME_DEPLOYMENT_MODE: self_hosted
+        run: |
+          source .venv/bin/activate
+          python -m uvicorn codeframe.ui.server:app --port 8080 > /tmp/server.log 2>&1 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
+          echo "Server started with PID: $!"
+
+      - name: Verify server startup
+        run: |
+          sleep 5
+          if ! ps -p $BACKEND_PID > /dev/null; then
+            echo "❌ Server process died immediately"
+            cat /tmp/server.log
+            exit 1
+          fi
+          echo "✅ Server process is running (PID: $BACKEND_PID)"
 
       - name: Wait for backend to be ready
         run: |
-          npx wait-on http://localhost:8080/health --timeout 60000
+          echo "Waiting for server to start..."
+          for i in {1..120}; do
+            if curl -s http://localhost:8080/health > /dev/null; then
+              echo "✅ Server is ready!"
+              curl -s http://localhost:8080/health | jq .
+              exit 0
+            fi
+            echo "Attempt $i/120: Server not ready yet..."
+            sleep 1
+          done
+          echo "❌ Server failed to start within 120 seconds"
+          echo "=== Server Logs ==="
+          cat /tmp/server.log
+          exit 1
 
       - name: Run E2E backend tests
         run: |
@@ -238,6 +279,14 @@ jobs:
           path: |
             tests/e2e/fixtures/
             .pytest_cache/
+
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-backend-server-logs
+          path: /tmp/server.log
+          retention-days: 7
 
   # ============================================
   # E2E Frontend Tests (Playwright)
@@ -282,21 +331,82 @@ jobs:
         working-directory: web-ui
         run: npx playwright install --with-deps
 
-      - name: Start backend server
+      - name: Install codeframe package
         run: |
-          uv run uvicorn codeframe.ui.server:app --port 8080 &
+          uv pip install -e .
+          echo "✅ Package installed in editable mode"
+
+      - name: Initialize database
+        run: |
+          mkdir -p .codeframe
+          source .venv/bin/activate
+          python -c "from codeframe.persistence.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
+          echo "✅ Database initialized"
+
+      - name: Start backend server
+        env:
+          DATABASE_PATH: ${{ github.workspace }}/.codeframe/state.db
+          WORKSPACE_ROOT: ${{ github.workspace }}
+          CODEFRAME_DEPLOYMENT_MODE: self_hosted
+        run: |
+          source .venv/bin/activate
+          python -m uvicorn codeframe.ui.server:app --port 8080 > /tmp/backend.log 2>&1 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
+          echo "Backend started with PID: $!"
+
+      - name: Verify backend startup
+        run: |
+          sleep 5
+          if ! ps -p $BACKEND_PID > /dev/null; then
+            echo "❌ Backend process died immediately"
+            cat /tmp/backend.log
+            exit 1
+          fi
+          echo "✅ Backend process is running (PID: $BACKEND_PID)"
+
+      - name: Wait for backend to be ready
+        run: |
+          echo "Waiting for backend to start..."
+          for i in {1..120}; do
+            if curl -s http://localhost:8080/health > /dev/null; then
+              echo "✅ Backend is ready!"
+              curl -s http://localhost:8080/health | jq .
+              break
+            fi
+            echo "Attempt $i/120: Backend not ready yet..."
+            sleep 1
+            if [ $i -eq 120 ]; then
+              echo "❌ Backend failed to start within 120 seconds"
+              echo "=== Backend Logs ==="
+              cat /tmp/backend.log
+              exit 1
+            fi
+          done
 
       - name: Start frontend dev server
         working-directory: web-ui
         run: |
-          npm run dev &
+          npm run dev > /tmp/frontend.log 2>&1 &
           echo "FRONTEND_PID=$!" >> $GITHUB_ENV
+          echo "Frontend started with PID: $!"
 
-      - name: Wait for servers to be ready
+      - name: Wait for frontend to be ready
         run: |
-          npx wait-on http://localhost:8080/health --timeout 60000
-          npx wait-on http://localhost:3000 --timeout 60000
+          echo "Waiting for frontend to start..."
+          for i in {1..60}; do
+            if curl -s http://localhost:3000 > /dev/null; then
+              echo "✅ Frontend is ready!"
+              break
+            fi
+            echo "Attempt $i/60: Frontend not ready yet..."
+            sleep 1
+            if [ $i -eq 60 ]; then
+              echo "❌ Frontend failed to start within 60 seconds"
+              echo "=== Frontend Logs ==="
+              cat /tmp/frontend.log
+              exit 1
+            fi
+          done
 
       - name: Run Playwright E2E tests
         working-directory: tests/e2e
@@ -312,6 +422,22 @@ jobs:
           name: playwright-report
           path: tests/e2e/playwright-report/
           retention-days: 30
+
+      - name: Upload backend logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-frontend-backend-logs
+          path: /tmp/backend.log
+          retention-days: 7
+
+      - name: Upload frontend logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-frontend-frontend-logs
+          path: /tmp/frontend.log
+          retention-days: 7
 
       - name: Stop servers
         if: always()
