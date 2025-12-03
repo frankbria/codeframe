@@ -50,12 +50,11 @@ class ReviewWorkerAgent(WorkerAgent):
     # Max re-review iterations
     MAX_ITERATIONS = 2
 
-    def __init__(self, agent_id: str, project_id: int, db: Database, provider: str = "anthropic"):
+    def __init__(self, agent_id: str, db: Database, provider: str = "anthropic"):
         """Initialize ReviewWorkerAgent.
 
         Args:
             agent_id: Unique agent identifier
-            project_id: Project this agent belongs to
             db: Database instance
             provider: LLM provider (default: anthropic)
         """
@@ -63,7 +62,6 @@ class ReviewWorkerAgent(WorkerAgent):
             agent_id=agent_id,
             agent_type="review",
             provider=provider,
-            project_id=project_id,
             db=db,
         )
 
@@ -97,6 +95,28 @@ class ReviewWorkerAgent(WorkerAgent):
         """
         task_id = task.get("id")
         files_modified = task.get("files_modified", [])
+
+        # Get project_id from task dict or database
+        if "project_id" in task:
+            project_id = task["project_id"]
+        elif self.db and task_id:
+            # Fallback: fetch from database
+            task_from_db = self.db.get_task(task_id)
+            project_id = task_from_db.get("project_id") if task_from_db else None
+        else:
+            project_id = None
+
+        # Set current_task to establish project context for blocker creation
+        if project_id:
+            from codeframe.core.models import Task, TaskStatus
+            self.current_task = Task(
+                id=task_id,
+                project_id=project_id,
+                task_number=task.get("task_number", ""),
+                title=task.get("title", ""),
+                description=task.get("description", ""),
+                status=TaskStatus.IN_PROGRESS
+            )
 
         logger.info(f"ReviewWorkerAgent {self.agent_id} reviewing task {task_id}")
 
@@ -319,10 +339,16 @@ class ReviewWorkerAgent(WorkerAgent):
         """
         blocker_message = report.to_blocker_message()
 
+        # Get project_id from current_task
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
+            logger.error("Cannot create review blocker without project context")
+            return
+
         try:
             self.db.create_blocker(
                 agent_id=self.agent_id,
-                project_id=self.project_id,
+                project_id=project_id,
                 task_id=task_id,
                 blocker_type="SYNC",
                 question=f"Code Review Failed: {report.status.replace('_', ' ').title()}\n\n{blocker_message}",

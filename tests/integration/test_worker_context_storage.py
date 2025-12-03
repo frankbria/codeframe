@@ -45,14 +45,38 @@ def test_project(temp_db):
 
 @pytest.fixture
 def worker_agent(temp_db, test_project):
-    """Create worker agent with test database."""
+    """Create worker agent with test database and assign to project."""
+    from codeframe.core.models import AgentMaturity
+
     agent = WorkerAgent(
         agent_id="test-worker-001",
         agent_type="backend",
         provider="anthropic",
-        project_id=test_project,
         db=temp_db
     )
+    # Create agent in database first (required for foreign key)
+    temp_db.create_agent(
+        agent_id=agent.agent_id,
+        agent_type=agent.agent_type,
+        provider=agent.provider,
+        maturity_level=AgentMaturity.D1
+    )
+    # Assign agent to project using project_agents junction table
+    temp_db.assign_agent_to_project(test_project, agent.agent_id)
+
+    # Create a mock task to establish project context
+    from codeframe.core.models import Task, TaskStatus
+    task = Task(
+        id=1,
+        issue_id=1,
+        project_id=test_project,
+        assigned_to=agent.agent_id,
+        title="Test task",
+        description="Test task for context storage",
+        status=TaskStatus.IN_PROGRESS
+    )
+    agent.current_task = task
+
     return agent
 
 
@@ -105,25 +129,53 @@ class TestWorkerContextStorageIntegration:
     async def test_context_persists_across_sessions(self, temp_db, test_project):
         """Test that context survives agent restart (database persistence)."""
         # ARRANGE: Create first agent and save context
+        from codeframe.core.models import Task, TaskStatus, AgentMaturity
+
         agent1 = WorkerAgent(
             agent_id="test-worker-002",
             agent_type="backend",
             provider="anthropic",
-            project_id=test_project,
             db=temp_db
         )
+        temp_db.create_agent(agent1.agent_id, agent1.agent_type, agent1.provider, AgentMaturity.D1)
+        temp_db.assign_agent_to_project(test_project, agent1.agent_id)
+
+        # Create task to establish project context
+        task1 = Task(
+            id=2,
+            issue_id=1,
+            project_id=test_project,
+            assigned_to=agent1.agent_id,
+            title="Test task",
+            description="Test task",
+            status=TaskStatus.IN_PROGRESS
+        )
+        agent1.current_task = task1
 
         content = "This is persistent context"
         item_id = await agent1.save_context_item(ContextItemType.TASK, content)
 
         # ACT: Create new agent instance (simulates restart)
+        # Note: Agent already exists in DB from agent1 creation
         agent2 = WorkerAgent(
             agent_id="test-worker-002",  # Same agent ID
             agent_type="backend",
             provider="anthropic",
-            project_id=test_project,
             db=temp_db
         )
+        # Agent already assigned to project from agent1, no need to reassign
+
+        # Create task to establish project context for agent2
+        task2 = Task(
+            id=3,
+            issue_id=1,
+            project_id=test_project,
+            assigned_to=agent2.agent_id,
+            title="Test task",
+            description="Test task",
+            status=TaskStatus.IN_PROGRESS
+        )
+        agent2.current_task = task2
 
         # Load context with new agent instance
         loaded_items = await agent2.load_context(tier=None)
@@ -239,20 +291,48 @@ class TestWorkerContextStorageIntegration:
     async def test_multiple_agents_isolated_context(self, temp_db, test_project):
         """Test that different agents have isolated context."""
         # ARRANGE: Create two different agents
+        from codeframe.core.models import Task, TaskStatus, AgentMaturity
+
         agent1 = WorkerAgent(
             agent_id="agent-001",
             agent_type="backend",
             provider="anthropic",
-            project_id=test_project,
             db=temp_db
         )
+        temp_db.create_agent(agent1.agent_id, agent1.agent_type, agent1.provider, AgentMaturity.D1)
+        temp_db.assign_agent_to_project(test_project, agent1.agent_id)
+
         agent2 = WorkerAgent(
             agent_id="agent-002",
             agent_type="frontend",
             provider="anthropic",
-            project_id=test_project,
             db=temp_db
         )
+        temp_db.create_agent(agent2.agent_id, agent2.agent_type, agent2.provider, AgentMaturity.D1)
+        temp_db.assign_agent_to_project(test_project, agent2.agent_id)
+
+        # Create tasks to establish project context
+        task1 = Task(
+            id=4,
+            issue_id=1,
+            project_id=test_project,
+            assigned_to=agent1.agent_id,
+            title="Agent 1 task",
+            description="Task for agent 1",
+            status=TaskStatus.IN_PROGRESS
+        )
+        agent1.current_task = task1
+
+        task2 = Task(
+            id=5,
+            issue_id=1,
+            project_id=test_project,
+            assigned_to=agent2.agent_id,
+            title="Agent 2 task",
+            description="Task for agent 2",
+            status=TaskStatus.IN_PROGRESS
+        )
+        agent2.current_task = task2
 
         # ACT: Each agent saves context
         await agent1.save_context_item(ContextItemType.TASK, "Agent 1 task")

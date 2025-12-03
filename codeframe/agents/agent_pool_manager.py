@@ -409,7 +409,6 @@ class AgentPoolManager:
         agent = HybridWorkerAgent(
             agent_id=agent_id,
             agent_type=base_type,
-            project_id=self.project_id,
             db=self.db,
             sdk_client=sdk_client,
             provider="sdk",
@@ -438,7 +437,6 @@ class AgentPoolManager:
         """
         if agent_type == "backend" or agent_type == "backend-worker":
             return BackendWorkerAgent(
-                project_id=self.project_id,
                 db=self.db,
                 codebase_index=self.codebase_index,
                 provider="anthropic",
@@ -450,6 +448,7 @@ class AgentPoolManager:
                 provider="anthropic",
                 api_key=self.api_key,
                 websocket_manager=self.ws_manager,
+                db=self.db,
             )
         elif agent_type == "test" or agent_type == "test-engineer":
             return TestWorkerAgent(
@@ -457,11 +456,11 @@ class AgentPoolManager:
                 provider="anthropic",
                 api_key=self.api_key,
                 websocket_manager=self.ws_manager,
+                db=self.db,
             )
         elif agent_type == "review" or agent_type == "review-worker":
             return ReviewWorkerAgent(
                 agent_id=agent_id,
-                project_id=self.project_id,
                 db=self.db,
                 provider="anthropic",
             )

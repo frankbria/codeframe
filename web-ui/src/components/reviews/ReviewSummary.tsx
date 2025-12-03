@@ -217,4 +217,4 @@ export function ReviewSummary({
   );
 }
 
-export default ReviewSummary;
+export default React.memo(ReviewSummary);

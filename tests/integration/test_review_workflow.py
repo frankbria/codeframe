@@ -56,12 +56,18 @@ class TestReviewWorkflow:
 
     @pytest.fixture
     def review_agent(self, db, project_id):
-        """Create ReviewWorkerAgent."""
-        return ReviewWorkerAgent(
+        """Create ReviewWorkerAgent and assign to project."""
+        from codeframe.core.models import AgentMaturity
+
+        agent = ReviewWorkerAgent(
             agent_id="review-001",
-            project_id=project_id,
             db=db,
         )
+        # Create agent in database first (required for foreign key)
+        db.create_agent(agent.agent_id, agent.agent_type, agent.provider, AgentMaturity.D1)
+        # Assign agent to project
+        db.assign_agent_to_project(project_id, agent.agent_id)
+        return agent
 
     @pytest.fixture
     def good_code_file(self, workspace):
@@ -468,22 +474,34 @@ def simple():
         """Test review integration with LeadAgent workflow."""
         # This would test Step 11 in LeadAgent workflow
         # For now, just verify agents can work together
+        from codeframe.core.models import AgentMaturity
+
         review_agent = ReviewWorkerAgent(
             agent_id="review-001",
-            project_id=project_id,
             db=db,
         )
+        db.create_agent(review_agent.agent_id, review_agent.agent_type, review_agent.provider, AgentMaturity.D1)
+        db.assign_agent_to_project(project_id, review_agent.agent_id)
 
         # Verify agent can be used in workflow
         assert review_agent.agent_id == "review-001"
-        assert review_agent.project_id == project_id
+        # Verify agent is assigned to project
+        agents_for_project = db.get_agents_for_project(project_id)
+        assert review_agent.agent_id in [a["agent_id"] for a in agents_for_project]
 
     @pytest.mark.asyncio
     async def test_concurrent_reviews(self, db, project_id, workspace):
         """Test multiple concurrent review tasks."""
         # Create two review agents
-        agent1 = ReviewWorkerAgent(agent_id="review-001", project_id=project_id, db=db)
-        agent2 = ReviewWorkerAgent(agent_id="review-002", project_id=project_id, db=db)
+        from codeframe.core.models import AgentMaturity
+
+        agent1 = ReviewWorkerAgent(agent_id="review-001", db=db)
+        db.create_agent(agent1.agent_id, agent1.agent_type, agent1.provider, AgentMaturity.D1)
+        db.assign_agent_to_project(project_id, agent1.agent_id)
+
+        agent2 = ReviewWorkerAgent(agent_id="review-002", db=db)
+        db.create_agent(agent2.agent_id, agent2.agent_type, agent2.provider, AgentMaturity.D1)
+        db.assign_agent_to_project(project_id, agent2.agent_id)
 
         # Create two tasks
         cursor = db.conn.cursor()

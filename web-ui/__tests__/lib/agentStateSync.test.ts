@@ -40,6 +40,7 @@ describe('fullStateResync', () => {
   const mockTasks: Task[] = [
     {
       id: 1,
+      project_id: 123,
       title: 'Implement authentication',
       status: 'in_progress',
       agent_id: 'agent-1',

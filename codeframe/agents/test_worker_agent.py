@@ -46,7 +46,6 @@ class TestWorkerAgent(WorkerAgent):
         websocket_manager=None,
         max_correction_attempts: int = 3,
         db=None,
-        project_id: Optional[int] = None,
     ):
         """
         Initialize Test Worker Agent.
@@ -59,13 +58,11 @@ class TestWorkerAgent(WorkerAgent):
             websocket_manager: WebSocket connection manager
             max_correction_attempts: Maximum self-correction attempts
             db: Database instance for blocker management (optional)
-            project_id: Project ID for blocker context (optional)
         """
         super().__init__(
             agent_id=agent_id,
             agent_type="test",
             provider=provider,
-            project_id=project_id or 1,  # Default to 1 if not provided
             maturity=maturity,
             system_prompt=self._build_system_prompt(),
             db=db,
@@ -752,9 +749,11 @@ Provide ONLY the corrected test code, no explanations."""
                 "Database instance required for blocker workflow. Pass db parameter to __init__."
             )
 
-        if self.project_id is None:
+        # Get project_id from current_task
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
             raise RuntimeError(
-                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+                "Project context required for blocker workflow. Agent must have current_task set."
             )
 
         if not question or len(question.strip()) == 0:
@@ -782,7 +781,7 @@ Provide ONLY the corrected test code, no explanations."""
         # Create blocker in database
         blocker_id = self.db.create_blocker(
             agent_id=self.agent_id,
-            project_id=self.project_id,
+            project_id=project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
             question=question.strip(),
@@ -797,7 +796,7 @@ Provide ONLY the corrected test code, no explanations."""
 
                 await broadcast_blocker_created(
                     manager=self.websocket_manager,
-                    project_id=self.project_id,
+                    project_id=project_id,
                     blocker_id=blocker_id,
                     agent_id=self.agent_id,
                     task_id=blocker_task_id,
@@ -884,9 +883,11 @@ Provide ONLY the corrected test code, no explanations."""
                 "Database instance required for blocker workflow. Pass db parameter to __init__."
             )
 
-        if self.project_id is None:
+        # Get project_id from current_task
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
             raise RuntimeError(
-                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+                "Project context required for blocker workflow. Agent must have current_task set."
             )
 
         import time
@@ -915,7 +916,7 @@ Provide ONLY the corrected test code, no explanations."""
 
                         await broadcast_agent_resumed(
                             manager=self.websocket_manager,
-                            project_id=self.project_id,
+                            project_id=project_id,
                             agent_id=self.agent_id,
                             task_id=(
                                 self.current_task.id

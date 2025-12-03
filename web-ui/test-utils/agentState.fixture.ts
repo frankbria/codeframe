@@ -41,6 +41,7 @@ export function createMockAgent(overrides?: Partial<Agent>): Agent {
 export function createMockTask(overrides?: Partial<Task>): Task {
   return {
     id: 1,
+    project_id: 123,
     title: 'Implement authentication',
     status: 'pending',
     timestamp: Date.now(),

@@ -126,6 +126,7 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         cursor.execute("DELETE FROM blockers")
         cursor.execute("DELETE FROM tasks")
         cursor.execute("DELETE FROM issues")
+        cursor.execute("DELETE FROM project_agents")  # Multi-agent junction table
         cursor.execute("DELETE FROM agents")
         cursor.execute("DELETE FROM projects")
 

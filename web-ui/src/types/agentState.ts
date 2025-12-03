@@ -96,6 +96,7 @@ export interface Agent {
  */
 export interface Task {
   id: number;                       // Unique task identifier
+  project_id: number;               // Project this task belongs to
   title: string;                    // Task description
   status: TaskStatus;               // Current state
   agent_id?: string;                // Assigned agent (if any)
@@ -191,6 +192,7 @@ export interface TaskAssignedAction {
   payload: {
     taskId: number;
     agentId: string;
+    projectId: number;     // Required for multi-agent per project architecture
     taskTitle?: string;
     timestamp: number;
   };

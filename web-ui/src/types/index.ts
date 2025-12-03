@@ -212,3 +212,15 @@ export interface TaskDependency {
   task_id: number;
   depends_on_task_id: number;
 }
+
+// Re-export agent assignment types (Phase 3: Multi-Agent Per Project)
+export type {
+  AgentAssignmentRequest,
+  AgentRoleUpdateRequest,
+  AgentAssignment,
+  ProjectAssignment,
+  AssignmentCreatedResponse,
+  GetAgentsForProjectParams,
+  GetProjectsForAgentParams,
+  UnassignAgentParams,
+} from './agentAssignment';

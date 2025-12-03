@@ -14,19 +14,55 @@ class WorkerAgent:
         agent_id: str,
         agent_type: str,
         provider: str,
-        project_id: int | None = None,
         maturity: AgentMaturity = AgentMaturity.D1,
         system_prompt: str | None = None,
         db: Optional[Any] = None,
     ):
+        """Initialize Worker Agent.
+
+        Args:
+            agent_id: Unique agent identifier
+            agent_type: Type of agent (backend, frontend, test, review)
+            provider: LLM provider (anthropic, openai, etc.)
+            maturity: Agent maturity level (D1-D4)
+            system_prompt: Custom system prompt
+            db: Database connection
+
+        Note:
+            Agents are now project-agnostic at creation time.
+            Project context is derived from the current task being executed.
+            Use Database.assign_agent_to_project() to assign agents to projects.
+        """
         self.agent_id = agent_id
         self.agent_type = agent_type
-        self.project_id = project_id
         self.provider = provider
         self.maturity = maturity
         self.system_prompt = system_prompt
         self.current_task: Task | None = None
         self.db = db
+
+    def _get_project_id(self) -> int:
+        """Get project ID from current task.
+
+        Returns:
+            Project ID from current task
+
+        Raises:
+            ValueError: If no task is currently assigned or task has no project_id
+        """
+        if not self.current_task:
+            raise ValueError(
+                "No task currently assigned. Project context is derived from active task. "
+                "Assign a task first using execute_task() or complete_task()."
+            )
+
+        if not self.current_task.project_id:
+            raise ValueError(
+                f"Task {self.current_task.id} has no project_id. "
+                "Task must be associated with a project."
+            )
+
+        return self.current_task.project_id
 
     def execute_task(self, task: Task) -> dict:
         """
@@ -49,13 +85,14 @@ class WorkerAgent:
             >>> await tracker.record_token_usage(
             ...     task_id=task.id,
             ...     agent_id=self.agent_id,
-            ...     project_id=self.project_id,
+            ...     project_id=task.project_id,  # Get from task, not agent
             ...     model_name="claude-sonnet-4-5",
             ...     input_tokens=response.usage.input_tokens,
             ...     output_tokens=response.usage.output_tokens,
             ...     call_type=CallType.TASK_EXECUTION
             ... )
         """
+        # Set current task to establish project context
         self.current_task = task
         # TODO: Implement task execution with LLM provider
         # TODO: Add token tracking after LLM call (see docstring example)
@@ -80,7 +117,9 @@ class WorkerAgent:
             ValueError: If db is not initialized
 
         Example:
-            >>> agent = BackendWorkerAgent(agent_id="backend-001", project_id=123, db=db)
+            >>> agent = BackendWorkerAgent(agent_id="backend-001", db=db)
+            >>> # Assign task to establish project context
+            >>> agent.execute_task(task)
             >>> result = await agent.flash_save()
             >>> print(f"Reduced from {result['tokens_before']} to {result['tokens_after']} tokens")
             Reduced from 150000 to 50000 tokens
@@ -88,14 +127,14 @@ class WorkerAgent:
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
-        if self.project_id is None:
-            raise ValueError("project_id is required to flash_save")
+        # Get project_id from current task
+        project_id = self._get_project_id()
 
         from codeframe.lib.context_manager import ContextManager
 
         # Create context manager and execute flash save
         context_mgr = ContextManager(db=self.db)
-        result = context_mgr.flash_save(self.project_id, self.agent_id)
+        result = context_mgr.flash_save(project_id, self.agent_id)
 
         return result
 
@@ -112,21 +151,23 @@ class WorkerAgent:
             ValueError: If db is not initialized
 
         Example:
-            >>> agent = BackendWorkerAgent(agent_id="backend-001", project_id=123, db=db)
+            >>> agent = BackendWorkerAgent(agent_id="backend-001", db=db)
+            >>> # Assign task to establish project context
+            >>> agent.execute_task(task)
             >>> if await agent.should_flash_save():
             ...     await agent.flash_save()
         """
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
-        if self.project_id is None:
-            raise ValueError("project_id is required to should_flash_save")
+        # Get project_id from current task
+        project_id = self._get_project_id()
 
         from codeframe.lib.context_manager import ContextManager
 
         # Create context manager and check threshold
         context_mgr = ContextManager(db=self.db)
-        return context_mgr.should_flash_save(self.project_id, self.agent_id, force=False)
+        return context_mgr.should_flash_save(project_id, self.agent_id, force=False)
 
     async def save_context_item(self, item_type: ContextItemType, content: str) -> str:
         """Save a context item for this agent.
@@ -144,15 +185,15 @@ class WorkerAgent:
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
-        if self.project_id is None:
-            raise ValueError("project_id is required to save_context_item")
-
         if not content or not content.strip():
             raise ValueError("Content cannot be empty")
 
+        # Get project_id from current task
+        project_id = self._get_project_id()
+
         # Call database create_context_item - score is auto-calculated (Phase 4)
         item_id = self.db.create_context_item(
-            project_id=self.project_id,
+            project_id=project_id,
             agent_id=self.agent_id,
             item_type=item_type.value,
             content=content,
@@ -177,17 +218,17 @@ class WorkerAgent:
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
-        if self.project_id is None:
-            raise ValueError("project_id is required to load_context")
+        # Get project_id from current task
+        project_id = self._get_project_id()
 
         # Call database list_context_items with:
-        # - project_id=self.project_id
+        # - project_id from current task
         # - agent_id=self.agent_id
         # - tier=tier.value if tier else None
         # - limit=100
         tier_value = tier.value if tier else None
         items = self.db.list_context_items(
-            project_id=self.project_id, agent_id=self.agent_id, tier=tier_value, limit=100
+            project_id=project_id, agent_id=self.agent_id, tier=tier_value, limit=100
         )
 
         # Update access tracking for each loaded item
@@ -241,6 +282,8 @@ class WorkerAgent:
 
         Example:
             >>> agent = FrontendWorkerAgent(agent_id="frontend-001", db=db)
+            >>> # Assign task to establish project context
+            >>> agent.execute_task(task)
             >>> updated = await agent.update_tiers()
             >>> print(f"Updated {updated} items")
             Updated 25 items
@@ -248,14 +291,14 @@ class WorkerAgent:
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
-        if self.project_id is None:
-            raise ValueError("project_id is required to update_tiers")
+        # Get project_id from current task
+        project_id = self._get_project_id()
 
         from codeframe.lib.context_manager import ContextManager
 
         # Create context manager and trigger tier updates
         context_mgr = ContextManager(db=self.db)
-        updated_count = context_mgr.update_tiers_for_agent(self.project_id, self.agent_id)
+        updated_count = context_mgr.update_tiers_for_agent(project_id, self.agent_id)
 
         return updated_count
 
@@ -293,7 +336,7 @@ class WorkerAgent:
 
         Example:
             >>> agent = WorkerAgent(agent_id="backend-001", agent_type="backend",
-            ...                     provider="anthropic", project_id=1, db=db)
+            ...                     provider="anthropic", db=db)
             >>> result = await agent.complete_task(task, project_root=Path("/app"))
             >>> if result['success']:
             ...     print("Task completed successfully!")
@@ -310,16 +353,19 @@ class WorkerAgent:
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
-        if self.project_id is None:
-            raise ValueError("project_id is required to complete_task")
+        # Set current task to establish project context
+        self.current_task = task
+
+        # Get project_id from task
+        project_id = self._get_project_id()
 
         # Get project root from database if not provided
         if project_root is None:
             cursor = self.db.conn.cursor()
-            cursor.execute("SELECT workspace_path FROM projects WHERE id = ?", (self.project_id,))
+            cursor.execute("SELECT workspace_path FROM projects WHERE id = ?", (project_id,))
             row = cursor.fetchone()
             if not row:
-                raise ValueError(f"Project {self.project_id} not found")
+                raise ValueError(f"Project {project_id} not found")
             project_root = Path(row[0])
 
         logger.info(f"Agent {self.agent_id} attempting to complete task {task.id}")
@@ -327,7 +373,7 @@ class WorkerAgent:
         # Step 1: Run quality gates
         quality_gates = QualityGates(
             db=self.db,
-            project_id=self.project_id,
+            project_id=project_id,
             project_root=project_root,
         )
 
@@ -430,10 +476,13 @@ class WorkerAgent:
 
         question = "\n".join(question_parts)
 
+        # Get project_id from task
+        project_id = task.project_id if task.project_id else self._get_project_id()
+
         # Create SYNC blocker
         blocker_id = self.db.create_blocker(
             agent_id=self.agent_id,
-            project_id=self.project_id,
+            project_id=project_id,
             task_id=task.id,
             blocker_type=BlockerType.SYNC,
             question=question,

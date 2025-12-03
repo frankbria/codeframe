@@ -83,7 +83,6 @@ class HybridWorkerAgent(WorkerAgent):
         self,
         agent_id: str,
         agent_type: str,
-        project_id: int,
         db: Any,
         sdk_client: SDKClientWrapper,
         provider: str = "sdk",
@@ -96,7 +95,6 @@ class HybridWorkerAgent(WorkerAgent):
         Args:
             agent_id: Unique identifier for this agent instance
             agent_type: Type category (backend, frontend, test, review)
-            project_id: Project context for multi-agent coordination
             db: Database instance for persistence
             sdk_client: Pre-configured SDKClientWrapper for LLM calls
             provider: Provider name (default: "sdk")
@@ -108,7 +106,6 @@ class HybridWorkerAgent(WorkerAgent):
             agent_id=agent_id,
             agent_type=agent_type,
             provider=provider,
-            project_id=project_id,
             maturity=maturity,
             system_prompt=system_prompt,
             db=db,
@@ -120,7 +117,7 @@ class HybridWorkerAgent(WorkerAgent):
 
         logger.info(
             f"HybridWorkerAgent initialized: {agent_id} (type={agent_type}, "
-            f"project_id={project_id}, maturity={maturity.value})"
+            f"maturity={maturity.value})"
         )
 
     async def execute_task(self, task: Task) -> Dict[str, Any]:
@@ -325,11 +322,17 @@ When you have completed the task, provide a summary of what was done."""
             if input_tokens == 0 and output_tokens == 0:
                 return  # No tokens to record
 
+            # Get project_id from task
+            project_id = task.project_id if hasattr(task, 'project_id') else None
+            if not project_id:
+                logger.warning("Cannot record token usage without project context")
+                return
+
             tracker = MetricsTracker(db=self.db)
             await tracker.record_token_usage(
                 task_id=task.id,
                 agent_id=self.agent_id,
-                project_id=self.project_id,
+                project_id=project_id,
                 model_name=getattr(self.sdk_client, "model", "claude-sonnet-4-20250514"),
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -405,10 +408,13 @@ When you have completed the task, provide a summary of what was done."""
         Returns:
             dict with agent and session details
         """
+        # Get project_id from current_task if available
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+
         return {
             "agent_id": self.agent_id,
             "agent_type": self.agent_type,
-            "project_id": self.project_id,
+            "project_id": project_id,
             "maturity": self.maturity.value,
             "session_id": self.session_id,
             "has_sdk_client": self.sdk_client is not None,

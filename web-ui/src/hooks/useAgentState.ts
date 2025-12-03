@@ -92,6 +92,7 @@ export interface UseAgentStateReturn {
   assignTask: (
     taskId: number,
     agentId: string,
+    projectId: number,
     taskTitle: string | undefined,
     timestamp: number
   ) => void;
@@ -299,6 +300,7 @@ export function useAgentState(): UseAgentStateReturn {
     (
       taskId: number,
       agentId: string,
+      projectId: number,
       taskTitle: string | undefined,
       timestamp: number
     ) => {
@@ -307,6 +309,7 @@ export function useAgentState(): UseAgentStateReturn {
         payload: {
           taskId,
           agentId,
+          projectId,
           taskTitle,
           timestamp,
         },

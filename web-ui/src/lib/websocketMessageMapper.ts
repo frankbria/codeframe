@@ -153,11 +153,15 @@ export function mapWebSocketMessageToAction(
 
     case 'task_assigned': {
       const msg = message as WebSocketMessage;
+      if (msg.project_id === undefined || msg.project_id === null) {
+        console.warn(`TASK_ASSIGNED message missing project_id for task ${msg.task_id}, agent ${msg.agent_id}`);
+      }
       return {
         type: 'TASK_ASSIGNED',
         payload: {
           taskId: msg.task_id!,
           agentId: msg.agent_id!,
+          projectId: msg.project_id ?? 0,  // Use nullish coalescing - only default null/undefined, not 0
           taskTitle: msg.task_title,
           timestamp,
         },
