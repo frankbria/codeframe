@@ -523,12 +523,15 @@ Guidelines:
                 blocker_description = format_lint_blocker(lint_results)
                 total_errors = sum(r.error_count for r in lint_results)
 
+                # Format question with title and description combined
+                question = f"Linting failed: {total_errors} critical errors\n\n{blocker_description}"
+
                 self.db.create_blocker(
+                    agent_id=self.agent_id,
                     project_id=task["project_id"],
+                    task_id=task_id,
                     blocker_type="SYNC",
-                    title=f"Linting failed: {total_errors} critical errors",
-                    description=blocker_description,
-                    blocking_task_id=task_id,
+                    question=question,
                 )
 
                 logger.error(f"Task {task_id} blocked by {total_errors} lint errors")

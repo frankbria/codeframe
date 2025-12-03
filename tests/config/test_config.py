@@ -70,9 +70,12 @@ class TestGlobalConfig:
         # Should not raise
         config.validate_required_for_sprint(sprint=1)
 
-    def test_sprint_1_validation_failure(self):
+    def test_sprint_1_validation_failure(self, monkeypatch):
         """Test Sprint 1 validation without API key."""
-        config = GlobalConfig()
+        # Ensure no API key in environment
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        config = GlobalConfig(_env_file=None)
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY is required"):
             config.validate_required_for_sprint(sprint=1)
 

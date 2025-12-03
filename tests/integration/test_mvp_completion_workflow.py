@@ -83,6 +83,7 @@ def backend_agent(temp_git_repo, test_db, git_workflow):
         codebase_index=codebase_index,
         provider="claude",
         project_root=repo_path,
+        use_sdk=False,  # Disable SDK mode to allow direct file writes in test
     )
 
     # Attach git workflow
@@ -186,6 +187,9 @@ def create_token(user_id: str, secret: str) -> str:
         }
 
     backend_agent.generate_code = mock_generate_code
+
+    # Mock linting to pass (skip lint checks for this integration test)
+    backend_agent._run_and_check_linting = AsyncMock()
 
     # Mock test execution to pass
     backend_agent._run_and_record_tests = AsyncMock()
