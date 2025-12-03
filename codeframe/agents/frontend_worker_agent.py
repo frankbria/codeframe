@@ -39,7 +39,6 @@ class FrontendWorkerAgent(WorkerAgent):
         api_key: Optional[str] = None,
         websocket_manager=None,
         db=None,
-        project_id: Optional[int] = None,
     ):
         """
         Initialize Frontend Worker Agent.
@@ -51,13 +50,11 @@ class FrontendWorkerAgent(WorkerAgent):
             api_key: API key for LLM provider (uses ANTHROPIC_API_KEY env var if not provided)
             websocket_manager: WebSocket connection manager for broadcasts
             db: Database instance for blocker management (optional)
-            project_id: Project ID for blocker context (optional)
         """
         super().__init__(
             agent_id=agent_id,
             agent_type="frontend",
             provider=provider,
-            project_id=project_id or 1,  # Default to 1 if not provided
             maturity=maturity,
             system_prompt=self._build_system_prompt(),
             db=db,
@@ -596,9 +593,11 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                 "Database instance required for blocker workflow. Pass db parameter to __init__."
             )
 
-        if self.project_id is None:
+        # Get project_id from current_task
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
             raise RuntimeError(
-                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+                "Project context required for blocker workflow. Agent must have current_task set."
             )
 
         if not question or len(question.strip()) == 0:
@@ -626,7 +625,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         # Create blocker in database
         blocker_id = self.db.create_blocker(
             agent_id=self.agent_id,
-            project_id=self.project_id,
+            project_id=project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
             question=question.strip(),
@@ -641,7 +640,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
 
                 await broadcast_blocker_created(
                     manager=self.websocket_manager,
-                    project_id=self.project_id,
+                    project_id=project_id,
                     blocker_id=blocker_id,
                     agent_id=self.agent_id,
                     task_id=blocker_task_id,
@@ -727,9 +726,11 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                 "Database instance required for blocker workflow. Pass db parameter to __init__."
             )
 
-        if self.project_id is None:
+        # Get project_id from current_task
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
             raise RuntimeError(
-                "Project ID required for blocker workflow. Pass project_id parameter to __init__."
+                "Project context required for blocker workflow. Agent must have current_task set."
             )
 
         import time
@@ -758,7 +759,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
 
                         await broadcast_agent_resumed(
                             manager=self.websocket_manager,
-                            project_id=self.project_id,
+                            project_id=project_id,
                             agent_id=self.agent_id,
                             task_id=(
                                 self.current_task.id

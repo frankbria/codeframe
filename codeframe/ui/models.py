@@ -124,3 +124,59 @@ class RestoreCheckpointRequest(BaseModel):
         default=False,
         description="If False, show diff only. If True, restore checkpoint."
     )
+
+
+# Multi-Agent Per Project API Models (Phase 3)
+
+
+class AgentAssignmentRequest(BaseModel):
+    """Request model for assigning an agent to a project."""
+
+    agent_id: str = Field(..., min_length=1, max_length=100, description="Agent ID to assign")
+    role: str = Field(
+        default="worker",
+        min_length=1,
+        max_length=50,
+        description="Agent's role in this project (e.g., 'primary_backend', 'code_reviewer')"
+    )
+
+
+class AgentRoleUpdateRequest(BaseModel):
+    """Request model for updating an agent's role on a project."""
+
+    role: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="New role for the agent (e.g., 'primary_backend', 'secondary_backend')"
+    )
+
+
+class AgentAssignmentResponse(BaseModel):
+    """Response model for agent assignment data."""
+
+    agent_id: str = Field(..., description="Agent ID")
+    type: str = Field(..., description="Agent type (lead, backend, frontend, test, review)")
+    provider: Optional[str] = Field(None, description="LLM provider (claude, gpt4)")
+    maturity_level: Optional[str] = Field(None, description="Agent maturity level")
+    status: Optional[str] = Field(None, description="Agent status (idle, working, blocked, offline)")
+    current_task_id: Optional[int] = Field(None, description="Current task ID if agent is working")
+    last_heartbeat: Optional[str] = Field(None, description="Last activity timestamp")
+    role: str = Field(..., description="Role in this project")
+    assigned_at: str = Field(..., description="Assignment timestamp")
+    unassigned_at: Optional[str] = Field(None, description="Unassignment timestamp (NULL if still assigned)")
+    is_active: bool = Field(..., description="Whether agent is currently assigned to project")
+
+
+class ProjectAssignmentResponse(BaseModel):
+    """Response model for project assignment data (from agent perspective)."""
+
+    project_id: int = Field(..., description="Project ID")
+    name: str = Field(..., description="Project name")
+    description: Optional[str] = Field(None, description="Project description")
+    status: str = Field(..., description="Project status")
+    phase: str = Field(..., description="Project phase")
+    role: str = Field(..., description="Agent's role in this project")
+    assigned_at: str = Field(..., description="Assignment timestamp")
+    unassigned_at: Optional[str] = Field(None, description="Unassignment timestamp")
+    is_active: bool = Field(..., description="Whether assignment is active")

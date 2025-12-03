@@ -55,7 +55,6 @@ class BackendWorkerAgent:
 
     def __init__(
         self,
-        project_id: int,
         db: Database,
         codebase_index: CodebaseIndex,
         provider: str = "claude",
@@ -68,7 +67,6 @@ class BackendWorkerAgent:
         Initialize Backend Worker Agent.
 
         Args:
-            project_id: Project ID for database context
             db: Database instance for task/status management
             codebase_index: Indexed codebase for context retrieval
             provider: LLM provider (default: "claude")
@@ -78,9 +76,8 @@ class BackendWorkerAgent:
             use_sdk: Whether to use Claude Agent SDK (default: True)
 
         Raises:
-            ValueError: If project_id is invalid or database not initialized
+            ValueError: If database not initialized
         """
-        self.project_id = project_id
         self.db = db
         self.codebase_index = codebase_index
         self.provider = provider
@@ -114,8 +111,7 @@ class BackendWorkerAgent:
             raise ValueError("Database instance is required")
 
         logger.info(
-            f"Initialized BackendWorkerAgent: project_id={project_id}, "
-            f"provider={provider}, project_root={project_root}, "
+            f"Initialized BackendWorkerAgent: provider={provider}, project_root={project_root}, "
             f"ws_enabled={ws_manager is not None}, use_sdk={use_sdk}"
         )
 
@@ -187,6 +183,12 @@ Guidelines:
         }
         """
         cursor = self.db.conn.cursor()
+        # Get project_id from current_task context
+        project_id = getattr(self.current_task, 'project_id', None) if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
+            logger.warning("No current task context available, unable to fetch tasks")
+            return None
+
         cursor.execute(
             """
             SELECT * FROM tasks
@@ -194,7 +196,7 @@ Guidelines:
             ORDER BY priority ASC, workflow_step ASC, id ASC
             LIMIT 1
             """,
-            (self.project_id, TaskStatus.PENDING.value),
+            (project_id, TaskStatus.PENDING.value),
         )
 
         row = cursor.fetchone()
@@ -206,7 +208,7 @@ Guidelines:
             )
             return task
 
-        logger.debug(f"No pending tasks for project {self.project_id}")
+        logger.debug(f"No pending tasks for project {project_id}")
         return None
 
     def build_context(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -541,16 +543,18 @@ Guidelines:
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_to_project
 
-                        await broadcast_to_project(
-                            self.ws_manager,
-                            task["project_id"],
-                            {
-                                "type": "lint_failed",
-                                "task_id": task_id,
-                                "error_count": total_errors,
-                                "timestamp": datetime.utcnow().isoformat(),
-                            },
-                        )
+                        project_id = task.get('project_id') or (self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None)
+                        if project_id:
+                            await broadcast_to_project(
+                                self.ws_manager,
+                                project_id,
+                                {
+                                    "type": "lint_failed",
+                                    "task_id": task_id,
+                                    "error_count": total_errors,
+                                    "timestamp": datetime.utcnow().isoformat(),
+                                },
+                            )
                     except Exception as e:
                         logger.debug(f"Failed to broadcast lint failure: {e}")
 
@@ -566,17 +570,19 @@ Guidelines:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_to_project
 
-                    await broadcast_to_project(
-                        self.ws_manager,
-                        task["project_id"],
-                        {
-                            "type": "lint_completed",
-                            "task_id": task_id,
-                            "error_count": 0,
-                            "warning_count": total_warnings,
-                            "timestamp": datetime.utcnow().isoformat(),
-                        },
-                    )
+                    project_id = task.get('project_id') or (self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None)
+                    if project_id:
+                        await broadcast_to_project(
+                            self.ws_manager,
+                            project_id,
+                            {
+                                "type": "lint_completed",
+                                "task_id": task_id,
+                                "error_count": 0,
+                                "warning_count": total_warnings,
+                                "timestamp": datetime.utcnow().isoformat(),
+                            },
+                        )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast lint success: {e}")
 
@@ -648,17 +654,19 @@ Guidelines:
                 )
 
                 # Broadcast test result
-                await broadcast_test_result(
-                    self.ws_manager,
-                    self.project_id,
-                    task_id,
-                    test_result.status,
-                    test_result.passed,
-                    test_result.failed,
-                    test_result.errors,
-                    test_result.total,
-                    test_result.duration,
-                )
+                project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                if project_id:
+                    await broadcast_test_result(
+                        self.ws_manager,
+                        project_id,
+                        task_id,
+                        test_result.status,
+                        test_result.passed,
+                        test_result.failed,
+                        test_result.errors,
+                        test_result.total,
+                        test_result.duration,
+                    )
 
                 # Broadcast activity update
                 if test_result.status == "passed":
@@ -666,14 +674,15 @@ Guidelines:
                 else:
                     activity_message = f"Tests {test_result.status} for task #{task_id} ({test_result.passed}/{test_result.total} passed)"
 
-                await broadcast_activity_update(
-                    self.ws_manager,
-                    self.project_id,
-                    "tests_completed",
-                    "backend-worker",
-                    activity_message,
-                    task_id=task_id,
-                )
+                if project_id:
+                    await broadcast_activity_update(
+                        self.ws_manager,
+                        project_id,
+                        "tests_completed",
+                        "backend-worker",
+                        activity_message,
+                        task_id=task_id,
+                    )
             except Exception as e:
                 logger.debug(f"Failed to broadcast test result: {e}")
 
@@ -808,14 +817,16 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
 
-                    await broadcast_correction_attempt(
-                        self.ws_manager,
-                        self.project_id,
-                        task_id,
-                        attempt_num,
-                        max_attempts,
-                        "in_progress",
-                    )
+                    project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                    if project_id:
+                        await broadcast_correction_attempt(
+                            self.ws_manager,
+                            project_id,
+                            task_id,
+                            attempt_num,
+                            max_attempts,
+                            "in_progress",
+                        )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast correction attempt: {e}")
 
@@ -862,22 +873,23 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                             broadcast_activity_update,
                         )
 
-                        await broadcast_correction_attempt(
-                            self.ws_manager,
-                            self.project_id,
-                            task_id,
-                            attempt_num,
-                            max_attempts,
-                            "success",
-                        )
-                        await broadcast_activity_update(
-                            self.ws_manager,
-                            self.project_id,
-                            "correction_success",
-                            "backend-worker",
-                            f"Self-correction successful after {attempt_num} attempt(s) for task #{task_id}",
-                            task_id=task_id,
-                        )
+                        if project_id:
+                            await broadcast_correction_attempt(
+                                self.ws_manager,
+                                project_id,
+                                task_id,
+                                attempt_num,
+                                max_attempts,
+                                "success",
+                            )
+                            await broadcast_activity_update(
+                                self.ws_manager,
+                                project_id,
+                                "correction_success",
+                                "backend-worker",
+                                f"Self-correction successful after {attempt_num} attempt(s) for task #{task_id}",
+                                task_id=task_id,
+                            )
                     except Exception as e:
                         logger.debug(f"Failed to broadcast correction success: {e}")
 
@@ -896,15 +908,16 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     error_summary = (
                         f"Status: {latest_result['status'] if latest_result else 'unknown'}"
                     )
-                    await broadcast_correction_attempt(
-                        self.ws_manager,
-                        self.project_id,
-                        task_id,
-                        attempt_num,
-                        max_attempts,
-                        "failed",
-                        error_summary=error_summary,
-                    )
+                    if project_id:
+                        await broadcast_correction_attempt(
+                            self.ws_manager,
+                            project_id,
+                            task_id,
+                            attempt_num,
+                            max_attempts,
+                            "failed",
+                            error_summary=error_summary,
+                        )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast correction failure: {e}")
 
@@ -915,19 +928,21 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         )
 
         # Create blocker for manual intervention
-        agent_id = getattr(self, "id", None) or f"backend-worker-{self.project_id}"
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        agent_id = getattr(self, "id", None) or "backend-worker"
         question = (
             f"Tests still failing after {max_attempts} self-correction attempts. "
             "Please review the test failures and correction attempts, then provide manual fix."
         )
 
-        self.db.create_blocker(
-            agent_id=agent_id,
-            project_id=self.project_id,
-            task_id=task_id,
-            blocker_type="SYNC",
-            question=question,
-        )
+        if project_id:
+            self.db.create_blocker(
+                agent_id=agent_id,
+                project_id=project_id,
+                task_id=task_id,
+                blocker_type="SYNC",
+                question=question,
+            )
 
         return False
 
@@ -1017,14 +1032,16 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_activity_update
 
-                    await broadcast_activity_update(
-                        self.ws_manager,
-                        self.project_id,
-                        "task_completed",
-                        "backend-worker",
-                        f"Completed task #{task_id}: {task['title']}",
-                        task_id=task_id,
-                    )
+                    project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                    if project_id:
+                        await broadcast_activity_update(
+                            self.ws_manager,
+                            project_id,
+                            "task_completed",
+                            "backend-worker",
+                            f"Completed task #{task_id}: {task['title']}",
+                            task_id=task_id,
+                        )
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task completion: {e}")
 
@@ -1101,13 +1118,18 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         # Use provided task_id or fall back to current task
         blocker_task_id = task_id if task_id is not None else getattr(self, "current_task_id", None)
 
+        # Get project_id from current_task
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
+            raise ValueError("Cannot create blocker without project context")
+
         # Get agent ID from self or use class name
-        agent_id = getattr(self, "id", None) or f"backend-worker-{self.project_id}"
+        agent_id = getattr(self, "id", None) or "backend-worker"
 
         # Create blocker in database
         blocker_id = self.db.create_blocker(
             agent_id=agent_id,
-            project_id=self.project_id,
+            project_id=project_id,
             task_id=blocker_task_id,
             blocker_type=blocker_type,
             question=question.strip(),
@@ -1122,7 +1144,7 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
 
                 await broadcast_blocker_created(
                     manager=self.ws_manager,
-                    project_id=self.project_id,
+                    project_id=project_id,
                     blocker_id=blocker_id,
                     agent_id=agent_id,
                     task_id=blocker_task_id,
@@ -1225,15 +1247,16 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
 
-                        await broadcast_agent_resumed(
-                            manager=self.ws_manager,
-                            project_id=self.project_id,
-                            agent_id=getattr(self, "id", None)
-                            or f"backend-worker-{self.project_id}",
-                            task_id=getattr(self, "current_task_id", None)
-                            or blocker.get("task_id"),
-                            blocker_id=blocker_id,
-                        )
+                        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                        if project_id:
+                            await broadcast_agent_resumed(
+                                manager=self.ws_manager,
+                                project_id=project_id,
+                                agent_id=getattr(self, "id", None) or "backend-worker",
+                                task_id=getattr(self, "current_task_id", None)
+                                or blocker.get("task_id"),
+                                blocker_id=blocker_id,
+                            )
                     except Exception as e:
                         logger.warning(f"Failed to broadcast agent_resumed: {e}")
 

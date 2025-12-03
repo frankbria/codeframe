@@ -50,12 +50,11 @@ class ReviewWorkerAgent(WorkerAgent):
     # Max re-review iterations
     MAX_ITERATIONS = 2
 
-    def __init__(self, agent_id: str, project_id: int, db: Database, provider: str = "anthropic"):
+    def __init__(self, agent_id: str, db: Database, provider: str = "anthropic"):
         """Initialize ReviewWorkerAgent.
 
         Args:
             agent_id: Unique agent identifier
-            project_id: Project this agent belongs to
             db: Database instance
             provider: LLM provider (default: anthropic)
         """
@@ -63,7 +62,6 @@ class ReviewWorkerAgent(WorkerAgent):
             agent_id=agent_id,
             agent_type="review",
             provider=provider,
-            project_id=project_id,
             db=db,
         )
 
@@ -319,10 +317,16 @@ class ReviewWorkerAgent(WorkerAgent):
         """
         blocker_message = report.to_blocker_message()
 
+        # Get project_id from current_task
+        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        if not project_id:
+            logger.error("Cannot create review blocker without project context")
+            return
+
         try:
             self.db.create_blocker(
                 agent_id=self.agent_id,
-                project_id=self.project_id,
+                project_id=project_id,
                 task_id=task_id,
                 blocker_type="SYNC",
                 question=f"Code Review Failed: {report.status.replace('_', ' ').title()}\n\n{blocker_message}",
