@@ -284,7 +284,7 @@ Response: 204 No Content
 
 ### Update Agent Role
 ```http
-PATCH /api/projects/1/agents/backend-001
+PUT /api/projects/1/agents/backend-001/role
 Content-Type: application/json
 
 {
