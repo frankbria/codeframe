@@ -327,8 +327,12 @@ jobs:
         working-directory: web-ui
         run: npm ci
 
+      - name: Install E2E test dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
       - name: Install Playwright browsers
-        working-directory: web-ui
+        working-directory: tests/e2e
         run: npx playwright install --with-deps
 
       - name: Install codeframe package
