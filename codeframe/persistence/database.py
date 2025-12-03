@@ -157,8 +157,66 @@ class Database:
                 status TEXT CHECK(status IN ('idle', 'working', 'blocked', 'offline')),
                 current_task_id INTEGER REFERENCES tasks(id),
                 last_heartbeat TIMESTAMP,
-                metrics JSON
+                metrics JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        """
+        )
+
+        # Project-Agent junction table (many-to-many)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_agents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                unassigned_at TIMESTAMP,
+                is_active BOOLEAN DEFAULT TRUE,
+                CHECK(unassigned_at IS NULL OR unassigned_at >= assigned_at)
+            )
+        """
+        )
+
+        # Project-Agent indexes for query performance
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_agents_project_active
+            ON project_agents(project_id, is_active)
+            WHERE is_active = TRUE
+        """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_agents_agent_active
+            ON project_agents(agent_id, is_active)
+            WHERE is_active = TRUE
+        """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_agents_assigned_at
+            ON project_agents(assigned_at)
+        """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_agents_unassigned
+            ON project_agents(unassigned_at)
+            WHERE unassigned_at IS NOT NULL
+        """
+        )
+
+        # Unique constraint: prevent duplicate active assignments
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_project_agents_unique_active
+            ON project_agents(project_id, agent_id, is_active)
+            WHERE is_active = TRUE
         """
         )
 
@@ -1194,6 +1252,260 @@ class Database:
         self.conn.commit()
 
         return cursor.rowcount
+
+    def assign_agent_to_project(
+        self,
+        project_id: int,
+        agent_id: str,
+        role: str = "worker"
+    ) -> int:
+        """Assign an agent to a project.
+
+        Args:
+            project_id: Project ID
+            agent_id: Agent ID
+            role: Agent's role in this project
+
+        Returns:
+            Assignment ID
+
+        Raises:
+            sqlite3.IntegrityError: If agent already assigned to project (while active)
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO project_agents (project_id, agent_id, role, is_active)
+            VALUES (?, ?, ?, TRUE)
+            """,
+            (project_id, agent_id, role)
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_agents_for_project(
+        self,
+        project_id: int,
+        active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Get all agents assigned to a project.
+
+        Args:
+            project_id: Project ID
+            active_only: If True, only return currently assigned agents
+
+        Returns:
+            List of agent dictionaries with assignment metadata
+        """
+        cursor = self.conn.cursor()
+
+        query = """
+            SELECT
+                a.id AS agent_id,
+                a.type,
+                a.provider,
+                a.maturity_level,
+                a.status,
+                a.current_task_id,
+                a.last_heartbeat,
+                pa.role,
+                pa.assigned_at,
+                pa.unassigned_at,
+                pa.is_active
+            FROM agents a
+            JOIN project_agents pa ON a.id = pa.agent_id
+            WHERE pa.project_id = ?
+        """
+
+        if active_only:
+            query += " AND pa.is_active = TRUE"
+
+        query += " ORDER BY pa.assigned_at DESC"
+
+        cursor.execute(query, (project_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_projects_for_agent(
+        self,
+        agent_id: str,
+        active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Get all projects an agent is assigned to.
+
+        Args:
+            agent_id: Agent ID
+            active_only: If True, only return active assignments
+
+        Returns:
+            List of project dictionaries with assignment metadata
+        """
+        cursor = self.conn.cursor()
+
+        query = """
+            SELECT
+                p.id AS project_id,
+                p.name,
+                p.description,
+                p.status,
+                p.phase,
+                pa.role,
+                pa.assigned_at,
+                pa.unassigned_at,
+                pa.is_active
+            FROM projects p
+            JOIN project_agents pa ON p.id = pa.project_id
+            WHERE pa.agent_id = ?
+        """
+
+        if active_only:
+            query += " AND pa.is_active = TRUE"
+
+        query += " ORDER BY pa.assigned_at DESC"
+
+        cursor.execute(query, (agent_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def remove_agent_from_project(
+        self,
+        project_id: int,
+        agent_id: str
+    ) -> int:
+        """Remove an agent from a project (soft delete).
+
+        Args:
+            project_id: Project ID
+            agent_id: Agent ID
+
+        Returns:
+            Number of rows affected (0 if not assigned, 1 if unassigned)
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE project_agents
+            SET is_active = FALSE,
+                unassigned_at = CURRENT_TIMESTAMP
+            WHERE project_id = ?
+              AND agent_id = ?
+              AND is_active = TRUE
+            """,
+            (project_id, agent_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
+    def get_agent_assignment(
+        self,
+        project_id: int,
+        agent_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get assignment details for a specific agent-project pair.
+
+        Args:
+            project_id: Project ID
+            agent_id: Agent ID
+
+        Returns:
+            Assignment dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                id,
+                project_id,
+                agent_id,
+                role,
+                assigned_at,
+                unassigned_at,
+                is_active
+            FROM project_agents
+            WHERE project_id = ? AND agent_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (project_id, agent_id)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def reassign_agent_role(
+        self,
+        project_id: int,
+        agent_id: str,
+        new_role: str
+    ) -> int:
+        """Update an agent's role on a project.
+
+        Args:
+            project_id: Project ID
+            agent_id: Agent ID
+            new_role: New role for the agent
+
+        Returns:
+            Number of rows affected
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE project_agents
+            SET role = ?
+            WHERE project_id = ?
+              AND agent_id = ?
+              AND is_active = TRUE
+            """,
+            (new_role, project_id, agent_id)
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
+    def get_available_agents(
+        self,
+        agent_type: Optional[str] = None,
+        exclude_project_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Get agents available for assignment (not at capacity).
+
+        Args:
+            agent_type: Filter by agent type (optional)
+            exclude_project_id: Exclude agents already on this project
+
+        Returns:
+            List of available agent dictionaries
+        """
+        cursor = self.conn.cursor()
+
+        query = """
+            SELECT
+                a.*,
+                COUNT(pa.id) AS active_assignments
+            FROM agents a
+            LEFT JOIN project_agents pa ON a.id = pa.agent_id
+                AND pa.is_active = TRUE
+        """
+
+        params = []
+        conditions = []
+
+        if exclude_project_id:
+            conditions.append("(pa.project_id IS NULL OR pa.project_id != ?)")
+            params.append(exclude_project_id)
+
+        if agent_type:
+            conditions.append("a.type = ?")
+            params.append(agent_type)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += """
+            GROUP BY a.id
+            HAVING active_assignments < 3
+            ORDER BY active_assignments ASC, a.last_heartbeat DESC
+        """
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
 
     def create_memory(
         self,
