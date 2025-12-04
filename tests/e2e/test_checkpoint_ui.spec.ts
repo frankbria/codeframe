@@ -84,15 +84,15 @@ test.describe('Checkpoint UI Workflow', () => {
     // Try to save without name
     await saveButton.click();
 
-    // Validation error should appear
+    // Validation error should appear (wait for React state update)
     const error = modal.locator('[data-testid="checkpoint-name-error"]');
-    await expect(error).toBeVisible();
+    await expect(error).toBeVisible({ timeout: 2000 });
 
     // Enter valid name
     await nameInput.fill('Test Checkpoint');
 
-    // Error should disappear
-    await expect(error).not.toBeVisible();
+    // Error should disappear (wait for React state update)
+    await expect(error).not.toBeVisible({ timeout: 2000 });
   });
 
   test('should show restore confirmation dialog', async ({ page }) => {

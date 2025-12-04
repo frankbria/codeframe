@@ -9,7 +9,7 @@ import type { CodeReview, ReviewResult, Severity } from '../types/reviews';
 /**
  * Base API URL - defaults to localhost in development
  */
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 /**
  * Get all code reviews for a task

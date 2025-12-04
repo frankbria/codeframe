@@ -19,11 +19,7 @@ test.describe('Review Findings UI', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
-    // Navigate to review section
-    const reviewTab = page.locator('[data-testid="review-tab"]');
-    if (await reviewTab.isVisible()) {
-      await reviewTab.click();
-    }
+    // Review panel is visible on Overview tab (no separate review tab exists)
   });
 
   test('should display review findings panel', async ({ page }) => {

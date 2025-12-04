@@ -153,9 +153,9 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     // Wait a bit for potential messages
     await page.waitForTimeout(2000);
 
-    // We should have received some messages (heartbeat, initial state, etc.)
+    // We should have received at least one message (heartbeat, initial state, etc.)
     // Note: This assumes WebSocket sends periodic updates
-    expect(messages.length).toBeGreaterThanOrEqual(0);
+    expect(messages.length).toBeGreaterThan(0);
   });
 
   test('should navigate between dashboard sections', async () => {
