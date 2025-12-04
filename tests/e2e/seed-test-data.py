@@ -172,26 +172,26 @@ def seed_test_data(db_path: str, project_id: int):
         now = datetime.now()
         token_records = [
             # Backend agent (Sonnet)
-            (1, 2, 'backend-worker-001', project_id, 'claude-sonnet-4-5-20250929', 12500, 4800, 0.11, 'task_execution', (now - timedelta(days=2, hours=14)).isoformat()),
-            (2, 2, 'backend-worker-001', project_id, 'claude-sonnet-4-5-20250929', 8900, 3200, 0.075, 'task_execution', (now - timedelta(days=2, hours=12)).isoformat()),
+            (1, 2, 'backend-worker-001', project_id, 'claude-sonnet-4-5', 12500, 4800, 0.11, 'task_execution', (now - timedelta(days=2, hours=14)).isoformat()),
+            (2, 2, 'backend-worker-001', project_id, 'claude-sonnet-4-5', 8900, 3200, 0.075, 'task_execution', (now - timedelta(days=2, hours=12)).isoformat()),
             # Frontend agent (Haiku)
-            (3, 4, 'frontend-specialist-001', project_id, 'claude-haiku-4-20250929', 5000, 2000, 0.012, 'task_execution', (now - timedelta(days=2, hours=10)).isoformat()),
-            (4, 4, 'frontend-specialist-001', project_id, 'claude-haiku-4-20250929', 6200, 2500, 0.015, 'task_execution', (now - timedelta(days=1, hours=15)).isoformat()),
+            (3, 4, 'frontend-specialist-001', project_id, 'claude-haiku-4', 5000, 2000, 0.012, 'task_execution', (now - timedelta(days=2, hours=10)).isoformat()),
+            (4, 4, 'frontend-specialist-001', project_id, 'claude-haiku-4', 6200, 2500, 0.015, 'task_execution', (now - timedelta(days=1, hours=15)).isoformat()),
             # Test engineer (Sonnet)
-            (5, 3, 'test-engineer-001', project_id, 'claude-sonnet-4-5-20250929', 15000, 6000, 0.135, 'task_execution', (now - timedelta(days=2, hours=8)).isoformat()),
+            (5, 3, 'test-engineer-001', project_id, 'claude-sonnet-4-5', 15000, 6000, 0.135, 'task_execution', (now - timedelta(days=2, hours=8)).isoformat()),
             # Review agent (Opus)
-            (6, None, 'review-agent-001', project_id, 'claude-opus-4-20250929', 25000, 8000, 0.975, 'code_review', (now - timedelta(days=1, hours=13)).isoformat()),
-            (7, None, 'review-agent-001', project_id, 'claude-opus-4-20250929', 18000, 5500, 0.6825, 'code_review', (now - timedelta(days=1, hours=9)).isoformat()),
+            (6, None, 'review-agent-001', project_id, 'claude-opus-4', 25000, 8000, 0.975, 'code_review', (now - timedelta(days=1, hours=13)).isoformat()),
+            (7, None, 'review-agent-001', project_id, 'claude-opus-4', 18000, 5500, 0.6825, 'code_review', (now - timedelta(days=1, hours=9)).isoformat()),
             # Lead agent (Sonnet)
-            (8, None, 'lead-001', project_id, 'claude-sonnet-4-5-20250929', 8000, 3000, 0.069, 'coordination', (now - timedelta(hours=16)).isoformat()),
+            (8, None, 'lead-001', project_id, 'claude-sonnet-4-5', 8000, 3000, 0.069, 'coordination', (now - timedelta(hours=16)).isoformat()),
             # More recent records
-            (9, 5, 'backend-worker-001', project_id, 'claude-sonnet-4-5-20250929', 10000, 4000, 0.09, 'task_execution', (now - timedelta(hours=14)).isoformat()),
-            (10, 4, 'frontend-specialist-001', project_id, 'claude-haiku-4-20250929', 7000, 2800, 0.017, 'task_execution', (now - timedelta(hours=12)).isoformat()),
-            (11, None, 'review-agent-001', project_id, 'claude-opus-4-20250929', 30000, 10000, 1.2, 'code_review', (now - timedelta(hours=10)).isoformat()),
-            (12, None, 'lead-001', project_id, 'claude-haiku-4-20250929', 3000, 1200, 0.0072, 'coordination', (now - timedelta(hours=8)).isoformat()),
-            (13, 5, 'backend-worker-001', project_id, 'claude-sonnet-4-5-20250929', 14000, 5500, 0.1245, 'task_execution', (now - timedelta(hours=6)).isoformat()),
-            (14, 3, 'test-engineer-001', project_id, 'claude-sonnet-4-5-20250929', 11000, 4200, 0.096, 'task_execution', (now - timedelta(hours=4)).isoformat()),
-            (15, None, 'review-agent-001', project_id, 'claude-opus-4-20250929', 22000, 7000, 0.855, 'code_review', (now - timedelta(hours=2)).isoformat()),
+            (9, 5, 'backend-worker-001', project_id, 'claude-sonnet-4-5', 10000, 4000, 0.09, 'task_execution', (now - timedelta(hours=14)).isoformat()),
+            (10, 4, 'frontend-specialist-001', project_id, 'claude-haiku-4', 7000, 2800, 0.017, 'task_execution', (now - timedelta(hours=12)).isoformat()),
+            (11, None, 'review-agent-001', project_id, 'claude-opus-4', 30000, 10000, 1.2, 'code_review', (now - timedelta(hours=10)).isoformat()),
+            (12, None, 'lead-001', project_id, 'claude-haiku-4', 3000, 1200, 0.0072, 'coordination', (now - timedelta(hours=8)).isoformat()),
+            (13, 5, 'backend-worker-001', project_id, 'claude-sonnet-4-5', 14000, 5500, 0.1245, 'task_execution', (now - timedelta(hours=6)).isoformat()),
+            (14, 3, 'test-engineer-001', project_id, 'claude-sonnet-4-5', 11000, 4200, 0.096, 'task_execution', (now - timedelta(hours=4)).isoformat()),
+            (15, None, 'review-agent-001', project_id, 'claude-opus-4', 22000, 7000, 0.855, 'code_review', (now - timedelta(hours=2)).isoformat()),
         ]
 
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'")
