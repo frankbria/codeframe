@@ -3113,6 +3113,25 @@ class Database:
         """
         return self.get_code_reviews(project_id=project_id, severity=severity)
 
+    def get_code_reviews_by_project(
+        self,
+        project_id: int,
+        severity: Optional[str] = None
+    ) -> List['CodeReview']:
+        """Get all code review findings for a project.
+
+        Convenience method for fetching project-level review aggregations.
+        Returns all code reviews across all tasks in the project.
+
+        Args:
+            project_id: Project ID to fetch reviews for
+            severity: Optional severity filter (critical, high, medium, low, info)
+
+        Returns:
+            List of CodeReview objects ordered by creation time (newest first)
+        """
+        return self.get_code_reviews(project_id=project_id, severity=severity)
+
     # ========================================================================
     # Quality Gate Methods (Sprint 10 Phase 3 - US-2)
     # ========================================================================
