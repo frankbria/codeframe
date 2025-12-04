@@ -184,6 +184,7 @@ describe('mapWebSocketMessageToAction', () => {
           taskId: 456,
           agentId: 'backend-worker-1',
           taskTitle: 'Implement authentication',
+          projectId: projectId,
           timestamp: baseTimestamp,
         },
       });
@@ -206,6 +207,7 @@ describe('mapWebSocketMessageToAction', () => {
           taskId: 789,
           agentId: 'frontend-specialist-1',
           taskTitle: undefined,
+          projectId: projectId,
           timestamp: baseTimestamp,
         },
       });

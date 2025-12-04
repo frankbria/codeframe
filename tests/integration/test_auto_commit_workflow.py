@@ -42,16 +42,13 @@ def temp_git_repo():
 @pytest.fixture
 def test_db():
     """Create test database."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        db_path = Path(tmp.name)
-
-    db = Database(db_path)
+    # Use :memory: database instead of tempfile to avoid WSL filesystem issues
+    db = Database(":memory:")
     db.initialize()
 
     yield db
 
     db.close()
-    db_path.unlink()
 
 
 @pytest.fixture

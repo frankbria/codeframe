@@ -32,7 +32,12 @@ class TestBackendWorkerAgentBlockerResolution:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.id = "backend-worker-001"
 
         # Mock blocker that transitions from PENDING to RESOLVED
@@ -73,7 +78,12 @@ class TestBackendWorkerAgentBlockerResolution:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.id = "backend-worker-001"
 
         # Blocker remains pending
@@ -104,7 +114,12 @@ class TestBackendWorkerAgentBlockerResolution:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.id = "backend-worker-001"
 
         # Track number of polls
@@ -158,7 +173,12 @@ class TestBackendWorkerAgentBlockerResolution:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.id = "backend-worker-001"
 
         # Blocker already resolved
@@ -196,10 +216,18 @@ class TestBackendWorkerAgentBlockerResolution:
         ws_manager = AsyncMock()
 
         agent = BackendWorkerAgent(
-            project_id=1, db=db, codebase_index=index, project_root=tmp_path, ws_manager=ws_manager
+            db=db,
+            codebase_index=index,
+            project_root=str(tmp_path),
+            ws_manager=ws_manager,
+            use_sdk=False,
         )
         agent.id = "backend-worker-001"
         agent.current_task_id = 1
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
+        agent.project_id = 1  # Set project_id for broadcast verification
 
         # Blocker already resolved
         resolved_blocker = {
@@ -220,9 +248,7 @@ class TestBackendWorkerAgentBlockerResolution:
         with patch(
             "codeframe.ui.websocket_broadcasts.broadcast_agent_resumed", new_callable=AsyncMock
         ) as mock_broadcast:
-            await agent.wait_for_blocker_resolution(
-                blocker_id=1, poll_interval=0.05, timeout=5.0
-            )
+            await agent.wait_for_blocker_resolution(blocker_id=1, poll_interval=0.05, timeout=5.0)
 
             # Verify broadcast was called
             mock_broadcast.assert_called_once()
@@ -243,7 +269,10 @@ class TestFrontendWorkerAgentBlockerResolution:
         # Setup mocked database
         db = Mock(spec=Database)
 
-        agent = FrontendWorkerAgent(agent_id="frontend-worker-001", project_id=1)
+        agent = FrontendWorkerAgent(agent_id="frontend-worker-001")
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.db = db
         agent.ws_manager = None
 
@@ -273,7 +302,10 @@ class TestTestWorkerAgentBlockerResolution:
         # Setup mocked database
         db = Mock(spec=Database)
 
-        agent = TestWorkerAgent(agent_id="test-worker-001", project_id=1)
+        agent = TestWorkerAgent(agent_id="test-worker-001")
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.db = db
         agent.ws_manager = None
 

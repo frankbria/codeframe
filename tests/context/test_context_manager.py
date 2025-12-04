@@ -4,6 +4,9 @@ Tests the ContextManager class methods:
 - recalculate_scores_for_agent()
 
 Part of 007-context-management Phase 4 (US2 - Importance Scoring).
+
+NOTE: These tests use ContextManager directly, not WorkerAgent.
+WorkerAgent no longer accepts project_id in __init__().
 """
 
 import pytest

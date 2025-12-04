@@ -8,6 +8,9 @@ Tests the flash save workflow:
 - Threshold validation
 
 Part of 007-context-management Phase 6 (US4 - Flash Save).
+
+NOTE: These tests use ContextManager directly, not WorkerAgent.
+WorkerAgent no longer accepts project_id in __init__().
 """
 
 import pytest

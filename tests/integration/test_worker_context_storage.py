@@ -10,8 +10,6 @@ Part of 007-context-management MVP (Phase 3 - User Story 1).
 """
 
 import pytest
-import tempfile
-from pathlib import Path
 
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.persistence.database import Database
@@ -21,24 +19,22 @@ from codeframe.core.models import ContextItemType, ContextTier
 @pytest.fixture
 def temp_db():
     """Create temporary database for testing."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    db = Database(db_path)
+    # Use :memory: database instead of tempfile to avoid WSL filesystem issues
+    db = Database(":memory:")
     db.initialize()
 
     yield db
 
     db.close()
-    # Cleanup
-    Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.fixture
 def test_project(temp_db):
     """Create a test project for context items."""
     project_id = temp_db.create_project(
-        name="test-project", description="Test project for worker context storage", workspace_path=""
+        name="test-project",
+        description="Test project for worker context storage",
+        workspace_path="",
     )
     return project_id
 
@@ -49,23 +45,21 @@ def worker_agent(temp_db, test_project):
     from codeframe.core.models import AgentMaturity
 
     agent = WorkerAgent(
-        agent_id="test-worker-001",
-        agent_type="backend",
-        provider="anthropic",
-        db=temp_db
+        agent_id="test-worker-001", agent_type="backend", provider="anthropic", db=temp_db
     )
     # Create agent in database first (required for foreign key)
     temp_db.create_agent(
         agent_id=agent.agent_id,
         agent_type=agent.agent_type,
         provider=agent.provider,
-        maturity_level=AgentMaturity.D1
+        maturity_level=AgentMaturity.D1,
     )
     # Assign agent to project using project_agents junction table
     temp_db.assign_agent_to_project(test_project, agent.agent_id)
 
     # Create a mock task to establish project context
     from codeframe.core.models import Task, TaskStatus
+
     task = Task(
         id=1,
         issue_id=1,
@@ -73,7 +67,7 @@ def worker_agent(temp_db, test_project):
         assigned_to=agent.agent_id,
         title="Test task",
         description="Test task for context storage",
-        status=TaskStatus.IN_PROGRESS
+        status=TaskStatus.IN_PROGRESS,
     )
     agent.current_task = task
 
@@ -132,10 +126,7 @@ class TestWorkerContextStorageIntegration:
         from codeframe.core.models import Task, TaskStatus, AgentMaturity
 
         agent1 = WorkerAgent(
-            agent_id="test-worker-002",
-            agent_type="backend",
-            provider="anthropic",
-            db=temp_db
+            agent_id="test-worker-002", agent_type="backend", provider="anthropic", db=temp_db
         )
         temp_db.create_agent(agent1.agent_id, agent1.agent_type, agent1.provider, AgentMaturity.D1)
         temp_db.assign_agent_to_project(test_project, agent1.agent_id)
@@ -148,7 +139,7 @@ class TestWorkerContextStorageIntegration:
             assigned_to=agent1.agent_id,
             title="Test task",
             description="Test task",
-            status=TaskStatus.IN_PROGRESS
+            status=TaskStatus.IN_PROGRESS,
         )
         agent1.current_task = task1
 
@@ -161,7 +152,7 @@ class TestWorkerContextStorageIntegration:
             agent_id="test-worker-002",  # Same agent ID
             agent_type="backend",
             provider="anthropic",
-            db=temp_db
+            db=temp_db,
         )
         # Agent already assigned to project from agent1, no need to reassign
 
@@ -173,7 +164,7 @@ class TestWorkerContextStorageIntegration:
             assigned_to=agent2.agent_id,
             title="Test task",
             description="Test task",
-            status=TaskStatus.IN_PROGRESS
+            status=TaskStatus.IN_PROGRESS,
         )
         agent2.current_task = task2
 
@@ -294,19 +285,13 @@ class TestWorkerContextStorageIntegration:
         from codeframe.core.models import Task, TaskStatus, AgentMaturity
 
         agent1 = WorkerAgent(
-            agent_id="agent-001",
-            agent_type="backend",
-            provider="anthropic",
-            db=temp_db
+            agent_id="agent-001", agent_type="backend", provider="anthropic", db=temp_db
         )
         temp_db.create_agent(agent1.agent_id, agent1.agent_type, agent1.provider, AgentMaturity.D1)
         temp_db.assign_agent_to_project(test_project, agent1.agent_id)
 
         agent2 = WorkerAgent(
-            agent_id="agent-002",
-            agent_type="frontend",
-            provider="anthropic",
-            db=temp_db
+            agent_id="agent-002", agent_type="frontend", provider="anthropic", db=temp_db
         )
         temp_db.create_agent(agent2.agent_id, agent2.agent_type, agent2.provider, AgentMaturity.D1)
         temp_db.assign_agent_to_project(test_project, agent2.agent_id)
@@ -319,7 +304,7 @@ class TestWorkerContextStorageIntegration:
             assigned_to=agent1.agent_id,
             title="Agent 1 task",
             description="Task for agent 1",
-            status=TaskStatus.IN_PROGRESS
+            status=TaskStatus.IN_PROGRESS,
         )
         agent1.current_task = task1
 
@@ -330,7 +315,7 @@ class TestWorkerContextStorageIntegration:
             assigned_to=agent2.agent_id,
             title="Agent 2 task",
             description="Task for agent 2",
-            status=TaskStatus.IN_PROGRESS
+            status=TaskStatus.IN_PROGRESS,
         )
         agent2.current_task = task2
 

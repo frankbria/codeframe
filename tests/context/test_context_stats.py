@@ -6,6 +6,9 @@ Tests the context stats functionality:
 - Returning ContextStats response
 
 Part of 007-context-management Phase 7 (US5 - Context Visualization).
+
+NOTE: These tests use Database and ContextManager directly, not WorkerAgent.
+WorkerAgent no longer accepts project_id in __init__().
 """
 
 import pytest

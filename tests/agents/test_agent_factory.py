@@ -187,11 +187,11 @@ class TestAgentFactory:
 
         # BackendWorkerAgent should still work as before
         agent = BackendWorkerAgent(
-            project_id=project_id, db=db, codebase_index=index, provider="claude"
+            db=db, codebase_index=index, provider="claude", project_root=".", use_sdk=False
         )
 
         assert agent is not None
-        assert agent.project_id == project_id
+        assert agent.db == db
 
         db.close()
 

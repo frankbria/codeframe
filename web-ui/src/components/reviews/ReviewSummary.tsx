@@ -140,7 +140,7 @@ export function ReviewSummary({
         ) : (
           <div className="bg-gray-50 p-4 rounded-lg" data-testid="chart-data">
             <div className="text-center text-gray-600">
-              Score visualization: {reviewResult.total_count} findings across {Object.keys(reviewResult.severity_counts).length} severity levels
+              Chart placeholder - {reviewResult.total_count} issues across {Object.keys(reviewResult.severity_counts).length} severity levels
             </div>
           </div>
         )}
