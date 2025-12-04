@@ -112,22 +112,22 @@ export function CostDashboard({
   }
 
   return (
-    <div className="cost-dashboard p-6 bg-white rounded-lg shadow space-y-6">
+    <div className="cost-dashboard p-6 bg-white rounded-lg shadow space-y-6" data-testid="cost-dashboard">
       <h2 className="text-2xl font-bold">Cost Metrics</h2>
 
       {/* Total Cost */}
       <div className="total-cost-section">
         <h3 className="text-xl font-semibold mb-2">Total Project Cost</h3>
-        <p className="text-4xl font-bold text-green-600">
+        <p className="text-4xl font-bold text-green-600" data-testid="total-cost-display">
           {formatCurrency(breakdown.total_cost_usd)}
         </p>
       </div>
 
       {/* Cost by Agent */}
-      <div className="agent-cost-section">
+      <div className="agent-cost-section" data-testid="cost-by-agent">
         <h3 className="text-xl font-semibold mb-3">Cost by Agent</h3>
         {breakdown.by_agent.length === 0 ? (
-          <p className="text-gray-500">No agent data available</p>
+          <p className="text-gray-500" data-testid="agent-cost-empty">No agent data available</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -149,11 +149,11 @@ export function CostDashboard({
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {breakdown.by_agent.map((agent) => (
-                  <tr key={agent.agent_id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={agent.agent_id} className="hover:bg-gray-50" data-testid={`agent-cost-${agent.agent_id}`}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" data-testid="agent-name">
                       {agent.agent_id}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900" data-testid="agent-cost">
                       {formatCurrency(agent.cost_usd)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
@@ -171,10 +171,10 @@ export function CostDashboard({
       </div>
 
       {/* Cost by Model */}
-      <div className="model-cost-section">
+      <div className="model-cost-section" data-testid="cost-by-model">
         <h3 className="text-xl font-semibold mb-3">Cost by Model</h3>
         {breakdown.by_model.length === 0 ? (
-          <p className="text-gray-500">No model data available</p>
+          <p className="text-gray-500" data-testid="model-cost-empty">No model data available</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -196,8 +196,8 @@ export function CostDashboard({
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {breakdown.by_model.map((model) => (
-                  <tr key={model.model_name} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={model.model_name} className="hover:bg-gray-50" data-testid={`model-cost-${model.model_name}`}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" data-testid="model-name">
                       {model.model_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
