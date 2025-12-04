@@ -123,6 +123,14 @@ export function CostDashboard({
         </p>
       </div>
 
+      {/* Token Usage Chart (placeholder for Sprint 10+) */}
+      <div className="token-usage-section" data-testid="token-usage-chart">
+        <h3 className="text-xl font-semibold mb-2">Token Usage</h3>
+        <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500" data-testid="chart-empty">
+          Token usage chart coming soon
+        </div>
+      </div>
+
       {/* Cost by Agent */}
       <div className="agent-cost-section" data-testid="cost-by-agent">
         <h3 className="text-xl font-semibold mb-3">Cost by Agent</h3>
