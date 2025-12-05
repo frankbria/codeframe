@@ -723,7 +723,7 @@ def seed_test_data(db_path: str, project_id: int):
 
         except sqlite3.Error as e:
             print(f"⚠️  Warning: Failed to seed quality gate results: {e}")
-            print(f"    This is expected if tasks table doesn't have quality gate columns yet")
+            print("    This is expected if tasks table doesn't have quality gate columns yet")
 
         # ========================================
         # 5. Seed Code Reviews (Individual Findings)
