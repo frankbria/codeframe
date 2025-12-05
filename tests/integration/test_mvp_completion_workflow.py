@@ -21,7 +21,7 @@ from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.git.workflow_manager import GitWorkflowManager
 from codeframe.notifications.router import NotificationRouter
 from codeframe.persistence.database import Database
-from codeframe.core.models import TaskStatus, BlockerType, ContextItemType
+from codeframe.core.models import TaskStatus, BlockerType
 
 
 @pytest.fixture
