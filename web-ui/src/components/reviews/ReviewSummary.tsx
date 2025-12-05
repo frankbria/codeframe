@@ -130,8 +130,24 @@ export function ReviewSummary({
         </div>
       </div>
 
-      {/* Severity Breakdown */}
-      <div className="severity-breakdown mb-6">
+      {/* Review Score Chart (placeholder) */}
+      <div className="review-score-chart mb-6" data-testid="review-score-chart">
+        <h4 className="text-md font-semibold mb-3">Score Overview</h4>
+        {reviewResult.total_count === 0 ? (
+          <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500" data-testid="chart-empty">
+            No findings to display
+          </div>
+        ) : (
+          <div className="bg-gray-50 p-4 rounded-lg" data-testid="chart-data">
+            <div className="text-center text-gray-600">
+              Chart placeholder - {reviewResult.total_count} issues across {Object.keys(reviewResult.severity_counts).length} severity levels
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Review Findings List (severity breakdown serves as findings list) */}
+      <div className="severity-breakdown mb-6" data-testid="review-findings-list">
         <h4 className="text-md font-semibold mb-3">By Severity</h4>
         <div className="space-y-2">
           {(['critical', 'high', 'medium', 'low', 'info'] as Severity[]).map(

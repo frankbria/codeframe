@@ -31,7 +31,15 @@ class TestBackendWorkerAgentBlockerTypeValidation:
         db.create_blocker.return_value = 1
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
 
         # Create SYNC blocker should succeed
         blocker_id = await agent.create_blocker(question="Critical issue?", blocker_type="SYNC")
@@ -48,7 +56,12 @@ class TestBackendWorkerAgentBlockerTypeValidation:
         db.create_blocker.return_value = 2
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
 
         # Create ASYNC blocker should succeed
         blocker_id = await agent.create_blocker(question="Style preference?", blocker_type="ASYNC")
@@ -65,7 +78,12 @@ class TestBackendWorkerAgentBlockerTypeValidation:
         db.create_blocker.return_value = 3
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
 
         # Create blocker without specifying type
         blocker_id = await agent.create_blocker(question="Optional question?")
@@ -81,7 +99,12 @@ class TestBackendWorkerAgentBlockerTypeValidation:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
 
         # Create blocker with invalid type should raise ValueError
         with pytest.raises(ValueError) as exc_info:
@@ -98,7 +121,12 @@ class TestBackendWorkerAgentBlockerTypeValidation:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
 
         # Lowercase "sync" should be rejected
         with pytest.raises(ValueError) as exc_info:
@@ -114,7 +142,10 @@ class TestFrontendWorkerAgentBlockerTypeValidation:
     @pytest.mark.asyncio
     async def test_create_blocker_accepts_sync_type(self):
         """Test create_blocker accepts SYNC blocker type."""
-        agent = FrontendWorkerAgent(agent_id="frontend-001", project_id=1)
+        agent = FrontendWorkerAgent(agent_id="frontend-001")
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.db = Mock(spec=Database)
         agent.db.create_blocker.return_value = 1
         agent.project_id = 1
@@ -132,7 +163,10 @@ class TestFrontendWorkerAgentBlockerTypeValidation:
     @pytest.mark.asyncio
     async def test_create_blocker_rejects_invalid_type(self):
         """Test create_blocker rejects invalid blocker type."""
-        agent = FrontendWorkerAgent(agent_id="frontend-001", project_id=1)
+        agent = FrontendWorkerAgent(agent_id="frontend-001")
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.db = Mock(spec=Database)
         agent.project_id = 1
         agent.websocket_manager = None
@@ -152,7 +186,10 @@ class TestTestWorkerAgentBlockerTypeValidation:
         """Test create_blocker accepts SYNC blocker type."""
         db = Mock(spec=Database)
         db.create_blocker.return_value = 1
-        agent = TestWorkerAgent(agent_id="test-001", project_id=1, db=db)
+        agent = TestWorkerAgent(agent_id="test-001", db=db)
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.websocket_manager = None  # No WebSocket manager in test
 
         blocker_id = await agent.create_blocker(
@@ -168,7 +205,10 @@ class TestTestWorkerAgentBlockerTypeValidation:
     async def test_create_blocker_rejects_invalid_type(self):
         """Test create_blocker rejects invalid blocker type."""
         db = Mock(spec=Database)
-        agent = TestWorkerAgent(agent_id="test-001", project_id=1, db=db)
+        agent = TestWorkerAgent(agent_id="test-001", db=db)
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.websocket_manager = None  # No WebSocket manager in test
 
         with pytest.raises(ValueError) as exc_info:

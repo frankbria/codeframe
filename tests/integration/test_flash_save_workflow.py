@@ -11,8 +11,6 @@ Part of 007-context-management Phase 6 (US4 - Flash Save).
 """
 
 import pytest
-import tempfile
-from pathlib import Path
 
 from codeframe.persistence.database import Database
 from codeframe.lib.context_manager import ContextManager
@@ -22,17 +20,13 @@ from codeframe.core.models import ContextItemType
 @pytest.fixture
 def temp_db():
     """Create temporary database for testing."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        db_path = f.name
-
-    db = Database(db_path)
+    # Use :memory: database instead of tempfile to avoid WSL filesystem issues
+    db = Database(":memory:")
     db.initialize()
 
     yield db
 
     db.close()
-    # Cleanup
-    Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.fixture

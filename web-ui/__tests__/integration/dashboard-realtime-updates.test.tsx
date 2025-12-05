@@ -127,8 +127,8 @@ describe('Dashboard Real-Time Updates Integration', () => {
         expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
       });
 
-      // Initially no agents
-      expect(screen.getByText(/No agents active yet/i)).toBeInTheDocument();
+      // Initially no agents - agent panel should not be rendered
+      expect(screen.queryByTestId('agent-state-panel')).not.toBeInTheDocument();
 
       // Simulate WebSocket message for agent creation
       const agentCreatedMessage = {

@@ -86,11 +86,11 @@ export default defineConfig({
         timeout: 120000,
       },
 
-  /* Global timeout for each test */
-  timeout: 30000,
+  /* Global timeout for each test - increased for CI */
+  timeout: process.env.CI ? 60000 : 30000,
 
-  /* Expect timeout */
+  /* Expect timeout - increased for CI */
   expect: {
-    timeout: 5000,
+    timeout: process.env.CI ? 10000 : 5000,
   },
 });

@@ -6,6 +6,9 @@ Tests the database list_context_items() method with tier filtering:
 - Test tier=None returns all items
 
 Part of 007-context-management Phase 5 (US3 - Automatic Tier Assignment).
+
+NOTE: These tests use Database directly, not WorkerAgent.
+WorkerAgent no longer accepts project_id in __init__().
 """
 
 import pytest

@@ -281,7 +281,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                     </div>
                     <div>
                       <span className="text-gray-500">Git Commit:</span>{' '}
-                      <span className="font-mono text-gray-900 text-xs">
+                      <span className="font-mono text-gray-900 text-xs" data-testid="checkpoint-git-sha">
                         {checkpoint.git_commit.substring(0, 7)}
                       </span>
                     </div>
@@ -323,12 +323,14 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                   <button
                     onClick={() => handleRestoreClick(checkpoint)}
                     className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                    data-testid="checkpoint-restore-button"
                   >
                     Restore
                   </button>
                   <button
                     onClick={() => handleDeleteCheckpoint(checkpoint.id, checkpoint.name)}
                     className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                    data-testid="checkpoint-delete-button"
                   >
                     Delete
                   </button>

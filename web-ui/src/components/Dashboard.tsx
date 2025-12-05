@@ -7,10 +7,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import useSWR from 'swr';
 import { projectsApi, blockersApi } from '@/lib/api';
+import { getTaskReviews } from '@/api/reviews';
 import { useAgentState } from '@/hooks/useAgentState';
 import type { Blocker } from '@/types/blocker';
 import type { PRDResponse, IssuesResponse } from '@/types/api';
 import type { DashboardTab } from '@/types/dashboard';
+import type { ReviewResult } from '@/types/reviews';
 import { getWebSocketClient } from '@/lib/websocket';
 import ChatInterface from './ChatInterface';
 import PRDModal from './PRDModal';
@@ -48,12 +50,16 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   // Use centralized agent state from Context (Phase 5.2)
-  const { agents, tasks: _tasks, activity, projectProgress, wsConnected } = useAgentState();
+  const { agents, tasks, activity, projectProgress, wsConnected } = useAgentState();
 
   const [showChat, setShowChat] = useState(false);
   const [showPRD, setShowPRD] = useState(false);
   const [selectedBlocker, setSelectedBlocker] = useState<Blocker | null>(null);
   const [selectedTaskForReview, setSelectedTaskForReview] = useState<number | null>(null);
+
+  // Review data state (Sprint 10)
+  const [reviewData, setReviewData] = useState<ReviewResult | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   // Memoize filtered agent lists for performance (T111)
   const _activeAgents = useMemo(
@@ -98,6 +104,32 @@ export default function Dashboard({ projectId }: DashboardProps) {
     () => projectsApi.getIssues(projectId).then((res) => res.data),
     { shouldRetryOnError: false }
   );
+
+  // Fetch review data for latest completed task (Sprint 10)
+  useEffect(() => {
+    async function loadLatestReview() {
+      const completedTasks = tasks.filter(t => t.status === 'completed');
+      if (completedTasks.length === 0) {
+        setReviewData(null);
+        return;
+      }
+
+      setReviewLoading(true);
+      try {
+        // Fetch reviews for the first completed task
+        const taskId = completedTasks[0].id;
+        const data = await getTaskReviews(taskId);
+        setReviewData(data);
+      } catch (err) {
+        console.error('Failed to load reviews:', err);
+        setReviewData(null);
+      } finally {
+        setReviewLoading(false);
+      }
+    }
+
+    loadLatestReview();
+  }, [tasks]);
 
   // WebSocket connection and real-time updates are now handled by AgentStateProvider (Phase 5.2)
   // All WebSocket message handling, state updates, and reconnection logic moved to Provider
@@ -392,7 +424,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
             <div className="mb-6" data-testid="review-findings-panel">
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-lg font-semibold mb-4">🔍 Code Review Findings</h2>
-                <ReviewSummary reviewResult={null} loading={false} />
+                <ReviewSummary reviewResult={reviewData} loading={reviewLoading} />
               </div>
             </div>
 

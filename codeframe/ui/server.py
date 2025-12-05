@@ -2400,6 +2400,150 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     }
 
 
+@app.get("/api/projects/{project_id}/code-reviews", tags=["review"])
+async def get_project_code_reviews(
+    project_id: int,
+    severity: Optional[str] = None
+):
+    """Get aggregated code review findings for all tasks in a project.
+
+    Returns all code review findings across all tasks in the project,
+    optionally filtered by severity. Includes summary statistics aggregated
+    at the project level.
+
+    Args:
+        project_id: Project ID to fetch reviews for
+        severity: Optional severity filter (critical, high, medium, low, info)
+
+    Returns:
+        200 OK: Review findings with project-level summary statistics
+        {
+            "findings": [
+                {
+                    "id": int,
+                    "task_id": int,
+                    "agent_id": str,
+                    "project_id": int,
+                    "file_path": str,
+                    "line_number": int | null,
+                    "severity": str,
+                    "category": str,
+                    "message": str,
+                    "recommendation": str | null,
+                    "code_snippet": str | null,
+                    "created_at": str
+                },
+                ...
+            ],
+            "summary": {
+                "total_findings": int,
+                "by_severity": {
+                    "critical": int,
+                    "high": int,
+                    "medium": int,
+                    "low": int,
+                    "info": int
+                },
+                "by_category": {
+                    "security": int,
+                    "performance": int,
+                    "quality": int,
+                    "maintainability": int,
+                    "style": int
+                },
+                "has_blocking_issues": bool
+            },
+            "task_id": null
+        }
+
+        400 Bad Request: Invalid severity value
+        404 Not Found: Project not found
+
+    Example:
+        GET /api/projects/2/code-reviews
+        GET /api/projects/2/code-reviews?severity=critical
+    """
+    # Validate severity if provided
+    valid_severities = ['critical', 'high', 'medium', 'low', 'info']
+    if severity and severity not in valid_severities:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid severity. Must be one of: {', '.join(valid_severities)}"
+        )
+
+    # Check if project exists
+    project = app.state.db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Get code reviews from database
+    reviews = app.state.db.get_code_reviews_by_project(
+        project_id=project_id,
+        severity=severity
+    )
+
+    # Build summary statistics
+    by_severity = {
+        'critical': 0,
+        'high': 0,
+        'medium': 0,
+        'low': 0,
+        'info': 0
+    }
+
+    by_category = {
+        'security': 0,
+        'performance': 0,
+        'quality': 0,
+        'maintainability': 0,
+        'style': 0
+    }
+
+    for review in reviews:
+        # Count by severity (handle both enum and string)
+        severity_val = review.severity.value if hasattr(review.severity, 'value') else review.severity
+        if severity_val in by_severity:
+            by_severity[severity_val] += 1
+
+        # Count by category (handle both enum and string)
+        category_val = review.category.value if hasattr(review.category, 'value') else review.category
+        if category_val in by_category:
+            by_category[category_val] += 1
+
+    # Blocking issues are critical or high severity
+    has_blocking_issues = (by_severity['critical'] + by_severity['high']) > 0
+
+    # Convert CodeReview objects to dictionaries
+    findings_data = []
+    for review in reviews:
+        findings_data.append({
+            "id": review.id,
+            "task_id": review.task_id,
+            "agent_id": review.agent_id,
+            "project_id": review.project_id,
+            "file_path": review.file_path,
+            "line_number": review.line_number,
+            "severity": review.severity.value if hasattr(review.severity, 'value') else review.severity,
+            "category": review.category.value if hasattr(review.category, 'value') else review.category,
+            "message": review.message,
+            "recommendation": review.recommendation,
+            "code_snippet": review.code_snippet,
+            "created_at": review.created_at
+        })
+
+    # Build response
+    return {
+        "findings": findings_data,
+        "summary": {
+            "total_findings": len(reviews),
+            "by_severity": by_severity,
+            "by_category": by_category,
+            "has_blocking_issues": has_blocking_issues
+        },
+        "task_id": None  # Project-level aggregate
+    }
+
+
 @app.get("/api/agents/{agent_id}/context/stats")
 async def get_context_stats(agent_id: str, project_id: int):
     """Get context statistics for an agent (T067).

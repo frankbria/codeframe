@@ -32,7 +32,12 @@ class TestBackendWorkerAgentAnswerInjection:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.id = "backend-worker-001"
 
         # Mock create_blocker to return blocker ID
@@ -84,7 +89,12 @@ class TestBackendWorkerAgentAnswerInjection:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
 
         # Mock methods
         with patch.object(agent, "create_blocker", new_callable=AsyncMock) as mock_create:
@@ -122,7 +132,12 @@ class TestBackendWorkerAgentAnswerInjection:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(project_id=1, db=db, codebase_index=index, project_root=tmp_path)
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=str(tmp_path), use_sdk=False
+        )
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
 
         # Mock methods
         with patch.object(agent, "create_blocker", new_callable=AsyncMock) as mock_create:
@@ -158,7 +173,10 @@ class TestFrontendWorkerAgentAnswerInjection:
     async def test_create_blocker_and_wait_enriches_context_with_answer(self):
         """Test create_blocker_and_wait enriches context with blocker answer."""
         # Setup agent
-        agent = FrontendWorkerAgent(agent_id="frontend-worker-001", project_id=1)
+        agent = FrontendWorkerAgent(agent_id="frontend-worker-001")
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.db = Mock(spec=Database)
 
         # Mock methods
@@ -197,7 +215,10 @@ class TestTestWorkerAgentAnswerInjection:
     async def test_create_blocker_and_wait_enriches_context_with_answer(self):
         """Test create_blocker_and_wait enriches context with blocker answer."""
         # Setup agent
-        agent = TestWorkerAgent(agent_id="test-worker-001", project_id=1)
+        agent = TestWorkerAgent(agent_id="test-worker-001")
+        # Set up current_task mock with project_id
+        agent.current_task = Mock()
+        agent.current_task.project_id = 1
         agent.db = Mock(spec=Database)
 
         # Mock methods
