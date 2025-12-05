@@ -22,26 +22,34 @@ import { useAgentState } from '@/hooks/useAgentState';
  * Data is sourced from the useAgentState hook, which provides real-time
  * task data updated via WebSocket.
  *
- * The component automatically recalculates statistics when tasks change
- * using useMemo for performance optimization.
+ * Performance: Uses pre-filtered derived state from useAgentState hook
+ * to avoid redundant filtering operations. The hook already memoizes
+ * these filtered arrays.
+ *
+ * UI Note: Emojis are used for visual appeal and quick recognition,
+ * following the pattern established in CostDashboard and ReviewSummary.
  */
 function TaskStats(): JSX.Element {
-  const { tasks } = useAgentState();
+  // Use pre-filtered derived state from useAgentState for better performance
+  // These are already memoized in the hook (see useAgentState.ts:201-231)
+  const { tasks, completedTasks, blockedTasks, activeTasks } = useAgentState();
 
-  // Calculate statistics from tasks array
-  const stats = useMemo(() => {
-    const total = tasks.length;
-    const completed = tasks.filter((task) => task.status === 'completed').length;
-    const blocked = tasks.filter((task) => task.status === 'blocked').length;
-    const inProgress = tasks.filter((task) => task.status === 'in_progress').length;
-
-    return {
-      total,
-      completed,
-      blocked,
-      inProgress,
-    };
-  }, [tasks]);
+  /**
+   * Calculate statistics from pre-filtered task arrays.
+   * Memoized to prevent recalculation on every render.
+   * Only recalculates when any of the task arrays change.
+   *
+   * Benefits of using derived state:
+   * - Type-safe (uses hook's TaskStatus type)
+   * - More efficient (no redundant filtering)
+   * - Leverages existing memoization from useAgentState
+   */
+  const stats = useMemo(() => ({
+    total: tasks.length,
+    completed: completedTasks.length,  // Already filtered for status === 'completed'
+    blocked: blockedTasks.length,      // Already filtered for status === 'blocked'
+    inProgress: activeTasks.length,    // Already filtered for status === 'in_progress'
+  }), [tasks, completedTasks, blockedTasks, activeTasks]);
 
   return (
     <div className="task-stats">
