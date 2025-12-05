@@ -14,13 +14,18 @@ import type {
   GateTypeE2E,
   QualityGateStatusValue,
 } from '@/types/qualityGates';
-import { mapE2EToBackend } from '@/types/qualityGates';
+import { mapE2EToBackend, ALL_GATE_TYPES_E2E } from '@/types/qualityGates';
 import { fetchQualityGateStatus } from '@/api/qualityGates';
 import QualityGateStatus from './QualityGateStatus';
 import GateStatusIndicator from './GateStatusIndicator';
 
+/**
+ * Props for QualityGatesPanel component
+ */
 interface QualityGatesPanelProps {
+  /** Project ID for API scoping and multi-project support */
   projectId: number;
+  /** List of tasks from Dashboard state (filters for completed/in_progress) */
   tasks: Task[];
 }
 
@@ -59,8 +64,11 @@ function getGateStatus(
     return 'running';
   }
 
-  // CRITICAL FIX: Only mark as passed if overall status is passed
-  // This prevents false positives for gates that haven't been explicitly evaluated
+  // KNOWN LIMITATION: Shows all gates as 'passed' if overall status is 'passed'
+  // This may create false positives if only some gates have run.
+  // IDEAL: Backend should return 'gates_evaluated: string[]' to track which gates actually ran
+  // WORKAROUND: Assumes if overall status is 'passed' and no failures exist, gate passed
+  // TODO: Add 'gates_evaluated' field to QualityGateStatus (backend enhancement)
   if (status.status === 'passed') {
     return 'passed';
   }
@@ -113,37 +121,49 @@ export default function QualityGatesPanel({
       return;
     }
 
+    let isMounted = true; // Cleanup flag to prevent state updates on unmounted component
+
     async function fetchStatus() {
       setLoading(true);
       setError(null);
       try {
         const status = await fetchQualityGateStatus(selectedTaskId!, projectId);
-        setGateStatus(status);
-      } catch (err) {
-        // Provide specific error messages based on error type
-        let errorMessage = 'Failed to fetch quality gate status';
-        if (err instanceof Error) {
-          if (err.message.includes('404')) {
-            errorMessage = 'No quality gate data found for this task';
-          } else if (err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('fetch')) {
-            errorMessage = 'Network error. Please check your connection.';
-          } else {
-            errorMessage = err.message;
-          }
+        if (isMounted) {
+          setGateStatus(status);
         }
-        console.error('Quality gate fetch error:', err);
-        setError(errorMessage);
-        setGateStatus(null);
+      } catch (err) {
+        if (isMounted) {
+          // Provide specific error messages based on error type
+          let errorMessage = 'Failed to fetch quality gate status';
+          if (err instanceof Error) {
+            if (err.message.includes('404')) {
+              errorMessage = 'No quality gate data found for this task';
+            } else if (err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('fetch')) {
+              errorMessage = 'Network error. Please check your connection.';
+            } else {
+              errorMessage = err.message;
+            }
+          }
+          console.error('Quality gate fetch error:', err);
+          setError(errorMessage);
+          setGateStatus(null);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
     fetchStatus();
+
+    return () => {
+      isMounted = false; // Cleanup on unmount
+    };
   }, [selectedTaskId, projectId]);
 
-  // All gate types in order
-  const gateTypes: GateTypeE2E[] = ['tests', 'coverage', 'type-check', 'lint', 'review'];
+  // All gate types in order (from shared constant)
+  const gateTypes = ALL_GATE_TYPES_E2E;
 
   // No eligible tasks
   if (eligibleTasks.length === 0) {

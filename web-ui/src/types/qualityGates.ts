@@ -102,3 +102,10 @@ export function mapBackendToE2E(gateType: GateTypeBackend): GateTypeE2E {
   };
   return mapping[gateType];
 }
+
+/**
+ * All quality gate types in E2E naming convention
+ * Centralized constant to ensure consistency across components
+ */
+export const ALL_GATE_TYPES_E2E: readonly GateTypeE2E[] =
+  ['tests', 'coverage', 'type-check', 'lint', 'review'] as const;
