@@ -50,7 +50,6 @@ class TestReviewWorkerAgent:
         """Create ReviewWorkerAgent instance."""
         return ReviewWorkerAgent(
             agent_id="review-001",
-            project_id=project_id,
             db=db,
             provider="anthropic",
         )

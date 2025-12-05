@@ -63,7 +63,6 @@ def sample_task():
     """Create a sample task for testing."""
     return Task(
         id=42,
-        project_id=1,
         issue_id=10,
         task_number=5,
         title="Implement user authentication",
@@ -80,7 +79,6 @@ def hybrid_agent(mock_db, mock_sdk_client):
     return HybridWorkerAgent(
         agent_id="backend-001",
         agent_type="backend",
-        project_id=1,
         db=mock_db,
         sdk_client=mock_sdk_client,
         maturity=AgentMaturity.D2,
@@ -101,14 +99,12 @@ class TestHybridWorkerInitialization:
         agent = HybridWorkerAgent(
             agent_id="test-001",
             agent_type="test",
-            project_id=1,
             db=mock_db,
             sdk_client=mock_sdk_client,
         )
 
         assert agent.agent_id == "test-001"
         assert agent.agent_type == "test"
-        assert agent.project_id == 1
         assert agent.db == mock_db
         assert agent.sdk_client == mock_sdk_client
         assert agent.maturity == AgentMaturity.D1  # Default
@@ -118,7 +114,6 @@ class TestHybridWorkerInitialization:
         agent = HybridWorkerAgent(
             agent_id="backend-001",
             agent_type="backend",
-            project_id=1,
             db=mock_db,
             sdk_client=mock_sdk_client,
             provider="sdk",
@@ -336,7 +331,6 @@ class TestPromptBuilding:
         """Should include task dependencies in prompt."""
         task = Task(
             id=1,
-            project_id=1,
             issue_id=1,
             task_number=1,
             title="Task with deps",
@@ -521,7 +515,6 @@ class TestIntegration:
         agent = HybridWorkerAgent(
             agent_id="test-agent",
             agent_type="backend",
-            project_id=1,
             db=mock_db,
             sdk_client=mock_sdk_client,
             session_id="test-session",
@@ -558,7 +551,6 @@ class TestIntegration:
         agent = HybridWorkerAgent(
             agent_id="test-agent",
             agent_type="backend",
-            project_id=1,
             db=mock_db,
             sdk_client=mock_sdk_client,
         )

@@ -36,7 +36,6 @@ def test_agent(mock_db, tmp_path):
         provider="anthropic",
         maturity=AgentMaturity.D1,
         db=mock_db,
-        project_id=1,
         max_correction_attempts=1,  # Speed up tests
     )
     agent.project_root = tmp_path
@@ -60,7 +59,6 @@ async def test_test_worker_commits_after_successful_task(
 
     task = Task(
         id=20,
-        project_id=1,
         issue_id=1,
         task_number="cf-3.4.1",
         parent_issue_number="cf-3",
@@ -130,7 +128,6 @@ async def test_test_worker_commits_even_after_test_correction(
 
     task = Task(
         id=21,
-        project_id=1,
         issue_id=1,
         task_number="cf-3.4.2",
         parent_issue_number="cf-3",

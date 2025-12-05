@@ -41,7 +41,6 @@ def backend_agent_sdk(mock_db, mock_codebase_index, temp_project_root):
 
     with patch("codeframe.agents.backend_worker_agent.SDKClientWrapper"):
         agent = BackendWorkerAgent(
-            project_id=1,
             db=mock_db,
             codebase_index=mock_codebase_index,
             api_key="test-key",
@@ -58,7 +57,6 @@ def backend_agent_no_sdk(mock_db, mock_codebase_index, temp_project_root):
     temp_project_root.mkdir(parents=True, exist_ok=True)
 
     agent = BackendWorkerAgent(
-        project_id=1,
         db=mock_db,
         codebase_index=mock_codebase_index,
         api_key="test-key",
@@ -79,7 +77,6 @@ def test_backend_agent_sdk_initialization(mock_db, mock_codebase_index, temp_pro
 
     with patch("codeframe.agents.backend_worker_agent.SDKClientWrapper") as MockSDK:
         agent = BackendWorkerAgent(
-            project_id=1,
             db=mock_db,
             codebase_index=mock_codebase_index,
             api_key="test-key",

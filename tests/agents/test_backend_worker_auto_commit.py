@@ -41,7 +41,6 @@ def mock_git_workflow():
 def backend_agent(mock_db, mock_codebase_index, tmp_path):
     """Create BackendWorkerAgent with mocks."""
     agent = BackendWorkerAgent(
-        project_id=1,
         db=mock_db,
         codebase_index=mock_codebase_index,
         provider="claude",

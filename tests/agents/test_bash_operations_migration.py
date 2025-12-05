@@ -43,7 +43,6 @@ class TestBashOperationsMigration:
         agent = TestWorkerAgent(
             agent_id="test-001",
             db=db_mock,
-            project_id=1,
             api_key="test-key"
         )
 
@@ -87,7 +86,6 @@ class TestBashOperationsMigration:
         agent = TestWorkerAgent(
             agent_id="test-001",
             db=db_mock,
-            project_id=1,
             api_key="test-key"
         )
 
@@ -125,7 +123,6 @@ Report test results including:
         agent = TestWorkerAgent(
             agent_id="test-001",
             db=db_mock,
-            project_id=1
         )
 
         # Error handling pattern for SDK Bash tool
@@ -152,7 +149,6 @@ Please check if pytest is installed and retry with: python -m pytest instead.
         index_mock = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            project_id=1,
             db=db_mock,
             codebase_index=index_mock,
             use_sdk=True,
@@ -173,7 +169,6 @@ Please check if pytest is installed and retry with: python -m pytest instead.
         index_mock = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            project_id=1,
             db=db_mock,
             codebase_index=index_mock,
             use_sdk=True,
@@ -196,7 +191,6 @@ Please check if pytest is installed and retry with: python -m pytest instead.
         index_mock.search_pattern = Mock(return_value=[])
 
         agent = BackendWorkerAgent(
-            project_id=1,
             db=db_mock,
             codebase_index=index_mock,
             use_sdk=True,

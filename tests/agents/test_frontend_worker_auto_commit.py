@@ -36,7 +36,6 @@ def frontend_agent(mock_db, tmp_path):
         provider="anthropic",
         maturity=AgentMaturity.D1,
         db=mock_db,
-        project_id=1,
     )
     # Override project roots for testing
     agent.project_root = tmp_path
@@ -61,7 +60,6 @@ async def test_frontend_worker_commits_after_successful_task(
 
     task = Task(
         id=10,
-        project_id=1,
         issue_id=1,
         task_number="cf-2.3.1",
         parent_issue_number="cf-2",
@@ -123,7 +121,6 @@ async def test_frontend_worker_no_commit_on_component_conflict(
 
     task = Task(
         id=11,
-        project_id=1,
         issue_id=1,
         task_number="cf-2.3.2",
         parent_issue_number="cf-2",
