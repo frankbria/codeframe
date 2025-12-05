@@ -25,14 +25,46 @@ export type ProposedBy = 'agent' | 'human';
  * - No project_id or timestamp (API contract scoped to endpoint)
  *
  * @see {@link file:web-ui/src/types/agentState.ts} for agent state management Task type
+ * @see {@link file:docs/architecture/task-identifiers.md} for identifier semantics
  */
 export interface Task {
+  /**
+   * Unique, stable database identifier. Preferred for `depends_on` references.
+   * - Permanent: never changes once assigned
+   * - Globally unique across all tasks
+   * - String in API responses (integer in backend)
+   */
   id: string;
+
+  /**
+   * Human-readable hierarchical identifier (e.g., "1.5.3").
+   * - Format: {issue_number}.{task_sequence}
+   * - May change if tasks are renumbered or reorganized
+   * - Project-scoped (not globally unique)
+   * - Use for display and debugging, prefer `id` for references
+   */
   task_number: string;
+
   title: string;
   description: string;
   status: WorkStatus;
+
+  /**
+   * Task dependency references. Can contain either task IDs or task numbers.
+   *
+   * The frontend uses dual-lookup matching (see TaskTreeView.tsx) to support both:
+   * - `["42", "43"]` - References by stable ID (recommended)
+   * - `["1.5.2", "1.5.3"]` - References by task_number (human-readable but less stable)
+   *
+   * Backend stores as string: empty `""`, single value `"1.5.2"`, or JSON array `"[1, 2]"`.
+   * API layer transforms to string array for frontend consumption.
+   *
+   * @example ["task-123", "task-456"] // IDs - stable, recommended
+   * @example ["1.5.2", "1.5.3"] // task_numbers - readable but may change
+   * @see docs/architecture/task-identifiers.md for full documentation
+   */
   depends_on: string[];
+
   proposed_by: ProposedBy;
   created_at: ISODate;
   updated_at: ISODate;
