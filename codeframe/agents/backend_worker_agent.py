@@ -928,8 +928,9 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         )
 
         # Create blocker for manual intervention
-        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
-        agent_id = getattr(self, "id", None) or "backend-worker"
+        # Get project_id from task dict (agents are project-agnostic at creation)
+        project_id = task.get("project_id")
+        agent_id = getattr(self, "id", None) or getattr(self, "agent_id", "backend-worker")
         question = (
             f"Tests still failing after {max_attempts} self-correction attempts. "
             "Please review the test failures and correction attempts, then provide manual fix."
@@ -943,6 +944,8 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 blocker_type="SYNC",
                 question=question,
             )
+        else:
+            logger.warning(f"Cannot create blocker for task {task_id}: project_id not found in task")
 
         return False
 
