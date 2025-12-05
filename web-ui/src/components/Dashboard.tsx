@@ -29,6 +29,7 @@ import { SessionStatus } from './SessionStatus';
 import CheckpointList from './checkpoints/CheckpointList';
 import CostDashboard from './metrics/CostDashboard';
 import ReviewSummary from './reviews/ReviewSummary';
+import TaskStats from './tasks/TaskStats';
 
 interface DashboardProps {
   projectId: number;
@@ -336,6 +337,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Task Statistics Section */}
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">📊 Task Statistics</h2>
+              <TaskStats />
             </div>
 
             {/* Issues & Tasks Section (cf-26) */}
