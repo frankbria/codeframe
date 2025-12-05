@@ -19,21 +19,26 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
  * Fetch quality gate status for a task
  *
  * @param taskId - Task ID to get quality gate status for
+ * @param projectId - Optional project ID for multi-project scoping
  * @returns Promise resolving to QualityGateStatus or null if not found
  * @throws Error if request fails
  */
 export async function fetchQualityGateStatus(
-  taskId: number
+  taskId: number,
+  projectId?: number
 ): Promise<QualityGateStatus | null> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/tasks/${taskId}/quality-gates`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
-  );
+  // Build URL with optional project_id query parameter
+  const url = new URL(`${API_BASE_URL}/api/tasks/${taskId}/quality-gates`);
+  if (projectId !== undefined) {
+    url.searchParams.append('project_id', projectId.toString());
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
 
   if (response.status === 404) {
     return null; // No quality gate status exists yet

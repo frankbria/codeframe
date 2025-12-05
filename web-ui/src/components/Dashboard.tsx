@@ -433,7 +433,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
             <div className="mb-6" data-testid="quality-gates-panel">
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
-                <QualityGatesPanel tasks={tasks} />
+                <QualityGatesPanel projectId={projectId} tasks={tasks} />
               </div>
             </div>
 

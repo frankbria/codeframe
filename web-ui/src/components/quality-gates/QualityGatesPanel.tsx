@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '@/types/agentState';
 import type {
   QualityGateStatus as QualityGateStatusType,
@@ -20,6 +20,7 @@ import QualityGateStatus from './QualityGateStatus';
 import GateStatusIndicator from './GateStatusIndicator';
 
 interface QualityGatesPanelProps {
+  projectId: number;
   tasks: Task[];
 }
 
@@ -82,6 +83,7 @@ function getGateStatus(
  * Main panel for quality gates with task selection and gate overview
  */
 export default function QualityGatesPanel({
+  projectId,
   tasks,
 }: QualityGatesPanelProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
@@ -89,15 +91,19 @@ export default function QualityGatesPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track if we've already auto-selected a task to prevent unnecessary updates
+  const hasAutoSelectedRef = useRef(false);
+
   // Filter tasks that are completed or in_progress (candidates for quality gates)
   const eligibleTasks = useMemo(() => {
     return tasks.filter(t => t.status === 'completed' || t.status === 'in_progress');
   }, [tasks]);
 
-  // Auto-select first eligible task if none selected
+  // Auto-select first eligible task if none selected (optimized with useRef)
   useEffect(() => {
-    if (eligibleTasks.length > 0 && selectedTaskId === null) {
+    if (!hasAutoSelectedRef.current && eligibleTasks.length > 0 && selectedTaskId === null) {
       setSelectedTaskId(eligibleTasks[0].id);
+      hasAutoSelectedRef.current = true;
     }
   }, [eligibleTasks, selectedTaskId]);
 
@@ -113,7 +119,7 @@ export default function QualityGatesPanel({
       setLoading(true);
       setError(null);
       try {
-        const status = await fetchQualityGateStatus(selectedTaskId!);
+        const status = await fetchQualityGateStatus(selectedTaskId!, projectId);
         setGateStatus(status);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to fetch quality gate status';
@@ -126,7 +132,7 @@ export default function QualityGatesPanel({
     }
 
     fetchStatus();
-  }, [selectedTaskId]);
+  }, [selectedTaskId, projectId]);
 
   // All gate types in order
   const gateTypes: GateTypeE2E[] = ['tests', 'coverage', 'type-check', 'lint', 'review'];
