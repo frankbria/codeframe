@@ -7,7 +7,7 @@
 
 'use client';
 
-import { Component, ReactNode } from 'react';
+import React, { Component, ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -64,7 +64,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     if (this.state.hasError) {
       // Custom fallback UI if provided
       if (this.props.fallback) {
-        return this.props.fallback;
+        // Clone fallback element and inject error prop
+        return React.cloneElement(this.props.fallback as React.ReactElement, {
+          error: this.state.error,
+        });
       }
 
       // Default fallback UI
