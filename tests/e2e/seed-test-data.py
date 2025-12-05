@@ -648,7 +648,82 @@ def seed_test_data(db_path: str, project_id: int):
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/15 token usage records")
 
-        # Note: Skipping quality_gates seeding for now - schema needs verification
+        # ========================================
+        # 4. Seed Quality Gate Results (Stored in tasks table)
+        # ========================================
+        print("🛡️  Seeding quality gate results...")
+        # Quality gate data is stored directly in the tasks table via:
+        # - quality_gate_status: 'pending', 'running', 'passed', 'failed'
+        # - quality_gate_failures: JSON array of failure objects
+        #
+        # Gate types: tests, type_check, coverage, code_review, linting
+        # Severities: low, medium, high, critical
+        #
+        # We'll update tasks #2 (completed, all gates passed) and
+        # task #4 (in_progress, type_check and code_review failed)
+
+        # Task #2 failures (empty - all gates passed)
+        task_2_failures = json.dumps([])
+
+        # Task #4 failures (type_check failed, code_review failed)
+        task_4_failures = json.dumps([
+            {
+                "gate": "type_check",
+                "reason": "TypeScript compiler found 3 type errors",
+                "details": "web-ui/src/components/Dashboard.tsx:125:15 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.\nweb-ui/src/components/Dashboard.tsx:180:20 - error TS2339: Property 'agentId' does not exist on type 'AgentState'.\nweb-ui/src/components/Dashboard.tsx:200:10 - error TS2531: Object is possibly 'null'.",
+                "severity": "high"
+            },
+            {
+                "gate": "code_review",
+                "reason": "CRITICAL [security]: User input not sanitized, potential XSS vulnerability",
+                "details": "File: web-ui/src/components/Dashboard.tsx:125\nMessage: User input not sanitized, potential XSS vulnerability\nRecommendation: Use DOMPurify to sanitize user-generated content\nCode: dangerouslySetInnerHTML={{ __html: userInput }}",
+                "severity": "critical"
+            },
+            {
+                "gate": "code_review",
+                "reason": "CRITICAL [security]: API tokens logged to console in production",
+                "details": "File: web-ui/src/components/Dashboard.tsx:180\nMessage: API tokens logged to console in production\nRecommendation: Remove console.log or gate with NODE_ENV check\nCode: console.log(\"Token:\", apiToken);",
+                "severity": "critical"
+            }
+        ])
+
+        try:
+            # Update task #2 (completed, all gates passed)
+            cursor.execute(
+                """
+                UPDATE tasks
+                SET quality_gate_status = ?,
+                    quality_gate_failures = ?
+                WHERE id = ? AND project_id = ?
+                """,
+                ("passed", task_2_failures, 2, project_id),
+            )
+
+            # Update task #4 (in_progress, type_check and code_review failed)
+            cursor.execute(
+                """
+                UPDATE tasks
+                SET quality_gate_status = ?,
+                    quality_gate_failures = ?
+                WHERE id = ? AND project_id = ?
+                """,
+                ("failed", task_4_failures, 4, project_id),
+            )
+
+            # Verify updates
+            cursor.execute(
+                """
+                SELECT COUNT(*) FROM tasks
+                WHERE project_id = ? AND quality_gate_status IS NOT NULL
+                """,
+                (project_id,),
+            )
+            count = cursor.fetchone()[0]
+            print(f"✅ Seeded quality gate results for {count}/2 tasks")
+
+        except sqlite3.Error as e:
+            print(f"⚠️  Warning: Failed to seed quality gate results: {e}")
+            print(f"    This is expected if tasks table doesn't have quality gate columns yet")
 
         # ========================================
         # 5. Seed Code Reviews (Individual Findings)
