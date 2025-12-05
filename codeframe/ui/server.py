@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 
 from codeframe.core.models import (
     ProjectStatus,
@@ -356,8 +357,20 @@ async def create_project(request: ProjectCreateRequest):
         )
 
     except Exception as e:
-        # Cleanup: delete project if workspace creation fails
+        # Cleanup: delete project and workspace if creation fails
         app.state.db.delete_project(project_id)
+
+        # Explicitly clean up workspace directory if it exists
+        # (Defense in depth: WorkspaceManager has cleanup, but this ensures
+        # orphaned directories are removed even if that cleanup fails)
+        workspace_path = app.state.workspace_manager.workspace_root / str(project_id)
+        if workspace_path.exists():
+            try:
+                shutil.rmtree(workspace_path)
+                logger.info(f"Cleaned up orphaned workspace: {workspace_path}")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up workspace {workspace_path}: {cleanup_error}")
+
         raise HTTPException(status_code=500, detail=f"Workspace creation failed: {str(e)}")
 
     # Return project details
