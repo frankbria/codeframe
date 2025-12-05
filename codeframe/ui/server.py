@@ -3515,7 +3515,7 @@ async def get_checkpoint_diff(project_id: int, checkpoint_id: int) -> Checkpoint
     try:
         # Verify git commit exists before attempting diff
         try:
-            verify_result = subprocess.run(
+            subprocess.run(
                 ["git", "cat-file", "-e", checkpoint.git_commit],
                 cwd=Path(workspace_path),
                 check=True,
