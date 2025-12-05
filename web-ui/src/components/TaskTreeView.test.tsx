@@ -245,8 +245,7 @@ describe('TaskTreeView', () => {
       expect(humanBadges.length).toBeGreaterThan(0); // Task
     });
 
-    // TODO: Task dependencies not rendering - see beads issue cf-jf1
-    it.skip('should display task dependencies', async () => {
+    it('should display task dependencies', async () => {
       const user = userEvent.setup();
 
       render(<TaskTreeView issues={mockIssues} />);
@@ -380,8 +379,7 @@ describe('TaskTreeView', () => {
       expect(titleElement).toBeInTheDocument();
     });
 
-    // TODO: Task dependencies not rendering - see beads issue cf-jf1
-    it.skip('should handle multiple dependencies correctly', async () => {
+    it('should handle multiple dependencies correctly', async () => {
       const user = userEvent.setup();
 
       const multiDepTask: Task = {
@@ -614,9 +612,9 @@ describe('TaskTreeView', () => {
       const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
       await user.click(expandButton);
 
-      // Should show dependency count
-      const depCount = screen.getByText(/1 dependency/i);
-      expect(depCount).toBeInTheDocument();
+      // Should show dependency text
+      const depText = screen.getByText(/depends on.*task-1/i);
+      expect(depText).toBeInTheDocument();
     });
 
     it('should mark task as blocked when dependencies are not completed', async () => {

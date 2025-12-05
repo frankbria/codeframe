@@ -225,44 +225,22 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                               </span>
                             )}
 
-                            {/* Dependency details with hover tooltip */}
-                            {hasDependencies && (
+                            {/* Dependency details */}
+                            {hasDependencies && task.depends_on && (
                               <span
-                                className="group relative inline-flex items-center text-xs text-gray-500 cursor-help"
-                                title={`Dependencies: ${task.depends_on.join(', ')}`}
+                                className="ml-2 text-xs text-gray-500 cursor-help"
+                                title={`Dependencies:\n${task.depends_on
+                                  .map((depId) => {
+                                    const depTask = allTasks.find(
+                                      (t) => t.id === depId || t.task_number === depId
+                                    );
+                                    return depTask
+                                      ? `${depTask.task_number}: ${depTask.title} (${depTask.status})`
+                                      : depId;
+                                  })
+                                  .join('\n')}`}
                               >
-                                ↳ {task.depends_on.length} {task.depends_on.length === 1 ? 'dependency' : 'dependencies'}
-                                {/* Hover tooltip */}
-                                <span className="invisible group-hover:visible absolute left-0 top-full mt-1 w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                                  <strong>Depends on:</strong>
-                                  <ul className="mt-1 list-disc list-inside">
-                                    {task.depends_on.map((depId) => {
-                                      const depTask = allTasks.find(
-                                        (t) => t.id === depId || t.task_number === depId
-                                      );
-                                      return (
-                                        <li key={depId} className="truncate">
-                                          {depTask ? (
-                                            <span>
-                                              {depTask.task_number}: {depTask.title}
-                                              <span
-                                                className={`ml-1 ${
-                                                  depTask.status === 'completed'
-                                                    ? 'text-green-400'
-                                                    : 'text-yellow-400'
-                                                }`}
-                                              >
-                                                ({depTask.status})
-                                              </span>
-                                            </span>
-                                          ) : (
-                                            depId
-                                          )}
-                                        </li>
-                                      );
-                                    })}
-                                  </ul>
-                                </span>
+                                Depends on: {task.depends_on.join(', ')}
                               </span>
                             )}
                           </div>
