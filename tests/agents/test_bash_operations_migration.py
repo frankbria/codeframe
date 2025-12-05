@@ -42,8 +42,7 @@ class TestBashOperationsMigration:
 
         agent = TestWorkerAgent(
             agent_id="test-001",
-            db=db_mock,
-            api_key="test-key"
+            db=db_mock
         )
 
         # Create mock SDK client that agent should use
@@ -85,8 +84,7 @@ class TestBashOperationsMigration:
         db_mock = Mock()
         agent = TestWorkerAgent(
             agent_id="test-001",
-            db=db_mock,
-            api_key="test-key"
+            db=db_mock
         )
 
         # Mock SDK client
@@ -122,7 +120,7 @@ Report test results including:
         db_mock = Mock()
         agent = TestWorkerAgent(
             agent_id="test-001",
-            db=db_mock,
+            db=db_mock
         )
 
         # Error handling pattern for SDK Bash tool

@@ -20,7 +20,6 @@ import tempfile
 import time
 from pathlib import Path
 
-import pytest
 
 # Import the skip detector module using importlib (due to hyphen in filename)
 import importlib.util

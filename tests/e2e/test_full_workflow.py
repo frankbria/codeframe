@@ -176,14 +176,12 @@ def test_worker_agent_initialization(test_database):
         agent_id="backend-001",
         agent_type="backend",
         provider="anthropic",
-        project_id=project_id,
         db=test_database
     )
 
     # Assert agent properties
     assert agent.agent_id == "backend-001"
     assert agent.agent_type == "backend"
-    assert agent.project_id == project_id
     assert agent.db is not None
 
     # Create and execute simple task
@@ -255,9 +253,21 @@ async def test_context_flash_save(test_database):
         agent_id="backend-001",
         agent_type="backend",
         provider="anthropic",
-        project_id=project_id,
         db=test_database
     )
+
+    # Create a task to assign to the agent (needed to establish project context)
+    task = Task(
+        id=1,
+        project_id=project_id,
+        title="Test flash save",
+        description="Test flash save operation",
+        status=TaskStatus.IN_PROGRESS,
+        assigned_to="backend-001",
+        depends_on=None,
+        priority=1
+    )
+    agent.current_task = task  # Assign task to establish project context
 
     # Attempt flash save (should work even with no context)
     result = await agent.flash_save()

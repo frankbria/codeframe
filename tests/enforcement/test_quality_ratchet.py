@@ -19,7 +19,6 @@ import importlib.util
 import json
 from pathlib import Path
 
-import pytest
 
 # Import the quality ratchet module
 scripts_dir = Path(__file__).parent.parent.parent / "scripts"

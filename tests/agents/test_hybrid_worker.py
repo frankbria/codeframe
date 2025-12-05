@@ -63,8 +63,10 @@ def sample_task():
     """Create a sample task for testing."""
     return Task(
         id=42,
+        project_id=1,
         issue_id=10,
         task_number=5,
+        parent_issue_number="",
         title="Implement user authentication",
         description="Add JWT token authentication to the API endpoints",
         status=TaskStatus.ASSIGNED,
@@ -212,8 +214,11 @@ class TestContextManagement:
     """Tests for context management integration."""
 
     @pytest.mark.asyncio
-    async def test_load_context_hot_tier(self, hybrid_agent, mock_db):
+    async def test_load_context_hot_tier(self, hybrid_agent, mock_db, sample_task):
         """Should load HOT tier context."""
+        # Assign task to establish project context
+        hybrid_agent.current_task = sample_task
+
         mock_db.list_context_items.return_value = [
             {"id": "ctx-1", "item_type": "TASK", "content": "HOT item"}
         ]
@@ -226,8 +231,11 @@ class TestContextManagement:
         assert len(items) == 1
 
     @pytest.mark.asyncio
-    async def test_save_context_item(self, hybrid_agent, mock_db):
+    async def test_save_context_item(self, hybrid_agent, mock_db, sample_task):
         """Should save context items via inherited method."""
+        # Assign task to establish project context
+        hybrid_agent.current_task = sample_task
+
         item_id = await hybrid_agent.save_context_item(
             item_type=ContextItemType.CODE, content="def hello(): pass"
         )
@@ -396,13 +404,16 @@ class TestFileExtraction:
 class TestSessionManagement:
     """Tests for SDK session management."""
 
-    def test_get_session_info(self, hybrid_agent):
+    def test_get_session_info(self, hybrid_agent, sample_task):
         """Should return session information."""
+        # Assign task to establish project context
+        hybrid_agent.current_task = sample_task
+
         info = hybrid_agent.get_session_info()
 
         assert info["agent_id"] == "backend-001"
         assert info["agent_type"] == "backend"
-        assert info["project_id"] == 1
+        assert info["project_id"] == 1  # From sample_task
         assert info["maturity"] == "coaching"  # D2 enum value is "coaching"
         assert info["has_sdk_client"] is True
 
