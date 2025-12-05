@@ -26,6 +26,17 @@ jest.mock('../../../src/components/checkpoints/CheckpointRestore', () => ({
     </div>
   ),
 }));
+jest.mock('../../../src/components/checkpoints/DeleteConfirmationDialog', () => ({
+  DeleteConfirmationDialog: ({ isOpen, checkpointName, onConfirm, onCancel, isDeleting }: any) => (
+    isOpen ? (
+      <div data-testid="delete-confirmation-dialog">
+        <p>Are you sure you want to delete checkpoint "{checkpointName}"?</p>
+        <button onClick={onConfirm} disabled={isDeleting}>{isDeleting ? 'Deleting...' : 'Confirm'}</button>
+        <button onClick={onCancel} disabled={isDeleting}>Cancel</button>
+      </div>
+    ) : null
+  ),
+}));
 
 const mockListCheckpoints = checkpointsApi.listCheckpoints as jest.MockedFunction<
   typeof checkpointsApi.listCheckpoints
@@ -83,8 +94,6 @@ describe('CheckpointList', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Mock window.confirm
-    global.confirm = jest.fn(() => true);
   });
 
   afterEach(() => {
@@ -307,10 +316,14 @@ describe('CheckpointList', () => {
     const deleteButtons = screen.getAllByText('Delete');
     await user.click(deleteButtons[0]);
 
-    // ASSERT: Confirmation was shown
-    expect(global.confirm).toHaveBeenCalledWith(
-      'Are you sure you want to delete checkpoint "Sprint 10 Phase 3 Complete"?'
-    );
+    // ASSERT: Confirmation dialog is shown
+    await waitFor(() => {
+      expect(screen.getByText('Are you sure you want to delete checkpoint "Sprint 10 Phase 3 Complete"?')).toBeInTheDocument();
+    });
+
+    // Confirm deletion
+    const confirmButton = screen.getByRole('button', { name: /confirm/i });
+    await user.click(confirmButton);
 
     // API was called
     await waitFor(() => {
@@ -324,7 +337,6 @@ describe('CheckpointList', () => {
   it('test_delete_checkpoint_cancel', async () => {
     // ARRANGE
     mockListCheckpoints.mockResolvedValueOnce(mockCheckpoints);
-    (global.confirm as jest.Mock).mockReturnValueOnce(false);
     const user = userEvent.setup();
 
     // ACT
@@ -337,6 +349,15 @@ describe('CheckpointList', () => {
     // Click delete button
     const deleteButtons = screen.getAllByText('Delete');
     await user.click(deleteButtons[0]);
+
+    // ASSERT: Confirmation dialog is shown
+    await waitFor(() => {
+      expect(screen.getByTestId('delete-confirmation-dialog')).toBeInTheDocument();
+    });
+
+    // Cancel deletion
+    const cancelButton = screen.getByRole('button', { name: /cancel/i });
+    await user.click(cancelButton);
 
     // ASSERT: API was not called
     expect(mockDeleteCheckpoint).not.toHaveBeenCalled();
