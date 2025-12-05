@@ -539,10 +539,8 @@ class TestIntegration:
     """Integration tests using real definition files."""
 
     def test_with_real_definitions_dir(self, temp_output_dir):
-        """Test with actual CodeFRAME definitions directory if it exists."""
+        """Test with actual CodeFRAME definitions directory."""
         real_definitions = Path("codeframe/agents/definitions")
-        if not real_definitions.exists():
-            pytest.skip("Real definitions directory not found")
 
         generator = SubagentGenerator(
             definitions_dir=real_definitions,

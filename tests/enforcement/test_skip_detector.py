@@ -28,17 +28,14 @@ import importlib.util
 scripts_dir = Path(__file__).parent.parent.parent / "scripts"
 script_path = scripts_dir / "detect-skip-abuse.py"
 
-try:
-    spec = importlib.util.spec_from_file_location("detect_skip_abuse", script_path)
-    detect_skip_abuse = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(detect_skip_abuse)
+spec = importlib.util.spec_from_file_location("detect_skip_abuse", script_path)
+detect_skip_abuse = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(detect_skip_abuse)
 
-    SkipDetectorVisitor = detect_skip_abuse.SkipDetectorVisitor
-    check_file = detect_skip_abuse.check_file
-    is_test_file = detect_skip_abuse.is_test_file
-    format_violation = detect_skip_abuse.format_violation
-except Exception as e:
-    pytest.skip(f"Skip detector not implemented yet: {e}", allow_module_level=True)
+SkipDetectorVisitor = detect_skip_abuse.SkipDetectorVisitor
+check_file = detect_skip_abuse.check_file
+is_test_file = detect_skip_abuse.is_test_file
+format_violation = detect_skip_abuse.format_violation
 
 
 class TestSkipDetection:
