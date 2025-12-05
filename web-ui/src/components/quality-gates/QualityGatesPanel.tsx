@@ -121,17 +121,26 @@ export default function QualityGatesPanel({
       return;
     }
 
+    // Type-safe: TypeScript now knows selectedTaskId is not null
+    const taskId = selectedTaskId;
     let isMounted = true; // Cleanup flag to prevent state updates on unmounted component
+    const abortController = new AbortController(); // Cancel in-flight requests on cleanup
 
     async function fetchStatus() {
       setLoading(true);
       setError(null);
       try {
-        const status = await fetchQualityGateStatus(selectedTaskId!, projectId);
-        if (isMounted) {
+        // Note: fetchQualityGateStatus doesn't yet support AbortSignal
+        // Using isMounted flag as fallback to prevent stale updates
+        const status = await fetchQualityGateStatus(taskId, projectId);
+        if (isMounted && !abortController.signal.aborted) {
           setGateStatus(status);
         }
       } catch (err) {
+        // Ignore errors from aborted requests
+        if (abortController.signal.aborted) {
+          return;
+        }
         if (isMounted) {
           // Provide specific error messages based on error type
           let errorMessage = 'Failed to fetch quality gate status';
@@ -149,7 +158,7 @@ export default function QualityGatesPanel({
           setGateStatus(null);
         }
       } finally {
-        if (isMounted) {
+        if (isMounted && !abortController.signal.aborted) {
           setLoading(false);
         }
       }
@@ -158,6 +167,7 @@ export default function QualityGatesPanel({
     fetchStatus();
 
     return () => {
+      abortController.abort(); // Cancel in-flight request
       isMounted = false; // Cleanup on unmount
     };
   }, [selectedTaskId, projectId]);

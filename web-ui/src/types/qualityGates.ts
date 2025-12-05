@@ -61,13 +61,21 @@ export interface TriggerQualityGatesResponse {
 
 /**
  * E2E test naming convention for quality gates
- * (used in test IDs and frontend display)
+ *
+ * Uses kebab-case (e.g., 'type-check', 'lint') to match:
+ * - HTML test IDs (data-testid attributes)
+ * - Frontend display conventions
+ * - TypeScript/JavaScript naming patterns
  */
 export type GateTypeE2E = 'tests' | 'coverage' | 'type-check' | 'lint' | 'review';
 
 /**
  * Backend naming convention for quality gates (alias of QualityGateType)
- * Use this for clarity when working with backend API responses
+ *
+ * Uses snake_case (e.g., 'type_check', 'linting') following:
+ * - Python PEP 8 naming conventions
+ * - Backend API response format
+ * - Database column naming standards
  */
 export type GateTypeBackend = QualityGateType;
 
