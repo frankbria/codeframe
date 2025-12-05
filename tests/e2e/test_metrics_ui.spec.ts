@@ -44,10 +44,7 @@ test.describe('Metrics Dashboard UI', () => {
     expect(costText).toMatch(/\$\d+\.\d{2}/); // Format: $X.XX
   });
 
-  test.skip('should display token usage statistics', async ({ page }) => {
-    // SKIP: Detailed token stats (input/output/total) not implemented in current CostDashboard
-    // CostDashboard shows aggregate cost breakdown, not individual token counts
-
+  test('should display token usage statistics', async ({ page }) => {
     const tokenStats = page.locator('[data-testid="token-stats"]');
     await expect(tokenStats).toBeVisible();
 
@@ -113,10 +110,7 @@ test.describe('Metrics Dashboard UI', () => {
     }
   });
 
-  test.skip('should filter metrics by date range', async ({ page }) => {
-    // SKIP: Date range filter not implemented in current CostDashboard
-    // CostDashboard currently shows all-time aggregate data
-
+  test('should filter metrics by date range', async ({ page }) => {
     const dateFilter = page.locator('[data-testid="date-range-filter"]');
 
     if (await dateFilter.isVisible()) {
@@ -135,9 +129,7 @@ test.describe('Metrics Dashboard UI', () => {
     }
   });
 
-  test.skip('should export cost report to CSV', async ({ page }) => {
-    // SKIP: CSV export not implemented in current CostDashboard
-
+  test('should export cost report to CSV', async ({ page }) => {
     const exportButton = page.locator('[data-testid="export-csv-button"]');
 
     if (await exportButton.isVisible()) {
@@ -153,10 +145,7 @@ test.describe('Metrics Dashboard UI', () => {
     }
   });
 
-  test.skip('should display cost per task', async ({ page }) => {
-    // SKIP: Cost per task table not implemented in current CostDashboard
-    // CostDashboard shows cost by agent and by model, not by task
-
+  test('should display cost per task', async ({ page }) => {
     const taskCostTable = page.locator('[data-testid="cost-per-task-table"]');
 
     if (await taskCostTable.isVisible()) {
@@ -181,9 +170,7 @@ test.describe('Metrics Dashboard UI', () => {
     }
   });
 
-  test.skip('should display model pricing information', async ({ page }) => {
-    // SKIP: Model pricing info panel not implemented in current CostDashboard
-
+  test('should display model pricing information', async ({ page }) => {
     const pricingInfo = page.locator('[data-testid="model-pricing-info"]');
 
     if (await pricingInfo.isVisible()) {
@@ -221,9 +208,7 @@ test.describe('Metrics Dashboard UI', () => {
     // They might be equal if no updates occurred (not an error)
   });
 
-  test.skip('should display cost trend chart', async ({ page }) => {
-    // SKIP: Cost trend chart not implemented in current CostDashboard
-
+  test('should display cost trend chart', async ({ page }) => {
     const trendChart = page.locator('[data-testid="cost-trend-chart"]');
 
     if (await trendChart.isVisible()) {
