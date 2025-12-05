@@ -615,4 +615,166 @@ describe('QualityGateStatus Component', () => {
       });
     });
   });
+
+  describe('Warning Banner', () => {
+    beforeEach(() => {
+      // Clear localStorage before each test
+      localStorage.clear();
+    });
+
+    it('should display warning banner when status is passed with no failures', async () => {
+      const mockStatus: QualityGateStatusType = {
+        task_id: 123,
+        status: 'passed',
+        failures: [],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus);
+
+      render(<QualityGateStatus taskId={123} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Summary Status Only/i)).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/This shows overall status. Individual gates may not have been evaluated yet./i)).toBeInTheDocument();
+    });
+
+    it('should not display warning banner when status is failed', async () => {
+      const mockStatus: QualityGateStatusType = {
+        task_id: 1,
+        status: 'failed',
+        failures: [
+          {
+            gate: 'tests',
+            reason: 'Test suite failed',
+            severity: 'critical',
+          },
+        ],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus);
+
+      render(<QualityGateStatus taskId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('failed')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText(/Summary Status Only/i)).not.toBeInTheDocument();
+    });
+
+    it('should not display warning banner when status is running', async () => {
+      const mockStatus: QualityGateStatusType = {
+        task_id: 1,
+        status: 'running',
+        failures: [],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus);
+
+      render(<QualityGateStatus taskId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('running')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText(/Summary Status Only/i)).not.toBeInTheDocument();
+    });
+
+    it('should dismiss warning banner when close button clicked', async () => {
+      const mockStatus: QualityGateStatusType = {
+        task_id: 123,
+        status: 'passed',
+        failures: [],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus);
+
+      render(<QualityGateStatus taskId={123} />);
+
+      // Wait for warning banner to appear
+      await waitFor(() => {
+        expect(screen.getByText(/Summary Status Only/i)).toBeInTheDocument();
+      });
+
+      // Find and click dismiss button
+      const dismissButton = screen.getByLabelText('Dismiss warning');
+      fireEvent.click(dismissButton);
+
+      // Warning banner should be removed
+      await waitFor(() => {
+        expect(screen.queryByText(/Summary Status Only/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('should not show warning banner if previously dismissed', async () => {
+      const taskId = 123;
+      const mockStatus: QualityGateStatusType = {
+        task_id: taskId,
+        status: 'passed',
+        failures: [],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Set localStorage to indicate warning was dismissed
+      localStorage.setItem(`qualityGates_warning_dismissed_${taskId}`, JSON.stringify(true));
+
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus);
+
+      render(<QualityGateStatus taskId={taskId} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('passed')).toBeInTheDocument();
+      });
+
+      // Warning banner should not appear
+      expect(screen.queryByText(/Summary Status Only/i)).not.toBeInTheDocument();
+    });
+
+    it('should use task-specific localStorage key', async () => {
+      const taskId = 456;
+      const mockStatus: QualityGateStatusType = {
+        task_id: taskId,
+        status: 'passed',
+        failures: [],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus);
+
+      const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+
+      render(<QualityGateStatus taskId={taskId} />);
+
+      // Wait for warning banner to appear
+      await waitFor(() => {
+        expect(screen.getByText(/Summary Status Only/i)).toBeInTheDocument();
+      });
+
+      // Click dismiss button
+      const dismissButton = screen.getByLabelText('Dismiss warning');
+      fireEvent.click(dismissButton);
+
+      // Verify localStorage key includes task ID
+      await waitFor(() => {
+        expect(setItemSpy).toHaveBeenCalledWith(
+          `qualityGates_warning_dismissed_${taskId}`,
+          JSON.stringify(true)
+        );
+      });
+
+      setItemSpy.mockRestore();
+    });
+  });
 });

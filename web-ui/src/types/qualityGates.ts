@@ -33,6 +33,10 @@ export interface QualityGateFailure {
 
 /**
  * Quality gate status for a task
+ *
+ * TODO: Backend enhancement needed
+ * Add gates_evaluated?: QualityGateType[] to track which gates actually ran
+ * This will eliminate the need for the warning banner in QualityGateStatus component
  */
 export interface QualityGateStatus {
   task_id: number;

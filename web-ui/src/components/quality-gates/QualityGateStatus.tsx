@@ -40,6 +40,7 @@ export default function QualityGateStatus({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState<boolean>(false);
+  const [warningDismissed, setWarningDismissed] = useState<boolean>(false);
 
   // Fetch quality gate status
   const fetchStatus = useCallback(async () => {
@@ -58,6 +59,27 @@ export default function QualityGateStatus({
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  // Check localStorage for warning dismissal state on mount
+  useEffect(() => {
+    const storageKey = `qualityGates_warning_dismissed_${taskId}`;
+    const dismissed = localStorage.getItem(storageKey);
+    if (dismissed) {
+      try {
+        setWarningDismissed(JSON.parse(dismissed));
+      } catch {
+        // If parsing fails, ignore
+        setWarningDismissed(false);
+      }
+    }
+  }, [taskId]);
+
+  // Dismiss warning banner
+  const dismissWarning = () => {
+    const storageKey = `qualityGates_warning_dismissed_${taskId}`;
+    setWarningDismissed(true);
+    localStorage.setItem(storageKey, JSON.stringify(true));
+  };
 
   // Auto-refresh when status is 'running'
   useEffect(() => {
@@ -179,6 +201,30 @@ export default function QualityGateStatus({
           )}
         </button>
       </div>
+
+      {/* Warning Banner */}
+      {status.status === 'passed' &&
+       (!status.failures || status.failures.length === 0) &&
+       !warningDismissed && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-yellow-600 text-xl flex-shrink-0">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-bold text-yellow-900">Summary Status Only</h4>
+              <p className="text-sm text-yellow-800 mt-1">
+                This shows overall status. Individual gates may not have been evaluated yet.
+              </p>
+            </div>
+            <button
+              onClick={dismissWarning}
+              className="text-yellow-600 hover:text-yellow-800 font-bold text-xl flex-shrink-0 ml-2"
+              aria-label="Dismiss warning"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Running Progress Indicator */}
       {status.status === 'running' && (
