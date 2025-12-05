@@ -404,8 +404,9 @@ def bad():
         report = await agent.execute_task(task)
 
         if report.status == "approved":
-            # Should not create blocker
-            result = db.list_blockers(project_id=agent.project_id)
+            # Should not create blocker (get project_id from current task)
+            project_id = agent.current_task.project_id if agent.current_task else 1
+            result = db.list_blockers(project_id=project_id)
             task_blockers = [b for b in result["blockers"] if b["task_id"] == task_id]
             review_blockers = [b for b in task_blockers if "review" in b.get("details", "").lower()]
             assert len(review_blockers) == 0

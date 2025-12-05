@@ -255,7 +255,7 @@ class TestMultiAgentAPI:
 
         # Get all agents (including inactive)
         response = api_client.get(
-            f"/api/projects/{project_id}/agents?active_only=false"
+            f"/api/projects/{project_id}/agents?is_active=false"
         )
         assert response.status_code == 200
         agents = response.json()

@@ -345,12 +345,12 @@ async def test_get_cost_by_model(tracker, db):
 
     # Sonnet: 2 calls totaling (1.5M * $3 + 0.75M * $15) = $15.75
     assert model_costs["claude-sonnet-4-5"]["cost_usd"] == pytest.approx(15.75, abs=0.01)
-    assert model_costs["claude-sonnet-4-5"]["total_calls"] == 2
+    assert model_costs["claude-sonnet-4-5"]["call_count"] == 2
     assert model_costs["claude-sonnet-4-5"]["total_tokens"] == 2_250_000
 
     # Haiku: 1 call totaling (0.5M * $0.80 + 0.25M * $4) = $1.40
     assert model_costs["claude-haiku-4"]["cost_usd"] == pytest.approx(1.40, abs=0.01)
-    assert model_costs["claude-haiku-4"]["total_calls"] == 1
+    assert model_costs["claude-haiku-4"]["call_count"] == 1
 
 
 # ============================================================================

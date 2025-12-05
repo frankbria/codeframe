@@ -198,8 +198,8 @@ class TestProjectCostMetricsEndpoint:
             (a for a in data["by_agent"] if a["agent_id"] == "backend-001"), None
         )
         assert backend_stats is not None
-        assert backend_stats["calls"] == 2
-        assert backend_stats["tokens"] == 2250  # 1000+500 + 500+250
+        assert backend_stats["call_count"] == 2
+        assert backend_stats["total_tokens"] == 2250  # 1000+500 + 500+250
         assert abs(backend_stats["cost_usd"] - 0.01575) < 0.00001
 
         # Find review-001 stats
@@ -207,8 +207,8 @@ class TestProjectCostMetricsEndpoint:
             (a for a in data["by_agent"] if a["agent_id"] == "review-001"), None
         )
         assert review_stats is not None
-        assert review_stats["calls"] == 1
-        assert review_stats["tokens"] == 3000  # 2000+1000
+        assert review_stats["call_count"] == 1
+        assert review_stats["total_tokens"] == 3000  # 2000+1000
         assert abs(review_stats["cost_usd"] - 0.0056) < 0.00001
 
         # Check by_model breakdown (2 models)
@@ -219,7 +219,7 @@ class TestProjectCostMetricsEndpoint:
             (m for m in data["by_model"] if m["model_name"] == "claude-sonnet-4-5"), None
         )
         assert sonnet_stats is not None
-        assert sonnet_stats["total_calls"] == 2
+        assert sonnet_stats["call_count"] == 2
         assert sonnet_stats["total_tokens"] == 2250
 
         # Find Haiku 4 stats
@@ -227,7 +227,7 @@ class TestProjectCostMetricsEndpoint:
             (m for m in data["by_model"] if m["model_name"] == "claude-haiku-4"), None
         )
         assert haiku_stats is not None
-        assert haiku_stats["total_calls"] == 1
+        assert haiku_stats["call_count"] == 1
         assert haiku_stats["total_tokens"] == 3000
 
     def test_nonexistent_project_returns_404(self, api_client):
@@ -280,7 +280,7 @@ class TestAgentMetricsEndpoint:
             None,
         )
         assert task_exec_stats is not None
-        assert task_exec_stats["calls"] == 1
+        assert task_exec_stats["call_count"] == 1
 
         # Find code review stats
         code_review_stats = next(
@@ -292,7 +292,7 @@ class TestAgentMetricsEndpoint:
             None,
         )
         assert code_review_stats is not None
-        assert code_review_stats["calls"] == 1
+        assert code_review_stats["call_count"] == 1
 
         # Check by_project breakdown
         assert len(data["by_project"]) == 1
@@ -379,5 +379,5 @@ class TestMetricsEndpointIntegration:
         )
         assert backend_stats is not None
         assert backend_stats["cost_usd"] == agent_data["total_cost_usd"]
-        assert backend_stats["tokens"] == agent_data["total_tokens"]
-        assert backend_stats["calls"] == agent_data["total_calls"]
+        assert backend_stats["total_tokens"] == agent_data["total_tokens"]
+        assert backend_stats["call_count"] == agent_data["total_calls"]

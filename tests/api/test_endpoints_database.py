@@ -139,17 +139,21 @@ class TestAgentsEndpoint:
         # ASSERT
         assert response.status_code == 200
         data = response.json()
-        assert "agents" in data
-        assert data["agents"] == []
+        assert isinstance(data, list)
+        assert data == []
 
     def test_get_agents_with_data(self, api_client):
         """Test getting agents with actual database data."""
         db = get_app().state.db
         project_id = db.create_project("agents-project", "Agents Project project")
 
-        # Create test agents
+        # Create test agents and assign them to project
         db.create_agent("lead-agent", "lead", "claude", AgentMaturity.D3)
         db.create_agent("backend-agent", "backend", "claude", AgentMaturity.D2)
+
+        # Assign agents to project
+        db.assign_agent_to_project(project_id, "lead-agent", "leader")
+        db.assign_agent_to_project(project_id, "backend-agent", "worker")
 
         # ACT
         response = api_client.get(f"/api/projects/{project_id}/agents")
@@ -157,15 +161,13 @@ class TestAgentsEndpoint:
         # ASSERT
         assert response.status_code == 200
         data = response.json()
-        assert "agents" in data
-        assert len(data["agents"]) == 2
+        assert isinstance(data, list)
+        assert len(data) == 2
 
         # Verify agent data
-        agents = {a["id"]: a for a in data["agents"]}
+        agents = {a["agent_id"]: a for a in data}
         assert "lead-agent" in agents
-        assert agents["lead-agent"]["type"] == "lead"
-        assert agents["lead-agent"]["provider"] == "claude"
-        assert agents["lead-agent"]["maturity_level"] == "supporting"
+        assert "backend-agent" in agents
 
     def test_get_agents_returns_all_fields(self, api_client):
         """Test that agents endpoint returns all expected fields."""
@@ -173,20 +175,23 @@ class TestAgentsEndpoint:
         project_id = db.create_project("full-agents-project", "Full Agents Project project")
         db.create_agent("test-agent", "test", "claude", AgentMaturity.D4)
 
+        # Assign agent to project
+        db.assign_agent_to_project(project_id, "test-agent", "worker")
+
         # ACT
         response = api_client.get(f"/api/projects/{project_id}/agents")
 
         # ASSERT
         assert response.status_code == 200
         data = response.json()
-        agent = data["agents"][0]
+        assert isinstance(data, list)
+        assert len(data) == 1
+        agent = data[0]
 
-        # Verify required fields
-        assert "id" in agent
-        assert "type" in agent
-        assert "provider" in agent
-        assert "maturity_level" in agent
-        assert "status" in agent
+        # Verify required fields (agent assignment response)
+        assert "agent_id" in agent
+        assert "assignment_id" in agent
+        assert "role" in agent
 
 
 @pytest.mark.integration

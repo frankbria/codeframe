@@ -105,7 +105,6 @@ class TestSelfCorrectionLoop:
         mock_client.messages.create.side_effect = [first_response, correction_response]
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
             db=db,
             codebase_index=index,
             api_key="test-key",
@@ -210,7 +209,6 @@ class TestSelfCorrectionLoop:
         mock_client.messages.create.side_effect = responses
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
             db=db,
             codebase_index=index,
             api_key="test-key",
@@ -361,7 +359,6 @@ class TestSelfCorrectionLoop:
         mock_client.messages.create.side_effect = responses
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
             db=db,
             codebase_index=index,
             api_key="test-key",
@@ -459,7 +456,6 @@ class TestSelfCorrectionLoop:
         mock_client.messages.create.return_value = mock_response
 
         agent = BackendWorkerAgent(
-            project_id=project_id,
             db=db,
             codebase_index=index,
             api_key="test-key",

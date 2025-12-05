@@ -48,10 +48,10 @@ def temp_git_repo():
 
 @pytest.fixture
 def test_db():
-    """Create test database with migration 006 applied."""
+    """Create test database with migrations applied."""
     # Use :memory: database instead of tempfile to avoid WSL filesystem issues
     db = Database(":memory:")
-    db.initialize(run_migrations=True)  # Apply migration 006 for composite index
+    db.initialize(run_migrations=True)  # Apply all migrations including 006 and 007
 
     yield db
 

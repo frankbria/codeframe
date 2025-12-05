@@ -124,6 +124,7 @@ class Database:
                 requires_mcp BOOLEAN DEFAULT FALSE,
                 estimated_tokens INTEGER,
                 actual_tokens INTEGER,
+                commit_sha TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP
             )
@@ -257,6 +258,37 @@ class Database:
             """
             CREATE INDEX IF NOT EXISTS idx_blockers_task_id
             ON blockers(task_id)
+        """
+        )
+
+        # Lint results table (Sprint 9)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lint_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                linter TEXT NOT NULL CHECK(linter IN ('ruff', 'eslint', 'other')),
+                error_count INTEGER NOT NULL DEFAULT 0,
+                warning_count INTEGER NOT NULL DEFAULT 0,
+                files_linted INTEGER NOT NULL DEFAULT 0,
+                output TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+            )
+        """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_lint_results_task
+            ON lint_results(task_id)
+        """
+        )
+
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_lint_results_created
+            ON lint_results(created_at DESC)
         """
         )
 

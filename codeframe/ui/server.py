@@ -1994,7 +1994,7 @@ async def trigger_review(agent_id: str, request: ReviewRequest):
 
         # Create review agent
         review_agent = ReviewWorkerAgent(
-            agent_id=agent_id, project_id=request.project_id, db=app.state.db
+            agent_id=agent_id, db=app.state.db
         )
 
         # Get task data from database
