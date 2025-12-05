@@ -25,6 +25,128 @@ interface ReviewSummaryProps {
 }
 
 /**
+ * Individual Finding Card Component (Memoized for performance)
+ * Addresses Issue #1 (Performance) and #2 (Accessibility)
+ */
+interface FindingCardProps {
+  finding: CodeReview;
+  index: number;
+  isExpanded: boolean;
+  onToggle: (id: number) => void;
+}
+
+const FindingCard = React.memo(({ finding, index, isExpanded, onToggle }: FindingCardProps) => {
+  // Use ID if available, fallback to index to avoid collisions (Issue #3)
+  const findingId = finding.id ?? index;
+
+  // Defensive check for severity color (Issue #5)
+  const severityColor = SEVERITY_COLORS[finding.severity as Severity] || 'bg-gray-100 text-gray-800 border-gray-300';
+
+  // Defensive check for category icon (Issue #5)
+  const categoryIcon = CATEGORY_ICONS[finding.category as ReviewCategory] || '📄';
+
+  // Keyboard event handler for accessibility (Issue #2)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onToggle(findingId);
+    }
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={isExpanded}
+      aria-label={`${finding.severity} severity finding in ${finding.file_path}${finding.line_number ? ` line ${finding.line_number}` : ''}`}
+      className={`finding-card border-2 rounded-lg p-4 cursor-pointer transition-all hover:shadow-md focus:ring-2 focus:ring-blue-500 focus:outline-none ${severityColor}`}
+      onClick={() => onToggle(findingId)}
+      onKeyDown={handleKeyDown}
+      data-testid={`review-finding-${findingId}`}
+    >
+      {/* Finding Header */}
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <code className="text-sm font-mono bg-white bg-opacity-50 px-2 py-1 rounded">
+              {finding.file_path}
+              {finding.line_number && `:${finding.line_number}`}
+            </code>
+          </div>
+          <p className="text-sm font-medium">{finding.message}</p>
+        </div>
+        <div className="flex items-center gap-2 ml-4">
+          <span className="text-lg" title={finding.category} aria-hidden="true">
+            {categoryIcon}
+          </span>
+          <span
+            className="text-xs font-semibold uppercase px-2 py-1 bg-white bg-opacity-70 rounded border"
+            data-testid="severity-badge"
+          >
+            {finding.severity}
+          </span>
+        </div>
+      </div>
+
+      {/* Expanded Details */}
+      {isExpanded && (
+        <div className="finding-details mt-4 space-y-3" data-testid="finding-details">
+          {/* Full Message (if needed) */}
+          {finding.message && (
+            <div className="bg-white bg-opacity-50 rounded p-3">
+              <p className="text-xs font-semibold text-gray-600 mb-1">Details:</p>
+              <p className="text-sm">{finding.message}</p>
+            </div>
+          )}
+
+          {/* Recommendation */}
+          {finding.recommendation && (
+            <div
+              className="bg-blue-50 border border-blue-200 rounded p-3"
+              data-testid="finding-recommendation"
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-blue-600 text-lg" aria-hidden="true">💡</span>
+                <div>
+                  <p className="text-xs font-semibold text-blue-800 mb-1">
+                    Recommendation:
+                  </p>
+                  <p className="text-sm text-blue-900">{finding.recommendation}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Code Snippet */}
+          {finding.code_snippet && (
+            <div className="bg-gray-900 text-gray-100 rounded p-3 overflow-x-auto">
+              <p className="text-xs font-semibold text-gray-400 mb-2">Code:</p>
+              <pre className="text-xs font-mono">{finding.code_snippet}</pre>
+            </div>
+          )}
+
+          {/* File Details */}
+          <div className="text-xs text-gray-600 bg-white bg-opacity-50 rounded p-2">
+            <span className="font-semibold">File:</span> {finding.file_path}
+            {finding.line_number && (
+              <>
+                {' '}
+                <span className="font-semibold">Line:</span> {finding.line_number}
+              </>
+            )}
+            {' '}
+            <span className="font-semibold">Category:</span>{' '}
+            <span className="capitalize">{finding.category}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+FindingCard.displayName = 'FindingCard';
+
+/**
  * Display review summary statistics and blocking status
  */
 export function ReviewSummary({
@@ -298,96 +420,18 @@ export function ReviewSummary({
               No findings match the selected filter.
             </div>
           ) : (
-            filteredFindings.map((finding) => {
-              const findingId = finding.id || 0;
+            filteredFindings.map((finding, index) => {
+              const findingId = finding.id ?? index;
               const isExpanded = expandedFindings.has(findingId);
 
               return (
-                <div
+                <FindingCard
                   key={findingId}
-                  className={`finding-card border-2 rounded-lg p-4 cursor-pointer transition-all hover:shadow-md ${
-                    SEVERITY_COLORS[finding.severity as Severity]
-                  }`}
-                  onClick={() => toggleFinding(findingId)}
-                  data-testid={`review-finding-${findingId}`}
-                >
-                  {/* Finding Header */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <code className="text-sm font-mono bg-white bg-opacity-50 px-2 py-1 rounded">
-                          {finding.file_path}
-                          {finding.line_number && `:${finding.line_number}`}
-                        </code>
-                      </div>
-                      <p className="text-sm font-medium">{finding.message}</p>
-                    </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <span className="text-lg" title={finding.category}>
-                        {CATEGORY_ICONS[finding.category as ReviewCategory]}
-                      </span>
-                      <span
-                        className="text-xs font-semibold uppercase px-2 py-1 bg-white bg-opacity-70 rounded border"
-                        data-testid="severity-badge"
-                      >
-                        {finding.severity}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Expanded Details */}
-                  {isExpanded && (
-                    <div className="finding-details mt-4 space-y-3" data-testid="finding-details">
-                      {/* Full Message (if needed) */}
-                      {finding.message && (
-                        <div className="bg-white bg-opacity-50 rounded p-3">
-                          <p className="text-xs font-semibold text-gray-600 mb-1">Details:</p>
-                          <p className="text-sm">{finding.message}</p>
-                        </div>
-                      )}
-
-                      {/* Recommendation */}
-                      {finding.recommendation && (
-                        <div
-                          className="bg-blue-50 border border-blue-200 rounded p-3"
-                          data-testid="finding-recommendation"
-                        >
-                          <div className="flex items-start gap-2">
-                            <span className="text-blue-600 text-lg">💡</span>
-                            <div>
-                              <p className="text-xs font-semibold text-blue-800 mb-1">
-                                Recommendation:
-                              </p>
-                              <p className="text-sm text-blue-900">{finding.recommendation}</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Code Snippet */}
-                      {finding.code_snippet && (
-                        <div className="bg-gray-900 text-gray-100 rounded p-3 overflow-x-auto">
-                          <p className="text-xs font-semibold text-gray-400 mb-2">Code:</p>
-                          <pre className="text-xs font-mono">{finding.code_snippet}</pre>
-                        </div>
-                      )}
-
-                      {/* File Details */}
-                      <div className="text-xs text-gray-600 bg-white bg-opacity-50 rounded p-2">
-                        <span className="font-semibold">File:</span> {finding.file_path}
-                        {finding.line_number && (
-                          <>
-                            {' '}
-                            <span className="font-semibold">Line:</span> {finding.line_number}
-                          </>
-                        )}
-                        {' '}
-                        <span className="font-semibold">Category:</span>{' '}
-                        <span className="capitalize">{finding.category}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  finding={finding}
+                  index={index}
+                  isExpanded={isExpanded}
+                  onToggle={toggleFinding}
+                />
               );
             })
           )}

@@ -123,6 +123,18 @@ test.describe('Review Findings UI', () => {
       const recText = await recommendation.textContent();
       expect(recText).toBeTruthy();
       expect(recText!.length).toBeGreaterThan(10);
+
+      // Verify lightbulb icon is present (Issue #6 - Enhanced test coverage)
+      const icon = recommendation.locator('span[aria-hidden="true"]').filter({ hasText: '💡' });
+      await expect(icon).toBeVisible();
+
+      // Verify blue background styling is applied (Issue #6 - Enhanced test coverage)
+      const bgColor = await recommendation.evaluate((el) => {
+        const styles = window.getComputedStyle(el);
+        return styles.backgroundColor;
+      });
+      // Should have blue-ish background (rgb values for bg-blue-50)
+      expect(bgColor).toMatch(/rgb\(239,\s*246,\s*255\)/);
     }
   });
 });
