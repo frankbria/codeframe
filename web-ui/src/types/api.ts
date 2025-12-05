@@ -13,7 +13,18 @@ export type WorkStatus = 'pending' | 'assigned' | 'in_progress' | 'blocked' | 'c
 export type ProposedBy = 'agent' | 'human';
 
 /**
- * Task represents a single unit of work within an issue
+ * Task represents a single unit of work within an issue (API Contract)
+ *
+ * This is the API response type for tasks from the issues/tasks endpoints.
+ * Used primarily for issue/task tree display and Sprint 2 Foundation features.
+ * For agent state management and real-time coordination, use Task from @/types/agentState instead.
+ *
+ * Key differences from AgentState Task:
+ * - id is a string (not number) to support issue-task hierarchies
+ * - Has task_number for human-readable references
+ * - No project_id or timestamp (API contract scoped to endpoint)
+ *
+ * @see {@link file:web-ui/src/types/agentState.ts} for agent state management Task type
  */
 export interface Task {
   id: string;
