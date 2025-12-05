@@ -226,8 +226,20 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                             )}
 
                             {/* Dependency details */}
-                            {hasDependencies && (
-                              <span className="text-xs text-gray-500">
+                            {hasDependencies && task.depends_on && (
+                              <span
+                                className="ml-2 text-xs text-gray-500 cursor-help"
+                                title={`Dependencies:\n${task.depends_on
+                                  .map((depId) => {
+                                    const depTask = allTasks.find(
+                                      (t) => t.id === depId || t.task_number === depId
+                                    );
+                                    return depTask
+                                      ? `${depTask.task_number}: ${depTask.title} (${depTask.status})`
+                                      : depId;
+                                  })
+                                  .join('\n')}`}
+                              >
                                 Depends on: {task.depends_on.join(', ')}
                               </span>
                             )}
