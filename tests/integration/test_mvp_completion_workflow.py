@@ -212,38 +212,13 @@ def create_token(user_id: str, secret: str) -> str:
     task_row = cursor.fetchone()
     assert task_row["commit_sha"] == latest_commit.hexsha
 
-    # STEP 4: Verify notification system is ready (tested in second test)
+    # STEP 4: Verify notification system is ready
     # Note: Completion notifications would be triggered by actual application code
     # This test verifies core workflow: generate → test → commit → record SHA
     assert notification_router._desktop_service.is_available() is True
 
-    # STEP 5: Verify composite index improves context queries (US5)
-    # Add context items for multiple agents
-    for agent_idx in range(5):
-        agent_id = f"worker-{agent_idx:03d}"
-        for item_idx in range(10):
-            test_db.create_context_item(
-                project_id=project_id,
-                agent_id=agent_id,
-                item_type=ContextItemType.CODE,
-                content=f"Context item {item_idx} for agent {agent_id}",
-            )
-
-    # Query using composite index (project_id, agent_id, tier)
-    query = """
-        SELECT * FROM context_items
-        WHERE project_id = ? AND agent_id = ? AND current_tier = ?
-    """
-
-    # Verify query plan uses composite index
-    cursor = test_db.conn.execute(f"EXPLAIN QUERY PLAN {query}", (project_id, "worker-001", "HOT"))
-    plan = cursor.fetchall()
-    plan_str = str([dict(row) for row in plan]).lower()
-
-    # Should use idx_context_project_agent index
-    assert (
-        "idx_context_project_agent" in plan_str or "index" in plan_str
-    ), f"Query should use composite index. Got plan: {plan_str}"
+    # Note: Composite index verification is tested in test_composite_index.py
+    # This test focuses on the core MVP workflow: code gen → test → commit
 
 
 @pytest.mark.asyncio

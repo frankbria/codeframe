@@ -367,10 +367,10 @@ class MetricsTracker:
                 call_type_stats[call_type] = {
                     "call_type": call_type,
                     "cost_usd": 0.0,
-                    "calls": 0
+                    "call_count": 0
                 }
             call_type_stats[call_type]["cost_usd"] += cost
-            call_type_stats[call_type]["calls"] += 1
+            call_type_stats[call_type]["call_count"] += 1
 
             # Update project stats
             if project_id not in project_stats:

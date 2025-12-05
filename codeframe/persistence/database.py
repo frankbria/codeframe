@@ -1340,6 +1340,7 @@ class Database:
                 a.status,
                 a.current_task_id,
                 a.last_heartbeat,
+                pa.id AS assignment_id,
                 pa.role,
                 pa.assigned_at,
                 pa.unassigned_at,

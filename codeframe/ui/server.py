@@ -624,6 +624,7 @@ async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUp
             "current_task_id": agent.get("current_task_id"),
             "last_heartbeat": agent.get("last_heartbeat"),
             # From project_agents table
+            "assignment_id": assignment["id"],
             "role": assignment["role"],
             "assigned_at": assignment["assigned_at"],
             "unassigned_at": assignment.get("unassigned_at"),
@@ -638,10 +639,53 @@ async def update_agent_role(project_id: int, agent_id: str, request: AgentRoleUp
         raise HTTPException(status_code=500, detail=f"Error updating agent role: {str(e)}")
 
 
+@app.patch("/api/projects/{project_id}/agents/{agent_id}")
+async def patch_agent_role(project_id: int, agent_id: str, request: AgentRoleUpdateRequest):
+    """Update an agent's role on a project (PATCH variant).
+
+    Multi-Agent Per Project API (Phase 3) - PATCH endpoint for consistency with tests.
+
+    Args:
+        project_id: Project ID
+        agent_id: Agent ID
+        request: New role for the agent
+
+    Returns:
+        dict with success message
+
+    Raises:
+        HTTPException: 404 if assignment not found, 422 for validation errors, 500 on error
+    """
+    try:
+        # Update agent role
+        rows_affected = app.state.db.reassign_agent_role(
+            project_id=project_id,
+            agent_id=agent_id,
+            new_role=request.role
+        )
+
+        if rows_affected == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No active assignment found for agent {agent_id} on project {project_id}"
+            )
+
+        logger.info(f"Updated agent {agent_id} role to {request.role} on project {project_id}")
+
+        return {
+            "message": f"Agent {agent_id} role updated to {request.role} on project {project_id}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating agent role: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error updating agent role: {str(e)}")
+
+
 @app.get("/api/agents/{agent_id}/projects", response_model=List[ProjectAssignmentResponse])
 async def get_agent_projects(
     agent_id: str,
-    active_only: bool = Query(True, alias="is_active"),
+    active_only: bool = Query(True),
 ):
     """Get all projects an agent is assigned to.
 
@@ -3697,9 +3741,9 @@ async def get_agent_metrics(agent_id: str, project_id: Optional[int] = None):
             for record in usage_records:
                 call_type = record["call_type"]
                 if call_type not in call_type_stats:
-                    call_type_stats[call_type] = {"call_type": call_type, "cost_usd": 0.0, "calls": 0}
+                    call_type_stats[call_type] = {"call_type": call_type, "cost_usd": 0.0, "call_count": 0}
                 call_type_stats[call_type]["cost_usd"] += record["estimated_cost_usd"]
-                call_type_stats[call_type]["calls"] += 1
+                call_type_stats[call_type]["call_count"] += 1
 
             # Round costs
             for stats in call_type_stats.values():

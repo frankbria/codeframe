@@ -162,6 +162,7 @@ class AgentAssignmentResponse(BaseModel):
     status: Optional[str] = Field(None, description="Agent status (idle, working, blocked, offline)")
     current_task_id: Optional[int] = Field(None, description="Current task ID if agent is working")
     last_heartbeat: Optional[str] = Field(None, description="Last activity timestamp")
+    assignment_id: int = Field(..., description="Assignment ID from project_agents junction table")
     role: str = Field(..., description="Role in this project")
     assigned_at: str = Field(..., description="Assignment timestamp")
     unassigned_at: Optional[str] = Field(None, description="Unassignment timestamp (NULL if still assigned)")
