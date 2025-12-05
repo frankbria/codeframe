@@ -56,9 +56,8 @@ test.describe('Review Findings UI', () => {
     }
   });
 
-  test.skip('should expand/collapse review finding details', async ({ page }) => {
-    // SKIP: Individual review findings with expand/collapse not implemented in current ReviewSummary
-    // Current implementation shows severity counts, not individual findings
+  test('should expand/collapse review finding details', async ({ page }) => {
+    // Individual review findings with expand/collapse now implemented in ReviewSummary
 
     const findingsList = page.locator('[data-testid="review-findings-list"]');
 
@@ -79,9 +78,8 @@ test.describe('Review Findings UI', () => {
     }
   });
 
-  test.skip('should filter findings by severity', async ({ page }) => {
-    // SKIP: Severity filter not implemented in current ReviewSummary
-    // Current implementation shows all severity counts without filtering
+  test('should filter findings by severity', async ({ page }) => {
+    // Severity filter now implemented in ReviewSummary
 
     const severityFilter = page.locator('[data-testid="severity-filter"]');
 
@@ -108,9 +106,8 @@ test.describe('Review Findings UI', () => {
     }
   });
 
-  test.skip('should display actionable recommendations', async ({ page }) => {
-    // SKIP: Individual finding recommendations not implemented in current ReviewSummary
-    // Current implementation shows aggregate severity/category counts
+  test('should display actionable recommendations', async ({ page }) => {
+    // Individual finding recommendations now implemented in ReviewSummary
 
     const findingsList = page.locator('[data-testid="review-findings-list"]');
     const firstFinding = findingsList.locator('[data-testid^="review-finding-"]').first();
@@ -126,6 +123,18 @@ test.describe('Review Findings UI', () => {
       const recText = await recommendation.textContent();
       expect(recText).toBeTruthy();
       expect(recText!.length).toBeGreaterThan(10);
+
+      // Verify lightbulb icon is present (Issue #6 - Enhanced test coverage)
+      const icon = recommendation.locator('span[aria-hidden="true"]').filter({ hasText: '💡' });
+      await expect(icon).toBeVisible();
+
+      // Verify blue background styling is applied (Issue #6 - Enhanced test coverage)
+      const bgColor = await recommendation.evaluate((el) => {
+        const styles = window.getComputedStyle(el);
+        return styles.backgroundColor;
+      });
+      // Should have blue-ish background (rgb values for bg-blue-50)
+      expect(bgColor).toMatch(/rgb\(239,\s*246,\s*255\)/);
     }
   });
 });
