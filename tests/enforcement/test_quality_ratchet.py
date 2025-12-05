@@ -25,18 +25,15 @@ import pytest
 scripts_dir = Path(__file__).parent.parent.parent / "scripts"
 script_path = scripts_dir / "quality-ratchet.py"
 
-try:
-    spec = importlib.util.spec_from_file_location("quality_ratchet", script_path)
-    quality_ratchet = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(quality_ratchet)
+spec = importlib.util.spec_from_file_location("quality_ratchet", script_path)
+quality_ratchet = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(quality_ratchet)
 
-    load_history = quality_ratchet.load_history
-    save_history = quality_ratchet.save_history
-    detect_degradation = quality_ratchet.detect_degradation
-    calculate_moving_average = quality_ratchet.calculate_moving_average
-    find_peak_quality = quality_ratchet.find_peak_quality
-except Exception as e:
-    pytest.skip(f"Quality ratchet not implemented yet: {e}", allow_module_level=True)
+load_history = quality_ratchet.load_history
+save_history = quality_ratchet.save_history
+detect_degradation = quality_ratchet.detect_degradation
+calculate_moving_average = quality_ratchet.calculate_moving_average
+find_peak_quality = quality_ratchet.find_peak_quality
 
 
 class TestQualityRatchetRecord:
