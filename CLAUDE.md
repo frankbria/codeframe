@@ -46,11 +46,6 @@ ruff check .           # Lint code
 cd web-ui && npm test  # Frontend tests
 ```
 
-## Code Style
-- **Backend**: Python 3.11+ with async/await pattern, type hints, comprehensive tests
-- **Frontend**: TypeScript 5.3+ with React, strict mode, 85%+ test coverage
-- **Conventions**: Follow existing patterns in codebase
-
 ## Context Management for AI Conversations
 
 ### Quality-First Development
