@@ -55,3 +55,47 @@ export interface TriggerQualityGatesResponse {
   status: QualityGateStatusValue;
   message: string;
 }
+
+/**
+ * E2E test naming convention for quality gates
+ * (used in test IDs and frontend display)
+ */
+export type GateTypeE2E = 'tests' | 'coverage' | 'type-check' | 'lint' | 'review';
+
+/**
+ * Backend naming convention for quality gates
+ * (used in API responses and database)
+ */
+export type GateTypeBackend = 'tests' | 'type_check' | 'coverage' | 'linting' | 'code_review';
+
+/**
+ * Map E2E gate type to backend gate type
+ * @param gateType - E2E gate type (kebab-case)
+ * @returns Backend gate type (snake_case)
+ */
+export function mapE2EToBackend(gateType: GateTypeE2E): GateTypeBackend {
+  const mapping: Record<GateTypeE2E, GateTypeBackend> = {
+    'tests': 'tests',
+    'coverage': 'coverage',
+    'type-check': 'type_check',
+    'lint': 'linting',
+    'review': 'code_review',
+  };
+  return mapping[gateType];
+}
+
+/**
+ * Map backend gate type to E2E gate type
+ * @param gateType - Backend gate type (snake_case)
+ * @returns E2E gate type (kebab-case)
+ */
+export function mapBackendToE2E(gateType: GateTypeBackend): GateTypeE2E {
+  const mapping: Record<GateTypeBackend, GateTypeE2E> = {
+    'tests': 'tests',
+    'coverage': 'coverage',
+    'type_check': 'type-check',
+    'linting': 'lint',
+    'code_review': 'review',
+  };
+  return mapping[gateType];
+}

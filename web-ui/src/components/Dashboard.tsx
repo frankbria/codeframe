@@ -29,6 +29,7 @@ import { SessionStatus } from './SessionStatus';
 import CheckpointList from './checkpoints/CheckpointList';
 import CostDashboard from './metrics/CostDashboard';
 import ReviewSummary from './reviews/ReviewSummary';
+import { QualityGatesPanel } from './quality-gates';
 
 interface DashboardProps {
   projectId: number;
@@ -429,13 +430,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
             </div>
 
             {/* Quality Gates Panel (Sprint 10) */}
-            {/* Note: QualityGateStatus requires taskId, not projectId. Disabled for now until task is selected */}
-            {/* <div className="mb-6" data-testid="quality-gates-panel">
+            <div className="mb-6" data-testid="quality-gates-panel">
               <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
-                <QualityGateStatus taskId={0} />
+                <QualityGatesPanel projectId={projectId} tasks={tasks} />
               </div>
-            </div> */}
+            </div>
 
             {/* Checkpoint Panel (Sprint 10) */}
             <div className="mb-6" data-testid="checkpoint-panel">
