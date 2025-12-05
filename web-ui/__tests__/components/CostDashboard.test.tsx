@@ -15,13 +15,21 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { CostDashboard } from '../../src/components/metrics/CostDashboard';
 import * as metricsApi from '../../src/api/metrics';
-import type { CostBreakdown } from '../../src/types/metrics';
+import type { CostBreakdown, TokenUsage } from '../../src/types/metrics';
 
 // Mock the API module
 jest.mock('../../src/api/metrics');
 
 const mockGetProjectCosts = metricsApi.getProjectCosts as jest.MockedFunction<
   typeof metricsApi.getProjectCosts
+>;
+
+const mockGetProjectTokens = metricsApi.getProjectTokens as jest.MockedFunction<
+  typeof metricsApi.getProjectTokens
+>;
+
+const mockGetTokenUsageTimeSeries = metricsApi.getTokenUsageTimeSeries as jest.MockedFunction<
+  typeof metricsApi.getTokenUsageTimeSeries
 >;
 
 describe('CostDashboard', () => {
@@ -57,9 +65,40 @@ describe('CostDashboard', () => {
     ],
   };
 
+  const mockTokenUsage: TokenUsage[] = [
+    {
+      id: 1,
+      task_id: 27,
+      agent_id: 'backend-001',
+      project_id: 123,
+      model_name: 'claude-sonnet-4-5',
+      input_tokens: 1000,
+      output_tokens: 500,
+      estimated_cost_usd: 0.015,
+      call_type: 'task_execution',
+      timestamp: '2025-11-23T10:00:00Z',
+    },
+    {
+      id: 2,
+      task_id: 28,
+      agent_id: 'frontend-001',
+      project_id: 123,
+      model_name: 'claude-sonnet-4-5',
+      input_tokens: 800,
+      output_tokens: 400,
+      estimated_cost_usd: 0.012,
+      call_type: 'task_execution',
+      timestamp: '2025-11-23T11:00:00Z',
+    },
+  ];
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+
+    // Setup default mocks for new API calls
+    mockGetProjectTokens.mockResolvedValue(mockTokenUsage);
+    mockGetTokenUsageTimeSeries.mockResolvedValue([]);
   });
 
   afterEach(() => {
