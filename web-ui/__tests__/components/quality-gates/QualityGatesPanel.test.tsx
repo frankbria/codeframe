@@ -49,32 +49,26 @@ describe('QualityGatesPanel', () => {
   // Sample tasks for testing
   const completedTask: Task = {
     id: 1,
+    project_id: 1,
     title: 'Implement authentication',
-    description: 'Add JWT auth',
     status: 'completed',
-    priority: 'high',
-    created_at: '2025-01-01T00:00:00Z',
-    updated_at: '2025-01-01T00:00:00Z',
+    timestamp: Date.now(),
   };
 
   const inProgressTask: Task = {
     id: 2,
+    project_id: 1,
     title: 'Add tests',
-    description: 'Write unit tests',
     status: 'in_progress',
-    priority: 'medium',
-    created_at: '2025-01-01T00:00:00Z',
-    updated_at: '2025-01-01T00:00:00Z',
+    timestamp: Date.now(),
   };
 
   const pendingTask: Task = {
     id: 3,
+    project_id: 1,
     title: 'Update docs',
-    description: 'Update README',
     status: 'pending',
-    priority: 'low',
-    created_at: '2025-01-01T00:00:00Z',
-    updated_at: '2025-01-01T00:00:00Z',
+    timestamp: Date.now(),
   };
 
   const mockPassedStatus: QualityGateStatus = {
