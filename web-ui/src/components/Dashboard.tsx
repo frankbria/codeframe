@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import useSWR from 'swr';
 import { projectsApi, blockersApi } from '@/lib/api';
 import { getTaskReviews } from '@/api/reviews';
@@ -68,6 +68,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   // Quality Gates Panel error boundary state
   const [qualityGatesPanelKey, setQualityGatesPanelKey] = useState<number>(0);
   const [showQualityGatesPanel, setShowQualityGatesPanel] = useState<boolean>(true);
+  const lastRetryTimeRef = useRef<number>(0);
 
   // Memoize filtered agent lists for performance (T111)
   const _activeAgents = useMemo(
@@ -89,6 +90,18 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
   // Quality Gates Panel error boundary handlers
   const handleQualityGatesRetry = useCallback(() => {
+    const now = Date.now();
+    const DEBOUNCE_DELAY_MS = 500; // 500ms debounce to prevent rapid re-mounting
+
+    // Check if enough time has passed since last retry
+    if (now - lastRetryTimeRef.current < DEBOUNCE_DELAY_MS) {
+      console.debug('[Quality Gates Panel] Retry debounced (too soon)');
+      return;
+    }
+
+    // Update last retry time
+    lastRetryTimeRef.current = now;
+
     // Increment key to force re-mount of ErrorBoundary and its children
     setQualityGatesPanelKey(prev => prev + 1);
   }, []);
@@ -105,6 +118,16 @@ export default function Dashboard({ projectId }: DashboardProps) {
     console.error('[Quality Gates Panel] Timestamp:', new Date().toISOString());
     // In production, consider sending to error tracking service (e.g., Sentry)
   }, []);
+
+  // Memoize fallback component to prevent re-creation on every Dashboard render
+  const qualityGatesFallback = useMemo(() => (
+    <div className="mb-6">
+      <QualityGatesPanelFallback
+        onRetry={handleQualityGatesRetry}
+        onDismiss={handleQualityGatesDismiss}
+      />
+    </div>
+  ), [handleQualityGatesRetry, handleQualityGatesDismiss]);
 
   // Fetch project status
   const { data: projectData } = useSWR(
@@ -465,14 +488,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
             {showQualityGatesPanel && (
               <ErrorBoundary
                 key={qualityGatesPanelKey}
-                fallback={
-                  <div className="mb-6">
-                    <QualityGatesPanelFallback
-                      onRetry={handleQualityGatesRetry}
-                      onDismiss={handleQualityGatesDismiss}
-                    />
-                  </div>
-                }
+                fallback={qualityGatesFallback}
                 onError={handleQualityGatesError}
               >
                 <div className="mb-6" data-testid="quality-gates-panel">
