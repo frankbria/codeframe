@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import type { Checkpoint } from '../../types/checkpoints';
-import { listCheckpoints, createCheckpoint, deleteCheckpoint } from '../../api/checkpoints';
+import type { Checkpoint, CheckpointDiff } from '../../types/checkpoints';
+import { listCheckpoints, createCheckpoint, deleteCheckpoint, getCheckpointDiff } from '../../api/checkpoints';
 import { CheckpointRestore } from './CheckpointRestore';
+import { DeleteConfirmationDialog } from './DeleteConfirmationDialog';
 
 interface CheckpointListProps {
   projectId: number;
@@ -27,6 +28,17 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   const [nameError, setNameError] = useState<string | null>(null);
   const [selectedCheckpoint, setSelectedCheckpoint] = useState<Checkpoint | null>(null);
   const [showRestoreDialog, setShowRestoreDialog] = useState<boolean>(false);
+
+  // Expandable checkpoint state
+  const [expandedCheckpointId, setExpandedCheckpointId] = useState<number | null>(null);
+  const [checkpointDiffs, setCheckpointDiffs] = useState<Map<number, CheckpointDiff>>(new Map());
+  const [loadingDiffs, setLoadingDiffs] = useState<Set<number>>(new Set());
+  const [diffErrors, setDiffErrors] = useState<Map<number, string>>(new Map());
+
+  // Delete dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
+  const [checkpointToDelete, setCheckpointToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
   // Load checkpoints
   const loadCheckpoints = async () => {
@@ -87,19 +99,35 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
     }
   };
 
-  // Handle delete checkpoint
-  const handleDeleteCheckpoint = async (checkpointId: number, checkpointName: string) => {
-    if (!window.confirm(`Are you sure you want to delete checkpoint "${checkpointName}"?`)) {
-      return;
-    }
+  // Handle delete checkpoint - show confirmation dialog
+  const handleDeleteCheckpoint = (checkpointId: number, checkpointName: string) => {
+    setCheckpointToDelete({ id: checkpointId, name: checkpointName });
+    setShowDeleteDialog(true);
+  };
+
+  // Handle confirm delete
+  const handleConfirmDelete = async () => {
+    if (!checkpointToDelete) return;
+
+    setDeleting(true);
+    setError(null);
 
     try {
-      setError(null);
-      await deleteCheckpoint(projectId, checkpointId);
+      await deleteCheckpoint(projectId, checkpointToDelete.id);
       await loadCheckpoints();
+      setShowDeleteDialog(false);
+      setCheckpointToDelete(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete checkpoint');
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  // Handle cancel delete
+  const handleCancelDelete = () => {
+    setShowDeleteDialog(false);
+    setCheckpointToDelete(null);
   };
 
   // Handle restore click
@@ -113,6 +141,44 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
     setShowRestoreDialog(false);
     setSelectedCheckpoint(null);
     loadCheckpoints();
+  };
+
+  // Handle checkpoint click to toggle expansion and fetch diff
+  const handleCheckpointClick = async (checkpointId: number) => {
+    // Toggle expansion
+    if (expandedCheckpointId === checkpointId) {
+      setExpandedCheckpointId(null);
+      return;
+    }
+
+    setExpandedCheckpointId(checkpointId);
+
+    // Check if diff is already cached
+    if (checkpointDiffs.has(checkpointId)) {
+      return;
+    }
+
+    // Fetch diff
+    setLoadingDiffs(prev => new Set(prev).add(checkpointId));
+    setDiffErrors(prev => {
+      const next = new Map(prev);
+      next.delete(checkpointId);
+      return next;
+    });
+
+    try {
+      const diff = await getCheckpointDiff(projectId, checkpointId);
+      setCheckpointDiffs(prev => new Map(prev).set(checkpointId, diff));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load diff';
+      setDiffErrors(prev => new Map(prev).set(checkpointId, errorMessage));
+    } finally {
+      setLoadingDiffs(prev => {
+        const next = new Set(prev);
+        next.delete(checkpointId);
+        return next;
+      });
+    }
   };
 
   // Format date
@@ -256,8 +322,9 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
           {checkpoints.map((checkpoint) => (
             <div
               key={checkpoint.id}
-              className="bg-white border border-gray-200 rounded-md p-6 hover:shadow-md transition-shadow"
+              className="bg-white border border-gray-200 rounded-md p-6 hover:shadow-md transition-shadow cursor-pointer"
               data-testid={`checkpoint-item-${checkpoint.id}`}
+              onClick={() => handleCheckpointClick(checkpoint.id)}
             >
               <div className="flex justify-between items-start">
                 <div className="flex-1">
@@ -321,14 +388,20 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                 </div>
                 <div className="flex flex-col space-y-2 ml-4">
                   <button
-                    onClick={() => handleRestoreClick(checkpoint)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRestoreClick(checkpoint);
+                    }}
                     className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
                     data-testid="checkpoint-restore-button"
                   >
                     Restore
                   </button>
                   <button
-                    onClick={() => handleDeleteCheckpoint(checkpoint.id, checkpoint.name)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteCheckpoint(checkpoint.id, checkpoint.name);
+                    }}
                     className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
                     data-testid="checkpoint-delete-button"
                   >
@@ -336,6 +409,85 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Diff display section */}
+              {expandedCheckpointId === checkpoint.id && (
+                <div className="mt-4 border-t border-gray-200 pt-4">
+                  {loadingDiffs.has(checkpoint.id) && (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="ml-2 text-gray-600">Loading diff...</span>
+                    </div>
+                  )}
+
+                  {diffErrors.has(checkpoint.id) && (
+                    <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                      <p className="text-sm text-red-800">{diffErrors.get(checkpoint.id)}</p>
+                    </div>
+                  )}
+
+                  {checkpointDiffs.has(checkpoint.id) && !loadingDiffs.has(checkpoint.id) && (
+                    <div data-testid="checkpoint-diff">
+                      {(() => {
+                        const diff = checkpointDiffs.get(checkpoint.id)!;
+
+                        // Check if diff is empty
+                        if (diff.files_changed === 0 && !diff.diff.trim()) {
+                          return (
+                            <div className="text-center py-4" data-testid="no-changes-message">
+                              <p className="text-gray-600">No changes detected</p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <>
+                            {/* Diff summary */}
+                            <div className="bg-gray-50 rounded-md p-3 mb-3">
+                              <div className="flex items-center space-x-6 text-sm">
+                                <div>
+                                  <span className="text-gray-500">Files changed:</span>{' '}
+                                  <span className="font-semibold text-gray-900">{diff.files_changed}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Insertions:</span>{' '}
+                                  <span className="font-semibold text-green-600">+{diff.insertions}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Deletions:</span>{' '}
+                                  <span className="font-semibold text-red-600">-{diff.deletions}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Diff content */}
+                            <div className="bg-gray-900 rounded-md p-4 overflow-x-auto">
+                              <pre className="text-xs text-gray-100 font-mono whitespace-pre-wrap">
+                                {diff.diff.split('\n').map((line, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={
+                                      line.startsWith('+') && !line.startsWith('+++')
+                                        ? 'text-green-400'
+                                        : line.startsWith('-') && !line.startsWith('---')
+                                        ? 'text-red-400'
+                                        : line.startsWith('@@')
+                                        ? 'text-blue-400'
+                                        : ''
+                                    }
+                                  >
+                                    {line}
+                                  </div>
+                                ))}
+                              </pre>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -351,6 +503,17 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
             setSelectedCheckpoint(null);
           }}
           onRestoreComplete={handleRestoreComplete}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {showDeleteDialog && checkpointToDelete && (
+        <DeleteConfirmationDialog
+          isOpen={showDeleteDialog}
+          checkpointName={checkpointToDelete.name}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+          isDeleting={deleting}
         />
       )}
     </div>
