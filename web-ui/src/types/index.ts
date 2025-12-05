@@ -57,18 +57,6 @@ export interface Agent {
   tasks_completed?: number; // Sprint 4: Multi-Agent Coordination
 }
 
-export interface Task {
-  id: number;
-  title: string;
-  description: string;
-  status: TaskStatus;
-  assigned_to?: string;
-  priority: number;
-  workflow_step: number;
-  progress?: number;
-  depends_on?: number[];
-}
-
 export interface Blocker {
   id: number;
   task_id: number;

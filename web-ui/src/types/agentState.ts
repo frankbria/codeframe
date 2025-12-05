@@ -92,7 +92,19 @@ export interface Agent {
 }
 
 /**
- * Work item that can be assigned to agents
+ * Work item that can be assigned to agents (Agent State Management)
+ *
+ * This is the internal state management type for real-time agent coordination.
+ * Used by the Context + Reducer architecture for multi-agent state management (Phase 5.2).
+ * For API contract types (issue/task endpoints), use Task from @/types/api instead.
+ *
+ * Key differences from API Contract Task:
+ * - id is a number (not string) matching database primary keys
+ * - Has project_id for multi-project support
+ * - Has timestamp for conflict resolution (last-write-wins)
+ * - Has agent_id for task assignment tracking
+ *
+ * @see {@link file:web-ui/src/types/api.ts} for API contract Task type
  */
 export interface Task {
   id: number;                       // Unique task identifier

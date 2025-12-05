@@ -3,8 +3,9 @@
  */
 
 import axios from 'axios';
-import type { Project, Agent, Task, Blocker, ActivityItem, ProjectResponse, StartProjectResponse } from '@/types';
+import type { Project, Agent, Blocker, ActivityItem, ProjectResponse, StartProjectResponse } from '@/types';
 import type { PRDResponse, IssuesResponse, DiscoveryProgressResponse } from '@/types/api';
+import type { Task } from '@/types/agentState';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
