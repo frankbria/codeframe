@@ -3474,6 +3474,8 @@ async def get_checkpoint_diff(project_id: int, checkpoint_id: int) -> Checkpoint
         404 Not Found: Project or checkpoint not found
         500 Internal Server Error: Git operation failed
     """
+    import re
+    import subprocess
     from codeframe.lib.checkpoint_manager import CheckpointManager
 
     # Verify project exists
@@ -3501,7 +3503,35 @@ async def get_checkpoint_diff(project_id: int, checkpoint_id: int) -> Checkpoint
             detail=f"Checkpoint {checkpoint_id} does not belong to project {project_id}",
         )
 
+    # SECURITY: Validate git commit SHA format to prevent command injection
+    git_sha_pattern = re.compile(r'^[a-f0-9]{7,40}$')
+    if not git_sha_pattern.match(checkpoint.git_commit):
+        logger.error(f"Invalid git commit SHA format: {checkpoint.git_commit}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Invalid git commit format in checkpoint {checkpoint_id}",
+        )
+
     try:
+        # Verify git commit exists before attempting diff
+        try:
+            verify_result = subprocess.run(
+                ["git", "cat-file", "-e", checkpoint.git_commit],
+                cwd=Path(workspace_path),
+                check=True,
+                capture_output=True,
+                timeout=5
+            )
+        except subprocess.CalledProcessError:
+            logger.error(f"Git commit {checkpoint.git_commit} not found in repository")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Checkpoint commit {checkpoint.git_commit[:7]} not found in repository",
+            )
+        except subprocess.TimeoutExpired:
+            logger.error(f"Git verification timed out for commit {checkpoint.git_commit}")
+            raise HTTPException(status_code=500, detail="Git operation timed out")
+
         # Create checkpoint manager
         checkpoint_mgr = CheckpointManager(
             db=app.state.db,
@@ -3509,18 +3539,22 @@ async def get_checkpoint_diff(project_id: int, checkpoint_id: int) -> Checkpoint
             project_id=project_id,
         )
 
-        # Get diff output
+        # Get diff output with size limit (10MB)
         diff_output = checkpoint_mgr._show_diff(checkpoint.git_commit)
+        MAX_DIFF_SIZE = 10 * 1024 * 1024  # 10MB
+        if len(diff_output) > MAX_DIFF_SIZE:
+            diff_output = diff_output[:MAX_DIFF_SIZE] + "\n\n... [diff truncated - exceeded 10MB limit]"
+            logger.warning(f"Diff for checkpoint {checkpoint_id} truncated due to size limit")
 
         # Parse diff statistics using git diff --numstat
-        import subprocess
         try:
             stats_result = subprocess.run(
                 ["git", "diff", "--numstat", checkpoint.git_commit, "HEAD"],
                 cwd=Path(workspace_path),
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=30
             )
 
             # Parse numstat output
@@ -3528,6 +3562,7 @@ async def get_checkpoint_diff(project_id: int, checkpoint_id: int) -> Checkpoint
             files_changed = 0
             total_insertions = 0
             total_deletions = 0
+            binary_files = 0
 
             for line in stats_result.stdout.strip().split('\n'):
                 if not line:
@@ -3536,28 +3571,43 @@ async def get_checkpoint_diff(project_id: int, checkpoint_id: int) -> Checkpoint
                 parts = line.split('\t')
                 if len(parts) >= 2:
                     # Handle binary files (marked as '-')
-                    insertions = int(parts[0]) if parts[0] != '-' else 0
-                    deletions = int(parts[1]) if parts[1] != '-' else 0
-                    total_insertions += insertions
-                    total_deletions += deletions
+                    if parts[0] == '-' or parts[1] == '-':
+                        binary_files += 1
+                    else:
+                        insertions = int(parts[0])
+                        deletions = int(parts[1])
+                        total_insertions += insertions
+                        total_deletions += deletions
 
-            return CheckpointDiffResponse(
+            response = CheckpointDiffResponse(
                 files_changed=files_changed,
                 insertions=total_insertions,
                 deletions=total_deletions,
                 diff=diff_output
             )
 
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to get diff stats: {e.stderr}")
-            # Return diff without stats if parsing fails
-            return CheckpointDiffResponse(
-                files_changed=0,
-                insertions=0,
-                deletions=0,
-                diff=diff_output
+            # Add cache headers for immutable checkpoint diffs
+            return JSONResponse(
+                content=response.model_dump(),
+                headers={
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                    "X-Binary-Files": str(binary_files)
+                }
             )
 
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to get diff stats: {e.stderr}")
+            # Return error response when parsing fails (not misleading zeros)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to parse diff statistics: {e.stderr[:200]}"
+            )
+        except subprocess.TimeoutExpired:
+            logger.error(f"Git diff timed out for checkpoint {checkpoint_id}")
+            raise HTTPException(status_code=500, detail="Diff operation timed out")
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get checkpoint diff {checkpoint_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get checkpoint diff: {str(e)}")

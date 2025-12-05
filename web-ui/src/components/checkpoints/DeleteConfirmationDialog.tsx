@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface DeleteConfirmationDialogProps {
   isOpen: boolean;
@@ -22,6 +22,19 @@ export function DeleteConfirmationDialog({
   onCancel,
   isDeleting,
 }: DeleteConfirmationDialogProps) {
+  // Ref for focus management
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Auto-focus Cancel button when dialog opens
+  useEffect(() => {
+    if (isOpen && cancelButtonRef.current) {
+      // Small delay to ensure dialog is rendered
+      setTimeout(() => {
+        cancelButtonRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
+
   // Close modal on Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -113,6 +126,7 @@ export function DeleteConfirmationDialog({
         {/* Footer */}
         <div className="flex justify-end space-x-3 px-6 py-4 bg-gray-50 border-t border-gray-200">
           <button
+            ref={cancelButtonRef}
             onClick={onCancel}
             disabled={isDeleting}
             className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"

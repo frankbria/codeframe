@@ -3,7 +3,7 @@
  * Displays list of checkpoints with create/delete functionality
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Checkpoint, CheckpointDiff } from '../../types/checkpoints';
 import { listCheckpoints, createCheckpoint, deleteCheckpoint, getCheckpointDiff } from '../../api/checkpoints';
 import { CheckpointRestore } from './CheckpointRestore';
@@ -39,6 +39,21 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
   const [checkpointToDelete, setCheckpointToDelete] = useState<{ id: number; name: string } | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
+
+  // Refs for cleanup and race condition prevention
+  const isMounted = useRef<boolean>(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+      // Cancel any in-flight diff requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Load checkpoints
   const loadCheckpoints = async () => {
@@ -148,6 +163,11 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
     // Toggle expansion
     if (expandedCheckpointId === checkpointId) {
       setExpandedCheckpointId(null);
+      // Cancel any in-flight request when collapsing
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
       return;
     }
 
@@ -158,26 +178,72 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
       return;
     }
 
-    // Fetch diff
-    setLoadingDiffs(prev => new Set(prev).add(checkpointId));
-    setDiffErrors(prev => {
-      const next = new Map(prev);
-      next.delete(checkpointId);
-      return next;
-    });
+    // Cancel any previous in-flight diff request (prevents race condition)
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
 
-    try {
-      const diff = await getCheckpointDiff(projectId, checkpointId);
-      setCheckpointDiffs(prev => new Map(prev).set(checkpointId, diff));
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load diff';
-      setDiffErrors(prev => new Map(prev).set(checkpointId, errorMessage));
-    } finally {
-      setLoadingDiffs(prev => {
-        const next = new Set(prev);
+    // Create new AbortController for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Fetch diff
+    if (isMounted.current) {
+      setLoadingDiffs(prev => new Set(prev).add(checkpointId));
+      setDiffErrors(prev => {
+        const next = new Map(prev);
         next.delete(checkpointId);
         return next;
       });
+    }
+
+    try {
+      const diff = await getCheckpointDiff(projectId, checkpointId, controller.signal);
+
+      // Only update state if component is still mounted and request wasn't aborted
+      if (isMounted.current && !controller.signal.aborted) {
+        // Enforce cache size limit (max 10 items)
+        setCheckpointDiffs(prev => {
+          const next = new Map(prev);
+          next.set(checkpointId, diff);
+
+          // Evict oldest entries if cache exceeds 10 items
+          const MAX_CACHE_SIZE = 10;
+          if (next.size > MAX_CACHE_SIZE) {
+            const firstKey = next.keys().next().value;
+            if (firstKey !== undefined) {
+              next.delete(firstKey);
+            }
+          }
+
+          return next;
+        });
+      }
+    } catch (err) {
+      // Ignore AbortError (expected when requests are cancelled)
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+
+      // Only update state if component is still mounted
+      if (isMounted.current) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load diff';
+        setDiffErrors(prev => new Map(prev).set(checkpointId, errorMessage));
+      }
+    } finally {
+      // Only update state if component is still mounted
+      if (isMounted.current) {
+        setLoadingDiffs(prev => {
+          const next = new Set(prev);
+          next.delete(checkpointId);
+          return next;
+        });
+      }
+
+      // Clear the ref if this was the active request
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     }
   };
 
