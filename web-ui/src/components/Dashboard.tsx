@@ -30,6 +30,8 @@ import CheckpointList from './checkpoints/CheckpointList';
 import CostDashboard from './metrics/CostDashboard';
 import ReviewSummary from './reviews/ReviewSummary';
 import { QualityGatesPanel } from './quality-gates';
+import QualityGatesPanelFallback from './quality-gates/QualityGatesPanelFallback';
+import ErrorBoundary from './ErrorBoundary';
 import TaskStats from './tasks/TaskStats';
 
 interface DashboardProps {
@@ -63,6 +65,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const [reviewData, setReviewData] = useState<ReviewResult | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
 
+  // Quality Gates Panel error boundary state
+  const [qualityGatesPanelKey, setQualityGatesPanelKey] = useState<number>(0);
+  const [showQualityGatesPanel, setShowQualityGatesPanel] = useState<boolean>(true);
+
   // Memoize filtered agent lists for performance (T111)
   const _activeAgents = useMemo(
     () => agents.filter(a => a.status === 'working' || a.status === 'blocked'),
@@ -79,6 +85,25 @@ export default function Dashboard({ projectId }: DashboardProps) {
     // Navigate to Context tab and select the clicked agent
     setSelectedAgentId(agentId);
     setActiveTab('context');
+  }, []);
+
+  // Quality Gates Panel error boundary handlers
+  const handleQualityGatesRetry = useCallback(() => {
+    // Increment key to force re-mount of ErrorBoundary and its children
+    setQualityGatesPanelKey(prev => prev + 1);
+  }, []);
+
+  const handleQualityGatesDismiss = useCallback(() => {
+    // Hide the Quality Gates Panel
+    setShowQualityGatesPanel(false);
+  }, []);
+
+  const handleQualityGatesError = useCallback((error: Error, errorInfo: React.ErrorInfo) => {
+    // Log error to console for debugging
+    console.error('[Quality Gates Panel] Error caught by boundary:', error);
+    console.error('[Quality Gates Panel] Component stack:', errorInfo.componentStack);
+    console.error('[Quality Gates Panel] Timestamp:', new Date().toISOString());
+    // In production, consider sending to error tracking service (e.g., Sentry)
   }, []);
 
   // Fetch project status
@@ -436,13 +461,28 @@ export default function Dashboard({ projectId }: DashboardProps) {
               </div>
             </div>
 
-            {/* Quality Gates Panel (Sprint 10) */}
-            <div className="mb-6" data-testid="quality-gates-panel">
-              <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
-                <QualityGatesPanel projectId={projectId} tasks={tasks} />
-              </div>
-            </div>
+            {/* Quality Gates Panel (Sprint 10) - Error boundary protected */}
+            {showQualityGatesPanel && (
+              <ErrorBoundary
+                key={qualityGatesPanelKey}
+                fallback={
+                  <div className="mb-6">
+                    <QualityGatesPanelFallback
+                      onRetry={handleQualityGatesRetry}
+                      onDismiss={handleQualityGatesDismiss}
+                    />
+                  </div>
+                }
+                onError={handleQualityGatesError}
+              >
+                <div className="mb-6" data-testid="quality-gates-panel">
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
+                    <QualityGatesPanel projectId={projectId} tasks={tasks} />
+                  </div>
+                </div>
+              </ErrorBoundary>
+            )}
 
             {/* Checkpoint Panel (Sprint 10) */}
             <div className="mb-6" data-testid="checkpoint-panel">

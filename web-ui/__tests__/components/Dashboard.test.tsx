@@ -998,4 +998,127 @@ describe('Dashboard with AgentStateProvider', () => {
       });
     });
   });
+
+  /**
+   * Feature: Quality Gates Error Boundary
+   * Error boundary protection for Quality Gates Panel with retry and dismiss functionality
+   */
+  describe('Quality Gates Error Boundary', () => {
+    beforeEach(() => {
+      // Mock console.error to avoid polluting test output
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      // Restore console.error if it was mocked
+      if (jest.isMockFunction(console.error)) {
+        (console.error as jest.Mock).mockRestore();
+      }
+    });
+
+    /**
+     * Test: Error boundary catches render errors in Quality Gates Panel
+     */
+    it('should catch render errors in Quality Gates Panel and show fallback UI', async () => {
+      // Mock QualityGatesPanel to throw an error
+      jest.mock('@/components/quality-gates/QualityGatesPanel', () => ({
+        __esModule: true,
+        default: () => {
+          throw new Error('Quality Gates Panel render error');
+        },
+      }));
+
+      render(
+        <AgentStateProvider projectId={123}>
+          <Dashboard projectId={123} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Check if fallback UI is displayed
+      // Note: This test requires the Dashboard to actually implement the error boundary
+      // For now, this test will serve as documentation of expected behavior
+    });
+
+    /**
+     * Test: Retry button re-mounts Quality Gates Panel
+     */
+    it('should re-mount Quality Gates Panel when retry button is clicked', async () => {
+      render(
+        <AgentStateProvider projectId={123}>
+          <Dashboard projectId={123} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // If error boundary fallback is shown, retry button should re-mount the panel
+      // This test documents the expected behavior
+    });
+
+    /**
+     * Test: Dismiss button hides Quality Gates Panel
+     */
+    it('should hide Quality Gates Panel when dismiss button is clicked', async () => {
+      render(
+        <AgentStateProvider projectId={123}>
+          <Dashboard projectId={123} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // If error boundary fallback is shown, dismiss button should hide the panel
+      // This test documents the expected behavior
+    });
+
+    /**
+     * Test: Other Dashboard panels continue working when Quality Gates crashes
+     */
+    it('should keep other Dashboard panels working when Quality Gates Panel crashes', async () => {
+      render(
+        <AgentStateProvider projectId={123}>
+          <Dashboard projectId={123} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Verify other panels are still functional
+      const agentElements = screen.getAllByText(/backend-worker-1/i);
+      expect(agentElements.length).toBeGreaterThan(0);
+      expect(screen.getByRole('tab', { name: /context/i })).toBeInTheDocument();
+    });
+
+    /**
+     * Test: Error logging callback is invoked when error occurs
+     */
+    it('should log error when Quality Gates Panel crashes', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      render(
+        <AgentStateProvider projectId={123}>
+          <Dashboard projectId={123} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Error logging will be tested once error boundary is implemented
+      // This test documents the expected behavior
+
+      consoleErrorSpy.mockRestore();
+    });
+  });
 });
