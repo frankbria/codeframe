@@ -9,9 +9,9 @@
  * Tasks: T037
  */
 
-import React, { useMemo } from 'react';
-import type { ReviewResult, Severity, ReviewCategory } from '../../types/reviews';
-import { CATEGORY_ICONS } from '../../types/reviews';
+import React, { useMemo, useState } from 'react';
+import type { ReviewResult, Severity, ReviewCategory, CodeReview } from '../../types/reviews';
+import { CATEGORY_ICONS, SEVERITY_COLORS } from '../../types/reviews';
 
 interface ReviewSummaryProps {
   /** Review result data */
@@ -46,6 +46,32 @@ export function ReviewSummary({
     );
   }, [reviewResult]);
 
+  // State for expand/collapse individual findings
+  const [expandedFindings, setExpandedFindings] = useState<Set<number>>(new Set());
+
+  // State for severity filter
+  const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
+
+  // Filter findings based on selected severity
+  const filteredFindings = useMemo(() => {
+    if (!reviewResult) return [];
+    if (severityFilter === 'all') return reviewResult.findings;
+    return reviewResult.findings.filter((finding) => finding.severity === severityFilter);
+  }, [reviewResult, severityFilter]);
+
+  // Toggle finding expansion
+  const toggleFinding = (findingId: number) => {
+    setExpandedFindings((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(findingId)) {
+        newSet.delete(findingId);
+      } else {
+        newSet.add(findingId);
+      }
+      return newSet;
+    });
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -68,13 +94,19 @@ export function ReviewSummary({
     );
   }
 
-  // Empty state (no review data)
+  // Empty state (no review data) - still render container with findings list placeholder
   if (!reviewResult) {
     return (
       <div className="review-summary" data-testid="review-summary">
         <h3 className="text-lg font-semibold mb-4">Review Summary</h3>
-        <div className="text-gray-500 bg-gray-50 p-4 rounded">
+        <div className="text-gray-500 bg-gray-50 p-4 rounded mb-6">
           No review data available. Trigger a code review to see results.
+        </div>
+        {/* Always render review-findings-list container for test consistency */}
+        <div className="review-findings-list" data-testid="review-findings-list">
+          <div className="text-gray-500 bg-gray-50 p-4 rounded text-center">
+            No review findings yet.
+          </div>
         </div>
       </div>
     );
@@ -146,8 +178,8 @@ export function ReviewSummary({
         )}
       </div>
 
-      {/* Review Findings List (severity breakdown serves as findings list) */}
-      <div className="severity-breakdown mb-6" data-testid="review-findings-list">
+      {/* Severity Breakdown */}
+      <div className="severity-breakdown mb-6">
         <h4 className="text-md font-semibold mb-3">By Severity</h4>
         <div className="space-y-2">
           {(['critical', 'high', 'medium', 'low', 'info'] as Severity[]).map(
@@ -194,7 +226,7 @@ export function ReviewSummary({
       </div>
 
       {/* Category Breakdown */}
-      <div className="category-breakdown">
+      <div className="category-breakdown mb-6">
         <h4 className="text-md font-semibold mb-3">By Category</h4>
         <div className="grid grid-cols-2 gap-2">
           {(
@@ -227,6 +259,138 @@ export function ReviewSummary({
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Individual Findings Section */}
+      <div className="individual-findings">
+        {/* Severity Filter - only show if there are findings */}
+        {reviewResult.findings.length > 0 && (
+          <div className="mb-4">
+            <label htmlFor="severity-filter" className="text-sm font-medium mr-2">
+              Filter by severity:
+            </label>
+            <select
+              id="severity-filter"
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value as Severity | 'all')}
+              className="border border-gray-300 rounded px-3 py-1 text-sm"
+              data-testid="severity-filter"
+            >
+              <option value="all">All</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="info">Info</option>
+            </select>
+          </div>
+        )}
+
+        {/* Findings List - always rendered */}
+        <div className="review-findings-list space-y-3" data-testid="review-findings-list">
+          {reviewResult.findings.length === 0 ? (
+            <div className="text-gray-500 bg-gray-50 p-4 rounded text-center">
+              No review findings. All code reviews will appear here.
+            </div>
+          ) : filteredFindings.length === 0 ? (
+            <div className="text-gray-500 bg-gray-50 p-4 rounded text-center">
+              No findings match the selected filter.
+            </div>
+          ) : (
+            filteredFindings.map((finding) => {
+              const findingId = finding.id || 0;
+              const isExpanded = expandedFindings.has(findingId);
+
+              return (
+                <div
+                  key={findingId}
+                  className={`finding-card border-2 rounded-lg p-4 cursor-pointer transition-all hover:shadow-md ${
+                    SEVERITY_COLORS[finding.severity as Severity]
+                  }`}
+                  onClick={() => toggleFinding(findingId)}
+                  data-testid={`review-finding-${findingId}`}
+                >
+                  {/* Finding Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <code className="text-sm font-mono bg-white bg-opacity-50 px-2 py-1 rounded">
+                          {finding.file_path}
+                          {finding.line_number && `:${finding.line_number}`}
+                        </code>
+                      </div>
+                      <p className="text-sm font-medium">{finding.message}</p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <span className="text-lg" title={finding.category}>
+                        {CATEGORY_ICONS[finding.category as ReviewCategory]}
+                      </span>
+                      <span
+                        className="text-xs font-semibold uppercase px-2 py-1 bg-white bg-opacity-70 rounded border"
+                        data-testid="severity-badge"
+                      >
+                        {finding.severity}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {isExpanded && (
+                    <div className="finding-details mt-4 space-y-3" data-testid="finding-details">
+                      {/* Full Message (if needed) */}
+                      {finding.message && (
+                        <div className="bg-white bg-opacity-50 rounded p-3">
+                          <p className="text-xs font-semibold text-gray-600 mb-1">Details:</p>
+                          <p className="text-sm">{finding.message}</p>
+                        </div>
+                      )}
+
+                      {/* Recommendation */}
+                      {finding.recommendation && (
+                        <div
+                          className="bg-blue-50 border border-blue-200 rounded p-3"
+                          data-testid="finding-recommendation"
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="text-blue-600 text-lg">💡</span>
+                            <div>
+                              <p className="text-xs font-semibold text-blue-800 mb-1">
+                                Recommendation:
+                              </p>
+                              <p className="text-sm text-blue-900">{finding.recommendation}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Code Snippet */}
+                      {finding.code_snippet && (
+                        <div className="bg-gray-900 text-gray-100 rounded p-3 overflow-x-auto">
+                          <p className="text-xs font-semibold text-gray-400 mb-2">Code:</p>
+                          <pre className="text-xs font-mono">{finding.code_snippet}</pre>
+                        </div>
+                      )}
+
+                      {/* File Details */}
+                      <div className="text-xs text-gray-600 bg-white bg-opacity-50 rounded p-2">
+                        <span className="font-semibold">File:</span> {finding.file_path}
+                        {finding.line_number && (
+                          <>
+                            {' '}
+                            <span className="font-semibold">Line:</span> {finding.line_number}
+                          </>
+                        )}
+                        {' '}
+                        <span className="font-semibold">Category:</span>{' '}
+                        <span className="capitalize">{finding.category}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </div>
