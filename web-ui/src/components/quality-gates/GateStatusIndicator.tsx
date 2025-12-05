@@ -8,6 +8,7 @@
 'use client';
 
 import type { GateTypeE2E, QualityGateStatusValue } from '@/types/qualityGates';
+import { getGateIcon, getGateName, getStatusClasses, getStatusIcon } from '@/lib/qualityGateUtils';
 
 interface GateStatusIndicatorProps {
   gateType: GateTypeE2E;
@@ -16,102 +17,33 @@ interface GateStatusIndicatorProps {
 }
 
 /**
- * Get icon for gate type
- */
-function getGateIcon(gateType: GateTypeE2E): string {
-  switch (gateType) {
-    case 'tests':
-      return '🧪';
-    case 'coverage':
-      return '📊';
-    case 'type-check':
-      return '📝';
-    case 'lint':
-      return '✨';
-    case 'review':
-      return '🔍';
-    default:
-      return '⚙️';
-  }
-}
-
-/**
- * Get display name for gate type
- */
-function getGateName(gateType: GateTypeE2E): string {
-  switch (gateType) {
-    case 'tests':
-      return 'Tests';
-    case 'coverage':
-      return 'Coverage';
-    case 'type-check':
-      return 'Type Check';
-    case 'lint':
-      return 'Linting';
-    case 'review':
-      return 'Code Review';
-    default:
-      return gateType;
-  }
-}
-
-/**
- * Get status badge classes
- */
-function getStatusClasses(status: QualityGateStatusValue): string {
-  switch (status) {
-    case 'passed':
-      return 'bg-green-100 text-green-800 border-green-300';
-    case 'failed':
-      return 'bg-red-100 text-red-800 border-red-300';
-    case 'running':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    case 'pending':
-      return 'bg-gray-100 text-gray-800 border-gray-300';
-    default:
-      return 'bg-gray-100 text-gray-500 border-gray-200';
-  }
-}
-
-/**
- * Get status icon
- */
-function getStatusIcon(status: QualityGateStatusValue): string {
-  switch (status) {
-    case 'passed':
-      return '✅';
-    case 'failed':
-      return '❌';
-    case 'running':
-      return '⏳';
-    case 'pending':
-      return '⏸️';
-    default:
-      return '❓';
-  }
-}
-
-/**
  * GateStatusIndicator Component
  *
- * Shows individual gate status in a card layout
+ * Shows individual gate status in a card layout with proper accessibility
  */
 export default function GateStatusIndicator({
   gateType,
   status,
   testId,
 }: GateStatusIndicatorProps) {
+  const gateName = getGateName(gateType);
+  const statusText = status || 'pending';
+
   return (
     <div
       data-testid={testId || `gate-${gateType}`}
       className="flex flex-col items-center justify-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+      role="listitem"
+      aria-label={`${gateName} gate: ${statusText}`}
     >
       {/* Gate Icon */}
-      <div className="text-3xl mb-2">{getGateIcon(gateType)}</div>
+      <div className="text-3xl mb-2" aria-hidden="true">
+        {getGateIcon(gateType)}
+      </div>
 
       {/* Gate Name */}
       <div className="text-sm font-medium text-gray-900 mb-2 text-center">
-        {getGateName(gateType)}
+        {gateName}
       </div>
 
       {/* Status Badge */}
@@ -119,9 +51,11 @@ export default function GateStatusIndicator({
         className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border ${getStatusClasses(
           status
         )}`}
+        role="status"
+        aria-label={`Status: ${statusText}`}
       >
-        <span>{getStatusIcon(status)}</span>
-        <span>{status || 'unknown'}</span>
+        <span aria-hidden="true">{getStatusIcon(status)}</span>
+        <span>{statusText}</span>
       </div>
     </div>
   );

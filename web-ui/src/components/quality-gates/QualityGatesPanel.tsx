@@ -20,19 +20,27 @@ import QualityGateStatus from './QualityGateStatus';
 import GateStatusIndicator from './GateStatusIndicator';
 
 interface QualityGatesPanelProps {
-  projectId: number;
   tasks: Task[];
 }
 
 /**
  * Get individual gate status from quality gate status response
+ *
+ * IMPORTANT: This function uses a conservative approach:
+ * - Returns 'failed' if gate has explicit failures
+ * - Returns 'running' if overall status is running
+ * - Returns 'passed' ONLY if overall status is passed AND no failures exist for this gate
+ * - Returns 'pending' (null) for all other cases (no explicit status for this gate)
+ *
+ * This prevents showing false positives where a gate appears passed when it hasn't run.
  */
 function getGateStatus(
   status: QualityGateStatusType | null,
   gateType: GateTypeE2E
 ): QualityGateStatusValue {
+  // No status available - gate hasn't run yet
   if (!status) {
-    return null;
+    return null; // pending
   }
 
   // Map E2E type to backend type for lookup
@@ -45,20 +53,27 @@ function getGateStatus(
   };
   const backendType = backendTypes[gateType];
 
-  // Check if this gate has failures
+  // Check if this specific gate has failures
   const hasFailure = status.failures.some(f => f.gate === backendType);
 
   if (hasFailure) {
     return 'failed';
   }
 
-  // If overall status is passed and no failures, gate passed
+  // If overall status is running, inherit that
+  if (status.status === 'running') {
+    return 'running';
+  }
+
+  // CRITICAL FIX: Only mark as passed if overall status is passed
+  // This prevents false positives for gates that haven't been explicitly evaluated
   if (status.status === 'passed') {
     return 'passed';
   }
 
-  // Otherwise, inherit overall status
-  return status.status;
+  // Default to pending for any other case (including null overall status)
+  // This is conservative: better to show pending than incorrectly show passed
+  return null; // pending
 }
 
 /**
@@ -67,12 +82,12 @@ function getGateStatus(
  * Main panel for quality gates with task selection and gate overview
  */
 export default function QualityGatesPanel({
-  projectId: _projectId,
   tasks,
 }: QualityGatesPanelProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [gateStatus, setGateStatus] = useState<QualityGateStatusType | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Filter tasks that are completed or in_progress (candidates for quality gates)
   const eligibleTasks = useMemo(() => {
@@ -90,16 +105,20 @@ export default function QualityGatesPanel({
   useEffect(() => {
     if (selectedTaskId === null) {
       setGateStatus(null);
+      setError(null);
       return;
     }
 
     async function fetchStatus() {
       setLoading(true);
+      setError(null);
       try {
         const status = await fetchQualityGateStatus(selectedTaskId!);
         setGateStatus(status);
       } catch (err) {
-        console.error('Failed to fetch quality gate status:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch quality gate status';
+        console.error('Quality gate fetch error:', err);
+        setError(errorMessage);
         setGateStatus(null);
       } finally {
         setLoading(false);
@@ -115,9 +134,13 @@ export default function QualityGatesPanel({
   // No eligible tasks
   if (eligibleTasks.length === 0) {
     return (
-      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+      <div
+        className="p-4 bg-gray-50 rounded-lg border border-gray-200"
+        role="status"
+        aria-label="No tasks available"
+      >
         <div className="flex items-center gap-2 text-gray-600">
-          <span>ℹ️</span>
+          <span aria-hidden="true">ℹ️</span>
           <span className="text-sm">
             No tasks available for quality gate evaluation. Complete or start a task first.
           </span>
@@ -138,6 +161,7 @@ export default function QualityGatesPanel({
           value={selectedTaskId || ''}
           onChange={(e) => setSelectedTaskId(Number(e.target.value))}
           className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          aria-label="Select task for quality gate status"
         >
           {eligibleTasks.map(task => (
             <option key={task.id} value={task.id}>
@@ -147,15 +171,42 @@ export default function QualityGatesPanel({
         </select>
       </div>
 
-      {/* Gate Status Indicators Grid */}
+      {/* Error State */}
+      {error && (
+        <div
+          className="p-4 bg-red-50 rounded-lg border border-red-200"
+          role="alert"
+          aria-live="polite"
+        >
+          <div className="flex items-start">
+            <span className="text-red-600 text-xl mr-2" aria-hidden="true">⚠️</span>
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-red-900">Error Loading Quality Gates</h4>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading State */}
       {loading ? (
-        <div className="flex items-center justify-center p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div
+          className="flex items-center justify-center p-8"
+          role="status"
+          aria-live="polite"
+          aria-label="Loading quality gates"
+        >
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" aria-hidden="true"></div>
           <span className="ml-3 text-sm text-gray-600">Loading quality gates...</span>
         </div>
-      ) : (
+      ) : !error && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {/* Gate Status Indicators Grid */}
+          <div
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3"
+            role="list"
+            aria-label="Quality gate status indicators"
+          >
             {gateTypes.map(gateType => (
               <GateStatusIndicator
                 key={gateType}

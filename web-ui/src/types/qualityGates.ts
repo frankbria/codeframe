@@ -4,7 +4,10 @@
  */
 
 /**
- * Quality gate types that can be evaluated
+ * Backend naming convention for quality gates
+ * (used in API responses and database)
+ *
+ * Note: This is the canonical backend type. Use GateTypeBackend alias below for clarity.
  */
 export type QualityGateType = 'tests' | 'type_check' | 'coverage' | 'code_review' | 'linting';
 
@@ -63,10 +66,10 @@ export interface TriggerQualityGatesResponse {
 export type GateTypeE2E = 'tests' | 'coverage' | 'type-check' | 'lint' | 'review';
 
 /**
- * Backend naming convention for quality gates
- * (used in API responses and database)
+ * Backend naming convention for quality gates (alias of QualityGateType)
+ * Use this for clarity when working with backend API responses
  */
-export type GateTypeBackend = 'tests' | 'type_check' | 'coverage' | 'linting' | 'code_review';
+export type GateTypeBackend = QualityGateType;
 
 /**
  * Map E2E gate type to backend gate type
