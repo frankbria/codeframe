@@ -120,7 +120,17 @@ export default function QualityGatesPanel({
         const status = await fetchQualityGateStatus(selectedTaskId!, projectId);
         setGateStatus(status);
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch quality gate status';
+        // Provide specific error messages based on error type
+        let errorMessage = 'Failed to fetch quality gate status';
+        if (err instanceof Error) {
+          if (err.message.includes('404')) {
+            errorMessage = 'No quality gate data found for this task';
+          } else if (err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('fetch')) {
+            errorMessage = 'Network error. Please check your connection.';
+          } else {
+            errorMessage = err.message;
+          }
+        }
         console.error('Quality gate fetch error:', err);
         setError(errorMessage);
         setGateStatus(null);
@@ -206,6 +216,7 @@ export default function QualityGatesPanel({
       ) : !error && (
         <>
           {/* Gate Status Indicators Grid */}
+          {/* Grid layout matches gate count (5): 2 cols mobile, 3 cols tablet, 5 cols desktop */}
           <div
             className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3"
             role="list"

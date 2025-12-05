@@ -27,7 +27,7 @@ export default function GateStatusIndicator({
   testId,
 }: GateStatusIndicatorProps) {
   const gateName = getGateName(gateType);
-  const statusText = status || 'pending';
+  const statusText = status ?? 'pending';
 
   return (
     <div
