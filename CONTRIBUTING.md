@@ -31,6 +31,15 @@ ruff check codeframe tests
 - Write docstrings for public APIs
 - Maximum line length: 100 characters
 
+## Architecture Documentation
+
+Before contributing, review relevant architecture documentation in [`docs/architecture/`](docs/architecture/):
+
+- **Task Identifiers**: Understand the dual-identifier system (`id` vs `task_number`) and dependency semantics
+- **Design Decisions**: Review existing patterns before introducing new ones
+
+Add new architecture documentation when introducing cross-cutting patterns or data model changes.
+
 ## Testing
 
 - Write unit tests for new features

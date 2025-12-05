@@ -344,6 +344,7 @@ For detailed documentation, see:
 
 - **Product Requirements**: [PRD.md](PRD.md)
 - **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
+- **Architecture Decisions**: [`docs/architecture/`](docs/architecture/) - Technical design decisions and data model semantics
 - **Sprint Planning**: [SPRINTS.md](SPRINTS.md)
 - **Feature Specs**: `specs/{feature}/spec.md`
 - **Agent Guide**: [AGENTS.md](AGENTS.md)

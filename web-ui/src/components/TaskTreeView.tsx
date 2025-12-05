@@ -75,13 +75,26 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
     return proposedBy === 'agent' ? '🤖' : '👤';
   };
 
-  // Check if task is blocked by dependencies
+  /**
+   * Check if task is blocked by incomplete dependencies.
+   *
+   * Uses dual-lookup pattern to find dependencies: matches by either `id` (stable,
+   * unique identifier) or `task_number` (human-readable, hierarchical). This supports
+   * backward compatibility with legacy data that may use task_number references.
+   *
+   * Prefer using `id` for new dependencies as it's permanent and won't break
+   * if tasks are renumbered.
+   *
+   * @see docs/architecture/task-identifiers.md for full documentation
+   */
   const isTaskBlocked = (task: Task, allTasks: Task[]): boolean => {
     if (!task.depends_on || task.depends_on.length === 0) return false;
     if (task.status === 'completed' || task.status === 'in_progress') return false;
 
     // Find dependency tasks and check if any are not completed
     return task.depends_on.some((depId) => {
+      // Dual-lookup: match by id (stable) OR task_number (human-readable, may change)
+      // This pattern allows depends_on to contain either identifier type
       const depTask = allTasks.find((t) => t.id === depId || t.task_number === depId);
       return depTask && depTask.status !== 'completed';
     });
@@ -225,12 +238,16 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                               </span>
                             )}
 
-                            {/* Dependency details */}
+                            {/* Dependency details tooltip
+                                Uses same dual-lookup pattern as isTaskBlocked:
+                                matches by id (stable) OR task_number (human-readable)
+                                @see docs/architecture/task-identifiers.md */}
                             {hasDependencies && task.depends_on && (
                               <span
                                 className="ml-2 text-xs text-gray-500 cursor-help"
                                 title={`Dependencies:\n${task.depends_on
                                   .map((depId) => {
+                                    // Dual-lookup: supports both id and task_number references
                                     const depTask = allTasks.find(
                                       (t) => t.id === depId || t.task_number === depId
                                     );
