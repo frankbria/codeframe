@@ -4,7 +4,10 @@
  */
 
 /**
- * Quality gate types that can be evaluated
+ * Backend naming convention for quality gates
+ * (used in API responses and database)
+ *
+ * Note: This is the canonical backend type. Use GateTypeBackend alias below for clarity.
  */
 export type QualityGateType = 'tests' | 'type_check' | 'coverage' | 'code_review' | 'linting';
 
@@ -55,3 +58,62 @@ export interface TriggerQualityGatesResponse {
   status: QualityGateStatusValue;
   message: string;
 }
+
+/**
+ * E2E test naming convention for quality gates
+ *
+ * Uses kebab-case (e.g., 'type-check', 'lint') to match:
+ * - HTML test IDs (data-testid attributes)
+ * - Frontend display conventions
+ * - TypeScript/JavaScript naming patterns
+ */
+export type GateTypeE2E = 'tests' | 'coverage' | 'type-check' | 'lint' | 'review';
+
+/**
+ * Backend naming convention for quality gates (alias of QualityGateType)
+ *
+ * Uses snake_case (e.g., 'type_check', 'linting') following:
+ * - Python PEP 8 naming conventions
+ * - Backend API response format
+ * - Database column naming standards
+ */
+export type GateTypeBackend = QualityGateType;
+
+/**
+ * Map E2E gate type to backend gate type
+ * @param gateType - E2E gate type (kebab-case)
+ * @returns Backend gate type (snake_case)
+ */
+export function mapE2EToBackend(gateType: GateTypeE2E): GateTypeBackend {
+  const mapping: Record<GateTypeE2E, GateTypeBackend> = {
+    'tests': 'tests',
+    'coverage': 'coverage',
+    'type-check': 'type_check',
+    'lint': 'linting',
+    'review': 'code_review',
+  };
+  return mapping[gateType];
+}
+
+/**
+ * Map backend gate type to E2E gate type
+ * @param gateType - Backend gate type (snake_case)
+ * @returns E2E gate type (kebab-case)
+ */
+export function mapBackendToE2E(gateType: GateTypeBackend): GateTypeE2E {
+  const mapping: Record<GateTypeBackend, GateTypeE2E> = {
+    'tests': 'tests',
+    'coverage': 'coverage',
+    'type_check': 'type-check',
+    'linting': 'lint',
+    'code_review': 'review',
+  };
+  return mapping[gateType];
+}
+
+/**
+ * All quality gate types in E2E naming convention
+ * Centralized constant to ensure consistency across components
+ */
+export const ALL_GATE_TYPES_E2E: readonly GateTypeE2E[] =
+  ['tests', 'coverage', 'type-check', 'lint', 'review'] as const;

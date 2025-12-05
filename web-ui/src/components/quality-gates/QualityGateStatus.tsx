@@ -16,9 +16,9 @@ import { useState, useEffect, useCallback } from 'react';
 import type {
   QualityGateStatus as QualityGateStatusType,
   QualityGateFailure,
-  QualityGateStatusValue,
 } from '@/types/qualityGates';
 import { fetchQualityGateStatus, triggerQualityGates } from '@/api/qualityGates';
+import { getStatusClasses, getSeverityClasses, getGateIcon, getStatusIcon } from '@/lib/qualityGateUtils';
 
 interface QualityGateStatusProps {
   taskId: number;
@@ -82,72 +82,6 @@ export default function QualityGateStatus({
       setError(err instanceof Error ? err.message : 'Failed to trigger quality gates');
     } finally {
       setTriggering(false);
-    }
-  };
-
-  // Get status badge classes
-  const getStatusClasses = (statusValue: QualityGateStatusValue): string => {
-    switch (statusValue) {
-      case 'passed':
-        return 'bg-green-100 text-green-800 border-green-300';
-      case 'failed':
-        return 'bg-red-100 text-red-800 border-red-300';
-      case 'running':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-      case 'pending':
-        return 'bg-gray-100 text-gray-800 border-gray-300';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
-    }
-  };
-
-  // Get severity badge classes
-  const getSeverityClasses = (severity: string): string => {
-    switch (severity) {
-      case 'critical':
-        return 'bg-red-100 text-red-900 border-red-300';
-      case 'high':
-        return 'bg-orange-100 text-orange-900 border-orange-300';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-900 border-yellow-300';
-      case 'low':
-        return 'bg-blue-100 text-blue-900 border-blue-300';
-      default:
-        return 'bg-gray-100 text-gray-900 border-gray-300';
-    }
-  };
-
-  // Get gate icon
-  const getGateIcon = (gate: string): string => {
-    switch (gate) {
-      case 'tests':
-        return '🧪';
-      case 'type_check':
-        return '📝';
-      case 'coverage':
-        return '📊';
-      case 'code_review':
-        return '🔍';
-      case 'linting':
-        return '✨';
-      default:
-        return '⚙️';
-    }
-  };
-
-  // Get status icon
-  const getStatusIcon = (statusValue: QualityGateStatusValue): string => {
-    switch (statusValue) {
-      case 'passed':
-        return '✅';
-      case 'failed':
-        return '❌';
-      case 'running':
-        return '⏳';
-      case 'pending':
-        return '⏸️';
-      default:
-        return '❓';
     }
   };
 

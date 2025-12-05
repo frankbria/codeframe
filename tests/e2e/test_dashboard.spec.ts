@@ -67,10 +67,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     await expect(page.locator('[data-testid="review-score-chart"]')).toBeAttached();
   });
 
-  test.skip('should display quality gates panel', async () => {
-    // SKIP: Quality gates panel requires task selection and is currently disabled in Dashboard
-    // This test will be enabled when quality gates feature is fully implemented
-
+  test('should display quality gates panel', async () => {
     // Navigate to quality gates section
     const qualityGatesPanel = page.locator('[data-testid="quality-gates-panel"]');
 
