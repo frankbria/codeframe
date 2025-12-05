@@ -776,5 +776,48 @@ describe('QualityGateStatus Component', () => {
 
       setItemSpy.mockRestore();
     });
+
+    it('should reset warning dismissal state when switching to a task with no stored value', async () => {
+      const taskId1 = 100;
+      const taskId2 = 200;
+
+      const mockStatus: QualityGateStatusType = {
+        task_id: taskId1,
+        status: 'passed',
+        failures: [],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Set dismissal for task 100
+      localStorage.setItem(`qualityGates_warning_dismissed_${taskId1}`, JSON.stringify(true));
+
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus);
+
+      const { rerender } = render(<QualityGateStatus taskId={taskId1} />);
+
+      // Verify warning is not shown for task 100 (dismissed)
+      await waitFor(() => {
+        expect(screen.getByText('passed')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/Summary Status Only/i)).not.toBeInTheDocument();
+
+      // Switch to task 200 (no stored dismissal)
+      const mockStatus2: QualityGateStatusType = {
+        task_id: taskId2,
+        status: 'passed',
+        failures: [],
+        requires_human_approval: false,
+        timestamp: new Date().toISOString(),
+      };
+      mockFetchQualityGateStatus.mockResolvedValue(mockStatus2);
+
+      rerender(<QualityGateStatus taskId={taskId2} />);
+
+      // Warning should now appear for task 200
+      await waitFor(() => {
+        expect(screen.getByText(/Summary Status Only/i)).toBeInTheDocument();
+      });
+    });
   });
 });

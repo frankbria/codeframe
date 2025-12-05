@@ -68,9 +68,12 @@ export default function QualityGateStatus({
       try {
         setWarningDismissed(JSON.parse(dismissed));
       } catch {
-        // If parsing fails, ignore
+        // If parsing fails, set to false
         setWarningDismissed(false);
       }
+    } else {
+      // No stored value, reset to false for this task
+      setWarningDismissed(false);
     }
   }, [taskId]);
 
