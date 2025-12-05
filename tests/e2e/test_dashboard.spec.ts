@@ -186,10 +186,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     }
   });
 
-  test.skip('should display task progress and statistics', async () => {
-    // SKIP: Task statistics testids are not implemented in current Dashboard
-    // These would require dedicated task stats components
-
+  test('should display task progress and statistics', async () => {
     // Check for task statistics
     const stats = ['total-tasks', 'completed-tasks', 'blocked-tasks', 'in-progress-tasks'];
 
