@@ -80,7 +80,7 @@ export function getStatusClasses(status: QualityGateStatusValue): string {
     case 'pending':
       return 'bg-gray-100 text-gray-800 border-gray-300';
     default:
-      return 'bg-gray-100 text-gray-500 border-gray-200';
+      return 'bg-gray-100 text-gray-800 border-gray-200';
   }
 }
 
