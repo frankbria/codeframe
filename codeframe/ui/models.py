@@ -126,6 +126,15 @@ class RestoreCheckpointRequest(BaseModel):
     )
 
 
+class CheckpointDiffResponse(BaseModel):
+    """Response model for checkpoint diff (Sprint 10 Phase 4)."""
+
+    files_changed: int = Field(description="Number of files changed")
+    insertions: int = Field(description="Number of lines inserted")
+    deletions: int = Field(description="Number of lines deleted")
+    diff: str = Field(description="Git diff output")
+
+
 # Multi-Agent Per Project API Models (Phase 3)
 
 

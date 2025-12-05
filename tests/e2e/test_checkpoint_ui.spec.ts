@@ -119,10 +119,7 @@ test.describe('Checkpoint UI Workflow', () => {
     }
   });
 
-  test.skip('should display checkpoint diff preview', async ({ page }) => {
-    // SKIP: Checkpoint diff preview not implemented in current CheckpointList
-    // CheckpointList shows metadata but not git diff preview
-
+  test('should display checkpoint diff preview', async ({ page }) => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
 
     if (await checkpointItems.count() > 0) {
@@ -164,10 +161,7 @@ test.describe('Checkpoint UI Workflow', () => {
     }
   });
 
-  test.skip('should allow deleting checkpoint', async ({ page }) => {
-    // SKIP: Delete uses browser confirm dialog, not custom dialog with testids
-    // The current implementation uses window.confirm() for delete confirmation
-
+  test('should allow deleting checkpoint', async ({ page }) => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
 
     if (await checkpointItems.count() > 0) {

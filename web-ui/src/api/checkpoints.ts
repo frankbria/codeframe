@@ -136,7 +136,8 @@ export async function restoreCheckpoint(
  */
 export async function getCheckpointDiff(
   projectId: number,
-  checkpointId: number
+  checkpointId: number,
+  signal?: AbortSignal
 ): Promise<CheckpointDiff> {
   const response = await fetch(
     `${API_BASE_URL}/api/projects/${projectId}/checkpoints/${checkpointId}/diff`,
@@ -145,6 +146,7 @@ export async function getCheckpointDiff(
       headers: {
         'Content-Type': 'application/json',
       },
+      signal,
     }
   );
 
