@@ -13,8 +13,8 @@ import type {
   QualityGateStatus as QualityGateStatusType,
   GateTypeE2E,
   QualityGateStatusValue,
-  GateTypeBackend,
 } from '@/types/qualityGates';
+import { mapE2EToBackend } from '@/types/qualityGates';
 import { fetchQualityGateStatus } from '@/api/qualityGates';
 import QualityGateStatus from './QualityGateStatus';
 import GateStatusIndicator from './GateStatusIndicator';
@@ -45,14 +45,7 @@ function getGateStatus(
   }
 
   // Map E2E type to backend type for lookup
-  const backendTypes: Record<GateTypeE2E, GateTypeBackend> = {
-    'tests': 'tests',
-    'coverage': 'coverage',
-    'type-check': 'type_check',
-    'lint': 'linting',
-    'review': 'code_review',
-  };
-  const backendType = backendTypes[gateType];
+  const backendType = mapE2EToBackend(gateType);
 
   // Check if this specific gate has failures
   const hasFailure = status.failures.some(f => f.gate === backendType);
@@ -101,6 +94,11 @@ export default function QualityGatesPanel({
 
   // Auto-select first eligible task if none selected (optimized with useRef)
   useEffect(() => {
+    // Reset flag if no eligible tasks (allows re-selection when tasks are re-added)
+    if (eligibleTasks.length === 0) {
+      hasAutoSelectedRef.current = false;
+    }
+
     if (!hasAutoSelectedRef.current && eligibleTasks.length > 0 && selectedTaskId === null) {
       setSelectedTaskId(eligibleTasks[0].id);
       hasAutoSelectedRef.current = true;

@@ -29,7 +29,7 @@ export async function fetchQualityGateStatus(
 ): Promise<QualityGateStatus | null> {
   // Build URL with optional project_id query parameter
   const url = new URL(`${API_BASE_URL}/api/tasks/${taskId}/quality-gates`);
-  if (projectId !== undefined) {
+  if (projectId !== undefined && projectId > 0) {
     url.searchParams.append('project_id', projectId.toString());
   }
 

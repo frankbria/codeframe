@@ -6,7 +6,12 @@
 import type { GateTypeE2E, QualityGateStatusValue } from '@/types/qualityGates';
 
 /**
- * Get icon for gate type (E2E naming)
+ * Get the icon emoji for a quality gate type
+ * @param gateType - The gate type (E2E or backend naming)
+ * @returns Icon emoji string
+ * @example
+ * getGateIcon('tests') // returns '🧪'
+ * getGateIcon('type_check') // returns '📝'
  */
 export function getGateIcon(gateType: GateTypeE2E | string): string {
   switch (gateType) {
@@ -29,7 +34,12 @@ export function getGateIcon(gateType: GateTypeE2E | string): string {
 }
 
 /**
- * Get display name for gate type (E2E naming)
+ * Get the human-readable display name for a quality gate type
+ * @param gateType - The gate type (E2E or backend naming)
+ * @returns Human-readable gate name
+ * @example
+ * getGateName('tests') // returns 'Tests'
+ * getGateName('type_check') // returns 'Type Check'
  */
 export function getGateName(gateType: GateTypeE2E | string): string {
   switch (gateType) {
@@ -52,7 +62,12 @@ export function getGateName(gateType: GateTypeE2E | string): string {
 }
 
 /**
- * Get status badge classes based on status value
+ * Get Tailwind CSS classes for status badge styling
+ * @param status - The quality gate status value
+ * @returns Tailwind CSS class string for background, text, and border colors
+ * @example
+ * getStatusClasses('passed') // returns 'bg-green-100 text-green-800 border-green-300'
+ * getStatusClasses('failed') // returns 'bg-red-100 text-red-800 border-red-300'
  */
 export function getStatusClasses(status: QualityGateStatusValue): string {
   switch (status) {
@@ -70,7 +85,13 @@ export function getStatusClasses(status: QualityGateStatusValue): string {
 }
 
 /**
- * Get status icon based on status value
+ * Get the icon emoji for a quality gate status
+ * @param status - The quality gate status value
+ * @returns Icon emoji string representing the status
+ * @example
+ * getStatusIcon('passed') // returns '✅'
+ * getStatusIcon('failed') // returns '❌'
+ * getStatusIcon('running') // returns '⏳'
  */
 export function getStatusIcon(status: QualityGateStatusValue): string {
   switch (status) {
@@ -88,7 +109,12 @@ export function getStatusIcon(status: QualityGateStatusValue): string {
 }
 
 /**
- * Get severity badge classes
+ * Get Tailwind CSS classes for severity badge styling
+ * @param severity - The failure severity level (critical, high, medium, low)
+ * @returns Tailwind CSS class string for background, text, and border colors
+ * @example
+ * getSeverityClasses('critical') // returns 'bg-red-100 text-red-900 border-red-300'
+ * getSeverityClasses('high') // returns 'bg-orange-100 text-orange-900 border-orange-300'
  */
 export function getSeverityClasses(severity: string): string {
   switch (severity) {
