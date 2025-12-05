@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '@/types/agentState';
 import type {
   QualityGateStatus as QualityGateStatusType,
@@ -83,7 +83,7 @@ function getGateStatus(
  *
  * Main panel for quality gates with task selection and gate overview
  */
-export default function QualityGatesPanel({
+function QualityGatesPanel({
   projectId,
   tasks,
 }: QualityGatesPanelProps) {
@@ -274,3 +274,9 @@ export default function QualityGatesPanel({
     </div>
   );
 }
+
+/**
+ * Memoized export to prevent unnecessary re-renders when parent state changes.
+ * Only re-renders when projectId or tasks props change.
+ */
+export default React.memo(QualityGatesPanel);
