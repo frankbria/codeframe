@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import shutil
+import sqlite3
 
 from codeframe.core.models import (
     ProjectStatus,
@@ -326,21 +327,28 @@ async def create_project(request: ProjectCreateRequest):
         )
 
     # Check for duplicate project name
-    existing_projects = app.state.db.list_projects()
+    try:
+        existing_projects = app.state.db.list_projects()
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
     if any(p["name"] == request.name for p in existing_projects):
         raise HTTPException(
             status_code=409, detail=f"Project with name '{request.name}' already exists"
         )
 
     # Create project record first (to get ID)
-    project_id = app.state.db.create_project(
-        name=request.name,
-        description=request.description,
-        source_type=request.source_type.value,
-        source_location=request.source_location,
-        source_branch=request.source_branch,
-        workspace_path="",  # Will be updated after workspace creation
-    )
+    try:
+        project_id = app.state.db.create_project(
+            name=request.name,
+            description=request.description,
+            source_type=request.source_type.value,
+            source_location=request.source_location,
+            source_branch=request.source_branch,
+            workspace_path="",  # Will be updated after workspace creation
+        )
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     # Create workspace
     try:
@@ -374,7 +382,10 @@ async def create_project(request: ProjectCreateRequest):
         raise HTTPException(status_code=500, detail=f"Workspace creation failed: {str(e)}")
 
     # Return project details
-    project = app.state.db.get_project(project_id)
+    try:
+        project = app.state.db.get_project(project_id)
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     return ProjectResponse(
         id=project["id"],
