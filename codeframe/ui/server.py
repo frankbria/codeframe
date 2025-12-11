@@ -360,13 +360,40 @@ async def create_project(request: ProjectCreateRequest):
         )
 
         # Update project with workspace path and git status
-        app.state.db.update_project(
-            project_id, {"workspace_path": str(workspace_path), "git_initialized": True}
-        )
+        try:
+            app.state.db.update_project(
+                project_id, {"workspace_path": str(workspace_path), "git_initialized": True}
+            )
+        except sqlite3.Error as db_error:
+            # Database error during update - cleanup and fail
+            logger.error(f"Database error updating project {project_id}: {db_error}")
+
+            # Best-effort cleanup: delete project record
+            try:
+                app.state.db.delete_project(project_id)
+            except sqlite3.Error as cleanup_db_error:
+                logger.error(f"Failed to delete project {project_id} during cleanup: {cleanup_db_error}")
+
+            # Best-effort cleanup: remove workspace directory
+            workspace_dir = app.state.workspace_manager.workspace_root / str(project_id)
+            if workspace_dir.exists():
+                try:
+                    shutil.rmtree(workspace_dir)
+                    logger.info(f"Cleaned up workspace directory: {workspace_dir}")
+                except Exception as cleanup_fs_error:
+                    logger.error(f"Failed to clean up workspace {workspace_dir}: {cleanup_fs_error}")
+
+            raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
 
     except Exception as e:
         # Cleanup: delete project and workspace if creation fails
-        app.state.db.delete_project(project_id)
+        logger.error(f"Workspace creation failed for project {project_id}: {e}")
+
+        # Best-effort cleanup: delete project record
+        try:
+            app.state.db.delete_project(project_id)
+        except sqlite3.Error as cleanup_db_error:
+            logger.error(f"Failed to delete project {project_id} during cleanup: {cleanup_db_error}")
 
         # Explicitly clean up workspace directory if it exists
         # (Defense in depth: WorkspaceManager has cleanup, but this ensures

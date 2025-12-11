@@ -291,6 +291,44 @@ class TestProjectCreationErrorHandling:
             assert "detail" in data
             assert "database" in data["detail"].lower()
 
+    def test_create_project_update_project_database_error(self, api_client):
+        """Test that database error during update_project returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "update_project",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-update-error", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower()
+
+    def test_create_project_get_project_database_error(self, api_client):
+        """Test that database error during get_project returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "get_project",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-get-error", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower()
+
     def test_create_project_with_extra_fields(self, api_client):
         """Test that extra fields in request are ignored."""
         # ACT
