@@ -79,12 +79,22 @@ export default defineConfig({
   /* Run local dev server before starting the tests */
   webServer: process.env.CI
     ? undefined // On CI, servers are started separately
-    : {
-        command: 'cd ../../web-ui && npm run dev',
-        url: 'http://localhost:3000',
-        reuseExistingServer: !process.env.CI,
-        timeout: 120000,
-      },
+    : [
+        // Backend FastAPI server
+        {
+          command: 'cd ../.. && uv run uvicorn codeframe.ui.server:app --port 8080',
+          url: 'http://localhost:8080/health',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120000,
+        },
+        // Frontend Next.js dev server
+        {
+          command: 'cd ../../web-ui && npm run dev',
+          url: 'http://localhost:3000',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120000,
+        },
+      ],
 
   /* Global timeout for each test - increased for CI */
   timeout: process.env.CI ? 60000 : 30000,
