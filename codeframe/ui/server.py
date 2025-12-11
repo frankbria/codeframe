@@ -330,7 +330,10 @@ async def create_project(request: ProjectCreateRequest):
     try:
         existing_projects = app.state.db.list_projects()
     except sqlite3.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"Database error listing projects: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Database error occurred. Please try again later."
+        )
 
     if any(p["name"] == request.name for p in existing_projects):
         raise HTTPException(
@@ -348,7 +351,10 @@ async def create_project(request: ProjectCreateRequest):
             workspace_path="",  # Will be updated after workspace creation
         )
     except sqlite3.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"Database error creating project: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Database error occurred. Please try again later."
+        )
 
     # Create workspace
     try:
@@ -374,16 +380,21 @@ async def create_project(request: ProjectCreateRequest):
             except sqlite3.Error as cleanup_db_error:
                 logger.error(f"Failed to delete project {project_id} during cleanup: {cleanup_db_error}")
 
-            # Best-effort cleanup: remove workspace directory
-            workspace_dir = app.state.workspace_manager.workspace_root / str(project_id)
-            if workspace_dir.exists():
+            # Best-effort cleanup: remove workspace directory (use actual workspace_path)
+            if workspace_path.exists():
                 try:
-                    shutil.rmtree(workspace_dir)
-                    logger.info(f"Cleaned up workspace directory: {workspace_dir}")
-                except Exception as cleanup_fs_error:
-                    logger.error(f"Failed to clean up workspace {workspace_dir}: {cleanup_fs_error}")
+                    shutil.rmtree(workspace_path)
+                    logger.info(f"Cleaned up workspace directory: {workspace_path}")
+                except (OSError, PermissionError) as cleanup_fs_error:
+                    logger.error(f"Failed to clean up workspace {workspace_path}: {cleanup_fs_error}")
 
-            raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
+            raise HTTPException(
+                status_code=500, detail="Database error occurred. Please try again later."
+            )
+
+    except HTTPException:
+        # Re-raise HTTPException from database error handling above
+        raise
 
     except Exception as e:
         # Cleanup: delete project and workspace if creation fails
@@ -403,16 +414,21 @@ async def create_project(request: ProjectCreateRequest):
             try:
                 shutil.rmtree(workspace_path)
                 logger.info(f"Cleaned up orphaned workspace: {workspace_path}")
-            except Exception as cleanup_error:
+            except (OSError, PermissionError) as cleanup_error:
                 logger.error(f"Failed to clean up workspace {workspace_path}: {cleanup_error}")
 
-        raise HTTPException(status_code=500, detail=f"Workspace creation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Workspace creation failed. Please try again later."
+        )
 
     # Return project details
     try:
         project = app.state.db.get_project(project_id)
     except sqlite3.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"Database error retrieving project {project_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Database error occurred. Please try again later."
+        )
 
     return ProjectResponse(
         id=project["id"],
