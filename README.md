@@ -314,18 +314,26 @@ For detailed API documentation, see `/docs` (Swagger UI) or `/redoc` (ReDoc) whe
 ### Run Tests
 
 ```bash
-# Run all tests
+# Run all unit tests
 uv run pytest
 
 # Run specific test suite
 uv run pytest tests/agents/        # Agent tests
 uv run pytest tests/api/           # API endpoint tests
 uv run pytest tests/integration/   # Integration tests
+
+# Run backend E2E tests
 uv run pytest tests/e2e/           # End-to-end tests
+
+# Run frontend E2E tests (Playwright)
+cd tests/e2e
+npx playwright test                # Backend auto-starts!
 
 # Run with coverage
 uv run pytest --cov=codeframe --cov-report=html
 ```
+
+**E2E Testing Note**: Frontend Playwright tests now auto-start the backend server on port 8080. No manual server startup needed! See [tests/e2e/README.md](tests/e2e/README.md) for details.
 
 ### Test Statistics
 
