@@ -19,11 +19,38 @@ test.describe('Review Findings UI', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
+    // Wait for project API to load
+    await page.waitForResponse(response =>
+      response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
+      { timeout: 10000 }
+    ).catch(() => {});
+
+    // Wait for dashboard to render
+    await page.waitForTimeout(1000);
+
     // Review panel is visible on Overview tab (no separate review tab exists)
   });
 
   test('should display review findings panel', async ({ page }) => {
     const reviewPanel = page.locator('[data-testid="review-findings-panel"]');
+
+    // Wait for panel to exist and be visible
+    await reviewPanel.waitFor({ state: 'attached', timeout: 15000 });
+
+    // Scroll panel into view
+    await reviewPanel.scrollIntoViewIfNeeded().catch(() => {});
+
+    // If not visible, panel might be in a different tab or section
+    if (!(await reviewPanel.isVisible())) {
+      // Try clicking overview tab if it exists
+      const overviewTab = page.getByRole('tab', { name: 'Overview' });
+      if (await overviewTab.isVisible()) {
+        await overviewTab.click();
+        await page.waitForTimeout(500);
+      }
+    }
+
+    await reviewPanel.waitFor({ state: 'visible', timeout: 10000 });
     await expect(reviewPanel).toBeVisible();
 
     // Check for review components

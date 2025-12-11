@@ -115,7 +115,8 @@ function exportToCSV(
   rows.push('Category,Name,Cost (USD),Tokens,Calls');
 
   // Total summary
-  const totalTokens = tokens.reduce(
+  const tokensArray = Array.isArray(tokens) ? tokens : [];
+  const totalTokens = tokensArray.reduce(
     (sum, t) => sum + t.input_tokens + t.output_tokens,
     0
   );
@@ -202,8 +203,10 @@ export function CostDashboard({
 
   // Calculate token statistics
   const tokenStats = useMemo(() => {
-    const inputTokens = tokens.reduce((sum, t) => sum + t.input_tokens, 0);
-    const outputTokens = tokens.reduce((sum, t) => sum + t.output_tokens, 0);
+    // Defensive check: ensure tokens is an array
+    const tokensArray = Array.isArray(tokens) ? tokens : [];
+    const inputTokens = tokensArray.reduce((sum, t) => sum + t.input_tokens, 0);
+    const outputTokens = tokensArray.reduce((sum, t) => sum + t.output_tokens, 0);
     return {
       inputTokens,
       outputTokens,
@@ -212,7 +215,11 @@ export function CostDashboard({
   }, [tokens]);
 
   // Calculate task costs
-  const taskCosts = useMemo(() => aggregateCostsByTask(tokens), [tokens]);
+  const taskCosts = useMemo(() => {
+    // Defensive check: ensure tokens is an array
+    const tokensArray = Array.isArray(tokens) ? tokens : [];
+    return aggregateCostsByTask(tokensArray);
+  }, [tokens]);
 
   // Fetch cost breakdown on mount and set up auto-refresh
   useEffect(() => {

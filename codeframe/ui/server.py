@@ -2406,7 +2406,7 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
         severity: Optional severity filter (critical, high, medium, low, info)
 
     Returns:
-        200 OK: Review findings with summary statistics
+        200 OK: Review findings with summary statistics (matches ReviewResult interface)
         {
             "task_id": int,
             "findings": [
@@ -2426,18 +2426,22 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
                 },
                 ...
             ],
-            "summary": {
-                "total_findings": int,
-                "by_severity": {
-                    "critical": int,
-                    "high": int,
-                    "medium": int,
-                    "low": int,
-                    "info": int
-                },
-                "has_blocking_issues": bool,
-                "blocking_count": int
-            }
+            "total_count": int,
+            "severity_counts": {
+                "critical": int,
+                "high": int,
+                "medium": int,
+                "low": int,
+                "info": int
+            },
+            "category_counts": {
+                "security": int,
+                "performance": int,
+                "quality": int,
+                "maintainability": int,
+                "style": int
+            },
+            "has_blocking_findings": bool
         }
 
         400 Bad Request: Invalid severity value
@@ -2464,7 +2468,7 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     reviews = app.state.db.get_code_reviews(task_id=task_id, severity=severity)
 
     # Build summary statistics
-    by_severity = {
+    severity_counts = {
         'critical': 0,
         'high': 0,
         'medium': 0,
@@ -2472,14 +2476,25 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
         'info': 0
     }
 
+    category_counts = {
+        'security': 0,
+        'performance': 0,
+        'quality': 0,
+        'maintainability': 0,
+        'style': 0
+    }
+
     for review in reviews:
         severity_val = review.severity.value
-        if severity_val in by_severity:
-            by_severity[severity_val] += 1
+        if severity_val in severity_counts:
+            severity_counts[severity_val] += 1
+
+        category_val = review.category.value
+        if category_val in category_counts:
+            category_counts[category_val] += 1
 
     # Blocking issues are critical or high severity
-    blocking_count = by_severity['critical'] + by_severity['high']
-    has_blocking_issues = blocking_count > 0
+    has_blocking_findings = (severity_counts['critical'] + severity_counts['high']) > 0
 
     # Convert CodeReview objects to dictionaries
     findings_data = []
@@ -2499,16 +2514,14 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
             "created_at": review.created_at
         })
 
-    # Build response
+    # Build response matching ReviewResult interface
     return {
         "task_id": task_id,
         "findings": findings_data,
-        "summary": {
-            "total_findings": len(reviews),
-            "by_severity": by_severity,
-            "has_blocking_issues": has_blocking_issues,
-            "blocking_count": blocking_count
-        }
+        "total_count": len(reviews),
+        "severity_counts": severity_counts,
+        "category_counts": category_counts,
+        "has_blocking_findings": has_blocking_findings
     }
 
 

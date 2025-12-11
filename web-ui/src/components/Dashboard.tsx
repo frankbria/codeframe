@@ -225,6 +225,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
     return <div className="p-8 text-center">Loading...</div>;
   }
 
+  // Defensive check: ensure progress object exists with defaults
+  const progress = projectProgress || projectData.progress || {
+    completed_tasks: 0,
+    total_tasks: 0,
+    percentage: 0.0
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -343,15 +350,15 @@ export default function Dashboard({ projectId }: DashboardProps) {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>
-                    {(projectProgress || projectData.progress).completed_tasks} /{' '}
-                    {(projectProgress || projectData.progress).total_tasks} tasks
+                    {progress.completed_tasks} /{' '}
+                    {progress.total_tasks} tasks
                   </span>
-                  <span>{(projectProgress || projectData.progress).percentage}%</span>
+                  <span>{progress.percentage}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-4">
                   <div
                     className="bg-blue-600 h-4 rounded-full transition-all duration-500"
-                    style={{ width: `${(projectProgress || projectData.progress).percentage}%` }}
+                    style={{ width: `${progress.percentage}%` }}
                   ></div>
                 </div>
               </div>
