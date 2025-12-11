@@ -1,7 +1,7 @@
 """FastAPI Status Server for CodeFRAME."""
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
@@ -38,6 +38,7 @@ from codeframe.ui.routers import quality_gates
 from codeframe.ui.routers import checkpoints
 from codeframe.ui.routers import agents
 from codeframe.ui.routers import projects
+from codeframe.ui.routers import websocket
 
 
 class DeploymentMode(str, Enum):
@@ -151,6 +152,7 @@ app.include_router(quality_gates.router)
 app.include_router(checkpoints.router)
 app.include_router(agents.router)
 app.include_router(projects.router)
+app.include_router(websocket.router)
 
 
 # Shared state imported from codeframe.ui.shared:
@@ -298,35 +300,6 @@ async def get_context_item(agent_id: str, item_id: str):
         created_at=item["created_at"],
         last_accessed=item["last_accessed"],
     )
-
-
-
-# WebSocket for real-time updates
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket connection for real-time updates."""
-    await manager.connect(websocket)
-    try:
-        while True:
-            # Keep connection alive and handle incoming messages
-            data = await websocket.receive_text()
-            message = json.loads(data)
-
-            # Handle different message types
-            if message.get("type") == "ping":
-                await websocket.send_json({"type": "pong"})
-            elif message.get("type") == "subscribe":
-                # Subscribe to specific project updates
-                project_id = message.get("project_id")
-                # TODO: Track subscriptions
-                await websocket.send_json({"type": "subscribed", "project_id": project_id})
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-
-
 # Background task to broadcast updates
 async def broadcast_updates():
     """Periodically broadcast project updates to connected clients."""
