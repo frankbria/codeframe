@@ -2392,6 +2392,63 @@ async def analyze_code_review(request: Request, background_tasks: BackgroundTask
         raise HTTPException(status_code=500, detail=f"Failed to start review: {str(e)}")
 
 
+def _extract_enum_value_for_counting(obj, attr_name: str):
+    """Extract enum value or string for counting logic.
+
+    Returns None if attribute is missing or None (to skip counting),
+    otherwise returns the string value or enum.value.
+
+    Args:
+        obj: Object to extract attribute from
+        attr_name: Name of the attribute (e.g., 'severity', 'category')
+
+    Returns:
+        str | None: The extracted value or None
+    """
+    if not hasattr(obj, attr_name):
+        return None
+
+    attr = getattr(obj, attr_name)
+    if attr is None:
+        return None
+
+    # Check if it's an enum with .value
+    if hasattr(attr, "value"):
+        return attr.value
+
+    # Otherwise convert to string
+    return str(attr)
+
+
+def _extract_enum_value(obj, attr_name: str, default: str):
+    """Extract enum value or string with default fallback.
+
+    Returns default when attribute is missing or None,
+    otherwise returns the string value or enum.value.
+
+    Args:
+        obj: Object to extract attribute from
+        attr_name: Name of the attribute (e.g., 'severity', 'category')
+        default: Default value to return if attribute is missing/None
+
+    Returns:
+        str: The extracted value or default
+    """
+    if not hasattr(obj, attr_name):
+        return default
+
+    attr = getattr(obj, attr_name)
+    if attr is None:
+        return default
+
+    # Check if it's an enum with .value
+    if hasattr(attr, "value"):
+        return attr.value
+
+    # Otherwise convert to string
+    return str(attr)
+
+
 @app.get("/api/tasks/{task_id}/reviews", tags=["review"])
 async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     """Get code review findings for a task (T035).
@@ -2485,27 +2542,12 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     }
 
     for review in reviews:
-        # Defensive handling: review.severity might be an enum or a plain string
-        if hasattr(review, "severity"):
-            if hasattr(review.severity, "value"):
-                severity_val = review.severity.value
-            else:
-                severity_val = str(review.severity) if review.severity else None
-        else:
-            severity_val = None
-
+        # Extract severity and category using helper (returns None if missing/invalid)
+        severity_val = _extract_enum_value_for_counting(review, "severity")
         if severity_val and severity_val in severity_counts:
             severity_counts[severity_val] += 1
 
-        # Defensive handling: review.category might be an enum or a plain string
-        if hasattr(review, "category"):
-            if hasattr(review.category, "value"):
-                category_val = review.category.value
-            else:
-                category_val = str(review.category) if review.category else None
-        else:
-            category_val = None
-
+        category_val = _extract_enum_value_for_counting(review, "category")
         if category_val and category_val in category_counts:
             category_counts[category_val] += 1
 
@@ -2515,23 +2557,9 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     # Convert CodeReview objects to dictionaries
     findings_data = []
     for review in reviews:
-        # Defensive handling for severity
-        if hasattr(review, "severity"):
-            if hasattr(review.severity, "value"):
-                severity_val = review.severity.value
-            else:
-                severity_val = str(review.severity) if review.severity else "unknown"
-        else:
-            severity_val = "unknown"
-
-        # Defensive handling for category
-        if hasattr(review, "category"):
-            if hasattr(review.category, "value"):
-                category_val = review.category.value
-            else:
-                category_val = str(review.category) if review.category else "unknown"
-        else:
-            category_val = "unknown"
+        # Extract severity and category using helper (returns default if missing/invalid)
+        severity_val = _extract_enum_value(review, "severity", "unknown")
+        category_val = _extract_enum_value(review, "category", "unknown")
 
         findings_data.append({
             "id": review.id,
@@ -2659,21 +2687,12 @@ async def get_project_code_reviews(
     }
 
     for review in reviews:
-        # Count by severity (handle both enum and string, and missing attributes)
-        if hasattr(review, "severity") and review.severity:
-            severity_val = review.severity.value if hasattr(review.severity, 'value') else str(review.severity)
-        else:
-            severity_val = None
-
+        # Extract severity and category using helper (returns None if missing/invalid)
+        severity_val = _extract_enum_value_for_counting(review, "severity")
         if severity_val and severity_val in by_severity:
             by_severity[severity_val] += 1
 
-        # Count by category (handle both enum and string, and missing attributes)
-        if hasattr(review, "category") and review.category:
-            category_val = review.category.value if hasattr(review.category, 'value') else str(review.category)
-        else:
-            category_val = None
-
+        category_val = _extract_enum_value_for_counting(review, "category")
         if category_val and category_val in by_category:
             by_category[category_val] += 1
 
@@ -2683,17 +2702,9 @@ async def get_project_code_reviews(
     # Convert CodeReview objects to dictionaries
     findings_data = []
     for review in reviews:
-        # Defensive handling for severity
-        if hasattr(review, "severity") and review.severity:
-            severity_val = review.severity.value if hasattr(review.severity, 'value') else str(review.severity)
-        else:
-            severity_val = "unknown"
-
-        # Defensive handling for category
-        if hasattr(review, "category") and review.category:
-            category_val = review.category.value if hasattr(review.category, 'value') else str(review.category)
-        else:
-            category_val = "unknown"
+        # Extract severity and category using helper (returns default if missing/invalid)
+        severity_val = _extract_enum_value(review, "severity", "unknown")
+        category_val = _extract_enum_value(review, "category", "unknown")
 
         findings_data.append({
             "id": review.id,
