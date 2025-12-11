@@ -4,10 +4,12 @@
  */
 
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
+import { SWRConfig } from 'swr';
 import Dashboard from '@/components/Dashboard';
 import { AgentStateProvider } from '@/components/AgentStateProvider';
 import * as api from '@/lib/api';
 import * as websocket from '@/lib/websocket';
+import * as agentAssignment from '@/api/agentAssignment';
 
 // Create a shared mock WebSocket client that will be used across all tests
 const sharedMockWsClient = {
@@ -22,6 +24,9 @@ const sharedMockWsClient = {
 
 // Mock dependencies
 jest.mock('@/lib/api');
+jest.mock('@/api/agentAssignment', () => ({
+  getAgentsForProject: jest.fn(),
+}));
 jest.mock('@/lib/websocket', () => ({
   getWebSocketClient: jest.fn(() => sharedMockWsClient),
 }));
@@ -52,29 +57,21 @@ jest.mock('@/components/SessionStatus', () => ({
   SessionStatus: jest.fn(() => <div data-testid="session-status">Session Status Mock</div>),
 }));
 
-// Mock SWR to disable caching
-// Create a shared cache that we can clear between tests
-let swrCache = new Map();
-
-jest.mock('swr', () => {
-  const originalSWR = jest.requireActual('swr');
-  return {
-    __esModule: true,
-    default: (key: any, fetcher: any, config: any) => {
-      // Use shared cache that can be cleared between tests
-      return originalSWR.default(key, fetcher, {
-        ...config,
-        provider: () => swrCache,
+// Helper to render with fresh SWR cache for each test
+const renderWithSWR = (component: React.ReactElement) => {
+  return render(
+    <SWRConfig
+      value={{
+        provider: () => new Map(),
         dedupingInterval: 0,
-        focusThrottleInterval: 0,
         revalidateOnFocus: false,
         revalidateOnReconnect: false,
-        shouldRetryOnError: false,
-      });
-    },
-  };
-});
-
+      }}
+    >
+      {component}
+    </SWRConfig>
+  );
+};
 
 const mockProjectData = {
   id: 1,
@@ -135,9 +132,6 @@ describe('Dashboard with AgentStateProvider', () => {
   let mockWsClient: any;
 
   beforeEach(() => {
-    // Clear SWR cache to prevent cross-test contamination
-    swrCache.clear();
-
     // Reset mocks
     jest.clearAllMocks();
 
@@ -171,6 +165,17 @@ describe('Dashboard with AgentStateProvider', () => {
     (api.projectsApi.getIssues as jest.Mock).mockResolvedValue({
       data: { issues: [], total_issues: 0, total_tasks: 0 },
     });
+    // Mock AgentList API - returns mockAgents by default
+    (agentAssignment.getAgentsForProject as jest.Mock).mockResolvedValue(
+      mockAgents.map((agent) => ({
+        id: agent.id,
+        project_id: 1,
+        agent_type: agent.type,
+        agent_instance_id: agent.id,
+        status: 'active',
+        assigned_at: new Date().toISOString(),
+      }))
+    );
   });
 
   afterEach(() => {
@@ -182,7 +187,7 @@ describe('Dashboard with AgentStateProvider', () => {
 
   describe('T096: Rendering with Context', () => {
     it('should render Dashboard wrapped in AgentStateProvider', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -201,41 +206,26 @@ describe('Dashboard with AgentStateProvider', () => {
       expect(screen.getByText(/Phase: implementation \(Step 5\/15\)/i)).toBeInTheDocument();
     });
 
-    // TODO: Fix SWR timing issues - see beads issue cf-jf1
-    it.skip('should display loading state initially', async () => {
-      // Use mockImplementationOnce to control this specific test without affecting others
-      let resolvePromise: (value: any) => void;
-      const controlledPromise = new Promise((resolve) => {
-        resolvePromise = resolve;
-      });
-      
-      // Override just for this test
-      (api.projectsApi.getStatus as jest.Mock).mockReturnValueOnce(controlledPromise);
+    it('should display loading state initially', () => {
+      // Use never-resolving promise to keep loading state
+      (api.projectsApi.getStatus as jest.Mock).mockImplementation(
+        () => new Promise(() => {}) // Never resolves
+      );
 
-      const { unmount } = render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
       );
 
-      // Should show loading initially
+      // Should show loading state
       expect(screen.getByText(/Loading.../i)).toBeInTheDocument();
-
-      // Now resolve the promise
-      resolvePromise!({ data: mockProjectData });
-
-      // Then should show project name after loading
-      await waitFor(() => {
-        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
-      });
-      
-      unmount();
     });
   });
 
   describe('T097: Agent Display from Context', () => {
     it('should display agents from AgentStateProvider', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -256,14 +246,19 @@ describe('Dashboard with AgentStateProvider', () => {
       });
     });
 
-    // TODO: Fix SWR cache persistence issues - see beads issue cf-jf1
-    it.skip('should show "no agents" message when no agents exist', async () => {
-      // Override mocks for this specific test only using mockResolvedValueOnce
-      (api.agentsApi.list as jest.Mock).mockResolvedValueOnce({
-        data: { agents: [] },
-      });
+    it('should show "no agents" message when no agents exist', async () => {
+      // Override mocks for this specific test using mockImplementation
+      (api.agentsApi.list as jest.Mock).mockImplementation(() =>
+        Promise.resolve({
+          data: { agents: [] },
+        })
+      );
+      // Also mock AgentList API to return empty array
+      (agentAssignment.getAgentsForProject as jest.Mock).mockImplementation(() =>
+        Promise.resolve([])
+      );
 
-      const { unmount } = render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -274,20 +269,24 @@ describe('Dashboard with AgentStateProvider', () => {
         expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
       });
 
-      // Should show "no agents" message
-      await waitFor(() => {
-        expect(
-          screen.getByText(/No agents active yet/i)
-        ).toBeInTheDocument();
-      });
-      
-      unmount();
+      // Wait for loading state to disappear
+      await waitFor(
+        () => {
+          expect(screen.queryByText(/Loading agents.../i)).not.toBeInTheDocument();
+        },
+        { timeout: 5000 }
+      );
+
+      // Should show "no agents" message - use getByRole to be more specific
+      expect(
+        screen.getByRole('heading', { name: /No Agents Assigned/i })
+      ).toBeInTheDocument();
     });
   });
 
   describe('T098: Progress Display', () => {
     it('should display project progress from context', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -300,7 +299,7 @@ describe('Dashboard with AgentStateProvider', () => {
     });
 
     it('should display time tracking information', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -313,7 +312,7 @@ describe('Dashboard with AgentStateProvider', () => {
     });
 
     it('should display cost tracking information', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -329,7 +328,7 @@ describe('Dashboard with AgentStateProvider', () => {
 
   describe('T099: Connection Indicator', () => {
     it('should show connection status from context', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -347,7 +346,7 @@ describe('Dashboard with AgentStateProvider', () => {
 
   describe('T018: Blocker WebSocket Integration', () => {
     it('should register WebSocket handler on mount', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -368,7 +367,7 @@ describe('Dashboard with AgentStateProvider', () => {
         data: { blockers: [] },
       });
 
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -407,7 +406,7 @@ describe('Dashboard with AgentStateProvider', () => {
     });
 
     it('should call mutateBlockers when blocker_resolved event received', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -435,7 +434,7 @@ describe('Dashboard with AgentStateProvider', () => {
     });
 
     it('should call mutateBlockers when blocker_expired event received', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -463,7 +462,7 @@ describe('Dashboard with AgentStateProvider', () => {
     });
 
     it('should ignore non-blocker events', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -492,7 +491,7 @@ describe('Dashboard with AgentStateProvider', () => {
       const unsubscribeMock = jest.fn();
       mockWsClient.onMessage.mockReturnValue(unsubscribeMock);
 
-      const { unmount } = render(
+      const { unmount } = renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -511,8 +510,7 @@ describe('Dashboard with AgentStateProvider', () => {
   });
 
   describe('T020: BlockerPanel Integration', () => {
-    // TODO: Fix flaky test - passes individually but times out in full suite
-    it.skip('should pass blockers from SWR to BlockerPanel', async () => {
+    it('should pass blockers from SWR to BlockerPanel', async () => {
       const mockBlockers = [
         {
           id: 1,
@@ -531,12 +529,11 @@ describe('Dashboard with AgentStateProvider', () => {
       ];
 
       // Override the mock for this specific test
-      // SWR cache is already cleared in beforeEach
       (api.blockersApi.list as jest.Mock).mockResolvedValueOnce({
         data: { blockers: mockBlockers },
       });
 
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -547,11 +544,14 @@ describe('Dashboard with AgentStateProvider', () => {
         expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
       });
 
-      // Then wait for blocker to appear with increased timeout
-      await waitFor(() => {
-        expect(screen.getByText(/Test blocker question\?/i)).toBeInTheDocument();
-      }, { timeout: 10000 }); // Increased for full test suite runs
-    }, 15000); // 15 second timeout for full test suite runs
+      // Then wait for blocker to appear
+      await waitFor(
+        () => {
+          expect(screen.getByText(/Test blocker question\?/i)).toBeInTheDocument();
+        },
+        { timeout: 5000 }
+      );
+    }, 10000); // 10 second test timeout
 
     it('should pass empty array when blockersData is null', async () => {
       // Override the mock for this specific test
@@ -560,7 +560,7 @@ describe('Dashboard with AgentStateProvider', () => {
         data: null,
       });
 
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -577,7 +577,7 @@ describe('Dashboard with AgentStateProvider', () => {
     });
 
     it('should initialize selectedBlocker as null', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={1}>
           <Dashboard projectId={1} />
         </AgentStateProvider>
@@ -603,7 +603,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until tabs are implemented
      */
     it('renders Overview and Context tabs', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -620,7 +620,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until default tab state is set
      */
     it('shows Overview tab active by default', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -637,7 +637,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until tab switching is implemented
      */
     it('switches to Context tab when clicked', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -658,7 +658,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until tab styling is applied
      */
     it('shows active tab with highlighted style', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -688,7 +688,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until dropdown is implemented
      */
     it('displays agent selector dropdown in Context tab', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -711,7 +711,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until agent options are populated
      */
     it('lists all active agents in dropdown', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -740,7 +740,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until placeholder text is added
      */
     it('shows placeholder when no agent selected', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -763,7 +763,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until onChange handler is implemented
      */
     it('updates state when agent selected', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -800,7 +800,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until ContextPanel is imported and rendered
      */
     it('renders ContextPanel when agent selected', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -831,7 +831,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until props are passed correctly
      */
     it('passes correct props to ContextPanel', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -864,7 +864,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until conditional rendering is implemented
      */
     it('hides ContextPanel when no agent selected', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -890,7 +890,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until ContextPanel re-renders on agent change
      */
     it('updates ContextPanel when agent changed', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -937,7 +937,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until navigation is wired up
      */
     it('switches to Context tab when agent card clicked', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -968,7 +968,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * RED: This test will FAIL until agent selection is wired up
      */
     it('pre-selects clicked agent in dropdown', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -1024,7 +1024,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * For manual testing: cause QualityGatesPanel to throw and verify fallback appears.
      */
     it('should have error boundary configured for Quality Gates Panel', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -1051,7 +1051,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * the debounce window triggers a re-mount.
      */
     it('should debounce retry button clicks', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -1073,7 +1073,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * In a real error scenario, clicking dismiss would hide the panel completely.
      */
     it('should support dismissing Quality Gates Panel via state', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -1098,7 +1098,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * so errors in that panel don't crash the entire Dashboard.
      */
     it('should isolate Quality Gates Panel errors from other Dashboard components', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
@@ -1125,7 +1125,7 @@ describe('Dashboard with AgentStateProvider', () => {
      * is properly configured to log errors when they occur.
      */
     it('should have error logging configured for Quality Gates Panel', async () => {
-      render(
+      renderWithSWR(
         <AgentStateProvider projectId={123}>
           <Dashboard projectId={123} />
         </AgentStateProvider>
