@@ -143,7 +143,7 @@ class TestChatEndpoint:
         RED Test: Handle agent communication failure with 500
         """
         # Arrange
-        with patch("codeframe.ui.server.running_agents") as mock_agents:
+        with patch("codeframe.ui.routers.chat.running_agents") as mock_agents:
             mock_agent = Mock()
             mock_agent.chat.side_effect = Exception("API connection failed")
             mock_agents.get.return_value = mock_agent
