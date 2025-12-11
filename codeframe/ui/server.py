@@ -2710,15 +2710,13 @@ async def get_project_code_reviews(
             "created_at": review.created_at
         })
 
-    # Build response
+    # Build response (matches get_task_reviews flat structure)
     return {
         "findings": findings_data,
-        "summary": {
-            "total_findings": len(reviews),
-            "by_severity": by_severity,
-            "by_category": by_category,
-            "has_blocking_issues": has_blocking_issues
-        },
+        "total_count": len(reviews),
+        "severity_counts": by_severity,
+        "category_counts": by_category,
+        "has_blocking_findings": has_blocking_issues,
         "task_id": None  # Project-level aggregate
     }
 
