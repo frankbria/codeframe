@@ -9,6 +9,9 @@ RED → GREEN → REFACTOR methodology:
 3. REFACTOR: Clean up while keeping tests green
 """
 
+import sqlite3
+from unittest.mock import patch
+
 import pytest
 
 
@@ -212,13 +215,119 @@ class TestProjectCreationIntegration:
 class TestProjectCreationErrorHandling:
     """Test error handling for project creation API."""
 
-    @pytest.mark.skip(
-        reason="Database close() creates ungraceful crashes, not 500 errors. This test design is flawed."
-    )
-    def test_create_project_handles_database_errors(self, api_client):
-        """Test that database errors are handled gracefully (500 Internal Server Error)."""
-        # This test is skipped - see reason above
-        pass
+    def test_create_project_database_locked_error(self, api_client):
+        """Test that database locked error returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "create_project",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-db-locked", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower()
+
+    def test_create_project_disk_full_error(self, api_client):
+        """Test that disk I/O error returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "create_project",
+            side_effect=sqlite3.OperationalError("disk I/O error"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-disk-full", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower() or "i/o" in data["detail"].lower()
+
+    def test_create_project_integrity_error(self, api_client):
+        """Test that constraint violation error returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "create_project",
+            side_effect=sqlite3.IntegrityError("UNIQUE constraint failed"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-integrity", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower() or "constraint" in data["detail"].lower()
+
+    def test_create_project_list_projects_database_error(self, api_client):
+        """Test that database error during list_projects returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "list_projects",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-list-error", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower()
+
+    def test_create_project_update_project_database_error(self, api_client):
+        """Test that database error during update_project returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "update_project",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-update-error", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower()
+
+    def test_create_project_get_project_database_error(self, api_client):
+        """Test that database error during get_project returns 500 Internal Server Error."""
+        from codeframe.ui import server
+
+        with patch.object(
+            server.app.state.db,
+            "get_project",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            response = api_client.post(
+                "/api/projects",
+                json={"name": "test-get-error", "description": "Test project"},
+            )
+
+            assert response.status_code == 500
+            data = response.json()
+            assert "detail" in data
+            assert "database" in data["detail"].lower()
 
     def test_create_project_with_extra_fields(self, api_client):
         """Test that extra fields in request are ignored."""
