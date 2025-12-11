@@ -187,12 +187,8 @@ class TestStartAgentEndpoint:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
         # ACT
-        with patch("codeframe.ui.server.BackgroundTasks") as mock_bg_tasks:
-            mock_bg_instance = Mock()
-            mock_bg_tasks.return_value = mock_bg_instance
-
-            with patch("codeframe.ui.server.start_agent"):
-                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
+        with patch("codeframe.ui.routers.agents.start_agent"):
+            response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
         assert response.status_code == 202
@@ -215,11 +211,11 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent") as mock_lead_agent_class:
+        with patch("codeframe.ui.shared.LeadAgent") as mock_lead_agent_class:
             mock_agent = Mock()
             mock_lead_agent_class.return_value = mock_agent
 
-            from codeframe.ui.server import start_agent
+            from codeframe.ui.shared import start_agent
 
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -238,8 +234,8 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            from codeframe.ui.shared import start_agent
 
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -259,8 +255,8 @@ class TestStartAgentFunction:
         expected_greeting = "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            from codeframe.ui.shared import start_agent
 
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -281,9 +277,9 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            with patch("codeframe.ui.server.manager.broadcast") as mock_broadcast:
-                from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            with patch("codeframe.ui.shared.manager.broadcast") as mock_broadcast:
+                from codeframe.ui.shared import start_agent
 
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -398,8 +394,8 @@ class TestAgentLifecycleIntegration:
         assert len(initial_conversation) == 0
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent") as mock_lead_agent_class:
-            with patch("codeframe.ui.server.manager.broadcast") as mock_broadcast:
+        with patch("codeframe.ui.shared.LeadAgent") as mock_lead_agent_class:
+            with patch("codeframe.ui.shared.manager.broadcast") as mock_broadcast:
                 # Mock LeadAgent
                 mock_agent = Mock()
                 mock_lead_agent_class.return_value = mock_agent
@@ -515,8 +511,8 @@ class TestAgentLifecycleErrorHandling:
         running_agents = {}
 
         # ACT & ASSERT
-        with patch("codeframe.ui.server.LeadAgent", side_effect=ValueError("Missing API key")):
-            from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent", side_effect=ValueError("Missing API key")):
+            from codeframe.ui.shared import start_agent
 
             with pytest.raises(ValueError):
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, None)
@@ -529,9 +525,9 @@ class TestAgentLifecycleErrorHandling:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            with patch("codeframe.ui.server.manager.broadcast", side_effect=Exception("WS Error")):
-                from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            with patch("codeframe.ui.shared.manager.broadcast", side_effect=Exception("WS Error")):
+                from codeframe.ui.shared import start_agent
 
                 # Should not raise exception
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
