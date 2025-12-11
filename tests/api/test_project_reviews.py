@@ -165,33 +165,35 @@ class TestProjectCodeReviewsEndpoint:
         assert response.status_code == 200
         data = response.json()
 
-        # Verify response structure
+        # Verify response structure (flat structure matching get_task_reviews)
         assert "findings" in data
-        assert "summary" in data
+        assert "total_count" in data
+        assert "severity_counts" in data
+        assert "category_counts" in data
+        assert "has_blocking_findings" in data
         assert "task_id" in data
         assert data["task_id"] is None  # Project-level aggregate
 
         # Verify findings count
         assert len(data["findings"]) == 6
+        assert data["total_count"] == 6
 
-        # Verify summary statistics
-        summary = data["summary"]
-        assert summary["total_findings"] == 6
-        assert summary["by_severity"]["critical"] == 1
-        assert summary["by_severity"]["high"] == 1
-        assert summary["by_severity"]["medium"] == 2
-        assert summary["by_severity"]["low"] == 1
-        assert summary["by_severity"]["info"] == 1
+        # Verify severity counts
+        assert data["severity_counts"]["critical"] == 1
+        assert data["severity_counts"]["high"] == 1
+        assert data["severity_counts"]["medium"] == 2
+        assert data["severity_counts"]["low"] == 1
+        assert data["severity_counts"]["info"] == 1
 
         # Verify category counts
-        assert summary["by_category"]["security"] == 2
-        assert summary["by_category"]["performance"] == 1
-        assert summary["by_category"]["quality"] == 1
-        assert summary["by_category"]["maintainability"] == 1
-        assert summary["by_category"]["style"] == 1
+        assert data["category_counts"]["security"] == 2
+        assert data["category_counts"]["performance"] == 1
+        assert data["category_counts"]["quality"] == 1
+        assert data["category_counts"]["maintainability"] == 1
+        assert data["category_counts"]["style"] == 1
 
         # Verify blocking issues flag
-        assert summary["has_blocking_issues"] is True  # Has critical + high
+        assert data["has_blocking_findings"] is True  # Has critical + high
 
     def test_get_project_code_reviews_with_severity_filter(
         self, api_client, project_with_reviews
@@ -210,7 +212,7 @@ class TestProjectCodeReviewsEndpoint:
         # Should only return critical findings
         assert len(data["findings"]) == 1
         assert data["findings"][0]["severity"] == "critical"
-        assert data["summary"]["total_findings"] == 1
+        assert data["total_count"] == 1
 
     def test_get_project_code_reviews_multiple_severity_filters(
         self, api_client, project_with_reviews
@@ -249,15 +251,15 @@ class TestProjectCodeReviewsEndpoint:
 
         # Verify empty results
         assert len(data["findings"]) == 0
-        assert data["summary"]["total_findings"] == 0
-        assert data["summary"]["has_blocking_issues"] is False
+        assert data["total_count"] == 0
+        assert data["has_blocking_findings"] is False
 
         # Verify all counts are zero
         for severity in ["critical", "high", "medium", "low", "info"]:
-            assert data["summary"]["by_severity"][severity] == 0
+            assert data["severity_counts"][severity] == 0
 
         for category in ["security", "performance", "quality", "maintainability", "style"]:
-            assert data["summary"]["by_category"][category] == 0
+            assert data["category_counts"][category] == 0
 
     def test_get_project_code_reviews_invalid_severity(
         self, api_client, project_with_reviews
@@ -341,4 +343,4 @@ class TestProjectCodeReviewsEndpoint:
         data = response.json()
 
         # Should not have blocking issues (only low severity)
-        assert data["summary"]["has_blocking_issues"] is False
+        assert data["has_blocking_findings"] is False

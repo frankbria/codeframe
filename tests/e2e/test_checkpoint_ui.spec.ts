@@ -19,25 +19,58 @@ test.describe('Checkpoint UI Workflow', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
+    // Wait for API calls to complete
+    await page.waitForResponse(response =>
+      response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
+      { timeout: 10000 }
+    ).catch(() => {});
+
     // Navigate to checkpoint section
     const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
+    await checkpointTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
     if (await checkpointTab.isVisible()) {
       await checkpointTab.click();
+      // Wait for checkpoint panel to become visible after tab switch
+      const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
+      await checkpointPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     }
   });
 
   test('should display checkpoint panel', async ({ page }) => {
     const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
+
+    // Scroll panel into view before waiting
+    await checkpointPanel.scrollIntoViewIfNeeded().catch(() => {});
+
+    await checkpointPanel.waitFor({ state: 'visible', timeout: 15000 });
     await expect(checkpointPanel).toBeVisible();
 
-    // Check for key components
-    await expect(page.locator('[data-testid="checkpoint-list"]')).toBeVisible();
-    await expect(page.locator('[data-testid="create-checkpoint-button"]')).toBeVisible();
+    // Check for key components with proper waits
+    const checkpointList = page.locator('[data-testid="checkpoint-list"]');
+    await checkpointList.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(checkpointList).toBeVisible();
+
+    const createButton = page.locator('[data-testid="create-checkpoint-button"]');
+    await createButton.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(createButton).toBeVisible();
   });
 
   test('should list existing checkpoints', async ({ page }) => {
     const checkpointList = page.locator('[data-testid="checkpoint-list"]');
+    await checkpointList.waitFor({ state: 'visible', timeout: 15000 });
     await expect(checkpointList).toBeVisible();
+
+    // Wait for checkpoints API response
+    await page.waitForResponse(response =>
+      response.url().includes('/checkpoints') && response.status() === 200,
+      { timeout: 10000 }
+    ).catch(() => {});
+
+    // Wait for DOM to update - either checkpoint items or empty state should be visible
+    await Promise.race([
+      page.locator('[data-testid^="checkpoint-item-"]').first().waitFor({ state: 'attached', timeout: 5000 }),
+      page.locator('[data-testid="checkpoint-empty-state"]').waitFor({ state: 'visible', timeout: 5000 })
+    ]).catch(() => {});
 
     // Check if checkpoints are displayed (or empty state)
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
@@ -60,10 +93,12 @@ test.describe('Checkpoint UI Workflow', () => {
 
   test('should open create checkpoint modal', async ({ page }) => {
     const createButton = page.locator('[data-testid="create-checkpoint-button"]');
+    await createButton.waitFor({ state: 'visible', timeout: 15000 });
     await createButton.click();
 
     // Modal should appear
     const modal = page.locator('[data-testid="create-checkpoint-modal"]');
+    await modal.waitFor({ state: 'visible', timeout: 10000 });
     await expect(modal).toBeVisible();
 
     // Modal should have name input and description
@@ -75,11 +110,17 @@ test.describe('Checkpoint UI Workflow', () => {
 
   test('should validate checkpoint name input', async ({ page }) => {
     const createButton = page.locator('[data-testid="create-checkpoint-button"]');
+    await createButton.waitFor({ state: 'visible', timeout: 15000 });
     await createButton.click();
 
     const modal = page.locator('[data-testid="create-checkpoint-modal"]');
+    await modal.waitFor({ state: 'visible', timeout: 10000 });
+
     const nameInput = modal.locator('[data-testid="checkpoint-name-input"]');
+    await nameInput.waitFor({ state: 'visible', timeout: 5000 });
+
     const saveButton = modal.locator('[data-testid="checkpoint-save-button"]');
+    await saveButton.waitFor({ state: 'visible', timeout: 5000 });
 
     // Try to save without name
     await saveButton.click();
@@ -128,11 +169,12 @@ test.describe('Checkpoint UI Workflow', () => {
       // Click to expand checkpoint details
       await firstCheckpoint.click();
 
-      // Diff preview should be visible
+      // Diff preview should be visible - wait for either diff or "no changes" message
       const diffPreview = firstCheckpoint.locator('[data-testid="checkpoint-diff"]');
-
-      // Diff might be async, wait a bit
-      await page.waitForTimeout(1000);
+      await Promise.race([
+        diffPreview.waitFor({ state: 'visible', timeout: 5000 }),
+        firstCheckpoint.locator('[data-testid="no-changes-message"]').waitFor({ state: 'visible', timeout: 5000 })
+      ]).catch(() => {});
 
       // Diff or "no changes" message should be visible
       const hasDiff = await diffPreview.count() > 0;

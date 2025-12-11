@@ -2392,6 +2392,63 @@ async def analyze_code_review(request: Request, background_tasks: BackgroundTask
         raise HTTPException(status_code=500, detail=f"Failed to start review: {str(e)}")
 
 
+def _extract_enum_value_for_counting(obj, attr_name: str):
+    """Extract enum value or string for counting logic.
+
+    Returns None if attribute is missing or None (to skip counting),
+    otherwise returns the string value or enum.value.
+
+    Args:
+        obj: Object to extract attribute from
+        attr_name: Name of the attribute (e.g., 'severity', 'category')
+
+    Returns:
+        str | None: The extracted value or None
+    """
+    if not hasattr(obj, attr_name):
+        return None
+
+    attr = getattr(obj, attr_name)
+    if attr is None:
+        return None
+
+    # Check if it's an enum with .value
+    if hasattr(attr, "value"):
+        return attr.value
+
+    # Otherwise convert to string
+    return str(attr)
+
+
+def _extract_enum_value(obj, attr_name: str, default: str):
+    """Extract enum value or string with default fallback.
+
+    Returns default when attribute is missing or None,
+    otherwise returns the string value or enum.value.
+
+    Args:
+        obj: Object to extract attribute from
+        attr_name: Name of the attribute (e.g., 'severity', 'category')
+        default: Default value to return if attribute is missing/None
+
+    Returns:
+        str: The extracted value or default
+    """
+    if not hasattr(obj, attr_name):
+        return default
+
+    attr = getattr(obj, attr_name)
+    if attr is None:
+        return default
+
+    # Check if it's an enum with .value
+    if hasattr(attr, "value"):
+        return attr.value
+
+    # Otherwise convert to string
+    return str(attr)
+
+
 @app.get("/api/tasks/{task_id}/reviews", tags=["review"])
 async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     """Get code review findings for a task (T035).
@@ -2406,7 +2463,7 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
         severity: Optional severity filter (critical, high, medium, low, info)
 
     Returns:
-        200 OK: Review findings with summary statistics
+        200 OK: Review findings with summary statistics (matches ReviewResult interface)
         {
             "task_id": int,
             "findings": [
@@ -2426,18 +2483,22 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
                 },
                 ...
             ],
-            "summary": {
-                "total_findings": int,
-                "by_severity": {
-                    "critical": int,
-                    "high": int,
-                    "medium": int,
-                    "low": int,
-                    "info": int
-                },
-                "has_blocking_issues": bool,
-                "blocking_count": int
-            }
+            "total_count": int,
+            "severity_counts": {
+                "critical": int,
+                "high": int,
+                "medium": int,
+                "low": int,
+                "info": int
+            },
+            "category_counts": {
+                "security": int,
+                "performance": int,
+                "quality": int,
+                "maintainability": int,
+                "style": int
+            },
+            "has_blocking_findings": bool
         }
 
         400 Bad Request: Invalid severity value
@@ -2464,7 +2525,7 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     reviews = app.state.db.get_code_reviews(task_id=task_id, severity=severity)
 
     # Build summary statistics
-    by_severity = {
+    severity_counts = {
         'critical': 0,
         'high': 0,
         'medium': 0,
@@ -2472,18 +2533,34 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
         'info': 0
     }
 
+    category_counts = {
+        'security': 0,
+        'performance': 0,
+        'quality': 0,
+        'maintainability': 0,
+        'style': 0
+    }
+
     for review in reviews:
-        severity_val = review.severity.value
-        if severity_val in by_severity:
-            by_severity[severity_val] += 1
+        # Extract severity and category using helper (returns None if missing/invalid)
+        severity_val = _extract_enum_value_for_counting(review, "severity")
+        if severity_val and severity_val in severity_counts:
+            severity_counts[severity_val] += 1
+
+        category_val = _extract_enum_value_for_counting(review, "category")
+        if category_val and category_val in category_counts:
+            category_counts[category_val] += 1
 
     # Blocking issues are critical or high severity
-    blocking_count = by_severity['critical'] + by_severity['high']
-    has_blocking_issues = blocking_count > 0
+    has_blocking_findings = (severity_counts['critical'] + severity_counts['high']) > 0
 
     # Convert CodeReview objects to dictionaries
     findings_data = []
     for review in reviews:
+        # Extract severity and category using helper (returns default if missing/invalid)
+        severity_val = _extract_enum_value(review, "severity", "unknown")
+        category_val = _extract_enum_value(review, "category", "unknown")
+
         findings_data.append({
             "id": review.id,
             "task_id": review.task_id,
@@ -2491,24 +2568,22 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
             "project_id": review.project_id,
             "file_path": review.file_path,
             "line_number": review.line_number,
-            "severity": review.severity.value,
-            "category": review.category.value,
+            "severity": severity_val,
+            "category": category_val,
             "message": review.message,
             "recommendation": review.recommendation,
             "code_snippet": review.code_snippet,
             "created_at": review.created_at
         })
 
-    # Build response
+    # Build response matching ReviewResult interface
     return {
         "task_id": task_id,
         "findings": findings_data,
-        "summary": {
-            "total_findings": len(reviews),
-            "by_severity": by_severity,
-            "has_blocking_issues": has_blocking_issues,
-            "blocking_count": blocking_count
-        }
+        "total_count": len(reviews),
+        "severity_counts": severity_counts,
+        "category_counts": category_counts,
+        "has_blocking_findings": has_blocking_findings
     }
 
 
@@ -2612,14 +2687,13 @@ async def get_project_code_reviews(
     }
 
     for review in reviews:
-        # Count by severity (handle both enum and string)
-        severity_val = review.severity.value if hasattr(review.severity, 'value') else review.severity
-        if severity_val in by_severity:
+        # Extract severity and category using helper (returns None if missing/invalid)
+        severity_val = _extract_enum_value_for_counting(review, "severity")
+        if severity_val and severity_val in by_severity:
             by_severity[severity_val] += 1
 
-        # Count by category (handle both enum and string)
-        category_val = review.category.value if hasattr(review.category, 'value') else review.category
-        if category_val in by_category:
+        category_val = _extract_enum_value_for_counting(review, "category")
+        if category_val and category_val in by_category:
             by_category[category_val] += 1
 
     # Blocking issues are critical or high severity
@@ -2628,6 +2702,10 @@ async def get_project_code_reviews(
     # Convert CodeReview objects to dictionaries
     findings_data = []
     for review in reviews:
+        # Extract severity and category using helper (returns default if missing/invalid)
+        severity_val = _extract_enum_value(review, "severity", "unknown")
+        category_val = _extract_enum_value(review, "category", "unknown")
+
         findings_data.append({
             "id": review.id,
             "task_id": review.task_id,
@@ -2635,23 +2713,21 @@ async def get_project_code_reviews(
             "project_id": review.project_id,
             "file_path": review.file_path,
             "line_number": review.line_number,
-            "severity": review.severity.value if hasattr(review.severity, 'value') else review.severity,
-            "category": review.category.value if hasattr(review.category, 'value') else review.category,
+            "severity": severity_val,
+            "category": category_val,
             "message": review.message,
             "recommendation": review.recommendation,
             "code_snippet": review.code_snippet,
             "created_at": review.created_at
         })
 
-    # Build response
+    # Build response (matches get_task_reviews flat structure)
     return {
         "findings": findings_data,
-        "summary": {
-            "total_findings": len(reviews),
-            "by_severity": by_severity,
-            "by_category": by_category,
-            "has_blocking_issues": has_blocking_issues
-        },
+        "total_count": len(reviews),
+        "severity_counts": by_severity,
+        "category_counts": by_category,
+        "has_blocking_findings": has_blocking_issues,
         "task_id": None  # Project-level aggregate
     }
 

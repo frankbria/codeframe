@@ -85,14 +85,12 @@ def seed_test_data(db_path: str, project_id: int):
         if not cursor.fetchone():
             print("⚠️  Warning: agents table doesn't exist, skipping agents")
         else:
-            # Clear existing agents (no project_id in agents table)
-            cursor.execute("DELETE FROM agents")
-
+            # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for agent in agents:
                 try:
                     cursor.execute(
                         """
-                        INSERT INTO agents
+                        INSERT OR REPLACE INTO agents
                         (id, type, provider, maturity_level, status,
                          current_task_id, last_heartbeat, metrics)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -100,8 +98,9 @@ def seed_test_data(db_path: str, project_id: int):
                         agent,
                     )
                 except sqlite3.Error as e:
-                    print(f"⚠️  Failed to insert agent {agent[0]}: {e}")
+                    print(f"⚠️  Failed to upsert agent {agent[0]}: {e}")
 
+            conn.commit()
             cursor.execute("SELECT COUNT(*) FROM agents")
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/5 agents")
@@ -118,6 +117,7 @@ def seed_test_data(db_path: str, project_id: int):
         else:
             # Clear existing assignments for project
             cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (project_id,))
+            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
 
             # Assign all 5 agents to the project
             assignments = [
@@ -407,14 +407,12 @@ def seed_test_data(db_path: str, project_id: int):
         if not cursor.fetchone():
             print("⚠️  Warning: tasks table doesn't exist, skipping tasks")
         else:
-            # Clear existing tasks for project
-            cursor.execute("DELETE FROM tasks WHERE project_id = ?", (project_id,))
-
+            # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for task in tasks:
                 try:
                     cursor.execute(
                         """
-                        INSERT INTO tasks (
+                        INSERT OR REPLACE INTO tasks (
                             id, project_id, issue_id, task_number, parent_issue_number, title, description,
                             status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
                             requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
@@ -425,8 +423,9 @@ def seed_test_data(db_path: str, project_id: int):
                         task,
                     )
                 except sqlite3.Error as e:
-                    print(f"⚠️  Failed to insert task {task[0]}: {e}")
+                    print(f"⚠️  Failed to upsert task {task[0]}: {e}")
 
+            conn.commit()
             cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/10 tasks")
@@ -629,21 +628,20 @@ def seed_test_data(db_path: str, project_id: int):
         if not cursor.fetchone():
             print("⚠️  Warning: token_usage table doesn't exist, skipping token usage")
         else:
-            # Clear existing token usage for project
-            cursor.execute("DELETE FROM token_usage WHERE project_id = ?", (project_id,))
-
+            # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for record in token_records:
                 try:
                     cursor.execute(
                         """
-                        INSERT INTO token_usage (id, task_id, agent_id, project_id, model_name, input_tokens, output_tokens, estimated_cost_usd, call_type, timestamp)
+                        INSERT OR REPLACE INTO token_usage (id, task_id, agent_id, project_id, model_name, input_tokens, output_tokens, estimated_cost_usd, call_type, timestamp)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                         record,
                     )
                 except sqlite3.Error as e:
-                    print(f"⚠️  Failed to insert token usage record {record[0]}: {e}")
+                    print(f"⚠️  Failed to upsert token usage record {record[0]}: {e}")
 
+            conn.commit()
             cursor.execute("SELECT COUNT(*) FROM token_usage WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/15 token usage records")
@@ -841,6 +839,7 @@ def seed_test_data(db_path: str, project_id: int):
         else:
             # Clear existing reviews for project
             cursor.execute("DELETE FROM code_reviews WHERE project_id = ?", (project_id,))
+            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
 
             for finding in review_findings:
                 try:

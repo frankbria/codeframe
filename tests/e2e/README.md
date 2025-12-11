@@ -2,6 +2,17 @@
 
 Comprehensive E2E testing suite for validating the full CodeFRAME autonomous coding workflow.
 
+## Quick Start
+
+Run all E2E tests with a single command (backend auto-starts):
+
+```bash
+cd tests/e2e
+npx playwright test
+```
+
+That's it! The backend server starts automatically on port 8080, database seeds, and all 85+ tests run across multiple browsers.
+
 ## Overview
 
 This test suite validates Sprint 10 (Review & Polish) features and ensures the complete autonomous workflow functions correctly from discovery through completion.
@@ -80,11 +91,13 @@ uv run pytest tests/e2e/ --cov=codeframe --cov-report=term -v
 
 ### Frontend E2E Tests
 
+**Important**: Backend server now auto-starts automatically via `webServer` config in `playwright.config.ts`. No manual server startup required!
+
 ```bash
 # From tests/e2e directory
 cd tests/e2e
 
-# Run all Playwright tests
+# Run all Playwright tests (backend auto-starts)
 npm test
 
 # Run in headed mode (see browser)
@@ -104,6 +117,15 @@ npm run test:mobile
 # View test report
 npm run report
 ```
+
+**What happens automatically**:
+1. ✅ Backend server starts on port 8080 (with health check)
+2. ✅ Frontend dev server starts on port 3000
+3. ✅ Database seeding runs (via global-setup.ts)
+4. ✅ Tests execute across browsers
+5. ✅ Servers shut down after tests complete
+
+**CI/CD Note**: In CI mode (`CI=true`), servers are NOT auto-started. CI must start them separately.
 
 ## Test Structure
 
@@ -312,28 +334,72 @@ The E2E tests cover >85% of user workflows as defined in the specification:
 
 ## Troubleshooting
 
-### "Backend server not ready"
+### Port 8080 already in use
 
+**Symptom**: Backend server fails to start with "Address already in use" error.
+
+**Solution**:
 ```bash
-# Ensure backend is running
+# Find process using port 8080
+lsof -ti:8080 | xargs kill -9
+
+# Or manually check and kill
+lsof -i:8080
+kill <PID>
+```
+
+### Backend health check timeout
+
+**Symptom**: Playwright times out waiting for backend server to be ready.
+
+**Solution**:
+```bash
+# Check if backend can start manually
+cd /home/frankbria/projects/codeframe
 uv run uvicorn codeframe.ui.server:app --port 8080
 
-# Check if server is reachable
+# If successful, check health endpoint
 curl http://localhost:8080/health
+
+# Should return: {"status": "ok"}
 ```
 
-### "Frontend server timeout"
+### Database seeding errors
 
+**Symptom**: Tests fail with "table already exists" or foreign key errors.
+
+**Solution**:
 ```bash
-# Ensure frontend is running
-cd web-ui && npm run dev
+# Remove test databases
+rm -f tests/e2e/fixtures/*/test_state.db
+rm -f .codeframe/test_state.db
 
-# Check if frontend is reachable
-curl http://localhost:3000
+# Re-run tests (seeding happens automatically)
+cd tests/e2e
+npx playwright test
 ```
 
-### "Playwright browsers not installed"
+**Note**: UNIQUE constraint warnings like `UNIQUE constraint failed: projects.id` are **expected** during seeding and harmless. These occur when seed data already exists.
 
+### Frontend server timeout
+
+**Symptom**: Tests timeout waiting for frontend dev server on port 3000.
+
+**Solution**:
+```bash
+# Ensure web-ui dependencies are installed
+cd web-ui
+npm install
+
+# Try starting frontend manually
+npm run dev
+```
+
+### Playwright browsers not installed
+
+**Symptom**: Error message "Executable doesn't exist at <path>/chromium".
+
+**Solution**:
 ```bash
 cd tests/e2e
 npm run install:browsers
@@ -341,12 +407,17 @@ npm run install:browsers
 
 ### "Database locked" errors
 
+**Symptom**: SQLite database locked errors during tests.
+
+**Solution**:
 ```bash
 # Stop all processes using the database
 pkill -f "codeframe"
+pkill -f "uvicorn"
 
-# Remove test database
+# Remove test databases and restart
 rm -f tests/e2e/fixtures/*/test_state.db
+npx playwright test
 ```
 
 ## Contributing
@@ -370,6 +441,8 @@ When adding new E2E tests:
 6. **Test data isolation**: Each test should use independent test data
 7. **Descriptive assertions**: Use clear assertion messages
 8. **Document test purpose**: Add docstrings explaining what each test validates
+9. **Backend auto-start**: Rely on `webServer` config in Playwright (don't manually start backend)
+10. **Health endpoints**: Ensure backend `/health` endpoint responds quickly for Playwright health checks
 
 ## References
 

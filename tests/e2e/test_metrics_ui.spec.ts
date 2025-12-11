@@ -19,25 +19,66 @@ test.describe('Metrics Dashboard UI', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
+    // Wait for project API to load
+    await page.waitForResponse(response =>
+      response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
+      { timeout: 10000 }
+    ).catch(() => {});
+
+    // Wait for dashboard to render - agent panel is last to render
+    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+
     // Navigate to metrics section
     const metricsTab = page.locator('[data-testid="metrics-tab"]');
+    await metricsTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
     if (await metricsTab.isVisible()) {
       await metricsTab.click();
+
+      // Wait for metrics panel to become visible after tab switch
+      const metricsPanel = page.locator('[data-testid="metrics-panel"]');
+      await metricsPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+
+      // Wait for metrics API to load
+      await page.waitForResponse(response =>
+        response.url().includes('/metrics') && response.status() === 200,
+        { timeout: 10000 }
+      ).catch(() => {});
+
+      // Wait for cost dashboard to be visible (indicates data has rendered)
+      await page.locator('[data-testid="cost-dashboard"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     }
   });
 
   test('should display metrics panel', async ({ page }) => {
     const metricsPanel = page.locator('[data-testid="metrics-panel"]');
+
+    // Scroll panel into view
+    await metricsPanel.scrollIntoViewIfNeeded().catch(() => {});
+
+    await metricsPanel.waitFor({ state: 'visible', timeout: 15000 });
     await expect(metricsPanel).toBeVisible();
 
-    // Check for key components
-    await expect(page.locator('[data-testid="cost-dashboard"]')).toBeVisible();
-    await expect(page.locator('[data-testid="token-usage-chart"]')).toBeVisible();
+    // Check for key components with waits
+    const costDashboard = page.locator('[data-testid="cost-dashboard"]');
+    await costDashboard.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(costDashboard).toBeVisible();
+
+    // Token stats are part of CostDashboard, not a separate chart
+    const tokenStats = page.locator('[data-testid="token-stats"]');
+    await tokenStats.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(tokenStats).toBeVisible();
   });
 
   test('should display total cost', async ({ page }) => {
     const totalCostDisplay = page.locator('[data-testid="total-cost-display"]');
+    await totalCostDisplay.waitFor({ state: 'visible', timeout: 15000 });
     await expect(totalCostDisplay).toBeVisible();
+
+    // Wait for cost data to load
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-testid="total-cost-display"]');
+      return el && el.textContent && el.textContent.trim() !== '';
+    }, { timeout: 10000 });
 
     // Should display cost in USD format
     const costText = await totalCostDisplay.textContent();
@@ -46,29 +87,40 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display token usage statistics', async ({ page }) => {
     const tokenStats = page.locator('[data-testid="token-stats"]');
+    await tokenStats.waitFor({ state: 'visible', timeout: 15000 });
     await expect(tokenStats).toBeVisible();
 
-    // Check for input/output token counts
-    await expect(page.locator('[data-testid="input-tokens"]')).toBeVisible();
-    await expect(page.locator('[data-testid="output-tokens"]')).toBeVisible();
-    await expect(page.locator('[data-testid="total-tokens"]')).toBeVisible();
+    // Check for input/output token counts with waits
+    const inputTokens = page.locator('[data-testid="input-tokens"]');
+    await inputTokens.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(inputTokens).toBeVisible();
+
+    const outputTokens = page.locator('[data-testid="output-tokens"]');
+    await outputTokens.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(outputTokens).toBeVisible();
+
+    const totalTokens = page.locator('[data-testid="total-tokens"]');
+    await totalTokens.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(totalTokens).toBeVisible();
   });
 
   test('should display token usage chart', async ({ page }) => {
-    const tokenChart = page.locator('[data-testid="token-usage-chart"]');
+    // Cost trend chart is part of CostDashboard
+    const trendChart = page.locator('[data-testid="cost-trend-chart"]');
 
-    // Chart may not be visible if cost dashboard isn't fully loaded
-    if (await tokenChart.isVisible()) {
-      // Chart should have data or empty state
-      const hasData = await tokenChart.locator('[data-testid="chart-data"]').count() > 0;
-      const hasEmptyState = await tokenChart.locator('[data-testid="chart-empty"]').count() > 0;
+    await trendChart.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(trendChart).toBeVisible();
 
-      expect(hasData || hasEmptyState).toBe(true);
-    }
+    // Chart should have data or show empty state message
+    const hasData = (await trendChart.locator('[data-testid="trend-chart-data"]').count()) > 0;
+    const hasEmptyState = (await trendChart.textContent())?.includes('No time series data') || false;
+
+    expect(hasData || hasEmptyState).toBe(true);
   });
 
   test('should display cost breakdown by agent', async ({ page }) => {
     const agentBreakdown = page.locator('[data-testid="cost-by-agent"]');
+    await agentBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(agentBreakdown).toBeVisible();
 
     // Should have list of agents or empty state
@@ -88,6 +140,7 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost breakdown by model', async ({ page }) => {
     const modelBreakdown = page.locator('[data-testid="cost-by-model"]');
+    await modelBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(modelBreakdown).toBeVisible();
 
     // Should have list of models or empty state
@@ -117,13 +170,13 @@ test.describe('Metrics Dashboard UI', () => {
       // Select "Last 7 days" filter
       await dateFilter.selectOption('last-7-days');
 
-      // Wait for filter to apply
-      await page.waitForTimeout(500);
+      // Wait for metrics API to respond with filtered data
+      await page.waitForResponse(response =>
+        response.url().includes('/metrics') && response.status() === 200,
+        { timeout: 5000 }
+      ).catch(() => {});
 
-      // Chart should update (verify by checking if loading indicator appeared and disappeared)
-      const loadingIndicator = page.locator('[data-testid="metrics-loading"]');
-
-      // Loading might be too fast to catch, so just verify chart is still visible
+      // Chart should still be visible after filtering
       const tokenChart = page.locator('[data-testid="token-usage-chart"]');
       await expect(tokenChart).toBeVisible();
     }
@@ -193,10 +246,27 @@ test.describe('Metrics Dashboard UI', () => {
   test('should refresh metrics in real-time', async ({ page }) => {
     // Get initial total cost
     const totalCostDisplay = page.locator('[data-testid="total-cost-display"]');
+    await totalCostDisplay.waitFor({ state: 'visible', timeout: 15000 });
+
+    // Wait for data to load
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-testid="total-cost-display"]');
+      return el && el.textContent && el.textContent.trim() !== '';
+    }, { timeout: 10000 });
+
     const initialCost = await totalCostDisplay.textContent();
 
-    // Wait for potential real-time update (WebSocket)
-    await page.waitForTimeout(3000);
+    // Monitor WebSocket for real-time updates
+    const wsPromise = page.waitForEvent('websocket', { timeout: 5000 }).catch(() => null);
+    const ws = await wsPromise;
+
+    if (ws) {
+      // Wait for a WebSocket frame (indicates real-time update capability)
+      await Promise.race([
+        new Promise(resolve => ws.on('framereceived', resolve)),
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
+    }
 
     // Cost might update via WebSocket (or stay the same if no new data)
     const updatedCost = await totalCostDisplay.textContent();

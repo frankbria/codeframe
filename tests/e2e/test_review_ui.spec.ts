@@ -19,11 +19,39 @@ test.describe('Review Findings UI', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
+    // Wait for project API to load
+    await page.waitForResponse(response =>
+      response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
+      { timeout: 10000 }
+    ).catch(() => {});
+
+    // Wait for dashboard to render - agent panel is last to render
+    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+
     // Review panel is visible on Overview tab (no separate review tab exists)
   });
 
   test('should display review findings panel', async ({ page }) => {
     const reviewPanel = page.locator('[data-testid="review-findings-panel"]');
+
+    // Wait for panel to exist and be visible
+    await reviewPanel.waitFor({ state: 'attached', timeout: 15000 });
+
+    // Scroll panel into view
+    await reviewPanel.scrollIntoViewIfNeeded().catch(() => {});
+
+    // If not visible, panel might be in a different tab or section
+    if (!(await reviewPanel.isVisible())) {
+      // Try clicking overview tab if it exists
+      const overviewTab = page.getByRole('tab', { name: 'Overview' });
+      if (await overviewTab.isVisible()) {
+        await overviewTab.click();
+        // Wait for review panel to become visible after tab switch
+        await reviewPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+      }
+    }
+
+    await reviewPanel.waitFor({ state: 'visible', timeout: 10000 });
     await expect(reviewPanel).toBeVisible();
 
     // Check for review components
@@ -87,8 +115,11 @@ test.describe('Review Findings UI', () => {
       // Select "critical" filter
       await severityFilter.selectOption('critical');
 
-      // Wait for filter to apply
-      await page.waitForTimeout(500);
+      // Wait for findings list to update (either filtered results or empty state)
+      await Promise.race([
+        page.locator('[data-testid^="review-finding-"]').first().waitFor({ state: 'attached', timeout: 3000 }),
+        page.locator('[data-testid="no-findings"]').waitFor({ state: 'visible', timeout: 3000 })
+      ]).catch(() => {});
 
       // Only critical findings should be visible
       const findings = page.locator('[data-testid^="review-finding-"]');
