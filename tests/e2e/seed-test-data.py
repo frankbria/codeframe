@@ -87,6 +87,7 @@ def seed_test_data(db_path: str, project_id: int):
         else:
             # Clear existing agents (no project_id in agents table)
             cursor.execute("DELETE FROM agents")
+            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
 
             for agent in agents:
                 try:
@@ -118,6 +119,7 @@ def seed_test_data(db_path: str, project_id: int):
         else:
             # Clear existing assignments for project
             cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (project_id,))
+            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
 
             # Assign all 5 agents to the project
             assignments = [
@@ -409,6 +411,7 @@ def seed_test_data(db_path: str, project_id: int):
         else:
             # Clear existing tasks for project
             cursor.execute("DELETE FROM tasks WHERE project_id = ?", (project_id,))
+            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
 
             for task in tasks:
                 try:
@@ -631,6 +634,7 @@ def seed_test_data(db_path: str, project_id: int):
         else:
             # Clear existing token usage for project
             cursor.execute("DELETE FROM token_usage WHERE project_id = ?", (project_id,))
+            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
 
             for record in token_records:
                 try:
@@ -841,6 +845,7 @@ def seed_test_data(db_path: str, project_id: int):
         else:
             # Clear existing reviews for project
             cursor.execute("DELETE FROM code_reviews WHERE project_id = ?", (project_id,))
+            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
 
             for finding in review_findings:
                 try:
