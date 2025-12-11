@@ -1,44 +1,41 @@
 """FastAPI Status Server for CodeFRAME."""
 
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
-from typing import Dict, Optional
-from enum import Enum
-from datetime import datetime, UTC, timezone
-import asyncio
-import json
+# Standard library imports
 import logging
 import os
+import subprocess
+from contextlib import asynccontextmanager
+from datetime import datetime, UTC
+from enum import Enum
+from pathlib import Path
 
-from codeframe.core.models import (
-    ProjectStatus,
-    TaskStatus,
-    ContextItemCreateModel,
-    ContextItemResponse,
-)
+# Third-party imports
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+# Local imports
 from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
-from codeframe.ui.routers import lint
-from codeframe.ui.shared import (
-    manager,
-    running_agents,
-    review_cache,
-    start_agent,
+from codeframe.ui.routers import (
+    agents,
+    blockers,
+    chat,
+    checkpoints,
+    context,
+    discovery,
+    lint,
+    metrics,
+    projects,
+    quality_gates,
+    review,
+    session,
+    websocket,
 )
-from codeframe.ui.routers import metrics
-from codeframe.ui.routers import chat
-from codeframe.ui.routers import blockers
-from codeframe.ui.routers import discovery
-from codeframe.ui.routers import context
-from codeframe.ui.routers import review
-from codeframe.ui.routers import quality_gates
-from codeframe.ui.routers import checkpoints
-from codeframe.ui.routers import agents
-from codeframe.ui.routers import projects
-from codeframe.ui.routers import websocket
+
+
+# ============================================================================
+# Configuration and Setup
+# ============================================================================
 
 
 class DeploymentMode(str, Enum):
@@ -70,8 +67,13 @@ def is_hosted_mode() -> bool:
     return get_deployment_mode() == DeploymentMode.HOSTED
 
 
-# Module logger
+# Logger setup
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Application Lifespan
+# ============================================================================
 
 
 @asynccontextmanager
@@ -105,12 +107,21 @@ async def lifespan(app: FastAPI):
         app.state.db.close()
 
 
+# ============================================================================
+# FastAPI Application
+# ============================================================================
+
 app = FastAPI(
     title="CodeFRAME Status Server",
     description="Real-time monitoring and control for CodeFRAME projects",
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+# ============================================================================
+# CORS Middleware
+# ============================================================================
 
 # CORS configuration from environment variables
 # Get CORS_ALLOWED_ORIGINS from env (comma-separated list)
@@ -139,30 +150,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(lint.router)
-app.include_router(metrics.router)
-app.include_router(chat.router)
-app.include_router(blockers.router)
-app.include_router(blockers.blocker_router)
-app.include_router(discovery.router)
-app.include_router(context.router)
-app.include_router(review.router)
-app.include_router(quality_gates.router)
-app.include_router(checkpoints.router)
-app.include_router(agents.router)
-app.include_router(projects.router)
-app.include_router(websocket.router)
 
-
-# Shared state imported from codeframe.ui.shared:
-# - ConnectionManager class
-# - manager (ConnectionManager instance)
-# - running_agents (Dict[int, LeadAgent])
-# - review_cache (Dict[int, dict])
-# - start_agent() function
-
-# API Routes
+# ============================================================================
+# Health Check Endpoints
+# ============================================================================
 
 
 @app.get("/")
@@ -182,9 +173,6 @@ async def health_check():
         - deployed_at: Server startup timestamp
         - database: Database connection status
     """
-    import subprocess
-    from datetime import datetime, UTC
-
     # Get git commit hash
     try:
         git_commit = (
@@ -212,108 +200,30 @@ async def health_check():
     }
 
 
-# Context Management endpoints (007-context-management)
+# ============================================================================
+# Router Mounting
+# ============================================================================
+
+# Mount all API routers
+app.include_router(agents.router)
+app.include_router(blockers.router)
+app.include_router(blockers.blocker_router)
+app.include_router(chat.router)
+app.include_router(checkpoints.router)
+app.include_router(context.router)
+app.include_router(discovery.router)
+app.include_router(lint.router)
+app.include_router(metrics.router)
+app.include_router(projects.router)
+app.include_router(quality_gates.router)
+app.include_router(review.router)
+app.include_router(session.router)
+app.include_router(websocket.router)
 
 
-@app.post(
-    "/api/agents/{agent_id}/context",
-    status_code=201,
-    response_model=ContextItemResponse,
-    tags=["context"],
-)
-async def create_context_item(agent_id: str, project_id: int, request: ContextItemCreateModel):
-    """Create a new context item for an agent (T019).
-
-    Args:
-        agent_id: Agent ID to create context item for
-        project_id: Project ID for the context item
-        request: ContextItemCreateModel with item_type and content
-
-    Returns:
-        201 Created: ContextItemResponse with created context item
-
-    Raises:
-        HTTPException:
-            - 422: Invalid request (validation error)
-    """
-    # Create context item - score auto-calculated by database layer (Phase 4)
-    item_id = app.state.db.create_context_item(
-        project_id=project_id,
-        agent_id=agent_id,
-        item_type=request.item_type.value,
-        content=request.content,
-    )
-
-    # Get created item for response
-    item = app.state.db.get_context_item(item_id)
-
-    return ContextItemResponse(
-        id=item["id"],
-        agent_id=item["agent_id"],
-        item_type=item["item_type"],
-        content=item["content"],
-        importance_score=item["importance_score"],
-        tier=item["current_tier"],
-        access_count=item["access_count"],
-        created_at=item["created_at"],
-        last_accessed=item["last_accessed"],
-    )
-
-
-@app.get(
-    "/api/agents/{agent_id}/context/{item_id}", response_model=ContextItemResponse, tags=["context"]
-)
-async def get_context_item(agent_id: str, item_id: str):
-    """Get a single context item and update access tracking (T020).
-
-    Args:
-        agent_id: Agent ID (used for path consistency)
-        item_id: Context item ID to retrieve (UUID string)
-
-    Returns:
-        200 OK: ContextItemResponse with context item details
-
-    Raises:
-        HTTPException:
-            - 404: Context item not found
-    """
-    # Get context item
-    item = app.state.db.get_context_item(item_id)
-
-    if not item:
-        raise HTTPException(status_code=404, detail=f"Context item {item_id} not found")
-
-    # Update access tracking
-    app.state.db.update_context_item_access(item_id)
-
-    # Get updated item for response
-    item = app.state.db.get_context_item(item_id)
-
-    return ContextItemResponse(
-        id=item["id"],
-        agent_id=item["agent_id"],
-        item_type=item["item_type"],
-        content=item["content"],
-        importance_score=item["importance_score"],
-        tier=item["current_tier"],
-        access_count=item["access_count"],
-        created_at=item["created_at"],
-        last_accessed=item["last_accessed"],
-    )
-# Background task to broadcast updates
-async def broadcast_updates():
-    """Periodically broadcast project updates to connected clients."""
-    while True:
-        await asyncio.sleep(5)  # Update every 5 seconds
-
-        # TODO: Gather latest project state
-        update = {
-            "type": "status_update",
-            "timestamp": "2025-01-15T14:35:00Z",
-            "data": {"progress": 65, "active_agents": 3, "completed_tasks": 26},
-        }
-
-        await manager.broadcast(update)
+# ============================================================================
+# Server Startup
+# ============================================================================
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8080):
