@@ -8,6 +8,9 @@ export default defineConfig({
   testDir: './',
   testMatch: '*.spec.ts',
 
+  /* Exclude debug tests from CI runs */
+  testIgnore: process.env.CI ? ['debug-error.spec.ts'] : [],
+
   /* Global setup - creates test project */
   globalSetup: './global-setup.ts',
 

@@ -2485,12 +2485,28 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     }
 
     for review in reviews:
-        severity_val = review.severity.value
-        if severity_val in severity_counts:
+        # Defensive handling: review.severity might be an enum or a plain string
+        if hasattr(review, "severity"):
+            if hasattr(review.severity, "value"):
+                severity_val = review.severity.value
+            else:
+                severity_val = str(review.severity) if review.severity else None
+        else:
+            severity_val = None
+
+        if severity_val and severity_val in severity_counts:
             severity_counts[severity_val] += 1
 
-        category_val = review.category.value
-        if category_val in category_counts:
+        # Defensive handling: review.category might be an enum or a plain string
+        if hasattr(review, "category"):
+            if hasattr(review.category, "value"):
+                category_val = review.category.value
+            else:
+                category_val = str(review.category) if review.category else None
+        else:
+            category_val = None
+
+        if category_val and category_val in category_counts:
             category_counts[category_val] += 1
 
     # Blocking issues are critical or high severity
@@ -2499,6 +2515,24 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
     # Convert CodeReview objects to dictionaries
     findings_data = []
     for review in reviews:
+        # Defensive handling for severity
+        if hasattr(review, "severity"):
+            if hasattr(review.severity, "value"):
+                severity_val = review.severity.value
+            else:
+                severity_val = str(review.severity) if review.severity else "unknown"
+        else:
+            severity_val = "unknown"
+
+        # Defensive handling for category
+        if hasattr(review, "category"):
+            if hasattr(review.category, "value"):
+                category_val = review.category.value
+            else:
+                category_val = str(review.category) if review.category else "unknown"
+        else:
+            category_val = "unknown"
+
         findings_data.append({
             "id": review.id,
             "task_id": review.task_id,
@@ -2506,8 +2540,8 @@ async def get_task_reviews(task_id: int, severity: Optional[str] = None):
             "project_id": review.project_id,
             "file_path": review.file_path,
             "line_number": review.line_number,
-            "severity": review.severity.value,
-            "category": review.category.value,
+            "severity": severity_val,
+            "category": category_val,
             "message": review.message,
             "recommendation": review.recommendation,
             "code_snippet": review.code_snippet,
@@ -2625,14 +2659,22 @@ async def get_project_code_reviews(
     }
 
     for review in reviews:
-        # Count by severity (handle both enum and string)
-        severity_val = review.severity.value if hasattr(review.severity, 'value') else review.severity
-        if severity_val in by_severity:
+        # Count by severity (handle both enum and string, and missing attributes)
+        if hasattr(review, "severity") and review.severity:
+            severity_val = review.severity.value if hasattr(review.severity, 'value') else str(review.severity)
+        else:
+            severity_val = None
+
+        if severity_val and severity_val in by_severity:
             by_severity[severity_val] += 1
 
-        # Count by category (handle both enum and string)
-        category_val = review.category.value if hasattr(review.category, 'value') else review.category
-        if category_val in by_category:
+        # Count by category (handle both enum and string, and missing attributes)
+        if hasattr(review, "category") and review.category:
+            category_val = review.category.value if hasattr(review.category, 'value') else str(review.category)
+        else:
+            category_val = None
+
+        if category_val and category_val in by_category:
             by_category[category_val] += 1
 
     # Blocking issues are critical or high severity
@@ -2641,6 +2683,18 @@ async def get_project_code_reviews(
     # Convert CodeReview objects to dictionaries
     findings_data = []
     for review in reviews:
+        # Defensive handling for severity
+        if hasattr(review, "severity") and review.severity:
+            severity_val = review.severity.value if hasattr(review.severity, 'value') else str(review.severity)
+        else:
+            severity_val = "unknown"
+
+        # Defensive handling for category
+        if hasattr(review, "category") and review.category:
+            category_val = review.category.value if hasattr(review.category, 'value') else str(review.category)
+        else:
+            category_val = "unknown"
+
         findings_data.append({
             "id": review.id,
             "task_id": review.task_id,
@@ -2648,8 +2702,8 @@ async def get_project_code_reviews(
             "project_id": review.project_id,
             "file_path": review.file_path,
             "line_number": review.line_number,
-            "severity": review.severity.value if hasattr(review.severity, 'value') else review.severity,
-            "category": review.category.value if hasattr(review.category, 'value') else review.category,
+            "severity": severity_val,
+            "category": category_val,
             "message": review.message,
             "recommendation": review.recommendation,
             "code_snippet": review.code_snippet,

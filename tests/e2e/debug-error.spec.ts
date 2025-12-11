@@ -1,5 +1,9 @@
 /**
  * Debug test to capture browser console errors
+ *
+ * NOTE: This test is excluded from CI runs (see playwright.config.ts testIgnore).
+ * Use it locally to debug frontend issues:
+ *   npx playwright test debug-error.spec.ts
  */
 
 import { test } from '@playwright/test';

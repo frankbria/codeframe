@@ -35,8 +35,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     // Wait for dashboard header to be visible
     await page.locator('[data-testid="dashboard-header"]').waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
 
-    // Give React time to render all components
-    await page.waitForTimeout(1000);
+    // Wait for React hydration - agent panel is last to render
+    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
   });
 
   test('should display all main dashboard sections', async () => {
@@ -84,7 +84,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       await reviewTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
       if (await reviewTab.isVisible()) {
         await reviewTab.click();
-        await page.waitForTimeout(500);
+        // Wait for panel to become visible after tab switch
+        await reviewPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       }
     }
 
@@ -118,7 +119,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       await qualityTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
       if (await qualityTab.isVisible()) {
         await qualityTab.click();
-        await page.waitForTimeout(500);
+        // Wait for panel to become visible after tab switch
+        await qualityGatesPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       }
     }
 
@@ -158,7 +160,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       await checkpointTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
       if (await checkpointTab.isVisible()) {
         await checkpointTab.click();
-        await page.waitForTimeout(500);
+        // Wait for panel to become visible after tab switch
+        await checkpointPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       }
     }
 
@@ -186,7 +189,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       await metricsTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
       if (await metricsTab.isVisible()) {
         await metricsTab.click();
-        await page.waitForTimeout(500);
+        // Wait for panel to become visible after tab switch
+        await metricsPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       }
     }
 
@@ -223,8 +227,12 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       }
     });
 
-    // Wait a bit for potential messages
-    await page.waitForTimeout(2000);
+    // Wait for at least one WebSocket message (heartbeat or state update)
+    await page.waitForFunction(() => {
+      // Check if any WebSocket message was received via DOM updates
+      const agentPanel = document.querySelector('[data-testid="agent-status-panel"]');
+      return agentPanel && agentPanel.textContent && agentPanel.textContent.trim() !== '';
+    }, { timeout: 5000 }).catch(() => {});
 
     // We should have received at least one message (heartbeat, initial state, etc.)
     // Note: This assumes WebSocket sends periodic updates
@@ -243,18 +251,18 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     if (await overviewTab.isVisible() && await contextTab.isVisible()) {
       // Click Context tab
       await contextTab.click();
-      await page.waitForTimeout(500);
 
-      // Verify context panel is visible
+      // Wait for context panel to become visible after tab switch
       const contextPanel = page.locator('#context-panel');
+      await contextPanel.waitFor({ state: 'visible', timeout: 5000 });
       await expect(contextPanel).toBeVisible();
 
       // Click back to Overview tab
       await overviewTab.click();
-      await page.waitForTimeout(500);
 
-      // Verify overview panel is visible
+      // Wait for overview panel to become visible after tab switch
       const overviewPanel = page.locator('#overview-panel');
+      await overviewPanel.waitFor({ state: 'visible', timeout: 5000 });
       await expect(overviewPanel).toBeVisible();
     }
   });
@@ -268,8 +276,11 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       await statElement.waitFor({ state: 'attached', timeout: 15000 });
       await expect(statElement).toBeAttached();
 
-      // Wait for data to load
-      await page.waitForTimeout(500);
+      // Wait for data to load (stat element should have numeric content)
+      await page.waitForFunction((selector) => {
+        const el = document.querySelector(selector);
+        return el && el.textContent && /\d+/.test(el.textContent);
+      }, `[data-testid="${statId}"]`, { timeout: 5000 }).catch(() => {});
 
       // Stat should contain a number
       const text = await statElement.textContent();
@@ -312,10 +323,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     // Dashboard should still load
     await page.waitForLoadState('networkidle');
 
-    // Wait for React to rerender with new viewport
-    await page.waitForTimeout(1000);
-
-    // Main elements should be visible (may be stacked vertically)
+    // Wait for React to rerender with new viewport - header should be visible
     const header = page.locator('[data-testid="dashboard-header"]');
     await header.waitFor({ state: 'visible', timeout: 15000 });
     await expect(header).toBeVisible();

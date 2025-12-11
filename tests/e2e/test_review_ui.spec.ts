@@ -25,8 +25,8 @@ test.describe('Review Findings UI', () => {
       { timeout: 10000 }
     ).catch(() => {});
 
-    // Wait for dashboard to render
-    await page.waitForTimeout(1000);
+    // Wait for dashboard to render - agent panel is last to render
+    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
 
     // Review panel is visible on Overview tab (no separate review tab exists)
   });
@@ -46,7 +46,8 @@ test.describe('Review Findings UI', () => {
       const overviewTab = page.getByRole('tab', { name: 'Overview' });
       if (await overviewTab.isVisible()) {
         await overviewTab.click();
-        await page.waitForTimeout(500);
+        // Wait for review panel to become visible after tab switch
+        await reviewPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       }
     }
 
@@ -114,8 +115,11 @@ test.describe('Review Findings UI', () => {
       // Select "critical" filter
       await severityFilter.selectOption('critical');
 
-      // Wait for filter to apply
-      await page.waitForTimeout(500);
+      // Wait for findings list to update (either filtered results or empty state)
+      await Promise.race([
+        page.locator('[data-testid^="review-finding-"]').first().waitFor({ state: 'attached', timeout: 3000 }),
+        page.locator('[data-testid="no-findings"]').waitFor({ state: 'visible', timeout: 3000 })
+      ]).catch(() => {});
 
       // Only critical findings should be visible
       const findings = page.locator('[data-testid^="review-finding-"]');

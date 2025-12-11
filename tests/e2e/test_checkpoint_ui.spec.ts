@@ -30,7 +30,9 @@ test.describe('Checkpoint UI Workflow', () => {
     await checkpointTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
     if (await checkpointTab.isVisible()) {
       await checkpointTab.click();
-      await page.waitForTimeout(500); // Wait for tab switch animation
+      // Wait for checkpoint panel to become visible after tab switch
+      const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
+      await checkpointPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     }
   });
 
@@ -64,8 +66,11 @@ test.describe('Checkpoint UI Workflow', () => {
       { timeout: 10000 }
     ).catch(() => {});
 
-    // Wait for DOM to update
-    await page.waitForTimeout(500);
+    // Wait for DOM to update - either checkpoint items or empty state should be visible
+    await Promise.race([
+      page.locator('[data-testid^="checkpoint-item-"]').first().waitFor({ state: 'attached', timeout: 5000 }),
+      page.locator('[data-testid="checkpoint-empty-state"]').waitFor({ state: 'visible', timeout: 5000 })
+    ]).catch(() => {});
 
     // Check if checkpoints are displayed (or empty state)
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
@@ -164,11 +169,12 @@ test.describe('Checkpoint UI Workflow', () => {
       // Click to expand checkpoint details
       await firstCheckpoint.click();
 
-      // Diff preview should be visible
+      // Diff preview should be visible - wait for either diff or "no changes" message
       const diffPreview = firstCheckpoint.locator('[data-testid="checkpoint-diff"]');
-
-      // Diff might be async, wait a bit
-      await page.waitForTimeout(1000);
+      await Promise.race([
+        diffPreview.waitFor({ state: 'visible', timeout: 5000 }),
+        firstCheckpoint.locator('[data-testid="no-changes-message"]').waitFor({ state: 'visible', timeout: 5000 })
+      ]).catch(() => {});
 
       // Diff or "no changes" message should be visible
       const hasDiff = await diffPreview.count() > 0;

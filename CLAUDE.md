@@ -846,8 +846,7 @@ lsof -ti:8080 | xargs kill -9
 
 #### Backend health check timeout
 ```bash
-# Test backend manually
-cd /home/frankbria/projects/codeframe
+# Test backend manually (from project root)
 uv run uvicorn codeframe.ui.server:app --port 8080
 curl http://localhost:8080/health  # Should return {"status": "ok"}
 ```

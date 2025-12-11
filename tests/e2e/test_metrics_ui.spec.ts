@@ -25,15 +25,18 @@ test.describe('Metrics Dashboard UI', () => {
       { timeout: 10000 }
     ).catch(() => {});
 
-    // Wait for dashboard to render
-    await page.waitForTimeout(1000);
+    // Wait for dashboard to render - agent panel is last to render
+    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
 
     // Navigate to metrics section
     const metricsTab = page.locator('[data-testid="metrics-tab"]');
     await metricsTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
     if (await metricsTab.isVisible()) {
       await metricsTab.click();
-      await page.waitForTimeout(500); // Wait for tab switch animation
+
+      // Wait for metrics panel to become visible after tab switch
+      const metricsPanel = page.locator('[data-testid="metrics-panel"]');
+      await metricsPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
 
       // Wait for metrics API to load
       await page.waitForResponse(response =>
@@ -41,7 +44,8 @@ test.describe('Metrics Dashboard UI', () => {
         { timeout: 10000 }
       ).catch(() => {});
 
-      await page.waitForTimeout(500); // Wait for data rendering
+      // Wait for cost dashboard to be visible (indicates data has rendered)
+      await page.locator('[data-testid="cost-dashboard"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     }
   });
 
@@ -166,13 +170,13 @@ test.describe('Metrics Dashboard UI', () => {
       // Select "Last 7 days" filter
       await dateFilter.selectOption('last-7-days');
 
-      // Wait for filter to apply
-      await page.waitForTimeout(500);
+      // Wait for metrics API to respond with filtered data
+      await page.waitForResponse(response =>
+        response.url().includes('/metrics') && response.status() === 200,
+        { timeout: 5000 }
+      ).catch(() => {});
 
-      // Chart should update (verify by checking if loading indicator appeared and disappeared)
-      const loadingIndicator = page.locator('[data-testid="metrics-loading"]');
-
-      // Loading might be too fast to catch, so just verify chart is still visible
+      // Chart should still be visible after filtering
       const tokenChart = page.locator('[data-testid="token-usage-chart"]');
       await expect(tokenChart).toBeVisible();
     }
@@ -252,8 +256,17 @@ test.describe('Metrics Dashboard UI', () => {
 
     const initialCost = await totalCostDisplay.textContent();
 
-    // Wait for potential real-time update (WebSocket)
-    await page.waitForTimeout(3000);
+    // Monitor WebSocket for real-time updates
+    const wsPromise = page.waitForEvent('websocket', { timeout: 5000 }).catch(() => null);
+    const ws = await wsPromise;
+
+    if (ws) {
+      // Wait for a WebSocket frame (indicates real-time update capability)
+      await Promise.race([
+        new Promise(resolve => ws.on('framereceived', resolve)),
+        new Promise(resolve => setTimeout(resolve, 2000))
+      ]);
+    }
 
     // Cost might update via WebSocket (or stay the same if no new data)
     const updatedCost = await totalCostDisplay.textContent();
