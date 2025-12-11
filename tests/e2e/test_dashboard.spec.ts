@@ -9,6 +9,7 @@
  */
 
 import { test, expect, Page } from '@playwright/test';
+import { withOptionalWarning } from './test-utils';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
@@ -26,17 +27,26 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     // Wait for dashboard to load
     await page.waitForLoadState('networkidle');
 
-    // Wait for project API to respond
-    await page.waitForResponse(response =>
-      response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
-      { timeout: 10000 }
-    ).catch(() => {});
+    // Wait for project API to respond (optional - test continues if it times out)
+    await withOptionalWarning(
+      page.waitForResponse(response =>
+        response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
+        { timeout: 10000 }
+      ),
+      'project API response'
+    );
 
     // Wait for dashboard header to be visible
-    await page.locator('[data-testid="dashboard-header"]').waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    await withOptionalWarning(
+      page.locator('[data-testid="dashboard-header"]').waitFor({ state: 'visible', timeout: 15000 }),
+      'dashboard header visibility'
+    );
 
     // Wait for React hydration - agent panel is last to render
-    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+    await withOptionalWarning(
+      page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }),
+      'React hydration (agent panel)'
+    );
   });
 
   test('should display all main dashboard sections', async () => {

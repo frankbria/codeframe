@@ -841,7 +841,17 @@ async def health_check():
 
 #### Port 8080 already in use
 ```bash
-lsof -ti:8080 | xargs kill -9
+# Check what's using port 8080
+lsof -i:8080
+
+# If it's a CodeFrame server you want to stop:
+lsof -ti:8080 -c python | xargs kill
+
+# Only use kill -9 as last resort (kills ALL processes on port)
+# lsof -ti:8080 | xargs kill -9  # ⚠️  Use with caution
+
+# Alternative: Let Playwright reuse the existing server
+# (enabled by default via reuseExistingServer: true in playwright.config.ts)
 ```
 
 #### Backend health check timeout
@@ -853,12 +863,12 @@ curl http://localhost:8080/health  # Should return {"status": "ok"}
 
 #### Database seeding errors
 ```bash
-# Remove test databases
+# Remove test databases if needed (rarely necessary)
 rm -f tests/e2e/fixtures/*/test_state.db
 rm -f .codeframe/test_state.db
 
-# UNIQUE constraint warnings are EXPECTED and harmless
-# Example: "UNIQUE constraint failed: projects.id"
+# Note: Database seeding uses INSERT OR REPLACE to avoid conflicts
+# UNIQUE constraint warnings should NOT occur (if they do, report as bug)
 ```
 
 #### Frontend server timeout
