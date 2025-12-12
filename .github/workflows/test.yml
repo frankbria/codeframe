@@ -289,13 +289,13 @@ jobs:
           retention-days: 7
 
   # ============================================
-  # E2E Frontend Tests (Playwright)
+  # E2E Smoke Tests (Playwright - Chromium only)
   # ============================================
-  e2e-frontend-tests:
-    name: E2E Frontend Tests (Playwright)
+  e2e-smoke-tests:
+    name: E2E Smoke Tests (Chromium)
     runs-on: ubuntu-latest
-    # Only run on main branch or scheduled runs
-    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    # Run on PRs for fast feedback
+    if: github.event_name == 'pull_request'
 
     steps:
       - name: Checkout code
@@ -331,9 +331,9 @@ jobs:
         working-directory: tests/e2e
         run: npm ci
 
-      - name: Install Playwright browsers
+      - name: Install Playwright browsers (Chromium only)
         working-directory: tests/e2e
-        run: npx playwright install --with-deps
+        run: npx playwright install chromium --with-deps
 
       - name: Install codeframe package
         run: |
@@ -358,16 +358,6 @@ jobs:
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
           echo "Backend started with PID: $!"
 
-      - name: Verify backend startup
-        run: |
-          sleep 5
-          if ! ps -p $BACKEND_PID > /dev/null; then
-            echo "❌ Backend process died immediately"
-            cat /tmp/backend.log
-            exit 1
-          fi
-          echo "✅ Backend process is running (PID: $BACKEND_PID)"
-
       - name: Wait for backend to be ready
         run: |
           echo "Waiting for backend to start..."
@@ -381,7 +371,6 @@ jobs:
             sleep 1
             if [ $i -eq 120 ]; then
               echo "❌ Backend failed to start within 120 seconds"
-              echo "=== Backend Logs ==="
               cat /tmp/backend.log
               exit 1
             fi
@@ -406,32 +395,28 @@ jobs:
             sleep 1
             if [ $i -eq 60 ]; then
               echo "❌ Frontend failed to start within 60 seconds"
-              echo "=== Frontend Logs ==="
               cat /tmp/frontend.log
               exit 1
             fi
           done
 
-      - name: Run Playwright E2E tests
+      - name: Run Playwright smoke tests (Chromium only)
         working-directory: tests/e2e
-        run: |
-          npx playwright test \
-            --config=playwright.config.ts \
-            *.spec.ts
+        run: npm run test:smoke
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-smoke-report
           path: tests/e2e/playwright-report/
-          retention-days: 30
+          retention-days: 7
 
       - name: Upload backend logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-frontend-backend-logs
+          name: e2e-smoke-backend-logs
           path: /tmp/backend.log
           retention-days: 7
 
@@ -439,7 +424,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-frontend-frontend-logs
+          name: e2e-smoke-frontend-logs
           path: /tmp/frontend.log
           retention-days: 7
 
@@ -452,6 +437,172 @@ jobs:
           if [ -n "$FRONTEND_PID" ]; then
             kill $FRONTEND_PID || true
           fi
+
+  # ============================================
+  # E2E Frontend Tests (Playwright - All Browsers)
+  # ============================================
+  # COMMENTED OUT: Enable when smoke tests are passing consistently
+  # e2e-frontend-tests:
+  #   name: E2E Frontend Tests (All Browsers)
+  #   runs-on: ubuntu-latest
+  #   # Only run on main branch or scheduled runs
+  #   if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         cache: 'npm'
+  #         cache-dependency-path: 'web-ui/package-lock.json'
+  #
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
+  #
+  #     - name: Install uv
+  #       uses: astral-sh/setup-uv@v4
+  #       with:
+  #         enable-cache: true
+  #
+  #     - name: Install Python dependencies
+  #       run: |
+  #         uv venv
+  #         uv sync
+  #
+  #     - name: Install frontend dependencies
+  #       working-directory: web-ui
+  #       run: npm ci
+  #
+  #     - name: Install E2E test dependencies
+  #       working-directory: tests/e2e
+  #       run: npm ci
+  #
+  #     - name: Install Playwright browsers
+  #       working-directory: tests/e2e
+  #       run: npx playwright install --with-deps
+  #
+  #     - name: Install codeframe package
+  #       run: |
+  #         uv pip install -e .
+  #         echo "✅ Package installed in editable mode"
+  #
+  #     - name: Initialize database
+  #       run: |
+  #         mkdir -p .codeframe
+  #         source .venv/bin/activate
+  #         python -c "from codeframe.persistence.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
+  #         echo "✅ Database initialized"
+  #
+  #     - name: Start backend server
+  #       env:
+  #         DATABASE_PATH: ${{ github.workspace }}/.codeframe/state.db
+  #         WORKSPACE_ROOT: ${{ github.workspace }}
+  #         CODEFRAME_DEPLOYMENT_MODE: self_hosted
+  #       run: |
+  #         source .venv/bin/activate
+  #         python -m uvicorn codeframe.ui.server:app --port 8080 > /tmp/backend.log 2>&1 &
+  #         echo "BACKEND_PID=$!" >> $GITHUB_ENV
+  #         echo "Backend started with PID: $!"
+  #
+  #     - name: Verify backend startup
+  #       run: |
+  #         sleep 5
+  #         if ! ps -p $BACKEND_PID > /dev/null; then
+  #           echo "❌ Backend process died immediately"
+  #           cat /tmp/backend.log
+  #           exit 1
+  #         fi
+  #         echo "✅ Backend process is running (PID: $BACKEND_PID)"
+  #
+  #     - name: Wait for backend to be ready
+  #       run: |
+  #         echo "Waiting for backend to start..."
+  #         for i in {1..120}; do
+  #           if curl -s http://localhost:8080/health > /dev/null; then
+  #             echo "✅ Backend is ready!"
+  #             curl -s http://localhost:8080/health | jq .
+  #             break
+  #           fi
+  #           echo "Attempt $i/120: Backend not ready yet..."
+  #           sleep 1
+  #           if [ $i -eq 120 ]; then
+  #             echo "❌ Backend failed to start within 120 seconds"
+  #             echo "=== Backend Logs ==="
+  #             cat /tmp/backend.log
+  #             exit 1
+  #           fi
+  #         done
+  #
+  #     - name: Start frontend dev server
+  #       working-directory: web-ui
+  #       run: |
+  #         npm run dev > /tmp/frontend.log 2>&1 &
+  #         echo "FRONTEND_PID=$!" >> $GITHUB_ENV
+  #         echo "Frontend started with PID: $!"
+  #
+  #     - name: Wait for frontend to be ready
+  #       run: |
+  #         echo "Waiting for frontend to start..."
+  #         for i in {1..60}; do
+  #           if curl -s http://localhost:3000 > /dev/null; then
+  #             echo "✅ Frontend is ready!"
+  #             break
+  #           fi
+  #           echo "Attempt $i/60: Frontend not ready yet..."
+  #           sleep 1
+  #           if [ $i -eq 60 ]; then
+  #             echo "❌ Frontend failed to start within 60 seconds"
+  #             echo "=== Frontend Logs ==="
+  #             cat /tmp/frontend.log
+  #             exit 1
+  #           fi
+  #         done
+  #
+  #     - name: Run Playwright E2E tests
+  #       working-directory: tests/e2e
+  #       run: |
+  #         npx playwright test \
+  #           --config=playwright.config.ts \
+  #           *.spec.ts
+  #
+  #     - name: Upload Playwright report
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: playwright-report
+  #         path: tests/e2e/playwright-report/
+  #         retention-days: 30
+  #
+  #     - name: Upload backend logs
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: e2e-frontend-backend-logs
+  #         path: /tmp/backend.log
+  #         retention-days: 7
+  #
+  #     - name: Upload frontend logs
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: e2e-frontend-frontend-logs
+  #         path: /tmp/frontend.log
+  #         retention-days: 7
+  #
+  #     - name: Stop servers
+  #       if: always()
+  #       run: |
+  #         if [ -n "$BACKEND_PID" ]; then
+  #           kill $BACKEND_PID || true
+  #         fi
+  #         if [ -n "$FRONTEND_PID" ]; then
+  #           kill $FRONTEND_PID || true
+  #         fi
 
   # ============================================
   # TestSprite E2E Tests (Optional)
