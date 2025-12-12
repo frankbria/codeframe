@@ -4,9 +4,9 @@ This module provides business logic for managing code review operations
 and caching review results.
 """
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from codeframe.persistence.database import Database
 
@@ -35,7 +35,7 @@ class ReviewService:
         """
         self.review_cache[task_id] = {
             **review_data,
-            "cached_at": datetime.utcnow().isoformat(),
+            "cached_at": datetime.now(timezone.utc).isoformat(),
         }
         logger.debug(f"Cached review for task {task_id}")
 
