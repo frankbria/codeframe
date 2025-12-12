@@ -15,7 +15,6 @@ Sprint 10 - Phase 4: Checkpoint API endpoints (T092-T097):
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from pathlib import Path
-from typing import Optional
 import logging
 import re
 import subprocess
