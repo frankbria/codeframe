@@ -5,6 +5,7 @@ such as starting, stopping, pausing, and resuming agents.
 """
 
 from typing import Dict, Optional
+import asyncio
 import logging
 
 from codeframe.agents.lead_agent import LeadAgent
@@ -36,18 +37,27 @@ class AgentService:
         Returns:
             True if agent was stopped, False if no agent was running
         """
-        if project_id in self.running_agents:
-            # Remove agent from tracking
-            del self.running_agents[project_id]
+        if project_id not in self.running_agents:
+            logger.warning(f"No running agent found for project {project_id}")
+            return False
 
-            # Update project status
-            self.db.update_project(project_id, {"status": ProjectStatus.STOPPED})
+        try:
+            # Update project status first (atomic persistence)
+            await asyncio.to_thread(
+                self.db.update_project,
+                project_id,
+                {"status": ProjectStatus.STOPPED.value}
+            )
+
+            # Remove agent from tracking after status is persisted
+            self.running_agents.pop(project_id, None)
 
             logger.info(f"Stopped agent for project {project_id}")
             return True
 
-        logger.warning(f"No running agent found for project {project_id}")
-        return False
+        except Exception as e:
+            logger.error(f"Failed to stop agent for project {project_id}: {e}", exc_info=True)
+            return False
 
     async def pause_agent(self, project_id: int) -> bool:
         """Pause a running agent without stopping it.
@@ -58,15 +68,24 @@ class AgentService:
         Returns:
             True if agent was paused, False if no agent was running
         """
-        if project_id in self.running_agents:
+        if project_id not in self.running_agents:
+            logger.warning(f"No running agent found for project {project_id}")
+            return False
+
+        try:
             # Update project status to PAUSED
-            self.db.update_project(project_id, {"status": ProjectStatus.PAUSED})
+            await asyncio.to_thread(
+                self.db.update_project,
+                project_id,
+                {"status": ProjectStatus.PAUSED.value}
+            )
 
             logger.info(f"Paused agent for project {project_id}")
             return True
 
-        logger.warning(f"No running agent found for project {project_id}")
-        return False
+        except Exception as e:
+            logger.error(f"Failed to pause agent for project {project_id}: {e}", exc_info=True)
+            return False
 
     async def resume_agent(self, project_id: int) -> bool:
         """Resume a paused agent.
@@ -77,15 +96,24 @@ class AgentService:
         Returns:
             True if agent was resumed, False if no agent was found
         """
-        if project_id in self.running_agents:
+        if project_id not in self.running_agents:
+            logger.warning(f"No running agent found for project {project_id}")
+            return False
+
+        try:
             # Update project status back to RUNNING
-            self.db.update_project(project_id, {"status": ProjectStatus.RUNNING})
+            await asyncio.to_thread(
+                self.db.update_project,
+                project_id,
+                {"status": ProjectStatus.RUNNING.value}
+            )
 
             logger.info(f"Resumed agent for project {project_id}")
             return True
 
-        logger.warning(f"No running agent found for project {project_id}")
-        return False
+        except Exception as e:
+            logger.error(f"Failed to resume agent for project {project_id}: {e}", exc_info=True)
+            return False
 
     def get_running_agent(self, project_id: int) -> Optional[LeadAgent]:
         """Get the running agent for a project.
