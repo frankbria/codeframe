@@ -15,6 +15,7 @@ Sprint 10 - Phase 4: Checkpoint API endpoints (T092-T097):
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from pathlib import Path
+from datetime import datetime, UTC
 import logging
 import re
 import subprocess
@@ -26,6 +27,7 @@ from codeframe.ui.models import (
     RestoreCheckpointRequest,
 )
 from codeframe.ui.dependencies import get_db
+from codeframe.ui.shared import manager
 from codeframe.persistence.database import Database
 from codeframe.lib.checkpoint_manager import CheckpointManager
 
@@ -200,6 +202,19 @@ async def create_checkpoint(
 
         logger.info(f"Created checkpoint {checkpoint.id} for project {project_id}: {checkpoint.name}")
 
+        # Broadcast checkpoint created event
+        try:
+            await manager.broadcast({
+                "type": "checkpoint_created",
+                "project_id": project_id,
+                "checkpoint_id": checkpoint.id,
+                "checkpoint_name": checkpoint.name,
+                "trigger": checkpoint.trigger,
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"Failed to broadcast checkpoint_created event: {e}")
+
         # Return checkpoint response
         return CheckpointResponse(
             id=checkpoint.id,
@@ -363,6 +378,17 @@ async def delete_checkpoint(
 
         logger.info(f"Deleted checkpoint {checkpoint_id} for project {project_id}")
 
+        # Broadcast checkpoint deleted event
+        try:
+            await manager.broadcast({
+                "type": "checkpoint_deleted",
+                "project_id": project_id,
+                "checkpoint_id": checkpoint_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+        except Exception as e:
+            logger.warning(f"Failed to broadcast checkpoint_deleted event: {e}")
+
         # Return 204 No Content
         return None
 
@@ -466,6 +492,21 @@ async def restore_checkpoint(
 
         if request.confirm_restore:
             logger.info(f"Restored checkpoint {checkpoint_id} for project {project_id}")
+
+            # Broadcast checkpoint restored event
+            try:
+                await manager.broadcast({
+                    "type": "checkpoint_restored",
+                    "project_id": project_id,
+                    "checkpoint_id": checkpoint_id,
+                    "checkpoint_name": checkpoint.name,
+                    "git_commit": result.get("git_commit"),
+                    "files_changed": result.get("files_changed", 0),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+            except Exception as e:
+                logger.warning(f"Failed to broadcast checkpoint_restored event: {e}")
+
             # Return 202 Accepted for successful restore
             return result
         else:
