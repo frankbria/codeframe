@@ -8,6 +8,7 @@ Endpoints:
     - GET /api/projects/{project_id}/chat/history - Get chat history
 """
 
+import asyncio
 from datetime import datetime, UTC
 from typing import Dict
 
@@ -65,8 +66,8 @@ async def chat_with_lead(
         )
 
     try:
-        # Send message to Lead Agent
-        response_text = agent.chat(user_message)
+        # Send message to Lead Agent (run in thread to avoid blocking event loop)
+        response_text = await asyncio.to_thread(agent.chat, user_message)
 
         # Get current timestamp
         timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
