@@ -7,6 +7,7 @@ preventing circular import issues.
 from typing import Dict, List, Optional, Any
 from fastapi import WebSocket
 import asyncio
+import time
 
 from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
@@ -122,29 +123,44 @@ async def start_agent(
         api_key: Anthropic API key for Lead Agent
 
     This function:
+    - Checks for existing running agent (thread-safe)
     - Creates LeadAgent instance
+    - Atomically stores in both shared_state and agents_dict
     - Updates project status to RUNNING
     - Saves greeting message to database
     - Broadcasts status updates via WebSocket
+
+    Raises:
+        ValueError: If agent is already running for this project
     """
-    try:
-        # cf-10.1: Create Lead Agent instance
+    # Acquire lock before checking/creating agent to prevent race conditions
+    async with shared_state._agents_lock:
+        # Check if agent already exists in shared_state
+        existing_agent = shared_state._running_agents.get(project_id)
+        if existing_agent is not None:
+            raise ValueError(f"Agent already running for project {project_id}")
+
+        # Create Lead Agent instance (only after checking no existing agent)
         agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
 
-        # cf-10.1: Store agent reference
+        # Atomically store agent in both shared_state and agents_dict
+        # while still holding the lock
+        shared_state._running_agents[project_id] = agent
         agents_dict[project_id] = agent
 
-        # cf-10.1: Update project status to RUNNING
+    # Lock released - now safe to do I/O operations
+    try:
+        # Update project status to RUNNING
         db.update_project(project_id, {"status": ProjectStatus.RUNNING})
 
-        # cf-10.4: Broadcast agent_started message
+        # Broadcast agent_started message
         try:
             await manager.broadcast(
                 {
                     "type": "agent_started",
                     "project_id": project_id,
                     "agent_type": "lead",
-                    "timestamp": asyncio.get_event_loop().time(),
+                    "timestamp": time.time(),  # Wall-clock timestamp (seconds since epoch)
                 }
             )
         except Exception:
