@@ -4,7 +4,7 @@ This module contains shared state that multiple routers need access to,
 preventing circular import issues.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from fastapi import WebSocket
 import asyncio
 import time
