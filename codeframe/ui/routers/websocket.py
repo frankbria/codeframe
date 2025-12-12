@@ -48,7 +48,23 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # Keep connection alive and handle incoming messages
             data = await websocket.receive_text()
-            message = json.loads(data)
+
+            # Parse JSON with error handling
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError as e:
+                # Malformed JSON - log warning and send error response to client
+                logger.warning(f"Malformed JSON from WebSocket client: {e}")
+                try:
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Invalid JSON format",
+                        "details": str(e)
+                    })
+                except Exception:
+                    # If we can't send error response, just continue
+                    pass
+                continue  # Skip this message and continue receiving
 
             # Handle different message types
             if message.get("type") == "ping":
