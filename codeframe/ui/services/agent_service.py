@@ -41,7 +41,7 @@ class AgentService:
             del self.running_agents[project_id]
 
             # Update project status
-            self.db.update_project(project_id, {"status": ProjectStatus.PAUSED})
+            self.db.update_project(project_id, {"status": ProjectStatus.STOPPED})
 
             logger.info(f"Stopped agent for project {project_id}")
             return True
