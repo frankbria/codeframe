@@ -18,6 +18,7 @@ import pytest
 from unittest.mock import Mock, patch, AsyncMock
 
 from codeframe.core.models import AgentMaturity
+from codeframe.ui.shared import running_agents
 
 
 def get_app():
@@ -63,19 +64,18 @@ class TestChatEndpoint:
         user_message = "Hello, I want to build a web app"
 
         # Import the server module to access running_agents
-        from codeframe.ui import server
 
         # Mock Lead Agent
         mock_agent = Mock()
         mock_agent.chat.return_value = "Hi! Let's discuss your project. What features do you need?"
 
         # Add mock agent to running_agents dictionary
-        server.running_agents[test_project] = mock_agent
+        running_agents[test_project] = mock_agent
 
         try:
             # Mock WebSocket broadcast
             with patch(
-                "codeframe.ui.server.manager.broadcast", new_callable=AsyncMock
+                "codeframe.ui.shared.manager.broadcast", new_callable=AsyncMock
             ) as mock_broadcast:
                 # Act
                 response = api_client.post(
@@ -100,7 +100,7 @@ class TestChatEndpoint:
                 assert mock_broadcast.called
         finally:
             # Clean up
-            server.running_agents.pop(test_project, None)
+            running_agents.pop(test_project, None)
 
     def test_send_message_empty_validation(self, api_client, test_project):
         """
@@ -143,7 +143,7 @@ class TestChatEndpoint:
         RED Test: Handle agent communication failure with 500
         """
         # Arrange
-        with patch("codeframe.ui.server.running_agents") as mock_agents:
+        with patch("codeframe.ui.routers.chat.running_agents") as mock_agents:
             mock_agent = Mock()
             mock_agent.chat.side_effect = Exception("API connection failed")
             mock_agents.get.return_value = mock_agent
@@ -270,18 +270,17 @@ class TestChatWebSocketIntegration:
         RED Test: Verify chat message broadcasts via WebSocket
         """
         # Arrange
-        from codeframe.ui import server
 
         # Mock Lead Agent
         mock_agent = Mock()
         mock_agent.chat.return_value = "AI response"
 
         # Add mock agent to running_agents dictionary
-        server.running_agents[test_project] = mock_agent
+        running_agents[test_project] = mock_agent
 
         try:
             with patch(
-                "codeframe.ui.server.manager.broadcast", new_callable=AsyncMock
+                "codeframe.ui.shared.manager.broadcast", new_callable=AsyncMock
             ) as mock_broadcast:
                 # Act
                 response = api_client.post(
@@ -304,7 +303,7 @@ class TestChatWebSocketIntegration:
                 assert "content" in broadcast_message
         finally:
             # Clean up
-            server.running_agents.pop(test_project, None)
+            running_agents.pop(test_project, None)
 
     @pytest.mark.asyncio
     async def test_chat_continues_when_broadcast_fails(self, api_client, test_project):
@@ -314,16 +313,15 @@ class TestChatWebSocketIntegration:
         Covers edge case where broadcast exception is caught and ignored (line 512-514)
         """
         # Arrange
-        from codeframe.ui import server
 
         mock_agent = Mock()
         mock_agent.chat.return_value = "Response despite broadcast failure"
-        server.running_agents[test_project] = mock_agent
+        running_agents[test_project] = mock_agent
 
         try:
             # Mock broadcast to raise exception
             with patch(
-                "codeframe.ui.server.manager.broadcast", new_callable=AsyncMock
+                "codeframe.ui.shared.manager.broadcast", new_callable=AsyncMock
             ) as mock_broadcast:
                 mock_broadcast.side_effect = Exception("WebSocket connection lost")
 
@@ -341,4 +339,4 @@ class TestChatWebSocketIntegration:
                 # Verify broadcast was attempted
                 assert mock_broadcast.called
         finally:
-            server.running_agents.pop(test_project, None)
+            running_agents.pop(test_project, None)

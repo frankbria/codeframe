@@ -48,6 +48,7 @@ dependencies = [
     "pytest>=8.4.2",
     "ruff>=0.14.0",
     "pytest-asyncio>=1.2.0",
+    "pytest-json-report>=1.5.0",
 ]
 
 [project.optional-dependencies]

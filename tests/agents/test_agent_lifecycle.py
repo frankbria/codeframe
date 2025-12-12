@@ -31,6 +31,26 @@ from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
 
 
+@pytest.fixture(autouse=True)
+def clear_shared_state():
+    """Clear shared_state before each test to prevent state leakage.
+
+    Since shared_state uses global dictionaries that persist across tests,
+    we need to clear them before each test to ensure test isolation.
+    """
+    from codeframe.ui.shared import shared_state
+
+    # Clear before test
+    shared_state._running_agents.clear()
+    shared_state._review_cache.clear()
+
+    yield
+
+    # Clear after test
+    shared_state._running_agents.clear()
+    shared_state._review_cache.clear()
+
+
 @pytest.fixture
 def temp_db_for_lifecycle(tmp_path):
     """Create temporary database for lifecycle tests."""
@@ -123,7 +143,7 @@ class TestStartAgentEndpoint:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
         # ACT
-        with patch("codeframe.ui.server.start_agent") as mock_start_agent:
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
             response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
@@ -164,7 +184,7 @@ class TestStartAgentEndpoint:
         db.update_project(project_id, {"status": ProjectStatus.RUNNING})
 
         # ACT
-        with patch("codeframe.ui.server.start_agent") as mock_start_agent:
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
             response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
@@ -187,12 +207,8 @@ class TestStartAgentEndpoint:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
         # ACT
-        with patch("codeframe.ui.server.BackgroundTasks") as mock_bg_tasks:
-            mock_bg_instance = Mock()
-            mock_bg_tasks.return_value = mock_bg_instance
-
-            with patch("codeframe.ui.server.start_agent"):
-                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
+        with patch("codeframe.ui.routers.agents.start_agent"):
+            response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
         assert response.status_code == 202
@@ -215,11 +231,11 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent") as mock_lead_agent_class:
+        with patch("codeframe.ui.shared.LeadAgent") as mock_lead_agent_class:
             mock_agent = Mock()
             mock_lead_agent_class.return_value = mock_agent
 
-            from codeframe.ui.server import start_agent
+            from codeframe.ui.shared import start_agent
 
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -238,8 +254,8 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            from codeframe.ui.shared import start_agent
 
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -259,8 +275,8 @@ class TestStartAgentFunction:
         expected_greeting = "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            from codeframe.ui.shared import start_agent
 
             await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -281,9 +297,9 @@ class TestStartAgentFunction:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            with patch("codeframe.ui.server.manager.broadcast") as mock_broadcast:
-                from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            with patch("codeframe.ui.shared.manager.broadcast") as mock_broadcast:
+                from codeframe.ui.shared import start_agent
 
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")
 
@@ -398,8 +414,8 @@ class TestAgentLifecycleIntegration:
         assert len(initial_conversation) == 0
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent") as mock_lead_agent_class:
-            with patch("codeframe.ui.server.manager.broadcast") as mock_broadcast:
+        with patch("codeframe.ui.shared.LeadAgent") as mock_lead_agent_class:
+            with patch("codeframe.ui.shared.manager.broadcast") as mock_broadcast:
                 # Mock LeadAgent
                 mock_agent = Mock()
                 mock_lead_agent_class.return_value = mock_agent
@@ -515,8 +531,8 @@ class TestAgentLifecycleErrorHandling:
         running_agents = {}
 
         # ACT & ASSERT
-        with patch("codeframe.ui.server.LeadAgent", side_effect=ValueError("Missing API key")):
-            from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent", side_effect=ValueError("Missing API key")):
+            from codeframe.ui.shared import start_agent
 
             with pytest.raises(ValueError):
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, None)
@@ -529,9 +545,9 @@ class TestAgentLifecycleErrorHandling:
         running_agents = {}
 
         # ACT
-        with patch("codeframe.ui.server.LeadAgent"):
-            with patch("codeframe.ui.server.manager.broadcast", side_effect=Exception("WS Error")):
-                from codeframe.ui.server import start_agent
+        with patch("codeframe.ui.shared.LeadAgent"):
+            with patch("codeframe.ui.shared.manager.broadcast", side_effect=Exception("WS Error")):
+                from codeframe.ui.shared import start_agent
 
                 # Should not raise exception
                 await start_agent(project_id, temp_db_for_lifecycle, running_agents, "test-api-key")

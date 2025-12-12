@@ -35,6 +35,7 @@ class ProjectStatus(Enum):
     RUNNING = "running"  # cf-10: Agent actively working on project
     ACTIVE = "active"
     PAUSED = "paused"
+    STOPPED = "stopped"  # Agent terminated, project not active
     COMPLETED = "completed"
 
 

@@ -46,7 +46,8 @@ def client(db):
     server.app.state.db = db
 
     # Clear review cache before each test
-    server.review_cache.clear()
+    from codeframe.ui.shared import review_cache
+    review_cache.clear()
 
     yield TestClient(server.app)
 

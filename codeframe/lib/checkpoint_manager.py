@@ -447,17 +447,53 @@ class CheckpointManager:
             total_cost_usd=total_cost_usd
         )
 
+    def _validate_path_safety(self, file_path: Path) -> bool:
+        """Validate that a path is within the checkpoints directory.
+
+        Prevents path traversal attacks by ensuring file paths resolve
+        to locations within the expected checkpoints directory.
+
+        Args:
+            file_path: Path to validate
+
+        Returns:
+            True if path is safe (within checkpoints_dir), False otherwise
+        """
+        try:
+            # Resolve both paths to absolute, canonical forms
+            resolved_path = file_path.resolve()
+            checkpoints_base = self.checkpoints_dir.resolve()
+
+            # Check if resolved path is relative to checkpoints directory
+            return resolved_path.is_relative_to(checkpoints_base)
+        except (ValueError, RuntimeError):
+            # is_relative_to() raises ValueError if paths are on different drives
+            return False
+
     def _validate_checkpoint(self, checkpoint: Checkpoint) -> bool:
-        """Check if all checkpoint files exist.
+        """Check if all checkpoint files exist and paths are safe.
 
         Args:
             checkpoint: Checkpoint to validate
 
         Returns:
-            True if all files exist, False otherwise
+            True if all files exist and paths are safe, False otherwise
+
+        Raises:
+            ValueError: If paths are outside checkpoints directory (path traversal)
         """
         db_path = Path(checkpoint.database_backup_path)
         context_path = Path(checkpoint.context_snapshot_path)
+
+        # Validate paths are within checkpoints directory (prevent traversal)
+        if not self._validate_path_safety(db_path):
+            raise ValueError(
+                f"Database backup path outside checkpoints directory: {db_path}"
+            )
+        if not self._validate_path_safety(context_path):
+            raise ValueError(
+                f"Context snapshot path outside checkpoints directory: {context_path}"
+            )
 
         db_exists = db_path.exists()
         context_exists = context_path.exists()
