@@ -1,5 +1,7 @@
 """Integration tests for server access and lifecycle."""
 
+import os
+import signal
 import subprocess
 import time
 from typing import Optional
@@ -14,14 +16,21 @@ class TestServerAccess:
     @pytest.fixture
     def test_port(self) -> int:
         """Use a unique test port to avoid conflicts."""
-        return 9999
+        import socket
+
+        # Find an available port dynamically
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))  # Bind to port 0 to get a random available port
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = s.getsockname()[1]
+        return port
 
     @pytest.fixture
     def server_process(self, test_port: int):
         """Start server process for testing, clean up after."""
         process: Optional[subprocess.Popen] = None
         try:
-            # Start server in subprocess
+            # Start server in subprocess with new process session
             process = subprocess.Popen(
                 [
                     "uv",
@@ -34,10 +43,20 @@ class TestServerAccess:
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                start_new_session=True,  # Create new process session for proper cleanup
             )
 
             # Wait for server to start (max 5 seconds)
             for _ in range(50):
+                # Check if process crashed during startup
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate()
+                    raise RuntimeError(
+                        f"Server process exited with code {process.returncode}\n"
+                        f"stderr: {stderr.decode() if stderr else 'N/A'}\n"
+                        f"stdout: {stdout.decode() if stdout else 'N/A'}"
+                    )
+
                 try:
                     response = requests.get(f"http://localhost:{test_port}", timeout=1)
                     if response.status_code == 200:
@@ -49,26 +68,34 @@ class TestServerAccess:
             yield process
 
         finally:
-            # Clean up: terminate server process and all child processes
+            # Clean up: terminate entire process group (parent + all children)
             if process:
-                # Try graceful termination first
-                process.terminate()
                 try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    # Force kill if graceful termination didn't work
-                    process.kill()
-                    process.wait()
+                    # Kill entire process group (parent + all children)
+                    pgid = os.getpgid(process.pid)
+                    os.killpg(pgid, signal.SIGTERM)
 
-                # Additional cleanup: kill any remaining uvicorn processes on test port
+                    # Wait for graceful shutdown
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if graceful shutdown failed
+                        os.killpg(pgid, signal.SIGKILL)
+                        process.wait()
+
+                except (ProcessLookupError, PermissionError, OSError):
+                    # Process already dead or no permission
+                    pass
+
+                # Fallback: ensure no uvicorn processes remain on test port
                 try:
                     subprocess.run(
-                        ["pkill", "-f", f"uvicorn.*{test_port}"],
+                        ["pkill", "-9", "-f", f"uvicorn.*{test_port}"],
                         timeout=1,
                         capture_output=True,
                     )
                 except Exception:
-                    pass  # Ignore cleanup errors
+                    pass  # Best effort cleanup
 
     def test_dashboard_accessible_after_serve(
         self, server_process: subprocess.Popen, test_port: int
@@ -100,26 +127,31 @@ class TestServerAccess:
         response = requests.get(f"http://localhost:{test_port}", timeout=5)
         assert response.status_code == 200
 
-        # Stop server (send SIGTERM)
-        server_process.terminate()
-        server_process.wait(timeout=5)
+        # Stop server (kill entire process group)
+        try:
+            pgid = os.getpgid(server_process.pid)
+            os.killpg(pgid, signal.SIGTERM)
+            server_process.wait(timeout=5)
+        except (ProcessLookupError, OSError):
+            pass  # Process already dead
 
         # Verify server stopped
         assert server_process.poll() is not None, "Server should have stopped"
 
-        # Kill any remaining uvicorn child processes
+        # Fallback cleanup: ensure no uvicorn processes remain
         subprocess.run(
-            ["pkill", "-f", f"uvicorn.*{test_port}"], capture_output=True, timeout=1
+            ["pkill", "-9", "-f", f"uvicorn.*{test_port}"], capture_output=True, timeout=1
         )
 
-        # Verify server no longer responding (wait up to 2 seconds for port to release)
-        time.sleep(1)
-        max_attempts = 5
+        # Verify server no longer responding (exponential backoff)
+        max_attempts = 10
+        backoff = 0.1
         for attempt in range(max_attempts):
             try:
                 requests.get(f"http://localhost:{test_port}", timeout=0.5)
                 if attempt < max_attempts - 1:
-                    time.sleep(0.2)  # Wait a bit more
+                    time.sleep(backoff)
+                    backoff *= 2  # Exponential backoff (0.1s → 0.2s → 0.4s → 0.8s → 1.6s)
                 else:
                     pytest.fail("Server still responding after termination")
             except requests.ConnectionError:
