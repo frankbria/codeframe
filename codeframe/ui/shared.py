@@ -157,8 +157,12 @@ async def start_agent(
 
     # Lock released - now safe to do I/O operations
     try:
-        # Update project status to RUNNING
-        db.update_project(project_id, {"status": ProjectStatus.RUNNING})
+        # Update project status to RUNNING (non-blocking)
+        await asyncio.to_thread(
+            db.update_project,
+            project_id,
+            {"status": ProjectStatus.RUNNING}
+        )
 
         # Broadcast agent_started message
         try:
@@ -185,9 +189,13 @@ async def start_agent(
         # cf-10.3: Send greeting message
         greeting = "Hi! I'm your Lead Agent. I'm here to help build your project. What would you like to create?"
 
-        # cf-10.3: Save greeting to database
-        db.create_memory(
-            project_id=project_id, category="conversation", key="assistant", value=greeting
+        # cf-10.3: Save greeting to database (non-blocking)
+        await asyncio.to_thread(
+            db.create_memory,
+            project_id=project_id,
+            category="conversation",
+            key="assistant",
+            value=greeting
         )
 
         # cf-10.4: Broadcast greeting via WebSocket
@@ -204,5 +212,10 @@ async def start_agent(
             pass
 
     except Exception:
-        # Log error but let it propagate
+        # Cleanup: Remove agent from dictionaries if initialization failed
+        # This prevents inconsistent state where agent exists but isn't fully initialized
+        async with shared_state._agents_lock:
+            shared_state._running_agents.pop(project_id, None)
+            if agents_dict is not shared_state._running_agents:
+                agents_dict.pop(project_id, None)
         raise
