@@ -185,9 +185,16 @@ async def trigger_quality_gates(
     # Determine which gates to run
     gates_to_run = gate_types if gate_types else ["all"]
 
+    # Capture db_path for background task (don't capture request-scoped db instance)
+    db_path = db.db_path
+
     # Background task to run quality gates
     async def run_quality_gates():
-        """Background task to execute quality gates."""
+        """Background task to execute quality gates with fresh DB connection."""
+        # Create fresh database connection for background task
+        task_db = Database(db_path)
+        task_db.initialize()
+
         try:
             logger.info(
                 f"Quality gates job {job_id} started for task {task_id}, "
@@ -195,7 +202,7 @@ async def trigger_quality_gates(
             )
 
             # Update task status to 'running'
-            db.update_quality_gate_status(
+            task_db.update_quality_gate_status(
                 task_id=task_id, status="running", failures=[]
             )
 
@@ -216,7 +223,7 @@ async def trigger_quality_gates(
 
             # Create QualityGates instance
             quality_gates = QualityGates(
-                db=db,
+                db=task_db,
                 project_id=project_id,
                 project_root=Path(workspace_path),
             )
@@ -257,7 +264,7 @@ async def trigger_quality_gates(
                 )
 
                 # Update database with final result
-                db.update_quality_gate_status(
+                task_db.update_quality_gate_status(
                     task_id=task_id, status=status, failures=all_failures
                 )
 
@@ -301,7 +308,7 @@ async def trigger_quality_gates(
                 severity=Severity.CRITICAL,
             )
 
-            db.update_quality_gate_status(
+            task_db.update_quality_gate_status(
                 task_id=task_id, status="failed", failures=[error_failure]
             )
 
@@ -321,6 +328,11 @@ async def trigger_quality_gates(
                 logger.warning(
                     f"Failed to broadcast quality_gates_error: {broadcast_error}"
                 )
+
+        finally:
+            # Always close the database connection
+            if task_db and task_db.conn:
+                task_db.close()
 
     # Add background task
     background_tasks.add_task(run_quality_gates)
