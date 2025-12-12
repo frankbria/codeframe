@@ -106,9 +106,12 @@ manager = ConnectionManager()
 shared_state = SharedState()
 
 # DEPRECATED: Direct dictionary access (kept for backward compatibility)
-# New code should use shared_state methods for thread safety
-running_agents: Dict[int, LeadAgent] = {}
-review_cache: Dict[int, dict] = {}
+# WARNING: Direct access bypasses async locks and is NOT thread-safe!
+# New code should use shared_state async methods for thread safety.
+# These reference the same underlying storage as shared_state to prevent
+# data divergence, but direct modifications are NOT synchronized.
+running_agents: Dict[int, LeadAgent] = shared_state._running_agents
+review_cache: Dict[int, dict] = shared_state._review_cache
 
 
 async def start_agent(
@@ -145,8 +148,12 @@ async def start_agent(
 
         # Atomically store agent in both shared_state and agents_dict
         # while still holding the lock
+        # Note: agents_dict and shared_state._running_agents may reference
+        # the same underlying dict (for backward compatibility), but we
+        # store in both to handle cases where they differ
         shared_state._running_agents[project_id] = agent
-        agents_dict[project_id] = agent
+        if agents_dict is not shared_state._running_agents:
+            agents_dict[project_id] = agent
 
     # Lock released - now safe to do I/O operations
     try:
