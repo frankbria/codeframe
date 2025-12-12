@@ -76,13 +76,14 @@ async def list_context_items(
 
 @router.delete("/api/agents/{agent_id}/context/{item_id}", status_code=204)
 async def delete_context_item(
-    agent_id: str, item_id: str, db: Database = Depends(get_db)
+    agent_id: str, item_id: str, project_id: int, db: Database = Depends(get_db)
 ):
     """Delete a context item (T022).
 
     Args:
-        agent_id: Agent ID (used for path consistency)
+        agent_id: Agent ID (used for ownership validation)
         item_id: Context item ID to delete (UUID string)
+        project_id: Project ID (used for ownership validation)
         db: Database instance (injected)
 
     Returns:
@@ -91,14 +92,28 @@ async def delete_context_item(
     Raises:
         HTTPException:
             - 404: Context item not found
+            - 403: Context item does not belong to specified agent/project
     """
-    # Check if item exists before deletion
+    # Check if item exists
     item = db.get_context_item(item_id)
 
     if not item:
         raise HTTPException(status_code=404, detail=f"Context item {item_id} not found")
 
-    # Delete context item
+    # Validate ownership - ensure item belongs to the specified agent and project
+    if item.get("agent_id") != agent_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Context item {item_id} does not belong to agent {agent_id}",
+        )
+
+    if item.get("project_id") != project_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Context item {item_id} does not belong to project {project_id}",
+        )
+
+    # Delete context item after ownership validation passes
     db.delete_context_item(item_id)
 
     # Return 204 No Content (no response body)
