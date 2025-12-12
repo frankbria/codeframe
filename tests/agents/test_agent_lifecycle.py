@@ -31,6 +31,26 @@ from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
 
 
+@pytest.fixture(autouse=True)
+def clear_shared_state():
+    """Clear shared_state before each test to prevent state leakage.
+
+    Since shared_state uses global dictionaries that persist across tests,
+    we need to clear them before each test to ensure test isolation.
+    """
+    from codeframe.ui.shared import shared_state
+
+    # Clear before test
+    shared_state._running_agents.clear()
+    shared_state._review_cache.clear()
+
+    yield
+
+    # Clear after test
+    shared_state._running_agents.clear()
+    shared_state._review_cache.clear()
+
+
 @pytest.fixture
 def temp_db_for_lifecycle(tmp_path):
     """Create temporary database for lifecycle tests."""
@@ -123,7 +143,7 @@ class TestStartAgentEndpoint:
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
         # ACT
-        with patch("codeframe.ui.server.start_agent") as mock_start_agent:
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
             response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
@@ -164,7 +184,7 @@ class TestStartAgentEndpoint:
         db.update_project(project_id, {"status": ProjectStatus.RUNNING})
 
         # ACT
-        with patch("codeframe.ui.server.start_agent") as mock_start_agent:
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
             response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
