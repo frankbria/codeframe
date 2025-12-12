@@ -60,4 +60,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"type": "subscribed", "project_id": project_id})
 
     except WebSocketDisconnect:
+        # Normal client disconnect - no error logging needed
+        logger.debug("WebSocket client disconnected normally")
+    except Exception as e:
+        # Log unexpected errors for debugging
+        logger.error(f"WebSocket error: {type(e).__name__} - {str(e)}", exc_info=True)
+    finally:
+        # Always disconnect and clean up, regardless of how we exited
         manager.disconnect(websocket)
+        try:
+            await websocket.close()
+        except Exception:
+            # Socket may already be closed - ignore errors
+            pass
