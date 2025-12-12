@@ -513,7 +513,7 @@ async def get_checkpoint_diff(
     """
 
     # Verify project exists
-    project = db.get_project_by_id(project_id)
+    project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
