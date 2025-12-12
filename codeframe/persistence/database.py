@@ -3469,6 +3469,16 @@ class Database:
             created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc)
         )
 
+    def delete_checkpoint(self, checkpoint_id: int) -> None:
+        """Delete a checkpoint from the database.
+
+        Args:
+            checkpoint_id: Checkpoint ID to delete
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM checkpoints WHERE id = ?", (checkpoint_id,))
+        self.conn.commit()
+
     # ============================================================================
     # Token Usage and Metrics Methods (Sprint 10 Phase 5)
     # ============================================================================

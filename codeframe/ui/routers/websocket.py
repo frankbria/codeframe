@@ -58,8 +58,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     await websocket.send_json({
                         "type": "error",
-                        "error": "Invalid JSON format",
-                        "details": str(e)
+                        "error": "Invalid JSON format"
                     })
                 except Exception:
                     # If we can't send error response, just continue

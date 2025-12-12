@@ -88,7 +88,7 @@ class ReviewService:
         """
         # Check cache first
         cached = self.get_cached_review(task_id)
-        if cached:
+        if cached is not None:
             return cached
 
         # Fall back to database

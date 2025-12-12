@@ -12,10 +12,11 @@ Sprint 10 - Phase 4: Checkpoint API endpoints (T092-T097):
 - GET /api/projects/{project_id}/checkpoints/{checkpoint_id}/diff - Get checkpoint diff
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response, Body
 from fastapi.responses import JSONResponse
 from pathlib import Path
 from datetime import datetime, UTC
+import hashlib
 import logging
 import re
 import subprocess
@@ -231,7 +232,7 @@ async def create_checkpoint(
 
     except Exception as e:
         logger.error(f"Failed to create checkpoint for project {project_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Checkpoint creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error while creating checkpoint")
 
 
 @router.get("/{checkpoint_id}")
@@ -372,9 +373,7 @@ async def delete_checkpoint(
             logger.debug(f"Deleted context snapshot: {context_snapshot_path}")
 
         # Delete checkpoint from database
-        cursor = db.conn.cursor()
-        cursor.execute("DELETE FROM checkpoints WHERE id = ?", (checkpoint_id,))
-        db.conn.commit()
+        db.delete_checkpoint(checkpoint_id)
 
         logger.info(f"Deleted checkpoint {checkpoint_id} for project {project_id}")
 
@@ -390,18 +389,18 @@ async def delete_checkpoint(
             logger.warning(f"Failed to broadcast checkpoint_deleted event: {e}")
 
         # Return 204 No Content
-        return None
+        return Response(status_code=204)
 
     except Exception as e:
         logger.error(f"Failed to delete checkpoint {checkpoint_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Checkpoint deletion failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Checkpoint deletion failed")
 
 
 @router.post("/{checkpoint_id}/restore", status_code=202)
 async def restore_checkpoint(
     project_id: int,
     checkpoint_id: int,
-    request: RestoreCheckpointRequest = RestoreCheckpointRequest(),
+    request: RestoreCheckpointRequest = Body(default_factory=RestoreCheckpointRequest),
     db: Database = Depends(get_db)
 ):
     """Restore project to checkpoint state (T096, T097).
@@ -515,13 +514,15 @@ async def restore_checkpoint(
 
     except ValueError as e:
         # Checkpoint not found or validation error
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.error(f"Checkpoint validation error: {e}", exc_info=True)
+        raise HTTPException(status_code=404, detail="Checkpoint not found or invalid")
     except FileNotFoundError as e:
         # Backup files missing
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Checkpoint backup files missing: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Checkpoint backup files not found")
     except Exception as e:
         logger.error(f"Failed to restore checkpoint {checkpoint_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Checkpoint restore failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Checkpoint restore failed")
 
 
 @router.get("/{checkpoint_id}/diff")
@@ -653,6 +654,20 @@ async def get_checkpoint_diff(
                         total_insertions += insertions
                         total_deletions += deletions
 
+            # Get current HEAD commit for ETag computation
+            head_commit_result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(workspace_path),
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            head_commit = head_commit_result.stdout.strip()
+
+            # Compute ETag from checkpoint and HEAD commits
+            etag_value = hashlib.sha256(f"{checkpoint.git_commit}:{head_commit}".encode()).hexdigest()[:16]
+
             response = CheckpointDiffResponse(
                 files_changed=files_changed,
                 insertions=total_insertions,
@@ -660,21 +675,22 @@ async def get_checkpoint_diff(
                 diff=diff_output
             )
 
-            # Add cache headers for immutable checkpoint diffs
+            # Add cache headers with revalidation strategy
             return JSONResponse(
                 content=response.model_dump(),
                 headers={
-                    "Cache-Control": "public, max-age=31536000, immutable",
+                    "Cache-Control": "no-cache, must-revalidate",
+                    "ETag": f'"{etag_value}"',
                     "X-Binary-Files": str(binary_files)
                 }
             )
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to get diff stats: {e.stderr}")
+            logger.error(f"Failed to get diff stats: {e.stderr}", exc_info=True)
             # Return error response when parsing fails (not misleading zeros)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to parse diff statistics: {e.stderr[:200]}"
+                detail="Internal error parsing diff statistics"
             )
         except subprocess.TimeoutExpired:
             logger.error(f"Git diff timed out for checkpoint {checkpoint_id}")
@@ -684,4 +700,4 @@ async def get_checkpoint_diff(
         raise
     except Exception as e:
         logger.error(f"Failed to get checkpoint diff {checkpoint_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get checkpoint diff: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get checkpoint diff")
