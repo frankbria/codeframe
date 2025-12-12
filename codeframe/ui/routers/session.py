@@ -6,7 +6,7 @@ next actions, progress, and active blockers.
 """
 
 from datetime import datetime, UTC
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends
 

@@ -9,15 +9,12 @@ This module provides API endpoints for:
 """
 
 import logging
-import os
 import shutil
 import sqlite3
 from datetime import datetime, UTC
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from codeframe.core.models import ProjectStatus
 from codeframe.core.session_manager import SessionManager
 from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager

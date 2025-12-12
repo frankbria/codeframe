@@ -18,7 +18,7 @@ import pytest
 from unittest.mock import Mock, patch, AsyncMock
 
 from codeframe.core.models import AgentMaturity
-from codeframe.ui.shared import running_agents, manager
+from codeframe.ui.shared import running_agents
 
 
 def get_app():
@@ -64,7 +64,6 @@ class TestChatEndpoint:
         user_message = "Hello, I want to build a web app"
 
         # Import the server module to access running_agents
-        from codeframe.ui import server
 
         # Mock Lead Agent
         mock_agent = Mock()
@@ -271,7 +270,6 @@ class TestChatWebSocketIntegration:
         RED Test: Verify chat message broadcasts via WebSocket
         """
         # Arrange
-        from codeframe.ui import server
 
         # Mock Lead Agent
         mock_agent = Mock()
@@ -315,7 +313,6 @@ class TestChatWebSocketIntegration:
         Covers edge case where broadcast exception is caught and ignored (line 512-514)
         """
         # Arrange
-        from codeframe.ui import server
 
         mock_agent = Mock()
         mock_agent.chat.return_value = "Response despite broadcast failure"

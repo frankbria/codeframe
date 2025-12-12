@@ -13,7 +13,7 @@ Sprint 9 & Sprint 10 endpoints:
 """
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request, Depends
-from typing import Optional, Dict
+from typing import Optional
 from datetime import datetime, UTC
 import logging
 import uuid
