@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as path from 'path';
 
 /**
  * Playwright configuration for E2E tests.
@@ -85,7 +86,7 @@ export default defineConfig({
     : [
         // Backend FastAPI server
         {
-          command: 'cd ../.. && uv run uvicorn codeframe.ui.server:app --port 8080',
+          command: `cd ../.. && DATABASE_PATH=${path.join(__dirname, '.codeframe', 'state.db')} uv run uvicorn codeframe.ui.server:app --port 8080`,
           url: 'http://localhost:8080/health',
           reuseExistingServer: !process.env.CI,
           timeout: 120000,
