@@ -79,6 +79,7 @@ function seedDatabaseDirectly(projectId: number): void {
   console.log('\n📊 Seeding test data directly into database...\n');
 
   // Use spawnSync with argument array to prevent command injection
+  // Use 'uv run python' to ensure we use the project's managed virtual environment
   try {
     const dbPath = getTestDatabasePath();
     console.log(`📁 Using test database: ${dbPath}`);
@@ -88,9 +89,11 @@ function seedDatabaseDirectly(projectId: number): void {
       throw new Error(`Seeding script not found: ${scriptPath}`);
     }
 
-    console.log(`🐍 Executing: python3 ${scriptPath} ${dbPath} ${projectId}\n`);
+    const projectRoot = path.resolve(__dirname, '../..');
+    console.log(`🐍 Executing: uv run python ${scriptPath} ${dbPath} ${projectId}\n`);
 
-    const result = spawnSync('python3', [scriptPath, dbPath, projectId.toString()], {
+    const result = spawnSync('uv', ['run', 'python', scriptPath, dbPath, projectId.toString()], {
+      cwd: projectRoot,
       stdio: 'inherit',
       encoding: 'utf-8',
     });
