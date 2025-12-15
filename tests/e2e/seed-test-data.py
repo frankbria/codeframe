@@ -3,6 +3,7 @@
 Seed test data directly into the SQLite database for Playwright E2E tests.
 This script is called by global-setup.ts to populate test data.
 """
+import os
 import sqlite3
 import sys
 import json
@@ -867,6 +868,51 @@ def seed_test_data(db_path: str, project_id: int):
         # ========================================
         print("💾 Seeding checkpoints...")
 
+        # Determine base directory for checkpoint files (relative to db_path's parent)
+        db_dir = os.path.dirname(os.path.abspath(db_path))
+        checkpoints_dir = os.path.join(db_dir, "checkpoints")
+
+        # Ensure checkpoints directory exists
+        try:
+            os.makedirs(checkpoints_dir, exist_ok=True)
+            print(f"   📁 Checkpoint directory: {checkpoints_dir}")
+        except OSError as e:
+            print(f"⚠️  Warning: Failed to create checkpoints directory: {e}")
+
+        # Define checkpoint metadata separately so we can write it to files
+        checkpoint_metadata = [
+            {
+                "project_id": project_id,
+                "phase": "setup",
+                "tasks_completed": 3,
+                "tasks_total": 10,
+                "agents_active": ["lead-001", "backend-worker-001", "test-engineer-001"],
+                "last_task_completed": "Write unit tests for auth",
+                "context_items_count": 45,
+                "total_cost_usd": 1.2,
+            },
+            {
+                "project_id": project_id,
+                "phase": "ui-development",
+                "tasks_completed": 4,
+                "tasks_total": 10,
+                "agents_active": ["lead-001", "frontend-specialist-001"],
+                "last_task_completed": "Build dashboard UI",
+                "context_items_count": 78,
+                "total_cost_usd": 2.8,
+            },
+            {
+                "project_id": project_id,
+                "phase": "review",
+                "tasks_completed": 5,
+                "tasks_total": 10,
+                "agents_active": ["lead-001", "review-agent-001"],
+                "last_task_completed": "Add token usage tracking",
+                "context_items_count": 120,
+                "total_cost_usd": 4.46,
+            },
+        ]
+
         checkpoints = [
             # (id, project_id, name, description, trigger, git_commit,
             #  database_backup_path, context_snapshot_path, metadata, created_at)
@@ -879,18 +925,7 @@ def seed_test_data(db_path: str, project_id: int):
                 "a1b2c3d4e5f6",
                 ".codeframe/checkpoints/checkpoint-001-db.sqlite",
                 ".codeframe/checkpoints/checkpoint-001-context.json",
-                json.dumps(
-                    {
-                        "project_id": project_id,
-                        "phase": "setup",
-                        "tasks_completed": 3,
-                        "tasks_total": 10,
-                        "agents_active": ["lead-001", "backend-worker-001", "test-engineer-001"],
-                        "last_task_completed": "Write unit tests for auth",
-                        "context_items_count": 45,
-                        "total_cost_usd": 1.2,
-                    }
-                ),
+                json.dumps(checkpoint_metadata[0]),
                 (now - timedelta(days=2, hours=6)).isoformat(),
             ),
             (
@@ -902,18 +937,7 @@ def seed_test_data(db_path: str, project_id: int):
                 "f6e5d4c3b2a1",
                 ".codeframe/checkpoints/checkpoint-002-db.sqlite",
                 ".codeframe/checkpoints/checkpoint-002-context.json",
-                json.dumps(
-                    {
-                        "project_id": project_id,
-                        "phase": "ui-development",
-                        "tasks_completed": 4,
-                        "tasks_total": 10,
-                        "agents_active": ["lead-001", "frontend-specialist-001"],
-                        "last_task_completed": "Build dashboard UI",
-                        "context_items_count": 78,
-                        "total_cost_usd": 2.8,
-                    }
-                ),
+                json.dumps(checkpoint_metadata[1]),
                 (now - timedelta(days=1, hours=4)).isoformat(),
             ),
             (
@@ -925,18 +949,7 @@ def seed_test_data(db_path: str, project_id: int):
                 "9876543210ab",
                 ".codeframe/checkpoints/checkpoint-003-db.sqlite",
                 ".codeframe/checkpoints/checkpoint-003-context.json",
-                json.dumps(
-                    {
-                        "project_id": project_id,
-                        "phase": "review",
-                        "tasks_completed": 5,
-                        "tasks_total": 10,
-                        "agents_active": ["lead-001", "review-agent-001"],
-                        "last_task_completed": "Add token usage tracking",
-                        "context_items_count": 120,
-                        "total_cost_usd": 4.46,
-                    }
-                ),
+                json.dumps(checkpoint_metadata[2]),
                 (now - timedelta(hours=1)).isoformat(),
             ),
         ]
@@ -946,8 +959,9 @@ def seed_test_data(db_path: str, project_id: int):
             print("⚠️  Warning: checkpoints table doesn't exist, skipping checkpoints")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
-            for checkpoint in checkpoints:
+            for i, checkpoint in enumerate(checkpoints):
                 try:
+                    # Insert database record
                     cursor.execute(
                         """
                         INSERT OR REPLACE INTO checkpoints (
@@ -958,13 +972,67 @@ def seed_test_data(db_path: str, project_id: int):
                         """,
                         checkpoint,
                     )
+
+                    # Create actual checkpoint files
+                    # Extract relative paths from checkpoint tuple
+                    db_backup_rel_path = checkpoint[6]  # database_backup_path
+                    context_rel_path = checkpoint[7]  # context_snapshot_path
+
+                    # Convert relative paths to absolute paths based on db_dir's parent
+                    # Since paths are like ".codeframe/checkpoints/...", we go up from db_dir (.codeframe)
+                    base_dir = os.path.dirname(db_dir)  # Parent of .codeframe
+                    db_backup_path = os.path.join(base_dir, db_backup_rel_path)
+                    context_path = os.path.join(base_dir, context_rel_path)
+
+                    # Create SQLite backup file (valid SQLite database with metadata)
+                    try:
+                        backup_dir = os.path.dirname(db_backup_path)
+                        os.makedirs(backup_dir, exist_ok=True)
+                        backup_conn = sqlite3.connect(db_backup_path)
+                        # Create a checkpoint_info table to make it a valid, non-empty SQLite file
+                        backup_conn.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS checkpoint_info (
+                                key TEXT PRIMARY KEY,
+                                value TEXT
+                            )
+                            """
+                        )
+                        backup_conn.execute(
+                            "INSERT OR REPLACE INTO checkpoint_info (key, value) VALUES (?, ?)",
+                            ("created_at", checkpoint[9]),  # created_at timestamp
+                        )
+                        backup_conn.execute(
+                            "INSERT OR REPLACE INTO checkpoint_info (key, value) VALUES (?, ?)",
+                            ("checkpoint_id", str(checkpoint[0])),
+                        )
+                        backup_conn.execute(
+                            "INSERT OR REPLACE INTO checkpoint_info (key, value) VALUES (?, ?)",
+                            ("project_id", str(project_id)),
+                        )
+                        backup_conn.commit()
+                        backup_conn.close()
+                        print(f"   ✅ Created checkpoint DB: {os.path.basename(db_backup_path)}")
+                    except (OSError, sqlite3.Error) as e:
+                        print(f"   ⚠️  Failed to create checkpoint DB file: {e}")
+
+                    # Write context snapshot JSON
+                    try:
+                        context_dir = os.path.dirname(context_path)
+                        os.makedirs(context_dir, exist_ok=True)
+                        with open(context_path, "w", encoding="utf-8") as f:
+                            json.dump(checkpoint_metadata[i], f, indent=2)
+                        print(f"   ✅ Created context snapshot: {os.path.basename(context_path)}")
+                    except (OSError, IOError) as e:
+                        print(f"   ⚠️  Failed to create context snapshot file: {e}")
+
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert checkpoint {checkpoint[0]}: {e}")
 
             conn.commit()
             cursor.execute("SELECT COUNT(*) FROM checkpoints WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
-            print(f"✅ Seeded {count}/3 checkpoints")
+            print(f"✅ Seeded {count}/3 checkpoints with files")
 
         # Commit all changes
         conn.commit()
