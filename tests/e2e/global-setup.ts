@@ -9,25 +9,40 @@ import * as fs from 'fs';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
 
-/**
- * Find the CodeFRAME database path.
- * Tries common locations: ./state.db, ./.codeframe/state.db, etc.
- */
-function findDatabasePath(): string {
-  const possiblePaths = [
-    path.join(process.cwd(), 'state.db'),
-    path.join(process.cwd(), '.codeframe', 'state.db'),
-    path.join(process.cwd(), '..', '..', 'state.db'),
-    path.join(process.cwd(), '..', '..', '.codeframe', 'state.db'),
-  ];
+// Fixed test database path - must match Playwright config's DATABASE_PATH
+const TEST_DB_PATH = path.join(__dirname, '.codeframe', 'state.db');
 
-  for (const dbPath of possiblePaths) {
-    if (fs.existsSync(dbPath)) {
-      return dbPath;
-    }
+/**
+ * Get the test database path.
+ * Uses a fixed path that matches the Playwright config's DATABASE_PATH.
+ */
+function getTestDatabasePath(): string {
+  return TEST_DB_PATH;
+}
+
+/**
+ * Ensure the test database directory exists and initialize the schema.
+ */
+function initializeTestDatabase(): void {
+  console.log('\n🗄️ Initializing test database...\n');
+
+  // Create database directory if it doesn't exist
+  const dbDir = path.dirname(TEST_DB_PATH);
+  if (!fs.existsSync(dbDir)) {
+    console.log(`📁 Creating database directory: ${dbDir}`);
+    fs.mkdirSync(dbDir, { recursive: true });
   }
 
-  throw new Error('Could not find CodeFRAME database (state.db). Tried paths: ' + possiblePaths.join(', '));
+  // Initialize database schema using Python backend
+  try {
+    console.log('🔧 Creating database schema...');
+    const initCommand = `cd ../.. && uv run python -c "from codeframe.persistence.database import Database; db = Database('${TEST_DB_PATH}'); db.initialize()"`;
+    execSync(initCommand, { stdio: 'inherit' });
+    console.log('✅ Database schema initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize database schema:', error);
+    throw error;
+  }
 }
 
 /**
@@ -38,8 +53,8 @@ function seedDatabaseDirectly(projectId: number): void {
   console.log('\n📊 Seeding test data directly into database...\n');
 
   try {
-    const dbPath = findDatabasePath();
-    console.log(`📁 Database found: ${dbPath}`);
+    const dbPath = getTestDatabasePath();
+    console.log(`📁 Using test database: ${dbPath}`);
 
     const scriptPath = path.join(__dirname, 'seed-test-data.py');
     if (!fs.existsSync(scriptPath)) {
@@ -815,17 +830,17 @@ async function globalSetup(config: FullConfig) {
     }
 
     // ========================================
-    // 2. Seed test data directly into database
+    // 2. Initialize test database (create directory + schema)
+    // ========================================
+    initializeTestDatabase();
+
+    // ========================================
+    // 3. Seed test data directly into database
     // ========================================
     // Use Python script to seed directly into SQLite instead of API calls
     // (many create endpoints don't exist)
+    // Note: This now includes checkpoint seeding
     seedDatabaseDirectly(projectId);
-
-    // ========================================
-    // 3. Seed checkpoints via API (works!)
-    // ========================================
-    console.log('\n📊 Seeding checkpoints via API...\n');
-    await seedCheckpoints(page, projectId);
 
     console.log('\n✅ E2E test environment ready!');
     console.log(`   Project ID: ${projectId}`);

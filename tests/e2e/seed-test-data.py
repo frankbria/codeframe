@@ -664,26 +664,28 @@ def seed_test_data(db_path: str, project_id: int):
         task_2_failures = json.dumps([])
 
         # Task #4 failures (type_check failed, code_review failed)
-        task_4_failures = json.dumps([
-            {
-                "gate": "type_check",
-                "reason": "TypeScript compiler found 3 type errors",
-                "details": "web-ui/src/components/Dashboard.tsx:125:15 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.\nweb-ui/src/components/Dashboard.tsx:180:20 - error TS2339: Property 'agentId' does not exist on type 'AgentState'.\nweb-ui/src/components/Dashboard.tsx:200:10 - error TS2531: Object is possibly 'null'.",
-                "severity": "high"
-            },
-            {
-                "gate": "code_review",
-                "reason": "CRITICAL [security]: User input not sanitized, potential XSS vulnerability",
-                "details": "File: web-ui/src/components/Dashboard.tsx:125\nMessage: User input not sanitized, potential XSS vulnerability\nRecommendation: Use DOMPurify to sanitize user-generated content\nCode: dangerouslySetInnerHTML={{ __html: userInput }}",
-                "severity": "critical"
-            },
-            {
-                "gate": "code_review",
-                "reason": "CRITICAL [security]: API tokens logged to console in production",
-                "details": "File: web-ui/src/components/Dashboard.tsx:180\nMessage: API tokens logged to console in production\nRecommendation: Remove console.log or gate with NODE_ENV check\nCode: console.log(\"Token:\", apiToken);",
-                "severity": "critical"
-            }
-        ])
+        task_4_failures = json.dumps(
+            [
+                {
+                    "gate": "type_check",
+                    "reason": "TypeScript compiler found 3 type errors",
+                    "details": "web-ui/src/components/Dashboard.tsx:125:15 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.\nweb-ui/src/components/Dashboard.tsx:180:20 - error TS2339: Property 'agentId' does not exist on type 'AgentState'.\nweb-ui/src/components/Dashboard.tsx:200:10 - error TS2531: Object is possibly 'null'.",
+                    "severity": "high",
+                },
+                {
+                    "gate": "code_review",
+                    "reason": "CRITICAL [security]: User input not sanitized, potential XSS vulnerability",
+                    "details": "File: web-ui/src/components/Dashboard.tsx:125\nMessage: User input not sanitized, potential XSS vulnerability\nRecommendation: Use DOMPurify to sanitize user-generated content\nCode: dangerouslySetInnerHTML={{ __html: userInput }}",
+                    "severity": "critical",
+                },
+                {
+                    "gate": "code_review",
+                    "reason": "CRITICAL [security]: API tokens logged to console in production",
+                    "details": 'File: web-ui/src/components/Dashboard.tsx:180\nMessage: API tokens logged to console in production\nRecommendation: Remove console.log or gate with NODE_ENV check\nCode: console.log("Token:", apiToken);',
+                    "severity": "critical",
+                },
+            ]
+        )
 
         try:
             # Update task #2 (completed, all gates passed)
@@ -859,6 +861,110 @@ def seed_test_data(db_path: str, project_id: int):
             cursor.execute("SELECT COUNT(*) FROM code_reviews WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/7 code review findings")
+
+        # ========================================
+        # 6. Seed Checkpoints (3)
+        # ========================================
+        print("💾 Seeding checkpoints...")
+
+        checkpoints = [
+            # (id, project_id, name, description, trigger, git_commit,
+            #  database_backup_path, context_snapshot_path, metadata, created_at)
+            (
+                1,
+                project_id,
+                "Initial setup complete",
+                "Project structure and authentication working",
+                "phase_transition",
+                "a1b2c3d4e5f6",
+                ".codeframe/checkpoints/checkpoint-001-db.sqlite",
+                ".codeframe/checkpoints/checkpoint-001-context.json",
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "phase": "setup",
+                        "tasks_completed": 3,
+                        "tasks_total": 10,
+                        "agents_active": ["lead-001", "backend-worker-001", "test-engineer-001"],
+                        "last_task_completed": "Write unit tests for auth",
+                        "context_items_count": 45,
+                        "total_cost_usd": 1.2,
+                    }
+                ),
+                (now - timedelta(days=2, hours=6)).isoformat(),
+            ),
+            (
+                2,
+                project_id,
+                "UI development milestone",
+                "Dashboard UI 50% complete",
+                "manual",
+                "f6e5d4c3b2a1",
+                ".codeframe/checkpoints/checkpoint-002-db.sqlite",
+                ".codeframe/checkpoints/checkpoint-002-context.json",
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "phase": "ui-development",
+                        "tasks_completed": 4,
+                        "tasks_total": 10,
+                        "agents_active": ["lead-001", "frontend-specialist-001"],
+                        "last_task_completed": "Build dashboard UI",
+                        "context_items_count": 78,
+                        "total_cost_usd": 2.8,
+                    }
+                ),
+                (now - timedelta(days=1, hours=4)).isoformat(),
+            ),
+            (
+                3,
+                project_id,
+                "Pre-review snapshot",
+                "Before code review process",
+                "auto",
+                "9876543210ab",
+                ".codeframe/checkpoints/checkpoint-003-db.sqlite",
+                ".codeframe/checkpoints/checkpoint-003-context.json",
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "phase": "review",
+                        "tasks_completed": 5,
+                        "tasks_total": 10,
+                        "agents_active": ["lead-001", "review-agent-001"],
+                        "last_task_completed": "Add token usage tracking",
+                        "context_items_count": 120,
+                        "total_cost_usd": 4.46,
+                    }
+                ),
+                (now - timedelta(hours=1)).isoformat(),
+            ),
+        ]
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='checkpoints'")
+        if not cursor.fetchone():
+            print("⚠️  Warning: checkpoints table doesn't exist, skipping checkpoints")
+        else:
+            # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
+            for checkpoint in checkpoints:
+                try:
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO checkpoints (
+                            id, project_id, name, description, trigger, git_commit,
+                            database_backup_path, context_snapshot_path, metadata, created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        checkpoint,
+                    )
+                except sqlite3.Error as e:
+                    print(f"⚠️  Failed to upsert checkpoint {checkpoint[0]}: {e}")
+
+            conn.commit()
+            cursor.execute("SELECT COUNT(*) FROM checkpoints WHERE project_id = ?", (project_id,))
+            count = cursor.fetchone()[0]
+            print(f"✅ Seeded {count}/3 checkpoints")
 
         # Commit all changes
         conn.commit()
