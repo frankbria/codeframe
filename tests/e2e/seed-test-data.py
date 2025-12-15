@@ -9,6 +9,22 @@ import sys
 import json
 from datetime import datetime, timedelta
 
+# Table name constants to prevent typos and improve maintainability
+TABLE_AGENTS = "agents"
+TABLE_PROJECT_AGENTS = "project_agents"
+TABLE_TASKS = "tasks"
+TABLE_TOKEN_USAGE = "token_usage"
+TABLE_CODE_REVIEWS = "code_reviews"
+TABLE_CHECKPOINTS = "checkpoints"
+
+
+def table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
+    )
+    return cursor.fetchone() is not None
+
 
 def seed_test_data(db_path: str, project_id: int):
     """Seed comprehensive test data for E2E tests."""
@@ -82,9 +98,8 @@ def seed_test_data(db_path: str, project_id: int):
         ]
 
         # Check if agents table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agents'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: agents table doesn't exist, skipping agents")
+        if not table_exists(cursor, TABLE_AGENTS):
+            print(f"⚠️  Warning: {TABLE_AGENTS} table doesn't exist, skipping agents")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for agent in agents:
@@ -101,8 +116,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert agent {agent[0]}: {e}")
 
-            conn.commit()
-            cursor.execute("SELECT COUNT(*) FROM agents")
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_AGENTS}")
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/5 agents")
 
@@ -110,15 +124,11 @@ def seed_test_data(db_path: str, project_id: int):
         # 1.5. Seed Project-Agent Assignments (Critical for Multi-Agent Architecture)
         # ========================================
         print("🔗 Seeding project-agent assignments...")
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' " "AND name='project_agents'"
-        )
-        if not cursor.fetchone():
-            print("⚠️  Warning: project_agents table doesn't exist, skipping assignments")
+        if not table_exists(cursor, TABLE_PROJECT_AGENTS):
+            print(f"⚠️  Warning: {TABLE_PROJECT_AGENTS} table doesn't exist, skipping assignments")
         else:
             # Clear existing assignments for project
-            cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (project_id,))
-            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
+            cursor.execute(f"DELETE FROM {TABLE_PROJECT_AGENTS} WHERE project_id = ?", (project_id,))
 
             # Assign all 5 agents to the project
             assignments = [
@@ -142,7 +152,7 @@ def seed_test_data(db_path: str, project_id: int):
                     print(f"⚠️  Failed to insert project-agent assignment for {assignment[1]}: {e}")
 
             cursor.execute(
-                "SELECT COUNT(*) FROM project_agents WHERE project_id = ?", (project_id,)
+                f"SELECT COUNT(*) FROM {TABLE_PROJECT_AGENTS} WHERE project_id = ?", (project_id,)
             )
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/5 project-agent assignments")
@@ -404,9 +414,8 @@ def seed_test_data(db_path: str, project_id: int):
             ),
         ]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: tasks table doesn't exist, skipping tasks")
+        if not table_exists(cursor, TABLE_TASKS):
+            print(f"⚠️  Warning: {TABLE_TASKS} table doesn't exist, skipping tasks")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for task in tasks:
@@ -426,8 +435,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert task {task[0]}: {e}")
 
-            conn.commit()
-            cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_TASKS} WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/10 tasks")
 
@@ -625,9 +633,8 @@ def seed_test_data(db_path: str, project_id: int):
             ),
         ]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: token_usage table doesn't exist, skipping token usage")
+        if not table_exists(cursor, TABLE_TOKEN_USAGE):
+            print(f"⚠️  Warning: {TABLE_TOKEN_USAGE} table doesn't exist, skipping token usage")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for record in token_records:
@@ -642,8 +649,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert token usage record {record[0]}: {e}")
 
-            conn.commit()
-            cursor.execute("SELECT COUNT(*) FROM token_usage WHERE project_id = ?", (project_id,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_TOKEN_USAGE} WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/15 token usage records")
 
@@ -836,13 +842,11 @@ def seed_test_data(db_path: str, project_id: int):
             ),
         ]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='code_reviews'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: code_reviews table doesn't exist, skipping reviews")
+        if not table_exists(cursor, TABLE_CODE_REVIEWS):
+            print(f"⚠️  Warning: {TABLE_CODE_REVIEWS} table doesn't exist, skipping reviews")
         else:
             # Clear existing reviews for project
-            cursor.execute("DELETE FROM code_reviews WHERE project_id = ?", (project_id,))
-            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
+            cursor.execute(f"DELETE FROM {TABLE_CODE_REVIEWS} WHERE project_id = ?", (project_id,))
 
             for finding in review_findings:
                 try:
@@ -859,7 +863,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to insert code review finding: {e}")
 
-            cursor.execute("SELECT COUNT(*) FROM code_reviews WHERE project_id = ?", (project_id,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_CODE_REVIEWS} WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/7 code review findings")
 
@@ -954,9 +958,8 @@ def seed_test_data(db_path: str, project_id: int):
             ),
         ]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='checkpoints'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: checkpoints table doesn't exist, skipping checkpoints")
+        if not table_exists(cursor, TABLE_CHECKPOINTS):
+            print(f"⚠️  Warning: {TABLE_CHECKPOINTS} table doesn't exist, skipping checkpoints")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for i, checkpoint in enumerate(checkpoints):
@@ -1029,8 +1032,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert checkpoint {checkpoint[0]}: {e}")
 
-            conn.commit()
-            cursor.execute("SELECT COUNT(*) FROM checkpoints WHERE project_id = ?", (project_id,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_CHECKPOINTS} WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/3 checkpoints with files")
 

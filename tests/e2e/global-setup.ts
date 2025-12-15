@@ -6,11 +6,7 @@ import { chromium, FullConfig } from '@playwright/test';
 import { spawnSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
-
-// Fixed test database path - must match Playwright config's DATABASE_PATH
-const TEST_DB_PATH = path.join(__dirname, '.codeframe', 'state.db');
+import { TEST_DB_PATH, BACKEND_URL } from './e2e-config';
 
 /**
  * Get the test database path.
@@ -85,8 +81,14 @@ function seedDatabaseDirectly(projectId: number): void {
     console.log('\n✅ Database seeding complete!');
   } catch (error) {
     console.error('❌ Failed to seed database:', error);
-    console.warn('⚠️  Tests may fail due to missing test data');
-    // Don't throw - allow tests to run even if seeding fails
+    // Fail fast by default to make debugging easier
+    // Set E2E_ALLOW_SEED_FAILURE=true to allow tests to run with missing data
+    if (process.env.E2E_ALLOW_SEED_FAILURE === 'true') {
+      console.warn('⚠️  E2E_ALLOW_SEED_FAILURE=true: Continuing despite seed failure');
+      console.warn('⚠️  Tests may fail due to missing test data');
+    } else {
+      throw error;
+    }
   }
 }
 
