@@ -254,9 +254,7 @@ class TestMultiAgentAPI:
         assert agents[0]["agent_id"] == "backend-001"
 
         # Get all agents (including inactive)
-        response = api_client.get(
-            f"/api/projects/{project_id}/agents?is_active=false"
-        )
+        response = api_client.get(f"/api/projects/{project_id}/agents?is_active=false")
         assert response.status_code == 200
         agents = response.json()
         assert len(agents) == 2
@@ -487,9 +485,7 @@ class TestMultiAgentAPI:
         )
 
         # Remove agent from project 2
-        response = api_client.delete(
-            f"/api/projects/{project_id_2}/agents/backend-001"
-        )
+        response = api_client.delete(f"/api/projects/{project_id_2}/agents/backend-001")
         assert response.status_code == 204
 
         # Get active projects only (default)
@@ -622,9 +618,7 @@ class TestMultiAgentAPI:
         project_id = response.json()["id"]
 
         # Test missing agent_id
-        response = api_client.post(
-            f"/api/projects/{project_id}/agents", json={"role": "worker"}
-        )
+        response = api_client.post(f"/api/projects/{project_id}/agents", json={"role": "worker"})
         assert response.status_code == 422  # Validation error
 
         # Test empty agent_id
@@ -652,9 +646,7 @@ class TestMultiAgentAPI:
         project_id = response.json()["id"]
 
         # Test missing role
-        response = api_client.patch(
-            f"/api/projects/{project_id}/agents/backend-001", json={}
-        )
+        response = api_client.patch(f"/api/projects/{project_id}/agents/backend-001", json={})
         assert response.status_code == 422  # Validation error
 
         # Test empty role

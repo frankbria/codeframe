@@ -104,9 +104,7 @@ async def test_valid_check_names(db, mock_quality_gates):
         )
     )
 
-    result = await run_quality_gates(
-        task_id=1, project_id=1, checks=["tests", "coverage"], db=db
-    )
+    result = await run_quality_gates(task_id=1, project_id=1, checks=["tests", "coverage"], db=db)
 
     assert result["status"] == "passed"
 
@@ -229,9 +227,7 @@ async def test_run_specific_gates(db, mock_quality_gates):
         )
     )
 
-    result = await run_quality_gates(
-        task_id=1, project_id=1, checks=["tests", "coverage"], db=db
-    )
+    result = await run_quality_gates(task_id=1, project_id=1, checks=["tests", "coverage"], db=db)
 
     assert result["status"] == "passed"
     assert "tests" in result["checks"]
@@ -257,9 +253,7 @@ async def test_tests_gate_failure(db, mock_quality_gates):
         )
     )
 
-    result = await run_quality_gates(
-        task_id=1, project_id=1, checks=["tests"], db=db
-    )
+    result = await run_quality_gates(task_id=1, project_id=1, checks=["tests"], db=db)
 
     assert result["status"] == "failed"
     assert len(result["blocking_failures"]) == 1
@@ -285,9 +279,7 @@ async def test_coverage_gate_with_percentage(db, mock_quality_gates):
         )
     )
 
-    result = await run_quality_gates(
-        task_id=1, project_id=1, checks=["coverage"], db=db
-    )
+    result = await run_quality_gates(task_id=1, project_id=1, checks=["coverage"], db=db)
 
     assert result["status"] == "failed"
     assert "coverage" in result["checks"]
@@ -312,9 +304,7 @@ async def test_review_gate_with_issues(db, mock_quality_gates):
         )
     )
 
-    result = await run_quality_gates(
-        task_id=1, project_id=1, checks=["review"], db=db
-    )
+    result = await run_quality_gates(task_id=1, project_id=1, checks=["review"], db=db)
 
     assert result["status"] == "failed"
     assert "review" in result["checks"]
@@ -340,9 +330,7 @@ async def test_linting_gate_failure(db, mock_quality_gates):
         )
     )
 
-    result = await run_quality_gates(
-        task_id=1, project_id=1, checks=["linting"], db=db
-    )
+    result = await run_quality_gates(task_id=1, project_id=1, checks=["linting"], db=db)
 
     assert result["status"] == "failed"
     assert len(result["blocking_failures"]) == 1
@@ -380,9 +368,7 @@ async def test_multiple_gate_failures(db, mock_quality_gates):
         )
     )
 
-    result = await run_quality_gates(
-        task_id=1, project_id=1, checks=["tests", "coverage"], db=db
-    )
+    result = await run_quality_gates(task_id=1, project_id=1, checks=["tests", "coverage"], db=db)
 
     assert result["status"] == "failed"
     assert len(result["blocking_failures"]) == 2
@@ -576,9 +562,7 @@ async def test_database_error_handling():
 async def test_quality_gate_execution_error(db, mock_quality_gates):
     """Test handling of quality gate execution errors."""
     mock_instance = mock_quality_gates.return_value
-    mock_instance.run_all_gates = AsyncMock(
-        side_effect=RuntimeError("Gate execution failed")
-    )
+    mock_instance.run_all_gates = AsyncMock(side_effect=RuntimeError("Gate execution failed"))
 
     result = await run_quality_gates(task_id=1, project_id=1, db=db)
 

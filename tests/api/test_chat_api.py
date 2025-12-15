@@ -129,7 +129,9 @@ class TestChatEndpoint:
         RED Test: Return 400 if Lead Agent not started for project
         """
         # Arrange: Create project without starting agent
-        project_id = get_app().state.db.create_project(name="Project Without Agent", description="Project Without Agent project")
+        project_id = get_app().state.db.create_project(
+            name="Project Without Agent", description="Project Without Agent project"
+        )
 
         # Act
         response = api_client.post(f"/api/projects/{project_id}/chat", json={"message": "Hello"})
@@ -149,7 +151,9 @@ class TestChatEndpoint:
             mock_agents.get.return_value = mock_agent
 
             # Act
-            response = api_client.post(f"/api/projects/{test_project}/chat", json={"message": "Hello"})
+            response = api_client.post(
+                f"/api/projects/{test_project}/chat", json={"message": "Hello"}
+            )
 
         # Assert
         assert response.status_code == 500

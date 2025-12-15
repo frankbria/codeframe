@@ -41,16 +41,16 @@ class SessionManager:
                 - sdk_sessions (Dict[str, str]): SDK session IDs per agent (optional)
         """
         session_data = {
-            'last_session': {
-                'summary': state.get('summary', 'No activity'),
-                'completed_tasks': state.get('completed_tasks', []),
-                'timestamp': datetime.now().isoformat()
+            "last_session": {
+                "summary": state.get("summary", "No activity"),
+                "completed_tasks": state.get("completed_tasks", []),
+                "timestamp": datetime.now().isoformat(),
             },
-            'next_actions': state.get('next_actions', []),
-            'current_plan': state.get('current_plan'),
-            'active_blockers': state.get('active_blockers', []),
-            'progress_pct': state.get('progress_pct', 0),
-            'sdk_sessions': state.get('sdk_sessions', {})  # NEW: SDK session tracking
+            "next_actions": state.get("next_actions", []),
+            "current_plan": state.get("current_plan"),
+            "active_blockers": state.get("active_blockers", []),
+            "progress_pct": state.get("progress_pct", 0),
+            "sdk_sessions": state.get("sdk_sessions", {}),  # NEW: SDK session tracking
         }
 
         # Ensure .codeframe directory exists
@@ -58,7 +58,7 @@ class SessionManager:
 
         # Write state file with restricted permissions
         try:
-            with open(self.state_file, 'w') as f:
+            with open(self.state_file, "w") as f:
                 json.dump(session_data, f, indent=2)
 
             # Set file permissions to user-only (0o600)
@@ -76,7 +76,7 @@ class SessionManager:
             return None
 
         try:
-            with open(self.state_file, 'r') as f:
+            with open(self.state_file, "r") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             print(f"Warning: Failed to load session state: {e}")

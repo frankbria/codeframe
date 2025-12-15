@@ -618,10 +618,10 @@ class DiscoveryAnswer(BaseModel):
         ...,
         min_length=1,
         max_length=5000,
-        description="User's answer to the current discovery question"
+        description="User's answer to the current discovery question",
     )
 
-    @field_validator('answer')
+    @field_validator("answer")
     @classmethod
     def validate_answer(cls, v: str) -> str:
         """Ensure answer is not empty after trimming."""
@@ -636,38 +636,20 @@ class DiscoveryAnswer(BaseModel):
 class DiscoveryAnswerResponse(BaseModel):
     """Response model for discovery answer submission."""
 
-    success: bool = Field(
-        ...,
-        description="Whether the answer was successfully processed"
-    )
+    success: bool = Field(..., description="Whether the answer was successfully processed")
 
     next_question: Optional[str] = Field(
-        None,
-        description="Next discovery question text (null if discovery complete)"
+        None, description="Next discovery question text (null if discovery complete)"
     )
 
-    is_complete: bool = Field(
-        ...,
-        description="Whether the discovery phase is complete"
-    )
+    is_complete: bool = Field(..., description="Whether the discovery phase is complete")
 
-    current_index: int = Field(
-        ...,
-        ge=0,
-        description="Current question index (0-based)"
-    )
+    current_index: int = Field(..., ge=0, description="Current question index (0-based)")
 
-    total_questions: int = Field(
-        ...,
-        gt=0,
-        description="Total number of discovery questions"
-    )
+    total_questions: int = Field(..., gt=0, description="Total number of discovery questions")
 
     progress_percentage: float = Field(
-        ...,
-        ge=0.0,
-        le=100.0,
-        description="Discovery completion percentage (0.0 - 100.0)"
+        ..., ge=0.0, le=100.0, description="Discovery completion percentage (0.0 - 100.0)"
     )
 
     model_config = ConfigDict(
@@ -678,7 +660,7 @@ class DiscoveryAnswerResponse(BaseModel):
                 "is_complete": False,
                 "current_index": 3,
                 "total_questions": 20,
-                "progress_percentage": 15.0
+                "progress_percentage": 15.0,
             }
         }
     )
@@ -740,11 +722,7 @@ class TokenUsage(BaseModel):
         return self.input_tokens + self.output_tokens
 
     @staticmethod
-    def calculate_cost(
-        model_name: str,
-        input_tokens: int,
-        output_tokens: int
-    ) -> float:
+    def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate estimated cost in USD.
 
         Pricing as of 2025-11:
@@ -762,9 +740,8 @@ class TokenUsage(BaseModel):
             raise ValueError(f"Unknown model: {model_name}")
 
         prices = pricing[model_name]
-        cost = (
-            (input_tokens * prices["input"] / 1_000_000) +
-            (output_tokens * prices["output"] / 1_000_000)
+        cost = (input_tokens * prices["input"] / 1_000_000) + (
+            output_tokens * prices["output"] / 1_000_000
         )
         return round(cost, 6)  # 6 decimal places for precision
 
@@ -828,6 +805,7 @@ class Checkpoint(BaseModel):
     def validate_files_exist(self) -> bool:
         """Check if all checkpoint files exist."""
         from pathlib import Path
+
         db_path = Path(self.database_backup_path)
         context_path = Path(self.context_snapshot_path)
         return db_path.exists() and context_path.exists()

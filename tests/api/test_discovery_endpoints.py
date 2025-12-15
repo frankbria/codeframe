@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 def get_db_from_client(api_client):
     """Get database instance from test client's app."""
     from codeframe.ui import server
+
     return server.app.state.db
 
 
@@ -112,9 +113,7 @@ class TestDiscoveryAnswerEndpoint:
         assert "not found" in response.json()["detail"].lower()
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
-    def test_post_when_not_in_discovery_phase_returns_400(
-        self, mock_provider_class, api_client
-    ):
+    def test_post_when_not_in_discovery_phase_returns_400(self, mock_provider_class, api_client):
         """Test endpoint returns 400 when project not in discovery phase (T034)."""
         # ARRANGE
         # Create project
@@ -138,9 +137,7 @@ class TestDiscoveryAnswerEndpoint:
         assert "not in discovery phase" in response.json()["detail"].lower()
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
-    def test_discovery_not_started_returns_400(
-        self, mock_provider_class, api_client
-    ):
+    def test_discovery_not_started_returns_400(self, mock_provider_class, api_client):
         """Test endpoint returns 400 when discovery state is 'idle' (not started)."""
         # ARRANGE
         # Create project in discovery phase but DON'T start discovery

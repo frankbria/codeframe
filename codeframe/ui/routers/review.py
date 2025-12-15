@@ -35,11 +35,7 @@ router = APIRouter(tags=["review"])
 
 
 @router.post("/api/agents/{agent_id}/review")
-async def trigger_review(
-    agent_id: str,
-    request: ReviewRequest,
-    db: Database = Depends(get_db)
-):
+async def trigger_review(agent_id: str, request: ReviewRequest, db: Database = Depends(get_db)):
     """Trigger code review for a task (T056).
 
     Sprint 9 - User Story 1: Review Agent API
@@ -94,9 +90,7 @@ async def trigger_review(
         )
 
         # Create review agent
-        review_agent = ReviewWorkerAgent(
-            agent_id=agent_id, db=db
-        )
+        review_agent = ReviewWorkerAgent(agent_id=agent_id, db=db)
 
         # Get task data from database
         task_data = db.get_task(request.task_id)
@@ -275,9 +269,7 @@ async def get_review_stats(project_id: int):
 
 @router.post("/api/agents/review/analyze", status_code=202)
 async def analyze_code_review(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    db: Database = Depends(get_db)
+    request: Request, background_tasks: BackgroundTasks, db: Database = Depends(get_db)
 ):
     """Trigger code review analysis for a task (T034).
 
@@ -342,7 +334,7 @@ async def analyze_code_review(
                     agent_id=f"review-{job_id[:8]}",
                     db=db,
                     project_id=project_id,
-                    ws_manager=manager
+                    ws_manager=manager,
                 )
 
                 # Build Task object from task_data
@@ -352,7 +344,7 @@ async def analyze_code_review(
                     description=task_data.get("description", ""),
                     project_id=project_id,
                     status=TaskStatus(task_data.get("status", "pending")),
-                    priority=task_data.get("priority", 0)
+                    priority=task_data.get("priority", 0),
                 )
 
                 # Execute review (this saves findings to database)
@@ -373,7 +365,7 @@ async def analyze_code_review(
         return {
             "job_id": job_id,
             "status": "started",
-            "message": f"Code review analysis started for task {task_id}"
+            "message": f"Code review analysis started for task {task_id}",
         }
 
     except HTTPException:
@@ -442,9 +434,7 @@ def _extract_enum_value(obj, attr_name: str, default: str):
 
 @router.get("/api/tasks/{task_id}/reviews")
 async def get_task_reviews(
-    task_id: int,
-    severity: Optional[str] = None,
-    db: Database = Depends(get_db)
+    task_id: int, severity: Optional[str] = None, db: Database = Depends(get_db)
 ):
     """Get code review findings for a task (T035).
 
@@ -505,11 +495,11 @@ async def get_task_reviews(
         GET /api/tasks/42/reviews?severity=critical
     """
     # Validate severity if provided
-    valid_severities = ['critical', 'high', 'medium', 'low', 'info']
+    valid_severities = ["critical", "high", "medium", "low", "info"]
     if severity and severity not in valid_severities:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid severity. Must be one of: {', '.join(valid_severities)}"
+            detail=f"Invalid severity. Must be one of: {', '.join(valid_severities)}",
         )
 
     # Check if task exists
@@ -521,20 +511,14 @@ async def get_task_reviews(
     reviews = db.get_code_reviews(task_id=task_id, severity=severity)
 
     # Build summary statistics
-    severity_counts = {
-        'critical': 0,
-        'high': 0,
-        'medium': 0,
-        'low': 0,
-        'info': 0
-    }
+    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
 
     category_counts = {
-        'security': 0,
-        'performance': 0,
-        'quality': 0,
-        'maintainability': 0,
-        'style': 0
+        "security": 0,
+        "performance": 0,
+        "quality": 0,
+        "maintainability": 0,
+        "style": 0,
     }
 
     for review in reviews:
@@ -548,7 +532,7 @@ async def get_task_reviews(
             category_counts[category_val] += 1
 
     # Blocking issues are critical or high severity
-    has_blocking_findings = (severity_counts['critical'] + severity_counts['high']) > 0
+    has_blocking_findings = (severity_counts["critical"] + severity_counts["high"]) > 0
 
     # Convert CodeReview objects to dictionaries
     findings_data = []
@@ -557,20 +541,22 @@ async def get_task_reviews(
         severity_val = _extract_enum_value(review, "severity", "unknown")
         category_val = _extract_enum_value(review, "category", "unknown")
 
-        findings_data.append({
-            "id": review.id,
-            "task_id": review.task_id,
-            "agent_id": review.agent_id,
-            "project_id": review.project_id,
-            "file_path": review.file_path,
-            "line_number": review.line_number,
-            "severity": severity_val,
-            "category": category_val,
-            "message": review.message,
-            "recommendation": review.recommendation,
-            "code_snippet": review.code_snippet,
-            "created_at": review.created_at
-        })
+        findings_data.append(
+            {
+                "id": review.id,
+                "task_id": review.task_id,
+                "agent_id": review.agent_id,
+                "project_id": review.project_id,
+                "file_path": review.file_path,
+                "line_number": review.line_number,
+                "severity": severity_val,
+                "category": category_val,
+                "message": review.message,
+                "recommendation": review.recommendation,
+                "code_snippet": review.code_snippet,
+                "created_at": review.created_at,
+            }
+        )
 
     # Build response matching ReviewResult interface
     return {
@@ -579,15 +565,13 @@ async def get_task_reviews(
         "total_count": len(reviews),
         "severity_counts": severity_counts,
         "category_counts": category_counts,
-        "has_blocking_findings": has_blocking_findings
+        "has_blocking_findings": has_blocking_findings,
     }
 
 
 @router.get("/api/projects/{project_id}/code-reviews")
 async def get_project_code_reviews(
-    project_id: int,
-    severity: Optional[str] = None,
-    db: Database = Depends(get_db)
+    project_id: int, severity: Optional[str] = None, db: Database = Depends(get_db)
 ):
     """Get aggregated code review findings for all tasks in a project.
 
@@ -649,11 +633,11 @@ async def get_project_code_reviews(
         GET /api/projects/2/code-reviews?severity=critical
     """
     # Validate severity if provided
-    valid_severities = ['critical', 'high', 'medium', 'low', 'info']
+    valid_severities = ["critical", "high", "medium", "low", "info"]
     if severity and severity not in valid_severities:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid severity. Must be one of: {', '.join(valid_severities)}"
+            detail=f"Invalid severity. Must be one of: {', '.join(valid_severities)}",
         )
 
     # Check if project exists
@@ -662,27 +646,12 @@ async def get_project_code_reviews(
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
     # Get code reviews from database
-    reviews = db.get_code_reviews_by_project(
-        project_id=project_id,
-        severity=severity
-    )
+    reviews = db.get_code_reviews_by_project(project_id=project_id, severity=severity)
 
     # Build summary statistics
-    by_severity = {
-        'critical': 0,
-        'high': 0,
-        'medium': 0,
-        'low': 0,
-        'info': 0
-    }
+    by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
 
-    by_category = {
-        'security': 0,
-        'performance': 0,
-        'quality': 0,
-        'maintainability': 0,
-        'style': 0
-    }
+    by_category = {"security": 0, "performance": 0, "quality": 0, "maintainability": 0, "style": 0}
 
     for review in reviews:
         # Extract severity and category using helper (returns None if missing/invalid)
@@ -695,7 +664,7 @@ async def get_project_code_reviews(
             by_category[category_val] += 1
 
     # Blocking issues are critical or high severity
-    has_blocking_issues = (by_severity['critical'] + by_severity['high']) > 0
+    has_blocking_issues = (by_severity["critical"] + by_severity["high"]) > 0
 
     # Convert CodeReview objects to dictionaries
     findings_data = []
@@ -704,20 +673,22 @@ async def get_project_code_reviews(
         severity_val = _extract_enum_value(review, "severity", "unknown")
         category_val = _extract_enum_value(review, "category", "unknown")
 
-        findings_data.append({
-            "id": review.id,
-            "task_id": review.task_id,
-            "agent_id": review.agent_id,
-            "project_id": review.project_id,
-            "file_path": review.file_path,
-            "line_number": review.line_number,
-            "severity": severity_val,
-            "category": category_val,
-            "message": review.message,
-            "recommendation": review.recommendation,
-            "code_snippet": review.code_snippet,
-            "created_at": review.created_at
-        })
+        findings_data.append(
+            {
+                "id": review.id,
+                "task_id": review.task_id,
+                "agent_id": review.agent_id,
+                "project_id": review.project_id,
+                "file_path": review.file_path,
+                "line_number": review.line_number,
+                "severity": severity_val,
+                "category": category_val,
+                "message": review.message,
+                "recommendation": review.recommendation,
+                "code_snippet": review.code_snippet,
+                "created_at": review.created_at,
+            }
+        )
 
     # Build response (matches get_task_reviews flat structure)
     return {
@@ -726,5 +697,5 @@ async def get_project_code_reviews(
         "severity_counts": by_severity,
         "category_counts": by_category,
         "has_blocking_findings": has_blocking_issues,
-        "task_id": None  # Project-level aggregate
+        "task_id": None,  # Project-level aggregate
     }

@@ -111,7 +111,9 @@ class TestServerAccess:
         assert response.status_code == 200, "Server should return 200 OK"
 
         # Response should be JSON (health check endpoint)
-        assert "application/json" in response.headers.get("content-type", ""), "Should return JSON content"
+        assert "application/json" in response.headers.get(
+            "content-type", ""
+        ), "Should return JSON content"
 
         # Verify response contains expected health check fields
         data = response.json()

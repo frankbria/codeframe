@@ -39,6 +39,7 @@ def is_hosted_mode() -> bool:
         True if hosted mode, False if self-hosted
     """
     from codeframe.ui.server import get_deployment_mode, DeploymentMode
+
     return get_deployment_mode() == DeploymentMode.HOSTED
 
 
@@ -126,7 +127,9 @@ async def create_project(
             try:
                 db.delete_project(project_id)
             except sqlite3.Error as cleanup_db_error:
-                logger.error(f"Failed to delete project {project_id} during cleanup: {cleanup_db_error}")
+                logger.error(
+                    f"Failed to delete project {project_id} during cleanup: {cleanup_db_error}"
+                )
 
             # Best-effort cleanup: remove workspace directory (use actual workspace_path)
             if workspace_path.exists():
@@ -134,7 +137,9 @@ async def create_project(
                     shutil.rmtree(workspace_path)
                     logger.info(f"Cleaned up workspace directory: {workspace_path}")
                 except (OSError, PermissionError) as cleanup_fs_error:
-                    logger.error(f"Failed to clean up workspace {workspace_path}: {cleanup_fs_error}")
+                    logger.error(
+                        f"Failed to clean up workspace {workspace_path}: {cleanup_fs_error}"
+                    )
 
             raise HTTPException(
                 status_code=500, detail="Database error occurred. Please try again later."
@@ -152,7 +157,9 @@ async def create_project(
         try:
             db.delete_project(project_id)
         except sqlite3.Error as cleanup_db_error:
-            logger.error(f"Failed to delete project {project_id} during cleanup: {cleanup_db_error}")
+            logger.error(
+                f"Failed to delete project {project_id} during cleanup: {cleanup_db_error}"
+            )
 
         # Explicitly clean up workspace directory if it exists
         # (Defense in depth: WorkspaceManager has cleanup, but this ensures

@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from claude_agent_sdk import HookMatcher, HookInput, HookContext, HookJSONOutput
+
     SDK_AVAILABLE = True
 except ImportError:
     # Type stubs for when SDK is not installed (testing environments)
@@ -96,6 +97,7 @@ DANGEROUS_BASH_PATTERNS = [
 # ============================================================================
 # Pre-Tool Hook Factory
 # ============================================================================
+
 
 def create_quality_gate_pre_hook() -> Callable:
     """Create a pre-tool hook for quality gate enforcement.
@@ -180,6 +182,7 @@ def create_quality_gate_pre_hook() -> Callable:
 # Post-Tool Hook Factory
 # ============================================================================
 
+
 def create_metrics_post_hook(
     db: Any,
     metrics_tracker: Optional[Any] = None,
@@ -206,6 +209,7 @@ def create_metrics_post_hook(
     # Lazy import to avoid circular dependencies
     if metrics_tracker is None:
         from codeframe.lib.metrics_tracker import MetricsTracker
+
         metrics_tracker = MetricsTracker(db=db)
 
     async def metrics_post_hook(
@@ -253,6 +257,7 @@ def create_metrics_post_hook(
 # Hook Builder
 # ============================================================================
 
+
 def build_codeframe_hooks(
     db: Any,
     metrics_tracker: Optional[Any] = None,
@@ -298,12 +303,8 @@ def build_codeframe_hooks(
     # matcher=None applies to all tools
     try:
         hooks_dict = {
-            "PreToolUse": [
-                HookMatcher(matcher=None, hooks=[pre_hook])
-            ],
-            "PostToolUse": [
-                HookMatcher(matcher=None, hooks=[post_hook])
-            ],
+            "PreToolUse": [HookMatcher(matcher=None, hooks=[pre_hook])],
+            "PostToolUse": [HookMatcher(matcher=None, hooks=[post_hook])],
         }
         logger.info("Built CodeFRAME hooks: PreToolUse (safety), PostToolUse (metrics)")
         return hooks_dict
@@ -315,6 +316,7 @@ def build_codeframe_hooks(
 # ============================================================================
 # Fallback Validation (for hook reliability issues)
 # ============================================================================
+
 
 def validate_tool_safety_fallback(tool_name: str, tool_input: Dict[str, Any]) -> Optional[str]:
     """Fallback validation when SDK hooks fail.

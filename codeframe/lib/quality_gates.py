@@ -362,9 +362,7 @@ class QualityGates:
 
         # Check for critical/high severity findings
         critical_findings = [
-            f
-            for f in review_result.findings
-            if f.severity in [Severity.CRITICAL, Severity.HIGH]
+            f for f in review_result.findings if f.severity in [Severity.CRITICAL, Severity.HIGH]
         ]
 
         if len(critical_findings) > 0:
@@ -913,9 +911,7 @@ class QualityGates:
     # Helper Methods - Blocker Creation
     # ========================================================================
 
-    def _create_quality_blocker(
-        self, task: Task, failures: List[QualityGateFailure]
-    ) -> None:
+    def _create_quality_blocker(self, task: Task, failures: List[QualityGateFailure]) -> None:
         """Create a SYNC blocker for quality gate failures.
 
         Args:
@@ -950,7 +946,9 @@ class QualityGates:
 
             question_parts.append("")
 
-        question_parts.append("Fix these issues before completing the task. Type 'resolved' when fixed.")
+        question_parts.append(
+            "Fix these issues before completing the task. Type 'resolved' when fixed."
+        )
 
         question = "\n".join(question_parts)
 

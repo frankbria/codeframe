@@ -25,6 +25,7 @@ from codeframe.lib.sdk_hooks import (
 # Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_db():
     """Mock database instance."""
@@ -62,6 +63,7 @@ def post_hook(mock_db, mock_metrics_tracker):
 # ============================================================================
 # Pre-Tool Hook Tests - Protected File Blocking
 # ============================================================================
+
 
 @pytest.mark.asyncio
 async def test_pre_hook_blocks_env_file(pre_hook):
@@ -175,6 +177,7 @@ async def test_pre_hook_blocks_git_directory(pre_hook):
 # Pre-Tool Hook Tests - Dangerous Bash Commands
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_pre_hook_blocks_rm_rf_root(pre_hook):
     """Test that pre-hook blocks 'rm -rf /' command."""
@@ -262,6 +265,7 @@ async def test_pre_hook_blocks_chmod_777_root(pre_hook):
 # Pre-Tool Hook Tests - Safe Operations
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_pre_hook_allows_safe_file_write(pre_hook):
     """Test that pre-hook allows writes to safe files."""
@@ -344,6 +348,7 @@ async def test_pre_hook_allows_other_tools(pre_hook):
 # Post-Tool Hook Tests - Metrics Recording
 # ============================================================================
 
+
 @pytest.mark.asyncio
 async def test_post_hook_records_write_tool_usage(post_hook):
     """Test that post-hook records Write tool usage."""
@@ -407,6 +412,7 @@ async def test_post_hook_ignores_non_tracked_tools(post_hook):
 # Hook Builder Tests
 # ============================================================================
 
+
 @patch("codeframe.lib.sdk_hooks.SDK_AVAILABLE", True)
 @patch("codeframe.lib.sdk_hooks.HookMatcher")
 def test_build_codeframe_hooks_structure(mock_hook_matcher, mock_db, mock_metrics_tracker):
@@ -434,9 +440,11 @@ def test_build_codeframe_hooks_sdk_not_available(mock_db, caplog):
 
 def test_build_codeframe_hooks_creates_tracker_if_none(mock_db):
     """Test that build_codeframe_hooks creates MetricsTracker if not provided."""
-    with patch("codeframe.lib.sdk_hooks.SDK_AVAILABLE", True), \
-         patch("codeframe.lib.sdk_hooks.HookMatcher"), \
-         patch("codeframe.lib.metrics_tracker.MetricsTracker") as mock_tracker_class:
+    with (
+        patch("codeframe.lib.sdk_hooks.SDK_AVAILABLE", True),
+        patch("codeframe.lib.sdk_hooks.HookMatcher"),
+        patch("codeframe.lib.metrics_tracker.MetricsTracker") as mock_tracker_class,
+    ):
 
         hooks = build_codeframe_hooks(db=mock_db, metrics_tracker=None)
 
@@ -448,12 +456,10 @@ def test_build_codeframe_hooks_creates_tracker_if_none(mock_db):
 # Fallback Validation Tests
 # ============================================================================
 
+
 def test_fallback_validation_blocks_protected_file():
     """Test fallback validation blocks protected file writes."""
-    error = validate_tool_safety_fallback(
-        "Write",
-        {"file_path": "/app/.env"}
-    )
+    error = validate_tool_safety_fallback("Write", {"file_path": "/app/.env"})
 
     assert error is not None
     assert ".env" in error
@@ -461,10 +467,7 @@ def test_fallback_validation_blocks_protected_file():
 
 def test_fallback_validation_blocks_dangerous_command():
     """Test fallback validation blocks dangerous bash commands."""
-    error = validate_tool_safety_fallback(
-        "Bash",
-        {"command": "rm -rf /"}
-    )
+    error = validate_tool_safety_fallback("Bash", {"command": "rm -rf /"})
 
     assert error is not None
     assert "dangerous" in error.lower()
@@ -473,17 +476,11 @@ def test_fallback_validation_blocks_dangerous_command():
 def test_fallback_validation_allows_safe_operations():
     """Test fallback validation allows safe operations."""
     # Safe write
-    error = validate_tool_safety_fallback(
-        "Write",
-        {"file_path": "/app/main.py"}
-    )
+    error = validate_tool_safety_fallback("Write", {"file_path": "/app/main.py"})
     assert error is None
 
     # Safe bash
-    error = validate_tool_safety_fallback(
-        "Bash",
-        {"command": "echo 'hello'"}
-    )
+    error = validate_tool_safety_fallback("Bash", {"command": "echo 'hello'"})
     assert error is None
 
 
@@ -501,6 +498,7 @@ def test_fallback_validation_handles_missing_input():
 # ============================================================================
 # Edge Cases
 # ============================================================================
+
 
 @pytest.mark.asyncio
 async def test_pre_hook_handles_missing_tool_name(pre_hook):
@@ -557,6 +555,7 @@ async def test_pre_hook_case_insensitive_matching(pre_hook):
 # ============================================================================
 # Integration Test
 # ============================================================================
+
 
 @pytest.mark.asyncio
 async def test_pre_and_post_hooks_integration(mock_db, mock_metrics_tracker):

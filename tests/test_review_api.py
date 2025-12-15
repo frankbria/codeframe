@@ -40,6 +40,7 @@ def client(db):
     # Reload server module to pick up new environment
     from codeframe.ui import server
     from importlib import reload
+
     reload(server)
 
     # Set database on app state
@@ -47,6 +48,7 @@ def client(db):
 
     # Clear review cache before each test
     from codeframe.ui.shared import review_cache
+
     review_cache.clear()
 
     yield TestClient(server.app)

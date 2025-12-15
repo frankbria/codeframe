@@ -214,24 +214,24 @@ async def assign_agent_to_project(
 
         # Check if agent is already assigned (active)
         existing = db.get_agent_assignment(project_id, request.agent_id)
-        if existing and existing.get('is_active'):
+        if existing and existing.get("is_active"):
             raise HTTPException(
                 status_code=400,
-                detail=f"Agent {request.agent_id} is already assigned to project {project_id}"
+                detail=f"Agent {request.agent_id} is already assigned to project {project_id}",
             )
 
         # Assign agent to project
         assignment_id = db.assign_agent_to_project(
-            project_id=project_id,
-            agent_id=request.agent_id,
-            role=request.role
+            project_id=project_id, agent_id=request.agent_id, role=request.role
         )
 
-        logger.info(f"Assigned agent {request.agent_id} to project {project_id} with role {request.role}")
+        logger.info(
+            f"Assigned agent {request.agent_id} to project {project_id} with role {request.role}"
+        )
 
         return {
             "assignment_id": assignment_id,
-            "message": f"Agent {request.agent_id} assigned to project {project_id} with role {request.role}"
+            "message": f"Agent {request.agent_id} assigned to project {project_id} with role {request.role}",
         }
     except HTTPException:
         raise
@@ -268,7 +268,7 @@ async def remove_agent_from_project(
         if rows_affected == 0:
             raise HTTPException(
                 status_code=404,
-                detail=f"No active assignment found for agent {agent_id} on project {project_id}"
+                detail=f"No active assignment found for agent {agent_id} on project {project_id}",
             )
 
         logger.info(f"Removed agent {agent_id} from project {project_id}")
@@ -307,15 +307,13 @@ async def update_agent_role(
     try:
         # Update agent role
         rows_affected = db.reassign_agent_role(
-            project_id=project_id,
-            agent_id=agent_id,
-            new_role=request.role
+            project_id=project_id, agent_id=agent_id, new_role=request.role
         )
 
         if rows_affected == 0:
             raise HTTPException(
                 status_code=404,
-                detail=f"No active assignment found for agent {agent_id} on project {project_id}"
+                detail=f"No active assignment found for agent {agent_id} on project {project_id}",
             )
 
         logger.info(f"Updated agent {agent_id} role to {request.role} on project {project_id}")
@@ -325,16 +323,13 @@ async def update_agent_role(
         if not assignment:
             raise HTTPException(
                 status_code=404,
-                detail=f"Failed to retrieve updated assignment for agent {agent_id}"
+                detail=f"Failed to retrieve updated assignment for agent {agent_id}",
             )
 
         # Fetch full agent details (type, provider, status, etc.)
         agent = db.get_agent(agent_id)
         if not agent:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Agent {agent_id} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
         # Merge assignment and agent data to create full AgentAssignmentResponse
         full_assignment = {
@@ -388,15 +383,13 @@ async def patch_agent_role(
     try:
         # Update agent role
         rows_affected = db.reassign_agent_role(
-            project_id=project_id,
-            agent_id=agent_id,
-            new_role=request.role
+            project_id=project_id, agent_id=agent_id, new_role=request.role
         )
 
         if rows_affected == 0:
             raise HTTPException(
                 status_code=404,
-                detail=f"No active assignment found for agent {agent_id} on project {project_id}"
+                detail=f"No active assignment found for agent {agent_id} on project {project_id}",
             )
 
         logger.info(f"Updated agent {agent_id} role to {request.role} on project {project_id}")

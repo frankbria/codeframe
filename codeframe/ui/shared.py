@@ -158,11 +158,7 @@ async def start_agent(
     # Lock released - now safe to do I/O operations
     try:
         # Update project status to RUNNING (non-blocking)
-        await asyncio.to_thread(
-            db.update_project,
-            project_id,
-            {"status": ProjectStatus.RUNNING}
-        )
+        await asyncio.to_thread(db.update_project, project_id, {"status": ProjectStatus.RUNNING})
 
         # Broadcast agent_started message
         try:
@@ -195,7 +191,7 @@ async def start_agent(
             project_id=project_id,
             category="conversation",
             key="assistant",
-            value=greeting
+            value=greeting,
         )
 
         # cf-10.4: Broadcast greeting via WebSocket

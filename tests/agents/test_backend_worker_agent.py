@@ -110,9 +110,14 @@ class TestBackendWorkerAgentTaskFetching:
 
         # Set current_task so agent knows which project to query
         agent.current_task = Task(
-            id=task_id, project_id=project_id, task_number="1.0.1",
-            title="Test Task", description="Test", status=TaskStatus.PENDING,
-            priority=0, workflow_step=1
+            id=task_id,
+            project_id=project_id,
+            task_number="1.0.1",
+            title="Test Task",
+            description="Test",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
         )
 
         task = agent.fetch_next_task()
@@ -134,9 +139,14 @@ class TestBackendWorkerAgentTaskFetching:
 
         # Set current_task so agent knows which project to query
         agent.current_task = Task(
-            id=1, project_id=project_id, task_number="1.0.1",
-            title="Test", description="Test", status=TaskStatus.PENDING,
-            priority=0, workflow_step=1
+            id=1,
+            project_id=project_id,
+            task_number="1.0.1",
+            title="Test",
+            description="Test",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
         )
 
         task = agent.fetch_next_task()
@@ -194,9 +204,14 @@ class TestBackendWorkerAgentTaskFetching:
 
         # Set current_task so agent knows which project to query
         agent.current_task = Task(
-            id=high_priority_id, project_id=project_id, task_number="1.0.2",
-            title="Test", description="Test", status=TaskStatus.PENDING,
-            priority=0, workflow_step=1
+            id=high_priority_id,
+            project_id=project_id,
+            task_number="1.0.2",
+            title="Test",
+            description="Test",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
         )
 
         task = agent.fetch_next_task()
@@ -256,9 +271,14 @@ class TestBackendWorkerAgentTaskFetching:
 
         # Set current_task so agent knows which project to query
         agent.current_task = Task(
-            id=earlier_id, project_id=project_id, task_number="1.0.2",
-            title="Test", description="Test", status=TaskStatus.PENDING,
-            priority=0, workflow_step=1
+            id=earlier_id,
+            project_id=project_id,
+            task_number="1.0.2",
+            title="Test",
+            description="Test",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
         )
 
         task = agent.fetch_next_task()
@@ -308,9 +328,14 @@ class TestBackendWorkerAgentTaskFetching:
 
         # Set current_task for project 1 so agent queries only project 1 tasks
         agent.current_task = Task(
-            id=1, project_id=project1_id, task_number="1.0.1",
-            title="Test", description="Test", status=TaskStatus.PENDING,
-            priority=0, workflow_step=1
+            id=1,
+            project_id=project1_id,
+            task_number="1.0.1",
+            title="Test",
+            description="Test",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
         )
 
         task = agent.fetch_next_task()
@@ -368,9 +393,14 @@ class TestBackendWorkerAgentTaskFetching:
 
         # Set current_task so agent knows which project to query
         agent.current_task = Task(
-            id=1, project_id=project_id, task_number="1.0.1",
-            title="Test", description="Test", status=TaskStatus.PENDING,
-            priority=0, workflow_step=1
+            id=1,
+            project_id=project_id,
+            task_number="1.0.1",
+            title="Test",
+            description="Test",
+            status=TaskStatus.PENDING,
+            priority=0,
+            workflow_step=1,
         )
 
         task = agent.fetch_next_task()
@@ -609,7 +639,8 @@ class TestBackendWorkerAgentCodeGeneration:
         ]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -667,7 +698,8 @@ class TestBackendWorkerAgentCodeGeneration:
         ]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -700,7 +732,8 @@ class TestBackendWorkerAgentCodeGeneration:
         # Simulate API error
         mock_client.messages.create.side_effect = Exception("API timeout")
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -733,7 +766,8 @@ class TestBackendWorkerAgentCodeGeneration:
         mock_response.content = [Mock(text="Invalid JSON {malformed")]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -759,7 +793,8 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         files = [
@@ -788,7 +823,8 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         files = [
@@ -815,7 +851,8 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         files = [{"path": "codeframe/models/user.py", "action": "delete"}]
@@ -831,7 +868,8 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         files = [
@@ -860,7 +898,8 @@ class TestBackendWorkerAgentFileOperations:
         existing_file.parent.mkdir(parents=True)
         existing_file.write_text("class User:\n    pass\n")
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         files = [
@@ -893,7 +932,8 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         # Attempt path traversal
@@ -911,7 +951,8 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         # Attempt absolute path
@@ -927,7 +968,8 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         files = [{"path": "nonexistent.py", "action": "modify", "content": "new content"}]
@@ -940,7 +982,8 @@ class TestBackendWorkerAgentFileOperations:
         db = Mock(spec=Database)
         index = Mock(spec=CodebaseIndex)
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
+        agent = BackendWorkerAgent(
+            db=db, codebase_index=index, project_root=tmp_path, use_sdk=False
         )
 
         files = [{"path": "nonexistent.py", "action": "delete"}]
@@ -983,8 +1026,7 @@ class TestBackendWorkerAgentTaskStatus:
             can_parallelize=False,
         )
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path)
 
         agent.update_task_status(task_id, TaskStatus.IN_PROGRESS.value)
 
@@ -1026,8 +1068,7 @@ class TestBackendWorkerAgentTaskStatus:
             can_parallelize=False,
         )
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path)
 
         output = "Successfully created User model"
         agent.update_task_status(task_id, TaskStatus.COMPLETED.value, output=output)
@@ -1071,8 +1112,7 @@ class TestBackendWorkerAgentTaskStatus:
             can_parallelize=False,
         )
 
-        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path
-        )
+        agent = BackendWorkerAgent(db=db, codebase_index=index, project_root=tmp_path)
 
         output = "Error: API timeout"
         agent.update_task_status(task_id, TaskStatus.FAILED.value, output=output)
@@ -1147,7 +1187,8 @@ class TestBackendWorkerAgentExecution:
         ]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -1222,7 +1263,8 @@ class TestBackendWorkerAgentExecution:
         mock_anthropic_class.return_value = mock_client
         mock_client.messages.create.side_effect = Exception("API timeout")
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -1305,7 +1347,8 @@ class TestBackendWorkerAgentExecution:
         ]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -1395,7 +1438,8 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         ]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -1495,7 +1539,8 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         ]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,
@@ -1620,7 +1665,8 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         ]
         mock_client.messages.create.return_value = mock_response
 
-        agent = BackendWorkerAgent(db=db,
+        agent = BackendWorkerAgent(
+            db=db,
             codebase_index=index,
             api_key="test-key",
             project_root=tmp_path,

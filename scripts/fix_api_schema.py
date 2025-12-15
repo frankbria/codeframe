@@ -34,12 +34,14 @@ def fix_api_schema(content: str) -> str:
     # {"project_name": "foo", "other": "bar"}
     # → {"name": "foo", "description": "Test project", "other": "bar"}
     pattern4 = r'\{"project_name":\s*"([^"]+)",\s*([^}]+)\}'
+
     def replace_with_desc(match):
         name = match.group(1)
         rest = match.group(2)
         if '"project_type"' not in rest:
             return f'{{"name": "{name}", "description": "Test project", {rest}}}'
         return match.group(0)
+
     content = re.sub(pattern4, replace_with_desc, content)
 
     # Pattern 5: Empty project_name
@@ -50,18 +52,14 @@ def fix_api_schema(content: str) -> str:
     content = re.sub(pattern5, replacement5, content)
 
     # Fix docstrings and comments mentioning project_name
-    content = content.replace('missing project_name', 'missing name')
-    content = content.replace('empty project_name', 'empty name')
-    content = content.replace('duplicate project_name', 'duplicate name')
-    content = content.replace('Test that project_type', 'Test that source_type')
-    content = content.replace('invalid project_type', 'invalid source_type')
+    content = content.replace("missing project_name", "missing name")
+    content = content.replace("empty project_name", "empty name")
+    content = content.replace("duplicate project_name", "duplicate name")
+    content = content.replace("Test that project_type", "Test that source_type")
+    content = content.replace("invalid project_type", "invalid source_type")
 
     # Fix assertions checking project_name in responses
-    content = re.sub(
-        r'\["project_name"\]',
-        r'["name"]',
-        content
-    )
+    content = re.sub(r'\["project_name"\]', r'["name"]', content)
 
     return content
 

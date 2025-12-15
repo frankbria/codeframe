@@ -19,6 +19,7 @@ def get_app():
     after api_client fixture reloads codeframe.ui.server.
     """
     from codeframe.ui.server import app
+
     return app
 
 

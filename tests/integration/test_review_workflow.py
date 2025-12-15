@@ -480,7 +480,9 @@ def simple():
             agent_id="review-001",
             db=db,
         )
-        db.create_agent(review_agent.agent_id, review_agent.agent_type, review_agent.provider, AgentMaturity.D1)
+        db.create_agent(
+            review_agent.agent_id, review_agent.agent_type, review_agent.provider, AgentMaturity.D1
+        )
         db.assign_agent_to_project(project_id, review_agent.agent_id)
 
         # Verify agent can be used in workflow

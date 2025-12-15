@@ -18,8 +18,9 @@ def db():
 
     # Manually apply Sprint 10 migration for in-memory database
     from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
-        migration as migration_007
+        migration as migration_007,
     )
+
     if migration_007.can_apply(database.conn):
         migration_007.apply(database.conn)
 
@@ -27,7 +28,7 @@ def db():
     cursor = database.conn.cursor()
     cursor.execute(
         "INSERT INTO projects (name, description, workspace_path, status) VALUES (?, ?, ?, ?)",
-        ("test-project", "Test project", "/tmp/test", "active")
+        ("test-project", "Test project", "/tmp/test", "active"),
     )
     database.conn.commit()
 
@@ -52,7 +53,7 @@ async def test_record_token_usage(tracker, db):
     cursor = db.conn.cursor()
     cursor.execute(
         "INSERT INTO tasks (project_id, title, description, status) VALUES (?, ?, ?, ?)",
-        (1, "Test task", "Test description", "in_progress")
+        (1, "Test task", "Test description", "in_progress"),
     )
     db.conn.commit()
     task_id = cursor.lastrowid
@@ -65,7 +66,7 @@ async def test_record_token_usage(tracker, db):
         model_name="claude-sonnet-4-5",
         input_tokens=1000,
         output_tokens=500,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     # Then: Token usage is saved to database
@@ -96,7 +97,7 @@ async def test_record_token_usage_without_task(tracker, db):
         model_name="claude-haiku-4",
         input_tokens=500,
         output_tokens=200,
-        call_type=CallType.COORDINATION
+        call_type=CallType.COORDINATION,
     )
 
     # Then: Token usage is saved
@@ -119,7 +120,7 @@ def test_calculate_cost_sonnet():
     # Given: Sonnet pricing ($3 input, $15 output per million tokens)
     model_name = "claude-sonnet-4-5"
     input_tokens = 1_000_000  # 1M tokens
-    output_tokens = 500_000   # 0.5M tokens
+    output_tokens = 500_000  # 0.5M tokens
 
     # When: We calculate cost
     cost = MetricsTracker.calculate_cost(model_name, input_tokens, output_tokens)
@@ -132,8 +133,8 @@ def test_calculate_cost_sonnet_small():
     """Test cost calculation for small Sonnet usage."""
     # Given: Small token counts
     model_name = "claude-sonnet-4-5"
-    input_tokens = 1000    # 0.001M tokens
-    output_tokens = 500    # 0.0005M tokens
+    input_tokens = 1000  # 0.001M tokens
+    output_tokens = 500  # 0.0005M tokens
 
     # When: We calculate cost
     cost = MetricsTracker.calculate_cost(model_name, input_tokens, output_tokens)
@@ -152,8 +153,8 @@ def test_calculate_cost_opus():
     """Test cost calculation for Claude Opus 4 ($15/$75 per MTok)."""
     # Given: Opus pricing ($15 input, $75 output per million tokens)
     model_name = "claude-opus-4"
-    input_tokens = 1_000_000   # 1M tokens
-    output_tokens = 500_000    # 0.5M tokens
+    input_tokens = 1_000_000  # 1M tokens
+    output_tokens = 500_000  # 0.5M tokens
 
     # When: We calculate cost
     cost = MetricsTracker.calculate_cost(model_name, input_tokens, output_tokens)
@@ -171,8 +172,8 @@ def test_calculate_cost_haiku():
     """Test cost calculation for Claude Haiku 4 ($0.80/$4 per MTok)."""
     # Given: Haiku pricing ($0.80 input, $4 output per million tokens)
     model_name = "claude-haiku-4"
-    input_tokens = 1_000_000   # 1M tokens
-    output_tokens = 500_000    # 0.5M tokens
+    input_tokens = 1_000_000  # 1M tokens
+    output_tokens = 500_000  # 0.5M tokens
 
     # When: We calculate cost
     cost = MetricsTracker.calculate_cost(model_name, input_tokens, output_tokens)
@@ -204,7 +205,7 @@ async def test_get_project_total_cost(tracker, db):
         model_name="claude-sonnet-4-5",
         input_tokens=1_000_000,
         output_tokens=500_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     await tracker.record_token_usage(
@@ -214,7 +215,7 @@ async def test_get_project_total_cost(tracker, db):
         model_name="claude-haiku-4",
         input_tokens=500_000,
         output_tokens=250_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     # When: We get project costs
@@ -270,7 +271,7 @@ async def test_get_cost_by_agent(tracker, db):
         model_name="claude-sonnet-4-5",
         input_tokens=1_000_000,
         output_tokens=500_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     await tracker.record_token_usage(
@@ -280,7 +281,7 @@ async def test_get_cost_by_agent(tracker, db):
         model_name="claude-haiku-4",
         input_tokens=200_000,
         output_tokens=100_000,
-        call_type=CallType.CODE_REVIEW
+        call_type=CallType.CODE_REVIEW,
     )
 
     # When: We get costs for this agent
@@ -314,7 +315,7 @@ async def test_get_cost_by_model(tracker, db):
         model_name="claude-sonnet-4-5",
         input_tokens=1_000_000,
         output_tokens=500_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     await tracker.record_token_usage(
@@ -324,7 +325,7 @@ async def test_get_cost_by_model(tracker, db):
         model_name="claude-sonnet-4-5",
         input_tokens=500_000,
         output_tokens=250_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     await tracker.record_token_usage(
@@ -334,7 +335,7 @@ async def test_get_cost_by_model(tracker, db):
         model_name="claude-haiku-4",
         input_tokens=500_000,
         output_tokens=250_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     # When: We get costs
@@ -372,7 +373,7 @@ async def test_get_token_usage_timeline(tracker, db):
         model_name="claude-sonnet-4-5",
         input_tokens=1_000_000,
         output_tokens=500_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     # Older usage (manually insert with backdated timestamp)
@@ -386,20 +387,21 @@ async def test_get_token_usage_timeline(tracker, db):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "backend-001", 1, "claude-haiku-4", 500_000, 250_000,
+            "backend-001",
+            1,
+            "claude-haiku-4",
+            500_000,
+            250_000,
             MetricsTracker.calculate_cost("claude-haiku-4", 500_000, 250_000),
-            "task_execution", old_timestamp.isoformat()  # Convert to ISO string
-        )
+            "task_execution",
+            old_timestamp.isoformat(),  # Convert to ISO string
+        ),
     )
     db.conn.commit()
 
     # When: We get timeline for last 7 days
     start_date = now - timedelta(days=7)
-    result = await tracker.get_token_usage_stats(
-        project_id=1,
-        start_date=start_date,
-        end_date=None
-    )
+    result = await tracker.get_token_usage_stats(project_id=1, start_date=start_date, end_date=None)
 
     # Then: Only recent usage is included
     assert result["total_cost_usd"] == pytest.approx(10.50, abs=0.01)
@@ -407,11 +409,7 @@ async def test_get_token_usage_timeline(tracker, db):
     assert result["date_range"]["start"] == start_date.isoformat()
 
     # When: We get all usage (no date filter)
-    result_all = await tracker.get_token_usage_stats(
-        project_id=1,
-        start_date=None,
-        end_date=None
-    )
+    result_all = await tracker.get_token_usage_stats(project_id=1, start_date=None, end_date=None)
 
     # Then: Both usages are included
     assert result_all["total_cost_usd"] == pytest.approx(11.90, abs=0.01)
@@ -430,16 +428,12 @@ async def test_get_token_usage_stats_with_end_date(tracker, db):
         model_name="claude-sonnet-4-5",
         input_tokens=1_000_000,
         output_tokens=500_000,
-        call_type=CallType.TASK_EXECUTION
+        call_type=CallType.TASK_EXECUTION,
     )
 
     # When: We filter with end_date in the past
     past_date = now - timedelta(days=1)
-    result = await tracker.get_token_usage_stats(
-        project_id=1,
-        start_date=None,
-        end_date=past_date
-    )
+    result = await tracker.get_token_usage_stats(project_id=1, start_date=None, end_date=past_date)
 
     # Then: No usages match
     assert result["total_cost_usd"] == 0.0

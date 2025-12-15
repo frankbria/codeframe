@@ -46,9 +46,7 @@ class SDKClientWrapper:
             os.environ["ANTHROPIC_API_KEY"] = api_key
 
         if not SDK_AVAILABLE:
-            logger.warning(
-                "Claude Agent SDK not available, falling back to AnthropicProvider"
-            )
+            logger.warning("Claude Agent SDK not available, falling back to AnthropicProvider")
             self._use_sdk = False
             self._fallback = AnthropicProvider(api_key=api_key, model=model)
             self._options = None
@@ -117,9 +115,7 @@ class SDKClientWrapper:
         Yields SDK message objects for real-time processing.
         """
         if not self._use_sdk:
-            raise RuntimeError(
-                "Streaming requires SDK - not available in fallback mode"
-            )
+            raise RuntimeError("Streaming requires SDK - not available in fallback mode")
 
         async for message in query(prompt=prompt, options=self._options):
             yield message

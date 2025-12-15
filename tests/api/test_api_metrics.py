@@ -129,7 +129,11 @@ class TestProjectTokenMetricsEndpoint:
 
         # Filter to only records from today (should get 1 record)
         now = datetime.now(timezone.utc)
-        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace('+00:00', 'Z')
+        start_date = (
+            now.replace(hour=0, minute=0, second=0, microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
         response = api_client.get(
             f"/api/projects/{project_id}/metrics/tokens?start_date={start_date}"
@@ -194,18 +198,14 @@ class TestProjectCostMetricsEndpoint:
         assert len(data["by_agent"]) == 2
 
         # Find backend-001 stats
-        backend_stats = next(
-            (a for a in data["by_agent"] if a["agent_id"] == "backend-001"), None
-        )
+        backend_stats = next((a for a in data["by_agent"] if a["agent_id"] == "backend-001"), None)
         assert backend_stats is not None
         assert backend_stats["call_count"] == 2
         assert backend_stats["total_tokens"] == 2250  # 1000+500 + 500+250
         assert abs(backend_stats["cost_usd"] - 0.01575) < 0.00001
 
         # Find review-001 stats
-        review_stats = next(
-            (a for a in data["by_agent"] if a["agent_id"] == "review-001"), None
-        )
+        review_stats = next((a for a in data["by_agent"] if a["agent_id"] == "review-001"), None)
         assert review_stats is not None
         assert review_stats["call_count"] == 1
         assert review_stats["total_tokens"] == 3000  # 2000+1000
@@ -272,11 +272,7 @@ class TestAgentMetricsEndpoint:
 
         # Find task execution stats
         task_exec_stats = next(
-            (
-                ct
-                for ct in data["by_call_type"]
-                if ct["call_type"] == CallType.TASK_EXECUTION.value
-            ),
+            (ct for ct in data["by_call_type"] if ct["call_type"] == CallType.TASK_EXECUTION.value),
             None,
         )
         assert task_exec_stats is not None
@@ -284,11 +280,7 @@ class TestAgentMetricsEndpoint:
 
         # Find code review stats
         code_review_stats = next(
-            (
-                ct
-                for ct in data["by_call_type"]
-                if ct["call_type"] == CallType.CODE_REVIEW.value
-            ),
+            (ct for ct in data["by_call_type"] if ct["call_type"] == CallType.CODE_REVIEW.value),
             None,
         )
         assert code_review_stats is not None
@@ -303,9 +295,7 @@ class TestAgentMetricsEndpoint:
         project_id, _ = project_with_token_usage
 
         # Get metrics for backend-001 filtered by project_id
-        response = api_client.get(
-            f"/api/agents/backend-001/metrics?project_id={project_id}"
-        )
+        response = api_client.get(f"/api/agents/backend-001/metrics?project_id={project_id}")
 
         assert response.status_code == 200
         data = response.json()
@@ -364,9 +354,7 @@ class TestMetricsEndpointIntegration:
         project_data = project_response.json()
 
         # Get agent costs for backend-001
-        agent_response = api_client.get(
-            f"/api/agents/backend-001/metrics?project_id={project_id}"
-        )
+        agent_response = api_client.get(f"/api/agents/backend-001/metrics?project_id={project_id}")
         agent_data = agent_response.json()
 
         # Verify consistency

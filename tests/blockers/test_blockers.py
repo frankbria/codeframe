@@ -22,6 +22,7 @@ from codeframe.core.models import BlockerType, TaskStatus
 async def db():
     """Create in-memory database for testing."""
     import sqlite3
+
     # Use check_same_thread=False for threading tests
     database = Database(":memory:")
     database.initialize()

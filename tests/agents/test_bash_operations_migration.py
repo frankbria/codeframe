@@ -40,17 +40,12 @@ class TestBashOperationsMigration:
         db_mock = Mock()
         db_mock.create_lint_result = Mock()
 
-        agent = TestWorkerAgent(
-            agent_id="test-001",
-            db=db_mock
-        )
+        agent = TestWorkerAgent(agent_id="test-001", db=db_mock)
 
         # Create mock SDK client that agent should use
         agent.client = AsyncMock()
         agent.client.messages.create = AsyncMock(
-            return_value=Mock(
-                content=[Mock(text="Test execution completed")]
-            )
+            return_value=Mock(content=[Mock(text="Test execution completed")])
         )
 
         test_file = tmp_path / "test_example.py"
@@ -58,11 +53,9 @@ class TestBashOperationsMigration:
 
         # Execute - this should use SDK Bash tool (after migration)
         # Currently uses subprocess, but pattern should change to SDK
-        with patch('subprocess.run') as mock_subprocess:
+        with patch("subprocess.run") as mock_subprocess:
             mock_subprocess.return_value = Mock(
-                returncode=0,
-                stdout="test_example.py::test_example PASSED",
-                stderr=""
+                returncode=0, stdout="test_example.py::test_example PASSED", stderr=""
             )
 
             all_passed, output, counts = agent._execute_tests(test_file)
@@ -82,17 +75,12 @@ class TestBashOperationsMigration:
         AFTER: SDK prompt with "Use Bash tool to run: pytest ..."
         """
         db_mock = Mock()
-        agent = TestWorkerAgent(
-            agent_id="test-001",
-            db=db_mock
-        )
+        agent = TestWorkerAgent(agent_id="test-001", db=db_mock)
 
         # Mock SDK client
         agent.client = AsyncMock()
         agent.client.messages.create = AsyncMock(
-            return_value=Mock(
-                content=[Mock(text="Tests executed via Bash tool")]
-            )
+            return_value=Mock(content=[Mock(text="Tests executed via Bash tool")])
         )
 
         # Example: How to migrate pytest execution to SDK Bash tool
@@ -118,10 +106,7 @@ Report test results including:
     def test_test_worker_agent_bash_tool_error_handling(self):
         """Verify SDK Bash tool error handling pattern."""
         db_mock = Mock()
-        agent = TestWorkerAgent(
-            agent_id="test-001",
-            db=db_mock
-        )
+        agent = TestWorkerAgent(agent_id="test-001", db=db_mock)
 
         # Error handling pattern for SDK Bash tool
         error_prompt = """The previous Bash tool execution failed.
@@ -147,16 +132,13 @@ Please check if pytest is installed and retry with: python -m pytest instead.
         index_mock = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            db=db_mock,
-            codebase_index=index_mock,
-            use_sdk=True,
-            project_root="/tmp/test"
+            db=db_mock, codebase_index=index_mock, use_sdk=True, project_root="/tmp/test"
         )
 
         # Verify SDK is initialized
         assert agent.use_sdk is True
         assert agent.sdk_client is not None
-        assert hasattr(agent.sdk_client, 'send_message')
+        assert hasattr(agent.sdk_client, "send_message")
 
     def test_backend_worker_agent_sdk_allowed_tools(self):
         """Verify BackendWorkerAgent SDK has Bash tool enabled."""
@@ -167,10 +149,7 @@ Please check if pytest is installed and retry with: python -m pytest instead.
         index_mock = Mock(spec=CodebaseIndex)
 
         agent = BackendWorkerAgent(
-            db=db_mock,
-            codebase_index=index_mock,
-            use_sdk=True,
-            project_root="/tmp/test"
+            db=db_mock, codebase_index=index_mock, use_sdk=True, project_root="/tmp/test"
         )
 
         # Verify Bash tool is in allowed tools
@@ -193,7 +172,7 @@ Please check if pytest is installed and retry with: python -m pytest instead.
             codebase_index=index_mock,
             use_sdk=True,
             api_key="test-key",
-            project_root="/tmp/test"
+            project_root="/tmp/test",
         )
 
         # Mock SDK client send_message
@@ -201,7 +180,7 @@ Please check if pytest is installed and retry with: python -m pytest instead.
         agent.sdk_client.send_message = AsyncMock(
             return_value={
                 "content": '{"files": [], "explanation": "Git status checked"}',
-                "usage": {"input_tokens": 100, "output_tokens": 50}
+                "usage": {"input_tokens": 100, "output_tokens": 50},
             }
         )
 
@@ -211,7 +190,7 @@ Please check if pytest is installed and retry with: python -m pytest instead.
             "project_id": 1,
             "title": "Test task",
             "description": "Check git status",
-            "issue_id": None
+            "issue_id": None,
         }
         context = agent.build_context(task)
 
@@ -237,17 +216,15 @@ Please check if pytest is installed and retry with: python -m pytest instead.
         test_file = tmp_path / "test_dummy.py"
         test_file.write_text("def test_pass(): assert True")
 
-        with patch('subprocess.run') as mock_subprocess:
+        with patch("subprocess.run") as mock_subprocess:
             # Mock pytest execution
-            mock_subprocess.return_value = Mock(
-                returncode=0,
-                stdout="",
-                stderr=""
-            )
+            mock_subprocess.return_value = Mock(returncode=0, stdout="", stderr="")
 
             # Mock file operations for JSON report
-            with patch('builtins.open', create=True) as mock_open:
-                mock_open.return_value.__enter__.return_value.read.return_value = '{"summary": {"total": 1, "passed": 1}}'
+            with patch("builtins.open", create=True) as mock_open:
+                mock_open.return_value.__enter__.return_value.read.return_value = (
+                    '{"summary": {"total": 1, "passed": 1}}'
+                )
 
                 result = runner.run_tests()
 
@@ -380,6 +357,7 @@ Example: Exit code 1 indicates test failures - review test output for details.
 # Integration Tests
 # ========================================================================
 
+
 class TestBashOperationsIntegration:
     """Integration tests for SDK Bash tool usage."""
 
@@ -395,30 +373,15 @@ class TestBashOperationsIntegration:
         """
         # This is a conceptual test showing the migration pattern
         workflow_steps = [
-            {
-                "operation": "git status",
-                "prompt_contains": ["Bash tool", "git status"]
-            },
-            {
-                "operation": "ruff check",
-                "prompt_contains": ["Bash tool", "ruff check"]
-            },
-            {
-                "operation": "pytest",
-                "prompt_contains": ["Bash tool", "pytest"]
-            },
-            {
-                "operation": "git commit",
-                "prompt_contains": ["Bash tool", "git commit"]
-            }
+            {"operation": "git status", "prompt_contains": ["Bash tool", "git status"]},
+            {"operation": "ruff check", "prompt_contains": ["Bash tool", "ruff check"]},
+            {"operation": "pytest", "prompt_contains": ["Bash tool", "pytest"]},
+            {"operation": "git commit", "prompt_contains": ["Bash tool", "git commit"]},
         ]
 
         for step in workflow_steps:
             # Each operation should use SDK Bash tool
-            assert all(
-                keyword in " ".join(step["prompt_contains"])
-                for keyword in ["Bash tool"]
-            )
+            assert all(keyword in " ".join(step["prompt_contains"]) for keyword in ["Bash tool"])
 
     def test_sdk_client_wrapper_bash_tool_enabled(self):
         """Verify SDKClientWrapper includes Bash in allowed tools."""
@@ -430,7 +393,7 @@ class TestBashOperationsIntegration:
             model="claude-sonnet-4-20250514",
             system_prompt="Test agent",
             allowed_tools=["Read", "Write", "Bash", "Glob", "Grep"],
-            cwd="/tmp/test"
+            cwd="/tmp/test",
         )
 
         # Verify Bash tool is enabled

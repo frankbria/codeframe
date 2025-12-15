@@ -130,12 +130,12 @@ def test_failing():
         src_file = project_root / "src" / "feature.py"
         src_file.parent.mkdir(parents=True, exist_ok=True)
         src_file.write_text(
-            '''
+            """
 def add(a: int, b: int) -> int:
     return a + b
 
 result: int = add("hello", "world")  # Type error: str instead of int
-'''
+"""
         )
 
         # Mock subprocess to simulate mypy error
@@ -252,7 +252,9 @@ def test_add():
                 cmd_str = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
                 if "--cov" in cmd_str:
                     # Coverage command (pytest with --cov)
-                    return Mock(returncode=0, stdout="All tests passed\nTOTAL coverage: 92%", stderr="")
+                    return Mock(
+                        returncode=0, stdout="All tests passed\nTOTAL coverage: 92%", stderr=""
+                    )
                 elif "pytest" in cmd_str or "jest" in cmd_str:
                     return Mock(returncode=0, stdout="All tests passed", stderr="")
                 elif "mypy" in cmd_str or "tsc" in cmd_str:
@@ -297,9 +299,7 @@ def test_add():
             # Quality gate should store failures in database
             # Check that quality_gate_failures column is updated
             cursor = db.conn.cursor()
-            cursor.execute(
-                "SELECT quality_gate_failures FROM tasks WHERE id = ?", (task.id,)
-            )
+            cursor.execute("SELECT quality_gate_failures FROM tasks WHERE id = ?", (task.id,))
             row = cursor.fetchone()
             assert row is not None
             assert row[0] is not None  # JSON stored
@@ -338,9 +338,7 @@ def authenticate_user(username: str, password: str) -> bool:
 
         # Check that requires_human_approval flag is set
         cursor = db.conn.cursor()
-        cursor.execute(
-            "SELECT requires_human_approval FROM tasks WHERE id = ?", (task.id,)
-        )
+        cursor.execute("SELECT requires_human_approval FROM tasks WHERE id = ?", (task.id,))
         row = cursor.fetchone()
         assert row is not None
         assert row[0] == 1, "Risky auth changes should require human approval"
@@ -356,12 +354,12 @@ def authenticate_user(username: str, password: str) -> bool:
         src_file = project_root / "src" / "bad_style.py"
         src_file.parent.mkdir(parents=True, exist_ok=True)
         src_file.write_text(
-            '''
+            """
 import unused_import
 def bad_function( ):
     x=1+2
     return x
-'''
+"""
         )
 
         # Mock subprocess to simulate ruff errors
@@ -739,7 +737,10 @@ class TestQualityGatesErrorHandling:
             # Timeout should be treated as a failure
             assert result.status == "failed"
             assert len(result.failures) > 0
-            assert "0" in str(result.failures[0].reason) or "timeout" in result.failures[0].reason.lower()
+            assert (
+                "0" in str(result.failures[0].reason)
+                or "timeout" in result.failures[0].reason.lower()
+            )
 
     @pytest.mark.asyncio
     async def test_coverage_not_found(self, quality_gates, task):

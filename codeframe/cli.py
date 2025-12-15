@@ -247,9 +247,7 @@ def serve(
         raise typer.Exit(1)
     except subprocess.CalledProcessError:
         # Server failed - uvicorn's error output is already visible to user
-        console.print(
-            "\n[red]Server failed to start.[/red] Common issues:"
-        )
+        console.print("\n[red]Server failed to start.[/red] Common issues:")
         console.print(f"  • Port {port} may be in use (try --port {port + 1})")
         console.print("  • Check the error message above for details")
         raise typer.Exit(1)

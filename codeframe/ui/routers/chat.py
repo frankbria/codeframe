@@ -23,11 +23,7 @@ router = APIRouter(prefix="/api/projects/{project_id}/chat", tags=["chat"])
 
 
 @router.post("")
-async def chat_with_lead(
-    project_id: int,
-    message: Dict[str, str],
-    db: Database = Depends(get_db)
-):
+async def chat_with_lead(project_id: int, message: Dict[str, str], db: Database = Depends(get_db)):
     """Chat with Lead Agent (cf-14.1).
 
     Send user message to Lead Agent and get AI response.
@@ -98,10 +94,7 @@ async def chat_with_lead(
 
 @router.get("/history")
 async def get_chat_history(
-    project_id: int,
-    limit: int = 100,
-    offset: int = 0,
-    db: Database = Depends(get_db)
+    project_id: int, limit: int = 100, offset: int = 0, db: Database = Depends(get_db)
 ):
     """Get conversation history for a project (cf-14.1).
 

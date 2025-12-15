@@ -18,9 +18,7 @@ def db():
 def sample_project(db):
     """Create a sample project for testing."""
     project_id = db.create_project(
-        name="test-project",
-        description="Test project for multi-agent",
-        workspace_path="/tmp/test"
+        name="test-project", description="Test project for multi-agent", workspace_path="/tmp/test"
     )
     return project_id
 
@@ -35,7 +33,7 @@ def sample_agents(db):
             agent_id=agent_id,
             agent_type="backend" if i < 2 else "frontend",
             provider="claude",
-            maturity_level=AgentMaturity.D4
+            maturity_level=AgentMaturity.D4,
         )
         agent_ids.append(agent_id)
     return agent_ids
@@ -61,7 +59,9 @@ def test_project_agents_table_exists(db):
 def test_project_agents_indexes_exist(db):
     """Verify all performance indexes exist."""
     cursor = db.conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='project_agents'")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='project_agents'"
+    )
     indexes = {row[0] for row in cursor.fetchall()}
 
     expected_indexes = {
@@ -69,7 +69,7 @@ def test_project_agents_indexes_exist(db):
         "idx_project_agents_agent_active",
         "idx_project_agents_assigned_at",
         "idx_project_agents_unassigned",
-        "idx_project_agents_unique_active"
+        "idx_project_agents_unique_active",
     }
 
     assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
@@ -89,9 +89,7 @@ def test_agents_table_no_project_id(db):
 def test_assign_agent_to_project(db, sample_project, sample_agents):
     """Test assigning an agent to a project."""
     assignment_id = db.assign_agent_to_project(
-        project_id=sample_project,
-        agent_id=sample_agents[0],
-        role="primary_backend"
+        project_id=sample_project, agent_id=sample_agents[0], role="primary_backend"
     )
 
     assert assignment_id is not None
@@ -102,9 +100,7 @@ def test_assign_multiple_agents_to_project(db, sample_project, sample_agents):
     """Test assigning multiple agents to same project."""
     for i, agent_id in enumerate(sample_agents):
         assignment_id = db.assign_agent_to_project(
-            project_id=sample_project,
-            agent_id=agent_id,
-            role=f"role-{i}"
+            project_id=sample_project, agent_id=agent_id, role=f"role-{i}"
         )
         assert assignment_id > 0
 
@@ -412,9 +408,7 @@ def test_get_available_agents_respects_capacity(db):
     # Assign to 3 projects
     for i in range(3):
         project_id = db.create_project(
-            name=f"project-{i}",
-            description=f"Project {i}",
-            workspace_path=f"/tmp/p{i}"
+            name=f"project-{i}", description=f"Project {i}", workspace_path=f"/tmp/p{i}"
         )
         db.assign_agent_to_project(project_id, agent_id, "backend")
 
@@ -426,11 +420,7 @@ def test_get_available_agents_respects_capacity(db):
 
 def test_get_available_agents_ordering(db, sample_agents):
     """Test that available agents are ordered by assignment count and heartbeat."""
-    project1 = db.create_project(
-        name="project1",
-        description="Project 1",
-        workspace_path="/tmp/p1"
-    )
+    project1 = db.create_project(name="project1", description="Project 1", workspace_path="/tmp/p1")
 
     # Assign one agent to a project
     db.assign_agent_to_project(project1, sample_agents[0], "backend")
@@ -492,7 +482,7 @@ def test_unassigned_at_check_constraint(db, sample_project, sample_agents):
             SET unassigned_at = '2020-01-01 00:00:00'
             WHERE project_id = ? AND agent_id = ?
             """,
-            (sample_project, agent_id)
+            (sample_project, agent_id),
         )
 
     assert "CHECK constraint failed" in str(exc_info.value)

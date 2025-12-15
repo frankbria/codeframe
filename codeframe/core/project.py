@@ -89,10 +89,7 @@ class Project:
 
         # Get project ID from database
         cursor = self.db.conn.cursor()
-        cursor.execute(
-            "SELECT id FROM projects WHERE name = ?",
-            (self.config.load().project_name,)
-        )
+        cursor.execute("SELECT id FROM projects WHERE name = ?", (self.config.load().project_name,))
         row = cursor.fetchone()
         if not row:
             raise ValueError("Project not found in database")
@@ -101,9 +98,7 @@ class Project:
 
         # Initialize checkpoint manager
         checkpoint_mgr = CheckpointManager(
-            db=self.db,
-            project_root=self.project_dir,
-            project_id=project_id
+            db=self.db, project_root=self.project_dir, project_id=project_id
         )
 
         # Get checkpoint to restore
@@ -123,10 +118,7 @@ class Project:
         print(f"   Commit: {checkpoint.git_commit[:7]}")
 
         # Restore checkpoint
-        result = checkpoint_mgr.restore_checkpoint(
-            checkpoint_id=checkpoint.id,
-            confirm=True
-        )
+        result = checkpoint_mgr.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
         if result["success"]:
             self._status = ProjectStatus.ACTIVE

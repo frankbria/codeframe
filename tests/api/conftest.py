@@ -59,7 +59,7 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     for var in env_vars_to_restore:
         if var in os.environ:
             original_env[var] = os.environ[var]
-    
+
     # Set environment variables for this test class
     os.environ["DATABASE_PATH"] = str(class_temp_db_path)
 
@@ -80,7 +80,7 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     # Create and yield TestClient
     with TestClient(server.app) as client:
         yield client
-    
+
     # Restore original environment state
     for var in env_vars_to_restore:
         if var in original_env:

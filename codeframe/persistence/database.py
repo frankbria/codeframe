@@ -9,7 +9,13 @@ import logging
 from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue, CallType
 
 if TYPE_CHECKING:
-    from codeframe.core.models import CodeReview, QualityGateFailure, Checkpoint, CheckpointMetadata, TokenUsage
+    from codeframe.core.models import (
+        CodeReview,
+        QualityGateFailure,
+        Checkpoint,
+        CheckpointMetadata,
+        TokenUsage,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -1285,12 +1291,7 @@ class Database:
 
         return cursor.rowcount
 
-    def assign_agent_to_project(
-        self,
-        project_id: int,
-        agent_id: str,
-        role: str = "worker"
-    ) -> int:
+    def assign_agent_to_project(self, project_id: int, agent_id: str, role: str = "worker") -> int:
         """Assign an agent to a project.
 
         Args:
@@ -1310,15 +1311,13 @@ class Database:
             INSERT INTO project_agents (project_id, agent_id, role, is_active)
             VALUES (?, ?, ?, TRUE)
             """,
-            (project_id, agent_id, role)
+            (project_id, agent_id, role),
         )
         self.conn.commit()
         return cursor.lastrowid
 
     def get_agents_for_project(
-        self,
-        project_id: int,
-        active_only: bool = True
+        self, project_id: int, active_only: bool = True
     ) -> List[Dict[str, Any]]:
         """Get all agents assigned to a project.
 
@@ -1359,9 +1358,7 @@ class Database:
         return [dict(row) for row in cursor.fetchall()]
 
     def get_projects_for_agent(
-        self,
-        agent_id: str,
-        active_only: bool = True
+        self, agent_id: str, active_only: bool = True
     ) -> List[Dict[str, Any]]:
         """Get all projects an agent is assigned to.
 
@@ -1398,11 +1395,7 @@ class Database:
         cursor.execute(query, (agent_id,))
         return [dict(row) for row in cursor.fetchall()]
 
-    def remove_agent_from_project(
-        self,
-        project_id: int,
-        agent_id: str
-    ) -> int:
+    def remove_agent_from_project(self, project_id: int, agent_id: str) -> int:
         """Remove an agent from a project (soft delete).
 
         Args:
@@ -1422,16 +1415,12 @@ class Database:
               AND agent_id = ?
               AND is_active = TRUE
             """,
-            (project_id, agent_id)
+            (project_id, agent_id),
         )
         self.conn.commit()
         return cursor.rowcount
 
-    def get_agent_assignment(
-        self,
-        project_id: int,
-        agent_id: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_agent_assignment(self, project_id: int, agent_id: str) -> Optional[Dict[str, Any]]:
         """Get assignment details for a specific agent-project pair.
 
         Args:
@@ -1457,17 +1446,12 @@ class Database:
             ORDER BY id DESC
             LIMIT 1
             """,
-            (project_id, agent_id)
+            (project_id, agent_id),
         )
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def reassign_agent_role(
-        self,
-        project_id: int,
-        agent_id: str,
-        new_role: str
-    ) -> int:
+    def reassign_agent_role(self, project_id: int, agent_id: str, new_role: str) -> int:
         """Update an agent's role on a project.
 
         Args:
@@ -1487,15 +1471,13 @@ class Database:
               AND agent_id = ?
               AND is_active = TRUE
             """,
-            (new_role, project_id, agent_id)
+            (new_role, project_id, agent_id),
         )
         self.conn.commit()
         return cursor.rowcount
 
     def get_available_agents(
-        self,
-        agent_type: Optional[str] = None,
-        exclude_project_id: Optional[int] = None
+        self, agent_type: Optional[str] = None, exclude_project_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """Get agents available for assignment (not at capacity).
 
@@ -3023,7 +3005,7 @@ class Database:
 
     # Code Review CRUD operations (Sprint 10: 015-review-polish)
 
-    def save_code_review(self, review: 'CodeReview') -> int:
+    def save_code_review(self, review: "CodeReview") -> int:
         """Save a code review finding to database.
 
         Args:
@@ -3047,8 +3029,8 @@ class Database:
                 review.project_id,
                 review.file_path,
                 review.line_number,
-                review.severity.value if hasattr(review.severity, 'value') else review.severity,
-                review.category.value if hasattr(review.category, 'value') else review.category,
+                review.severity.value if hasattr(review.severity, "value") else review.severity,
+                review.category.value if hasattr(review.category, "value") else review.category,
                 review.message,
                 review.recommendation,
                 review.code_snippet,
@@ -3062,7 +3044,7 @@ class Database:
         task_id: Optional[int] = None,
         project_id: Optional[int] = None,
         severity: Optional[str] = None,
-    ) -> List['CodeReview']:
+    ) -> List["CodeReview"]:
         """Get code review findings.
 
         Args:
@@ -3112,27 +3094,23 @@ class Database:
             # Convert string severity/category back to enums
             reviews.append(
                 CodeReview(
-                    id=row_dict['id'],
-                    task_id=row_dict['task_id'],
-                    agent_id=row_dict['agent_id'],
-                    project_id=row_dict['project_id'],
-                    file_path=row_dict['file_path'],
-                    line_number=row_dict['line_number'],
-                    severity=Severity(row_dict['severity']),
-                    category=ReviewCategory(row_dict['category']),
-                    message=row_dict['message'],
-                    recommendation=row_dict['recommendation'],
-                    code_snippet=row_dict['code_snippet'],
+                    id=row_dict["id"],
+                    task_id=row_dict["task_id"],
+                    agent_id=row_dict["agent_id"],
+                    project_id=row_dict["project_id"],
+                    file_path=row_dict["file_path"],
+                    line_number=row_dict["line_number"],
+                    severity=Severity(row_dict["severity"]),
+                    category=ReviewCategory(row_dict["category"]),
+                    message=row_dict["message"],
+                    recommendation=row_dict["recommendation"],
+                    code_snippet=row_dict["code_snippet"],
                 )
             )
 
         return reviews
 
-    def get_code_reviews_by_severity(
-        self,
-        project_id: int,
-        severity: str
-    ) -> List['CodeReview']:
+    def get_code_reviews_by_severity(self, project_id: int, severity: str) -> List["CodeReview"]:
         """Get code reviews filtered by severity.
 
         Convenience method that calls get_code_reviews with severity filter.
@@ -3147,10 +3125,8 @@ class Database:
         return self.get_code_reviews(project_id=project_id, severity=severity)
 
     def get_code_reviews_by_project(
-        self,
-        project_id: int,
-        severity: Optional[str] = None
-    ) -> List['CodeReview']:
+        self, project_id: int, severity: Optional[str] = None
+    ) -> List["CodeReview"]:
         """Get all code review findings for a project.
 
         Convenience method for fetching project-level review aggregations.
@@ -3173,7 +3149,7 @@ class Database:
         self,
         task_id: int,
         status: str,
-        failures: List['QualityGateFailure'],
+        failures: List["QualityGateFailure"],
     ) -> None:
         """Update task quality gate status and failures.
 
@@ -3199,15 +3175,17 @@ class Database:
         cursor = self.conn.cursor()
 
         # Serialize failures to JSON
-        failures_json = json.dumps([
-            {
-                'gate': f.gate.value if hasattr(f.gate, 'value') else f.gate,
-                'reason': f.reason,
-                'details': f.details,
-                'severity': f.severity.value if hasattr(f.severity, 'value') else f.severity,
-            }
-            for f in failures
-        ])
+        failures_json = json.dumps(
+            [
+                {
+                    "gate": f.gate.value if hasattr(f.gate, "value") else f.gate,
+                    "reason": f.reason,
+                    "details": f.details,
+                    "severity": f.severity.value if hasattr(f.severity, "value") else f.severity,
+                }
+                for f in failures
+            ]
+        )
 
         cursor.execute(
             """
@@ -3256,9 +3234,9 @@ class Database:
 
         if not row:
             return {
-                'status': None,
-                'failures': [],
-                'requires_human_approval': False,
+                "status": None,
+                "failures": [],
+                "requires_human_approval": False,
             }
 
         status, failures_json, requires_approval = row
@@ -3273,9 +3251,9 @@ class Database:
                 failures = []
 
         return {
-            'status': status,
-            'failures': failures,
-            'requires_human_approval': bool(requires_approval),
+            "status": status,
+            "failures": failures,
+            "requires_human_approval": bool(requires_approval),
         }
 
     def get_pending_tasks(self, project_id: int, limit: int = 5) -> List[Dict[str, Any]]:
@@ -3339,7 +3317,7 @@ class Database:
         git_commit: str,
         database_backup_path: str,
         context_snapshot_path: str,
-        metadata: 'CheckpointMetadata'
+        metadata: "CheckpointMetadata",
     ) -> int:
         """Save a checkpoint to database.
 
@@ -3373,13 +3351,13 @@ class Database:
                 git_commit,
                 database_backup_path,
                 context_snapshot_path,
-                json.dumps(metadata.model_dump())
-            )
+                json.dumps(metadata.model_dump()),
+            ),
         )
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_checkpoints(self, project_id: int) -> List['Checkpoint']:
+    def get_checkpoints(self, project_id: int) -> List["Checkpoint"]:
         """Get all checkpoints for a project, sorted by created_at DESC.
 
         Args:
@@ -3400,7 +3378,7 @@ class Database:
             WHERE project_id = ?
             ORDER BY created_at DESC, id DESC
             """,
-            (project_id,)
+            (project_id,),
         )
 
         checkpoints = []
@@ -3419,13 +3397,17 @@ class Database:
                 database_backup_path=row["database_backup_path"],
                 context_snapshot_path=row["context_snapshot_path"],
                 metadata=metadata,
-                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc)
+                created_at=(
+                    datetime.fromisoformat(row["created_at"])
+                    if row["created_at"]
+                    else datetime.now(timezone.utc)
+                ),
             )
             checkpoints.append(checkpoint)
 
         return checkpoints
 
-    def get_checkpoint_by_id(self, checkpoint_id: int) -> Optional['Checkpoint']:
+    def get_checkpoint_by_id(self, checkpoint_id: int) -> Optional["Checkpoint"]:
         """Get a checkpoint by ID.
 
         Args:
@@ -3445,7 +3427,7 @@ class Database:
             FROM checkpoints
             WHERE id = ?
             """,
-            (checkpoint_id,)
+            (checkpoint_id,),
         )
 
         row = cursor.fetchone()
@@ -3466,7 +3448,11 @@ class Database:
             database_backup_path=row["database_backup_path"],
             context_snapshot_path=row["context_snapshot_path"],
             metadata=metadata,
-            created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc)
+            created_at=(
+                datetime.fromisoformat(row["created_at"])
+                if row["created_at"]
+                else datetime.now(timezone.utc)
+            ),
         )
 
     def delete_checkpoint(self, checkpoint_id: int) -> None:
@@ -3483,7 +3469,7 @@ class Database:
     # Token Usage and Metrics Methods (Sprint 10 Phase 5)
     # ============================================================================
 
-    def save_token_usage(self, token_usage: 'TokenUsage') -> int:
+    def save_token_usage(self, token_usage: "TokenUsage") -> int:
         """Save a token usage record to the database.
 
         Args:
@@ -3524,9 +3510,13 @@ class Database:
                 token_usage.output_tokens,
                 token_usage.estimated_cost_usd,
                 token_usage.actual_cost_usd,
-                token_usage.call_type.value if isinstance(token_usage.call_type, CallType) else token_usage.call_type,
-                token_usage.timestamp.isoformat()
-            )
+                (
+                    token_usage.call_type.value
+                    if isinstance(token_usage.call_type, CallType)
+                    else token_usage.call_type
+                ),
+                token_usage.timestamp.isoformat(),
+            ),
         )
         self.conn.commit()
         return cursor.lastrowid
@@ -3536,7 +3526,7 @@ class Database:
         project_id: Optional[int] = None,
         agent_id: Optional[str] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
     ) -> List[Dict[str, Any]]:
         """Get token usage records with optional filtering.
 
@@ -3619,7 +3609,7 @@ class Database:
             FROM token_usage
             WHERE project_id = ?
             """,
-            (project_id,)
+            (project_id,),
         )
         totals = cursor.fetchone()
 
@@ -3636,7 +3626,7 @@ class Database:
             GROUP BY agent_id
             ORDER BY cost DESC
             """,
-            (project_id,)
+            (project_id,),
         )
         by_agent = [dict(row) for row in cursor.fetchall()]
 
@@ -3653,7 +3643,7 @@ class Database:
             GROUP BY model_name
             ORDER BY cost DESC
             """,
-            (project_id,)
+            (project_id,),
         )
         by_model = [dict(row) for row in cursor.fetchall()]
 
@@ -3662,5 +3652,5 @@ class Database:
             "total_tokens": totals["total_tokens"],
             "total_calls": totals["total_calls"],
             "by_agent": by_agent,
-            "by_model": by_model
+            "by_model": by_model,
         }

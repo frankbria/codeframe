@@ -23,9 +23,7 @@ router = APIRouter(prefix="/api/projects/{project_id}/blockers", tags=["blockers
 
 @router.get("")
 async def get_project_blockers(
-    project_id: int,
-    status: Optional[str] = None,
-    db: Database = Depends(get_db)
+    project_id: int, status: Optional[str] = None, db: Database = Depends(get_db)
 ):
     """Get blockers for a project (049-human-in-loop).
 
@@ -58,10 +56,7 @@ async def get_project_blockers(
 
 
 @router.get("/metrics")
-async def get_blocker_metrics_endpoint(
-    project_id: int,
-    db: Database = Depends(get_db)
-):
+async def get_blocker_metrics_endpoint(project_id: int, db: Database = Depends(get_db)):
     """Get blocker metrics for a project (049-human-in-loop, Phase 10/T062).
 
     Provides analytics on blocker resolution times and expiration rates.
@@ -110,10 +105,7 @@ blocker_router = APIRouter(prefix="/api/blockers", tags=["blockers"])
 
 
 @blocker_router.get("/{blocker_id}")
-async def get_blocker(
-    blocker_id: int,
-    db: Database = Depends(get_db)
-):
+async def get_blocker(blocker_id: int, db: Database = Depends(get_db)):
     """Get details of a specific blocker (049-human-in-loop).
 
     Args:
@@ -137,9 +129,7 @@ async def get_blocker(
 
 @blocker_router.post("/{blocker_id}/resolve")
 async def resolve_blocker_endpoint(
-    blocker_id: int,
-    request: BlockerResolve,
-    db: Database = Depends(get_db)
+    blocker_id: int, request: BlockerResolve, db: Database = Depends(get_db)
 ):
     """Resolve a blocker with user's answer (049-human-in-loop, Phase 4/US2).
 

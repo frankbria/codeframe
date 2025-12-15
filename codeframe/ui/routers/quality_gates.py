@@ -18,7 +18,14 @@ from codeframe.ui.dependencies import get_db
 from codeframe.ui.shared import manager
 from codeframe.persistence.database import Database
 from codeframe.lib.quality_gates import QualityGates
-from codeframe.core.models import Task, TaskStatus, QualityGateResult, QualityGateFailure, QualityGateType, Severity
+from codeframe.core.models import (
+    Task,
+    TaskStatus,
+    QualityGateResult,
+    QualityGateFailure,
+    QualityGateType,
+    Severity,
+)
 from pathlib import Path
 
 # Module logger
@@ -87,7 +94,7 @@ async def trigger_quality_gates(
     task_id: int,
     background_tasks: BackgroundTasks,
     request: QualityGatesRequest = QualityGatesRequest(),
-    db: Database = Depends(get_db)
+    db: Database = Depends(get_db),
 ):
     """Manually trigger quality gates for a task (T065).
 
@@ -151,16 +158,12 @@ async def trigger_quality_gates(
     # Get project_id from task
     project_id = task_data.get("project_id")
     if not project_id:
-        raise HTTPException(
-            status_code=500, detail=f"Task {task_id} has no project_id"
-        )
+        raise HTTPException(status_code=500, detail=f"Task {task_id} has no project_id")
 
     # Get project workspace path
     project = db.get_project(project_id)
     if not project:
-        raise HTTPException(
-            status_code=500, detail=f"Project {project_id} not found"
-        )
+        raise HTTPException(status_code=500, detail=f"Project {project_id} not found")
 
     workspace_path = project.get("workspace_path")
     if not workspace_path:
@@ -197,14 +200,11 @@ async def trigger_quality_gates(
 
         try:
             logger.info(
-                f"Quality gates job {job_id} started for task {task_id}, "
-                f"gates={gates_to_run}"
+                f"Quality gates job {job_id} started for task {task_id}, " f"gates={gates_to_run}"
             )
 
             # Update task status to 'running'
-            task_db.update_quality_gate_status(
-                task_id=task_id, status="running", failures=[]
-            )
+            task_db.update_quality_gate_status(task_id=task_id, status="running", failures=[])
 
             # Broadcast quality_gates_started event
             try:
@@ -251,9 +251,7 @@ async def trigger_quality_gates(
                         gate_result = await gate_method(task)
                         all_failures.extend(gate_result.failures)
 
-                execution_time = (
-                    datetime.now(timezone.utc) - execution_start
-                ).total_seconds()
+                execution_time = (datetime.now(timezone.utc) - execution_start).total_seconds()
                 status = "passed" if len(all_failures) == 0 else "failed"
 
                 result = QualityGateResult(
@@ -270,11 +268,7 @@ async def trigger_quality_gates(
 
             # Broadcast completion event
             try:
-                event_type = (
-                    "quality_gates_passed"
-                    if result.passed
-                    else "quality_gates_failed"
-                )
+                event_type = "quality_gates_passed" if result.passed else "quality_gates_failed"
                 await manager.broadcast(
                     {
                         "type": event_type,
@@ -296,9 +290,7 @@ async def trigger_quality_gates(
             )
 
         except Exception as e:
-            logger.error(
-                f"Quality gates job {job_id} failed: {e}", exc_info=True
-            )
+            logger.error(f"Quality gates job {job_id} failed: {e}", exc_info=True)
 
             # Update status to 'failed' with error
             error_failure = QualityGateFailure(
@@ -325,9 +317,7 @@ async def trigger_quality_gates(
                     }
                 )
             except Exception as broadcast_error:
-                logger.warning(
-                    f"Failed to broadcast quality_gates_error: {broadcast_error}"
-                )
+                logger.warning(f"Failed to broadcast quality_gates_error: {broadcast_error}")
 
         finally:
             # Always close the database connection

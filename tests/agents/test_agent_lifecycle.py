@@ -133,7 +133,9 @@ def sample_project(test_client_with_db):
 class TestStartAgentEndpoint:
     """Test POST /api/projects/{id}/start endpoint (cf-10.2)."""
 
-    def test_start_agent_endpoint_returns_202_accepted(self, test_client_with_db, sample_project, monkeypatch):
+    def test_start_agent_endpoint_returns_202_accepted(
+        self, test_client_with_db, sample_project, monkeypatch
+    ):
         """Test that start endpoint returns 202 Accepted immediately (non-blocking).
 
         Requirement: cf-10.2 - Return 202 Accepted immediately (non-blocking)
@@ -386,7 +388,9 @@ class TestWebSocketMessageProtocol:
 class TestAgentLifecycleIntegration:
     """Integration test for complete agent lifecycle workflow."""
 
-    def test_complete_start_workflow_end_to_end(self, test_client_with_db, sample_project, monkeypatch):
+    def test_complete_start_workflow_end_to_end(
+        self, test_client_with_db, sample_project, monkeypatch
+    ):
         """Test complete workflow from start request to agent running.
 
         Integration test covering:

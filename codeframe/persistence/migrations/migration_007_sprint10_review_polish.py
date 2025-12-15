@@ -65,11 +65,14 @@ class Sprint10ReviewPolish(Migration):
                 f"See: https://www.sqlite.org/download.html"
             )
 
-        logger.info(f"SQLite version {'.'.join(map(str, sqlite_version))} detected (>= 3.37.0 required)")
+        logger.info(
+            f"SQLite version {'.'.join(map(str, sqlite_version))} detected (>= 3.37.0 required)"
+        )
 
         # 1. Create code_reviews table
         logger.info("Migration 007: Creating code_reviews table")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS code_reviews (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -84,28 +87,36 @@ class Sprint10ReviewPolish(Migration):
                 code_snippet TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
         logger.info("✓ Created code_reviews table")
 
         # 2. Create code_reviews indexes
         logger.info("Migration 007: Creating indexes for code_reviews")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_reviews_task
             ON code_reviews(task_id)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_reviews_severity
             ON code_reviews(severity, created_at)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_reviews_project
             ON code_reviews(project_id, created_at)
-        """)
+        """
+        )
         logger.info("✓ Created code_reviews indexes")
 
         # 3. Create token_usage table
         logger.info("Migration 007: Creating token_usage table")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
@@ -119,23 +130,30 @@ class Sprint10ReviewPolish(Migration):
                 call_type TEXT CHECK(call_type IN ('task_execution', 'code_review', 'coordination', 'other')),
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
         logger.info("✓ Created token_usage table")
 
         # 4. Create token_usage indexes
         logger.info("Migration 007: Creating indexes for token_usage")
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_token_usage_agent
             ON token_usage(agent_id, timestamp)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_token_usage_project
             ON token_usage(project_id, timestamp)
-        """)
-        cursor.execute("""
+        """
+        )
+        cursor.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_token_usage_task
             ON token_usage(task_id)
-        """)
+        """
+        )
         logger.info("✓ Created token_usage indexes")
 
         # 5. Add quality gate columns to tasks table
@@ -146,28 +164,34 @@ class Sprint10ReviewPolish(Migration):
         columns = {row[1] for row in cursor.fetchall()}
 
         try:
-            if 'quality_gate_status' not in columns:
-                cursor.execute("""
+            if "quality_gate_status" not in columns:
+                cursor.execute(
+                    """
                     ALTER TABLE tasks ADD COLUMN quality_gate_status TEXT
                     CHECK(quality_gate_status IN ('pending', 'running', 'passed', 'failed'))
                     DEFAULT 'pending'
-                """)
+                """
+                )
                 logger.info("✓ Added quality_gate_status column")
             else:
                 logger.info("⊘ quality_gate_status column already exists, skipping")
 
-            if 'quality_gate_failures' not in columns:
-                cursor.execute("""
+            if "quality_gate_failures" not in columns:
+                cursor.execute(
+                    """
                     ALTER TABLE tasks ADD COLUMN quality_gate_failures JSON
-                """)
+                """
+                )
                 logger.info("✓ Added quality_gate_failures column")
             else:
                 logger.info("⊘ quality_gate_failures column already exists, skipping")
 
-            if 'requires_human_approval' not in columns:
-                cursor.execute("""
+            if "requires_human_approval" not in columns:
+                cursor.execute(
+                    """
                     ALTER TABLE tasks ADD COLUMN requires_human_approval BOOLEAN DEFAULT FALSE
-                """)
+                """
+                )
                 logger.info("✓ Added requires_human_approval column")
             else:
                 logger.info("⊘ requires_human_approval column already exists, skipping")
@@ -185,31 +209,31 @@ class Sprint10ReviewPolish(Migration):
         checkpoint_columns = {row[1] for row in cursor.fetchall()}
 
         try:
-            if 'name' not in checkpoint_columns:
+            if "name" not in checkpoint_columns:
                 cursor.execute("ALTER TABLE checkpoints ADD COLUMN name TEXT")
                 logger.info("✓ Added name column to checkpoints")
             else:
                 logger.info("⊘ name column already exists in checkpoints, skipping")
 
-            if 'description' not in checkpoint_columns:
+            if "description" not in checkpoint_columns:
                 cursor.execute("ALTER TABLE checkpoints ADD COLUMN description TEXT")
                 logger.info("✓ Added description column to checkpoints")
             else:
                 logger.info("⊘ description column already exists in checkpoints, skipping")
 
-            if 'database_backup_path' not in checkpoint_columns:
+            if "database_backup_path" not in checkpoint_columns:
                 cursor.execute("ALTER TABLE checkpoints ADD COLUMN database_backup_path TEXT")
                 logger.info("✓ Added database_backup_path column to checkpoints")
             else:
                 logger.info("⊘ database_backup_path column already exists, skipping")
 
-            if 'context_snapshot_path' not in checkpoint_columns:
+            if "context_snapshot_path" not in checkpoint_columns:
                 cursor.execute("ALTER TABLE checkpoints ADD COLUMN context_snapshot_path TEXT")
                 logger.info("✓ Added context_snapshot_path column to checkpoints")
             else:
                 logger.info("⊘ context_snapshot_path column already exists, skipping")
 
-            if 'metadata' not in checkpoint_columns:
+            if "metadata" not in checkpoint_columns:
                 cursor.execute("ALTER TABLE checkpoints ADD COLUMN metadata JSON")
                 logger.info("✓ Added metadata column to checkpoints")
             else:
@@ -224,10 +248,12 @@ class Sprint10ReviewPolish(Migration):
         # 7. Create checkpoint index
         logger.info("Migration 007: Creating index for checkpoints")
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_checkpoints_project
                 ON checkpoints(project_id, created_at DESC)
-            """)
+            """
+            )
             logger.info("✓ Created checkpoints index")
         except sqlite3.OperationalError as e:
             if "no such table" in str(e).lower():

@@ -750,7 +750,11 @@ Provide ONLY the corrected test code, no explanations."""
             )
 
         # Get project_id from current_task
-        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        project_id = (
+            self.current_task.project_id
+            if hasattr(self, "current_task") and self.current_task
+            else None
+        )
         if not project_id:
             raise RuntimeError(
                 "Project context required for blocker workflow. Agent must have current_task set."
@@ -884,7 +888,11 @@ Provide ONLY the corrected test code, no explanations."""
             )
 
         # Get project_id from current_task
-        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        project_id = (
+            self.current_task.project_id
+            if hasattr(self, "current_task") and self.current_task
+            else None
+        )
         if not project_id:
             raise RuntimeError(
                 "Project context required for blocker workflow. Agent must have current_task set."

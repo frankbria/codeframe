@@ -99,7 +99,9 @@ class CheckpointCreateRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100, description="Checkpoint name")
     description: Optional[str] = Field(None, max_length=500, description="Optional description")
-    trigger: str = Field(default="manual", description="Trigger type (manual, auto, phase_transition)")
+    trigger: str = Field(
+        default="manual", description="Trigger type (manual, auto, phase_transition)"
+    )
 
 
 class CheckpointResponse(BaseModel):
@@ -121,8 +123,7 @@ class RestoreCheckpointRequest(BaseModel):
     """Request model for restoring a checkpoint (Sprint 10 Phase 4, T096-T097)."""
 
     confirm_restore: bool = Field(
-        default=False,
-        description="If False, show diff only. If True, restore checkpoint."
+        default=False, description="If False, show diff only. If True, restore checkpoint."
     )
 
 
@@ -146,7 +147,7 @@ class AgentAssignmentRequest(BaseModel):
         default="worker",
         min_length=1,
         max_length=50,
-        description="Agent's role in this project (e.g., 'primary_backend', 'code_reviewer')"
+        description="Agent's role in this project (e.g., 'primary_backend', 'code_reviewer')",
     )
 
 
@@ -157,7 +158,7 @@ class AgentRoleUpdateRequest(BaseModel):
         ...,
         min_length=1,
         max_length=50,
-        description="New role for the agent (e.g., 'primary_backend', 'secondary_backend')"
+        description="New role for the agent (e.g., 'primary_backend', 'secondary_backend')",
     )
 
 
@@ -168,13 +169,17 @@ class AgentAssignmentResponse(BaseModel):
     type: str = Field(..., description="Agent type (lead, backend, frontend, test, review)")
     provider: Optional[str] = Field(None, description="LLM provider (claude, gpt4)")
     maturity_level: Optional[str] = Field(None, description="Agent maturity level")
-    status: Optional[str] = Field(None, description="Agent status (idle, working, blocked, offline)")
+    status: Optional[str] = Field(
+        None, description="Agent status (idle, working, blocked, offline)"
+    )
     current_task_id: Optional[int] = Field(None, description="Current task ID if agent is working")
     last_heartbeat: Optional[str] = Field(None, description="Last activity timestamp")
     assignment_id: int = Field(..., description="Assignment ID from project_agents junction table")
     role: str = Field(..., description="Role in this project")
     assigned_at: str = Field(..., description="Assignment timestamp")
-    unassigned_at: Optional[str] = Field(None, description="Unassignment timestamp (NULL if still assigned)")
+    unassigned_at: Optional[str] = Field(
+        None, description="Unassignment timestamp (NULL if still assigned)"
+    )
     is_active: bool = Field(..., description="Whether agent is currently assigned to project")
 
 
