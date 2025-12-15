@@ -9,6 +9,27 @@ import * as fs from 'fs';
 import { TEST_DB_PATH, BACKEND_URL } from './e2e-config';
 
 /**
+ * Clean up test environment to ensure fresh state.
+ * Only removes workspaces directory to avoid "workspace already exists" errors.
+ * Note: Database is NOT deleted because the backend server starts before globalSetup
+ * and deleting would cause "readonly database" errors.
+ */
+function cleanupTestEnvironment(): void {
+  console.log('\n🧹 Cleaning up test environment...');
+
+  // Remove workspaces directory to avoid conflicts
+  // This prevents "workspace already exists" errors when creating projects
+  const projectRoot = path.resolve(__dirname, '../..');
+  const workspacesDir = path.join(projectRoot, '.codeframe', 'workspaces');
+  if (fs.existsSync(workspacesDir)) {
+    console.log(`   Removing workspaces directory: ${workspacesDir}`);
+    fs.rmSync(workspacesDir, { recursive: true, force: true });
+  }
+
+  console.log('✅ Test environment cleaned');
+}
+
+/**
  * Get the test database path.
  * Uses a fixed path that matches the Playwright config's DATABASE_PATH.
  */
@@ -95,6 +116,12 @@ function seedDatabaseDirectly(projectId: number): void {
 async function globalSetup(config: FullConfig) {
   console.log('🔧 Setting up E2E test environment...');
 
+  // Clean up any stale test artifacts first
+  cleanupTestEnvironment();
+
+  // Initialize test database before starting backend
+  initializeTestDatabase();
+
   // Launch browser for API calls
   const browser = await chromium.launch();
   const context = await browser.newContext();
@@ -111,10 +138,13 @@ async function globalSetup(config: FullConfig) {
       const data = await projectsResponse.json();
       const projects = data.projects || [];
 
-      if (projects.length > 0) {
-        // Use first existing project
-        projectId = projects[0].id;
-        console.log(`✅ Using existing project ID: ${projectId}`);
+      // Look for existing e2e-test-project or any project we can reuse
+      const existingProject = projects.find((p: { name: string }) => p.name === 'e2e-test-project') || projects[0];
+
+      if (existingProject) {
+        // Use existing project
+        projectId = existingProject.id;
+        console.log(`✅ Using existing project ID: ${projectId} (${existingProject.name})`);
         process.env.E2E_TEST_PROJECT_ID = projectId.toString();
       } else {
         // No projects exist, create one
@@ -127,25 +157,36 @@ async function globalSetup(config: FullConfig) {
         });
 
         if (!createResponse.ok()) {
-          throw new Error(`Failed to create project: ${createResponse.statusText()}`);
+          // If creation fails (e.g., workspace exists), try to fetch projects again
+          // The workspace might exist from a previous run with a different database
+          console.warn(`⚠️  Project creation failed: ${createResponse.statusText()}`);
+          const retryResponse = await page.request.get(`${BACKEND_URL}/api/projects`);
+          if (retryResponse.ok()) {
+            const retryData = await retryResponse.json();
+            const retryProjects = retryData.projects || [];
+            if (retryProjects.length > 0) {
+              projectId = retryProjects[0].id;
+              console.log(`✅ Using existing project ID after retry: ${projectId}`);
+              process.env.E2E_TEST_PROJECT_ID = projectId.toString();
+            } else {
+              throw new Error(`Failed to create project and no existing projects found: ${createResponse.statusText()}`);
+            }
+          } else {
+            throw new Error(`Failed to create project: ${createResponse.statusText()}`);
+          }
+        } else {
+          const project = await createResponse.json();
+          projectId = project.id;
+          console.log(`✅ Test project created with ID: ${projectId}`);
+          process.env.E2E_TEST_PROJECT_ID = projectId.toString();
         }
-
-        const project = await createResponse.json();
-        projectId = project.id;
-        console.log(`✅ Test project created with ID: ${projectId}`);
-        process.env.E2E_TEST_PROJECT_ID = projectId.toString();
       }
     } else {
       throw new Error(`Failed to fetch projects: ${projectsResponse.statusText()}`);
     }
 
     // ========================================
-    // 2. Initialize test database (create directory + schema)
-    // ========================================
-    initializeTestDatabase();
-
-    // ========================================
-    // 3. Seed test data directly into database
+    // 2. Seed test data directly into database
     // ========================================
     // Use Python script to seed directly into SQLite instead of API calls
     // (many create endpoints don't exist)
