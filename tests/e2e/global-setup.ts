@@ -3,7 +3,7 @@
  * Creates a test project and seeds comprehensive test data before running tests.
  */
 import { chromium, FullConfig } from '@playwright/test';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -34,10 +34,19 @@ function initializeTestDatabase(): void {
   }
 
   // Initialize database schema using Python backend
+  // Use spawnSync with argument array to prevent command injection
   try {
     console.log('🔧 Creating database schema...');
-    const initCommand = `cd ../.. && uv run python -c "from codeframe.persistence.database import Database; db = Database('${TEST_DB_PATH}'); db.initialize()"`;
-    execSync(initCommand, { stdio: 'inherit' });
+    const projectRoot = path.resolve(__dirname, '../..');
+    const pythonCode = `from codeframe.persistence.database import Database; import sys; db = Database(sys.argv[1]); db.initialize()`;
+    const result = spawnSync('uv', ['run', 'python', '-c', pythonCode, TEST_DB_PATH], {
+      cwd: projectRoot,
+      stdio: 'inherit',
+      encoding: 'utf-8',
+    });
+    if (result.status !== 0) {
+      throw new Error(`Database initialization failed with exit code ${result.status}`);
+    }
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);
@@ -52,6 +61,7 @@ function initializeTestDatabase(): void {
 function seedDatabaseDirectly(projectId: number): void {
   console.log('\n📊 Seeding test data directly into database...\n');
 
+  // Use spawnSync with argument array to prevent command injection
   try {
     const dbPath = getTestDatabasePath();
     console.log(`📁 Using test database: ${dbPath}`);
@@ -61,10 +71,16 @@ function seedDatabaseDirectly(projectId: number): void {
       throw new Error(`Seeding script not found: ${scriptPath}`);
     }
 
-    const command = `python3 "${scriptPath}" "${dbPath}" ${projectId}`;
-    console.log(`🐍 Executing: ${command}\n`);
+    console.log(`🐍 Executing: python3 ${scriptPath} ${dbPath} ${projectId}\n`);
 
-    execSync(command, { stdio: 'inherit' });
+    const result = spawnSync('python3', [scriptPath, dbPath, projectId.toString()], {
+      stdio: 'inherit',
+      encoding: 'utf-8',
+    });
+
+    if (result.status !== 0) {
+      throw new Error(`Seeding script failed with exit code ${result.status}`);
+    }
 
     console.log('\n✅ Database seeding complete!');
   } catch (error) {
