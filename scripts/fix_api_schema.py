@@ -10,11 +10,19 @@ def fix_api_schema(content: str) -> str:
     """Fix API schema in test file content."""
 
     # Pattern 1: Both project_name and project_type in one JSON object
+    # Handles optional extra fields after project_type
     # {"project_name": "foo", "project_type": "python"}
+    # {"project_name": "foo", "project_type": "python", "extra": "field"}
     # → {"name": "foo", "description": "Test project"}
-    pattern1 = r'\{"project_name":\s*"([^"]+)",\s*"project_type":\s*"[^"]+"\}'
-    replacement1 = r'{"name": "\1", "description": "Test project"}'
-    content = re.sub(pattern1, replacement1, content)
+    # → {"name": "foo", "description": "Test project", "extra": "field"}
+    pattern1 = r'\{"project_name":\s*"([^"]+)",\s*"project_type":\s*"[^"]+"(,\s*[^}]+)?\}'
+
+    def replace_pattern1(match):
+        name = match.group(1)
+        extra_fields = match.group(2) or ""
+        return f'{{"name": "{name}", "description": "Test project"{extra_fields}}}'
+
+    content = re.sub(pattern1, replace_pattern1, content)
 
     # Pattern 2: Only project_type (for testing missing name)
     # {"project_type": "python"}
@@ -30,26 +38,39 @@ def fix_api_schema(content: str) -> str:
     replacement3 = r'{"name": "\1", "description": "Test project"}'
     content = re.sub(pattern3, replacement3, content)
 
-    # Pattern 4: project_name with extra fields
+    # Pattern 4: project_name with extra fields (including project_type in any position)
     # {"project_name": "foo", "other": "bar"}
+    # {"project_name": "foo", "other": "bar", "project_type": "python"}
     # → {"name": "foo", "description": "Test project", "other": "bar"}
     pattern4 = r'\{"project_name":\s*"([^"]+)",\s*([^}]+)\}'
 
     def replace_with_desc(match):
         name = match.group(1)
         rest = match.group(2)
-        if '"project_type"' not in rest:
+        # Remove project_type field if present (it's been replaced by description)
+        rest = re.sub(r',?\s*"project_type":\s*"[^"]+"', '', rest)
+        rest = re.sub(r'"project_type":\s*"[^"]+",?\s*', '', rest)
+        # Clean up any leading/trailing commas
+        rest = rest.strip().strip(',').strip()
+        if rest:
             return f'{{"name": "{name}", "description": "Test project", {rest}}}'
-        return match.group(0)
+        else:
+            return f'{{"name": "{name}", "description": "Test project"}}'
 
     content = re.sub(pattern4, replace_with_desc, content)
 
-    # Pattern 5: Empty project_name
+    # Pattern 5: Empty project_name with project_type (and optional extra fields)
     # {"project_name": "", "project_type": "python"}
+    # {"project_name": "", "project_type": "python", "extra": "field"}
     # → {"name": "", "description": "Test project"}
-    pattern5 = r'\{"project_name":\s*"",\s*"project_type":\s*"[^"]+"\}'
-    replacement5 = r'{"name": "", "description": "Test project"}'
-    content = re.sub(pattern5, replacement5, content)
+    # → {"name": "", "description": "Test project", "extra": "field"}
+    pattern5 = r'\{"project_name":\s*"",\s*"project_type":\s*"[^"]+"(,\s*[^}]+)?\}'
+
+    def replace_pattern5(match):
+        extra_fields = match.group(1) or ""
+        return f'{{"name": "", "description": "Test project"{extra_fields}}}'
+
+    content = re.sub(pattern5, replace_pattern5, content)
 
     # Fix docstrings and comments mentioning project_name
     content = content.replace("missing project_name", "missing name")
