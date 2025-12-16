@@ -264,21 +264,87 @@ jobs:
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
             echo "💾 Creating pre-deployment backup..."
-            cd ${{ secrets.PROJECT_PATH }}
 
-            # Create backup directory
-            BACKUP_DIR="/tmp/codeframe-backup-\$(date +%Y%m%d-%H%M%S)"
-            mkdir -p \$BACKUP_DIR
+            PROJECT_PATH="${{ secrets.PROJECT_PATH }}"
+            BACKUP_BASE="\${PROJECT_PATH}/backups"
+            TIMESTAMP="\$(date +%Y%m%d-%H%M%S)"
+            BACKUP_NAME="backup-\${TIMESTAMP}"
+            TMP_BACKUP="/tmp/\${BACKUP_NAME}"
+            FINAL_ARCHIVE="\${BACKUP_BASE}/\${BACKUP_NAME}.tar.gz"
+            RETENTION_COUNT=10
+
+            cd \${PROJECT_PATH}
+
+            # Create persistent backup directory with proper permissions
+            mkdir -p \${BACKUP_BASE}
+            chmod 700 \${BACKUP_BASE}
+
+            # Create temporary staging directory
+            mkdir -p \${TMP_BACKUP}
+
+            # Record current commit
+            git rev-parse HEAD > \${TMP_BACKUP}/previous_commit.txt
+            git log -1 --format="%H %s" >> \${TMP_BACKUP}/previous_commit.txt
+            echo "📝 Current commit: \$(head -1 \${TMP_BACKUP}/previous_commit.txt)"
 
             # Backup database
             if [ -f .codeframe/state.db ]; then
-              cp .codeframe/state.db \$BACKUP_DIR/
-              echo "✅ Database backed up to \$BACKUP_DIR"
+              cp .codeframe/state.db \${TMP_BACKUP}/
+              echo "✅ Database backed up"
             fi
 
-            # Record current commit for potential rollback
-            git rev-parse HEAD > \$BACKUP_DIR/previous_commit.txt
-            echo "✅ Current commit recorded: \$(cat \$BACKUP_DIR/previous_commit.txt)"
+            # Backup config files
+            if [ -d .codeframe ]; then
+              cp -r .codeframe/config.* \${TMP_BACKUP}/ 2>/dev/null || true
+              cp -r .codeframe/*.json \${TMP_BACKUP}/ 2>/dev/null || true
+            fi
+
+            # Backup environment files
+            cp .env* \${TMP_BACKUP}/ 2>/dev/null || true
+            cp ecosystem*.config.js \${TMP_BACKUP}/ 2>/dev/null || true
+
+            # Backup recent logs (last 1000 lines each to keep size manageable)
+            if [ -d logs ]; then
+              mkdir -p \${TMP_BACKUP}/logs
+              for logfile in logs/*.log; do
+                if [ -f "\$logfile" ]; then
+                  tail -1000 "\$logfile" > "\${TMP_BACKUP}/logs/\$(basename \$logfile)" 2>/dev/null || true
+                fi
+              done
+              echo "✅ Logs backed up"
+            fi
+
+            # Create compressed archive atomically
+            echo "📦 Creating compressed archive..."
+            tar -czf "\${TMP_BACKUP}.tar.gz" -C /tmp "\${BACKUP_NAME}" || {
+              echo "❌ Failed to create backup archive"
+              rm -rf \${TMP_BACKUP}
+              exit 1
+            }
+
+            # Move to final location atomically
+            mv "\${TMP_BACKUP}.tar.gz" "\${FINAL_ARCHIVE}" || {
+              echo "❌ Failed to move backup to final location"
+              rm -rf \${TMP_BACKUP} "\${TMP_BACKUP}.tar.gz"
+              exit 1
+            }
+
+            # Set proper permissions on archive
+            chmod 600 "\${FINAL_ARCHIVE}"
+
+            # Cleanup temp directory
+            rm -rf \${TMP_BACKUP}
+
+            # Retention policy: keep last N backups
+            echo "🗑️  Applying retention policy (keeping last \${RETENTION_COUNT} backups)..."
+            cd \${BACKUP_BASE}
+            ls -t backup-*.tar.gz 2>/dev/null | tail -n +\$((RETENTION_COUNT + 1)) | xargs -r rm -f
+
+            # Report backup status
+            BACKUP_SIZE=\$(du -h "\${FINAL_ARCHIVE}" | cut -f1)
+            BACKUP_COUNT=\$(ls -1 backup-*.tar.gz 2>/dev/null | wc -l)
+            echo "✅ Backup created: \${FINAL_ARCHIVE} (\${BACKUP_SIZE})"
+            echo "📊 Total backups retained: \${BACKUP_COUNT}"
           ENDSSH
 
       - name: Deploy to production server
