@@ -122,7 +122,13 @@ async function globalSetup(config: FullConfig) {
   // Clean up any stale test artifacts first
   cleanupTestEnvironment();
 
-  // Initialize test database before starting backend
+  // Initialize test database schema.
+  // NOTE ON ORDERING: Playwright starts webServer BEFORE globalSetup runs.
+  // This means the backend is already running when we reach this point.
+  // This is safe because:
+  // 1. Backend respects DATABASE_PATH env var and uses the test database
+  // 2. Database.initialize() uses CREATE TABLE IF NOT EXISTS (idempotent)
+  // 3. We do NOT delete the database file (would cause "readonly database" errors)
   initializeTestDatabase();
 
   // Launch browser for API calls

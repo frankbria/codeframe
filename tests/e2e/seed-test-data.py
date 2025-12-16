@@ -9,6 +9,10 @@ import sys
 import json
 from datetime import datetime, timedelta
 
+# E2E test root directory - derived from script location for reliability
+# This avoids assumptions about db_path structure
+E2E_TEST_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 # Table name constants to prevent typos and improve maintainability
 TABLE_AGENTS = "agents"
 TABLE_PROJECT_AGENTS = "project_agents"
@@ -34,8 +38,10 @@ def seed_test_data(db_path: str, project_id: int):
     try:
         print(f"📊 Seeding test data into {db_path} for project {project_id}...")
 
-        # Define timestamps for all seeding operations
-        now = datetime.now()
+        # Use fixed reference timestamp for reproducible test data
+        # This ensures timestamps are deterministic across test runs
+        # Reference: 2025-01-15 10:00:00 UTC (arbitrary fixed point)
+        now = datetime(2025, 1, 15, 10, 0, 0)
         now_ts = now.isoformat()
 
         # ========================================
@@ -981,11 +987,11 @@ def seed_test_data(db_path: str, project_id: int):
                     db_backup_rel_path = checkpoint[6]  # database_backup_path
                     context_rel_path = checkpoint[7]  # context_snapshot_path
 
-                    # Convert relative paths to absolute paths based on db_dir's parent
-                    # Since paths are like ".codeframe/checkpoints/...", we go up from db_dir (.codeframe)
-                    base_dir = os.path.dirname(db_dir)  # Parent of .codeframe
-                    db_backup_path = os.path.join(base_dir, db_backup_rel_path)
-                    context_path = os.path.join(base_dir, context_rel_path)
+                    # Convert relative paths to absolute paths using E2E_TEST_ROOT
+                    # This is more reliable than deriving from db_path which could be any absolute path
+                    # Checkpoint paths are like ".codeframe/checkpoints/...", relative to E2E_TEST_ROOT
+                    db_backup_path = os.path.join(E2E_TEST_ROOT, db_backup_rel_path)
+                    context_path = os.path.join(E2E_TEST_ROOT, context_rel_path)
 
                     # Create SQLite backup file (valid SQLite database with metadata)
                     try:
@@ -1048,6 +1054,49 @@ def seed_test_data(db_path: str, project_id: int):
         conn.close()
 
 
+def verify_checkpoint_files() -> bool:
+    """Verify that checkpoint files were created successfully."""
+    checkpoints_dir = os.path.join(E2E_TEST_ROOT, ".codeframe", "checkpoints")
+
+    if not os.path.exists(checkpoints_dir):
+        print(f"   ❌ Checkpoints directory not found: {checkpoints_dir}")
+        return False
+
+    # Expected checkpoint files (based on seeded data)
+    expected_files = [
+        ("checkpoint-001-db.sqlite", "sqlite"),
+        ("checkpoint-001-context.json", "json"),
+        ("checkpoint-002-db.sqlite", "sqlite"),
+        ("checkpoint-002-context.json", "json"),
+    ]
+
+    all_valid = True
+    for filename, filetype in expected_files:
+        filepath = os.path.join(checkpoints_dir, filename)
+        if not os.path.exists(filepath):
+            print(f"   ❌ Missing checkpoint file: {filename}")
+            all_valid = False
+            continue
+
+        # Validate file contents
+        try:
+            if filetype == "sqlite":
+                # Verify it's a valid SQLite file
+                test_conn = sqlite3.connect(filepath)
+                test_conn.execute("SELECT 1")
+                test_conn.close()
+            elif filetype == "json":
+                # Verify it's valid JSON
+                with open(filepath) as f:
+                    json.load(f)
+            print(f"   ✅ Verified: {filename}")
+        except (sqlite3.Error, json.JSONDecodeError, OSError) as e:
+            print(f"   ❌ Invalid {filetype} file {filename}: {e}")
+            all_valid = False
+
+    return all_valid
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python seed-test-data.py <db_path> <project_id>")
@@ -1057,3 +1106,12 @@ if __name__ == "__main__":
     project_id = int(sys.argv[2])
 
     seed_test_data(db_path, project_id)
+
+    # Verify checkpoint files were created correctly
+    print("\n🔍 Verifying checkpoint files...")
+    if verify_checkpoint_files():
+        print("✅ All checkpoint files verified successfully")
+    else:
+        print("⚠️  Some checkpoint files could not be verified")
+        # Don't fail the seeding - checkpoint files are secondary
+        # Tests can still run without them
