@@ -92,10 +92,10 @@ jobs:
           LOG_LEVEL=INFO
           LOG_FILE=${REMOTE_PATH}/.codeframe/logs/codeframe.log
 
-          # Environment
+          # Environment & Development Flags
           ENVIRONMENT=staging
-          DEBUG=false
-          HOT_RELOAD=false
+          DEBUG=true
+          HOT_RELOAD=true
           ENVEOF
           echo "✅ .env.staging created"
 
@@ -233,7 +233,7 @@ jobs:
           LOG_LEVEL=INFO
           LOG_FILE=${REMOTE_PATH}/.codeframe/logs/codeframe.log
 
-          # Environment
+          # Environment & Development Flags
           ENVIRONMENT=production
           DEBUG=false
           HOT_RELOAD=false
