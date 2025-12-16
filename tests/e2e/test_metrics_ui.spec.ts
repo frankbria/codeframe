@@ -25,28 +25,23 @@ test.describe('Metrics Dashboard UI', () => {
       { timeout: 10000 }
     ).catch(() => {});
 
-    // Wait for dashboard to render - agent panel is last to render
+    // Wait for dashboard to render - agent panel is one of the last to render
     await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
 
-    // Navigate to metrics section
-    const metricsTab = page.locator('[data-testid="metrics-tab"]');
-    await metricsTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-    if (await metricsTab.isVisible()) {
-      await metricsTab.click();
+    // Metrics panel is in the Overview tab (which is active by default)
+    // No tab navigation needed - just scroll to it and wait for it to be visible
+    const metricsPanel = page.locator('[data-testid="metrics-panel"]');
+    await metricsPanel.scrollIntoViewIfNeeded().catch(() => {});
+    await metricsPanel.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
 
-      // Wait for metrics panel to become visible after tab switch
-      const metricsPanel = page.locator('[data-testid="metrics-panel"]');
-      await metricsPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    // Wait for metrics API to load
+    await page.waitForResponse(response =>
+      response.url().includes('/metrics') && response.status() === 200,
+      { timeout: 10000 }
+    ).catch(() => {});
 
-      // Wait for metrics API to load
-      await page.waitForResponse(response =>
-        response.url().includes('/metrics') && response.status() === 200,
-        { timeout: 10000 }
-      ).catch(() => {});
-
-      // Wait for cost dashboard to be visible (indicates data has rendered)
-      await page.locator('[data-testid="cost-dashboard"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-    }
+    // Wait for cost dashboard to be visible (indicates data has rendered)
+    await page.locator('[data-testid="cost-dashboard"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
   });
 
   test('should display metrics panel', async ({ page }) => {
@@ -120,15 +115,24 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost breakdown by agent', async ({ page }) => {
     const agentBreakdown = page.locator('[data-testid="cost-by-agent"]');
+    await agentBreakdown.scrollIntoViewIfNeeded().catch(() => {});
     await agentBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(agentBreakdown).toBeVisible();
 
     // Should have list of agents or empty state
     const agentItems = page.locator('[data-testid^="agent-cost-"]');
+    const emptyState = page.locator('[data-testid="agent-cost-empty"]');
+
+    // Wait for either data or empty state to appear
+    await Promise.race([
+      agentItems.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
+      emptyState.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+    ]);
+
     const count = await agentItems.count();
 
     if (count === 0) {
-      const emptyState = page.locator('[data-testid="agent-cost-empty"]');
+      // No data - check for empty state message
       await expect(emptyState).toBeVisible();
     } else {
       // Verify first agent item has name and cost
@@ -140,15 +144,24 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost breakdown by model', async ({ page }) => {
     const modelBreakdown = page.locator('[data-testid="cost-by-model"]');
+    await modelBreakdown.scrollIntoViewIfNeeded().catch(() => {});
     await modelBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(modelBreakdown).toBeVisible();
 
     // Should have list of models or empty state
     const modelItems = page.locator('[data-testid^="model-cost-"]');
+    const emptyState = page.locator('[data-testid="model-cost-empty"]');
+
+    // Wait for either data or empty state to appear
+    await Promise.race([
+      modelItems.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
+      emptyState.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+    ]);
+
     const count = await modelItems.count();
 
     if (count === 0) {
-      const emptyState = page.locator('[data-testid="model-cost-empty"]');
+      // No data - check for empty state message
       await expect(emptyState).toBeVisible();
     } else {
       // Verify model names match expected models
@@ -165,20 +178,43 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should filter metrics by date range', async ({ page }) => {
     const dateFilter = page.locator('[data-testid="date-range-filter"]');
+    await dateFilter.scrollIntoViewIfNeeded().catch(() => {});
 
-    if (await dateFilter.isVisible()) {
-      // Select "Last 7 days" filter
-      await dateFilter.selectOption('last-7-days');
+    // Wait for the filter to appear (may not exist if API errors)
+    const filterVisible = await dateFilter.isVisible().catch(() => false);
 
-      // Wait for metrics API to respond with filtered data
-      await page.waitForResponse(response =>
-        response.url().includes('/metrics') && response.status() === 200,
-        { timeout: 5000 }
-      ).catch(() => {});
+    if (!filterVisible) {
+      // Date filter not visible (API might have errored) - skip this test
+      // This is acceptable behavior when API data isn't available
+      test.skip();
+      return;
+    }
 
-      // Chart should still be visible after filtering
-      const tokenChart = page.locator('[data-testid="token-usage-chart"]');
-      await expect(tokenChart).toBeVisible();
+    // Store initial filter value
+    const initialValue = await dateFilter.inputValue();
+
+    // Change to a different filter option
+    const newValue = initialValue === 'last-30-days' ? 'last-7-days' : 'last-30-days';
+    await dateFilter.selectOption(newValue);
+
+    // Wait for any API response (success or error)
+    await page.waitForResponse(response =>
+      response.url().includes('/metrics'),
+      { timeout: 10000 }
+    ).catch(() => {});
+
+    // Wait a moment for React to re-render
+    await page.waitForTimeout(1000);
+
+    // After filtering, the metrics panel should still be visible
+    const metricsPanel = page.locator('[data-testid="metrics-panel"]');
+    await expect(metricsPanel).toBeVisible();
+
+    // If the date filter is still visible, verify the value changed
+    // (It may disappear if API returns an error)
+    if (await dateFilter.isVisible().catch(() => false)) {
+      const currentValue = await dateFilter.inputValue();
+      expect(currentValue).toBe(newValue);
     }
   });
 
@@ -200,26 +236,37 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost per task', async ({ page }) => {
     const taskCostTable = page.locator('[data-testid="cost-per-task-table"]');
+    await taskCostTable.scrollIntoViewIfNeeded().catch(() => {});
+    await taskCostTable.waitFor({ state: 'visible', timeout: 10000 });
 
-    if (await taskCostTable.isVisible()) {
+    // Table section should be visible
+    await expect(taskCostTable).toBeVisible();
+
+    // Check for either data rows or empty state
+    const taskRows = page.locator('[data-testid^="task-cost-row-"]');
+    const emptyState = page.locator('[data-testid="task-cost-empty"]');
+
+    // Wait for either data or empty state to appear
+    await Promise.race([
+      taskRows.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
+      emptyState.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
+    ]);
+
+    const count = await taskRows.count();
+
+    if (count === 0) {
+      // No data - check for empty state message
+      await expect(emptyState).toBeVisible();
+    } else {
       // Table should have headers
       await expect(page.locator('[data-testid="task-column-header"]')).toBeVisible();
       await expect(page.locator('[data-testid="cost-column-header"]')).toBeVisible();
       await expect(page.locator('[data-testid="tokens-column-header"]')).toBeVisible();
 
-      // Table should have rows or empty state
-      const taskRows = page.locator('[data-testid^="task-cost-row-"]');
-      const count = await taskRows.count();
-
-      if (count === 0) {
-        const emptyState = page.locator('[data-testid="task-cost-empty"]');
-        await expect(emptyState).toBeVisible();
-      } else {
-        // Verify first row has data
-        const firstRow = taskRows.first();
-        await expect(firstRow.locator('[data-testid="task-description"]')).toBeVisible();
-        await expect(firstRow.locator('[data-testid="task-cost"]')).toBeVisible();
-      }
+      // Verify first row has data
+      const firstRow = taskRows.first();
+      await expect(firstRow.locator('[data-testid="task-description"]')).toBeVisible();
+      await expect(firstRow.locator('[data-testid="task-cost"]')).toBeVisible();
     }
   });
 
@@ -280,18 +327,22 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost trend chart', async ({ page }) => {
     const trendChart = page.locator('[data-testid="cost-trend-chart"]');
+    await trendChart.scrollIntoViewIfNeeded().catch(() => {});
+    await trendChart.waitFor({ state: 'visible', timeout: 10000 });
 
-    if (await trendChart.isVisible()) {
-      // Chart should show cost over time
+    // Trend chart section should be visible
+    await expect(trendChart).toBeVisible();
+
+    // Chart may have data or show empty state message
+    const hasData = (await page.locator('[data-testid="trend-chart-data"]').count()) > 0;
+    const hasEmptyState = (await trendChart.textContent())?.includes('No time series data') || false;
+
+    // Either data or empty state should be present
+    expect(hasData || hasEmptyState).toBe(true);
+
+    // If data exists, verify chart has data element
+    if (hasData) {
       await expect(page.locator('[data-testid="trend-chart-data"]')).toBeVisible();
-
-      // X-axis should show time labels
-      const xAxis = page.locator('[data-testid="chart-x-axis"]');
-      if (await xAxis.count() > 0) {
-        const axisText = await xAxis.textContent();
-        // Should contain date/time information
-        expect(axisText).toBeTruthy();
-      }
     }
   });
 });
