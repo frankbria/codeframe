@@ -1068,6 +1068,8 @@ def verify_checkpoint_files() -> bool:
         ("checkpoint-001-context.json", "json"),
         ("checkpoint-002-db.sqlite", "sqlite"),
         ("checkpoint-002-context.json", "json"),
+        ("checkpoint-003-db.sqlite", "sqlite"),
+        ("checkpoint-003-context.json", "json"),
     ]
 
     all_valid = True
