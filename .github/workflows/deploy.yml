@@ -146,6 +146,7 @@ jobs:
             echo "🐍 Setting up Python backend..."
             if ! command -v uv &> /dev/null; then
               curl -LsSf https://astral.sh/uv/install.sh | sh
+              export PATH="\$HOME/.cargo/bin:\$PATH"
             fi 
             uv venv
             source .venv/bin/activate
@@ -441,13 +442,12 @@ jobs:
 
             # Backend setup
             echo "🐍 Setting up Python backend..."
-            if [ -d .venv ]; then
-              source .venv/bin/activate
-            else
-              python3 -m venv .venv
-              source .venv/bin/activate
+            if ! command -v uv &> /dev/null; then
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              export PATH="$HOME/.cargo/bin:$PATH"
             fi
-            pip install --quiet uv
+            uv venv
+            source .venv/bin/activate
             uv sync --no-dev
 
             # Frontend setup (production build)
