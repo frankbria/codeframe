@@ -74,6 +74,8 @@ jobs:
           ENV_ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
           ENV_DEBUG: ${{ secrets.DEBUG }}
           ENV_HOT_RELOAD: ${{ secrets.HOT_RELOAD }}
+          ENV_PM2_FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
+          ENV_PM2_BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
         run: |
           echo "📝 Creating .env.staging file..."
 
@@ -142,13 +144,11 @@ jobs:
 
             # Backend setup
             echo "🐍 Setting up Python backend..."
-            if [ -d .venv ]; then
-              source .venv/bin/activate
-            else
-              python3 -m venv .venv
-              source .venv/bin/activate
-            fi
-            pip install --quiet uv
+            if ! command -v uv &> /dev/null; then
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+            fi 
+            uv venv
+            source .venv/bin/activate
             uv sync
 
             # Frontend setup
@@ -169,8 +169,8 @@ jobs:
             fi
 
             CONFIG_FILE="ecosystem.staging.config.js"
-            BACKEND_NAME="codeframe-staging-backend"
-            FRONTEND_NAME="codeframe-staging-frontend"
+            BACKEND_NAME=$ENV_PM2_BACKEND_NAME
+            FRONTEND_NAME=$ENV_PM2_FRONTEND_NAME
 
             # Function to check if a PM2 process exists
             process_exists() {
