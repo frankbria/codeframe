@@ -34,7 +34,7 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    # needs: test  # Temporarily disabled for debugging
+    needs: test  # Temporarily disabled for debugging
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
