@@ -178,22 +178,13 @@ jobs:
               pm2 jlist 2>/dev/null | grep -q "\"name\":\"$1\""
             }
 
-            # Handle backend process
+            # Restart both frontend and backend via config file
             if process_exists "${BACKEND_NAME}"; then
               echo "♻️  Restarting ${BACKEND_NAME}..."
-              pm2 restart "${BACKEND_NAME}"
+              pm2 restart ${CONFIG_FILE}
             else
               echo "🚀 Starting ${BACKEND_NAME}..."
-              pm2 start ${CONFIG_FILE} --only "${BACKEND_NAME}"
-            fi
-
-            # Handle frontend process
-            if process_exists "${FRONTEND_NAME}"; then
-              echo "♻️  Restarting \${FRONTEND_NAME}..."
-              pm2 restart "\${FRONTEND_NAME}"
-            else
-              echo "🚀 Starting \${FRONTEND_NAME}..."
-              pm2 start \${CONFIG_FILE} --only "\${FRONTEND_NAME}"
+              pm2 start ${CONFIG_FILE}
             fi
 
             pm2 save
