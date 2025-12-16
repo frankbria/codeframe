@@ -26,7 +26,7 @@ import type {
 // Mock fetch
 global.fetch = jest.fn();
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:8080';
 
 describe('Checkpoints API Client', () => {
   const mockCheckpoint: Checkpoint = {
