@@ -167,9 +167,24 @@ jobs:
 
       - name: Verify deployment
         run: |
-          echo "🔍 Verifying deployment..."
-          sleep 10
-          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health" || echo "⚠️  Health check failed or endpoint not available"
+          echo "🔍 Verifying staging deployment..."
+          MAX_ATTEMPTS=12
+          SLEEP_SECONDS=5
+
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Health check attempt $i/$MAX_ATTEMPTS..."
+            if ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health"; then
+              echo "✅ Health check passed on attempt $i"
+              exit 0
+            fi
+            if [ $i -lt $MAX_ATTEMPTS ]; then
+              echo "⏳ Waiting ${SLEEP_SECONDS}s before retry..."
+              sleep $SLEEP_SECONDS
+            fi
+          done
+
+          echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+          exit 1
 
       - name: Deployment summary
         run: |
@@ -420,8 +435,23 @@ jobs:
       - name: Verify deployment
         run: |
           echo "🔍 Verifying production deployment..."
-          sleep 15
-          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health" || echo "⚠️  Health check failed or endpoint not available"
+          MAX_ATTEMPTS=12
+          SLEEP_SECONDS=5
+
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Health check attempt $i/$MAX_ATTEMPTS..."
+            if ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:${{ secrets.API_PORT }}/health"; then
+              echo "✅ Health check passed on attempt $i"
+              exit 0
+            fi
+            if [ $i -lt $MAX_ATTEMPTS ]; then
+              echo "⏳ Waiting ${SLEEP_SECONDS}s before retry..."
+              sleep $SLEEP_SECONDS
+            fi
+          done
+
+          echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+          exit 1
 
       - name: Deployment summary
         run: |
