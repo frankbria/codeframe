@@ -3,11 +3,20 @@
 ## Session Goal
 Create GitHub Actions CI/CD workflow for automated deployment to staging and production environments using SSH-based deployment.
 
-## GitHub Secrets Available
+## GitHub Secrets Required
+
+### Connection Secrets (already configured)
 - `HOST` - Server hostname
 - `USER` - SSH username
 - `SSH_KEY` - SSH private key
 - `PROJECT_PATH` - Deployment path on server
+
+### Environment Secrets (need to add to staging environment)
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude
+- `OPENAI_API_KEY` - OpenAI API key (optional)
+- `CORS_ORIGINS` - CORS allowed origins (e.g., `https://dev.codeframeapp.com`)
+- `API_URL` - Backend API URL (e.g., `https://api.dev.codeframeapp.com`)
+- `WS_URL` - WebSocket URL (e.g., `wss://api.dev.codeframeapp.com/ws`)
 
 ## Execution Plan
 
@@ -65,19 +74,21 @@ Create GitHub Actions CI/CD workflow for automated deployment to staging and pro
 | Manual dispatch | Either | Select environment in UI |
 
 ### Required GitHub Setup
-1. **Staging environment** - Already exists with secrets (HOST, USER, SSH_KEY, PROJECT_PATH)
+1. **Staging environment** - Already exists, needs additional secrets:
+   - Add: ANTHROPIC_API_KEY, OPENAI_API_KEY, CORS_ORIGINS, API_URL, WS_URL
 2. **Production environment** - Create manually when ready:
    - Go to repo Settings → Environments → New environment
    - Name: `production`
-   - Add same secrets: HOST, USER, SSH_KEY, PROJECT_PATH
+   - Add all secrets from staging
    - Optional: Add required reviewers for production deployments
 
 ### Server Requirements
 The deployment expects:
 - Python 3.11+ with ability to create venv
 - Node.js 20+ with npm
+- PM2 installed globally (`npm install -g pm2`)
 - Git installed and repo cloned at PROJECT_PATH
-- Optional: systemd services `codeframe-backend` and `codeframe-frontend`
+- `ecosystem.config.js` in project root (PM2 configuration)
 
 ### Manual Deployment
 Use workflow_dispatch in GitHub Actions UI:
