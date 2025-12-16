@@ -23,6 +23,7 @@ export default function HomePage() {
    * Called by ProjectCreationForm when project is created
    */
   const handleProjectCreated = (projectId: number) => {
+    setIsCreating(false);
     router.push(`/projects/${projectId}`);
   };
 
