@@ -129,6 +129,9 @@ jobs:
           echo "✅ .env.staging created and verified"
 
       - name: Deploy to staging server
+        env:
+          BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
+          FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
@@ -170,8 +173,8 @@ jobs:
             fi
 
             CONFIG_FILE="ecosystem.staging.config.js"
-            BACKEND_NAME="${{ secrets.PM2_BACKEND_NAME }}"
-            FRONTEND_NAME="${{ secrets.PM2_FRONTEND_NAME }}"
+            BACKEND_NAME="${BACKEND_NAME}"
+            FRONTEND_NAME="${FRONTEND_NAME}"
 
             echo "Debug: BACKEND_NAME='${BACKEND_NAME}'"
             echo "Debug: FRONTEND_NAME='${FRONTEND_NAME}'"
@@ -414,6 +417,9 @@ jobs:
           ENDSSH
 
       - name: Deploy to production server
+        env:
+          BACKEND_NAME_PROD: ${{ secrets.PM2_BACKEND_NAME }}
+          FRONTEND_NAME_PROD: ${{ secrets.PM2_FRONTEND_NAME }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
@@ -467,8 +473,8 @@ jobs:
             fi
 
             CONFIG_FILE="ecosystem.production.config.js"
-            BACKEND_NAME="codeframe-production-backend"
-            FRONTEND_NAME="codeframe-production-frontend"
+            BACKEND_NAME="${BACKEND_NAME_PROD}"
+            FRONTEND_NAME="${FRONTEND_NAME_PROD}"
 
             # Function to check if a PM2 process is online
             is_process_online() {
