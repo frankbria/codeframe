@@ -170,8 +170,8 @@ jobs:
             fi
 
             CONFIG_FILE="ecosystem.staging.config.js"
-            BACKEND_NAME=$ENV_PM2_BACKEND_NAME
-            FRONTEND_NAME=$ENV_PM2_FRONTEND_NAME
+            BACKEND_NAME=${ENV_PM2_BACKEND_NAME}
+            FRONTEND_NAME=${ENV_PM2_FRONTEND_NAME}
 
             # Function to check if a PM2 process exists
             process_exists() {
