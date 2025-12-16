@@ -173,6 +173,9 @@ jobs:
             BACKEND_NAME="${{ secrets.PM2_BACKEND_NAME }}"
             FRONTEND_NAME="${{ secrets.PM2_FRONTEND_NAME }}"
 
+            echo "Debug: BACKEND_NAME='${BACKEND_NAME}'"
+            echo "Debug: FRONTEND_NAME='${FRONTEND_NAME}'"
+
             # Function to check if a PM2 process is online
             is_process_online() {
               pm2 describe "$1" 2>/dev/null | grep -q "online"
@@ -181,8 +184,8 @@ jobs:
             # Restart both frontend and backend via config file
             if is_process_online "${BACKEND_NAME}" && is_process_online "${FRONTEND_NAME}"; then
               echo "♻️  Restarting PM2 services..."
-              pm2 restart "${BACKEND_NAME}"
-              pm2 restart "${FRONTEND_NAME}"
+              pm2 restart "${BACKEND_NAME}" --update-env
+              pm2 restart "${FRONTEND_NAME}" --update-env
             else
               echo "🚀 Starting PM2 services from config..."
               pm2 start "${CONFIG_FILE}"
