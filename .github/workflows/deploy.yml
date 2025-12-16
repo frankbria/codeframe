@@ -88,20 +88,24 @@ jobs:
             npm run build
             cd ..
 
-            # Restart services (if systemd services exist)
-            echo "🔄 Restarting services..."
-            if systemctl is-active --quiet codeframe-backend 2>/dev/null; then
-              sudo systemctl restart codeframe-backend
-              echo "✅ Backend service restarted"
-            else
-              echo "⚠️  No codeframe-backend service found (manual restart may be needed)"
-            fi
+            # Ensure logs directory exists
+            mkdir -p logs
 
-            if systemctl is-active --quiet codeframe-frontend 2>/dev/null; then
-              sudo systemctl restart codeframe-frontend
-              echo "✅ Frontend service restarted"
+            # Restart PM2 services
+            echo "🔄 Restarting PM2 services..."
+            if command -v pm2 &> /dev/null; then
+              # Check if PM2 processes exist, if not start them
+              if pm2 list | grep -q "codeframe-staging"; then
+                pm2 restart ecosystem.config.js
+                echo "✅ PM2 services restarted"
+              else
+                pm2 start ecosystem.config.js
+                echo "✅ PM2 services started"
+              fi
+              pm2 save
             else
-              echo "⚠️  No codeframe-frontend service found (manual restart may be needed)"
+              echo "❌ PM2 not found - please install PM2 globally"
+              exit 1
             fi
 
             echo "✅ Deployment to staging complete!"
@@ -111,7 +115,7 @@ jobs:
         run: |
           echo "🔍 Verifying deployment..."
           sleep 10
-          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:8080/health" || echo "⚠️  Health check failed or endpoint not available"
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:14200/health" || echo "⚠️  Health check failed or endpoint not available"
 
       - name: Deployment summary
         run: |
@@ -216,20 +220,30 @@ jobs:
             echo "🗃️ Running database migrations..."
             # Add migration command here if needed
 
-            # Restart services
-            echo "🔄 Restarting services..."
-            if systemctl is-active --quiet codeframe-backend 2>/dev/null; then
-              sudo systemctl restart codeframe-backend
-              echo "✅ Backend service restarted"
-            else
-              echo "⚠️  No codeframe-backend service found (manual restart may be needed)"
-            fi
+            # Ensure logs directory exists
+            mkdir -p logs
 
-            if systemctl is-active --quiet codeframe-frontend 2>/dev/null; then
-              sudo systemctl restart codeframe-frontend
-              echo "✅ Frontend service restarted"
+            # Restart PM2 services
+            echo "🔄 Restarting PM2 services..."
+            if command -v pm2 &> /dev/null; then
+              # Production uses different ecosystem config if it exists
+              if [ -f ecosystem.production.config.js ]; then
+                CONFIG_FILE="ecosystem.production.config.js"
+              else
+                CONFIG_FILE="ecosystem.config.js"
+              fi
+
+              if pm2 list | grep -q "codeframe"; then
+                pm2 restart \$CONFIG_FILE
+                echo "✅ PM2 services restarted"
+              else
+                pm2 start \$CONFIG_FILE
+                echo "✅ PM2 services started"
+              fi
+              pm2 save
             else
-              echo "⚠️  No codeframe-frontend service found (manual restart may be needed)"
+              echo "❌ PM2 not found - please install PM2 globally"
+              exit 1
             fi
 
             echo "✅ Deployment to production complete!"
@@ -239,7 +253,7 @@ jobs:
         run: |
           echo "🔍 Verifying production deployment..."
           sleep 15
-          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:8080/health" || echo "⚠️  Health check failed or endpoint not available"
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:14200/health" || echo "⚠️  Health check failed or endpoint not available"
 
       - name: Deployment summary
         run: |
