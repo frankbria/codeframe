@@ -145,12 +145,15 @@ jobs:
             # Restart PM2 services
             echo "🔄 Restarting PM2 services..."
             if command -v pm2 &> /dev/null; then
+              CONFIG_FILE="ecosystem.staging.config.js"
+              APP_NAME="codeframe-staging"
+
               # Check if PM2 processes exist, if not start them
-              if pm2 list | grep -q "codeframe-staging"; then
-                pm2 restart ecosystem.config.js
+              if pm2 describe "\${APP_NAME}-backend" > /dev/null 2>&1; then
+                pm2 restart \${CONFIG_FILE}
                 echo "✅ PM2 services restarted"
               else
-                pm2 start ecosystem.config.js
+                pm2 start \${CONFIG_FILE}
                 echo "✅ PM2 services started"
               fi
               pm2 save
@@ -328,18 +331,15 @@ jobs:
             # Restart PM2 services
             echo "🔄 Restarting PM2 services..."
             if command -v pm2 &> /dev/null; then
-              # Production uses different ecosystem config if it exists
-              if [ -f ecosystem.production.config.js ]; then
-                CONFIG_FILE="ecosystem.production.config.js"
-              else
-                CONFIG_FILE="ecosystem.config.js"
-              fi
+              CONFIG_FILE="ecosystem.production.config.js"
+              APP_NAME="codeframe-production"
 
-              if pm2 list | grep -q "codeframe"; then
-                pm2 restart \$CONFIG_FILE
+              # Check if PM2 processes exist, if not start them
+              if pm2 describe "\${APP_NAME}-backend" > /dev/null 2>&1; then
+                pm2 restart \${CONFIG_FILE}
                 echo "✅ PM2 services restarted"
               else
-                pm2 start \$CONFIG_FILE
+                pm2 start \${CONFIG_FILE}
                 echo "✅ PM2 services started"
               fi
               pm2 save
