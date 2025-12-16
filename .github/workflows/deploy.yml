@@ -170,11 +170,8 @@ jobs:
             fi
 
             CONFIG_FILE="ecosystem.staging.config.js"
-            echo "config file set: \${CONFIG_FILE}"
             BACKEND_NAME="${{ secrets.PM2_BACKEND_NAME }}"
-            echo "backend name set: \${BACKEND_NAME}"
             FRONTEND_NAME="${{ secrets.PM2_FRONTEND_NAME }}"
-            echo "frontend name set: \${FRONTEND_NAME}"
 
             # Function to check if a PM2 process exists
             process_exists() {
@@ -182,7 +179,8 @@ jobs:
             }
 
             # Handle backend process
-            if process_exists "\${BACKEND_NAME}"; then
+            #if process_exists "\${BACKEND_NAME}"; then
+            if process_exists "codeframe-staging-backend"; then
               echo "♻️  Restarting \${BACKEND_NAME}..."
               pm2 restart "\${BACKEND_NAME}"
             else
