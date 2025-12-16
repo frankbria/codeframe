@@ -26,8 +26,7 @@ jobs:
   # ============================================
   test:
     name: Run Test Suite
-    if: false
-    uses: ./.github/workflows/test.yml
+    # uses: ./.github/workflows/test.yml
 
   # ============================================
   # Deploy to Staging
