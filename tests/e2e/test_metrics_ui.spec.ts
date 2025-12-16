@@ -119,26 +119,28 @@ test.describe('Metrics Dashboard UI', () => {
     await agentBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(agentBreakdown).toBeVisible();
 
-    // Should have list of agents or empty state
-    const agentItems = page.locator('[data-testid^="agent-cost-"]');
+    // Check for empty state first (most common case in CI)
     const emptyState = page.locator('[data-testid="agent-cost-empty"]');
+    const emptyStateVisible = await emptyState.isVisible().catch(() => false);
 
-    // Wait for either data or empty state to appear
-    await Promise.race([
-      agentItems.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
-      emptyState.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
-    ]);
-
-    const count = await agentItems.count();
-
-    if (count === 0) {
-      // No data - check for empty state message
+    if (emptyStateVisible) {
+      // Empty state is shown - test passes
       await expect(emptyState).toBeVisible();
     } else {
-      // Verify first agent item has name and cost
-      const firstAgent = agentItems.first();
-      await expect(firstAgent.locator('[data-testid="agent-name"]')).toBeVisible();
-      await expect(firstAgent.locator('[data-testid="agent-cost"]')).toBeVisible();
+      // Look for actual agent data rows (exclude empty state by using more specific selector)
+      // Agent rows have data-testid like "agent-cost-backend-001", not "agent-cost-empty"
+      const agentRows = page.locator('[data-testid^="agent-cost-"]:not([data-testid="agent-cost-empty"])');
+      const rowCount = await agentRows.count();
+
+      if (rowCount === 0) {
+        // No data rows found, empty state should be visible
+        await expect(emptyState).toBeVisible();
+      } else {
+        // Verify first agent row has name and cost
+        const firstAgent = agentRows.first();
+        await expect(firstAgent.locator('[data-testid="agent-name"]')).toBeVisible();
+        await expect(firstAgent.locator('[data-testid="agent-cost"]')).toBeVisible();
+      }
     }
   });
 
@@ -148,31 +150,33 @@ test.describe('Metrics Dashboard UI', () => {
     await modelBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(modelBreakdown).toBeVisible();
 
-    // Should have list of models or empty state
-    const modelItems = page.locator('[data-testid^="model-cost-"]');
+    // Check for empty state first (most common case in CI)
     const emptyState = page.locator('[data-testid="model-cost-empty"]');
+    const emptyStateVisible = await emptyState.isVisible().catch(() => false);
 
-    // Wait for either data or empty state to appear
-    await Promise.race([
-      modelItems.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
-      emptyState.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
-    ]);
-
-    const count = await modelItems.count();
-
-    if (count === 0) {
-      // No data - check for empty state message
+    if (emptyStateVisible) {
+      // Empty state is shown - test passes
       await expect(emptyState).toBeVisible();
     } else {
-      // Verify model names match expected models
-      const expectedModels = ['sonnet', 'opus', 'haiku'];
-      const firstModel = modelItems.first();
-      const modelText = await firstModel.locator('[data-testid="model-name"]').textContent();
+      // Look for actual model data rows (exclude empty state by using more specific selector)
+      // Model rows have data-testid like "model-cost-claude-sonnet-4-5", not "model-cost-empty"
+      const modelRows = page.locator('[data-testid^="model-cost-"]:not([data-testid="model-cost-empty"])');
+      const rowCount = await modelRows.count();
 
-      const matchesExpected = expectedModels.some(model =>
-        modelText?.toLowerCase().includes(model)
-      );
-      expect(matchesExpected).toBe(true);
+      if (rowCount === 0) {
+        // No data rows found, empty state should be visible
+        await expect(emptyState).toBeVisible();
+      } else {
+        // Verify model names match expected models
+        const expectedModels = ['sonnet', 'opus', 'haiku'];
+        const firstModel = modelRows.first();
+        const modelText = await firstModel.locator('[data-testid="model-name"]').textContent();
+
+        const matchesExpected = expectedModels.some(model =>
+          modelText?.toLowerCase().includes(model)
+        );
+        expect(matchesExpected).toBe(true);
+      }
     }
   });
 
