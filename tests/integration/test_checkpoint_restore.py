@@ -20,40 +20,27 @@ def project_setup(tmp_path: Path):
     project_dir.mkdir()
 
     # Initialize git
-    subprocess.run(
-        ["git", "init"],
-        cwd=project_dir,
-        check=True,
-        capture_output=True
-    )
+    subprocess.run(["git", "init"], cwd=project_dir, check=True, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
         cwd=project_dir,
         check=True,
-        capture_output=True
+        capture_output=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Integration Test"],
         cwd=project_dir,
         check=True,
-        capture_output=True
+        capture_output=True,
     )
 
     # Create initial files
     (project_dir / "README.md").write_text("# Integration Test Project")
     (project_dir / "main.py").write_text("def main():\n    print('Hello')")
 
+    subprocess.run(["git", "add", "."], cwd=project_dir, check=True, capture_output=True)
     subprocess.run(
-        ["git", "add", "."],
-        cwd=project_dir,
-        check=True,
-        capture_output=True
-    )
-    subprocess.run(
-        ["git", "commit", "-m", "Initial commit"],
-        cwd=project_dir,
-        check=True,
-        capture_output=True
+        ["git", "commit", "-m", "Initial commit"], cwd=project_dir, check=True, capture_output=True
     )
 
     # Setup database
@@ -68,8 +55,7 @@ def project_setup(tmp_path: Path):
         INSERT INTO projects (name, description, workspace_path, status, phase)
         VALUES (?, ?, ?, ?, ?)
         """,
-        ("integration_test", "Integration test project",
-         str(project_dir), "active", "active")
+        ("integration_test", "Integration test project", str(project_dir), "active", "active"),
     )
     db.conn.commit()
     project_id = cursor.lastrowid
@@ -81,7 +67,7 @@ def project_setup(tmp_path: Path):
         (project_id, task_number, title, description, status, workflow_step)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (project_id, "1.1", "Setup database", "Initial task", "pending", 1)
+        (project_id, "1.1", "Setup database", "Initial task", "pending", 1),
     )
     cursor.execute(
         """
@@ -89,7 +75,7 @@ def project_setup(tmp_path: Path):
         (project_id, task_number, title, description, status, workflow_step)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (project_id, "1.2", "Add models", "Second task", "pending", 1)
+        (project_id, "1.2", "Add models", "Second task", "pending", 1),
     )
     db.conn.commit()
 
@@ -100,7 +86,7 @@ def project_setup(tmp_path: Path):
         (agent_id, project_id, item_type, content, importance_score, current_tier)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("backend-agent", project_id, "TASK", "Build API endpoints", 0.9, "hot")
+        ("backend-agent", project_id, "TASK", "Build API endpoints", 0.9, "hot"),
     )
     cursor.execute(
         """
@@ -108,15 +94,11 @@ def project_setup(tmp_path: Path):
         (agent_id, project_id, item_type, content, importance_score, current_tier)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("frontend-agent", project_id, "CODE", "React component", 0.7, "warm")
+        ("frontend-agent", project_id, "CODE", "React component", 0.7, "warm"),
     )
     db.conn.commit()
 
-    return {
-        "project_dir": project_dir,
-        "db": db,
-        "project_id": project_id
-    }
+    return {"project_dir": project_dir, "db": db, "project_id": project_id}
 
 
 class TestCheckpointRestoreWorkflow:
@@ -135,16 +117,11 @@ class TestCheckpointRestoreWorkflow:
         project_id = project_setup["project_id"]
 
         # Create checkpoint manager
-        checkpoint_mgr = CheckpointManager(
-            db=db,
-            project_root=project_dir,
-            project_id=project_id
-        )
+        checkpoint_mgr = CheckpointManager(db=db, project_root=project_dir, project_id=project_id)
 
         # ===== PHASE 1: Create checkpoint =====
         checkpoint = checkpoint_mgr.create_checkpoint(
-            name="Before Major Changes",
-            description="Checkpoint before implementing new features"
+            name="Before Major Changes", description="Checkpoint before implementing new features"
         )
 
         # Verify checkpoint was created
@@ -171,47 +148,35 @@ class TestCheckpointRestoreWorkflow:
         )
         (project_dir / "new_feature.py").write_text("def new_feature():\n    pass")
 
-        subprocess.run(
-            ["git", "add", "."],
-            cwd=project_dir,
-            check=True,
-            capture_output=True
-        )
+        subprocess.run(["git", "add", "."], cwd=project_dir, check=True, capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", "Add new feature"],
             cwd=project_dir,
             check=True,
-            capture_output=True
+            capture_output=True,
         )
 
         # Modify database (update tasks, add new task)
-        cursor.execute(
-            "UPDATE tasks SET status = ? WHERE task_number = ?",
-            ("completed", "1.1")
-        )
+        cursor.execute("UPDATE tasks SET status = ? WHERE task_number = ?", ("completed", "1.1"))
         cursor.execute(
             """
             INSERT INTO tasks
             (project_id, task_number, title, description, status, workflow_step)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (project_id, "1.3", "New task", "Added after checkpoint",
-             "in_progress", 2)
+            (project_id, "1.3", "New task", "Added after checkpoint", "in_progress", 2),
         )
         db.conn.commit()
 
         # Modify context items (delete one, add new one)
-        cursor.execute(
-            "DELETE FROM context_items WHERE agent_id = ?",
-            ("frontend-agent",)
-        )
+        cursor.execute("DELETE FROM context_items WHERE agent_id = ?", ("frontend-agent",))
         cursor.execute(
             """
             INSERT INTO context_items
             (agent_id, project_id, item_type, content, importance_score, current_tier)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            ("test-agent", project_id, "ERROR", "Bug found", 0.95, "hot")
+            ("test-agent", project_id, "ERROR", "Bug found", 0.95, "hot"),
         )
         db.conn.commit()
 
@@ -228,10 +193,7 @@ class TestCheckpointRestoreWorkflow:
         assert (project_dir / "new_feature.py").exists()
 
         # ===== PHASE 3: Restore checkpoint =====
-        result = checkpoint_mgr.restore_checkpoint(
-            checkpoint_id=checkpoint.id,
-            confirm=True
-        )
+        result = checkpoint_mgr.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
         # Verify restore succeeded
         assert result["success"] is True
@@ -261,16 +223,10 @@ class TestCheckpointRestoreWorkflow:
         restored_context_count = cursor.fetchone()[0]
         assert restored_context_count == initial_context_count
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM context_items WHERE agent_id = ?",
-            ("frontend-agent",)
-        )
+        cursor.execute("SELECT COUNT(*) FROM context_items WHERE agent_id = ?", ("frontend-agent",))
         assert cursor.fetchone()[0] == 1  # Was restored
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM context_items WHERE agent_id = ?",
-            ("test-agent",)
-        )
+        cursor.execute("SELECT COUNT(*) FROM context_items WHERE agent_id = ?", ("test-agent",))
         assert cursor.fetchone()[0] == 0  # Was removed
 
     def test_checkpoint_list_and_metadata(self, project_setup):
@@ -279,41 +235,22 @@ class TestCheckpointRestoreWorkflow:
         db = project_setup["db"]
         project_id = project_setup["project_id"]
 
-        checkpoint_mgr = CheckpointManager(
-            db=db,
-            project_root=project_dir,
-            project_id=project_id
-        )
+        checkpoint_mgr = CheckpointManager(db=db, project_root=project_dir, project_id=project_id)
 
         # Create multiple checkpoints with different states
-        cp1 = checkpoint_mgr.create_checkpoint(
-            "Checkpoint 1",
-            "First checkpoint"
-        )
+        cp1 = checkpoint_mgr.create_checkpoint("Checkpoint 1", "First checkpoint")
 
         # Make some changes between checkpoints
         cursor = db.conn.cursor()
-        cursor.execute(
-            "UPDATE tasks SET status = ? WHERE task_number = ?",
-            ("completed", "1.1")
-        )
+        cursor.execute("UPDATE tasks SET status = ? WHERE task_number = ?", ("completed", "1.1"))
         db.conn.commit()
 
-        cp2 = checkpoint_mgr.create_checkpoint(
-            "Checkpoint 2",
-            "After completing task 1.1"
-        )
+        cp2 = checkpoint_mgr.create_checkpoint("Checkpoint 2", "After completing task 1.1")
 
-        cursor.execute(
-            "UPDATE tasks SET status = ? WHERE task_number = ?",
-            ("completed", "1.2")
-        )
+        cursor.execute("UPDATE tasks SET status = ? WHERE task_number = ?", ("completed", "1.2"))
         db.conn.commit()
 
-        cp3 = checkpoint_mgr.create_checkpoint(
-            "Checkpoint 3",
-            "After completing task 1.2"
-        )
+        cp3 = checkpoint_mgr.create_checkpoint("Checkpoint 3", "After completing task 1.2")
 
         # List checkpoints
         checkpoints = checkpoint_mgr.list_checkpoints()
@@ -344,35 +281,20 @@ class TestCheckpointRestoreWorkflow:
         db = project_setup["db"]
         project_id = project_setup["project_id"]
 
-        checkpoint_mgr = CheckpointManager(
-            db=db,
-            project_root=project_dir,
-            project_id=project_id
-        )
+        checkpoint_mgr = CheckpointManager(db=db, project_root=project_dir, project_id=project_id)
 
         # Create checkpoint
         checkpoint = checkpoint_mgr.create_checkpoint("Test CP", "Test")
 
         # Make changes
         (project_dir / "main.py").write_text("def main():\n    print('Changed')")
+        subprocess.run(["git", "add", "."], cwd=project_dir, check=True, capture_output=True)
         subprocess.run(
-            ["git", "add", "."],
-            cwd=project_dir,
-            check=True,
-            capture_output=True
-        )
-        subprocess.run(
-            ["git", "commit", "-m", "Changes"],
-            cwd=project_dir,
-            check=True,
-            capture_output=True
+            ["git", "commit", "-m", "Changes"], cwd=project_dir, check=True, capture_output=True
         )
 
         # Get diff without restoring
-        result = checkpoint_mgr.restore_checkpoint(
-            checkpoint_id=checkpoint.id,
-            confirm=False
-        )
+        result = checkpoint_mgr.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=False)
 
         # Verify diff is returned and restore didn't happen
         assert "diff" in result

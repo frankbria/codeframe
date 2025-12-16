@@ -103,7 +103,7 @@ class TestConfig:
         # Clear any existing values to ensure clean test
         monkeypatch.delenv("TEST_VAR", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        
+
         env_file = tmp_path / ".env"
         env_file.write_text("TEST_VAR=test_value\nANTHROPIC_API_KEY=sk-test")
 
@@ -150,7 +150,7 @@ class TestEnvironmentLoading:
         """Test loading from .env file."""
         # Clear any existing value to ensure clean test
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        
+
         env_file = tmp_path / ".env"
         env_file.write_text("ANTHROPIC_API_KEY=****************")
 

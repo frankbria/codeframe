@@ -64,7 +64,7 @@ class TestNotificationWorkflow:
                 requires_mcp=False,
                 estimated_tokens=1000,
                 actual_tokens=0,
-                created_at="2025-01-01T00:00:00"
+                created_at="2025-01-01T00:00:00",
             )
             task_id = db.create_task(task)
 
@@ -128,7 +128,7 @@ class TestNotificationWorkflow:
                 requires_mcp=False,
                 estimated_tokens=1000,
                 actual_tokens=0,
-                created_at="2025-01-01T00:00:00"
+                created_at="2025-01-01T00:00:00",
             )
             task_id = db.create_task(task)
 
@@ -183,7 +183,7 @@ class TestNotificationWorkflow:
                 requires_mcp=False,
                 estimated_tokens=1000,
                 actual_tokens=0,
-                created_at="2025-01-01T00:00:00"
+                created_at="2025-01-01T00:00:00",
             )
             task_id = db.create_task(task)
 
@@ -245,7 +245,7 @@ class TestNotificationWorkflow:
                 requires_mcp=False,
                 estimated_tokens=1000,
                 actual_tokens=0,
-                created_at="2025-01-01T00:00:00"
+                created_at="2025-01-01T00:00:00",
             )
             task_id = db.create_task(task)
 

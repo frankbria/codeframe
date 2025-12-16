@@ -44,9 +44,7 @@ class AgentService:
         try:
             # Update project status first (atomic persistence)
             await asyncio.to_thread(
-                self.db.update_project,
-                project_id,
-                {"status": ProjectStatus.STOPPED.value}
+                self.db.update_project, project_id, {"status": ProjectStatus.STOPPED.value}
             )
 
             # Remove agent from tracking after status is persisted
@@ -75,9 +73,7 @@ class AgentService:
         try:
             # Update project status to PAUSED
             await asyncio.to_thread(
-                self.db.update_project,
-                project_id,
-                {"status": ProjectStatus.PAUSED.value}
+                self.db.update_project, project_id, {"status": ProjectStatus.PAUSED.value}
             )
 
             logger.info(f"Paused agent for project {project_id}")
@@ -103,9 +99,7 @@ class AgentService:
         try:
             # Update project status back to RUNNING
             await asyncio.to_thread(
-                self.db.update_project,
-                project_id,
-                {"status": ProjectStatus.RUNNING.value}
+                self.db.update_project, project_id, {"status": ProjectStatus.RUNNING.value}
             )
 
             logger.info(f"Resumed agent for project {project_id}")

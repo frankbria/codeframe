@@ -70,7 +70,7 @@ class TestWorkspaceCleanupAPI:
 
         def mock_create_with_partial_workspace(**kwargs):
             """Simulate workspace creation failure with incomplete cleanup."""
-            project_id = kwargs.get('project_id')
+            project_id = kwargs.get("project_id")
 
             # Create partial workspace (simulating partial creation before failure)
             workspace_path = workspace_root / str(project_id)
@@ -83,8 +83,8 @@ class TestWorkspaceCleanupAPI:
 
         with patch.object(
             api_client.app.state.workspace_manager,
-            'create_workspace',
-            side_effect=mock_create_with_partial_workspace
+            "create_workspace",
+            side_effect=mock_create_with_partial_workspace,
         ):
             # ACT: Try to create project (will fail)
             response = api_client.post(

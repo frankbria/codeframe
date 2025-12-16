@@ -184,7 +184,11 @@ Guidelines:
         """
         cursor = self.db.conn.cursor()
         # Get project_id from current_task context
-        project_id = getattr(self.current_task, 'project_id', None) if hasattr(self, 'current_task') and self.current_task else None
+        project_id = (
+            getattr(self.current_task, "project_id", None)
+            if hasattr(self, "current_task") and self.current_task
+            else None
+        )
         if not project_id:
             logger.warning("No current task context available, unable to fetch tasks")
             return None
@@ -321,13 +325,15 @@ Guidelines:
         user_prompt_parts.append("Return JSON with the structure specified in the system prompt.")
         user_prompt = "\n".join(user_prompt_parts)
 
-        logger.debug(f"Generating code for task {task.get('id', 'unknown')} (use_sdk={self.use_sdk})")
+        logger.debug(
+            f"Generating code for task {task.get('id', 'unknown')} (use_sdk={self.use_sdk})"
+        )
 
         if self.use_sdk and self.sdk_client:
             # SDK path - let SDK handle file operations via tools
-            response = await self.sdk_client.send_message([
-                {"role": "user", "content": user_prompt}
-            ])
+            response = await self.sdk_client.send_message(
+                [{"role": "user", "content": user_prompt}]
+            )
 
             # Parse JSON response from SDK
             response_text = response.get("content", "{}")
@@ -337,7 +343,7 @@ Guidelines:
                 # Fallback if SDK doesn't return JSON
                 result = {
                     "files": [],
-                    "explanation": "SDK execution completed but no structured output returned"
+                    "explanation": "SDK execution completed but no structured output returned",
                 }
         else:
             # Fallback to direct Anthropic API
@@ -526,7 +532,9 @@ Guidelines:
                 total_errors = sum(r.error_count for r in lint_results)
 
                 # Format question with title and description combined
-                question = f"Linting failed: {total_errors} critical errors\n\n{blocker_description}"
+                question = (
+                    f"Linting failed: {total_errors} critical errors\n\n{blocker_description}"
+                )
 
                 self.db.create_blocker(
                     agent_id=self.agent_id,
@@ -543,7 +551,11 @@ Guidelines:
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_to_project
 
-                        project_id = task.get('project_id') or (self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None)
+                        project_id = task.get("project_id") or (
+                            self.current_task.project_id
+                            if hasattr(self, "current_task") and self.current_task
+                            else None
+                        )
                         if project_id:
                             await broadcast_to_project(
                                 self.ws_manager,
@@ -570,7 +582,11 @@ Guidelines:
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_to_project
 
-                    project_id = task.get('project_id') or (self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None)
+                    project_id = task.get("project_id") or (
+                        self.current_task.project_id
+                        if hasattr(self, "current_task") and self.current_task
+                        else None
+                    )
                     if project_id:
                         await broadcast_to_project(
                             self.ws_manager,
@@ -654,7 +670,11 @@ Guidelines:
                 )
 
                 # Broadcast test result
-                project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                project_id = (
+                    self.current_task.project_id
+                    if hasattr(self, "current_task") and self.current_task
+                    else None
+                )
                 if project_id:
                     await broadcast_test_result(
                         self.ws_manager,
@@ -817,7 +837,11 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_correction_attempt
 
-                    project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                    project_id = (
+                        self.current_task.project_id
+                        if hasattr(self, "current_task") and self.current_task
+                        else None
+                    )
                     if project_id:
                         await broadcast_correction_attempt(
                             self.ws_manager,
@@ -945,7 +969,9 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 question=question,
             )
         else:
-            logger.warning(f"Cannot create blocker for task {task_id}: project_id not found in task")
+            logger.warning(
+                f"Cannot create blocker for task {task_id}: project_id not found in task"
+            )
 
         return False
 
@@ -1035,7 +1061,11 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                 try:
                     from codeframe.ui.websocket_broadcasts import broadcast_activity_update
 
-                    project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                    project_id = (
+                        self.current_task.project_id
+                        if hasattr(self, "current_task") and self.current_task
+                        else None
+                    )
                     if project_id:
                         await broadcast_activity_update(
                             self.ws_manager,
@@ -1122,7 +1152,11 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
         blocker_task_id = task_id if task_id is not None else getattr(self, "current_task_id", None)
 
         # Get project_id from current_task
-        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        project_id = (
+            self.current_task.project_id
+            if hasattr(self, "current_task") and self.current_task
+            else None
+        )
         if not project_id:
             raise ValueError("Cannot create blocker without project context")
 
@@ -1250,7 +1284,11 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
                     try:
                         from codeframe.ui.websocket_broadcasts import broadcast_agent_resumed
 
-                        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+                        project_id = (
+                            self.current_task.project_id
+                            if hasattr(self, "current_task") and self.current_task
+                            else None
+                        )
                         if project_id:
                             await broadcast_agent_resumed(
                                 manager=self.ws_manager,

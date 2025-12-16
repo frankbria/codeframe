@@ -3,10 +3,31 @@
 Seed test data directly into the SQLite database for Playwright E2E tests.
 This script is called by global-setup.ts to populate test data.
 """
+import os
 import sqlite3
 import sys
 import json
 from datetime import datetime, timedelta
+
+# E2E test root directory - derived from script location for reliability
+# This avoids assumptions about db_path structure
+E2E_TEST_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# Table name constants to prevent typos and improve maintainability
+TABLE_AGENTS = "agents"
+TABLE_PROJECT_AGENTS = "project_agents"
+TABLE_TASKS = "tasks"
+TABLE_TOKEN_USAGE = "token_usage"
+TABLE_CODE_REVIEWS = "code_reviews"
+TABLE_CHECKPOINTS = "checkpoints"
+
+
+def table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
+    )
+    return cursor.fetchone() is not None
 
 
 def seed_test_data(db_path: str, project_id: int):
@@ -17,8 +38,10 @@ def seed_test_data(db_path: str, project_id: int):
     try:
         print(f"📊 Seeding test data into {db_path} for project {project_id}...")
 
-        # Define timestamps for all seeding operations
-        now = datetime.now()
+        # Use fixed reference timestamp for reproducible test data
+        # This ensures timestamps are deterministic across test runs
+        # Reference: 2025-01-15 10:00:00 UTC (arbitrary fixed point)
+        now = datetime(2025, 1, 15, 10, 0, 0)
         now_ts = now.isoformat()
 
         # ========================================
@@ -81,9 +104,8 @@ def seed_test_data(db_path: str, project_id: int):
         ]
 
         # Check if agents table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='agents'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: agents table doesn't exist, skipping agents")
+        if not table_exists(cursor, TABLE_AGENTS):
+            print(f"⚠️  Warning: {TABLE_AGENTS} table doesn't exist, skipping agents")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for agent in agents:
@@ -100,8 +122,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert agent {agent[0]}: {e}")
 
-            conn.commit()
-            cursor.execute("SELECT COUNT(*) FROM agents")
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_AGENTS}")
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/5 agents")
 
@@ -109,15 +130,11 @@ def seed_test_data(db_path: str, project_id: int):
         # 1.5. Seed Project-Agent Assignments (Critical for Multi-Agent Architecture)
         # ========================================
         print("🔗 Seeding project-agent assignments...")
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' " "AND name='project_agents'"
-        )
-        if not cursor.fetchone():
-            print("⚠️  Warning: project_agents table doesn't exist, skipping assignments")
+        if not table_exists(cursor, TABLE_PROJECT_AGENTS):
+            print(f"⚠️  Warning: {TABLE_PROJECT_AGENTS} table doesn't exist, skipping assignments")
         else:
             # Clear existing assignments for project
-            cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (project_id,))
-            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
+            cursor.execute(f"DELETE FROM {TABLE_PROJECT_AGENTS} WHERE project_id = ?", (project_id,))
 
             # Assign all 5 agents to the project
             assignments = [
@@ -141,7 +158,7 @@ def seed_test_data(db_path: str, project_id: int):
                     print(f"⚠️  Failed to insert project-agent assignment for {assignment[1]}: {e}")
 
             cursor.execute(
-                "SELECT COUNT(*) FROM project_agents WHERE project_id = ?", (project_id,)
+                f"SELECT COUNT(*) FROM {TABLE_PROJECT_AGENTS} WHERE project_id = ?", (project_id,)
             )
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/5 project-agent assignments")
@@ -403,9 +420,8 @@ def seed_test_data(db_path: str, project_id: int):
             ),
         ]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: tasks table doesn't exist, skipping tasks")
+        if not table_exists(cursor, TABLE_TASKS):
+            print(f"⚠️  Warning: {TABLE_TASKS} table doesn't exist, skipping tasks")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for task in tasks:
@@ -425,8 +441,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert task {task[0]}: {e}")
 
-            conn.commit()
-            cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_TASKS} WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/10 tasks")
 
@@ -624,9 +639,8 @@ def seed_test_data(db_path: str, project_id: int):
             ),
         ]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: token_usage table doesn't exist, skipping token usage")
+        if not table_exists(cursor, TABLE_TOKEN_USAGE):
+            print(f"⚠️  Warning: {TABLE_TOKEN_USAGE} table doesn't exist, skipping token usage")
         else:
             # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
             for record in token_records:
@@ -641,8 +655,7 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert token usage record {record[0]}: {e}")
 
-            conn.commit()
-            cursor.execute("SELECT COUNT(*) FROM token_usage WHERE project_id = ?", (project_id,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_TOKEN_USAGE} WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/15 token usage records")
 
@@ -664,26 +677,28 @@ def seed_test_data(db_path: str, project_id: int):
         task_2_failures = json.dumps([])
 
         # Task #4 failures (type_check failed, code_review failed)
-        task_4_failures = json.dumps([
-            {
-                "gate": "type_check",
-                "reason": "TypeScript compiler found 3 type errors",
-                "details": "web-ui/src/components/Dashboard.tsx:125:15 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.\nweb-ui/src/components/Dashboard.tsx:180:20 - error TS2339: Property 'agentId' does not exist on type 'AgentState'.\nweb-ui/src/components/Dashboard.tsx:200:10 - error TS2531: Object is possibly 'null'.",
-                "severity": "high"
-            },
-            {
-                "gate": "code_review",
-                "reason": "CRITICAL [security]: User input not sanitized, potential XSS vulnerability",
-                "details": "File: web-ui/src/components/Dashboard.tsx:125\nMessage: User input not sanitized, potential XSS vulnerability\nRecommendation: Use DOMPurify to sanitize user-generated content\nCode: dangerouslySetInnerHTML={{ __html: userInput }}",
-                "severity": "critical"
-            },
-            {
-                "gate": "code_review",
-                "reason": "CRITICAL [security]: API tokens logged to console in production",
-                "details": "File: web-ui/src/components/Dashboard.tsx:180\nMessage: API tokens logged to console in production\nRecommendation: Remove console.log or gate with NODE_ENV check\nCode: console.log(\"Token:\", apiToken);",
-                "severity": "critical"
-            }
-        ])
+        task_4_failures = json.dumps(
+            [
+                {
+                    "gate": "type_check",
+                    "reason": "TypeScript compiler found 3 type errors",
+                    "details": "web-ui/src/components/Dashboard.tsx:125:15 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.\nweb-ui/src/components/Dashboard.tsx:180:20 - error TS2339: Property 'agentId' does not exist on type 'AgentState'.\nweb-ui/src/components/Dashboard.tsx:200:10 - error TS2531: Object is possibly 'null'.",
+                    "severity": "high",
+                },
+                {
+                    "gate": "code_review",
+                    "reason": "CRITICAL [security]: User input not sanitized, potential XSS vulnerability",
+                    "details": "File: web-ui/src/components/Dashboard.tsx:125\nMessage: User input not sanitized, potential XSS vulnerability\nRecommendation: Use DOMPurify to sanitize user-generated content\nCode: dangerouslySetInnerHTML={{ __html: userInput }}",
+                    "severity": "critical",
+                },
+                {
+                    "gate": "code_review",
+                    "reason": "CRITICAL [security]: API tokens logged to console in production",
+                    "details": 'File: web-ui/src/components/Dashboard.tsx:180\nMessage: API tokens logged to console in production\nRecommendation: Remove console.log or gate with NODE_ENV check\nCode: console.log("Token:", apiToken);',
+                    "severity": "critical",
+                },
+            ]
+        )
 
         try:
             # Update task #2 (completed, all gates passed)
@@ -833,13 +848,11 @@ def seed_test_data(db_path: str, project_id: int):
             ),
         ]
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='code_reviews'")
-        if not cursor.fetchone():
-            print("⚠️  Warning: code_reviews table doesn't exist, skipping reviews")
+        if not table_exists(cursor, TABLE_CODE_REVIEWS):
+            print(f"⚠️  Warning: {TABLE_CODE_REVIEWS} table doesn't exist, skipping reviews")
         else:
             # Clear existing reviews for project
-            cursor.execute("DELETE FROM code_reviews WHERE project_id = ?", (project_id,))
-            conn.commit()  # Commit the DELETE before INSERT to avoid conflicts
+            cursor.execute(f"DELETE FROM {TABLE_CODE_REVIEWS} WHERE project_id = ?", (project_id,))
 
             for finding in review_findings:
                 try:
@@ -856,9 +869,178 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to insert code review finding: {e}")
 
-            cursor.execute("SELECT COUNT(*) FROM code_reviews WHERE project_id = ?", (project_id,))
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_CODE_REVIEWS} WHERE project_id = ?", (project_id,))
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/7 code review findings")
+
+        # ========================================
+        # 6. Seed Checkpoints (3)
+        # ========================================
+        print("💾 Seeding checkpoints...")
+
+        # Determine base directory for checkpoint files (relative to db_path's parent)
+        db_dir = os.path.dirname(os.path.abspath(db_path))
+        checkpoints_dir = os.path.join(db_dir, "checkpoints")
+
+        # Ensure checkpoints directory exists
+        try:
+            os.makedirs(checkpoints_dir, exist_ok=True)
+            print(f"   📁 Checkpoint directory: {checkpoints_dir}")
+        except OSError as e:
+            print(f"⚠️  Warning: Failed to create checkpoints directory: {e}")
+
+        # Define checkpoint metadata separately so we can write it to files
+        checkpoint_metadata = [
+            {
+                "project_id": project_id,
+                "phase": "setup",
+                "tasks_completed": 3,
+                "tasks_total": 10,
+                "agents_active": ["lead-001", "backend-worker-001", "test-engineer-001"],
+                "last_task_completed": "Write unit tests for auth",
+                "context_items_count": 45,
+                "total_cost_usd": 1.2,
+            },
+            {
+                "project_id": project_id,
+                "phase": "ui-development",
+                "tasks_completed": 4,
+                "tasks_total": 10,
+                "agents_active": ["lead-001", "frontend-specialist-001"],
+                "last_task_completed": "Build dashboard UI",
+                "context_items_count": 78,
+                "total_cost_usd": 2.8,
+            },
+            {
+                "project_id": project_id,
+                "phase": "review",
+                "tasks_completed": 5,
+                "tasks_total": 10,
+                "agents_active": ["lead-001", "review-agent-001"],
+                "last_task_completed": "Add token usage tracking",
+                "context_items_count": 120,
+                "total_cost_usd": 4.46,
+            },
+        ]
+
+        checkpoints = [
+            # (id, project_id, name, description, trigger, git_commit,
+            #  database_backup_path, context_snapshot_path, metadata, created_at)
+            (
+                1,
+                project_id,
+                "Initial setup complete",
+                "Project structure and authentication working",
+                "phase_transition",
+                "a1b2c3d4e5f6",
+                ".codeframe/checkpoints/checkpoint-001-db.sqlite",
+                ".codeframe/checkpoints/checkpoint-001-context.json",
+                json.dumps(checkpoint_metadata[0]),
+                (now - timedelta(days=2, hours=6)).isoformat(),
+            ),
+            (
+                2,
+                project_id,
+                "UI development milestone",
+                "Dashboard UI 50% complete",
+                "manual",
+                "f6e5d4c3b2a1",
+                ".codeframe/checkpoints/checkpoint-002-db.sqlite",
+                ".codeframe/checkpoints/checkpoint-002-context.json",
+                json.dumps(checkpoint_metadata[1]),
+                (now - timedelta(days=1, hours=4)).isoformat(),
+            ),
+            (
+                3,
+                project_id,
+                "Pre-review snapshot",
+                "Before code review process",
+                "auto",
+                "9876543210ab",
+                ".codeframe/checkpoints/checkpoint-003-db.sqlite",
+                ".codeframe/checkpoints/checkpoint-003-context.json",
+                json.dumps(checkpoint_metadata[2]),
+                (now - timedelta(hours=1)).isoformat(),
+            ),
+        ]
+
+        if not table_exists(cursor, TABLE_CHECKPOINTS):
+            print(f"⚠️  Warning: {TABLE_CHECKPOINTS} table doesn't exist, skipping checkpoints")
+        else:
+            # Use INSERT OR REPLACE to avoid UNIQUE constraint warnings
+            for i, checkpoint in enumerate(checkpoints):
+                try:
+                    # Insert database record
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO checkpoints (
+                            id, project_id, name, description, trigger, git_commit,
+                            database_backup_path, context_snapshot_path, metadata, created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        checkpoint,
+                    )
+
+                    # Create actual checkpoint files
+                    # Extract relative paths from checkpoint tuple
+                    db_backup_rel_path = checkpoint[6]  # database_backup_path
+                    context_rel_path = checkpoint[7]  # context_snapshot_path
+
+                    # Convert relative paths to absolute paths using E2E_TEST_ROOT
+                    # This is more reliable than deriving from db_path which could be any absolute path
+                    # Checkpoint paths are like ".codeframe/checkpoints/...", relative to E2E_TEST_ROOT
+                    db_backup_path = os.path.join(E2E_TEST_ROOT, db_backup_rel_path)
+                    context_path = os.path.join(E2E_TEST_ROOT, context_rel_path)
+
+                    # Create SQLite backup file (valid SQLite database with metadata)
+                    try:
+                        backup_dir = os.path.dirname(db_backup_path)
+                        os.makedirs(backup_dir, exist_ok=True)
+                        backup_conn = sqlite3.connect(db_backup_path)
+                        # Create a checkpoint_info table to make it a valid, non-empty SQLite file
+                        backup_conn.execute(
+                            """
+                            CREATE TABLE IF NOT EXISTS checkpoint_info (
+                                key TEXT PRIMARY KEY,
+                                value TEXT
+                            )
+                            """
+                        )
+                        backup_conn.execute(
+                            "INSERT OR REPLACE INTO checkpoint_info (key, value) VALUES (?, ?)",
+                            ("created_at", checkpoint[9]),  # created_at timestamp
+                        )
+                        backup_conn.execute(
+                            "INSERT OR REPLACE INTO checkpoint_info (key, value) VALUES (?, ?)",
+                            ("checkpoint_id", str(checkpoint[0])),
+                        )
+                        backup_conn.execute(
+                            "INSERT OR REPLACE INTO checkpoint_info (key, value) VALUES (?, ?)",
+                            ("project_id", str(project_id)),
+                        )
+                        backup_conn.commit()
+                        backup_conn.close()
+                        print(f"   ✅ Created checkpoint DB: {os.path.basename(db_backup_path)}")
+                    except (OSError, sqlite3.Error) as e:
+                        print(f"   ⚠️  Failed to create checkpoint DB file: {e}")
+
+                    # Write context snapshot JSON
+                    try:
+                        context_dir = os.path.dirname(context_path)
+                        os.makedirs(context_dir, exist_ok=True)
+                        with open(context_path, "w", encoding="utf-8") as f:
+                            json.dump(checkpoint_metadata[i], f, indent=2)
+                        print(f"   ✅ Created context snapshot: {os.path.basename(context_path)}")
+                    except (OSError, IOError) as e:
+                        print(f"   ⚠️  Failed to create context snapshot file: {e}")
+
+                except sqlite3.Error as e:
+                    print(f"⚠️  Failed to upsert checkpoint {checkpoint[0]}: {e}")
+
+            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_CHECKPOINTS} WHERE project_id = ?", (project_id,))
+            count = cursor.fetchone()[0]
+            print(f"✅ Seeded {count}/3 checkpoints with files")
 
         # Commit all changes
         conn.commit()
@@ -872,6 +1054,49 @@ def seed_test_data(db_path: str, project_id: int):
         conn.close()
 
 
+def verify_checkpoint_files() -> bool:
+    """Verify that checkpoint files were created successfully."""
+    checkpoints_dir = os.path.join(E2E_TEST_ROOT, ".codeframe", "checkpoints")
+
+    if not os.path.exists(checkpoints_dir):
+        print(f"   ❌ Checkpoints directory not found: {checkpoints_dir}")
+        return False
+
+    # Expected checkpoint files (based on seeded data)
+    expected_files = [
+        ("checkpoint-001-db.sqlite", "sqlite"),
+        ("checkpoint-001-context.json", "json"),
+        ("checkpoint-002-db.sqlite", "sqlite"),
+        ("checkpoint-002-context.json", "json"),
+    ]
+
+    all_valid = True
+    for filename, filetype in expected_files:
+        filepath = os.path.join(checkpoints_dir, filename)
+        if not os.path.exists(filepath):
+            print(f"   ❌ Missing checkpoint file: {filename}")
+            all_valid = False
+            continue
+
+        # Validate file contents
+        try:
+            if filetype == "sqlite":
+                # Verify it's a valid SQLite file
+                test_conn = sqlite3.connect(filepath)
+                test_conn.execute("SELECT 1")
+                test_conn.close()
+            elif filetype == "json":
+                # Verify it's valid JSON
+                with open(filepath) as f:
+                    json.load(f)
+            print(f"   ✅ Verified: {filename}")
+        except (sqlite3.Error, json.JSONDecodeError, OSError) as e:
+            print(f"   ❌ Invalid {filetype} file {filename}: {e}")
+            all_valid = False
+
+    return all_valid
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python seed-test-data.py <db_path> <project_id>")
@@ -881,3 +1106,12 @@ if __name__ == "__main__":
     project_id = int(sys.argv[2])
 
     seed_test_data(db_path, project_id)
+
+    # Verify checkpoint files were created correctly
+    print("\n🔍 Verifying checkpoint files...")
+    if verify_checkpoint_files():
+        print("✅ All checkpoint files verified successfully")
+    else:
+        print("⚠️  Some checkpoint files could not be verified")
+        # Don't fail the seeding - checkpoint files are secondary
+        # Tests can still run without them

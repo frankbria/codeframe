@@ -23,8 +23,9 @@ def db():
 
     # Manually apply Sprint 10 migration for in-memory database
     from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
-        migration as migration_007
+        migration as migration_007,
     )
+
     if migration_007.can_apply(database.conn):
         migration_007.apply(database.conn)
 
@@ -32,7 +33,7 @@ def db():
     cursor = database.conn.cursor()
     cursor.execute(
         "INSERT INTO projects (name, description, workspace_path, status) VALUES (?, ?, ?, ?)",
-        ("test-project", "Test project", "/tmp/test", "active")
+        ("test-project", "Test project", "/tmp/test", "active"),
     )
     database.conn.commit()
 
@@ -120,10 +121,7 @@ def sample_task_with_code(db, sample_code_with_sql_injection):
 
     # Mock file content that would be extracted from task
     task._test_code_files = [
-        {
-            "path": "src/users/search.py",
-            "content": sample_code_with_sql_injection
-        }
+        {"path": "src/users/search.py", "content": sample_code_with_sql_injection}
     ]
 
     return task
@@ -213,10 +211,7 @@ async def test_detect_performance_issue(db, sample_code_with_performance_issue):
         completed_at=None,
     )
     task._test_code_files = [
-        {
-            "path": "src/utils/duplicates.py",
-            "content": sample_code_with_performance_issue
-        }
+        {"path": "src/utils/duplicates.py", "content": sample_code_with_performance_issue}
     ]
 
     agent = ReviewAgent(agent_id="review-001", db=db)
@@ -271,7 +266,10 @@ async def test_block_on_critical_finding(db, sample_task_with_code):
     # Should create a blocker for human attention
     blocker = db.get_pending_blocker(agent_id="review-001")
     assert blocker is not None, "Should create blocker for critical issue"
-    assert "security" in blocker.get("question", "").lower() or "sql" in blocker.get("question", "").lower()
+    assert (
+        "security" in blocker.get("question", "").lower()
+        or "sql" in blocker.get("question", "").lower()
+    )
 
 
 @pytest.mark.asyncio
@@ -294,14 +292,9 @@ def calculate_total(items):
         project_id=1,
         title="Calculate total",
         description="Sum item prices",
-        status=TaskStatus.IN_PROGRESS
+        status=TaskStatus.IN_PROGRESS,
     )
-    task._test_code_files = [
-        {
-            "path": "src/utils/calc.py",
-            "content": clean_code
-        }
-    ]
+    task._test_code_files = [{"path": "src/utils/calc.py", "content": clean_code}]
 
     agent = ReviewAgent(agent_id="review-001", db=db)
     result = await agent.execute_task(task)
@@ -330,8 +323,8 @@ async def test_full_review_workflow(db, sample_task_with_code):
 
     # Verify complete workflow
     assert result is not None
-    assert hasattr(result, 'status')
-    assert hasattr(result, 'findings')
+    assert hasattr(result, "status")
+    assert hasattr(result, "findings")
 
     # Findings should be CodeReview objects
     if result.findings:
@@ -339,13 +332,19 @@ async def test_full_review_workflow(db, sample_task_with_code):
         assert isinstance(finding, CodeReview)
         assert finding.file_path is not None
         assert finding.message is not None
-        assert finding.severity in [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]
+        assert finding.severity in [
+            Severity.CRITICAL,
+            Severity.HIGH,
+            Severity.MEDIUM,
+            Severity.LOW,
+            Severity.INFO,
+        ]
         assert finding.category in [
             ReviewCategory.SECURITY,
             ReviewCategory.PERFORMANCE,
             ReviewCategory.QUALITY,
             ReviewCategory.MAINTAINABILITY,
-            ReviewCategory.STYLE
+            ReviewCategory.STYLE,
         ]
 
     # Database should have records

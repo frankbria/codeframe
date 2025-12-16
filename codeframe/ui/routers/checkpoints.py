@@ -118,9 +118,7 @@ async def list_checkpoints(project_id: int, db: Database = Depends(get_db)):
 
 @router.post("", status_code=201)
 async def create_checkpoint(
-    project_id: int,
-    request: CheckpointCreateRequest,
-    db: Database = Depends(get_db)
+    project_id: int, request: CheckpointCreateRequest, db: Database = Depends(get_db)
 ):
     """Create a new checkpoint for a project (T093).
 
@@ -201,18 +199,22 @@ async def create_checkpoint(
             trigger=request.trigger,
         )
 
-        logger.info(f"Created checkpoint {checkpoint.id} for project {project_id}: {checkpoint.name}")
+        logger.info(
+            f"Created checkpoint {checkpoint.id} for project {project_id}: {checkpoint.name}"
+        )
 
         # Broadcast checkpoint created event
         try:
-            await manager.broadcast({
-                "type": "checkpoint_created",
-                "project_id": project_id,
-                "checkpoint_id": checkpoint.id,
-                "checkpoint_name": checkpoint.name,
-                "trigger": checkpoint.trigger,
-                "timestamp": datetime.now(UTC).isoformat(),
-            })
+            await manager.broadcast(
+                {
+                    "type": "checkpoint_created",
+                    "project_id": project_id,
+                    "checkpoint_id": checkpoint.id,
+                    "checkpoint_name": checkpoint.name,
+                    "trigger": checkpoint.trigger,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
         except Exception as e:
             logger.warning(f"Failed to broadcast checkpoint_created event: {e}")
 
@@ -232,15 +234,13 @@ async def create_checkpoint(
 
     except Exception as e:
         logger.error(f"Failed to create checkpoint for project {project_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error while creating checkpoint")
+        raise HTTPException(
+            status_code=500, detail="Internal server error while creating checkpoint"
+        )
 
 
 @router.get("/{checkpoint_id}")
-async def get_checkpoint(
-    project_id: int,
-    checkpoint_id: int,
-    db: Database = Depends(get_db)
-):
+async def get_checkpoint(project_id: int, checkpoint_id: int, db: Database = Depends(get_db)):
     """Get details of a specific checkpoint (T094).
 
     Sprint 10 - Phase 4: Checkpoint API
@@ -315,11 +315,7 @@ async def get_checkpoint(
 
 
 @router.delete("/{checkpoint_id}", status_code=204)
-async def delete_checkpoint(
-    project_id: int,
-    checkpoint_id: int,
-    db: Database = Depends(get_db)
-):
+async def delete_checkpoint(project_id: int, checkpoint_id: int, db: Database = Depends(get_db)):
     """Delete a checkpoint and its files (T095).
 
     Sprint 10 - Phase 4: Checkpoint API
@@ -379,12 +375,14 @@ async def delete_checkpoint(
 
         # Broadcast checkpoint deleted event
         try:
-            await manager.broadcast({
-                "type": "checkpoint_deleted",
-                "project_id": project_id,
-                "checkpoint_id": checkpoint_id,
-                "timestamp": datetime.now(UTC).isoformat(),
-            })
+            await manager.broadcast(
+                {
+                    "type": "checkpoint_deleted",
+                    "project_id": project_id,
+                    "checkpoint_id": checkpoint_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+            )
         except Exception as e:
             logger.warning(f"Failed to broadcast checkpoint_deleted event: {e}")
 
@@ -401,7 +399,7 @@ async def restore_checkpoint(
     project_id: int,
     checkpoint_id: int,
     request: RestoreCheckpointRequest = Body(default_factory=RestoreCheckpointRequest),
-    db: Database = Depends(get_db)
+    db: Database = Depends(get_db),
 ):
     """Restore project to checkpoint state (T096, T097).
 
@@ -494,15 +492,17 @@ async def restore_checkpoint(
 
             # Broadcast checkpoint restored event
             try:
-                await manager.broadcast({
-                    "type": "checkpoint_restored",
-                    "project_id": project_id,
-                    "checkpoint_id": checkpoint_id,
-                    "checkpoint_name": checkpoint.name,
-                    "git_commit": result.get("git_commit"),
-                    "files_changed": result.get("files_changed", 0),
-                    "timestamp": datetime.now(UTC).isoformat(),
-                })
+                await manager.broadcast(
+                    {
+                        "type": "checkpoint_restored",
+                        "project_id": project_id,
+                        "checkpoint_id": checkpoint_id,
+                        "checkpoint_name": checkpoint.name,
+                        "git_commit": result.get("git_commit"),
+                        "files_changed": result.get("files_changed", 0),
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                )
             except Exception as e:
                 logger.warning(f"Failed to broadcast checkpoint_restored event: {e}")
 
@@ -527,9 +527,7 @@ async def restore_checkpoint(
 
 @router.get("/{checkpoint_id}/diff")
 async def get_checkpoint_diff(
-    project_id: int,
-    checkpoint_id: int,
-    db: Database = Depends(get_db)
+    project_id: int, checkpoint_id: int, db: Database = Depends(get_db)
 ) -> CheckpointDiffResponse:
     """Get git diff for a checkpoint (Sprint 10 Phase 4).
 
@@ -579,7 +577,7 @@ async def get_checkpoint_diff(
         )
 
     # SECURITY: Validate git commit SHA format to prevent command injection
-    git_sha_pattern = re.compile(r'^[a-f0-9]{7,40}$')
+    git_sha_pattern = re.compile(r"^[a-f0-9]{7,40}$")
     if not git_sha_pattern.match(checkpoint.git_commit):
         logger.error(f"Invalid git commit SHA format: {checkpoint.git_commit}")
         raise HTTPException(
@@ -595,7 +593,7 @@ async def get_checkpoint_diff(
                 cwd=Path(workspace_path),
                 check=True,
                 capture_output=True,
-                timeout=5
+                timeout=5,
             )
         except subprocess.CalledProcessError:
             logger.error(f"Git commit {checkpoint.git_commit} not found in repository")
@@ -618,7 +616,9 @@ async def get_checkpoint_diff(
         diff_output = checkpoint_mgr._show_diff(checkpoint.git_commit)
         MAX_DIFF_SIZE = 10 * 1024 * 1024  # 10MB
         if len(diff_output) > MAX_DIFF_SIZE:
-            diff_output = diff_output[:MAX_DIFF_SIZE] + "\n\n... [diff truncated - exceeded 10MB limit]"
+            diff_output = (
+                diff_output[:MAX_DIFF_SIZE] + "\n\n... [diff truncated - exceeded 10MB limit]"
+            )
             logger.warning(f"Diff for checkpoint {checkpoint_id} truncated due to size limit")
 
         # Parse diff statistics using git diff --numstat
@@ -629,7 +629,7 @@ async def get_checkpoint_diff(
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
             )
 
             # Parse numstat output
@@ -639,14 +639,14 @@ async def get_checkpoint_diff(
             total_deletions = 0
             binary_files = 0
 
-            for line in stats_result.stdout.strip().split('\n'):
+            for line in stats_result.stdout.strip().split("\n"):
                 if not line:
                     continue
                 files_changed += 1
-                parts = line.split('\t')
+                parts = line.split("\t")
                 if len(parts) >= 2:
                     # Handle binary files (marked as '-')
-                    if parts[0] == '-' or parts[1] == '-':
+                    if parts[0] == "-" or parts[1] == "-":
                         binary_files += 1
                     else:
                         insertions = int(parts[0])
@@ -661,18 +661,20 @@ async def get_checkpoint_diff(
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
             )
             head_commit = head_commit_result.stdout.strip()
 
             # Compute ETag from checkpoint and HEAD commits
-            etag_value = hashlib.sha256(f"{checkpoint.git_commit}:{head_commit}".encode()).hexdigest()[:16]
+            etag_value = hashlib.sha256(
+                f"{checkpoint.git_commit}:{head_commit}".encode()
+            ).hexdigest()[:16]
 
             response = CheckpointDiffResponse(
                 files_changed=files_changed,
                 insertions=total_insertions,
                 deletions=total_deletions,
-                diff=diff_output
+                diff=diff_output,
             )
 
             # Add cache headers with revalidation strategy
@@ -681,17 +683,14 @@ async def get_checkpoint_diff(
                 headers={
                     "Cache-Control": "no-cache, must-revalidate",
                     "ETag": f'"{etag_value}"',
-                    "X-Binary-Files": str(binary_files)
-                }
+                    "X-Binary-Files": str(binary_files),
+                },
             )
 
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to get diff stats: {e.stderr}", exc_info=True)
             # Return error response when parsing fails (not misleading zeros)
-            raise HTTPException(
-                status_code=500,
-                detail="Internal error parsing diff statistics"
-            )
+            raise HTTPException(status_code=500, detail="Internal error parsing diff statistics")
         except subprocess.TimeoutExpired:
             logger.error(f"Git diff timed out for checkpoint {checkpoint_id}")
             raise HTTPException(status_code=500, detail="Diff operation timed out")

@@ -121,9 +121,7 @@ async def delete_context_item(
 
 
 @router.post("/api/agents/{agent_id}/context/update-scores", response_model=dict)
-async def update_context_scores(
-    agent_id: str, project_id: int, db: Database = Depends(get_db)
-):
+async def update_context_scores(agent_id: str, project_id: int, db: Database = Depends(get_db)):
     """Recalculate importance scores for all context items (T033).
 
     Triggers batch recalculation of importance scores for all context items
@@ -159,9 +157,7 @@ async def update_context_scores(
 
 
 @router.post("/api/agents/{agent_id}/context/update-tiers", response_model=dict)
-async def update_context_tiers(
-    agent_id: str, project_id: int, db: Database = Depends(get_db)
-):
+async def update_context_tiers(agent_id: str, project_id: int, db: Database = Depends(get_db)):
     """Recalculate scores and reassign tiers for all context items (T042).
 
     Triggers batch recalculation of importance scores AND tier reassignment
@@ -303,9 +299,7 @@ async def list_flash_save_checkpoints(
 
 
 @router.get("/api/agents/{agent_id}/context/stats")
-async def get_context_stats(
-    agent_id: str, project_id: int, db: Database = Depends(get_db)
-):
+async def get_context_stats(agent_id: str, project_id: int, db: Database = Depends(get_db)):
     """Get context statistics for an agent (T067).
 
     Returns tier counts and token usage breakdown for an agent's context.
@@ -412,8 +406,6 @@ async def get_context_items(
         )
 
     # Get items from database
-    items = db.list_context_items(
-        project_id=project_id, agent_id=agent_id, tier=tier, limit=limit
-    )
+    items = db.list_context_items(project_id=project_id, agent_id=agent_id, tier=tier, limit=limit)
 
     return items

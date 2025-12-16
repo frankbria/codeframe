@@ -32,7 +32,7 @@ class AddProjectAgentsJunctionTable(Migration):
     def __init__(self):
         super().__init__(
             version="009",
-            description="Add project_agents junction table for multi-agent per project"
+            description="Add project_agents junction table for multi-agent per project",
         )
 
     def can_apply(self, conn: sqlite3.Connection) -> bool:
@@ -139,7 +139,7 @@ class AddProjectAgentsJunctionTable(Migration):
         # Step 4: Check if agents table has project_id column
         cursor.execute("PRAGMA table_info(agents)")
         columns = [row[1] for row in cursor.fetchall()]
-        has_project_id = 'project_id' in columns
+        has_project_id = "project_id" in columns
 
         if has_project_id:
             logger.info("Found project_id in agents table, migrating data...")
@@ -204,7 +204,7 @@ class AddProjectAgentsJunctionTable(Migration):
             cursor.execute("PRAGMA table_info(agents)")
             columns = [row[1] for row in cursor.fetchall()]
 
-            if 'created_at' not in columns:
+            if "created_at" not in columns:
                 cursor.execute(
                     """
                     ALTER TABLE agents

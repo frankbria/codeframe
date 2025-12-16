@@ -35,13 +35,14 @@ def get_project_dir(project_id: int) -> Path:
 def test_project(api_client):
     """Create a test project."""
     import os
+
     workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "/tmp/workspaces"))
     project_dir = workspace_root / "project-test"
 
     project_id = get_app().state.db.create_project(
         name="Test Session Project",
         description="Test project for session testing",
-        workspace_path=str(project_dir)
+        workspace_path=str(project_dir),
     )
     return project_id
 
@@ -223,7 +224,7 @@ class TestSessionEndpoint:
 
         # Should be parseable as ISO 8601
         try:
-            datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             is_valid_iso = True
         except ValueError:
             is_valid_iso = False
@@ -291,6 +292,7 @@ class TestSessionEndpoint:
         - Response time should be reasonable (< 1 second)
         """
         import time
+
         project_id, _ = project_with_session
 
         start_time = time.time()

@@ -148,7 +148,13 @@ class TestLeadAgentSyncBlockerHandling:
             db, project_id, issue_id, "1.1", "Setup database", TaskStatus.IN_PROGRESS
         )
         task_b_id = self._create_test_task(
-            db, project_id, issue_id, "1.2", "Add users table", TaskStatus.PENDING, depends_on=str(task_a_id)
+            db,
+            project_id,
+            issue_id,
+            "1.2",
+            "Add users table",
+            TaskStatus.PENDING,
+            depends_on=str(task_a_id),
         )
         task_c_id = self._create_test_task(
             db,
@@ -221,7 +227,13 @@ class TestLeadAgentSyncBlockerHandling:
             db, project_id, issue_id, "1.1", "Backend auth", TaskStatus.IN_PROGRESS
         )
         task_b_id = self._create_test_task(
-            db, project_id, issue_id, "1.2", "User profile", TaskStatus.PENDING, depends_on=str(task_a_id)
+            db,
+            project_id,
+            issue_id,
+            "1.2",
+            "User profile",
+            TaskStatus.PENDING,
+            depends_on=str(task_a_id),
         )
         task_c_id = self._create_test_task(
             db, project_id, issue_id, "2.1", "Frontend styling", TaskStatus.PENDING
@@ -368,10 +380,22 @@ class TestLeadAgentAsyncBlockerHandling:
             db, project_id, issue_id, "1.1", "Implement API endpoint", TaskStatus.IN_PROGRESS
         )
         task_b_id = self._create_test_task(
-            db, project_id, issue_id, "1.2", "Add API tests", TaskStatus.PENDING, depends_on=str(task_a_id)
+            db,
+            project_id,
+            issue_id,
+            "1.2",
+            "Add API tests",
+            TaskStatus.PENDING,
+            depends_on=str(task_a_id),
         )
         task_c_id = self._create_test_task(
-            db, project_id, issue_id, "1.3", "Add API docs", TaskStatus.PENDING, depends_on=str(task_a_id)
+            db,
+            project_id,
+            issue_id,
+            "1.3",
+            "Add API docs",
+            TaskStatus.PENDING,
+            depends_on=str(task_a_id),
         )
 
         # Create ASYNC blocker for Task A

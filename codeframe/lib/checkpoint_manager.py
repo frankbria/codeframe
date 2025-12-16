@@ -35,12 +35,7 @@ class CheckpointManager:
         >>> mgr.restore_checkpoint(checkpoint.id, confirm=True)
     """
 
-    def __init__(
-        self,
-        db: Database,
-        project_root: Path,
-        project_id: int
-    ):
+    def __init__(self, db: Database, project_root: Path, project_id: int):
         """Initialize checkpoint manager.
 
         Args:
@@ -57,10 +52,7 @@ class CheckpointManager:
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
     def create_checkpoint(
-        self,
-        name: str,
-        description: Optional[str] = None,
-        trigger: str = "manual"
+        self, name: str, description: Optional[str] = None, trigger: str = "manual"
     ) -> Checkpoint:
         """Create checkpoint with git commit, DB backup, and context snapshot.
 
@@ -101,7 +93,7 @@ class CheckpointManager:
             git_commit=git_commit,
             database_backup_path="",  # Will update after creating files
             context_snapshot_path="",
-            metadata=metadata
+            metadata=metadata,
         )
 
         # Step 2: Backup database
@@ -120,7 +112,7 @@ class CheckpointManager:
             SET database_backup_path = ?, context_snapshot_path = ?
             WHERE id = ?
             """,
-            (str(db_backup_path), str(context_snapshot_path), checkpoint_id)
+            (str(db_backup_path), str(context_snapshot_path), checkpoint_id),
         )
         self.db.conn.commit()  # type: ignore[union-attr]
 
@@ -135,7 +127,7 @@ class CheckpointManager:
             database_backup_path=str(db_backup_path),
             context_snapshot_path=str(context_snapshot_path),
             metadata=metadata,
-            created_at=datetime.now(timezone.utc)
+            created_at=datetime.now(timezone.utc),
         )
 
         logger.info(f"Checkpoint created successfully: ID={checkpoint_id}, commit={git_commit[:7]}")
@@ -151,11 +143,7 @@ class CheckpointManager:
         logger.debug(f"Listed {len(checkpoints)} checkpoints for project {self.project_id}")
         return checkpoints
 
-    def restore_checkpoint(
-        self,
-        checkpoint_id: int,
-        confirm: bool = False
-    ) -> Dict[str, Any]:
+    def restore_checkpoint(self, checkpoint_id: int, confirm: bool = False) -> Dict[str, Any]:
         """Restore project to checkpoint state.
 
         Steps:
@@ -200,10 +188,7 @@ class CheckpointManager:
         # If not confirmed, just show diff
         if not confirm:
             diff = self._show_diff(checkpoint.git_commit)
-            return {
-                "checkpoint_name": checkpoint.name,
-                "diff": diff
-            }
+            return {"checkpoint_name": checkpoint.name, "diff": diff}
 
         # Perform restoration
         try:
@@ -227,7 +212,7 @@ class CheckpointManager:
                 "success": True,
                 "checkpoint_name": checkpoint.name,
                 "git_commit": checkpoint.git_commit,
-                "items_restored": restored_items
+                "items_restored": restored_items,
             }
 
         except Exception as e:
@@ -249,10 +234,7 @@ class CheckpointManager:
         try:
             # Stage all changes (including untracked files)
             subprocess.run(
-                ["git", "add", "-A"],
-                cwd=self.project_root,
-                check=True,
-                capture_output=True
+                ["git", "add", "-A"], cwd=self.project_root, check=True, capture_output=True
             )
 
             # Create commit
@@ -261,7 +243,7 @@ class CheckpointManager:
                 ["git", "commit", "-m", commit_message, "--allow-empty"],
                 cwd=self.project_root,
                 check=True,
-                capture_output=True
+                capture_output=True,
             )
 
             # Get commit SHA
@@ -270,7 +252,7 @@ class CheckpointManager:
                 cwd=self.project_root,
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
             )
 
             commit_sha = result.stdout.strip()
@@ -328,30 +310,32 @@ class CheckpointManager:
             WHERE project_id = ?
             ORDER BY importance_score DESC
             """,
-            (self.project_id,)
+            (self.project_id,),
         )
 
         context_items = []
         for row in cursor.fetchall():
-            context_items.append({
-                "id": row["id"],
-                "agent_id": row["agent_id"],
-                "project_id": row["project_id"],
-                "item_type": row["item_type"],
-                "content": row["content"],
-                "importance_score": row["importance_score"],
-                "tier": row["current_tier"],
-                "access_count": row["access_count"],
-                "created_at": row["created_at"],
-                "last_accessed": row["last_accessed"]
-            })
+            context_items.append(
+                {
+                    "id": row["id"],
+                    "agent_id": row["agent_id"],
+                    "project_id": row["project_id"],
+                    "item_type": row["item_type"],
+                    "content": row["content"],
+                    "importance_score": row["importance_score"],
+                    "tier": row["current_tier"],
+                    "access_count": row["access_count"],
+                    "created_at": row["created_at"],
+                    "last_accessed": row["last_accessed"],
+                }
+            )
 
         # Create snapshot structure
         snapshot_data = {
             "checkpoint_id": checkpoint_id,
             "project_id": self.project_id,
             "export_date": datetime.now(timezone.utc).isoformat(),
-            "context_items": context_items
+            "context_items": context_items,
         }
 
         # Write to file
@@ -369,18 +353,12 @@ class CheckpointManager:
         cursor = self.db.conn.cursor()  # type: ignore[union-attr]
 
         # Get project phase
-        cursor.execute(
-            "SELECT phase FROM projects WHERE id = ?",
-            (self.project_id,)
-        )
+        cursor.execute("SELECT phase FROM projects WHERE id = ?", (self.project_id,))
         row = cursor.fetchone()
         phase = row["phase"] if row else "unknown"
 
         # Count tasks
-        cursor.execute(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
-            (self.project_id,)
-        )
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (self.project_id,))
         tasks_total = cursor.fetchone()[0]
 
         cursor.execute(
@@ -388,7 +366,7 @@ class CheckpointManager:
             SELECT COUNT(*) FROM tasks
             WHERE project_id = ? AND status = 'completed'
             """,
-            (self.project_id,)
+            (self.project_id,),
         )
         tasks_completed = cursor.fetchone()[0]
 
@@ -400,7 +378,7 @@ class CheckpointManager:
             ORDER BY completed_at DESC
             LIMIT 1
             """,
-            (self.project_id,)
+            (self.project_id,),
         )
         row = cursor.fetchone()
         last_task_completed = row["title"] if row else None
@@ -411,14 +389,13 @@ class CheckpointManager:
             SELECT DISTINCT agent_id FROM context_items
             WHERE project_id = ?
             """,
-            (self.project_id,)
+            (self.project_id,),
         )
         agents_active = [row["agent_id"] for row in cursor.fetchall()]
 
         # Count context items
         cursor.execute(
-            "SELECT COUNT(*) FROM context_items WHERE project_id = ?",
-            (self.project_id,)
+            "SELECT COUNT(*) FROM context_items WHERE project_id = ?", (self.project_id,)
         )
         context_items_count = cursor.fetchone()[0]
 
@@ -429,7 +406,7 @@ class CheckpointManager:
                 SELECT SUM(estimated_cost_usd) FROM token_usage
                 WHERE project_id = ?
                 """,
-                (self.project_id,)
+                (self.project_id,),
             )
             row = cursor.fetchone()
             total_cost_usd = row[0] if row and row[0] else 0.0
@@ -444,7 +421,7 @@ class CheckpointManager:
             agents_active=agents_active,
             last_task_completed=last_task_completed,
             context_items_count=context_items_count,
-            total_cost_usd=total_cost_usd
+            total_cost_usd=total_cost_usd,
         )
 
     def _validate_path_safety(self, file_path: Path) -> bool:
@@ -487,13 +464,9 @@ class CheckpointManager:
 
         # Validate paths are within checkpoints directory (prevent traversal)
         if not self._validate_path_safety(db_path):
-            raise ValueError(
-                f"Database backup path outside checkpoints directory: {db_path}"
-            )
+            raise ValueError(f"Database backup path outside checkpoints directory: {db_path}")
         if not self._validate_path_safety(context_path):
-            raise ValueError(
-                f"Context snapshot path outside checkpoints directory: {context_path}"
-            )
+            raise ValueError(f"Context snapshot path outside checkpoints directory: {context_path}")
 
         db_exists = db_path.exists()
         context_exists = context_path.exists()
@@ -520,7 +493,7 @@ class CheckpointManager:
                 cwd=self.project_root,
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
             )
             return result.stdout
 
@@ -544,7 +517,7 @@ class CheckpointManager:
                 ["git", "checkout", git_commit, "--force"],
                 cwd=self.project_root,
                 check=True,
-                capture_output=True
+                capture_output=True,
             )
 
         except subprocess.CalledProcessError as e:
@@ -597,10 +570,7 @@ class CheckpointManager:
 
         # Delete existing context items for this project
         cursor = self.db.conn.cursor()  # type: ignore[union-attr]
-        cursor.execute(
-            "DELETE FROM context_items WHERE project_id = ?",
-            (self.project_id,)
-        )
+        cursor.execute("DELETE FROM context_items WHERE project_id = ?", (self.project_id,))
 
         # Restore context items from snapshot with original IDs
         context_items = snapshot_data.get("context_items", [])
@@ -627,21 +597,19 @@ class CheckpointManager:
                     item["tier"],
                     item.get("access_count", 0),
                     item["created_at"],
-                    item["last_accessed"]
-                )
+                    item["last_accessed"],
+                ),
             )
 
         # Update SQLite sequence to prevent future PK collisions
         if max_id > 0:
             cursor.execute(
-                "UPDATE sqlite_sequence SET seq = ? WHERE name = 'context_items'",
-                (max_id,)
+                "UPDATE sqlite_sequence SET seq = ? WHERE name = 'context_items'", (max_id,)
             )
             # If no row exists for context_items in sqlite_sequence, insert it
             if cursor.rowcount == 0:
                 cursor.execute(
-                    "INSERT INTO sqlite_sequence (name, seq) VALUES ('context_items', ?)",
-                    (max_id,)
+                    "INSERT INTO sqlite_sequence (name, seq) VALUES ('context_items', ?)", (max_id,)
                 )
 
         self.db.conn.commit()  # type: ignore[union-attr]

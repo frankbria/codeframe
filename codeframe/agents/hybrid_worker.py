@@ -323,7 +323,7 @@ When you have completed the task, provide a summary of what was done."""
                 return  # No tokens to record
 
             # Get project_id from task
-            project_id = task.project_id if hasattr(task, 'project_id') else None
+            project_id = task.project_id if hasattr(task, "project_id") else None
             if not project_id:
                 logger.warning("Cannot record token usage without project context")
                 return
@@ -409,7 +409,11 @@ When you have completed the task, provide a summary of what was done."""
             dict with agent and session details
         """
         # Get project_id from current_task if available
-        project_id = self.current_task.project_id if hasattr(self, 'current_task') and self.current_task else None
+        project_id = (
+            self.current_task.project_id
+            if hasattr(self, "current_task") and self.current_task
+            else None
+        )
 
         return {
             "agent_id": self.agent_id,

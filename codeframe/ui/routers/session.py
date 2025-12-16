@@ -18,10 +18,7 @@ router = APIRouter(prefix="/api/projects", tags=["session"])
 
 
 @router.get("/{project_id}/session")
-async def get_session_state(
-    project_id: int,
-    db: Database = Depends(get_db)
-) -> Dict[str, Any]:
+async def get_session_state(project_id: int, db: Database = Depends(get_db)) -> Dict[str, Any]:
     """Get current session state for project (T028).
 
     Args:

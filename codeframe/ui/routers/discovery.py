@@ -24,9 +24,7 @@ router = APIRouter(prefix="/api/projects/{project_id}/discovery", tags=["discove
 
 @router.post("/answer")
 async def submit_discovery_answer(
-    project_id: int,
-    answer_data: DiscoveryAnswer,
-    db: Database = Depends(get_db)
+    project_id: int, answer_data: DiscoveryAnswer, db: Database = Depends(get_db)
 ) -> DiscoveryAnswerResponse:
     """Submit answer to current discovery question (Feature: 012-discovery-answer-ui, US5).
 
@@ -157,10 +155,7 @@ async def submit_discovery_answer(
 
 
 @router.get("/progress")
-async def get_discovery_progress(
-    project_id: int,
-    db: Database = Depends(get_db)
-) -> Dict[str, Any]:
+async def get_discovery_progress(project_id: int, db: Database = Depends(get_db)) -> Dict[str, Any]:
     """Get discovery progress for a project (cf-17.2).
 
     Returns discovery progress combined with project phase.

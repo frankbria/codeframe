@@ -20,7 +20,7 @@ def fix_workspace_env(content: str) -> str:
         os.environ["WORKSPACE_ROOT"] = str(workspace_root)"""
 
     # Only apply if WORKSPACE_ROOT not already set
-    if 'WORKSPACE_ROOT' not in content:
+    if "WORKSPACE_ROOT" not in content:
         content = re.sub(pattern, add_workspace_root, content)
 
     return content

@@ -23,38 +23,25 @@ def temp_project_dir(tmp_path: Path) -> Path:
     project_dir.mkdir()
 
     # Initialize git repository
-    subprocess.run(
-        ["git", "init"],
-        cwd=project_dir,
-        check=True,
-        capture_output=True
-    )
+    subprocess.run(["git", "init"], cwd=project_dir, check=True, capture_output=True)
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
         cwd=project_dir,
         check=True,
-        capture_output=True
+        capture_output=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
         cwd=project_dir,
         check=True,
-        capture_output=True
+        capture_output=True,
     )
 
     # Create initial commit
     (project_dir / "README.md").write_text("# Test Project")
+    subprocess.run(["git", "add", "README.md"], cwd=project_dir, check=True, capture_output=True)
     subprocess.run(
-        ["git", "add", "README.md"],
-        cwd=project_dir,
-        check=True,
-        capture_output=True
-    )
-    subprocess.run(
-        ["git", "commit", "-m", "Initial commit"],
-        cwd=project_dir,
-        check=True,
-        capture_output=True
+        ["git", "commit", "-m", "Initial commit"], cwd=project_dir, check=True, capture_output=True
     )
 
     return project_dir
@@ -70,10 +57,7 @@ def db(tmp_path: Path) -> Database:
 
 
 @pytest.fixture
-def checkpoint_manager(
-    db: Database,
-    temp_project_dir: Path
-) -> CheckpointManager:
+def checkpoint_manager(db: Database, temp_project_dir: Path) -> CheckpointManager:
     """Create a CheckpointManager instance for testing."""
     # Create project in database
     cursor = db.conn.cursor()
@@ -82,40 +66,30 @@ def checkpoint_manager(
         INSERT INTO projects (name, description, workspace_path, status, phase)
         VALUES (?, ?, ?, ?, ?)
         """,
-        ("test_project", "Test project", str(temp_project_dir), "active", "active")
+        ("test_project", "Test project", str(temp_project_dir), "active", "active"),
     )
     db.conn.commit()
     project_id = cursor.lastrowid
 
-    return CheckpointManager(
-        db=db,
-        project_root=temp_project_dir,
-        project_id=project_id
-    )
+    return CheckpointManager(db=db, project_root=temp_project_dir, project_id=project_id)
 
 
 class TestCheckpointCreation:
     """Test checkpoint creation functionality (T072)."""
 
     def test_create_checkpoint_saves_git_commit(
-        self,
-        checkpoint_manager: CheckpointManager,
-        temp_project_dir: Path
+        self, checkpoint_manager: CheckpointManager, temp_project_dir: Path
     ):
         """Test that checkpoint creates a git commit."""
         # Create a file change to commit
         (temp_project_dir / "new_file.txt").write_text("New content")
         subprocess.run(
-            ["git", "add", "new_file.txt"],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
+            ["git", "add", "new_file.txt"], cwd=temp_project_dir, check=True, capture_output=True
         )
 
         # Create checkpoint
         checkpoint = checkpoint_manager.create_checkpoint(
-            name="Test Checkpoint",
-            description="Testing checkpoint creation"
+            name="Test Checkpoint", description="Testing checkpoint creation"
         )
 
         # Verify checkpoint has git commit
@@ -127,18 +101,14 @@ class TestCheckpointCreation:
             ["git", "rev-parse", checkpoint.git_commit],
             cwd=temp_project_dir,
             capture_output=True,
-            text=True
+            text=True,
         )
         assert result.returncode == 0
 
-    def test_create_checkpoint_backs_up_database(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_create_checkpoint_backs_up_database(self, checkpoint_manager: CheckpointManager):
         """Test that checkpoint backs up the database."""
         checkpoint = checkpoint_manager.create_checkpoint(
-            name="DB Backup Test",
-            description="Testing database backup"
+            name="DB Backup Test", description="Testing database backup"
         )
 
         # Verify database backup path is set
@@ -151,9 +121,7 @@ class TestCheckpointCreation:
         assert "checkpoint" in backup_path.name
 
     def test_create_checkpoint_saves_context_snapshot(
-        self,
-        checkpoint_manager: CheckpointManager,
-        db: Database
+        self, checkpoint_manager: CheckpointManager, db: Database
     ):
         """Test that checkpoint saves context items to JSON."""
         # Add some context items to database
@@ -164,15 +132,13 @@ class TestCheckpointCreation:
             (agent_id, project_id, item_type, content, importance_score, current_tier)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            ("test-agent", checkpoint_manager.project_id, "TASK",
-             "Test task", 0.85, "hot")
+            ("test-agent", checkpoint_manager.project_id, "TASK", "Test task", 0.85, "hot"),
         )
         db.conn.commit()
 
         # Create checkpoint
         checkpoint = checkpoint_manager.create_checkpoint(
-            name="Context Test",
-            description="Testing context snapshot"
+            name="Context Test", description="Testing context snapshot"
         )
 
         # Verify context snapshot path is set
@@ -192,14 +158,10 @@ class TestCheckpointCreation:
         assert "context_items" in snapshot_data
         assert len(snapshot_data["context_items"]) > 0
 
-    def test_create_checkpoint_generates_metadata(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_create_checkpoint_generates_metadata(self, checkpoint_manager: CheckpointManager):
         """Test that checkpoint generates metadata."""
         checkpoint = checkpoint_manager.create_checkpoint(
-            name="Metadata Test",
-            description="Testing metadata generation"
+            name="Metadata Test", description="Testing metadata generation"
         )
 
         # Verify metadata exists and has expected fields
@@ -213,14 +175,11 @@ class TestCheckpointCreation:
         assert checkpoint.metadata.total_cost_usd >= 0.0
 
     def test_create_checkpoint_saves_to_database(
-        self,
-        checkpoint_manager: CheckpointManager,
-        db: Database
+        self, checkpoint_manager: CheckpointManager, db: Database
     ):
         """Test that checkpoint is saved to database."""
         checkpoint = checkpoint_manager.create_checkpoint(
-            name="DB Save Test",
-            description="Testing database persistence"
+            name="DB Save Test", description="Testing database persistence"
         )
 
         # Verify checkpoint has ID (was saved)
@@ -228,21 +187,14 @@ class TestCheckpointCreation:
 
         # Verify we can retrieve it from database
         cursor = db.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM checkpoints WHERE id = ?",
-            (checkpoint.id,)
-        )
+        cursor.execute("SELECT * FROM checkpoints WHERE id = ?", (checkpoint.id,))
         row = cursor.fetchone()
 
         assert row is not None
         assert row["name"] == "DB Save Test"
         assert row["description"] == "Testing database persistence"
 
-    def test_create_checkpoint_creates_directory(
-        self,
-        temp_project_dir: Path,
-        db: Database
-    ):
+    def test_create_checkpoint_creates_directory(self, temp_project_dir: Path, db: Database):
         """Test that checkpoint creates .codeframe/checkpoints directory."""
         checkpoints_dir = temp_project_dir / ".codeframe" / "checkpoints"
 
@@ -257,16 +209,14 @@ class TestCheckpointCreation:
             INSERT INTO projects (name, description, workspace_path, status, phase)
             VALUES (?, ?, ?, ?, ?)
             """,
-            ("test_project", "Test project", str(temp_project_dir), "active", "active")
+            ("test_project", "Test project", str(temp_project_dir), "active", "active"),
         )
         db.conn.commit()
         project_id = cursor.lastrowid
 
         # Create checkpoint manager (should create directory)
         checkpoint_mgr = CheckpointManager(
-            db=db,
-            project_root=temp_project_dir,
-            project_id=project_id
+            db=db, project_root=temp_project_dir, project_id=project_id
         )
 
         # Verify directory was created by __init__
@@ -277,10 +227,7 @@ class TestCheckpointCreation:
 class TestCheckpointListing:
     """Test checkpoint listing functionality (T073)."""
 
-    def test_list_checkpoints_returns_all(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_list_checkpoints_returns_all(self, checkpoint_manager: CheckpointManager):
         """Test listing all checkpoints."""
         # Create multiple checkpoints
         checkpoint_manager.create_checkpoint("First", "First checkpoint")
@@ -294,10 +241,7 @@ class TestCheckpointListing:
         assert len(checkpoints) == 3
         assert all(isinstance(cp, Checkpoint) for cp in checkpoints)
 
-    def test_list_checkpoints_sorted_by_date(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_list_checkpoints_sorted_by_date(self, checkpoint_manager: CheckpointManager):
         """Test that checkpoints are sorted by created_at DESC."""
         import time
 
@@ -316,10 +260,7 @@ class TestCheckpointListing:
         assert checkpoints[1].name == "Second"
         assert checkpoints[2].name == "First"
 
-    def test_list_checkpoints_empty(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_list_checkpoints_empty(self, checkpoint_manager: CheckpointManager):
         """Test listing when no checkpoints exist."""
         checkpoints = checkpoint_manager.list_checkpoints()
         assert checkpoints == []
@@ -329,47 +270,33 @@ class TestCheckpointRestore:
     """Test checkpoint restoration functionality (T074)."""
 
     def test_restore_checkpoint_reverts_git(
-        self,
-        checkpoint_manager: CheckpointManager,
-        temp_project_dir: Path
+        self, checkpoint_manager: CheckpointManager, temp_project_dir: Path
     ):
         """Test that restore reverts git to checkpoint commit."""
         # Create initial file
         (temp_project_dir / "file1.txt").write_text("Version 1")
         subprocess.run(
-            ["git", "add", "file1.txt"],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
+            ["git", "add", "file1.txt"], cwd=temp_project_dir, check=True, capture_output=True
         )
 
         # Create checkpoint
         checkpoint = checkpoint_manager.create_checkpoint(
-            "Before Changes",
-            "State before modifications"
+            "Before Changes", "State before modifications"
         )
 
         # Make additional changes
         (temp_project_dir / "file1.txt").write_text("Version 2")
         (temp_project_dir / "file2.txt").write_text("New file")
-        subprocess.run(
-            ["git", "add", "."],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
-        )
+        subprocess.run(["git", "add", "."], cwd=temp_project_dir, check=True, capture_output=True)
         subprocess.run(
             ["git", "commit", "-m", "Additional changes"],
             cwd=temp_project_dir,
             check=True,
-            capture_output=True
+            capture_output=True,
         )
 
         # Restore checkpoint
-        result = checkpoint_manager.restore_checkpoint(
-            checkpoint_id=checkpoint.id,
-            confirm=True
-        )
+        result = checkpoint_manager.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
         # Verify git was reverted
         assert result["success"] is True
@@ -377,9 +304,7 @@ class TestCheckpointRestore:
         assert not (temp_project_dir / "file2.txt").exists()
 
     def test_restore_checkpoint_reverts_database(
-        self,
-        checkpoint_manager: CheckpointManager,
-        db: Database
+        self, checkpoint_manager: CheckpointManager, db: Database
     ):
         """Test that restore reverts database to backup."""
         # Add initial data
@@ -390,36 +315,29 @@ class TestCheckpointRestore:
             (project_id, task_number, title, status, workflow_step)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (checkpoint_manager.project_id, "1.1", "Initial Task", "pending", 1)
+            (checkpoint_manager.project_id, "1.1", "Initial Task", "pending", 1),
         )
         db.conn.commit()
 
         # Create checkpoint
         checkpoint = checkpoint_manager.create_checkpoint(
-            "Before Task Changes",
-            "State before task modifications"
+            "Before Task Changes", "State before task modifications"
         )
 
         # Modify database
-        cursor.execute(
-            "UPDATE tasks SET status = ? WHERE task_number = ?",
-            ("completed", "1.1")
-        )
+        cursor.execute("UPDATE tasks SET status = ? WHERE task_number = ?", ("completed", "1.1"))
         cursor.execute(
             """
             INSERT INTO tasks
             (project_id, task_number, title, status, workflow_step)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (checkpoint_manager.project_id, "1.2", "New Task", "pending", 1)
+            (checkpoint_manager.project_id, "1.2", "New Task", "pending", 1),
         )
         db.conn.commit()
 
         # Restore checkpoint
-        result = checkpoint_manager.restore_checkpoint(
-            checkpoint_id=checkpoint.id,
-            confirm=True
-        )
+        result = checkpoint_manager.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
         # Verify database was reverted
         assert result["success"] is True
@@ -435,9 +353,7 @@ class TestCheckpointRestore:
         assert count == 0
 
     def test_restore_checkpoint_reverts_context(
-        self,
-        checkpoint_manager: CheckpointManager,
-        db: Database
+        self, checkpoint_manager: CheckpointManager, db: Database
     ):
         """Test that restore reverts context items."""
         # Add initial context
@@ -448,54 +364,39 @@ class TestCheckpointRestore:
             (agent_id, project_id, item_type, content, importance_score, current_tier)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            ("agent1", checkpoint_manager.project_id, "TASK",
-             "Original task", 0.9, "hot")
+            ("agent1", checkpoint_manager.project_id, "TASK", "Original task", 0.9, "hot"),
         )
         db.conn.commit()
 
         # Create checkpoint
         checkpoint = checkpoint_manager.create_checkpoint(
-            "Before Context Changes",
-            "State before context modifications"
+            "Before Context Changes", "State before context modifications"
         )
 
         # Modify context
-        cursor.execute(
-            "DELETE FROM context_items WHERE content = ?",
-            ("Original task",)
-        )
+        cursor.execute("DELETE FROM context_items WHERE content = ?", ("Original task",))
         cursor.execute(
             """
             INSERT INTO context_items
             (agent_id, project_id, item_type, content, importance_score, current_tier)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            ("agent2", checkpoint_manager.project_id, "CODE",
-             "New code", 0.5, "warm")
+            ("agent2", checkpoint_manager.project_id, "CODE", "New code", 0.5, "warm"),
         )
         db.conn.commit()
 
         # Restore checkpoint
-        result = checkpoint_manager.restore_checkpoint(
-            checkpoint_id=checkpoint.id,
-            confirm=True
-        )
+        result = checkpoint_manager.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
         # Verify context was reverted
         assert result["success"] is True
 
         # Get fresh cursor from restored database connection
         cursor = db.conn.cursor()
-        cursor.execute(
-            "SELECT COUNT(*) FROM context_items WHERE content = ?",
-            ("Original task",)
-        )
+        cursor.execute("SELECT COUNT(*) FROM context_items WHERE content = ?", ("Original task",))
         assert cursor.fetchone()[0] == 1
 
-        cursor.execute(
-            "SELECT COUNT(*) FROM context_items WHERE content = ?",
-            ("New code",)
-        )
+        cursor.execute("SELECT COUNT(*) FROM context_items WHERE content = ?", ("New code",))
         assert cursor.fetchone()[0] == 0
 
 
@@ -503,41 +404,30 @@ class TestCheckpointDiff:
     """Test checkpoint diff display functionality (T075)."""
 
     def test_restore_shows_diff_when_not_confirmed(
-        self,
-        checkpoint_manager: CheckpointManager,
-        temp_project_dir: Path
+        self, checkpoint_manager: CheckpointManager, temp_project_dir: Path
     ):
         """Test that restore shows diff when confirm=False."""
         # Create file and checkpoint
         (temp_project_dir / "file.txt").write_text("Original")
         subprocess.run(
-            ["git", "add", "file.txt"],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
+            ["git", "add", "file.txt"], cwd=temp_project_dir, check=True, capture_output=True
         )
         checkpoint = checkpoint_manager.create_checkpoint("CP1", "Test")
 
         # Make changes
         (temp_project_dir / "file.txt").write_text("Modified")
         subprocess.run(
-            ["git", "add", "file.txt"],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
+            ["git", "add", "file.txt"], cwd=temp_project_dir, check=True, capture_output=True
         )
         subprocess.run(
             ["git", "commit", "-m", "Changes"],
             cwd=temp_project_dir,
             check=True,
-            capture_output=True
+            capture_output=True,
         )
 
         # Call restore without confirm
-        result = checkpoint_manager.restore_checkpoint(
-            checkpoint_id=checkpoint.id,
-            confirm=False
-        )
+        result = checkpoint_manager.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=False)
 
         # Verify diff is returned
         assert "diff" in result
@@ -545,34 +435,23 @@ class TestCheckpointDiff:
         assert "file.txt" in result["diff"]
 
     def test_show_diff_returns_git_diff_output(
-        self,
-        checkpoint_manager: CheckpointManager,
-        temp_project_dir: Path
+        self, checkpoint_manager: CheckpointManager, temp_project_dir: Path
     ):
         """Test that _show_diff returns git diff output."""
         # Create initial state
         (temp_project_dir / "test.py").write_text("def foo(): pass")
         subprocess.run(
-            ["git", "add", "test.py"],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
+            ["git", "add", "test.py"], cwd=temp_project_dir, check=True, capture_output=True
         )
         checkpoint = checkpoint_manager.create_checkpoint("Test", "Test")
 
         # Make changes
         (temp_project_dir / "test.py").write_text("def bar(): pass")
         subprocess.run(
-            ["git", "add", "test.py"],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
+            ["git", "add", "test.py"], cwd=temp_project_dir, check=True, capture_output=True
         )
         subprocess.run(
-            ["git", "commit", "-m", "Update"],
-            cwd=temp_project_dir,
-            check=True,
-            capture_output=True
+            ["git", "commit", "-m", "Update"], cwd=temp_project_dir, check=True, capture_output=True
         )
 
         # Get diff
@@ -588,21 +467,12 @@ class TestCheckpointDiff:
 class TestCheckpointValidation:
     """Test checkpoint validation functionality (T076)."""
 
-    def test_invalid_checkpoint_fails_gracefully(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_invalid_checkpoint_fails_gracefully(self, checkpoint_manager: CheckpointManager):
         """Test that invalid checkpoint ID fails gracefully."""
         with pytest.raises(ValueError, match="Checkpoint.*not found"):
-            checkpoint_manager.restore_checkpoint(
-                checkpoint_id=99999,
-                confirm=True
-            )
+            checkpoint_manager.restore_checkpoint(checkpoint_id=99999, confirm=True)
 
-    def test_missing_database_backup_fails(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_missing_database_backup_fails(self, checkpoint_manager: CheckpointManager):
         """Test that missing database backup file fails gracefully."""
         # Create checkpoint
         checkpoint = checkpoint_manager.create_checkpoint("Test", "Test")
@@ -612,15 +482,9 @@ class TestCheckpointValidation:
 
         # Attempt restore
         with pytest.raises(FileNotFoundError, match="Checkpoint files missing"):
-            checkpoint_manager.restore_checkpoint(
-                checkpoint_id=checkpoint.id,
-                confirm=True
-            )
+            checkpoint_manager.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
-    def test_missing_context_snapshot_fails(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_missing_context_snapshot_fails(self, checkpoint_manager: CheckpointManager):
         """Test that missing context snapshot fails gracefully."""
         # Create checkpoint
         checkpoint = checkpoint_manager.create_checkpoint("Test", "Test")
@@ -630,15 +494,9 @@ class TestCheckpointValidation:
 
         # Attempt restore
         with pytest.raises(FileNotFoundError, match="Checkpoint files missing"):
-            checkpoint_manager.restore_checkpoint(
-                checkpoint_id=checkpoint.id,
-                confirm=True
-            )
+            checkpoint_manager.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
-    def test_validate_checkpoint_checks_files(
-        self,
-        checkpoint_manager: CheckpointManager
-    ):
+    def test_validate_checkpoint_checks_files(self, checkpoint_manager: CheckpointManager):
         """Test that _validate_checkpoint checks file existence."""
         # Create valid checkpoint
         checkpoint = checkpoint_manager.create_checkpoint("Valid", "Valid checkpoint")
@@ -657,9 +515,7 @@ class TestCheckpointContextSnapshot:
     """Test context snapshot functionality (T077)."""
 
     def test_checkpoint_context_snapshot_format(
-        self,
-        checkpoint_manager: CheckpointManager,
-        db: Database
+        self, checkpoint_manager: CheckpointManager, db: Database
     ):
         """Test that context snapshot has correct format."""
         # Add context items
@@ -671,8 +527,7 @@ class TestCheckpointContextSnapshot:
                 (agent_id, project_id, item_type, content, importance_score, current_tier)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (f"agent{i}", checkpoint_manager.project_id, "TASK",
-                 f"Task {i}", 0.8, "hot")
+                (f"agent{i}", checkpoint_manager.project_id, "TASK", f"Task {i}", 0.8, "hot"),
             )
         db.conn.commit()
 

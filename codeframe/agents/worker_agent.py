@@ -472,7 +472,9 @@ class WorkerAgent:
 
             question_parts.append("")
 
-        question_parts.append("Fix these issues before completing the task. Type 'resolved' when fixed.")
+        question_parts.append(
+            "Fix these issues before completing the task. Type 'resolved' when fixed."
+        )
 
         question = "\n".join(question_parts)
 

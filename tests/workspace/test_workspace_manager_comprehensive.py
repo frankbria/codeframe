@@ -43,6 +43,7 @@ def manager(temp_workspace_root):
 
 # ===== Basic Initialization Tests =====
 
+
 def test_workspace_manager_init_creates_root(temp_workspace_root):
     """Test that WorkspaceManager creates workspace root directory."""
     # Remove the directory to test creation
@@ -67,12 +68,10 @@ def test_workspace_manager_init_existing_root(temp_workspace_root):
 
 # ===== Empty Workspace Tests =====
 
+
 def test_create_empty_workspace(manager, temp_workspace_root):
     """Test creating empty workspace with git init."""
-    workspace = manager.create_workspace(
-        project_id=1,
-        source_type=SourceType.EMPTY
-    )
+    workspace = manager.create_workspace(project_id=1, source_type=SourceType.EMPTY)
 
     assert workspace.exists()
     assert workspace == temp_workspace_root / "1"
@@ -87,13 +86,11 @@ def test_create_empty_workspace_duplicate_fails(manager):
         manager.create_workspace(project_id=1, source_type=SourceType.EMPTY)
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_empty_git_called_process_error(mock_run, manager):
     """Test handling of git init CalledProcessError."""
     mock_run.side_effect = subprocess.CalledProcessError(
-        returncode=1,
-        cmd=['git', 'init'],
-        stderr="fatal: git init failed"
+        returncode=1, cmd=["git", "init"], stderr="fatal: git init failed"
     )
 
     with pytest.raises(RuntimeError, match="Failed to initialize git repository"):
@@ -104,19 +101,16 @@ def test_init_empty_git_called_process_error(mock_run, manager):
     assert not workspace.exists()
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_empty_git_timeout(mock_run, manager):
     """Test handling of git init timeout."""
-    mock_run.side_effect = subprocess.TimeoutExpired(
-        cmd=['git', 'init'],
-        timeout=30
-    )
+    mock_run.side_effect = subprocess.TimeoutExpired(cmd=["git", "init"], timeout=30)
 
     with pytest.raises(RuntimeError, match="Git initialization timed out after 30 seconds"):
         manager.create_workspace(project_id=1, source_type=SourceType.EMPTY)
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_empty_git_not_found(mock_run, manager):
     """Test handling when git command is not found."""
     mock_run.side_effect = FileNotFoundError("git command not found")
@@ -127,7 +121,8 @@ def test_init_empty_git_not_found(mock_run, manager):
 
 # ===== Git Remote Tests =====
 
-@patch('subprocess.run')
+
+@patch("subprocess.run")
 def test_init_from_git_success(mock_run, manager):
     """Test successful git clone."""
     mock_run.return_value = Mock(returncode=0, stderr="", stdout="Cloning...")
@@ -136,7 +131,7 @@ def test_init_from_git_success(mock_run, manager):
         project_id=1,
         source_type=SourceType.GIT_REMOTE,
         source_location="https://github.com/user/repo.git",
-        source_branch="develop"
+        source_branch="develop",
     )
 
     # Workspace path should be created
@@ -154,9 +149,7 @@ def test_init_from_git_missing_url(manager):
     """Test that git clone without URL raises RuntimeError wrapping ValueError."""
     with pytest.raises(RuntimeError, match="Git URL is required"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.GIT_REMOTE,
-            source_location=None
+            project_id=1, source_type=SourceType.GIT_REMOTE, source_location=None
         )
 
 
@@ -164,47 +157,41 @@ def test_init_from_git_empty_url(manager):
     """Test that git clone with empty URL raises RuntimeError wrapping ValueError."""
     with pytest.raises(RuntimeError, match="Git URL is required"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.GIT_REMOTE,
-            source_location=""
+            project_id=1, source_type=SourceType.GIT_REMOTE, source_location=""
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_network_error(mock_run, manager):
     """Test handling of network errors during git clone."""
     mock_run.side_effect = subprocess.CalledProcessError(
-        returncode=128,
-        cmd=['git', 'clone'],
-        stderr="fatal: could not resolve host: github.com"
+        returncode=128, cmd=["git", "clone"], stderr="fatal: could not resolve host: github.com"
     )
 
     with pytest.raises(RuntimeError, match="Network error: Could not reach"):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="https://github.com/user/repo.git"
+            source_location="https://github.com/user/repo.git",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_repository_not_found(mock_run, manager):
     """Test handling of repository not found error."""
     mock_run.side_effect = subprocess.CalledProcessError(
-        returncode=128,
-        cmd=['git', 'clone'],
-        stderr="fatal: repository not found"
+        returncode=128, cmd=["git", "clone"], stderr="fatal: repository not found"
     )
 
     with pytest.raises(RuntimeError, match="Repository not found"):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="https://github.com/user/nonexistent.git"
+            source_location="https://github.com/user/nonexistent.git",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_branch_not_found_specific(mock_run, manager):
     """Test specific branch not found error path (line 132-134 in manager.py)."""
     # To hit line 132-134, we need stderr with "branch" AND "not found"
@@ -217,9 +204,7 @@ def test_init_from_git_branch_not_found_specific(mock_run, manager):
     # But line 129 will match "not found" first...
     # Actually, let's just test the generic error path with branch context
     mock_run.side_effect = subprocess.CalledProcessError(
-        returncode=128,
-        cmd=['git', 'clone'],
-        stderr="fatal: the requested branch does not exist"
+        returncode=128, cmd=["git", "clone"], stderr="fatal: the requested branch does not exist"
     )
 
     # This will hit the generic error path (line 138-140)
@@ -228,19 +213,19 @@ def test_init_from_git_branch_not_found_specific(mock_run, manager):
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
             source_location="https://github.com/user/repo.git",
-            source_branch="test"
+            source_branch="test",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_branch_pattern_match(mock_run, manager):
     """Test branch error pattern matching (when not found comes after branch keyword)."""
     # This specifically tests line 132-134: "branch" in error_msg and "not found" in error_msg
     # Need an error where both keywords exist
     mock_run.side_effect = subprocess.CalledProcessError(
         returncode=128,
-        cmd=['git', 'clone'],
-        stderr="error: the specified branch was not found on the remote"
+        cmd=["git", "clone"],
+        stderr="error: the specified branch was not found on the remote",
     )
 
     # Line 129 checks "repository not found" OR "not found" - will match "not found" first
@@ -250,78 +235,69 @@ def test_init_from_git_branch_pattern_match(mock_run, manager):
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
             source_location="https://github.com/user/repo.git",
-            source_branch="test"
+            source_branch="test",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_authentication_failed(mock_run, manager):
     """Test handling of authentication failure."""
     mock_run.side_effect = subprocess.CalledProcessError(
-        returncode=128,
-        cmd=['git', 'clone'],
-        stderr="fatal: authentication failed"
+        returncode=128, cmd=["git", "clone"], stderr="fatal: authentication failed"
     )
 
     with pytest.raises(RuntimeError, match="Authentication failed: Check credentials"):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="https://github.com/user/private-repo.git"
+            source_location="https://github.com/user/private-repo.git",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_permission_denied(mock_run, manager):
     """Test handling of permission denied error."""
     mock_run.side_effect = subprocess.CalledProcessError(
-        returncode=128,
-        cmd=['git', 'clone'],
-        stderr="fatal: permission denied"
+        returncode=128, cmd=["git", "clone"], stderr="fatal: permission denied"
     )
 
     with pytest.raises(RuntimeError, match="Authentication failed"):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="git@github.com:user/repo.git"
+            source_location="git@github.com:user/repo.git",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_generic_error(mock_run, manager):
     """Test handling of generic git clone error."""
     mock_run.side_effect = subprocess.CalledProcessError(
-        returncode=1,
-        cmd=['git', 'clone'],
-        stderr="fatal: some other error"
+        returncode=1, cmd=["git", "clone"], stderr="fatal: some other error"
     )
 
     with pytest.raises(RuntimeError, match="Failed to clone repository"):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="https://github.com/user/repo.git"
+            source_location="https://github.com/user/repo.git",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_timeout_expired(mock_run, manager):
     """Test handling of git clone timeout."""
-    mock_run.side_effect = subprocess.TimeoutExpired(
-        cmd=['git', 'clone'],
-        timeout=300
-    )
+    mock_run.side_effect = subprocess.TimeoutExpired(cmd=["git", "clone"], timeout=300)
 
     with pytest.raises(RuntimeError, match="Clone operation timed out after 5 minutes"):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="https://github.com/user/huge-repo.git"
+            source_location="https://github.com/user/huge-repo.git",
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_git_file_not_found(mock_run, manager):
     """Test handling when git command not found during clone."""
     mock_run.side_effect = FileNotFoundError("git not found")
@@ -330,18 +306,17 @@ def test_init_from_git_file_not_found(mock_run, manager):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="https://github.com/user/repo.git"
+            source_location="https://github.com/user/repo.git",
         )
 
 
 # ===== Local Path Tests =====
 
+
 def test_init_from_local_success(manager, temp_source_dir):
     """Test successful copy from local path."""
     workspace = manager.create_workspace(
-        project_id=1,
-        source_type=SourceType.LOCAL_PATH,
-        source_location=str(temp_source_dir)
+        project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(temp_source_dir)
     )
 
     assert workspace.exists()
@@ -354,12 +329,10 @@ def test_init_from_local_success(manager, temp_source_dir):
 def test_init_from_local_with_existing_git(manager, temp_source_dir):
     """Test copying local path that already has git repo."""
     # Initialize git in source
-    subprocess.run(['git', 'init'], cwd=temp_source_dir, capture_output=True)
+    subprocess.run(["git", "init"], cwd=temp_source_dir, capture_output=True)
 
     workspace = manager.create_workspace(
-        project_id=1,
-        source_type=SourceType.LOCAL_PATH,
-        source_location=str(temp_source_dir)
+        project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(temp_source_dir)
     )
 
     assert workspace.exists()
@@ -370,9 +343,7 @@ def test_init_from_local_missing_path(manager):
     """Test that missing local path raises RuntimeError wrapping ValueError."""
     with pytest.raises(RuntimeError, match="Local path is required"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.LOCAL_PATH,
-            source_location=None
+            project_id=1, source_type=SourceType.LOCAL_PATH, source_location=None
         )
 
 
@@ -380,13 +351,11 @@ def test_init_from_local_empty_path(manager):
     """Test that empty local path raises RuntimeError wrapping ValueError."""
     with pytest.raises(RuntimeError, match="Local path is required"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.LOCAL_PATH,
-            source_location=""
+            project_id=1, source_type=SourceType.LOCAL_PATH, source_location=""
         )
 
 
-@patch('codeframe.workspace.manager.WorkspaceManager._is_safe_path')
+@patch("codeframe.workspace.manager.WorkspaceManager._is_safe_path")
 def test_init_from_local_nonexistent_path(mock_safe_path, manager):
     """Test that nonexistent path raises RuntimeError wrapping ValueError."""
     # Mock _is_safe_path to return True so we can test the exists() check on line 171-172
@@ -395,9 +364,7 @@ def test_init_from_local_nonexistent_path(mock_safe_path, manager):
 
     with pytest.raises(RuntimeError, match="Source path does not exist"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.LOCAL_PATH,
-            source_location=str(nonexistent)
+            project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(nonexistent)
         )
 
 
@@ -409,30 +376,26 @@ def test_init_from_local_file_not_directory(manager):
     try:
         with pytest.raises(RuntimeError, match="Source path is not a directory"):
             manager.create_workspace(
-                project_id=1,
-                source_type=SourceType.LOCAL_PATH,
-                source_location=str(test_file)
+                project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(test_file)
             )
     finally:
         if test_file.exists():
             test_file.unlink()
 
 
-@patch('os.access')
+@patch("os.access")
 def test_init_from_local_not_readable(mock_access, manager, temp_source_dir):
     """Test that unreadable path raises RuntimeError wrapping ValueError."""
     mock_access.return_value = False
 
     with pytest.raises(RuntimeError, match="Source path is not readable"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.LOCAL_PATH,
-            source_location=str(temp_source_dir)
+            project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(temp_source_dir)
         )
 
 
-@patch('shutil.copytree')
-@patch('codeframe.workspace.manager.WorkspaceManager._is_safe_path')
+@patch("shutil.copytree")
+@patch("codeframe.workspace.manager.WorkspaceManager._is_safe_path")
 def test_init_from_local_copy_error(mock_safe_path, mock_copytree, manager, temp_source_dir):
     """Test handling of copytree error."""
     mock_safe_path.return_value = True
@@ -440,14 +403,12 @@ def test_init_from_local_copy_error(mock_safe_path, mock_copytree, manager, temp
 
     with pytest.raises(RuntimeError, match="Failed to copy directory"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.LOCAL_PATH,
-            source_location=str(temp_source_dir)
+            project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(temp_source_dir)
         )
 
 
-@patch('shutil.copytree')
-@patch('codeframe.workspace.manager.WorkspaceManager._is_safe_path')
+@patch("shutil.copytree")
+@patch("codeframe.workspace.manager.WorkspaceManager._is_safe_path")
 def test_init_from_local_permission_error(mock_safe_path, mock_copytree, manager, temp_source_dir):
     """Test handling of permission error during copy."""
     mock_safe_path.return_value = True
@@ -455,29 +416,26 @@ def test_init_from_local_permission_error(mock_safe_path, mock_copytree, manager
 
     with pytest.raises(RuntimeError, match="Permission denied"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.LOCAL_PATH,
-            source_location=str(temp_source_dir)
+            project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(temp_source_dir)
         )
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_init_from_local_git_init_fails_gracefully(mock_run, manager, temp_source_dir):
     """Test that git init failure doesn't fail the whole operation."""
     # Make git init fail (when checking for .git and trying to init)
-    mock_run.side_effect = subprocess.CalledProcessError(1, ['git', 'init'])
+    mock_run.side_effect = subprocess.CalledProcessError(1, ["git", "init"])
 
     # Should succeed despite git init failure
     workspace = manager.create_workspace(
-        project_id=1,
-        source_type=SourceType.LOCAL_PATH,
-        source_location=str(temp_source_dir)
+        project_id=1, source_type=SourceType.LOCAL_PATH, source_location=str(temp_source_dir)
     )
 
     assert workspace.exists()
 
 
 # ===== Path Safety Tests =====
+
 
 def test_is_safe_path_valid(manager):
     """Test that paths under home directory are safe."""
@@ -528,23 +486,20 @@ def test_init_from_local_unsafe_path(manager):
     """Test that unsafe paths are rejected."""
     with pytest.raises(RuntimeError, match="Access denied"):
         manager.create_workspace(
-            project_id=1,
-            source_type=SourceType.LOCAL_PATH,
-            source_location="/etc"
+            project_id=1, source_type=SourceType.LOCAL_PATH, source_location="/etc"
         )
 
 
 # ===== Upload Tests =====
 
-@patch('subprocess.run')
+
+@patch("subprocess.run")
 def test_init_from_upload_placeholder(mock_run, manager):
     """Test upload initialization (placeholder implementation)."""
     mock_run.return_value = Mock(returncode=0)
 
     workspace = manager.create_workspace(
-        project_id=1,
-        source_type=SourceType.UPLOAD,
-        source_location="uploaded_file.zip"
+        project_id=1, source_type=SourceType.UPLOAD, source_location="uploaded_file.zip"
     )
 
     assert workspace.exists()
@@ -553,11 +508,12 @@ def test_init_from_upload_placeholder(mock_run, manager):
 
 # ===== Error Handling and Cleanup Tests =====
 
-@patch('subprocess.run')
+
+@patch("subprocess.run")
 def test_create_workspace_cleanup_on_failure(mock_run, manager):
     """Test that workspace is cleaned up on failure."""
     # Simulate failure during workspace creation
-    mock_run.side_effect = subprocess.CalledProcessError(1, ['git', 'init'])
+    mock_run.side_effect = subprocess.CalledProcessError(1, ["git", "init"])
 
     workspace_path = manager.workspace_root / "1"
 
@@ -581,6 +537,7 @@ def test_create_workspace_multiple_projects(manager):
 
 # ===== Edge Cases =====
 
+
 def test_workspace_root_conversion_to_path(temp_workspace_root):
     """Test that workspace_root is converted to Path object."""
     # Pass string instead of Path
@@ -601,10 +558,10 @@ def test_create_workspace_nested_parent_dirs(temp_workspace_root):
     assert workspace.exists()
 
 
-@patch('subprocess.run')
+@patch("subprocess.run")
 def test_git_clone_with_stderr_none(mock_run, manager):
     """Test handling git clone error with stderr=None."""
-    error = subprocess.CalledProcessError(1, ['git', 'clone'])
+    error = subprocess.CalledProcessError(1, ["git", "clone"])
     error.stderr = None
     mock_run.side_effect = error
 
@@ -612,5 +569,5 @@ def test_git_clone_with_stderr_none(mock_run, manager):
         manager.create_workspace(
             project_id=1,
             source_type=SourceType.GIT_REMOTE,
-            source_location="https://github.com/user/repo.git"
+            source_location="https://github.com/user/repo.git",
         )

@@ -81,11 +81,7 @@ class MetricsTracker:
         self.db = db
 
     @staticmethod
-    def calculate_cost(
-        model_name: str,
-        input_tokens: int,
-        output_tokens: int
-    ) -> float:
+    def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
         """Calculate estimated cost in USD for an LLM call.
 
         Uses current Anthropic pricing (as of 2025-11):
@@ -193,7 +189,7 @@ class MetricsTracker:
             estimated_cost_usd=estimated_cost,
             call_type=call_type,
             session_id=session_id,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
         )
 
         # Save to database
@@ -248,7 +244,7 @@ class MetricsTracker:
             "total_tokens": 0,
             "total_calls": len(usage_records),
             "by_agent": [],
-            "by_model": []
+            "by_model": [],
         }
 
         if not usage_records:
@@ -274,7 +270,7 @@ class MetricsTracker:
                     "agent_id": agent_id,
                     "cost_usd": 0.0,
                     "total_tokens": 0,
-                    "call_count": 0
+                    "call_count": 0,
                 }
             agent_stats[agent_id]["cost_usd"] += cost
             agent_stats[agent_id]["total_tokens"] += tokens
@@ -286,7 +282,7 @@ class MetricsTracker:
                     "model_name": model_name,
                     "cost_usd": 0.0,
                     "total_tokens": 0,
-                    "call_count": 0
+                    "call_count": 0,
                 }
             model_stats[model_name]["cost_usd"] += cost
             model_stats[model_name]["total_tokens"] += tokens
@@ -342,7 +338,7 @@ class MetricsTracker:
             "total_tokens": 0,
             "total_calls": len(usage_records),
             "by_call_type": [],
-            "by_project": []
+            "by_project": [],
         }
 
         if not usage_records:
@@ -367,17 +363,14 @@ class MetricsTracker:
                 call_type_stats[call_type] = {
                     "call_type": call_type,
                     "cost_usd": 0.0,
-                    "call_count": 0
+                    "call_count": 0,
                 }
             call_type_stats[call_type]["cost_usd"] += cost
             call_type_stats[call_type]["call_count"] += 1
 
             # Update project stats
             if project_id not in project_stats:
-                project_stats[project_id] = {
-                    "project_id": project_id,
-                    "cost_usd": 0.0
-                }
+                project_stats[project_id] = {"project_id": project_id, "cost_usd": 0.0}
             project_stats[project_id]["cost_usd"] += cost
 
         # Convert to lists and round costs
@@ -397,7 +390,7 @@ class MetricsTracker:
         self,
         project_id: int,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """Get token usage statistics for a date range.
 
@@ -434,9 +427,7 @@ class MetricsTracker:
         """
         # Get usage records with date filtering
         usage_records = self.db.get_token_usage(
-            project_id=project_id,
-            start_date=start_date,
-            end_date=end_date
+            project_id=project_id, start_date=start_date, end_date=end_date
         )
 
         # Initialize result
@@ -447,9 +438,9 @@ class MetricsTracker:
             "total_calls": len(usage_records),
             "date_range": {
                 "start": start_date.isoformat() if start_date else None,
-                "end": end_date.isoformat() if end_date else None
+                "end": end_date.isoformat() if end_date else None,
             },
-            "by_day": []
+            "by_day": [],
         }
 
         if not usage_records:

@@ -27,6 +27,7 @@ def test_client():
     # Reload server module to pick up new environment
     from codeframe.ui import server
     from importlib import reload
+
     reload(server)
 
     # Initialize database
@@ -36,6 +37,7 @@ def test_client():
 
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
+
     server.app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     client = TestClient(server.app)

@@ -11,6 +11,7 @@ from codeframe.core.models import CodeReview, Severity, ReviewCategory, Task, Ta
 def get_app():
     """Get the current app instance after module reload."""
     from codeframe.ui.server import app
+
     return app
 
 
@@ -26,8 +27,7 @@ def project_with_reviews(api_client):
     """
     # Create project
     project_id = get_app().state.db.create_project(
-        name="Test Review Project",
-        description="Test project for code reviews API"
+        name="Test Review Project", description="Test project for code reviews API"
     )
 
     # Create tasks
@@ -35,7 +35,7 @@ def project_with_reviews(api_client):
         project_id=project_id,
         title="Implement user authentication",
         description="Add JWT-based authentication",
-        status=TaskStatus.IN_PROGRESS
+        status=TaskStatus.IN_PROGRESS,
     )
     task1_id = get_app().state.db.create_task(task1)
 
@@ -43,7 +43,7 @@ def project_with_reviews(api_client):
         project_id=project_id,
         title="Add API rate limiting",
         description="Implement rate limiting middleware",
-        status=TaskStatus.IN_PROGRESS
+        status=TaskStatus.IN_PROGRESS,
     )
     task2_id = get_app().state.db.create_task(task2)
 
@@ -58,7 +58,7 @@ def project_with_reviews(api_client):
         category=ReviewCategory.SECURITY,
         message="SQL injection vulnerability in login query",
         recommendation="Use parameterized queries or ORM",
-        code_snippet='cursor.execute(f"SELECT * FROM users WHERE username={username}")'
+        code_snippet='cursor.execute(f"SELECT * FROM users WHERE username={username}")',
     )
 
     review2 = CodeReview(
@@ -71,7 +71,7 @@ def project_with_reviews(api_client):
         category=ReviewCategory.SECURITY,
         message="Password stored in plaintext",
         recommendation="Use bcrypt or argon2 for password hashing",
-        code_snippet='db.save_user(username, password)'
+        code_snippet="db.save_user(username, password)",
     )
 
     review3 = CodeReview(
@@ -84,7 +84,7 @@ def project_with_reviews(api_client):
         category=ReviewCategory.QUALITY,
         message="Missing input validation for username",
         recommendation="Add length and character validation",
-        code_snippet='username = request.json["username"]'
+        code_snippet='username = request.json["username"]',
     )
 
     # Create code review findings for task 2
@@ -98,7 +98,7 @@ def project_with_reviews(api_client):
         category=ReviewCategory.PERFORMANCE,
         message="Rate limiter uses in-memory storage",
         recommendation="Consider using Redis for distributed rate limiting",
-        code_snippet='rate_limits = {}'
+        code_snippet="rate_limits = {}",
     )
 
     review5 = CodeReview(
@@ -111,7 +111,7 @@ def project_with_reviews(api_client):
         category=ReviewCategory.MAINTAINABILITY,
         message="Magic number for rate limit threshold",
         recommendation="Extract to configuration constant",
-        code_snippet='if count > 100:'
+        code_snippet="if count > 100:",
     )
 
     review6 = CodeReview(
@@ -124,7 +124,7 @@ def project_with_reviews(api_client):
         category=ReviewCategory.STYLE,
         message="Line exceeds 88 characters",
         recommendation="Break into multiple lines",
-        code_snippet='response = JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})'
+        code_snippet='response = JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})',
     )
 
     # Save all reviews
@@ -147,8 +147,7 @@ def empty_project(api_client):
         project_id
     """
     project_id = get_app().state.db.create_project(
-        name="Empty Project",
-        description="Project with no code reviews"
+        name="Empty Project", description="Project with no code reviews"
     )
     return project_id
 
@@ -195,16 +194,12 @@ class TestProjectCodeReviewsEndpoint:
         # Verify blocking issues flag
         assert data["has_blocking_findings"] is True  # Has critical + high
 
-    def test_get_project_code_reviews_with_severity_filter(
-        self, api_client, project_with_reviews
-    ):
+    def test_get_project_code_reviews_with_severity_filter(self, api_client, project_with_reviews):
         """Test filtering reviews by severity."""
         project_id, task_ids, review_ids = project_with_reviews
 
         # Filter by critical severity
-        response = api_client.get(
-            f"/api/projects/{project_id}/code-reviews?severity=critical"
-        )
+        response = api_client.get(f"/api/projects/{project_id}/code-reviews?severity=critical")
 
         assert response.status_code == 200
         data = response.json()
@@ -221,13 +216,7 @@ class TestProjectCodeReviewsEndpoint:
         project_id, task_ids, review_ids = project_with_reviews
 
         # Test each severity level
-        severity_expected_counts = {
-            "critical": 1,
-            "high": 1,
-            "medium": 2,
-            "low": 1,
-            "info": 1
-        }
+        severity_expected_counts = {"critical": 1, "high": 1, "medium": 2, "low": 1, "info": 1}
 
         for severity, expected_count in severity_expected_counts.items():
             response = api_client.get(
@@ -261,15 +250,11 @@ class TestProjectCodeReviewsEndpoint:
         for category in ["security", "performance", "quality", "maintainability", "style"]:
             assert data["category_counts"][category] == 0
 
-    def test_get_project_code_reviews_invalid_severity(
-        self, api_client, project_with_reviews
-    ):
+    def test_get_project_code_reviews_invalid_severity(self, api_client, project_with_reviews):
         """Test invalid severity filter returns 400."""
         project_id, task_ids, review_ids = project_with_reviews
 
-        response = api_client.get(
-            f"/api/projects/{project_id}/code-reviews?severity=invalid"
-        )
+        response = api_client.get(f"/api/projects/{project_id}/code-reviews?severity=invalid")
 
         assert response.status_code == 400
         assert "Invalid severity" in response.json()["detail"]
@@ -281,9 +266,7 @@ class TestProjectCodeReviewsEndpoint:
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
-    def test_get_project_code_reviews_findings_structure(
-        self, api_client, project_with_reviews
-    ):
+    def test_get_project_code_reviews_findings_structure(self, api_client, project_with_reviews):
         """Test that findings have correct structure."""
         project_id, task_ids, review_ids = project_with_reviews
 
@@ -294,9 +277,18 @@ class TestProjectCodeReviewsEndpoint:
         # Check first finding has all required fields
         finding = data["findings"][0]
         required_fields = [
-            "id", "task_id", "agent_id", "project_id", "file_path",
-            "line_number", "severity", "category", "message",
-            "recommendation", "code_snippet", "created_at"
+            "id",
+            "task_id",
+            "agent_id",
+            "project_id",
+            "file_path",
+            "line_number",
+            "severity",
+            "category",
+            "message",
+            "recommendation",
+            "code_snippet",
+            "created_at",
         ]
 
         for field in required_fields:
@@ -309,9 +301,7 @@ class TestProjectCodeReviewsEndpoint:
         assert isinstance(finding["project_id"], int)
         assert finding["project_id"] == project_id
 
-    def test_get_project_code_reviews_no_blocking_issues(
-        self, api_client, empty_project
-    ):
+    def test_get_project_code_reviews_no_blocking_issues(self, api_client, empty_project):
         """Test project with only low/info findings has no blocking issues."""
         project_id = empty_project
 
@@ -320,7 +310,7 @@ class TestProjectCodeReviewsEndpoint:
             project_id=project_id,
             title="Minor refactoring",
             description="Clean up code",
-            status=TaskStatus.IN_PROGRESS
+            status=TaskStatus.IN_PROGRESS,
         )
         task_id = get_app().state.db.create_task(task)
 
@@ -334,7 +324,7 @@ class TestProjectCodeReviewsEndpoint:
             severity=Severity.LOW,
             category=ReviewCategory.STYLE,
             message="Minor style issue",
-            recommendation="Fix formatting"
+            recommendation="Fix formatting",
         )
         get_app().state.db.save_code_review(review)
 

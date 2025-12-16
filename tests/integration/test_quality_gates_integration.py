@@ -151,9 +151,7 @@ def test_subtract():
                     )
                 # Mypy passes
                 elif "mypy" in str(cmd):
-                    return Mock(
-                        returncode=0, stdout="Success: no issues found", stderr=""
-                    )
+                    return Mock(returncode=0, stdout="Success: no issues found", stderr="")
                 # Ruff passes
                 elif "ruff" in str(cmd):
                     return Mock(returncode=0, stdout="All checks passed", stderr="")
@@ -182,16 +180,12 @@ def test_subtract():
                 assert len(result.failures) == 0
 
                 # Verify task can be completed (quality_gate_status = 'passed')
-                cursor.execute(
-                    "SELECT quality_gate_status FROM tasks WHERE id = ?", (task_id,)
-                )
+                cursor.execute("SELECT quality_gate_status FROM tasks WHERE id = ?", (task_id,))
                 row = cursor.fetchone()
                 assert row[0] == "passed"
 
                 # Verify no blocker was created
-                cursor.execute(
-                    "SELECT COUNT(*) FROM blockers WHERE task_id = ?", (task_id,)
-                )
+                cursor.execute("SELECT COUNT(*) FROM blockers WHERE task_id = ?", (task_id,))
                 count = cursor.fetchone()[0]
                 assert count == 0, "No blocker should be created when all gates pass"
 
@@ -224,9 +218,7 @@ def test_subtract():
             )
 
             # Create QualityGates instance
-            quality_gates = QualityGates(
-                db=db, project_id=project_id, project_root=project_root
-            )
+            quality_gates = QualityGates(db=db, project_id=project_id, project_root=project_root)
 
             # Run test gate
             result = await quality_gates.run_tests_gate(task)
@@ -271,11 +263,11 @@ def test_subtract():
 
         # Create file with security issue
         (project_root / "src" / "auth.py").write_text(
-            '''
+            """
 def login(username, password):
     cursor.execute(f"SELECT * FROM users WHERE username='{username}' AND password='{password}'")
     return cursor.fetchone()
-'''
+"""
         )
 
         # Mock Review Agent to find critical issue
@@ -298,9 +290,7 @@ def login(username, password):
             mock_agent.execute_task = AsyncMock(return_value=mock_result)
 
             # Create QualityGates instance
-            quality_gates = QualityGates(
-                db=db, project_id=project_id, project_root=project_root
-            )
+            quality_gates = QualityGates(db=db, project_id=project_id, project_root=project_root)
 
             # Run review gate
             result = await quality_gates.run_review_gate(task)
@@ -342,9 +332,7 @@ def login(username, password):
             )
 
             # Create QualityGates instance
-            quality_gates = QualityGates(
-                db=db, project_id=project_id, project_root=project_root
-            )
+            quality_gates = QualityGates(db=db, project_id=project_id, project_root=project_root)
 
             # Run coverage gate
             result = await quality_gates.run_coverage_gate(task)
@@ -380,9 +368,7 @@ def login(username, password):
         ]  # All risky
 
         # Create QualityGates instance
-        quality_gates = QualityGates(
-            db=db, project_id=project_id, project_root=project_root
-        )
+        quality_gates = QualityGates(db=db, project_id=project_id, project_root=project_root)
 
         # Check risky file detection
         is_risky = quality_gates._contains_risky_changes(task)

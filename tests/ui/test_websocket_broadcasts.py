@@ -330,9 +330,7 @@ async def test_broadcast_test_result_error_handling(mock_manager, caplog):
     """Test test result broadcast handles exceptions gracefully."""
     mock_manager.broadcast.side_effect = Exception("Network error")
 
-    await broadcast_test_result(
-        mock_manager, project_id=1, task_id=42, status="passed", passed=10
-    )
+    await broadcast_test_result(mock_manager, project_id=1, task_id=42, status="passed", passed=10)
 
     assert "Failed to broadcast test result" in caplog.text
 
@@ -377,7 +375,12 @@ async def test_broadcast_correction_attempt_error_handling(mock_manager, caplog)
     mock_manager.broadcast.side_effect = Exception("Error")
 
     await broadcast_correction_attempt(
-        mock_manager, project_id=1, task_id=42, attempt_number=1, max_attempts=3, status="in_progress"
+        mock_manager,
+        project_id=1,
+        task_id=42,
+        attempt_number=1,
+        max_attempts=3,
+        status="in_progress",
     )
 
     assert "Failed to broadcast correction attempt" in caplog.text
@@ -516,9 +519,7 @@ async def test_broadcast_task_assigned_error_handling(mock_manager, caplog):
 @pytest.mark.asyncio
 async def test_broadcast_task_blocked_basic(mock_manager):
     """Test broadcasting task blocked by dependencies."""
-    await broadcast_task_blocked(
-        mock_manager, project_id=1, task_id=42, blocked_by=[10, 20, 30]
-    )
+    await broadcast_task_blocked(mock_manager, project_id=1, task_id=42, blocked_by=[10, 20, 30])
 
     mock_manager.broadcast.assert_called_once()
     message = mock_manager.broadcast.call_args[0][0]
@@ -576,9 +577,7 @@ async def test_broadcast_task_unblocked_basic(mock_manager):
 @pytest.mark.asyncio
 async def test_broadcast_task_unblocked_with_unblocked_by(mock_manager):
     """Test broadcasting task unblocked with unblocked_by."""
-    await broadcast_task_unblocked(
-        mock_manager, project_id=1, task_id=42, unblocked_by=10
-    )
+    await broadcast_task_unblocked(mock_manager, project_id=1, task_id=42, unblocked_by=10)
 
     message = mock_manager.broadcast.call_args[0][0]
     assert message["unblocked_by"] == 10

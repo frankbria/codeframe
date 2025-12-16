@@ -56,10 +56,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Malformed JSON - log warning and send error response to client
                 logger.warning(f"Malformed JSON from WebSocket client: {e}")
                 try:
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "Invalid JSON format"
-                    })
+                    await websocket.send_json({"type": "error", "error": "Invalid JSON format"})
                 except Exception:
                     # If we can't send error response, just continue
                     pass

@@ -31,7 +31,7 @@ async def get_project_token_metrics(
     project_id: int,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    db: Database = Depends(get_db)
+    db: Database = Depends(get_db),
 ):
     """Get token usage metrics for a project (T127).
 
@@ -91,29 +91,25 @@ async def get_project_token_metrics(
 
     try:
         if start_date:
-            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
         if end_date:
-            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid date format. Use ISO 8601 format (e.g., '2025-11-01T00:00:00Z'): {str(e)}"
+            detail=f"Invalid date format. Use ISO 8601 format (e.g., '2025-11-01T00:00:00Z'): {str(e)}",
         )
 
     try:
         # Get token usage stats using MetricsTracker
         tracker = MetricsTracker(db=db)
         stats = await tracker.get_token_usage_stats(
-            project_id=project_id,
-            start_date=start_dt,
-            end_date=end_dt
+            project_id=project_id, start_date=start_dt, end_date=end_dt
         )
 
         # Get detailed usage records
         usage_records = db.get_token_usage(
-            project_id=project_id,
-            start_date=start_dt,
-            end_date=end_dt
+            project_id=project_id, start_date=start_dt, end_date=end_dt
         )
 
         # Build response
@@ -123,22 +119,16 @@ async def get_project_token_metrics(
             "total_calls": stats["total_calls"],
             "total_cost_usd": stats["total_cost_usd"],
             "date_range": stats["date_range"],
-            "usage_records": usage_records
+            "usage_records": usage_records,
         }
 
     except Exception as e:
         logger.error(f"Failed to get token metrics for project {project_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve token metrics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve token metrics: {str(e)}")
 
 
 @router.get("/api/projects/{project_id}/metrics/costs")
-async def get_project_cost_metrics(
-    project_id: int,
-    db: Database = Depends(get_db)
-):
+async def get_project_cost_metrics(project_id: int, db: Database = Depends(get_db)):
     """Get cost breakdown for a project (T128).
 
     Sprint 10 - Phase 5: Metrics & Cost Tracking
@@ -205,23 +195,20 @@ async def get_project_cost_metrics(
         tracker = MetricsTracker(db=db)
         costs = await tracker.get_project_costs(project_id=project_id)
 
-        logger.info(f"Retrieved cost metrics for project {project_id}: ${costs['total_cost_usd']:.6f}")
+        logger.info(
+            f"Retrieved cost metrics for project {project_id}: ${costs['total_cost_usd']:.6f}"
+        )
 
         return costs
 
     except Exception as e:
         logger.error(f"Failed to get cost metrics for project {project_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve cost metrics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve cost metrics: {str(e)}")
 
 
 @router.get("/api/agents/{agent_id}/metrics")
 async def get_agent_metrics(
-    agent_id: str,
-    project_id: Optional[int] = None,
-    db: Database = Depends(get_db)
+    agent_id: str, project_id: Optional[int] = None, db: Database = Depends(get_db)
 ):
     """Get metrics for a specific agent (T129).
 
@@ -285,10 +272,7 @@ async def get_agent_metrics(
         # If project_id is specified, filter the results
         if project_id is not None:
             # Filter by_project to only include the specified project
-            filtered_projects = [
-                p for p in costs["by_project"]
-                if p["project_id"] == project_id
-            ]
+            filtered_projects = [p for p in costs["by_project"] if p["project_id"] == project_id]
 
             if not filtered_projects:
                 # No data for this agent in this project
@@ -298,15 +282,12 @@ async def get_agent_metrics(
                     "total_tokens": 0,
                     "total_calls": 0,
                     "by_call_type": [],
-                    "by_project": []
+                    "by_project": [],
                 }
 
             # Recalculate totals based on filtered project
             # We need to get usage records for this specific project
-            usage_records = db.get_token_usage(
-                agent_id=agent_id,
-                project_id=project_id
-            )
+            usage_records = db.get_token_usage(agent_id=agent_id, project_id=project_id)
 
             # Recalculate aggregates
             total_cost = sum(r["estimated_cost_usd"] for r in usage_records)
@@ -318,7 +299,11 @@ async def get_agent_metrics(
             for record in usage_records:
                 call_type = record["call_type"]
                 if call_type not in call_type_stats:
-                    call_type_stats[call_type] = {"call_type": call_type, "cost_usd": 0.0, "call_count": 0}
+                    call_type_stats[call_type] = {
+                        "call_type": call_type,
+                        "cost_usd": 0.0,
+                        "call_count": 0,
+                    }
                 call_type_stats[call_type]["cost_usd"] += record["estimated_cost_usd"]
                 call_type_stats[call_type]["call_count"] += 1
 
@@ -332,7 +317,7 @@ async def get_agent_metrics(
                 "total_tokens": total_tokens,
                 "total_calls": total_calls,
                 "by_call_type": list(call_type_stats.values()),
-                "by_project": [{"project_id": project_id, "cost_usd": round(total_cost, 6)}]
+                "by_project": [{"project_id": project_id, "cost_usd": round(total_cost, 6)}],
             }
 
         logger.info(f"Retrieved metrics for agent {agent_id}: ${costs['total_cost_usd']:.6f}")
@@ -341,7 +326,4 @@ async def get_agent_metrics(
 
     except Exception as e:
         logger.error(f"Failed to get metrics for agent {agent_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve agent metrics: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve agent metrics: {str(e)}")

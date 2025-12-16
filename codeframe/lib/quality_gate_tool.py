@@ -339,6 +339,7 @@ def _format_gate_details(failures: List) -> str:
 def _extract_coverage_pct(failure) -> float:
     """Extract coverage percentage from failure reason."""
     import re
+
     match = re.search(r"(\d+\.?\d*)%", failure.reason)
     if match:
         return float(match.group(1))

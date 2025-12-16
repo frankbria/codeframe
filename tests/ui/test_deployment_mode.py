@@ -29,6 +29,7 @@ def test_client_hosted():
     # Reload server module to pick up new environment
     from codeframe.ui import server
     from importlib import reload
+
     reload(server)
 
     # Initialize database
@@ -38,6 +39,7 @@ def test_client_hosted():
 
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
+
     server.app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     client = TestClient(server.app)
@@ -85,6 +87,7 @@ def test_client_self_hosted():
     # Reload server module to pick up new environment
     from codeframe.ui import server
     from importlib import reload
+
     reload(server)
 
     # Initialize database
@@ -94,6 +97,7 @@ def test_client_self_hosted():
 
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
+
     server.app.state.workspace_manager = WorkspaceManager(workspace_root)
 
     client = TestClient(server.app)

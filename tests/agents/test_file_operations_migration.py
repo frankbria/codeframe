@@ -127,16 +127,18 @@ async def test_generate_code_with_sdk(backend_agent_sdk):
 
     # Mock SDK response with JSON output
     mock_response = {
-        "content": json.dumps({
-            "files": [
-                {
-                    "path": "src/example.py",
-                    "action": "create",
-                    "content": "def hello():\n    pass",
-                }
-            ],
-            "explanation": "Created hello function",
-        }),
+        "content": json.dumps(
+            {
+                "files": [
+                    {
+                        "path": "src/example.py",
+                        "action": "create",
+                        "content": "def hello():\n    pass",
+                    }
+                ],
+                "explanation": "Created hello function",
+            }
+        ),
         "usage": {"input_tokens": 100, "output_tokens": 50},
     }
 
@@ -180,16 +182,18 @@ async def test_generate_code_without_sdk(backend_agent_no_sdk):
         mock_response = Mock()
         mock_response.content = [
             Mock(
-                text=json.dumps({
-                    "files": [
-                        {
-                            "path": "src/example.py",
-                            "action": "create",
-                            "content": "def hello():\n    pass",
-                        }
-                    ],
-                    "explanation": "Created hello function",
-                })
+                text=json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "src/example.py",
+                                "action": "create",
+                                "content": "def hello():\n    pass",
+                            }
+                        ],
+                        "explanation": "Created hello function",
+                    }
+                )
             )
         ]
 

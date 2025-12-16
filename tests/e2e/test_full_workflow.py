@@ -47,7 +47,7 @@ def test_project(temp_project_dir, test_database):
         name="HelloWorldAPI",
         description="E2E test fixture",
         workspace_path=str(temp_project_dir),
-        status="init"  # Use string value instead of enum
+        status="init",  # Use string value instead of enum
     )
 
     # Create a mock project object
@@ -84,7 +84,7 @@ def test_project_creation(temp_project_dir, test_database):
         name="TestProject",
         description="E2E test project",
         workspace_path=str(temp_project_dir),
-        status="init"
+        status="init",
     )
 
     # Assert
@@ -118,7 +118,7 @@ def test_database_operations(test_database):
         name="E2ETestProject",
         description="Test project for E2E testing",
         workspace_path="/tmp/test",
-        status="init"
+        status="init",
     )
 
     assert project_id is not None
@@ -139,7 +139,7 @@ def test_database_operations(test_database):
         status=TaskStatus.PENDING,
         assigned_to="backend-001",
         depends_on=None,
-        priority=1
+        priority=1,
     )
 
     task_id = test_database.create_task(task)
@@ -168,15 +168,12 @@ def test_worker_agent_initialization(test_database):
         name="AgentTest",
         description="Test project for agent",
         workspace_path="/tmp/test",
-        status="active"
+        status="active",
     )
 
     # Create worker agent
     agent = WorkerAgent(
-        agent_id="backend-001",
-        agent_type="backend",
-        provider="anthropic",
-        db=test_database
+        agent_id="backend-001", agent_type="backend", provider="anthropic", db=test_database
     )
 
     # Assert agent properties
@@ -193,7 +190,7 @@ def test_worker_agent_initialization(test_database):
         status=TaskStatus.IN_PROGRESS,
         assigned_to="backend-001",
         depends_on=None,
-        priority=1
+        priority=1,
     )
 
     task_id = test_database.create_task(task)
@@ -245,15 +242,12 @@ async def test_context_flash_save(test_database):
         name="FlashSaveTest",
         description="Test flash save",
         workspace_path="/tmp/test",
-        status="active"
+        status="active",
     )
 
     # Create agent with db
     agent = WorkerAgent(
-        agent_id="backend-001",
-        agent_type="backend",
-        provider="anthropic",
-        db=test_database
+        agent_id="backend-001", agent_type="backend", provider="anthropic", db=test_database
     )
 
     # Create a task to assign to the agent (needed to establish project context)
@@ -265,7 +259,7 @@ async def test_context_flash_save(test_database):
         status=TaskStatus.IN_PROGRESS,
         assigned_to="backend-001",
         depends_on=None,
-        priority=1
+        priority=1,
     )
     agent.current_task = task  # Assign task to establish project context
 
@@ -292,7 +286,7 @@ def test_task_status_transitions(test_database):
         name="StatusTest",
         description="Test status transitions",
         workspace_path="/tmp/test",
-        status="active"
+        status="active",
     )
 
     # Create task
@@ -304,7 +298,7 @@ def test_task_status_transitions(test_database):
         status=TaskStatus.PENDING,
         assigned_to="backend-001",
         depends_on=None,
-        priority=1
+        priority=1,
     )
 
     task_id = test_database.create_task(task)
@@ -314,10 +308,7 @@ def test_task_status_transitions(test_database):
     assert retrieved["status"] == "pending"
 
     # Update to in_progress
-    test_database.conn.execute(
-        "UPDATE tasks SET status = ? WHERE id = ?",
-        ("in_progress", task_id)
-    )
+    test_database.conn.execute("UPDATE tasks SET status = ? WHERE id = ?", ("in_progress", task_id))
     test_database.conn.commit()
 
     retrieved = test_database.get_task(task_id)
@@ -326,7 +317,7 @@ def test_task_status_transitions(test_database):
     # Update to completed
     test_database.conn.execute(
         "UPDATE tasks SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?",
-        ("completed", task_id)
+        ("completed", task_id),
     )
     test_database.conn.commit()
 
@@ -346,24 +337,13 @@ def test_git_initialization_for_checkpoints(temp_project_dir):
     - This validates checkpoint git dependency
     """
     # Initialize git
-    result = subprocess.run(
-        ["git", "init"],
-        cwd=temp_project_dir,
-        capture_output=True,
-        text=True
-    )
+    result = subprocess.run(["git", "init"], cwd=temp_project_dir, capture_output=True, text=True)
     assert result.returncode == 0
 
     # Configure git
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=temp_project_dir, check=True)
     subprocess.run(
-        ["git", "config", "user.name", "Test User"],
-        cwd=temp_project_dir,
-        check=True
-    )
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=temp_project_dir,
-        check=True
+        ["git", "config", "user.email", "test@example.com"], cwd=temp_project_dir, check=True
     )
 
     # Create initial file and commit
@@ -375,7 +355,7 @@ def test_git_initialization_for_checkpoints(temp_project_dir):
         ["git", "commit", "-m", "Initial commit"],
         cwd=temp_project_dir,
         capture_output=True,
-        text=True
+        text=True,
     )
     assert result.returncode == 0
     assert "Initial commit" in result.stdout or "1 file changed" in result.stdout
@@ -393,9 +373,7 @@ def test_metrics_database_schema(test_database):
     cursor = test_database.conn.cursor()
 
     # Check if token_usage table exists
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'"
-    )
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='token_usage'")
     table = cursor.fetchone()
     assert table is not None, "token_usage table should exist"
 
@@ -412,11 +390,10 @@ def test_metrics_database_schema(test_database):
         "input_tokens",
         "output_tokens",
         "call_type",
-        "timestamp"
+        "timestamp",
     }
 
-    assert expected_columns.issubset(columns), \
-        f"Missing columns: {expected_columns - columns}"
+    assert expected_columns.issubset(columns), f"Missing columns: {expected_columns - columns}"
 
 
 @pytest.mark.e2e
