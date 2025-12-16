@@ -25,7 +25,7 @@ import type {
 // Mock fetch
 global.fetch = jest.fn();
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://localhost:8080';
 
 describe('Metrics API Client', () => {
   const mockTokenUsage: TokenUsage = {
