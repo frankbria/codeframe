@@ -5,6 +5,7 @@ on:
     branches: [main, develop, '0*']
   pull_request:
     branches: [main, develop]
+  workflow_call:  # Allow this workflow to be called by other workflows
   # schedule:
     # Run E2E tests nightly at 2 AM UTC
     # - cron: '0 2 * * *'
