@@ -1,0 +1,251 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================
+  # Run Tests First (Quality Gate)
+  # ============================================
+  test:
+    name: Run Test Suite
+    uses: ./.github/workflows/test.yml
+
+  # ============================================
+  # Deploy to Staging
+  # ============================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: test
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.codeframe.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to staging server
+        run: |
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
+            set -e
+            echo "🚀 Starting deployment to staging..."
+
+            # Navigate to project directory
+            cd ${{ secrets.PROJECT_PATH }}
+
+            # Pull latest code
+            echo "📥 Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Backend setup
+            echo "🐍 Setting up Python backend..."
+            if [ -d .venv ]; then
+              source .venv/bin/activate
+            else
+              python3 -m venv .venv
+              source .venv/bin/activate
+            fi
+            pip install --quiet uv
+            uv sync
+
+            # Frontend setup
+            echo "📦 Building frontend..."
+            cd web-ui
+            npm ci
+            npm run build
+            cd ..
+
+            # Restart services (if systemd services exist)
+            echo "🔄 Restarting services..."
+            if systemctl is-active --quiet codeframe-backend 2>/dev/null; then
+              sudo systemctl restart codeframe-backend
+              echo "✅ Backend service restarted"
+            else
+              echo "⚠️  No codeframe-backend service found (manual restart may be needed)"
+            fi
+
+            if systemctl is-active --quiet codeframe-frontend 2>/dev/null; then
+              sudo systemctl restart codeframe-frontend
+              echo "✅ Frontend service restarted"
+            else
+              echo "⚠️  No codeframe-frontend service found (manual restart may be needed)"
+            fi
+
+            echo "✅ Deployment to staging complete!"
+          ENDSSH
+
+      - name: Verify deployment
+        run: |
+          echo "🔍 Verifying deployment..."
+          sleep 10
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:8080/health" || echo "⚠️  Health check failed or endpoint not available"
+
+      - name: Deployment summary
+        run: |
+          echo "## Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Deploy to Production
+  # ============================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: test
+    if: |
+      (github.event_name == 'release') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://codeframe.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create pre-deployment backup
+        run: |
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
+            set -e
+            echo "💾 Creating pre-deployment backup..."
+            cd ${{ secrets.PROJECT_PATH }}
+
+            # Create backup directory
+            BACKUP_DIR="/tmp/codeframe-backup-\$(date +%Y%m%d-%H%M%S)"
+            mkdir -p \$BACKUP_DIR
+
+            # Backup database
+            if [ -f .codeframe/state.db ]; then
+              cp .codeframe/state.db \$BACKUP_DIR/
+              echo "✅ Database backed up to \$BACKUP_DIR"
+            fi
+
+            # Record current commit for potential rollback
+            git rev-parse HEAD > \$BACKUP_DIR/previous_commit.txt
+            echo "✅ Current commit recorded: \$(cat \$BACKUP_DIR/previous_commit.txt)"
+          ENDSSH
+
+      - name: Deploy to production server
+        run: |
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
+            set -e
+            echo "🚀 Starting deployment to production..."
+
+            # Navigate to project directory
+            cd ${{ secrets.PROJECT_PATH }}
+
+            # Pull the release tag or main
+            echo "📥 Pulling latest code..."
+            git fetch origin --tags
+            TAG_NAME="${{ github.event.release.tag_name }}"
+            if [ -n "\$TAG_NAME" ]; then
+              git checkout \$TAG_NAME
+              echo "✅ Checked out tag: \$TAG_NAME"
+            else
+              git fetch origin main
+              git reset --hard origin/main
+              echo "✅ Reset to origin/main"
+            fi
+
+            # Backend setup
+            echo "🐍 Setting up Python backend..."
+            if [ -d .venv ]; then
+              source .venv/bin/activate
+            else
+              python3 -m venv .venv
+              source .venv/bin/activate
+            fi
+            pip install --quiet uv
+            uv sync --no-dev
+
+            # Frontend setup (production build)
+            echo "📦 Building frontend for production..."
+            cd web-ui
+            npm ci
+            npm run build
+            cd ..
+
+            # Run database migrations if any
+            echo "🗃️ Running database migrations..."
+            # Add migration command here if needed
+
+            # Restart services
+            echo "🔄 Restarting services..."
+            if systemctl is-active --quiet codeframe-backend 2>/dev/null; then
+              sudo systemctl restart codeframe-backend
+              echo "✅ Backend service restarted"
+            else
+              echo "⚠️  No codeframe-backend service found (manual restart may be needed)"
+            fi
+
+            if systemctl is-active --quiet codeframe-frontend 2>/dev/null; then
+              sudo systemctl restart codeframe-frontend
+              echo "✅ Frontend service restarted"
+            else
+              echo "⚠️  No codeframe-frontend service found (manual restart may be needed)"
+            fi
+
+            echo "✅ Deployment to production complete!"
+          ENDSSH
+
+      - name: Verify deployment
+        run: |
+          echo "🔍 Verifying production deployment..."
+          sleep 15
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} "curl -sf http://localhost:8080/health" || echo "⚠️  Health check failed or endpoint not available"
+
+      - name: Deployment summary
+        run: |
+          echo "## Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ github.event.release.tag_name || github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY

@@ -1,59 +1,87 @@
-# Session: Fix Frontend E2E Tests on CI
+# CI/CD Deployment Workflow Implementation
 
-**Date**: 2025-12-15
-**Branch**: `fix/ci-e2e-tests`
-**PR**: https://github.com/frankbria/codeframe/pull/93
-**Status**: ✅ ALL CI CHECKS PASSING
+## Session Goal
+Create GitHub Actions CI/CD workflow for automated deployment to staging and production environments using SSH-based deployment.
 
-## Summary
-Fixed 8 failing Playwright E2E tests on CI by addressing test-UI architecture mismatches.
+## GitHub Secrets Available
+- `HOST` - Server hostname
+- `USER` - SSH username
+- `SSH_KEY` - SSH private key
+- `PROJECT_PATH` - Deployment path on server
 
-## Root Cause Analysis
+## Execution Plan
 
-### The Problem
-Tests had fundamental mismatches with the actual UI architecture:
+### Phase 1: Analysis & Planning
+- Understand existing test workflow structure
+- Verify GitHub environments (staging, production)
+- Analyze deployment mechanism
 
-1. **Tab-based conditional rendering**: React only renders tab panels when active
-   - Tests expected `checkpoint-panel` in DOM, but it's only rendered when Checkpoints tab is active
+### Phase 2: Workflow Design
+- Deployment trigger strategy (main → staging, tags → production)
+- Pre-deployment quality gates
+- SSH connection security patterns
 
-2. **Selector collision**: `[data-testid^="agent-cost-"]` matched both:
-   - Data rows: `agent-cost-{agent_id}`
-   - Empty state: `agent-cost-empty`
+### Phase 3: Implementation
+- `.github/workflows/deploy.yml` - Main deployment workflow
+- Environment-specific configurations
+- SSH key handling with security best practices
 
-3. **Non-existent UI elements**: Tests clicked `metrics-tab` which doesn't exist (metrics is in Overview tab)
+### Phase 4: Quality Gates Integration
+- Test suite dependency (deploy only if tests pass)
+- Coverage threshold enforcement (≥65%)
+- Code quality checks
 
-### Failed Tests (Original)
-1. `should display all main dashboard sections` - expected `checkpoint-panel` in DOM
-2. `should display checkpoint panel` - waited for panel before clicking tab
-3. `should receive real-time updates via WebSocket` - WebSocket connected before listener
-4. `should display cost breakdown by agent` - selector collision with empty state
-5. `should display cost breakdown by model` - selector collision with empty state
-6. `should filter metrics by date range` - clicked non-existent `metrics-tab`
-7. `should display cost per task` - expected table headers when no data
-8. `should display cost trend chart` - expected data when API returned empty
+### Phase 5: Security Hardening
+- SSH key usage validation (no key exposure in logs)
+- Least-privilege deployment permissions
 
-## Fixes Applied
+### Phase 6: Testing & Validation
+- Dry-run deployment test
+- Staging deployment verification
 
-### test_dashboard.spec.ts
-- Click tabs before checking panels (React conditional rendering)
-- Fixed checkpoint panel test to click Checkpoints tab first
-- Removed metrics-tab navigation (metrics is in Overview tab)
-- Fixed WebSocket test to reload page while listening for event
+### Phase 7: Documentation
+- Deployment workflow guide
+- Environment setup instructions
 
-### test_metrics_ui.spec.ts
-- Removed metrics-tab navigation (panel is in Overview tab by default)
-- Fixed selector collision: use `:not([data-testid="...-empty"])` to exclude empty state
-- Check for empty state visibility FIRST before looking for data rows
-- Made date range filter test skip-able when API errors
-- Accept empty state as valid in cost breakdown tests
+## Risk Mitigations
+1. SSH Key Security - Use ssh-agent, never echo secrets
+2. Production Environment - Create if needed
+3. Port Conflicts - Document port configuration
+4. Zero-Downtime - Simple restart strategy for MVP
 
-## CI Results
-- **Run 1**: 8 failed (original issues)
-- **Run 2**: 22 passed, 1 failed (date filter issue)
-- **Run 3**: 35 passed, 2 failed (selector collision)
-- **Run 4**: ✅ ALL PASSED (37 tests)
+---
 
-## Commits
-1. `fix(e2e): Fix dashboard and metrics tests for tab-based UI rendering`
-2. `docs: Update session log with fix details and PR link`
-3. `fix(e2e): Handle empty state selector collision in metrics tests`
+## Implementation Complete
+
+### Files Created/Modified
+- `.github/workflows/deploy.yml` - New deployment workflow
+- `.github/workflows/test.yml` - Added `workflow_call` trigger for reusability
+
+### Deployment Triggers
+| Trigger | Environment | Condition |
+|---------|-------------|-----------|
+| Push to `main` | Staging | Automatic after tests pass |
+| GitHub Release | Production | Automatic after tests pass |
+| Manual dispatch | Either | Select environment in UI |
+
+### Required GitHub Setup
+1. **Staging environment** - Already exists with secrets (HOST, USER, SSH_KEY, PROJECT_PATH)
+2. **Production environment** - Create manually when ready:
+   - Go to repo Settings → Environments → New environment
+   - Name: `production`
+   - Add same secrets: HOST, USER, SSH_KEY, PROJECT_PATH
+   - Optional: Add required reviewers for production deployments
+
+### Server Requirements
+The deployment expects:
+- Python 3.11+ with ability to create venv
+- Node.js 20+ with npm
+- Git installed and repo cloned at PROJECT_PATH
+- Optional: systemd services `codeframe-backend` and `codeframe-frontend`
+
+### Manual Deployment
+Use workflow_dispatch in GitHub Actions UI:
+1. Go to Actions → Deploy
+2. Click "Run workflow"
+3. Select environment (staging/production)
+4. Click "Run workflow"
