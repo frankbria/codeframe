@@ -527,6 +527,9 @@ class Database:
             from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
                 migration as migration_007,
             )
+            from codeframe.persistence.migrations.migration_008_add_session_id import (
+                migration as migration_008,
+            )
             from codeframe.persistence.migrations.migration_009_add_project_agents import (
                 migration as migration_009,
             )
@@ -549,6 +552,7 @@ class Database:
             runner.register(migration_005)
             runner.register(migration_006)
             runner.register(migration_007)
+            runner.register(migration_008)
             runner.register(migration_009)
             runner.register(migration_010)
 
@@ -3334,7 +3338,7 @@ class Database:
             project_id: Project ID
             name: Checkpoint name (max 100 chars)
             description: Optional description (max 500 chars)
-            trigger: Trigger type (manual, auto, phase_transition)
+            trigger: Trigger type (manual, auto, phase_transition, pause)
             git_commit: Git commit SHA
             database_backup_path: Path to database backup file
             context_snapshot_path: Path to context snapshot JSON

@@ -242,6 +242,9 @@ class Project:
         project_id = row["id"]
         previous_status = self._status
 
+        # Create timestamp for pause operation (used in DB and result)
+        paused_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
         logger.info(f"Pausing project {project_id}: {project_config.project_name}")
         if reason:
             logger.info(f"Pause reason: {reason}")
@@ -309,10 +312,12 @@ class Project:
                 f"Created checkpoint {checkpoint.id} with git commit {checkpoint.git_commit[:7]}"
             )
 
-            # Update project status to PAUSED
+            # Update project status to PAUSED with timestamp
             self._status = ProjectStatus.PAUSED
-            self.db.update_project(project_id, {"status": self._status.value})
-            logger.info(f"Updated project {project_id} status to PAUSED")
+            self.db.update_project(
+                project_id, {"status": self._status.value, "paused_at": paused_at}
+            )
+            logger.info(f"Updated project {project_id} status to PAUSED at {paused_at}")
 
             # Calculate reduction percentage
             if total_tokens_before > 0:
@@ -322,8 +327,7 @@ class Project:
             else:
                 reduction_percentage = 0.0
 
-            # Build result
-            paused_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            # Build result (using same paused_at timestamp from above)
             result = {
                 "success": True,
                 "checkpoint_id": checkpoint.id,

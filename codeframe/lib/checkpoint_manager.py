@@ -66,7 +66,7 @@ class CheckpointManager:
         Args:
             name: Human-readable checkpoint name (max 100 chars)
             description: Optional detailed description (max 500 chars)
-            trigger: Trigger type (manual, auto, phase_transition)
+            trigger: Trigger type (manual, auto, phase_transition, pause)
 
         Returns:
             Created Checkpoint instance with all paths populated
@@ -74,7 +74,16 @@ class CheckpointManager:
         Raises:
             RuntimeError: If git operations fail
             IOError: If file operations fail
+            ValueError: If invalid trigger type provided
         """
+        # Validate trigger type
+        valid_triggers = {"manual", "auto", "phase_transition", "pause"}
+        if trigger not in valid_triggers:
+            raise ValueError(
+                f"Invalid trigger type '{trigger}'. "
+                f"Valid triggers: {', '.join(sorted(valid_triggers))}"
+            )
+
         logger.info(f"Creating checkpoint: {name}")
 
         # Step 1: Create git commit
