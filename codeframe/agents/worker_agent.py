@@ -334,7 +334,7 @@ class WorkerAgent:
         except Exception as e:
             # Log warning but don't block task execution
             # Handle both Task objects and dicts for error logging
-            task_id = task.get("id") if isinstance(task, dict) else task.id
+            task_id = task.get("id", "UNKNOWN") if isinstance(task, dict) else getattr(task, "id", "UNKNOWN")
             logger.warning(f"Failed to record token usage for task {task_id}: {e}")
             return True
 
