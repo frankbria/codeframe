@@ -3,10 +3,11 @@ Tests for Worker Agent token tracking functionality.
 
 Test coverage:
 - Token usage recording with valid response
-- Graceful degradation with missing usage info
-- Error handling scenarios
+- Zero token handling
+- Error handling scenarios (missing project_id, database errors)
 - Model name resolution
 - Integration with MetricsTracker
+- Execute task integration
 """
 
 import pytest
@@ -146,56 +147,6 @@ class TestWorkerAgentTokenTracking:
         assert usage_row[5] == 1000  # input_tokens column
         assert usage_row[6] == 500  # output_tokens column
         assert usage_row[9] == CallType.TASK_EXECUTION.value  # call_type column
-
-    @pytest.mark.asyncio
-    async def test_record_token_usage_with_no_usage_data(self, db):
-        """Test graceful handling when response has no usage data."""
-        # Setup
-        project_id = db.create_project(
-            name="test",
-            description="Test project",
-            source_type="empty",
-            workspace_path="/tmp/test",
-        )
-        issue_id = db.create_issue(
-            {
-                "project_id": project_id,
-                "issue_number": "1.0",
-                "title": "Test issue",
-                "description": "Test",
-            }
-        )
-        task_id = db.create_task_with_issue(
-            project_id=project_id,
-            issue_id=issue_id,
-            task_number="1.0.1",
-            parent_issue_number="1.0",
-            title="Test task",
-            description="Test",
-            status=TaskStatus.PENDING,
-            priority=1,
-            workflow_step=1,
-            can_parallelize=False,
-        )
-        task = db.get_task(task_id)
-
-        agent = WorkerAgent(
-            agent_id="test-001",
-            agent_type="backend",
-            provider="anthropic",
-            db=db,
-        )
-
-        # New implementation doesn't handle missing usage data - it expects explicit parameters
-        # This test is no longer relevant
-        pytest.skip("Test not applicable with new _record_token_usage signature")
-
-        # Verify no token usage was recorded
-        cursor = db.conn.cursor()
-        cursor.execute("SELECT * FROM token_usage WHERE task_id = ?", (task_id,))
-        usage_row = cursor.fetchone()
-
-        assert usage_row is None
 
     @pytest.mark.asyncio
     async def test_record_token_usage_with_zero_tokens(self, db):
