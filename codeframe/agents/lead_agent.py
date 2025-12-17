@@ -697,7 +697,15 @@ Generate the PRD in markdown format with clear sections and professional languag
                 return 0
 
             created_at = datetime.fromisoformat(created_at_str)
-            now = datetime.now()
+
+            # Normalize both datetimes to same timezone to avoid TypeError
+            if created_at.tzinfo is not None:
+                # created_at is timezone-aware, use matching timezone for now
+                now = datetime.now(tz=created_at.tzinfo)
+            else:
+                # created_at is naive, use naive now (consistent with database storage)
+                now = datetime.now()
+
             wait_minutes = int((now - created_at).total_seconds() / 60)
             return max(0, wait_minutes)
         except (ValueError, TypeError) as e:
@@ -910,9 +918,17 @@ Generate the PRD in markdown format with clear sections and professional languag
             # 4. Critical Path Bottlenecks
             for task in tasks:
                 if task["status"] in ["pending", "assigned", "in_progress", "blocked"]:
-                    dependent_count = len(
-                        self.dependency_resolver.dependents.get(task["id"], set())
-                    )
+                    # Get all dependent task IDs
+                    dependent_ids = self.dependency_resolver.dependents.get(task["id"], set())
+
+                    # Filter to only count active (non-completed) dependents
+                    active_dependents = [
+                        dep_id
+                        for dep_id in dependent_ids
+                        if any(t["id"] == dep_id and t["status"] != "completed" for t in tasks)
+                    ]
+                    dependent_count = len(active_dependents)
+
                     if dependent_count >= self.CRITICAL_PATH_THRESHOLD:
                         bottleneck = {
                             "type": "critical_path",

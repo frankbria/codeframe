@@ -484,17 +484,28 @@ class TestDetectBottlenecks:
         assert not any(bn["type"] == "dependency_wait" for bn in bottlenecks)
 
     def test_skip_agents_below_threshold(self, lead_agent):
-        """Test that agents below overload threshold are not flagged."""
-        tasks = []
+        """Test that agents below overload threshold are not flagged.
+
+        Note: In current architecture, workload is 0 or 1, so overload won't trigger.
+        This test verifies the detection logic works correctly for workload < threshold.
+        """
+        # Populate with realistic task dicts
+        tasks = [
+            {"id": 1, "status": "pending", "created_at": datetime.now().isoformat()},
+            {"id": 2, "status": "assigned", "created_at": datetime.now().isoformat()},
+            {"id": 3, "status": "in_progress", "created_at": datetime.now().isoformat()},
+        ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
         lead_agent.agent_pool_manager.get_agent_status.return_value = {
-            "agent-1": {"status": "busy", "tasks_completed": 3}  # 4 total (below threshold of 5)
+            "agent-1": {"status": "busy", "tasks_completed": 3, "current_task": 1}
         }
+        # Mock workload below threshold (simulating future architecture with task queues)
+        lead_agent._get_agent_workload = lambda: {"agent-1": 4}  # Below threshold of 5
         lead_agent.dependency_resolver.get_blocked_tasks.return_value = {}
         lead_agent.dependency_resolver.dependents = {}
 
         bottlenecks = lead_agent.detect_bottlenecks()
 
-        # Should not have any agent_overload bottlenecks
+        # Should not have any agent_overload bottlenecks (workload 4 < threshold 5)
         assert not any(bn["type"] == "agent_overload" for bn in bottlenecks)

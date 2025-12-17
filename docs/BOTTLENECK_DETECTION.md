@@ -48,21 +48,23 @@ Detects tasks stuck on blocked dependencies.
 Detects agents with excessive task assignments.
 
 **Triggers:**
-- Agent status = "busy" AND tasks_completed + 1 > 5 (configurable threshold)
+- Agent status = "busy" AND workload > AGENT_OVERLOAD_THRESHOLD (default: 5)
+- **Current Architecture**: Workload is binary (0 if idle, 1 if busy), so this bottleneck won't trigger in practice
+- **Future-Ready**: Detection logic supports task queues when agents can handle multiple concurrent tasks
 
 **Severity Levels:**
-- High: > 8 tasks
-- Medium: > 5 tasks
-- Low: <= 5 tasks
+- High: workload > 8
+- Medium: workload > 5
+- Low: workload <= 5
 
 **Example Output:**
 ```python
 {
     "type": "agent_overload",
     "agent_id": "worker-1",
-    "assigned_tasks": 8,
-    "severity": "high",
-    "recommendation": "Agent worker-1 is overloaded with 8 tasks. Consider scaling up agents or re-distributing tasks."
+    "assigned_tasks": 6,  # In future queue-based architecture
+    "severity": "medium",
+    "recommendation": "Agent worker-1 is overloaded with 6 tasks. Consider scaling up agents or re-distributing tasks."
 }
 ```
 
