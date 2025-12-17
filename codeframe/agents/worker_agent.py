@@ -306,7 +306,14 @@ class WorkerAgent:
                 project_id = task.get("project_id")
             else:
                 task_id = task.id
-                project_id = task.project_id if task.project_id is not None else self._get_project_id()
+                project_id = task.project_id
+
+            # Fail fast if project_id is missing
+            if project_id is None:
+                raise ValueError(
+                    f"Task {task_id} must have a project_id for token tracking. "
+                    "Ensure the task is properly associated with a project."
+                )
 
             await tracker.record_token_usage(
                 task_id=task_id,

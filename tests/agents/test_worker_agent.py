@@ -259,7 +259,11 @@ class TestWorkerAgentTokenTracking:
 
     @pytest.mark.asyncio
     async def test_record_token_usage_without_project_id(self, db):
-        """Test graceful handling when task has no project_id."""
+        """Test fail-fast behavior when task has no project_id.
+
+        The method raises a clear ValueError which is caught by the exception
+        handler, logged, and returns True to indicate tracking failure.
+        """
         # Setup
         # Create task without project_id
         from dataclasses import replace
@@ -282,16 +286,15 @@ class TestWorkerAgentTokenTracking:
             db=db,
         )
 
-        # Execute - should not raise exception, just log warning
+        # Execute - raises ValueError internally, caught by exception handler
         result = await agent._record_token_usage(
             task=task,
             model_name="claude-sonnet-4-5",
             input_tokens=1000,
             output_tokens=500,
         )
-        # Should succeed but log warning about missing project_id
-        # Returns True if tracking failed
-        assert result is True  # Tracking fails without project_id
+        # ValueError is caught, logged, and method returns True (tracking failed)
+        assert result is True  # Tracking fails with clear error message
 
         # Verify no token usage was recorded
         cursor = db.conn.cursor()
