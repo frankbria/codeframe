@@ -763,3 +763,281 @@ class TestDeadlockPrevention:
         with pytest.raises(ValueError, match="Circular dependencies detected"):
             # This will fail when building dependency graph
             await lead_agent.start_multi_agent_execution()
+
+
+# ============================================================================
+# Bottleneck Detection Integration Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_bottleneck_detection_end_to_end(db, api_key):
+    """Test end-to-end bottleneck detection with real components."""
+    from datetime import datetime, timedelta
+
+    # Create project
+    project_id = db.create_project(
+        name="Bottleneck Test",
+        description="Test bottleneck detection",
+        status="active"
+    )
+
+    # Create LeadAgent
+    lead_agent = LeadAgent(project_id=project_id, db=db, api_key=api_key, max_agents=5)
+    
+    # Create 10 tasks with various statuses
+    task1_id = create_test_task(db, project_id, "T-001", "Task 1", "Task 1", status="completed")
+    task2_id = create_test_task(db, project_id, "T-002", "Task 2", "Task 2", status="in_progress")
+    task3_id = create_test_task(
+        db, project_id, "T-003", "Task 3", "Task 3 (blocked)", 
+        status="blocked", depends_on=f"[{task1_id}]"
+    )
+    task4_id = create_test_task(
+        db, project_id, "T-004", "Task 4", "Task 4 (blocked)", 
+        status="blocked", depends_on=f"[{task2_id}]"
+    )
+    task5_id = create_test_task(
+        db, project_id, "T-005", "Task 5", "Task 5", 
+        status="pending", depends_on=f"[{task3_id}]"
+    )
+    
+    # Create remaining tasks
+    for i in range(6, 11):
+        create_test_task(db, project_id, f"T-{i:03d}", f"Task {i}", f"Task {i}", status="pending")
+    
+    # Set task 3 created_at to 90 minutes ago (to trigger dependency_wait)
+    # Use naive datetime to match database storage format
+    old_timestamp = (datetime.now() - timedelta(minutes=90)).isoformat()
+    db.conn.execute(
+        "UPDATE tasks SET created_at = ? WHERE id = ?",
+        (old_timestamp, task3_id)
+    )
+    db.conn.commit()
+    
+    # Create agents: 2 busy, 1 idle
+    agent1 = lead_agent.agent_pool_manager.create_agent("backend")
+    agent2 = lead_agent.agent_pool_manager.create_agent("frontend")
+    agent3 = lead_agent.agent_pool_manager.create_agent("test")
+    
+    lead_agent.agent_pool_manager.mark_agent_busy(agent1, task2_id)
+    lead_agent.agent_pool_manager.mark_agent_busy(agent2, task4_id)
+    # agent3 remains idle
+    
+    # Build dependency graph
+    tasks = db.get_project_tasks(project_id)
+    task_objects = [
+        Task(
+            id=t["id"],
+            project_id=t["project_id"],
+            task_number=t["task_number"],
+            title=t["title"],
+            description=t["description"],
+            status=TaskStatus(t["status"]),
+            depends_on=t.get("depends_on", "")
+        )
+        for t in tasks
+    ]
+    lead_agent.dependency_resolver.build_dependency_graph(task_objects)
+    
+    # Execute bottleneck detection
+    bottlenecks = lead_agent.detect_bottlenecks()
+    
+    # Assertions
+    assert len(bottlenecks) > 0, "Expected bottlenecks to be detected"
+    
+    # Check for dependency_wait bottleneck (task 3 waiting 90 minutes)
+    dependency_wait_found = any(
+        b["type"] == "dependency_wait" and b.get("task_id") == task3_id
+        for b in bottlenecks
+    )
+    assert dependency_wait_found, "Expected dependency_wait bottleneck for task 3"
+    
+    # Check for agent_idle bottleneck (1 idle agent, pending tasks exist)
+    agent_idle_found = any(b["type"] == "agent_idle" for b in bottlenecks)
+    assert agent_idle_found, "Expected agent_idle bottleneck"
+    
+    # Verify severity levels
+    for bn in bottlenecks:
+        assert "severity" in bn, f"Bottleneck {bn['type']} missing severity"
+        assert bn["severity"] in ["critical", "high", "medium", "low"], \
+            f"Invalid severity: {bn['severity']}"
+    
+    # Verify recommendations are actionable
+    for bn in bottlenecks:
+        assert "recommendation" in bn, f"Bottleneck {bn['type']} missing recommendation"
+        assert isinstance(bn["recommendation"], str), \
+            f"Recommendation should be string, got {type(bn['recommendation'])}"
+        assert len(bn["recommendation"]) > 10, \
+            f"Recommendation too short: {bn['recommendation']}"
+
+
+@pytest.mark.asyncio
+async def test_bottleneck_detection_during_coordination_loop(db, api_key):
+    """Test bottleneck detection works during active coordination loop."""
+    # Create project
+    project_id = db.create_project(
+        name="Coordination Bottleneck Test",
+        description="Test bottleneck detection during coordination",
+        status="active"
+    )
+
+    # Create LeadAgent
+    lead_agent = LeadAgent(project_id=project_id, db=db, api_key=api_key, max_agents=5)
+    
+    # Create 5 tasks with critical path scenario
+    # Task 1 blocks tasks 2, 3, 4, 5 (critical path with 4 dependents)
+    task1_id = create_test_task(db, project_id, "T-001", "Critical Task", "Task 1", status="in_progress")
+    task2_id = create_test_task(
+        db, project_id, "T-002", "Task 2", "Task 2", 
+        status="blocked", depends_on=f"[{task1_id}]"
+    )
+    task3_id = create_test_task(
+        db, project_id, "T-003", "Task 3", "Task 3", 
+        status="blocked", depends_on=f"[{task1_id}]"
+    )
+    task4_id = create_test_task(
+        db, project_id, "T-004", "Task 4", "Task 4", 
+        status="blocked", depends_on=f"[{task1_id}]"
+    )
+    task5_id = create_test_task(
+        db, project_id, "T-005", "Task 5", "Task 5", 
+        status="blocked", depends_on=f"[{task1_id}]"
+    )
+    
+    # Create 2 agents, both busy
+    agent1 = lead_agent.agent_pool_manager.create_agent("backend")
+    agent2 = lead_agent.agent_pool_manager.create_agent("test")
+    lead_agent.agent_pool_manager.mark_agent_busy(agent1, task1_id)
+    lead_agent.agent_pool_manager.mark_agent_busy(agent2, task2_id)
+    
+    # Build dependency graph
+    tasks = db.get_project_tasks(project_id)
+    task_objects = [
+        Task(
+            id=t["id"],
+            project_id=t["project_id"],
+            task_number=t["task_number"],
+            title=t["title"],
+            description=t["description"],
+            status=TaskStatus(t["status"]),
+            depends_on=t.get("depends_on", "")
+        )
+        for t in tasks
+    ]
+    lead_agent.dependency_resolver.build_dependency_graph(task_objects)
+    
+    # Execute bottleneck detection during coordination
+    bottlenecks = lead_agent.detect_bottlenecks()
+    
+    # Assertions
+    critical_path_found = any(
+        b["type"] == "critical_path" and b.get("task_id") == task1_id
+        for b in bottlenecks
+    )
+    assert critical_path_found, "Expected critical_path bottleneck for task 1"
+    
+    # Verify dependent count
+    critical_path_bn = next(
+        (b for b in bottlenecks if b["type"] == "critical_path" and b.get("task_id") == task1_id),
+        None
+    )
+    assert critical_path_bn is not None
+    assert critical_path_bn["blocked_dependents"] == 4, \
+        f"Expected 4 dependents, got {critical_path_bn['blocked_dependents']}"
+    
+    # Verify severity (4 dependents should be "high")
+    assert critical_path_bn["severity"] == "high", \
+        f"Expected 'high' severity for 4 dependents, got {critical_path_bn['severity']}"
+    
+    # Verify method doesn't interfere with coordination state
+    agent_status = lead_agent.agent_pool_manager.get_agent_status()
+    assert agent_status[agent1]["status"] == "busy", "Agent 1 status should remain busy"
+    assert agent_status[agent2]["status"] == "busy", "Agent 2 status should remain busy"
+
+
+@pytest.mark.asyncio
+async def test_bottleneck_detection_performance(db, api_key):
+    """Test bottleneck detection performance with large project."""
+    import time
+
+    # Create project
+    project_id = db.create_project(
+        name="Performance Test",
+        description="Test bottleneck detection performance",
+        status="active"
+    )
+
+    # Create LeadAgent
+    lead_agent = LeadAgent(project_id=project_id, db=db, api_key=api_key, max_agents=10)
+    
+    # Create 100 tasks with various statuses
+    task_ids = []
+    statuses = ["pending", "assigned", "in_progress", "blocked", "completed"]
+    
+    for i in range(1, 101):
+        status_idx = i % len(statuses)
+        status = statuses[status_idx]
+        task_id = create_test_task(
+            db, project_id, f"T-{i:03d}", f"Task {i}", f"Task {i}", 
+            status=status
+        )
+        task_ids.append(task_id)
+    
+    # Create complex dependency graph (50 dependency relationships)
+    # Every odd task depends on the previous even task
+    for i in range(1, 50):
+        odd_task_idx = (i * 2) - 1
+        even_task_idx = (i * 2) - 2
+        if odd_task_idx < len(task_ids) and even_task_idx < len(task_ids):
+            db.update_task(
+                task_ids[odd_task_idx],
+                {"depends_on": f"[{task_ids[even_task_idx]}]"}
+            )
+    
+    # Create 10 agents (mix of busy and idle)
+    agents = []
+    for i in range(10):
+        agent_id = lead_agent.agent_pool_manager.create_agent("backend")
+        agents.append(agent_id)
+    
+    # Mark 6 agents busy, 4 idle
+    for i in range(6):
+        if i < len(task_ids):
+            lead_agent.agent_pool_manager.mark_agent_busy(agents[i], task_ids[i])
+    
+    # Build dependency graph
+    tasks = db.get_project_tasks(project_id)
+    task_objects = [
+        Task(
+            id=t["id"],
+            project_id=t["project_id"],
+            task_number=t["task_number"],
+            title=t["title"],
+            description=t["description"],
+            status=TaskStatus(t["status"]),
+            depends_on=t.get("depends_on", "")
+        )
+        for t in tasks
+    ]
+    lead_agent.dependency_resolver.build_dependency_graph(task_objects)
+    
+    # Measure execution time
+    start_time = time.time()
+    bottlenecks = lead_agent.detect_bottlenecks()
+    execution_time = time.time() - start_time
+    
+    # Performance assertions
+    assert execution_time < 1.0, \
+        f"Bottleneck detection took {execution_time:.2f}s, expected <1s"
+    
+    # Verify results are valid
+    assert isinstance(bottlenecks, list), "Expected list of bottlenecks"
+    
+    for bn in bottlenecks:
+        assert "type" in bn, "Bottleneck missing 'type' field"
+        assert "severity" in bn, "Bottleneck missing 'severity' field"
+        assert "recommendation" in bn, "Bottleneck missing 'recommendation' field"
+        assert bn["type"] in ["dependency_wait", "agent_overload", "agent_idle", "critical_path"], \
+            f"Invalid bottleneck type: {bn['type']}"
+    
+    print(f"✅ Performance test passed: {len(bottlenecks)} bottlenecks detected in {execution_time:.3f}s")

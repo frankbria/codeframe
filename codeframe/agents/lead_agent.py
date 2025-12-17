@@ -3,6 +3,7 @@
 import json
 import logging
 import asyncio
+from datetime import datetime
 from typing import TYPE_CHECKING, List, Dict, Any, Optional
 
 from codeframe.providers.anthropic import AnthropicProvider
@@ -33,6 +34,13 @@ class LeadAgent:
     - Blocker escalation
     - Natural language conversation with Claude integration
     """
+
+    # Configuration constants for bottleneck detection
+    DEPENDENCY_WAIT_THRESHOLD_MINUTES = 60
+    AGENT_OVERLOAD_THRESHOLD = 5
+    CRITICAL_PATH_THRESHOLD = 3
+    CRITICAL_SEVERITY_WAIT_MINUTES = 120
+    HIGH_SEVERITY_WAIT_MINUTES = 60
 
     def __init__(
         self,
@@ -673,10 +681,282 @@ Generate the PRD in markdown format with clear sections and professional languag
             f"✅ Task {task_id} ({task_title}) assigned to agent {agent_id}"
         )
 
+    def _calculate_wait_time(self, task: dict) -> int:
+        """
+        Calculate minutes elapsed since task creation.
+
+        Args:
+            task: Task dictionary with created_at timestamp
+
+        Returns:
+            Wait time in minutes as int
+        """
+        try:
+            created_at_str = task.get("created_at")
+            if not created_at_str:
+                return 0
+
+            created_at = datetime.fromisoformat(created_at_str)
+
+            # Normalize both datetimes to same timezone to avoid TypeError
+            if created_at.tzinfo is not None:
+                # created_at is timezone-aware, use matching timezone for now
+                now = datetime.now(tz=created_at.tzinfo)
+            else:
+                # created_at is naive, use naive now (consistent with database storage)
+                now = datetime.now()
+
+            wait_minutes = int((now - created_at).total_seconds() / 60)
+            return max(0, wait_minutes)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to calculate wait time for task {task.get('id')}: {e}")
+            return 0
+
+    def _get_agent_workload(self) -> dict:
+        """
+        Get assigned task count per agent.
+
+        Returns:
+            Dictionary mapping agent_id to task count
+        """
+        try:
+            agent_status = self.agent_pool_manager.get_agent_status()
+            workload = {}
+
+            for agent_id, info in agent_status.items():
+                # Count 1 if busy (has current_task), 0 if idle
+                # Note: Agents process one task at a time, not queued tasks
+                if info.get("status") == "busy":
+                    workload[agent_id] = 1  # One task at a time
+                else:
+                    workload[agent_id] = 0
+
+            return workload
+        except Exception as e:
+            logger.warning(f"Failed to get agent workload: {e}")
+            return {}
+
+    def _get_blocking_relationships(self) -> dict:
+        """
+        Get mapping of blocked tasks to their blockers.
+
+        Returns:
+            Dictionary mapping task_id to list of blocking task_ids
+        """
+        try:
+            return self.dependency_resolver.get_blocked_tasks()
+        except Exception as e:
+            logger.warning(f"Failed to get blocking relationships: {e}")
+            return {}
+
+    def _determine_severity(self, bottleneck_type: str, metrics: dict) -> str:
+        """
+        Determine severity level based on bottleneck type and metrics.
+
+        Args:
+            bottleneck_type: Type of bottleneck ('dependency_wait', 'agent_overload', etc.)
+            metrics: Dictionary with relevant metrics
+
+        Returns:
+            Severity level: 'critical', 'high', 'medium', or 'low'
+        """
+        if bottleneck_type == "dependency_wait":
+            wait_time = metrics.get("wait_time_minutes", 0)
+            if wait_time >= self.CRITICAL_SEVERITY_WAIT_MINUTES:
+                return "critical"
+            elif wait_time >= self.HIGH_SEVERITY_WAIT_MINUTES:
+                return "high"
+            else:
+                return "medium"
+
+        elif bottleneck_type == "agent_overload":
+            assigned_tasks = metrics.get("assigned_tasks", 0)
+            if assigned_tasks > 8:
+                return "high"
+            elif assigned_tasks > self.AGENT_OVERLOAD_THRESHOLD:
+                return "medium"
+            else:
+                return "low"
+
+        elif bottleneck_type == "agent_idle":
+            return "medium"
+
+        elif bottleneck_type == "critical_path":
+            blocked_dependents = metrics.get("blocked_dependents", 0)
+            if blocked_dependents >= 5:
+                return "critical"
+            elif blocked_dependents >= self.CRITICAL_PATH_THRESHOLD:
+                return "high"
+            else:
+                return "medium"
+
+        return "low"
+
+    def _generate_recommendation(self, bottleneck: dict) -> str:
+        """
+        Generate recommendation for resolving bottleneck.
+
+        Args:
+            bottleneck: Bottleneck descriptor dictionary
+
+        Returns:
+            Recommendation string
+        """
+        bottleneck_type = bottleneck.get("type")
+
+        if bottleneck_type == "dependency_wait":
+            task_id = bottleneck.get("task_id")
+            blocking_task_id = bottleneck.get("blocking_task_id")
+            wait_time = bottleneck.get("wait_time_minutes", 0)
+            return (
+                f"Task {task_id} has been waiting {wait_time}min on task {blocking_task_id}. "
+                f"Investigate or manually unblock dependency."
+            )
+
+        elif bottleneck_type == "agent_overload":
+            agent_id = bottleneck.get("agent_id")
+            assigned_tasks = bottleneck.get("assigned_tasks", 0)
+            return (
+                f"Agent {agent_id} is overloaded with {assigned_tasks} tasks. "
+                f"Consider scaling up agents or re-distributing tasks."
+            )
+
+        elif bottleneck_type == "agent_idle":
+            idle_agents = bottleneck.get("idle_agents", [])
+            return (
+                f"Agents idle ({', '.join(idle_agents)}) while pending tasks exist. "
+                f"Check task assignment logic or dependencies."
+            )
+
+        elif bottleneck_type == "critical_path":
+            task_id = bottleneck.get("task_id")
+            blocked_dependents = bottleneck.get("blocked_dependents", 0)
+            return (
+                f"Task {task_id} blocks {blocked_dependents} dependent tasks. "
+                f"Prioritize this task or parallelize blocking dependencies."
+            )
+
+        return "Unknown bottleneck type"
+
     def detect_bottlenecks(self) -> list:
-        """Detect workflow bottlenecks."""
-        # TODO: Implement bottleneck detection
-        return []
+        """
+        Detect workflow bottlenecks.
+
+        Identifies four types of bottlenecks:
+        1. Dependency wait: Tasks blocked on dependencies for >60min
+        2. Agent overload: Agents with >5 assigned tasks
+        3. Agent idle: Idle agents while pending tasks exist
+        4. Critical path: Tasks blocking >3 dependent tasks
+
+        Returns:
+            List of bottleneck descriptors, each with:
+                - type: Bottleneck type
+                - severity: 'critical', 'high', 'medium', or 'low'
+                - recommendation: Human-readable recommendation
+                - Additional type-specific fields
+        """
+        bottlenecks = []
+
+        try:
+            # Query data sources
+            tasks = self.db.get_project_tasks(self.project_id)
+            agent_status = self.agent_pool_manager.get_agent_status()
+            blocked_tasks = self._get_blocking_relationships()
+
+            if not tasks:
+                logger.debug("No tasks found for bottleneck detection")
+                return []
+
+            # 1. Dependency Wait Bottlenecks
+            for task in tasks:
+                if task["status"] == "blocked" or task["id"] in blocked_tasks:
+                    wait_minutes = self._calculate_wait_time(task)
+                    if wait_minutes >= self.DEPENDENCY_WAIT_THRESHOLD_MINUTES:
+                        blocking_task_ids = blocked_tasks.get(task["id"], [])
+                        bottleneck = {
+                            "type": "dependency_wait",
+                            "task_id": task["id"],
+                            "wait_time_minutes": wait_minutes,
+                            "blocking_task_id": blocking_task_ids[0] if blocking_task_ids else None,
+                            "severity": self._determine_severity(
+                                "dependency_wait", {"wait_time_minutes": wait_minutes}
+                            ),
+                        }
+                        bottleneck["recommendation"] = self._generate_recommendation(bottleneck)
+                        bottlenecks.append(bottleneck)
+
+            # 2. Agent Overload Bottlenecks
+            workload = self._get_agent_workload()
+            for agent_id, task_count in workload.items():
+                if task_count > self.AGENT_OVERLOAD_THRESHOLD:
+                    bottleneck = {
+                        "type": "agent_overload",
+                        "agent_id": agent_id,
+                        "assigned_tasks": task_count,
+                        "severity": self._determine_severity(
+                            "agent_overload", {"assigned_tasks": task_count}
+                        ),
+                    }
+                    bottleneck["recommendation"] = self._generate_recommendation(bottleneck)
+                    bottlenecks.append(bottleneck)
+
+            # 3. Agent Idle Bottlenecks
+            idle_agents = [
+                aid for aid, info in agent_status.items() if info.get("status") == "idle"
+            ]
+            pending_tasks = [t for t in tasks if t["status"] == "pending"]
+
+            if idle_agents and pending_tasks:
+                bottleneck = {
+                    "type": "agent_idle",
+                    "idle_agents": idle_agents,
+                    "severity": "medium",
+                }
+                bottleneck["recommendation"] = self._generate_recommendation(bottleneck)
+                bottlenecks.append(bottleneck)
+
+            # 4. Critical Path Bottlenecks
+            for task in tasks:
+                if task["status"] in ["pending", "assigned", "in_progress", "blocked"]:
+                    # Get all dependent task IDs
+                    dependent_ids = self.dependency_resolver.dependents.get(task["id"], set())
+
+                    # Filter to only count active (non-completed) dependents
+                    active_dependents = [
+                        dep_id
+                        for dep_id in dependent_ids
+                        if any(t["id"] == dep_id and t["status"] != "completed" for t in tasks)
+                    ]
+                    dependent_count = len(active_dependents)
+
+                    if dependent_count >= self.CRITICAL_PATH_THRESHOLD:
+                        bottleneck = {
+                            "type": "critical_path",
+                            "task_id": task["id"],
+                            "blocked_dependents": dependent_count,
+                            "severity": self._determine_severity(
+                                "critical_path", {"blocked_dependents": dependent_count}
+                            ),
+                        }
+                        bottleneck["recommendation"] = self._generate_recommendation(bottleneck)
+                        bottlenecks.append(bottleneck)
+
+            # Log summary
+            if bottlenecks:
+                logger.warning(f"Detected {len(bottlenecks)} workflow bottlenecks")
+                for bn in bottlenecks:
+                    if bn["severity"] in ["critical", "high"]:
+                        logger.warning(
+                            f"  {bn['severity'].upper()}: {bn['type']} - {bn['recommendation']}"
+                        )
+            else:
+                logger.info("No workflow bottlenecks detected")
+
+            return bottlenecks
+
+        except Exception as e:
+            logger.error(f"Failed to detect bottlenecks: {e}", exc_info=True)
+            return []
 
     def generate_issues(self, sprint_number: int) -> List[Issue]:
         """Generate issues from PRD for given sprint number.
