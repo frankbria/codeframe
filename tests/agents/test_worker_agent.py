@@ -13,7 +13,7 @@ import pytest
 import os
 from unittest.mock import Mock, AsyncMock, patch
 from codeframe.agents.worker_agent import WorkerAgent
-from codeframe.core.models import Task, AgentMaturity, CallType, TaskStatus, Issue
+from codeframe.core.models import Task, AgentMaturity, CallType, TaskStatus
 from codeframe.persistence.database import Database
 
 
