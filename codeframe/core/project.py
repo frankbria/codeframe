@@ -89,13 +89,34 @@ class Project:
                 "Get your API key at: https://console.anthropic.com/"
             )
 
+        # Validate API key format (Anthropic keys start with sk-ant-)
+        if not api_key.startswith("sk-ant-"):
+            raise RuntimeError(
+                "Invalid ANTHROPIC_API_KEY format. Expected key starting with 'sk-ant-'.\n"
+                "Check your API key at: https://console.anthropic.com/"
+            )
+
         # Get project from database
         project_config = self.config.load()
         project_record = self.db.get_project(project_config.project_name)
         if not project_record:
             raise ValueError(f"Project '{project_config.project_name}' not found in database")
 
-        project_id = project_record["id"]
+        # Validate database response structure (Zero Trust)
+        if not isinstance(project_record, dict):
+            raise ValueError(f"Invalid project record format from database")
+
+        project_id = project_record.get("id")
+        if not project_id:
+            raise ValueError(
+                f"Project '{project_config.project_name}' has invalid record: missing 'id' field"
+            )
+
+        if not isinstance(project_id, int):
+            raise ValueError(
+                f"Project '{project_config.project_name}' has invalid id: expected int, got {type(project_id).__name__}"
+            )
+
         previous_status = self._status
 
         try:
@@ -257,13 +278,33 @@ class Project:
                 "Get your API key at: https://console.anthropic.com/"
             )
 
+        # Validate API key format (Anthropic keys start with sk-ant-)
+        if not api_key.startswith("sk-ant-"):
+            raise RuntimeError(
+                "Invalid ANTHROPIC_API_KEY format. Expected key starting with 'sk-ant-'.\n"
+                "Check your API key at: https://console.anthropic.com/"
+            )
+
         # Get project from database
         project_config = self.config.load()
         project_record = self.db.get_project(project_config.project_name)
         if not project_record:
             raise ValueError(f"Project '{project_config.project_name}' not found in database")
 
-        project_id = project_record["id"]
+        # Validate database response structure (Zero Trust)
+        if not isinstance(project_record, dict):
+            raise ValueError(f"Invalid project record format from database")
+
+        project_id = project_record.get("id")
+        if not project_id:
+            raise ValueError(
+                f"Project '{project_config.project_name}' has invalid record: missing 'id' field"
+            )
+
+        if not isinstance(project_id, int):
+            raise ValueError(
+                f"Project '{project_config.project_name}' has invalid id: expected int, got {type(project_id).__name__}"
+            )
 
         # Create and cache new instance
         logger.debug("Creating new LeadAgent instance (fallback mode)")
