@@ -1,10 +1,14 @@
 """Project management for CodeFRAME."""
 
+import logging
+import os
 from pathlib import Path
 from typing import Optional
 from codeframe.core.config import Config, ProjectConfig
 from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
+
+logger = logging.getLogger(__name__)
 
 
 class Project:
@@ -15,6 +19,7 @@ class Project:
         self.config = Config(project_dir)
         self.db: Optional[Database] = None
         self._status: ProjectStatus = ProjectStatus.INIT
+        self._lead_agent: Optional["LeadAgent"] = None  # type: ignore
 
     @classmethod
     def create(cls, project_name: str, project_dir: Optional[Path] = None) -> "Project":
@@ -59,11 +64,95 @@ class Project:
         return project
 
     def start(self) -> None:
-        """Start project execution."""
-        # TODO: Implement Lead Agent initialization and execution
-        self._status = ProjectStatus.ACTIVE
-        print(f"🚀 Starting project: {self.config.load().project_name}")
-        print("Lead Agent will begin Socratic discovery...")
+        """Start project execution.
+
+        Initializes LeadAgent and begins either:
+        - Discovery phase if no PRD exists
+        - Task execution if PRD already exists
+
+        Raises:
+            RuntimeError: If database not initialized or API key missing
+            ValueError: If project not found in database
+        """
+        from codeframe.agents.lead_agent import LeadAgent
+
+        # Validate prerequisites
+        if not self.db:
+            raise RuntimeError(
+                "Database not initialized. Call Project.create() or initialize database first."
+            )
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY environment variable is required.\n"
+                "Get your API key at: https://console.anthropic.com/"
+            )
+
+        # Get project from database
+        project_config = self.config.load()
+        project_record = self.db.get_project(project_config.project_name)
+        if not project_record:
+            raise ValueError(f"Project '{project_config.project_name}' not found in database")
+
+        project_id = project_record["id"]
+        previous_status = self._status
+
+        try:
+            # Initialize LeadAgent
+            logger.info(f"Initializing LeadAgent for project {project_id}")
+            self._lead_agent = LeadAgent(
+                project_id=project_id,
+                db=self.db,
+                api_key=api_key
+            )
+
+            # Check for existing PRD
+            try:
+                prd_content = self._lead_agent._load_prd_from_database()
+                has_prd = prd_content is not None
+            except ValueError:
+                has_prd = False
+
+            if has_prd:
+                # Resume with existing PRD
+                logger.info("Resuming project with existing PRD")
+                print(f"▶️  Resuming project: {project_config.project_name}")
+                print("   Found existing PRD - ready for task execution")
+                print("   Note: Call start_multi_agent_execution() on the LeadAgent to begin")
+
+                self._status = ProjectStatus.ACTIVE
+                activity_message = "Resuming with existing PRD (ready for task execution)"
+
+            else:
+                # Start discovery phase
+                logger.info("Starting discovery phase for new project")
+                print(f"🚀 Starting project: {project_config.project_name}")
+                print("   Beginning Socratic discovery...")
+
+                first_question = self._lead_agent.start_discovery()
+                print(f"\n{first_question}")
+
+                self._status = ProjectStatus.PLANNING
+                activity_message = "Starting discovery phase"
+
+            # Update database status
+            self.db.update_project(project_id, {"status": self._status.value})
+            logger.debug(f"Updated project status to {self._status.value}")
+
+            # Note: WebSocket broadcasts should be done by the UI layer when needed
+            # The core Project class doesn't require WebSocket functionality
+            logger.debug(f"Project started: {activity_message}")
+
+        except Exception as e:
+            # Rollback status on error
+            logger.error(f"Failed to start project: {e}", exc_info=True)
+            try:
+                self._status = previous_status
+                self.db.update_project(project_id, {"status": previous_status.value})
+            except Exception as rollback_err:
+                logger.error(f"Failed to rollback status: {rollback_err}")
+            raise
 
     def pause(self) -> None:
         """Pause project execution."""
@@ -139,11 +228,52 @@ class Project:
         }
 
     def get_lead_agent(self):
-        """Get Lead Agent instance for interaction."""
-        # TODO: Implement Lead Agent retrieval
+        """Get Lead Agent instance for interaction.
+
+        Note: Call start() first to properly initialize the LeadAgent.
+        This method returns the cached instance created by start(), or
+        creates a new instance as fallback (requires API key in environment).
+
+        Returns:
+            LeadAgent instance
+
+        Raises:
+            RuntimeError: If database not initialized or API key missing (fallback mode)
+        """
         from codeframe.agents.lead_agent import LeadAgent
 
-        return LeadAgent(self)
+        # Return cached instance if available (set by start())
+        if self._lead_agent is not None:
+            return self._lead_agent
+
+        # Fallback: create new instance (requires API key)
+        if not self.db:
+            raise RuntimeError("Database not initialized. Call Project.create() first.")
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY environment variable is required.\n"
+                "Get your API key at: https://console.anthropic.com/"
+            )
+
+        # Get project from database
+        project_config = self.config.load()
+        project_record = self.db.get_project(project_config.project_name)
+        if not project_record:
+            raise ValueError(f"Project '{project_config.project_name}' not found in database")
+
+        project_id = project_record["id"]
+
+        # Create and cache new instance
+        logger.debug("Creating new LeadAgent instance (fallback mode)")
+        self._lead_agent = LeadAgent(
+            project_id=project_id,
+            db=self.db,
+            api_key=api_key
+        )
+
+        return self._lead_agent
 
     def chat(self, message: str) -> str:
         """
