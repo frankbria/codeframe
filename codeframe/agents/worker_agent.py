@@ -248,10 +248,11 @@ class WorkerAgent:
             from codeframe.lib.metrics_tracker import MetricsTracker
 
             tracker = MetricsTracker(db=self.db)
+            project_id = task.project_id if task.project_id is not None else self._get_project_id()
             await tracker.record_token_usage(
                 task_id=task.id,
                 agent_id=self.agent_id,
-                project_id=task.project_id or self._get_project_id(),
+                project_id=project_id,
                 model_name=model_name,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
