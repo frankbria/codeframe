@@ -150,7 +150,11 @@ class TestWorkerAgentTokenTracking:
 
     @pytest.mark.asyncio
     async def test_record_token_usage_with_zero_tokens(self, db):
-        """Test graceful handling when usage has zero tokens."""
+        """Test no-op behavior when both input and output tokens are zero.
+
+        Zero tokens means zero cost, so recording is skipped to avoid
+        database bloat. Returns False (success) but creates no record.
+        """
         # Setup
         project_id = db.create_project(
             name="test",
@@ -187,26 +191,23 @@ class TestWorkerAgentTokenTracking:
             db=db,
         )
 
-        # Execute - should not raise exception with zero tokens
-        # Note: The new implementation records zero tokens (changed behavior)
+        # Execute - zero tokens should be skipped (no-op)
         result = await agent._record_token_usage(
             task=task,
             model_name="claude-sonnet-4-5",
             input_tokens=0,
             output_tokens=0,
         )
-        # False means tracking succeeded
+        # False means operation succeeded (skipped recording)
         assert result is False
 
-        # Verify token usage WAS recorded (new implementation records zero tokens)
+        # Verify no token usage was recorded (zero tokens = no-op)
         cursor = db.conn.cursor()
         cursor.execute("SELECT * FROM token_usage WHERE task_id = ?", (task_id,))
         usage_row = cursor.fetchone()
 
-        # Zero tokens are now recorded
-        assert usage_row is not None
-        assert usage_row[5] == 0  # input_tokens column
-        assert usage_row[6] == 0  # output_tokens column
+        # No record created for zero tokens
+        assert usage_row is None
 
     @pytest.mark.asyncio
     async def test_record_token_usage_without_project_id(self, db):

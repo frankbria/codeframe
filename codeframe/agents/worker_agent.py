@@ -315,6 +315,11 @@ class WorkerAgent:
                     "Ensure the task is properly associated with a project."
                 )
 
+            # Skip recording if both tokens are zero (no-op for zero usage)
+            if input_tokens == 0 and output_tokens == 0:
+                logger.debug(f"Skipping token tracking for task {task_id}: zero tokens")
+                return False
+
             await tracker.record_token_usage(
                 task_id=task_id,
                 agent_id=self.agent_id,
