@@ -23,9 +23,14 @@ def mock_db():
     db.conn = Mock()
     db.conn.cursor = Mock()
 
-    # Mock cursor with fetchone returning project_id
+    # Mock cursor with fetchone returning project_id and paused_at
     mock_cursor = Mock()
-    mock_cursor.fetchone = Mock(return_value={"id": 1})
+    # First call returns project_id, second call returns paused_at (None initially)
+    mock_cursor.fetchone = Mock(side_effect=[
+        {"id": 1},           # First query: SELECT id FROM projects
+        {"paused_at": None}  # Second query: SELECT paused_at FROM projects
+    ])
+    mock_cursor.execute = Mock()
     db.conn.cursor.return_value = mock_cursor
 
     db.update_project = Mock()
@@ -318,10 +323,9 @@ class TestProjectPauseErrorHandling:
         mock_checkpoint_mgr_class.return_value = mock_checkpoint_mgr
 
         # Make rollback also fail
-        project_with_db.db.update_project.side_effect = [
-            None,  # First call (in pause)
-            Exception("Rollback failed")  # Second call (rollback)
-        ]
+        # Note: update_project is only called during rollback when checkpoint fails
+        # (checkpoint creation happens before update_project in pause flow)
+        project_with_db.db.update_project.side_effect = Exception("Rollback failed")
         project_with_db.db.get_agents_for_project.return_value = []
 
         # Execute - should raise original error, not rollback error
@@ -363,11 +367,12 @@ class TestProjectResumeWithPausedAt:
         # Execute resume
         project_with_db.resume()
 
-        # Verify paused_at was cleared
+        # Verify both status and paused_at were updated
         assert project_with_db.db.update_project.call_count == 1
         call_args = project_with_db.db.update_project.call_args[0]
         assert call_args[0] == 1  # project_id
-        assert call_args[1] == {"paused_at": None}
+        assert call_args[1]["status"] == ProjectStatus.ACTIVE.value
+        assert call_args[1]["paused_at"] is None
 
     @patch('codeframe.lib.checkpoint_manager.CheckpointManager')
     def test_resume_from_specific_checkpoint(
@@ -397,9 +402,10 @@ class TestProjectResumeWithPausedAt:
         # Verify correct checkpoint was used
         project_with_db.db.get_checkpoint_by_id.assert_called_once_with(42)
 
-        # Verify paused_at cleared
+        # Verify both status and paused_at updated
         call_args = project_with_db.db.update_project.call_args[0]
-        assert call_args[1] == {"paused_at": None}
+        assert call_args[1]["status"] == ProjectStatus.ACTIVE.value
+        assert call_args[1]["paused_at"] is None
 
     @patch('codeframe.lib.checkpoint_manager.CheckpointManager')
     def test_resume_raises_error_when_no_checkpoints_exist(

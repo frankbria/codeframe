@@ -242,6 +242,10 @@ class Project:
         project_id = row["id"]
         previous_status = self._status
 
+        # Get previous paused_at value for rollback
+        cursor.execute("SELECT paused_at FROM projects WHERE id = ?", (project_id,))
+        previous_paused_at = cursor.fetchone()["paused_at"]
+
         # Create timestamp for pause operation (used in DB and result)
         paused_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
@@ -352,12 +356,18 @@ class Project:
             return result
 
         except Exception as e:
-            # Rollback status on error
+            # Rollback status and paused_at on error
             logger.error(f"Failed to pause project: {e}", exc_info=True)
             try:
                 self._status = previous_status
                 if "project_id" in locals():
-                    self.db.update_project(project_id, {"status": previous_status.value})
+                    self.db.update_project(
+                        project_id,
+                        {
+                            "status": previous_status.value,
+                            "paused_at": previous_paused_at,
+                        },
+                    )
                     logger.info(
                         f"Rolled back project {project_id} status to {previous_status.value}"
                     )
@@ -415,10 +425,15 @@ class Project:
         result = checkpoint_mgr.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
         if result["success"]:
-            # Clear paused_at timestamp when resuming
-            self.db.update_project(project_id, {"paused_at": None})
-
+            # Clear paused_at timestamp and mark project ACTIVE in database
             self._status = ProjectStatus.ACTIVE
+            self.db.update_project(
+                project_id,
+                {
+                    "status": self._status.value,
+                    "paused_at": None,
+                },
+            )
             print(f"✓ Project resumed successfully from '{checkpoint.name}'")
             print(f"   {result.get('items_restored', 0)} context items restored")
         else:
