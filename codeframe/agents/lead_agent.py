@@ -1028,6 +1028,18 @@ Generate the PRD in markdown format with clear sections and professional languag
             logger.error(f"Failed to generate issues: {e}", exc_info=True)
             raise
 
+    def has_existing_prd(self) -> bool:
+        """Check if project has an existing PRD.
+
+        Returns:
+            True if PRD exists, False otherwise
+        """
+        try:
+            prd_content = self._load_prd_from_database()
+            return prd_content is not None
+        except ValueError:
+            return False
+
     def _load_prd_from_database(self) -> str:
         """Load PRD content from database.
 

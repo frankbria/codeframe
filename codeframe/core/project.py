@@ -24,6 +24,62 @@ class Project:
         self._status: ProjectStatus = ProjectStatus.INIT
         self._lead_agent: Optional["LeadAgent"] = None
 
+    def _get_validated_project_id(self) -> tuple[int, str]:
+        """Validate prerequisites and return project_id and API key.
+
+        This method encapsulates all validation logic for both start() and get_lead_agent().
+
+        Returns:
+            Tuple of (project_id, api_key)
+
+        Raises:
+            RuntimeError: If database not initialized or API key missing/invalid
+            ValueError: If project not found or has invalid structure
+        """
+        # Validate database
+        if not self.db:
+            raise RuntimeError(
+                "Database not initialized. Call Project.create() or initialize database first."
+            )
+
+        # Validate API key existence
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY environment variable is required.\n"
+                "Get your API key at: https://console.anthropic.com/"
+            )
+
+        # Validate API key format (Anthropic keys start with sk-ant-)
+        if not api_key.startswith("sk-ant-"):
+            raise RuntimeError(
+                "Invalid ANTHROPIC_API_KEY format. Expected key starting with 'sk-ant-'.\n"
+                "Check your API key at: https://console.anthropic.com/"
+            )
+
+        # Get project from database
+        project_config = self.config.load()
+        project_record = self.db.get_project(project_config.project_name)
+        if not project_record:
+            raise ValueError(f"Project '{project_config.project_name}' not found in database")
+
+        # Validate database response structure (Zero Trust)
+        if not isinstance(project_record, dict):
+            raise ValueError("Invalid project record format from database")
+
+        project_id = project_record.get("id")
+        if not project_id:
+            raise ValueError(
+                f"Project '{project_config.project_name}' has invalid record: missing 'id' field"
+            )
+
+        if not isinstance(project_id, int):
+            raise ValueError(
+                f"Project '{project_config.project_name}' has invalid id: expected int, got {type(project_id).__name__}"
+            )
+
+        return project_id, api_key
+
     @classmethod
     def create(cls, project_name: str, project_dir: Optional[Path] = None) -> "Project":
         """
@@ -79,47 +135,9 @@ class Project:
         """
         from codeframe.agents.lead_agent import LeadAgent
 
-        # Validate prerequisites
-        if not self.db:
-            raise RuntimeError(
-                "Database not initialized. Call Project.create() or initialize database first."
-            )
-
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY environment variable is required.\n"
-                "Get your API key at: https://console.anthropic.com/"
-            )
-
-        # Validate API key format (Anthropic keys start with sk-ant-)
-        if not api_key.startswith("sk-ant-"):
-            raise RuntimeError(
-                "Invalid ANTHROPIC_API_KEY format. Expected key starting with 'sk-ant-'.\n"
-                "Check your API key at: https://console.anthropic.com/"
-            )
-
-        # Get project from database
+        # Validate prerequisites and get project_id
+        project_id, api_key = self._get_validated_project_id()
         project_config = self.config.load()
-        project_record = self.db.get_project(project_config.project_name)
-        if not project_record:
-            raise ValueError(f"Project '{project_config.project_name}' not found in database")
-
-        # Validate database response structure (Zero Trust)
-        if not isinstance(project_record, dict):
-            raise ValueError("Invalid project record format from database")
-
-        project_id = project_record.get("id")
-        if not project_id:
-            raise ValueError(
-                f"Project '{project_config.project_name}' has invalid record: missing 'id' field"
-            )
-
-        if not isinstance(project_id, int):
-            raise ValueError(
-                f"Project '{project_config.project_name}' has invalid id: expected int, got {type(project_id).__name__}"
-            )
-
         previous_status = self._status
 
         try:
@@ -132,11 +150,7 @@ class Project:
             )
 
             # Check for existing PRD
-            try:
-                prd_content = self._lead_agent._load_prd_from_database()
-                has_prd = prd_content is not None
-            except ValueError:
-                has_prd = False
+            has_prd = self._lead_agent.has_existing_prd()
 
             if has_prd:
                 # Resume with existing PRD
@@ -173,7 +187,10 @@ class Project:
             logger.error(f"Failed to start project: {e}", exc_info=True)
             try:
                 self._status = previous_status
-                self.db.update_project(project_id, {"status": previous_status.value})
+                # Only attempt database rollback if project_id was successfully retrieved
+                if 'project_id' in locals():
+                    self.db.update_project(project_id, {"status": previous_status.value})
+                    logger.info(f"Rolled back project {project_id} status to {previous_status.value}")
             except Exception as rollback_err:
                 logger.error(f"Failed to rollback status: {rollback_err}")
             raise
@@ -270,46 +287,9 @@ class Project:
         if self._lead_agent is not None:
             return self._lead_agent
 
-        # Fallback: create new instance (requires API key)
-        if not self.db:
-            raise RuntimeError("Database not initialized. Call Project.create() first.")
+        # Fallback: create new instance using shared validation logic
+        project_id, api_key = self._get_validated_project_id()
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY environment variable is required.\n"
-                "Get your API key at: https://console.anthropic.com/"
-            )
-
-        # Validate API key format (Anthropic keys start with sk-ant-)
-        if not api_key.startswith("sk-ant-"):
-            raise RuntimeError(
-                "Invalid ANTHROPIC_API_KEY format. Expected key starting with 'sk-ant-'.\n"
-                "Check your API key at: https://console.anthropic.com/"
-            )
-
-        # Get project from database
-        project_config = self.config.load()
-        project_record = self.db.get_project(project_config.project_name)
-        if not project_record:
-            raise ValueError(f"Project '{project_config.project_name}' not found in database")
-
-        # Validate database response structure (Zero Trust)
-        if not isinstance(project_record, dict):
-            raise ValueError("Invalid project record format from database")
-
-        project_id = project_record.get("id")
-        if not project_id:
-            raise ValueError(
-                f"Project '{project_config.project_name}' has invalid record: missing 'id' field"
-            )
-
-        if not isinstance(project_id, int):
-            raise ValueError(
-                f"Project '{project_config.project_name}' has invalid id: expected int, got {type(project_id).__name__}"
-            )
-
-        # Create and cache new instance
         logger.debug("Creating new LeadAgent instance (fallback mode)")
         self._lead_agent = LeadAgent(
             project_id=project_id,
