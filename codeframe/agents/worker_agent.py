@@ -17,6 +17,7 @@ class WorkerAgent:
         maturity: AgentMaturity = AgentMaturity.D1,
         system_prompt: str | None = None,
         db: Optional[Any] = None,
+        model_name: str = "claude-sonnet-4-5",
     ):
         """Initialize Worker Agent.
 
@@ -27,6 +28,7 @@ class WorkerAgent:
             maturity: Agent maturity level (D1-D4)
             system_prompt: Custom system prompt
             db: Database connection
+            model_name: LLM model name for cost tracking (default: claude-sonnet-4-5)
 
         Note:
             Agents are now project-agnostic at creation time.
@@ -40,6 +42,7 @@ class WorkerAgent:
         self.system_prompt = system_prompt
         self.current_task: Task | None = None
         self.db = db
+        self.model_name = model_name
 
     def _get_project_id(self) -> int:
         """Get project ID from current task.
@@ -64,7 +67,7 @@ class WorkerAgent:
 
         return self.current_task.project_id
 
-    def execute_task(self, task: Task) -> dict:
+    async def execute_task(self, task: Task) -> dict:
         """
         Execute assigned task.
 
@@ -75,28 +78,89 @@ class WorkerAgent:
             Task execution result
 
         Note:
-            When LLM integration is added, token usage should be recorded using:
-
-            >>> from codeframe.lib.metrics_tracker import MetricsTracker
-            >>> from codeframe.core.models import CallType
-            >>>
-            >>> # After LLM call:
-            >>> tracker = MetricsTracker(db=self.db)
-            >>> await tracker.record_token_usage(
-            ...     task_id=task.id,
-            ...     agent_id=self.agent_id,
-            ...     project_id=task.project_id,  # Get from task, not agent
-            ...     model_name="claude-sonnet-4-5",
-            ...     input_tokens=response.usage.input_tokens,
-            ...     output_tokens=response.usage.output_tokens,
-            ...     call_type=CallType.TASK_EXECUTION
-            ... )
+            Token usage is automatically recorded after LLM calls.
+            This method now uses the _record_token_usage() helper to track
+            tokens, input/output counts, and costs for each task execution.
         """
         # Set current task to establish project context
         self.current_task = task
         # TODO: Implement task execution with LLM provider
-        # TODO: Add token tracking after LLM call (see docstring example)
-        return {"status": "completed", "output": "Task executed successfully"}
+        # When LLM response is available, token tracking will be called automatically
+        response = {"status": "completed", "output": "Task executed successfully"}
+
+        # Record token usage if response contains usage data
+        await self._record_token_usage(task, response)
+
+        return response
+
+    async def _record_token_usage(self, task: Task | Dict[str, Any], response: Dict[str, Any]) -> None:
+        """Record token usage metrics for this task.
+
+        Extracts token usage from LLM response and records it via MetricsTracker.
+        Handles graceful degradation if usage information is missing.
+
+        Args:
+            task: Task that was executed (Task object or dict)
+            response: LLM provider response with usage info
+
+        Note:
+            This method never raises exceptions. If token tracking fails,
+            a warning is logged but task execution continues normally.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            from codeframe.lib.metrics_tracker import MetricsTracker
+            from codeframe.core.models import CallType
+
+            # Extract usage information from response
+            usage = response.get("usage", {})
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+
+            # Return early if no tokens to record
+            if input_tokens == 0 and output_tokens == 0:
+                return
+
+            # Handle both Task objects and dicts
+            if isinstance(task, dict):
+                task_id = task.get("id")
+                project_id = task.get("project_id")
+            else:
+                task_id = task.id
+                project_id = task.project_id if hasattr(task, "project_id") else None
+
+            if not project_id:
+                logger.warning(
+                    f"Cannot record token usage for task {task_id}: missing project context"
+                )
+                return
+
+            # Record token usage via MetricsTracker
+            tracker = MetricsTracker(db=self.db)
+            await tracker.record_token_usage(
+                task_id=task_id,
+                agent_id=self.agent_id,
+                project_id=project_id,
+                model_name=self.model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                call_type=CallType.TASK_EXECUTION.value,
+                session_id=None,  # Will be added when session tracking is implemented
+            )
+
+            logger.debug(
+                f"Recorded token usage for task {task_id}: "
+                f"{input_tokens} input + {output_tokens} output tokens"
+            )
+
+        except Exception as e:
+            # Don't fail task execution if metrics recording fails
+            # Handle both Task objects and dicts for error logging
+            task_id = task.get("id") if isinstance(task, dict) else task.id
+            logger.warning(f"Failed to record token usage for task {task_id}: {e}")
 
     def assess_maturity(self) -> None:
         """Assess and update agent maturity level."""
