@@ -11,7 +11,7 @@ from codeframe.discovery.questions import DiscoveryQuestionFramework
 from codeframe.discovery.answers import AnswerCapture
 from codeframe.planning.issue_generator import IssueGenerator
 from codeframe.planning.task_decomposer import TaskDecomposer
-from codeframe.core.models import Issue, Task
+from codeframe.core.models import Issue, Task, TaskStatus
 from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.agents.agent_pool_manager import AgentPoolManager
 from codeframe.agents.dependency_resolver import DependencyResolver
@@ -69,6 +69,7 @@ class LeadAgent:
         self.project_id = project_id
         self.db = db
         self.provider = AnthropicProvider(api_key=api_key, model=model)
+        self.ws_manager = ws_manager  # Store ws_manager for WebSocket broadcasts
 
         # Discovery components
         self.discovery_framework = DiscoveryQuestionFramework()
@@ -586,9 +587,91 @@ Generate the PRD in markdown format with clear sections and professional languag
             # Don't fail the entire operation if file save fails
 
     def assign_task(self, task_id: int, agent_id: str) -> None:
-        """Assign task to worker agent."""
-        # TODO: Implement task assignment logic
-        pass
+        """
+        Assign a task to a specific agent.
+
+        Args:
+            task_id: ID of the task to assign
+            agent_id: ID of the agent to assign the task to
+
+        Raises:
+            ValueError: If task not found, agent not found, agent is blocked,
+                       task is completed, or task doesn't belong to this project
+        """
+        from codeframe.ui.websocket_broadcasts import broadcast_task_assigned
+
+        # Input Validation (6 checks)
+
+        # 1. Check task exists
+        task = self.db.get_task(task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} not found")
+
+        # 2. Verify task belongs to this project
+        if task["project_id"] != self.project_id:
+            raise ValueError(
+                f"Task {task_id} does not belong to project {self.project_id}"
+            )
+
+        # 3. Check agent exists in pool
+        agent_status_map = self.agent_pool_manager.get_agent_status()
+        if agent_id not in agent_status_map:
+            raise ValueError(f"Agent {agent_id} not found in agent pool")
+
+        # 4. Check agent is not blocked
+        agent_status = agent_status_map[agent_id]
+        if agent_status.get("status") == "blocked":
+            raise ValueError(
+                f"Agent {agent_id} is blocked and cannot accept new tasks"
+            )
+
+        # 5. Check task is not completed
+        if task["status"] == TaskStatus.COMPLETED.value:
+            raise ValueError(f"Cannot assign completed task {task_id}")
+
+        # 6. Check for reassignment
+        old_agent = task.get("assigned_to")
+        if old_agent and old_agent != agent_id:
+            logger.warning(
+                f"⚠️  Task {task_id} reassigned from {old_agent} to {agent_id}"
+            )
+
+        # Database Update
+        try:
+            self.db.update_task(
+                task_id,
+                {
+                    "assigned_to": agent_id,
+                    "status": TaskStatus.ASSIGNED.value
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to update task assignment in database: {e}")
+            raise
+
+        # WebSocket Broadcast (async, non-blocking)
+        if self.ws_manager:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    broadcast_task_assigned(
+                        self.ws_manager,
+                        self.project_id,
+                        task_id,
+                        agent_id,
+                        task_title=task.get("title")
+                    )
+                )
+            except RuntimeError:
+                logger.warning(
+                    f"Failed to broadcast task {task_id} assignment: no event loop running"
+                )
+
+        # Logging
+        task_title = task.get("title", "Untitled")
+        logger.info(
+            f"✅ Task {task_id} ({task_title}) assigned to agent {agent_id}"
+        )
 
     def detect_bottlenecks(self) -> list:
         """Detect workflow bottlenecks."""

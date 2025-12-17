@@ -8,6 +8,7 @@ import pytest
 from unittest.mock import Mock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
+from codeframe.core.models import TaskStatus
 
 
 @pytest.mark.unit
@@ -425,6 +426,542 @@ class TestLeadAgentErrorHandling:
         # ASSERT
         log_messages = [record.message for record in caplog.records]
         assert any("error" in msg.lower() for msg in log_messages)
+
+
+@pytest.mark.unit
+class TestLeadAgentTaskAssignment:
+    """Test suite for LeadAgent.assign_task() method."""
+
+    def test_t1_happy_path_valid_task_and_agent(self, temp_db_path):
+        """T1: Valid task and agent assignment succeeds."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Mock agent pool manager with valid agent
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {
+                "agent-001": {"status": "idle", "agent_type": "backend"}
+            }
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # ACT
+            agent.assign_task(task_id, "agent-001")
+
+            # ASSERT
+            task = db.get_task(task_id)
+            assert task["assigned_to"] == "agent-001"
+            assert task["status"] == "assigned"
+
+    def test_t2_task_not_found_raises_error(self, temp_db_path):
+        """T2: Non-existent task_id raises ValueError."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # ACT & ASSERT
+            with pytest.raises(ValueError) as exc_info:
+                agent.assign_task(999, "agent-001")
+
+            assert "Task 999 not found" in str(exc_info.value)
+
+    def test_t3_wrong_project_raises_error(self, temp_db_path):
+        """T3: Task from different project raises ValueError."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id_1 = db.create_project("test-project-1", "Test Project 1")
+        project_id_2 = db.create_project("test-project-2", "Test Project 2")
+
+        # Create issue and task for project 2
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id_2,
+            issue_number="PROJ-002",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id_2,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-002",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Create agent for project 1
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id_1, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # ACT & ASSERT
+            with pytest.raises(ValueError) as exc_info:
+                agent.assign_task(task_id, "agent-001")
+
+            assert f"Task {task_id} does not belong to project {project_id_1}" in str(exc_info.value)
+
+    def test_t4_agent_not_found_raises_error(self, temp_db_path):
+        """T4: Non-existent agent_id raises ValueError."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Mock agent pool manager with no agents
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {}
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # ACT & ASSERT
+            with pytest.raises(ValueError) as exc_info:
+                agent.assign_task(task_id, "agent-999")
+
+            assert "Agent agent-999 not found in agent pool" in str(exc_info.value)
+
+    def test_t5_agent_blocked_raises_error(self, temp_db_path):
+        """T5: Agent with status='blocked' raises ValueError."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Mock agent pool manager with blocked agent
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {
+                "agent-001": {"status": "blocked", "agent_type": "backend"}
+            }
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # ACT & ASSERT
+            with pytest.raises(ValueError) as exc_info:
+                agent.assign_task(task_id, "agent-001")
+
+            assert "Agent agent-001 is blocked and cannot accept new tasks" in str(exc_info.value)
+
+    def test_t6_task_completed_cannot_be_assigned(self, temp_db_path):
+        """T6: Completed task cannot be assigned."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.COMPLETED,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Mock agent pool manager
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {
+                "agent-001": {"status": "idle", "agent_type": "backend"}
+            }
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # ACT & ASSERT
+            with pytest.raises(ValueError) as exc_info:
+                agent.assign_task(task_id, "agent-001")
+
+            assert f"Cannot assign completed task {task_id}" in str(exc_info.value)
+
+    def test_t7_database_failure_is_reraised(self, temp_db_path, caplog):
+        """T7: DB update error is re-raised."""
+        # ARRANGE
+        import logging
+
+        caplog.set_level(logging.ERROR)
+
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Mock agent pool manager
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {
+                "agent-001": {"status": "idle", "agent_type": "backend"}
+            }
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # Mock db.update_task to raise exception
+            with patch.object(db, "update_task", side_effect=Exception("Database error")):
+                # ACT & ASSERT
+                with pytest.raises(Exception) as exc_info:
+                    agent.assign_task(task_id, "agent-001")
+
+                assert "Database error" in str(exc_info.value)
+
+                # Verify error was logged
+                log_messages = [record.message for record in caplog.records]
+                assert any("error" in msg.lower() for msg in log_messages)
+
+    def test_t8_reassignment_logs_warning(self, temp_db_path, caplog):
+        """T8: Task already assigned to agent A, reassign to B."""
+        # ARRANGE
+        import logging
+
+        caplog.set_level(logging.WARNING)
+
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Assign to agent-a first
+        db.update_task(task_id, {"assigned_to": "agent-a"})
+
+        # Mock agent pool manager
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {
+                "agent-b": {"status": "idle", "agent_type": "backend"}
+            }
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+            agent.agent_pool_manager = mock_pool
+
+            # ACT
+            agent.assign_task(task_id, "agent-b")
+
+            # ASSERT
+            task = db.get_task(task_id)
+            assert task["assigned_to"] == "agent-b"
+            assert task["status"] == "assigned"
+
+            # Verify warning was logged
+            log_messages = [record.message for record in caplog.records]
+            assert any("reassigned" in msg.lower() for msg in log_messages)
+
+    def test_t9_websocket_broadcast_called_when_present(self, temp_db_path):
+        """T9: broadcast_task_assigned called when ws_manager present."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Mock WebSocket manager
+        mock_ws_manager = Mock()
+
+        # Mock agent pool manager, broadcast function, and event loop
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class, \
+             patch("codeframe.ui.websocket_broadcasts.broadcast_task_assigned") as mock_broadcast, \
+             patch("asyncio.get_running_loop") as mock_get_loop:
+            # Mock event loop with create_task method
+            mock_loop = Mock()
+            mock_get_loop.return_value = mock_loop
+
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {
+                "agent-001": {"status": "idle", "agent_type": "backend"}
+            }
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(
+                project_id=project_id, db=db, api_key="sk-ant-test-key", ws_manager=mock_ws_manager
+            )
+            agent.agent_pool_manager = mock_pool
+
+            # ACT
+            agent.assign_task(task_id, "agent-001")
+
+            # ASSERT
+            # Verify broadcast_task_assigned was called with correct arguments
+            mock_broadcast.assert_called_once_with(
+                mock_ws_manager,
+                project_id,
+                task_id,
+                "agent-001",
+                task_title="Test Task"
+            )
+            # Verify create_task was called (fire-and-forget pattern)
+            assert mock_loop.create_task.called
+
+    def test_t10_no_websocket_no_error(self, temp_db_path, caplog):
+        """T10: No broadcast when ws_manager=None."""
+        # ARRANGE
+        import logging
+
+        caplog.set_level(logging.DEBUG)
+
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project")
+
+        # Create issue and task
+        from codeframe.core.models import Issue
+
+        issue = Issue(
+            project_id=project_id,
+            issue_number="PROJ-001",
+            title="Test Issue",
+            description="Test Description",
+            priority=2,
+            workflow_step="planning",
+        )
+        issue_id = db.create_issue(issue)
+
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number="T001",
+            parent_issue_number="PROJ-001",
+            title="Test Task",
+            description="Test task description",
+            status=TaskStatus.PENDING,
+            priority=2,
+            workflow_step="planning",
+            can_parallelize=True,
+            requires_mcp=False,
+        )
+
+        # Mock agent pool manager
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+            mock_pool = Mock()
+            mock_pool.get_agent_status.return_value = {
+                "agent-001": {"status": "idle", "agent_type": "backend"}
+            }
+            mock_pool_class.return_value = mock_pool
+
+            agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key", ws_manager=None)
+            agent.agent_pool_manager = mock_pool
+
+            # ACT
+            agent.assign_task(task_id, "agent-001")
+
+            # ASSERT
+            task = db.get_task(task_id)
+            assert task["assigned_to"] == "agent-001"
+            assert task["status"] == "assigned"
+
+            # Verify debug log may mention skipping websocket broadcast
+            log_messages = [record.message for record in caplog.records]
+            # Either explicit debug log or just no error
+            # No exception means test passes
 
 
 @pytest.mark.integration
