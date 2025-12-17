@@ -1,7 +1,19 @@
 """Worker Agent implementation for CodeFRAME."""
 
+import os
+import logging
 from typing import Optional, List, Dict, Any
-from codeframe.core.models import Task, AgentMaturity, ContextItemType, ContextTier
+
+from anthropic import (
+    AsyncAnthropic,
+    AuthenticationError,
+    RateLimitError,
+    APIConnectionError,
+)
+
+from codeframe.core.models import Task, AgentMaturity, ContextItemType, ContextTier, CallType
+
+logger = logging.getLogger(__name__)
 
 
 class WorkerAgent:
@@ -64,39 +76,191 @@ class WorkerAgent:
 
         return self.current_task.project_id
 
-    def execute_task(self, task: Task) -> dict:
+    async def execute_task(
+        self, task: Task, model_name: str = "claude-sonnet-4-5"
+    ) -> dict:
         """
-        Execute assigned task.
+        Execute assigned task using the Anthropic LLM API.
+
+        This method sends the task to Claude for completion and tracks token usage.
+        It handles various error scenarios including authentication failures,
+        rate limits, and network issues.
 
         Args:
             task: Task to execute
+            model_name: Model identifier (default: "claude-sonnet-4-5").
+                Supported models: claude-sonnet-4-5, claude-opus-4, claude-haiku-4
 
         Returns:
-            Task execution result
+            Task execution result dict with keys:
+                - status: "completed" or "failed"
+                - output: LLM response text or error message
+                - usage: dict with input_tokens and output_tokens (on success)
+                - model: model name used (on success)
+                - error: error message (on failure)
 
-        Note:
-            When LLM integration is added, token usage should be recorded using:
+        Raises:
+            ValueError: If ANTHROPIC_API_KEY environment variable is not set
 
-            >>> from codeframe.lib.metrics_tracker import MetricsTracker
-            >>> from codeframe.core.models import CallType
-            >>>
-            >>> # After LLM call:
-            >>> tracker = MetricsTracker(db=self.db)
-            >>> await tracker.record_token_usage(
-            ...     task_id=task.id,
-            ...     agent_id=self.agent_id,
-            ...     project_id=task.project_id,  # Get from task, not agent
-            ...     model_name="claude-sonnet-4-5",
-            ...     input_tokens=response.usage.input_tokens,
-            ...     output_tokens=response.usage.output_tokens,
-            ...     call_type=CallType.TASK_EXECUTION
-            ... )
+        Example:
+            >>> agent = WorkerAgent(agent_id="backend-001", agent_type="backend",
+            ...                     provider="anthropic", db=db)
+            >>> task = Task(id=1, project_id=1, title="Add logging",
+            ...             description="Add structured logging to auth module")
+            >>> result = await agent.execute_task(task)
+            >>> if result["status"] == "completed":
+            ...     print(f"Output: {result['output'][:100]}...")
+            ...     print(f"Tokens: {result['usage']}")
         """
         # Set current task to establish project context
         self.current_task = task
-        # TODO: Implement task execution with LLM provider
-        # TODO: Add token tracking after LLM call (see docstring example)
-        return {"status": "completed", "output": "Task executed successfully"}
+
+        # Get API key from environment
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY environment variable is required. "
+                "See .env.example for configuration."
+            )
+
+        # Initialize AsyncAnthropic client
+        client = AsyncAnthropic(api_key=api_key)
+
+        # Build prompt from task
+        prompt = self._build_task_prompt(task)
+
+        logger.info(f"Agent {self.agent_id} executing task {task.id}: {task.title}")
+
+        try:
+            # Make API call
+            response = await client.messages.create(
+                model=model_name,
+                max_tokens=4096,
+                system=self.system_prompt or "You are a helpful software development assistant.",
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            # Extract response content and token usage
+            content = response.content[0].text if response.content else ""
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+
+            logger.info(
+                f"Task {task.id} completed: {input_tokens + output_tokens} tokens used"
+            )
+
+            # Record token usage (non-blocking - failures should not block task execution)
+            await self._record_token_usage(
+                task=task,
+                model_name=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
+            return {
+                "status": "completed",
+                "output": content,
+                "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+                "model": model_name,
+            }
+
+        except AuthenticationError as e:
+            logger.error(f"Authentication failed for task {task.id}: {e}")
+            return {
+                "status": "failed",
+                "output": "API authentication failed. Check your ANTHROPIC_API_KEY.",
+                "error": str(e),
+            }
+
+        except RateLimitError as e:
+            logger.warning(f"Rate limit hit for task {task.id}: {e}")
+            return {
+                "status": "failed",
+                "output": "Rate limit exceeded. Please retry after a short wait.",
+                "error": str(e),
+            }
+
+        except APIConnectionError as e:
+            logger.error(f"Network error for task {task.id}: {e}")
+            return {
+                "status": "failed",
+                "output": "Network connection failed. Check your internet connection.",
+                "error": str(e),
+            }
+
+        except TimeoutError as e:
+            logger.error(f"Timeout for task {task.id}: {e}")
+            return {
+                "status": "failed",
+                "output": "Request timed out. The task may be too complex.",
+                "error": str(e),
+            }
+
+        except Exception as e:
+            logger.error(f"Unexpected error for task {task.id}: {e}")
+            return {
+                "status": "failed",
+                "output": f"An unexpected error occurred: {type(e).__name__}",
+                "error": str(e),
+            }
+
+    def _build_task_prompt(self, task: Task) -> str:
+        """Build a structured prompt from the task.
+
+        Args:
+            task: Task to build prompt for
+
+        Returns:
+            Formatted prompt string
+        """
+        prompt_parts = [
+            f"Task #{task.task_number}: {task.title}",
+            "",
+            "Description:",
+            task.description or "No description provided.",
+            "",
+            "Please complete this task and provide a summary of the work done.",
+        ]
+        return "\n".join(prompt_parts)
+
+    async def _record_token_usage(
+        self,
+        task: Task,
+        model_name: str,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> None:
+        """Record token usage via MetricsTracker.
+
+        Token tracking failures are logged but do not block task execution.
+
+        Args:
+            task: Task that was executed
+            model_name: Model used for the call
+            input_tokens: Number of input tokens
+            output_tokens: Number of output tokens
+        """
+        if not self.db:
+            logger.debug("Database not configured, skipping token tracking")
+            return
+
+        try:
+            from codeframe.lib.metrics_tracker import MetricsTracker
+
+            tracker = MetricsTracker(db=self.db)
+            await tracker.record_token_usage(
+                task_id=task.id,
+                agent_id=self.agent_id,
+                project_id=task.project_id or self._get_project_id(),
+                model_name=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                call_type=CallType.TASK_EXECUTION,
+            )
+            logger.debug(f"Token usage recorded for task {task.id}")
+        except Exception as e:
+            # Log warning but don't block task execution
+            logger.warning(f"Failed to record token usage for task {task.id}: {e}")
 
     def assess_maturity(self) -> None:
         """Assess and update agent maturity level."""

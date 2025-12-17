@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from codeframe.core.models import TaskStatus, Task
@@ -154,7 +155,8 @@ def test_database_operations(test_database):
 
 
 @pytest.mark.e2e
-def test_worker_agent_initialization(test_database):
+@pytest.mark.asyncio
+async def test_worker_agent_initialization(test_database):
     """
     T148: Test worker agent initialization and basic operations.
 
@@ -196,11 +198,24 @@ def test_worker_agent_initialization(test_database):
     task_id = test_database.create_task(task)
     task.id = task_id
 
-    # Execute task (basic execution without LLM)
-    result = agent.execute_task(task)
+    # Mock the AsyncAnthropic client for testing without real API calls
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(text="Task completed successfully")]
+    mock_response.usage.input_tokens = 100
+    mock_response.usage.output_tokens = 50
+
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
+            mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
+
+            # Execute task with mocked LLM
+            result = await agent.execute_task(task)
 
     assert result is not None
     assert result["status"] == "completed"
+    assert "usage" in result
+    assert result["usage"]["input_tokens"] == 100
+    assert result["usage"]["output_tokens"] == 50
 
 
 @pytest.mark.e2e
