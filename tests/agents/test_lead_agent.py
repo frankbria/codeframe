@@ -890,13 +890,16 @@ class TestLeadAgentTaskAssignment:
             agent.assign_task(task_id, "agent-001")
 
             # ASSERT
-            # Verify create_task was called with broadcast coroutine
+            # Verify broadcast_task_assigned was called with correct arguments
+            mock_broadcast.assert_called_once_with(
+                mock_ws_manager,
+                project_id,
+                task_id,
+                "agent-001",
+                task_title="Test Task"
+            )
+            # Verify create_task was called (fire-and-forget pattern)
             assert mock_loop.create_task.called
-            # The task should be created with broadcast_task_assigned call
-            call_args = mock_loop.create_task.call_args[0][0]
-            # Verify it's a coroutine (broadcast_task_assigned returns a coroutine)
-            import inspect
-            assert inspect.iscoroutine(call_args)
 
     def test_t10_no_websocket_no_error(self, temp_db_path, caplog):
         """T10: No broadcast when ws_manager=None."""
