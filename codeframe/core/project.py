@@ -3,10 +3,13 @@
 import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from codeframe.core.config import Config, ProjectConfig
 from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
+
+if TYPE_CHECKING:
+    from codeframe.agents.lead_agent import LeadAgent
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +22,7 @@ class Project:
         self.config = Config(project_dir)
         self.db: Optional[Database] = None
         self._status: ProjectStatus = ProjectStatus.INIT
-        self._lead_agent: Optional["LeadAgent"] = None  # type: ignore
+        self._lead_agent: Optional["LeadAgent"] = None
 
     @classmethod
     def create(cls, project_name: str, project_dir: Optional[Path] = None) -> "Project":
@@ -104,7 +107,7 @@ class Project:
 
         # Validate database response structure (Zero Trust)
         if not isinstance(project_record, dict):
-            raise ValueError(f"Invalid project record format from database")
+            raise ValueError("Invalid project record format from database")
 
         project_id = project_record.get("id")
         if not project_id:
@@ -293,7 +296,7 @@ class Project:
 
         # Validate database response structure (Zero Trust)
         if not isinstance(project_record, dict):
-            raise ValueError(f"Invalid project record format from database")
+            raise ValueError("Invalid project record format from database")
 
         project_id = project_record.get("id")
         if not project_id:
