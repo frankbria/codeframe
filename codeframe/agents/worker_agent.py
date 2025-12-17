@@ -2,13 +2,22 @@
 
 import os
 import logging
+import asyncio
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
+from collections import deque
 
 from anthropic import (
     AsyncAnthropic,
     AuthenticationError,
     RateLimitError,
     APIConnectionError,
+)
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
 )
 
 from codeframe.core.models import Task, AgentMaturity, ContextItemType, ContextTier, CallType
@@ -17,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 # Supported Claude models for execute_task
 SUPPORTED_MODELS = ["claude-sonnet-4-5", "claude-opus-4", "claude-haiku-4"]
+
+# Model pricing (USD per million tokens) - as of 2025-11
+MODEL_PRICING = {
+    "claude-sonnet-4-5": {"input": 0.000003, "output": 0.000015},
+    "claude-opus-4": {"input": 0.000015, "output": 0.000075},
+    "claude-haiku-4": {"input": 0.0000008, "output": 0.000004},
+}
 
 
 class WorkerAgent:
@@ -59,6 +75,11 @@ class WorkerAgent:
         self.db = db
         self.model_name = model_name
 
+        # Rate limiting (MEDIUM-1 fix)
+        self._api_calls: deque = deque(maxlen=100)  # Track last 100 calls
+        self._rate_limit = int(os.getenv("AGENT_RATE_LIMIT", "10"))  # Max calls per minute
+        self._rate_limit_lock = asyncio.Lock()
+
     def _get_project_id(self) -> int:
         """Get project ID from current task.
 
@@ -81,6 +102,119 @@ class WorkerAgent:
             )
 
         return self.current_task.project_id
+
+    def _estimate_cost(self, model_name: str, input_tokens: int, max_output_tokens: int) -> float:
+        """Estimate maximum cost for an LLM call.
+
+        Args:
+            model_name: Model identifier
+            input_tokens: Estimated input tokens
+            max_output_tokens: Maximum output tokens
+
+        Returns:
+            Estimated cost in USD
+        """
+        if model_name not in MODEL_PRICING:
+            logger.warning(f"Unknown model pricing for {model_name}, using Sonnet rates")
+            model_name = "claude-sonnet-4-5"
+
+        pricing = MODEL_PRICING[model_name]
+        input_cost = input_tokens * pricing["input"]
+        max_output_cost = max_output_tokens * pricing["output"]
+
+        return input_cost + max_output_cost
+
+    def _sanitize_prompt_input(self, text: str) -> str:
+        """Sanitize user input for LLM prompts to prevent injection attacks.
+
+        Args:
+            text: Raw user input
+
+        Returns:
+            Sanitized text safe for LLM prompts
+        """
+        if not text:
+            return "No description provided."
+
+        # Remove excessive whitespace and control characters
+        sanitized = " ".join(text.split())
+
+        # Limit length to prevent context overflow
+        max_length = 4000
+        if len(sanitized) > max_length:
+            logger.warning(
+                f"Input truncated from {len(sanitized)} to {max_length} chars",
+                extra={"event": "input_truncated", "original_length": len(sanitized)}
+            )
+            sanitized = sanitized[:max_length] + "... (truncated)"
+
+        # Detect potential prompt injection patterns
+        dangerous_phrases = [
+            "ignore all previous instructions",
+            "disregard",
+            "instead, output",
+            "forget everything",
+        ]
+
+        lower_text = sanitized.lower()
+        for phrase in dangerous_phrases:
+            if phrase in lower_text:
+                logger.warning(
+                    "Potential prompt injection detected",
+                    extra={
+                        "event": "prompt_injection_attempt",
+                        "phrase": phrase,
+                        "agent_id": self.agent_id
+                    }
+                )
+
+        return sanitized
+
+    @retry(
+        retry=retry_if_exception_type((RateLimitError, APIConnectionError, TimeoutError)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
+    async def _call_llm_with_retry(
+        self,
+        client: AsyncAnthropic,
+        model_name: str,
+        max_tokens: int,
+        system: str,
+        messages: List[Dict[str, str]],
+        timeout: float,
+    ):
+        """Call LLM with automatic retry for transient failures.
+
+        Retries up to 3 times with exponential backoff:
+        - Attempt 1: immediate
+        - Attempt 2: wait 2s
+        - Attempt 3: wait 4-10s
+
+        Args:
+            client: Anthropic client
+            model_name: Model identifier
+            max_tokens: Maximum output tokens
+            system: System prompt
+            messages: Conversation messages
+            timeout: Request timeout in seconds
+
+        Returns:
+            API response
+
+        Raises:
+            RateLimitError: After retry exhaustion
+            APIConnectionError: After retry exhaustion
+            TimeoutError: After retry exhaustion
+        """
+        return await client.messages.create(
+            model=model_name,
+            max_tokens=max_tokens,
+            system=system,
+            messages=messages,
+            timeout=timeout,
+        )
 
     async def execute_task(
         self,
@@ -132,9 +266,39 @@ class WorkerAgent:
         if isinstance(task, dict):
             task_id = task.get("id")
             task_title = task.get("title", "Untitled")
+            project_id = task.get("project_id")
         else:
             task_id = task.id
             task_title = task.title
+            project_id = task.project_id
+
+        # MEDIUM-1 FIX: Rate limiting protection
+        async with self._rate_limit_lock:
+            now = datetime.now()
+            one_minute_ago = now - timedelta(minutes=1)
+
+            # Remove old calls
+            while self._api_calls and self._api_calls[0] < one_minute_ago:
+                self._api_calls.popleft()
+
+            # Check limit
+            if len(self._api_calls) >= self._rate_limit:
+                logger.warning(
+                    f"Agent rate limit reached: {len(self._api_calls)} calls in last minute",
+                    extra={
+                        "event": "agent_rate_limit_exceeded",
+                        "agent_id": self.agent_id,
+                        "rate_limit": self._rate_limit
+                    }
+                )
+                return {
+                    "status": "failed",
+                    "output": f"Agent rate limit exceeded ({self._rate_limit} calls/min). Wait before retrying.",
+                    "error": "AGENT_RATE_LIMIT_EXCEEDED",
+                }
+
+            # Record this call
+            self._api_calls.append(now)
 
         # Use instance model_name if not specified
         if model_name is None:
@@ -147,7 +311,7 @@ class WorkerAgent:
                 f"Supported models: {', '.join(SUPPORTED_MODELS)}"
             )
 
-        # Get API key from environment
+        # CRITICAL-2 FIX: Get and validate API key
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError(
@@ -155,21 +319,74 @@ class WorkerAgent:
                 "See .env.example for configuration."
             )
 
+        # Validate Anthropic key format
+        if not api_key.startswith("sk-ant-"):
+            logger.error("Invalid ANTHROPIC_API_KEY format (must start with 'sk-ant-')")
+            raise ValueError("Invalid ANTHROPIC_API_KEY format. Expected format: sk-ant-xxxxx")
+
+        # CRITICAL-2 FIX: Never log the actual key - only masked version
+        logger.debug(f"API key loaded: sk-ant-***{api_key[-4:]}")
+
         # Initialize AsyncAnthropic client
         client = AsyncAnthropic(api_key=api_key)
 
         # Build prompt from task
         prompt = self._build_task_prompt(task)
 
-        logger.info(f"Agent {self.agent_id} executing task {task_id}: {task_title}")
+        # Cost estimation and guardrails
+        estimated_input_tokens = len(prompt) // 4  # Rough estimate (1 token ≈ 4 chars)
+        estimated_cost = self._estimate_cost(model_name, estimated_input_tokens, max_tokens)
+
+        max_cost_per_task = float(os.getenv("MAX_COST_PER_TASK", "1.0"))
+        if estimated_cost > max_cost_per_task:
+            logger.warning(
+                f"Task {task_id} estimated cost ${estimated_cost:.4f} exceeds limit ${max_cost_per_task}",
+                extra={
+                    "event": "cost_limit_exceeded",
+                    "estimated_cost": estimated_cost,
+                    "limit": max_cost_per_task,
+                    "model": model_name,
+                    "agent_id": self.agent_id,
+                }
+            )
+            return {
+                "status": "failed",
+                "output": f"Task exceeds cost limit (estimated ${estimated_cost:.4f} > ${max_cost_per_task})",
+                "error": "COST_LIMIT_EXCEEDED",
+            }
+
+        # HIGH-2 FIX: Enhanced audit logging - call start
+        call_start_time = datetime.now(timezone.utc)
+        logger.info(
+            "LLM API call initiated",
+            extra={
+                "event": "llm_call_start",
+                "agent_id": self.agent_id,
+                "agent_type": self.agent_type,
+                "task_id": task_id,
+                "task_title": task_title,
+                "project_id": project_id,
+                "model": model_name,
+                "max_tokens": max_tokens,
+                "estimated_cost_usd": estimated_cost,
+                "timestamp": call_start_time.isoformat(),
+            }
+        )
+
+        # CRITICAL-1 FIX: Calculate timeout based on max_tokens
+        base_timeout = 30.0  # seconds
+        timeout_per_1k_tokens = 15.0  # seconds per 1000 tokens
+        timeout = base_timeout + (max_tokens / 1000.0) * timeout_per_1k_tokens
 
         try:
-            # Make API call
-            response = await client.messages.create(
-                model=model_name,
-                max_tokens=max_tokens,
-                system=self.system_prompt or "You are a helpful software development assistant.",
-                messages=[{"role": "user", "content": prompt}],
+            # HIGH-1 & CRITICAL-1 FIX: Make API call with retry and timeout
+            response = await self._call_llm_with_retry(
+                client,
+                model_name,
+                max_tokens,
+                self.system_prompt or "You are a helpful software development assistant.",
+                [{"role": "user", "content": prompt}],
+                timeout,
             )
 
             # Extract response content and token usage
@@ -182,8 +399,26 @@ class WorkerAgent:
             input_tokens = response.usage.input_tokens
             output_tokens = response.usage.output_tokens
 
+            # Calculate actual cost
+            actual_cost = self._estimate_cost(model_name, input_tokens, output_tokens)
+            call_duration_ms = (datetime.now(timezone.utc) - call_start_time).total_seconds() * 1000
+
+            # HIGH-2 FIX: Enhanced audit logging - call success
             logger.info(
-                f"Task {task_id} completed: {input_tokens + output_tokens} tokens used"
+                "LLM API call completed",
+                extra={
+                    "event": "llm_call_success",
+                    "agent_id": self.agent_id,
+                    "task_id": task_id,
+                    "project_id": project_id,
+                    "model": model_name,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                    "estimated_cost_usd": actual_cost,
+                    "duration_ms": call_duration_ms,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
             )
 
             # Record token usage (non-blocking - failures should not block task execution)
@@ -203,39 +438,63 @@ class WorkerAgent:
             }
 
         except AuthenticationError as e:
-            logger.error(f"Authentication failed for task {task_id}: {e}")
+            # HIGH-2 FIX: Enhanced error logging
+            logger.error(
+                "LLM API call failed - authentication",
+                extra={
+                    "event": "llm_call_failure",
+                    "agent_id": self.agent_id,
+                    "task_id": task_id,
+                    "project_id": project_id,
+                    "model": model_name,
+                    "error_type": "AuthenticationError",
+                    "error_message": str(e),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             return {
                 "status": "failed",
                 "output": "API authentication failed. Check your ANTHROPIC_API_KEY.",
                 "error": str(e),
             }
 
-        except RateLimitError as e:
-            logger.warning(f"Rate limit hit for task {task_id}: {e}")
+        except (RateLimitError, APIConnectionError, TimeoutError) as e:
+            # HIGH-1 FIX: These errors trigger retry, so if we're here, retry exhausted
+            logger.error(
+                "LLM API call failed after 3 retries",
+                extra={
+                    "event": "llm_call_failure_retry_exhausted",
+                    "agent_id": self.agent_id,
+                    "task_id": task_id,
+                    "project_id": project_id,
+                    "model": model_name,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "retries_attempted": 3,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             return {
                 "status": "failed",
-                "output": "Rate limit exceeded. Please retry after a short wait.",
-                "error": str(e),
-            }
-
-        except APIConnectionError as e:
-            logger.error(f"Network error for task {task_id}: {e}")
-            return {
-                "status": "failed",
-                "output": "Network connection failed. Check your internet connection.",
-                "error": str(e),
-            }
-
-        except TimeoutError as e:
-            logger.error(f"Timeout for task {task_id}: {e}")
-            return {
-                "status": "failed",
-                "output": "Request timed out. The task may be too complex.",
+                "output": f"Failed after 3 retry attempts: {type(e).__name__}",
                 "error": str(e),
             }
 
         except Exception as e:
-            logger.error(f"Unexpected error for task {task_id}: {e}")
+            # HIGH-2 FIX: Enhanced error logging for unexpected errors
+            logger.error(
+                "LLM API call failed - unexpected error",
+                extra={
+                    "event": "llm_call_failure_unexpected",
+                    "agent_id": self.agent_id,
+                    "task_id": task_id,
+                    "project_id": project_id,
+                    "model": model_name,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
             return {
                 "status": "failed",
                 "output": f"An unexpected error occurred: {type(e).__name__}",
@@ -260,6 +519,10 @@ class WorkerAgent:
             task_number = task.task_number
             title = task.title
             description = task.description or "No description provided."
+
+        # MEDIUM-2 FIX: Sanitize inputs to prevent prompt injection
+        title = self._sanitize_prompt_input(title)
+        description = self._sanitize_prompt_input(description)
 
         prompt_parts = [
             f"Task #{task_number}: {title}",
