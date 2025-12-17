@@ -440,7 +440,7 @@ class TestLeadAgentTaskAssignment:
         project_id = db.create_project("test-project", "Test Project")
 
         # Create issue and task
-        from codeframe.core.models import Issue, Task
+        from codeframe.core.models import Issue
 
         issue = Issue(
             project_id=project_id,
