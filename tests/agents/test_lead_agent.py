@@ -867,8 +867,14 @@ class TestLeadAgentTaskAssignment:
         # Mock WebSocket manager
         mock_ws_manager = Mock()
 
-        # Mock agent pool manager
-        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class:
+        # Mock agent pool manager, broadcast function, and event loop
+        with patch("codeframe.agents.lead_agent.AgentPoolManager") as mock_pool_class, \
+             patch("codeframe.ui.websocket_broadcasts.broadcast_task_assigned") as mock_broadcast, \
+             patch("asyncio.get_running_loop") as mock_get_loop:
+            # Mock event loop with create_task method
+            mock_loop = Mock()
+            mock_get_loop.return_value = mock_loop
+
             mock_pool = Mock()
             mock_pool.get_agent_status.return_value = {
                 "agent-001": {"status": "idle", "agent_type": "backend"}
@@ -884,9 +890,13 @@ class TestLeadAgentTaskAssignment:
             agent.assign_task(task_id, "agent-001")
 
             # ASSERT
-            # Verify broadcast was called (method name may vary: broadcast_task_assigned, send_task_update, etc.)
-            # We'll check if ws_manager had any method called
-            assert mock_ws_manager.method_calls or mock_ws_manager.call_count > 0 or len(dir(mock_ws_manager)) > 0
+            # Verify create_task was called with broadcast coroutine
+            assert mock_loop.create_task.called
+            # The task should be created with broadcast_task_assigned call
+            call_args = mock_loop.create_task.call_args[0][0]
+            # Verify it's a coroutine (broadcast_task_assigned returns a coroutine)
+            import inspect
+            assert inspect.iscoroutine(call_args)
 
     def test_t10_no_websocket_no_error(self, temp_db_path, caplog):
         """T10: No broadcast when ws_manager=None."""
