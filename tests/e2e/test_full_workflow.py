@@ -204,7 +204,7 @@ async def test_worker_agent_initialization(test_database):
     mock_response.usage.input_tokens = 100
     mock_response.usage.output_tokens = 50
 
-    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+    with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "sk-ant-test-key"}):
         with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
             mock_client.return_value.messages.create = AsyncMock(return_value=mock_response)
 
