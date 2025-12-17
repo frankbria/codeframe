@@ -15,6 +15,9 @@ from codeframe.core.models import Task, AgentMaturity, ContextItemType, ContextT
 
 logger = logging.getLogger(__name__)
 
+# Supported Claude models for execute_task
+SUPPORTED_MODELS = ["claude-sonnet-4-5", "claude-opus-4", "claude-haiku-4"]
+
 
 class WorkerAgent:
     """
@@ -77,7 +80,10 @@ class WorkerAgent:
         return self.current_task.project_id
 
     async def execute_task(
-        self, task: Task, model_name: str = "claude-sonnet-4-5"
+        self,
+        task: Task,
+        model_name: str = "claude-sonnet-4-5",
+        max_tokens: int = 4096,
     ) -> dict:
         """
         Execute assigned task using the Anthropic LLM API.
@@ -90,6 +96,8 @@ class WorkerAgent:
             task: Task to execute
             model_name: Model identifier (default: "claude-sonnet-4-5").
                 Supported models: claude-sonnet-4-5, claude-opus-4, claude-haiku-4
+            max_tokens: Maximum tokens in the response (default: 4096).
+                Increase for complex code generation tasks.
 
         Returns:
             Task execution result dict with keys:
@@ -97,10 +105,12 @@ class WorkerAgent:
                 - output: LLM response text or error message
                 - usage: dict with input_tokens and output_tokens (on success)
                 - model: model name used (on success)
+                - token_tracking_failed: bool indicating if token tracking failed (on success)
                 - error: error message (on failure)
 
         Raises:
-            ValueError: If ANTHROPIC_API_KEY environment variable is not set
+            ValueError: If ANTHROPIC_API_KEY environment variable is not set,
+                or if model_name is not a supported model.
 
         Example:
             >>> agent = WorkerAgent(agent_id="backend-001", agent_type="backend",
@@ -114,6 +124,13 @@ class WorkerAgent:
         """
         # Set current task to establish project context
         self.current_task = task
+
+        # Validate model name
+        if model_name not in SUPPORTED_MODELS:
+            raise ValueError(
+                f"Unsupported model: {model_name}. "
+                f"Supported models: {', '.join(SUPPORTED_MODELS)}"
+            )
 
         # Get API key from environment
         api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -135,13 +152,18 @@ class WorkerAgent:
             # Make API call
             response = await client.messages.create(
                 model=model_name,
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 system=self.system_prompt or "You are a helpful software development assistant.",
                 messages=[{"role": "user", "content": prompt}],
             )
 
             # Extract response content and token usage
-            content = response.content[0].text if response.content else ""
+            if not response.content:
+                logger.warning(f"Empty response from LLM for task {task.id}")
+                content = ""
+            else:
+                content = response.content[0].text
+
             input_tokens = response.usage.input_tokens
             output_tokens = response.usage.output_tokens
 
@@ -150,7 +172,7 @@ class WorkerAgent:
             )
 
             # Record token usage (non-blocking - failures should not block task execution)
-            await self._record_token_usage(
+            token_tracking_failed = await self._record_token_usage(
                 task=task,
                 model_name=model_name,
                 input_tokens=input_tokens,
@@ -162,6 +184,7 @@ class WorkerAgent:
                 "output": content,
                 "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
                 "model": model_name,
+                "token_tracking_failed": token_tracking_failed,
             }
 
         except AuthenticationError as e:
@@ -229,7 +252,7 @@ class WorkerAgent:
         model_name: str,
         input_tokens: int,
         output_tokens: int,
-    ) -> None:
+    ) -> bool:
         """Record token usage via MetricsTracker.
 
         Token tracking failures are logged but do not block task execution.
@@ -239,10 +262,13 @@ class WorkerAgent:
             model_name: Model used for the call
             input_tokens: Number of input tokens
             output_tokens: Number of output tokens
+
+        Returns:
+            True if token tracking failed, False if successful or skipped.
         """
         if not self.db:
             logger.debug("Database not configured, skipping token tracking")
-            return
+            return False
 
         try:
             from codeframe.lib.metrics_tracker import MetricsTracker
@@ -259,9 +285,11 @@ class WorkerAgent:
                 call_type=CallType.TASK_EXECUTION,
             )
             logger.debug(f"Token usage recorded for task {task.id}")
+            return False
         except Exception as e:
             # Log warning but don't block task execution
             logger.warning(f"Failed to record token usage for task {task.id}: {e}")
+            return True
 
     def assess_maturity(self) -> None:
         """Assess and update agent maturity level."""

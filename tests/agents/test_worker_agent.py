@@ -495,3 +495,138 @@ class TestExecuteTaskEmptyResponse:
 
         assert result["status"] == "completed"
         assert result["output"] == ""
+
+
+class TestModelValidation:
+    """Test model name validation."""
+
+    @pytest.mark.asyncio
+    async def test_execute_task_raises_for_unsupported_model(self, agent, sample_task):
+        """Test that unsupported model names raise ValueError."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with pytest.raises(ValueError) as exc_info:
+                await agent.execute_task(sample_task, model_name="gpt-4-turbo")
+
+        assert "Unsupported model" in str(exc_info.value)
+        assert "gpt-4-turbo" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_execute_task_accepts_all_supported_models(
+        self, agent, sample_task, mock_anthropic_response
+    ):
+        """Test that all supported models are accepted."""
+        from codeframe.agents.worker_agent import SUPPORTED_MODELS
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
+                mock_client.return_value.messages.create = AsyncMock(
+                    return_value=mock_anthropic_response
+                )
+
+                for model in SUPPORTED_MODELS:
+                    result = await agent.execute_task(sample_task, model_name=model)
+                    assert result["status"] == "completed"
+                    assert result["model"] == model
+
+
+class TestMaxTokensParameter:
+    """Test max_tokens parameter handling."""
+
+    @pytest.mark.asyncio
+    async def test_execute_task_uses_custom_max_tokens(
+        self, agent, sample_task, mock_anthropic_response
+    ):
+        """Test that custom max_tokens is passed to API."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
+                mock_create = AsyncMock(return_value=mock_anthropic_response)
+                mock_client.return_value.messages.create = mock_create
+
+                await agent.execute_task(sample_task, max_tokens=8192)
+
+                call_kwargs = mock_create.call_args.kwargs
+                assert call_kwargs["max_tokens"] == 8192
+
+    @pytest.mark.asyncio
+    async def test_execute_task_uses_default_max_tokens(
+        self, agent, sample_task, mock_anthropic_response
+    ):
+        """Test that default max_tokens is 4096."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
+                mock_create = AsyncMock(return_value=mock_anthropic_response)
+                mock_client.return_value.messages.create = mock_create
+
+                await agent.execute_task(sample_task)
+
+                call_kwargs = mock_create.call_args.kwargs
+                assert call_kwargs["max_tokens"] == 4096
+
+
+class TestTokenTrackingFailedFlag:
+    """Test token_tracking_failed result field."""
+
+    @pytest.mark.asyncio
+    async def test_token_tracking_failed_is_false_on_success(
+        self, agent, sample_task, mock_anthropic_response
+    ):
+        """Test that token_tracking_failed is False when tracking succeeds."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
+                mock_client.return_value.messages.create = AsyncMock(
+                    return_value=mock_anthropic_response
+                )
+
+                with patch(
+                    "codeframe.lib.metrics_tracker.MetricsTracker.record_token_usage",
+                    new_callable=AsyncMock,
+                ) as mock_tracker:
+                    mock_tracker.return_value = 1
+
+                    result = await agent.execute_task(sample_task)
+
+        assert result["token_tracking_failed"] is False
+
+    @pytest.mark.asyncio
+    async def test_token_tracking_failed_is_true_on_failure(
+        self, agent, sample_task, mock_anthropic_response
+    ):
+        """Test that token_tracking_failed is True when tracking fails."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
+                mock_client.return_value.messages.create = AsyncMock(
+                    return_value=mock_anthropic_response
+                )
+
+                with patch(
+                    "codeframe.lib.metrics_tracker.MetricsTracker.record_token_usage",
+                    new_callable=AsyncMock,
+                ) as mock_tracker:
+                    mock_tracker.side_effect = Exception("Database error")
+
+                    result = await agent.execute_task(sample_task)
+
+        assert result["status"] == "completed"
+        assert result["token_tracking_failed"] is True
+
+    @pytest.mark.asyncio
+    async def test_token_tracking_failed_is_false_when_no_db(
+        self, sample_task, mock_anthropic_response
+    ):
+        """Test that token_tracking_failed is False when db is None (skipped)."""
+        agent_no_db = WorkerAgent(
+            agent_id="backend-004",
+            agent_type="backend",
+            provider="anthropic",
+            db=None,
+        )
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            with patch("codeframe.agents.worker_agent.AsyncAnthropic") as mock_client:
+                mock_client.return_value.messages.create = AsyncMock(
+                    return_value=mock_anthropic_response
+                )
+
+                result = await agent_no_db.execute_task(sample_task)
+
+        assert result["token_tracking_failed"] is False
