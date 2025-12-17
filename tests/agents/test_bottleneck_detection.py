@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database

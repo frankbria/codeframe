@@ -773,7 +773,7 @@ class TestDeadlockPrevention:
 @pytest.mark.asyncio
 async def test_bottleneck_detection_end_to_end(db, api_key):
     """Test end-to-end bottleneck detection with real components."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     # Create project
     project_id = db.create_project(
