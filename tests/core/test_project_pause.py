@@ -1,9 +1,8 @@
 """Tests for Project.pause() and Project.resume() methods."""
 
-import os
 import pytest
 from datetime import datetime, UTC
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from codeframe.core.project import Project
 from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
