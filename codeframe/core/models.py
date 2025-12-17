@@ -205,7 +205,7 @@ class StateCheckpoint:
 
     id: str
     project_id: int
-    trigger: str  # 'manual', 'pre_compactification', 'task_complete'
+    trigger: str  # 'manual', 'auto', 'phase_transition', 'pause'
     state_snapshot: Dict[str, Any]
     git_commit: str
     db_backup_path: str
@@ -795,7 +795,7 @@ class Checkpoint(BaseModel):
     project_id: int
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    trigger: str = Field(..., description="manual, auto, phase_transition")
+    trigger: str = Field(..., description="manual, auto, phase_transition, pause")
     git_commit: str = Field(..., min_length=7, max_length=40, description="Git commit SHA")
     database_backup_path: str = Field(..., description="Path to .sqlite backup")
     context_snapshot_path: str = Field(..., description="Path to context JSON")

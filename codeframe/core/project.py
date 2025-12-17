@@ -109,7 +109,8 @@ class Project:
 
         # Create default config
         default_config = ProjectConfig(
-            project_name=project_name, project_type="python"  # Auto-detect in future
+            project_name=project_name,
+            project_type="python",  # Auto-detect in future
         )
         project.config.save(default_config)
 
@@ -143,11 +144,7 @@ class Project:
         try:
             # Initialize LeadAgent
             logger.info(f"Initializing LeadAgent for project {project_id}")
-            self._lead_agent = LeadAgent(
-                project_id=project_id,
-                db=self.db,
-                api_key=api_key
-            )
+            self._lead_agent = LeadAgent(project_id=project_id, db=self.db, api_key=api_key)
 
             # Check for existing PRD
             has_prd = self._lead_agent.has_existing_prd()
@@ -188,18 +185,195 @@ class Project:
             try:
                 self._status = previous_status
                 # Only attempt database rollback if project_id was successfully retrieved
-                if 'project_id' in locals():
+                if "project_id" in locals():
                     self.db.update_project(project_id, {"status": previous_status.value})
-                    logger.info(f"Rolled back project {project_id} status to {previous_status.value}")
+                    logger.info(
+                        f"Rolled back project {project_id} status to {previous_status.value}"
+                    )
             except Exception as rollback_err:
                 logger.error(f"Failed to rollback status: {rollback_err}")
             raise
 
-    def pause(self) -> None:
-        """Pause project execution."""
-        # TODO: Implement flash save before pause
-        self._status = ProjectStatus.PAUSED
-        print("⏸️ Project paused")
+    def pause(self, reason: Optional[str] = None) -> dict:
+        """Pause project execution, save state, and archive context.
+
+        Steps:
+        1. Validate prerequisites (database, project_id)
+        2. Trigger flash save for each active agent (archive COLD tier context)
+        3. Create pause checkpoint (git + DB + context snapshot)
+        4. Update project status to PAUSED
+        5. Return pause result with checkpoint_id and token reduction stats
+
+        Args:
+            reason: Optional reason for pause (e.g., "user_request", "resource_limit", "manual")
+
+        Returns:
+            Dictionary with:
+            - success: bool (always True if no exception)
+            - checkpoint_id: int (created checkpoint ID)
+            - tokens_before: int (total context tokens before archive)
+            - tokens_after: int (total context tokens after archive)
+            - reduction_percentage: float (% of tokens archived)
+            - items_archived: int (total COLD tier items archived)
+            - paused_at: str (ISO 8601 timestamp)
+
+        Raises:
+            RuntimeError: If database not initialized
+            ValueError: If project not found
+        """
+        from datetime import datetime, UTC
+        from codeframe.lib.context_manager import ContextManager
+        from codeframe.lib.checkpoint_manager import CheckpointManager
+
+        # Validate prerequisites
+        if not self.db:
+            raise RuntimeError(
+                "Database not initialized. Call Project.create() or initialize database first."
+            )
+
+        # Get project ID from database
+        project_config = self.config.load()
+        cursor = self.db.conn.cursor()
+        cursor.execute("SELECT id FROM projects WHERE name = ?", (project_config.project_name,))
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(f"Project '{project_config.project_name}' not found in database")
+
+        project_id = row["id"]
+        previous_status = self._status
+
+        # Get previous paused_at value for rollback
+        cursor.execute("SELECT paused_at FROM projects WHERE id = ?", (project_id,))
+        previous_paused_at = cursor.fetchone()["paused_at"]
+
+        # Create timestamp for pause operation (used in DB and result)
+        paused_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+        logger.info(f"Pausing project {project_id}: {project_config.project_name}")
+        if reason:
+            logger.info(f"Pause reason: {reason}")
+
+        try:
+            # Initialize managers
+            context_mgr = ContextManager(db=self.db)
+            checkpoint_mgr = CheckpointManager(
+                db=self.db, project_root=self.project_dir, project_id=project_id
+            )
+
+            # Get all active agents for this project
+            agents = self.db.get_agents_for_project(project_id, active_only=True)
+
+            # Track aggregated flash save results
+            total_tokens_before = 0
+            total_tokens_after = 0
+            total_items_archived = 0
+
+            # Trigger flash save for each agent
+            if agents:
+                logger.info(f"Triggering flash save for {len(agents)} active agent(s)")
+                for agent in agents:
+                    agent_id = agent["agent_id"]
+                    try:
+                        # Check if flash save needed for this agent
+                        if context_mgr.should_flash_save(project_id, agent_id):
+                            logger.debug(f"Flash saving context for agent {agent_id}")
+                            flash_result = context_mgr.flash_save(project_id, agent_id)
+
+                            total_tokens_before += flash_result["tokens_before"]
+                            total_tokens_after += flash_result["tokens_after"]
+                            total_items_archived += flash_result["items_archived"]
+
+                            logger.info(
+                                f"Agent {agent_id} flash save: "
+                                f"{flash_result['tokens_before']} → {flash_result['tokens_after']} tokens "
+                                f"({flash_result['reduction_percentage']:.1f}% reduction)"
+                            )
+                        else:
+                            logger.debug(
+                                f"Agent {agent_id} context below threshold, skipping flash save"
+                            )
+                    except Exception as e:
+                        logger.error(f"Flash save failed for agent {agent_id}: {e}", exc_info=True)
+                        # Continue with other agents - don't fail entire pause
+            else:
+                logger.debug("No active agents found for flash save")
+
+            # Create pause checkpoint
+            checkpoint_name = f"Project paused{f': {reason}' if reason else ''}"
+            checkpoint_description = (
+                f"Project paused at {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            )
+            if reason:
+                checkpoint_description += f"\nReason: {reason}"
+
+            logger.info("Creating pause checkpoint")
+            checkpoint = checkpoint_mgr.create_checkpoint(
+                name=checkpoint_name[:100],  # Truncate to max length
+                description=checkpoint_description[:500] if checkpoint_description else None,
+                trigger="pause",
+            )
+            logger.info(
+                f"Created checkpoint {checkpoint.id} with git commit {checkpoint.git_commit[:7]}"
+            )
+
+            # Update project status to PAUSED with timestamp
+            self._status = ProjectStatus.PAUSED
+            self.db.update_project(
+                project_id, {"status": self._status.value, "paused_at": paused_at}
+            )
+            logger.info(f"Updated project {project_id} status to PAUSED at {paused_at}")
+
+            # Calculate reduction percentage
+            if total_tokens_before > 0:
+                reduction_percentage = (
+                    (total_tokens_before - total_tokens_after) / total_tokens_before
+                ) * 100
+            else:
+                reduction_percentage = 0.0
+
+            # Build result (using same paused_at timestamp from above)
+            result = {
+                "success": True,
+                "checkpoint_id": checkpoint.id,
+                "tokens_before": total_tokens_before,
+                "tokens_after": total_tokens_after,
+                "reduction_percentage": round(reduction_percentage, 2),
+                "items_archived": total_items_archived,
+                "paused_at": paused_at,
+            }
+
+            # Print user-friendly confirmation
+            print(f"⏸️  Project paused: {project_config.project_name}")
+            print(f"   Checkpoint: {checkpoint.name}")
+            print(f"   Checkpoint ID: {checkpoint.id}")
+            print(f"   Git commit: {checkpoint.git_commit[:7]}")
+            if total_items_archived > 0:
+                print(
+                    f"   Context archived: {total_items_archived} items ({reduction_percentage:.1f}% token reduction)"
+                )
+
+            logger.info(f"Pause completed successfully: {result}")
+            return result
+
+        except Exception as e:
+            # Rollback status and paused_at on error
+            logger.error(f"Failed to pause project: {e}", exc_info=True)
+            try:
+                self._status = previous_status
+                if "project_id" in locals():
+                    self.db.update_project(
+                        project_id,
+                        {
+                            "status": previous_status.value,
+                            "paused_at": previous_paused_at,
+                        },
+                    )
+                    logger.info(
+                        f"Rolled back project {project_id} status to {previous_status.value}"
+                    )
+            except Exception as rollback_err:
+                logger.error(f"Failed to rollback status: {rollback_err}")
+            raise
 
     def resume(self, checkpoint_id: Optional[int] = None) -> None:
         """Resume project execution from checkpoint.
@@ -251,7 +425,15 @@ class Project:
         result = checkpoint_mgr.restore_checkpoint(checkpoint_id=checkpoint.id, confirm=True)
 
         if result["success"]:
+            # Clear paused_at timestamp and mark project ACTIVE in database
             self._status = ProjectStatus.ACTIVE
+            self.db.update_project(
+                project_id,
+                {
+                    "status": self._status.value,
+                    "paused_at": None,
+                },
+            )
             print(f"✓ Project resumed successfully from '{checkpoint.name}'")
             print(f"   {result.get('items_restored', 0)} context items restored")
         else:
@@ -291,11 +473,7 @@ class Project:
         project_id, api_key = self._get_validated_project_id()
 
         logger.debug("Creating new LeadAgent instance (fallback mode)")
-        self._lead_agent = LeadAgent(
-            project_id=project_id,
-            db=self.db,
-            api_key=api_key
-        )
+        self._lead_agent = LeadAgent(project_id=project_id, db=self.db, api_key=api_key)
 
         return self._lead_agent
 
