@@ -278,18 +278,17 @@ class TestWorkerAgentTokenTracking:
             db=db,
         )
 
-        # Execute - should not raise exception, just log warning
+        # Simulate database/save_token_usage error; tracking should fail and return True
         result = await agent._record_token_usage(
             task=task,
             model_name="claude-sonnet-4-5",
             input_tokens=1000,
             output_tokens=500,
         )
-        # Should succeed but log warning about missing project_id
-        # Returns True if tracking failed
-        assert result is True  # Tracking fails without project_id
+        # Tracking fails due to database error
+        assert result is True
 
-        # No assertion needed - test passes if no exception is raised
+        # Test passes if no exception is raised (graceful error handling)
 
 
 class TestWorkerAgentExecuteTask:
