@@ -283,9 +283,10 @@ class TestExecuteTaskTokenTracking:
                 )
 
                 with patch(
-                    "codeframe.lib.metrics_tracker.MetricsTracker.record_token_usage"
+                    "codeframe.lib.metrics_tracker.MetricsTracker.record_token_usage",
+                    new_callable=AsyncMock,
                 ) as mock_tracker:
-                    mock_tracker.return_value = AsyncMock(return_value=1)()
+                    mock_tracker.return_value = 1
 
                     result = await agent.execute_task(sample_task)
 
@@ -313,7 +314,8 @@ class TestExecuteTaskTokenTracking:
                 )
 
                 with patch(
-                    "codeframe.lib.metrics_tracker.MetricsTracker.record_token_usage"
+                    "codeframe.lib.metrics_tracker.MetricsTracker.record_token_usage",
+                    new_callable=AsyncMock,
                 ) as mock_tracker:
                     mock_tracker.side_effect = Exception("Database error")
 
