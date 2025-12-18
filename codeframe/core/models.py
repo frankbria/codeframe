@@ -95,7 +95,7 @@ class Project:
             "current_commit": self.current_commit,
             "status": self.status.value,
             "phase": self.phase.value,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
             "paused_at": self.paused_at.isoformat() if self.paused_at else None,
             "config": self.config,
         }
@@ -200,8 +200,45 @@ class Issue:
             "status": self.status.value,
             "priority": self.priority,
             "workflow_step": self.workflow_step,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+@dataclass
+class IssueWithTaskCount:
+    """Issue with associated task count for summary views.
+
+    Used by get_issue_with_task_counts() to return typed results
+    instead of raw dictionaries.
+    """
+
+    id: Optional[int] = None
+    project_id: Optional[int] = None
+    issue_number: str = ""
+    title: str = ""
+    description: str = ""
+    status: TaskStatus = TaskStatus.PENDING
+    priority: int = 2
+    workflow_step: int = 1
+    created_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+    task_count: int = 0  # Count of associated tasks
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "issue_number": self.issue_number,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status.value,
+            "priority": self.priority,
+            "workflow_step": self.workflow_step,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "task_count": self.task_count,
         }
 
 
@@ -252,7 +289,7 @@ class Task:
             "requires_mcp": self.requires_mcp,
             "estimated_tokens": self.estimated_tokens,
             "actual_tokens": self.actual_tokens,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 

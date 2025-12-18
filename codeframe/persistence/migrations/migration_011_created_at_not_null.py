@@ -5,8 +5,14 @@ This migration ensures data integrity by:
 1. Backfilling NULL created_at values in tasks table with CURRENT_TIMESTAMP
 2. Backfilling NULL created_at values in issues table with CURRENT_TIMESTAMP
 3. Recreating tables with NOT NULL constraint on created_at
+4. Retaining old tables as backups (tasks_backup_011, issues_backup_011)
 
 This prevents data quality issues where created_at is unexpectedly NULL.
+
+Safety:
+- Old tables are renamed to *_backup_011 instead of being dropped
+- Backups can be manually cleaned up after verifying migration success
+- Rollback restores from backup tables if they exist
 
 Migration: 011
 Created: 2025-12-18
@@ -185,9 +191,11 @@ class CreatedAtNotNull(Migration):
                 """
             )
 
-            # Drop old table and rename
-            cursor.execute("DROP TABLE tasks")
+            # Rename old table to backup (instead of dropping for safety)
+            cursor.execute("DROP TABLE IF EXISTS tasks_backup_011")
+            cursor.execute("ALTER TABLE tasks RENAME TO tasks_backup_011")
             cursor.execute("ALTER TABLE tasks_new RENAME TO tasks")
+            logger.info("Old tasks table retained as tasks_backup_011")
 
             # Recreate indexes
             cursor.execute(
@@ -235,9 +243,11 @@ class CreatedAtNotNull(Migration):
                 """
             )
 
-            # Drop old table and rename
-            cursor.execute("DROP TABLE issues")
+            # Rename old table to backup (instead of dropping for safety)
+            cursor.execute("DROP TABLE IF EXISTS issues_backup_011")
+            cursor.execute("ALTER TABLE issues RENAME TO issues_backup_011")
             cursor.execute("ALTER TABLE issues_new RENAME TO issues")
+            logger.info("Old issues table retained as issues_backup_011")
 
             # Recreate indexes
             cursor.execute(
@@ -258,7 +268,8 @@ class CreatedAtNotNull(Migration):
     def rollback(self, conn: sqlite3.Connection) -> None:
         """Rollback the migration.
 
-        Recreates tables allowing NULL in created_at (original schema).
+        Restores from backup tables if they exist, otherwise recreates tables
+        allowing NULL in created_at (original schema).
         Note: This does not restore NULL values - they remain backfilled.
         """
         cursor = conn.cursor()
@@ -267,107 +278,161 @@ class CreatedAtNotNull(Migration):
         cursor.execute("PRAGMA foreign_keys = OFF")
 
         try:
-            # Recreate tasks table without NOT NULL on created_at
-            # Includes all columns from base schema + migrations 006 and 007
+            # Check if backup tables exist
             cursor.execute(
-                """
-                CREATE TABLE tasks_new (
-                    id INTEGER PRIMARY KEY,
-                    project_id INTEGER REFERENCES projects(id),
-                    issue_id INTEGER REFERENCES issues(id),
-                    task_number TEXT,
-                    parent_issue_number TEXT,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    status TEXT CHECK(status IN ('pending', 'assigned', 'in_progress', 'blocked', 'completed', 'failed')),
-                    assigned_to TEXT,
-                    depends_on TEXT,
-                    can_parallelize BOOLEAN DEFAULT FALSE,
-                    priority INTEGER CHECK(priority BETWEEN 0 AND 4),
-                    workflow_step INTEGER,
-                    requires_mcp BOOLEAN DEFAULT FALSE,
-                    estimated_tokens INTEGER,
-                    actual_tokens INTEGER,
-                    commit_sha TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    quality_gate_status TEXT CHECK(quality_gate_status IN ('pending', 'running', 'passed', 'failed')) DEFAULT 'pending',
-                    quality_gate_failures JSON,
-                    requires_human_approval BOOLEAN DEFAULT FALSE
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks_backup_011'"
+            )
+            tasks_backup_exists = cursor.fetchone() is not None
+
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='issues_backup_011'"
+            )
+            issues_backup_exists = cursor.fetchone() is not None
+
+            if tasks_backup_exists:
+                # Restore from backup - faster and preserves original data
+                logger.info("Restoring tasks from backup table tasks_backup_011")
+                cursor.execute("DROP TABLE IF EXISTS tasks")
+                cursor.execute("ALTER TABLE tasks_backup_011 RENAME TO tasks")
+
+                # Recreate indexes
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_tasks_issue_number
+                    ON tasks(parent_issue_number)
+                    """
                 )
-                """
-            )
-
-            # Copy data with explicit column list
-            columns_str = ", ".join(TASKS_COLUMNS)
-            cursor.execute(
-                f"""
-                INSERT INTO tasks_new ({columns_str})
-                SELECT {columns_str} FROM tasks
-                """
-            )
-
-            cursor.execute("DROP TABLE tasks")
-            cursor.execute("ALTER TABLE tasks_new RENAME TO tasks")
-
-            # Recreate indexes
-            cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_tasks_issue_number
-                ON tasks(parent_issue_number)
-                """
-            )
-            cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
-                ON tasks(project_id, status, priority, created_at)
-                """
-            )
-
-            # Recreate issues table without NOT NULL on created_at
-            cursor.execute(
-                """
-                CREATE TABLE issues_new (
-                    id INTEGER PRIMARY KEY,
-                    project_id INTEGER REFERENCES projects(id),
-                    issue_number TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
-                    priority INTEGER CHECK(priority BETWEEN 0 AND 4),
-                    workflow_step INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP,
-                    UNIQUE(project_id, issue_number)
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
+                    ON tasks(project_id, status, priority, created_at)
+                    """
                 )
-                """
-            )
+            else:
+                # No backup - recreate table without NOT NULL constraint
+                logger.info("No backup found, recreating tasks table without NOT NULL")
+                cursor.execute(
+                    """
+                    CREATE TABLE tasks_new (
+                        id INTEGER PRIMARY KEY,
+                        project_id INTEGER REFERENCES projects(id),
+                        issue_id INTEGER REFERENCES issues(id),
+                        task_number TEXT,
+                        parent_issue_number TEXT,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        status TEXT CHECK(status IN ('pending', 'assigned', 'in_progress', 'blocked', 'completed', 'failed')),
+                        assigned_to TEXT,
+                        depends_on TEXT,
+                        can_parallelize BOOLEAN DEFAULT FALSE,
+                        priority INTEGER CHECK(priority BETWEEN 0 AND 4),
+                        workflow_step INTEGER,
+                        requires_mcp BOOLEAN DEFAULT FALSE,
+                        estimated_tokens INTEGER,
+                        actual_tokens INTEGER,
+                        commit_sha TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP,
+                        quality_gate_status TEXT CHECK(quality_gate_status IN ('pending', 'running', 'passed', 'failed')) DEFAULT 'pending',
+                        quality_gate_failures JSON,
+                        requires_human_approval BOOLEAN DEFAULT FALSE
+                    )
+                    """
+                )
 
-            # Copy data with explicit column list
-            issues_columns_str = ", ".join(ISSUES_COLUMNS)
-            cursor.execute(
-                f"""
-                INSERT INTO issues_new ({issues_columns_str})
-                SELECT {issues_columns_str} FROM issues
-                """
-            )
+                columns_str = ", ".join(TASKS_COLUMNS)
+                cursor.execute(
+                    f"""
+                    INSERT INTO tasks_new ({columns_str})
+                    SELECT {columns_str} FROM tasks
+                    """
+                )
 
-            cursor.execute("DROP TABLE issues")
-            cursor.execute("ALTER TABLE issues_new RENAME TO issues")
+                cursor.execute("DROP TABLE tasks")
+                cursor.execute("ALTER TABLE tasks_new RENAME TO tasks")
 
-            # Recreate indexes
-            cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_issues_number
-                ON issues(project_id, issue_number)
-                """
-            )
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_tasks_issue_number
+                    ON tasks(parent_issue_number)
+                    """
+                )
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority
+                    ON tasks(project_id, status, priority, created_at)
+                    """
+                )
+
+            if issues_backup_exists:
+                # Restore from backup
+                logger.info("Restoring issues from backup table issues_backup_011")
+                cursor.execute("DROP TABLE IF EXISTS issues")
+                cursor.execute("ALTER TABLE issues_backup_011 RENAME TO issues")
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_issues_number
+                    ON issues(project_id, issue_number)
+                    """
+                )
+            else:
+                # No backup - recreate table without NOT NULL constraint
+                logger.info("No backup found, recreating issues table without NOT NULL")
+                cursor.execute(
+                    """
+                    CREATE TABLE issues_new (
+                        id INTEGER PRIMARY KEY,
+                        project_id INTEGER REFERENCES projects(id),
+                        issue_number TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
+                        priority INTEGER CHECK(priority BETWEEN 0 AND 4),
+                        workflow_step INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP,
+                        UNIQUE(project_id, issue_number)
+                    )
+                    """
+                )
+
+                issues_columns_str = ", ".join(ISSUES_COLUMNS)
+                cursor.execute(
+                    f"""
+                    INSERT INTO issues_new ({issues_columns_str})
+                    SELECT {issues_columns_str} FROM issues
+                    """
+                )
+
+                cursor.execute("DROP TABLE issues")
+                cursor.execute("ALTER TABLE issues_new RENAME TO issues")
+
+                cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_issues_number
+                    ON issues(project_id, issue_number)
+                    """
+                )
 
         finally:
             cursor.execute("PRAGMA foreign_keys = ON")
 
         conn.commit()
         logger.info("Migration 011 rollback completed")
+
+    @staticmethod
+    def cleanup_backups(conn: sqlite3.Connection) -> None:
+        """Manually clean up backup tables after verifying migration success.
+
+        Call this method only after confirming the migration worked correctly.
+        This permanently removes tasks_backup_011 and issues_backup_011.
+        """
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS tasks_backup_011")
+        cursor.execute("DROP TABLE IF EXISTS issues_backup_011")
+        conn.commit()
+        logger.info("Migration 011 backup tables cleaned up")
 
 
 # Migration instance for auto-discovery

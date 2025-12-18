@@ -20,6 +20,7 @@ from codeframe.core.models import (
     TaskStatus,
     AgentMaturity,
     Issue,
+    IssueWithTaskCount,
     CallType,
 )
 
@@ -40,24 +41,37 @@ class Database:
 
     Supports both synchronous (sqlite3) and asynchronous (aiosqlite) operations.
 
+    Sync vs Async Methods:
+        Most methods are synchronous for simplicity and broad compatibility.
+        Selected methods have async variants for use in async contexts:
+        - get_tasks_by_issue() - async, use in async methods like complete_issue()
+
+        Pattern: Sync methods remain the default. Async methods are added incrementally
+        for performance-critical paths or methods called from async contexts.
+        Future work may convert more methods to async as the codebase migrates.
+
     Async Connection Lifecycle:
         - Call initialize_async() to explicitly set up the async connection
         - Or let it initialize lazily on first async operation (thread-safe)
         - IMPORTANT: Always call close_async() or close_all() when done to release resources
         - The async connection includes automatic health checks and reconnection
+        - Use 'async with db:' context manager for automatic cleanup
 
-    Example:
+    Example (manual lifecycle):
         db = Database("state.db")
         db.initialize()  # Sync initialization
 
-        # Option 1: Explicit async setup
         await db.initialize_async()
         tasks = await db.get_tasks_by_issue(issue_id)
         await db.close_async()
 
-        # Option 2: Lazy initialization (connection created on first use)
-        tasks = await db.get_tasks_by_issue(issue_id)
-        await db.close_async()  # Still must close!
+    Example (context manager - recommended):
+        db = Database("state.db")
+        db.initialize()
+
+        async with db:
+            tasks = await db.get_tasks_by_issue(issue_id)
+        # Async connection automatically closed
     """
 
     def __init__(self, db_path: Path | str):
@@ -1127,6 +1141,29 @@ class Database:
         """Context manager exit."""
         self.close()
 
+    async def __aenter__(self) -> "Database":
+        """Async context manager entry.
+
+        Initializes sync connection if needed and prepares for async operations.
+        Use this when you need to perform async database operations.
+
+        Example:
+            async with db:
+                tasks = await db.get_tasks_by_issue(issue_id)
+            # Async connection automatically closed
+        """
+        if not self.conn:
+            self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit.
+
+        Closes async connection. Sync connection remains open for continued sync use.
+        Call close() separately if you want to close the sync connection too.
+        """
+        await self.close_async()
+
     # Blocker CRUD operations (049-human-in-loop)
 
     def create_blocker(
@@ -2077,14 +2114,14 @@ class Database:
         rows = cursor.fetchall()
         return [self._row_to_task(row) for row in rows]
 
-    def get_issue_with_task_counts(self, issue_id: int) -> Optional[Dict[str, Any]]:
+    def get_issue_with_task_counts(self, issue_id: int) -> Optional[IssueWithTaskCount]:
         """Get issue with count of associated tasks.
 
         Args:
             issue_id: Issue ID
 
         Returns:
-            Issue dictionary with task_count field, or None if not found
+            IssueWithTaskCount object or None if not found
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -2098,7 +2135,37 @@ class Database:
             (issue_id,),
         )
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+
+        # Parse timestamps
+        row_id = row["id"]
+        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        if created_at is None:
+            created_at = datetime.now()
+        completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
+
+        # Convert status string to enum
+        status = TaskStatus.PENDING
+        if row["status"]:
+            try:
+                status = TaskStatus(row["status"])
+            except ValueError:
+                pass
+
+        return IssueWithTaskCount(
+            id=row_id,
+            project_id=row["project_id"],
+            issue_number=row["issue_number"] or "",
+            title=row["title"] or "",
+            description=row["description"] or "",
+            status=status,
+            priority=row["priority"] if row["priority"] is not None else 2,
+            workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
+            created_at=created_at,
+            completed_at=completed_at,
+            task_count=row["task_count"],
+        )
 
     def get_issue_completion_status(self, issue_id: int) -> Dict[str, Any]:
         """Calculate issue completion based on task statuses.
