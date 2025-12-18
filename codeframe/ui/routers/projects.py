@@ -13,7 +13,7 @@ import shutil
 import sqlite3
 from datetime import datetime, UTC
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from codeframe.core.session_manager import SessionManager
 from codeframe.persistence.database import Database
@@ -218,24 +218,68 @@ async def get_project_status(project_id: int, db: Database = Depends(get_db)):
 
 
 @router.get("/{project_id}/tasks")
-async def get_tasks(project_id: int, status: str | None = None, limit: int = 50):
-    """Get project tasks."""
-    # TODO: Query database with filters
-    return {
-        "tasks": [
-            {
-                "id": 27,
-                "title": "JWT refresh token flow",
-                "description": "Implement token refresh endpoint",
-                "status": "in_progress",
-                "assigned_to": "backend-1",
-                "priority": 0,
-                "workflow_step": 7,
-                "progress": 45,
-            }
-        ],
-        "total": 40,
-    }
+async def get_tasks(
+    project_id: int,
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=1000, description="Max tasks to return (1-1000)"),
+    offset: int = Query(default=0, ge=0, description="Tasks to skip for pagination"),
+    db: Database = Depends(get_db),
+):
+    """Get project tasks with filtering and pagination.
+
+    Args:
+        project_id: Project ID to get tasks for
+        status: Optional filter by task status (e.g., 'pending', 'in_progress', 'completed')
+        limit: Maximum number of tasks to return (1-1000, default: 50)
+        offset: Number of tasks to skip for pagination (>=0, default: 0)
+        db: Database instance (injected)
+
+    Returns:
+        Dictionary with:
+        - tasks: List[Dict] - Paginated list of task dictionaries
+        - total: int - Total number of tasks matching the filter (before pagination)
+
+    Raises:
+        HTTPException:
+            - 404: Project not found
+            - 422: Invalid parameters (negative offset, limit out of range)
+            - 500: Database error
+
+    Security Notes:
+        - Input validation: limit constrained to 1-1000, offset must be >=0
+        - TODO: Add authorization check when auth infrastructure is implemented
+          (verify user has access to this project)
+    """
+    try:
+        # Validate project exists
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # TODO: Add authorization check when auth system is implemented
+        # if not db.user_has_project_access(current_user.id, project_id):
+        #     raise HTTPException(status_code=403, detail="Access denied")
+
+        # Query all tasks for the project
+        tasks = db.get_project_tasks(project_id)
+
+        # Apply status filtering if provided
+        # NOTE: Client-side filtering used here. For large datasets (1000+ tasks),
+        # consider adding database-level filtering in future optimization.
+        if status is not None:
+            tasks = [t for t in tasks if t.get("status") == status]
+
+        # Calculate total count before pagination
+        total = len(tasks)
+
+        # Apply pagination
+        tasks = tasks[offset : offset + limit]
+
+        return {"tasks": tasks, "total": total}
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error fetching tasks for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error fetching tasks")
 
 
 @router.get("/{project_id}/activity")

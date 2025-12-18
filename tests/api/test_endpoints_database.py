@@ -5,7 +5,7 @@ Task: cf-8.3 - Wire endpoints to database
 """
 
 import pytest
-from codeframe.core.models import AgentMaturity
+from codeframe.core.models import AgentMaturity, Task, TaskStatus
 
 
 def get_app():
@@ -246,3 +246,289 @@ class TestEndpointDatabaseIntegration:
             # Get agents
             response = api_client.get(f"/api/projects/{project_id}/agents")
             assert response.status_code == 200
+
+
+@pytest.mark.unit
+class TestProjectTasksEndpoint:
+    """Test GET /api/projects/{id}/tasks endpoint with database."""
+
+    def test_get_tasks_empty_database(self, api_client):
+        """Test getting tasks when project has no tasks."""
+        db = get_app().state.db
+        project_id = db.create_project("no-tasks-project", "No Tasks Project project")
+
+        # ACT
+        response = api_client.get(f"/api/projects/{project_id}/tasks")
+
+        # ASSERT
+        assert response.status_code == 200
+        data = response.json()
+        assert "tasks" in data
+        assert "total" in data
+        assert data["tasks"] == []
+        assert data["total"] == 0
+
+    def test_get_tasks_with_data(self, api_client):
+        """Test getting tasks with actual database data."""
+        db = get_app().state.db
+        project_id = db.create_project("tasks-project", "Tasks Project project")
+
+        # Create test tasks
+        db.create_task(
+            Task(
+                project_id=project_id,
+                task_number="1",
+                title="Task 1",
+                description="First task",
+                status=TaskStatus.PENDING,
+            )
+        )
+        db.create_task(
+            Task(
+                project_id=project_id,
+                task_number="2",
+                title="Task 2",
+                description="Second task",
+                status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        db.create_task(
+            Task(
+                project_id=project_id,
+                task_number="3",
+                title="Task 3",
+                description="Third task",
+                status=TaskStatus.COMPLETED,
+            )
+        )
+
+        # ACT
+        response = api_client.get(f"/api/projects/{project_id}/tasks")
+
+        # ASSERT
+        assert response.status_code == 200
+        data = response.json()
+        assert "tasks" in data
+        assert "total" in data
+        assert len(data["tasks"]) == 3
+        assert data["total"] == 3
+
+    def test_get_tasks_status_filtering(self, api_client):
+        """Test status filtering returns only matching tasks."""
+        db = get_app().state.db
+        project_id = db.create_project("filter-project", "Filter Project project")
+
+        # Create tasks with different statuses
+        db.create_task(
+            Task(
+                project_id=project_id,
+                task_number="1",
+                title="Task 1",
+                description="",
+                status=TaskStatus.PENDING,
+            )
+        )
+        db.create_task(
+            Task(
+                project_id=project_id,
+                task_number="2",
+                title="Task 2",
+                description="",
+                status=TaskStatus.IN_PROGRESS,
+            )
+        )
+        db.create_task(
+            Task(
+                project_id=project_id,
+                task_number="3",
+                title="Task 3",
+                description="",
+                status=TaskStatus.PENDING,
+            )
+        )
+
+        # ACT - Filter for pending tasks
+        response = api_client.get(f"/api/projects/{project_id}/tasks?status=pending")
+
+        # ASSERT
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["tasks"]) == 2
+        assert data["total"] == 2
+        assert all(t["status"] == "pending" for t in data["tasks"])
+
+    def test_get_tasks_pagination(self, api_client):
+        """Test pagination with limit and offset."""
+        db = get_app().state.db
+        project_id = db.create_project("pagination-project", "Pagination Project project")
+
+        # Create 10 tasks
+        for i in range(1, 11):
+            db.create_task(
+                Task(
+                    project_id=project_id,
+                    task_number=str(i),
+                    title=f"Task {i}",
+                    description="",
+                    status=TaskStatus.PENDING,
+                )
+            )
+
+        # ACT - Get first 5 tasks
+        response = api_client.get(f"/api/projects/{project_id}/tasks?limit=5&offset=0")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["tasks"]) == 5
+        assert data["total"] == 10
+
+        # ACT - Get next 5 tasks
+        response = api_client.get(f"/api/projects/{project_id}/tasks?limit=5&offset=5")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["tasks"]) == 5
+        assert data["total"] == 10
+
+    def test_get_tasks_project_not_found(self, api_client):
+        """Test getting tasks for non-existent project returns 404."""
+        # ACT
+        response = api_client.get("/api/projects/99999/tasks")
+
+        # ASSERT
+        assert response.status_code == 404
+        data = response.json()
+        assert "detail" in data
+        assert "not found" in data["detail"].lower()
+
+    def test_get_tasks_total_count_accuracy(self, api_client):
+        """Test that total count reflects filtered results, not all tasks."""
+        db = get_app().state.db
+        project_id = db.create_project("count-project", "Count Project project")
+
+        # Create 5 pending and 3 completed tasks
+        for i in range(1, 6):
+            db.create_task(
+                Task(
+                    project_id=project_id,
+                    task_number=str(i),
+                    title=f"Task {i}",
+                    description="",
+                    status=TaskStatus.PENDING,
+                )
+            )
+        for i in range(6, 9):
+            db.create_task(
+                Task(
+                    project_id=project_id,
+                    task_number=str(i),
+                    title=f"Task {i}",
+                    description="",
+                    status=TaskStatus.COMPLETED,
+                )
+            )
+
+        # ACT - Get all tasks
+        response = api_client.get(f"/api/projects/{project_id}/tasks")
+        assert response.status_code == 200
+        assert response.json()["total"] == 8
+
+        # ACT - Get only pending tasks
+        response = api_client.get(f"/api/projects/{project_id}/tasks?status=pending")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 5
+        assert len(data["tasks"]) == 5
+
+    def test_get_tasks_edge_cases(self, api_client):
+        """Test edge cases: offset > total."""
+        db = get_app().state.db
+        project_id = db.create_project("edge-project", "Edge Project project")
+
+        # Create 3 tasks
+        for i in range(1, 4):
+            db.create_task(
+                Task(
+                    project_id=project_id,
+                    task_number=str(i),
+                    title=f"Task {i}",
+                    description="",
+                    status=TaskStatus.PENDING,
+                )
+            )
+
+        # ACT - Offset beyond total tasks (valid, just returns empty)
+        response = api_client.get(f"/api/projects/{project_id}/tasks?offset=10")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tasks"] == []
+        assert data["total"] == 3
+
+
+@pytest.mark.unit
+class TestProjectTasksEndpointSecurity:
+    """Security tests for GET /api/projects/{id}/tasks endpoint."""
+
+    def test_get_tasks_negative_limit_rejected(self, api_client):
+        """Test that negative limit is rejected with 422."""
+        db = get_app().state.db
+        project_id = db.create_project("security-project", "Security Project project")
+
+        # ACT - Try negative limit
+        response = api_client.get(f"/api/projects/{project_id}/tasks?limit=-10")
+
+        # ASSERT
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    def test_get_tasks_zero_limit_rejected(self, api_client):
+        """Test that zero limit is rejected with 422."""
+        db = get_app().state.db
+        project_id = db.create_project("security-project", "Security Project project")
+
+        # ACT - Try zero limit
+        response = api_client.get(f"/api/projects/{project_id}/tasks?limit=0")
+
+        # ASSERT
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    def test_get_tasks_excessive_limit_rejected(self, api_client):
+        """Test that excessive limit (>1000) is rejected with 422."""
+        db = get_app().state.db
+        project_id = db.create_project("security-project", "Security Project project")
+
+        # ACT - Try excessive limit
+        response = api_client.get(f"/api/projects/{project_id}/tasks?limit=999999")
+
+        # ASSERT
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    def test_get_tasks_negative_offset_rejected(self, api_client):
+        """Test that negative offset is rejected with 422."""
+        db = get_app().state.db
+        project_id = db.create_project("security-project", "Security Project project")
+
+        # ACT - Try negative offset
+        response = api_client.get(f"/api/projects/{project_id}/tasks?offset=-5")
+
+        # ASSERT
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    def test_get_tasks_valid_max_limit_accepted(self, api_client):
+        """Test that limit=1000 (max valid) is accepted."""
+        db = get_app().state.db
+        project_id = db.create_project("security-project", "Security Project project")
+
+        # ACT - Try max valid limit
+        response = api_client.get(f"/api/projects/{project_id}/tasks?limit=1000")
+
+        # ASSERT
+        assert response.status_code == 200
+        data = response.json()
+        assert "tasks" in data
+        assert "total" in data
