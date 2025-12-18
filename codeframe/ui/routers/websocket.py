@@ -33,7 +33,22 @@ async def websocket_endpoint(websocket: WebSocket):
 
     Message Types:
         - ping: Client heartbeat (responds with pong)
-        - subscribe: Subscribe to specific project updates
+        - subscribe: Subscribe to specific project updates (requires integer project_id)
+        - unsubscribe: Unsubscribe from specific project updates (requires integer project_id)
+
+    Message Format:
+        All messages must be valid JSON. Example:
+        - Ping: {"type": "ping"}
+        - Subscribe: {"type": "subscribe", "project_id": 1}
+        - Unsubscribe: {"type": "unsubscribe", "project_id": 1}
+
+    Error Handling:
+        Invalid messages receive error responses with type "error".
+        Examples of invalid messages:
+        - Missing project_id in subscribe/unsubscribe
+        - Non-integer project_id (e.g., string or float)
+        - Non-positive project_id (≤ 0)
+        - Malformed JSON
 
     Broadcasts:
         - agent_started: When an agent starts
@@ -68,8 +83,93 @@ async def websocket_endpoint(websocket: WebSocket):
             elif message.get("type") == "subscribe":
                 # Subscribe to specific project updates
                 project_id = message.get("project_id")
-                # TODO: Track subscriptions
-                await websocket.send_json({"type": "subscribed", "project_id": project_id})
+
+                # Validate project_id is present
+                if project_id is None:
+                    logger.warning("Subscribe message missing project_id")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Subscribe message requires project_id"
+                    })
+                    continue
+
+                # Validate project_id is an integer
+                if not isinstance(project_id, int):
+                    logger.warning(f"Invalid project_id type: {type(project_id).__name__}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": f"project_id must be an integer, got {type(project_id).__name__}"
+                    })
+                    continue
+
+                # Validate project_id is positive
+                if project_id <= 0:
+                    logger.warning(f"Invalid project_id: {project_id}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "project_id must be a positive integer"
+                    })
+                    continue
+
+                # Track subscription
+                try:
+                    await manager.subscription_manager.subscribe(websocket, project_id)
+                    logger.info(f"WebSocket subscribed to project {project_id}")
+                    await websocket.send_json({
+                        "type": "subscribed",
+                        "project_id": project_id
+                    })
+                except Exception as e:
+                    logger.error(f"Error subscribing to project {project_id}: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Failed to subscribe to project"
+                    })
+            elif message.get("type") == "unsubscribe":
+                # Unsubscribe from specific project updates
+                project_id = message.get("project_id")
+
+                # Validate project_id is present
+                if project_id is None:
+                    logger.warning("Unsubscribe message missing project_id")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Unsubscribe message requires project_id"
+                    })
+                    continue
+
+                # Validate project_id is an integer
+                if not isinstance(project_id, int):
+                    logger.warning(f"Invalid project_id type: {type(project_id).__name__}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": f"project_id must be an integer, got {type(project_id).__name__}"
+                    })
+                    continue
+
+                # Validate project_id is positive
+                if project_id <= 0:
+                    logger.warning(f"Invalid project_id: {project_id}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "project_id must be a positive integer"
+                    })
+                    continue
+
+                # Remove subscription
+                try:
+                    await manager.subscription_manager.unsubscribe(websocket, project_id)
+                    logger.info(f"WebSocket unsubscribed from project {project_id}")
+                    await websocket.send_json({
+                        "type": "unsubscribed",
+                        "project_id": project_id
+                    })
+                except Exception as e:
+                    logger.error(f"Error unsubscribing from project {project_id}: {e}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Failed to unsubscribe from project"
+                    })
 
     except WebSocketDisconnect:
         # Normal client disconnect - no error logging needed
@@ -79,7 +179,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {type(e).__name__} - {str(e)}", exc_info=True)
     finally:
         # Always disconnect and clean up, regardless of how we exited
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket)
         try:
             await websocket.close()
         except Exception:

@@ -67,7 +67,7 @@ async def broadcast_task_status(
         message["progress"] = progress
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast task_status_changed: task {task_id} → {status}")
     except Exception as e:
         logger.error(f"Failed to broadcast task status: {e}")
@@ -112,7 +112,7 @@ async def broadcast_agent_status(
         message["progress"] = progress
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast agent_status_changed: {agent_id} → {status}")
     except Exception as e:
         logger.error(f"Failed to broadcast agent status: {e}")
@@ -157,7 +157,7 @@ async def broadcast_test_result(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(
             f"Broadcast test_result: task {task_id}, "
             f"{passed} passed, {failed} failed, {errors} errors"
@@ -198,7 +198,7 @@ async def broadcast_commit_created(
         message["files_changed"] = files_changed
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast commit_created: {commit_hash[:7]} for task {task_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast commit: {e}")
@@ -238,7 +238,7 @@ async def broadcast_activity_update(
         message["agent_id"] = agent_id
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast activity_update: {activity_type} - {message_text[:50]}")
     except Exception as e:
         logger.error(f"Failed to broadcast activity: {e}")
@@ -276,7 +276,7 @@ async def broadcast_progress_update(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast progress_update: {completed}/{total} ({percentage}%)")
     except Exception as e:
         logger.error(f"Failed to broadcast progress: {e}")
@@ -317,7 +317,7 @@ async def broadcast_correction_attempt(
         message["error_summary"] = error_summary
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(
             f"Broadcast correction_attempt: task {task_id}, "
             f"attempt {attempt_number}/{max_attempts}, {status}"
@@ -355,7 +355,7 @@ async def broadcast_agent_created(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast agent_created: {agent_id} ({agent_type})")
     except Exception as e:
         logger.error(f"Failed to broadcast agent creation: {e}")
@@ -382,7 +382,7 @@ async def broadcast_agent_retired(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast agent_retired: {agent_id} ({tasks_completed} tasks)")
     except Exception as e:
         logger.error(f"Failed to broadcast agent retirement: {e}")
@@ -413,7 +413,7 @@ async def broadcast_task_assigned(
         message["task_title"] = task_title
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast task_assigned: task {task_id} → {agent_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast task assignment: {e}")
@@ -445,7 +445,7 @@ async def broadcast_task_blocked(
         message["task_title"] = task_title
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(
             f"Broadcast task_blocked: task {task_id} blocked by " f"{len(blocked_by)} tasks"
         )
@@ -484,7 +484,7 @@ async def broadcast_task_unblocked(
         message["task_title"] = task_title
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast task_unblocked: task {task_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast task unblocked: {e}")
@@ -539,7 +539,7 @@ async def broadcast_blocker_created(
         message["blocker"]["task_title"] = task_title
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast blocker_created: blocker {blocker_id} by {agent_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast blocker created: {e}")
@@ -566,7 +566,7 @@ async def broadcast_blocker_resolved(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast blocker_resolved: blocker {blocker_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast blocker resolved: {e}")
@@ -595,7 +595,7 @@ async def broadcast_agent_resumed(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast agent_resumed: agent {agent_id} on task {task_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast agent resumed: {e}")
@@ -626,7 +626,7 @@ async def broadcast_blocker_expired(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast blocker_expired: blocker {blocker_id} by {agent_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast blocker expired: {e}")
@@ -679,7 +679,7 @@ async def broadcast_discovery_answer_submitted(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast discovery_answer_submitted: question {question_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast discovery answer submission: {e}")
@@ -715,7 +715,7 @@ async def broadcast_discovery_question_presented(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast discovery_question_presented: {question_id}")
     except Exception as e:
         logger.error(f"Failed to broadcast discovery question presented: {e}")
@@ -750,7 +750,7 @@ async def broadcast_discovery_progress_updated(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast discovery_progress_updated: {percentage}%")
     except Exception as e:
         logger.error(f"Failed to broadcast discovery progress update: {e}")
@@ -780,7 +780,7 @@ async def broadcast_discovery_completed(
     }
 
     try:
-        await manager.broadcast(message)
+        await manager.broadcast(message, project_id=project_id)
         logger.debug(f"Broadcast discovery_completed: {total_answers} answers")
     except Exception as e:
         logger.error(f"Failed to broadcast discovery completion: {e}")
