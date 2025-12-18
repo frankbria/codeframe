@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 import logging
+
+import aiosqlite
+
 from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue, CallType
 
 if TYPE_CHECKING:
@@ -26,6 +29,7 @@ class Database:
     def __init__(self, db_path: Path | str):
         self.db_path = Path(db_path) if db_path != ":memory:" else db_path
         self.conn: Optional[sqlite3.Connection] = None
+        self._async_conn: Optional[aiosqlite.Connection] = None
 
     def initialize(self, run_migrations: bool = True) -> None:
         """Initialize database schema.
@@ -829,8 +833,12 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps with logging
+        # Parse timestamps with logging - preserve None to surface data quality issues
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        if created_at is None and row["created_at"] is None:
+            logger.warning(
+                f"Task {row_id} has NULL created_at in database"
+            )
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
@@ -860,7 +868,7 @@ class Database:
             requires_mcp=bool(row["requires_mcp"]),
             estimated_tokens=row["estimated_tokens"] if row["estimated_tokens"] is not None else 0,
             actual_tokens=row["actual_tokens"],
-            created_at=created_at if created_at is not None else datetime.now(),
+            created_at=created_at,
             completed_at=completed_at,
         )
 
@@ -875,8 +883,12 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps with logging
+        # Parse timestamps with logging - preserve None to surface data quality issues
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        if created_at is None and row["created_at"] is None:
+            logger.warning(
+                f"Issue {row_id} has NULL created_at in database"
+            )
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
@@ -898,7 +910,7 @@ class Database:
             status=status,
             priority=row["priority"] if row["priority"] is not None else 2,
             workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
-            created_at=created_at if created_at is not None else datetime.now(),
+            created_at=created_at,
             completed_at=completed_at,
         )
 
@@ -1818,7 +1830,7 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_tasks_by_issue(self, issue_id: int) -> List[Task]:
+    async def get_tasks_by_issue(self, issue_id: int) -> List[Task]:
         """Get all tasks for an issue.
 
         Args:
@@ -1827,13 +1839,17 @@ class Database:
         Returns:
             List of Task objects ordered by task_number
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        # Use async connection if available, otherwise fall back to sync
+        if self._async_conn is None:
+            self._async_conn = await aiosqlite.connect(str(self.db_path))
+            self._async_conn.row_factory = aiosqlite.Row
+
+        async with self._async_conn.execute(
             "SELECT * FROM tasks WHERE issue_id = ? ORDER BY task_number",
             (issue_id,),
-        )
-        rows = cursor.fetchall()
-        return [self._row_to_task(row) for row in rows]
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [self._row_to_task(row) for row in rows]
 
     def get_tasks_by_parent_issue_number(self, parent_issue_number: str) -> List[Task]:
         """Get all tasks by parent issue number.

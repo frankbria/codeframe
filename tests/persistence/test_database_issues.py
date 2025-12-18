@@ -404,7 +404,8 @@ class TestTaskIssueRelationship:
         assert task_id is not None
         assert task_id > 0
 
-    def test_get_tasks_by_issue(self, temp_db_path):
+    @pytest.mark.asyncio
+    async def test_get_tasks_by_issue(self, temp_db_path):
         """Test retrieving all tasks for an issue."""
         db = Database(temp_db_path)
         db.initialize()
@@ -459,8 +460,8 @@ class TestTaskIssueRelationship:
             False,
         )
 
-        # Get tasks by issue
-        tasks = db.get_tasks_by_issue(issue_id)
+        # Get tasks by issue (async)
+        tasks = await db.get_tasks_by_issue(issue_id)
 
         assert len(tasks) == 3
         task_numbers = [t.task_number for t in tasks]
@@ -468,7 +469,8 @@ class TestTaskIssueRelationship:
         assert "1.5.2" in task_numbers
         assert "1.5.3" in task_numbers
 
-    def test_get_tasks_by_issue_empty(self, temp_db_path):
+    @pytest.mark.asyncio
+    async def test_get_tasks_by_issue_empty(self, temp_db_path):
         """Test getting tasks for issue with no tasks."""
         db = Database(temp_db_path)
         db.initialize()
@@ -485,7 +487,7 @@ class TestTaskIssueRelationship:
             )
         )
 
-        tasks = db.get_tasks_by_issue(issue_id)
+        tasks = await db.get_tasks_by_issue(issue_id)
         assert tasks == []
 
     def test_task_can_parallelize_flag(self, temp_db_path):
@@ -850,7 +852,8 @@ class TestIssueTaskQueries:
 class TestIssueTaskIntegration:
     """Integration tests for Issue-Task workflow."""
 
-    def test_complete_issue_workflow(self, temp_db_path):
+    @pytest.mark.asyncio
+    async def test_complete_issue_workflow(self, temp_db_path):
         """Test complete workflow from issue creation to completion."""
         db = Database(temp_db_path)
         db.initialize()
@@ -920,7 +923,7 @@ class TestIssueTaskIntegration:
         assert issue.status == TaskStatus.COMPLETED
         assert issue.completed_at is not None
 
-        tasks = db.get_tasks_by_issue(issue_id)
+        tasks = await db.get_tasks_by_issue(issue_id)
         assert all(t.status == TaskStatus.COMPLETED for t in tasks)
 
     def test_parallel_task_execution(self, temp_db_path):
@@ -989,7 +992,8 @@ class TestIssueTaskIntegration:
 
         assert len(parallel_tasks) == 2
 
-    def test_hierarchical_numbering_consistency(self, temp_db_path):
+    @pytest.mark.asyncio
+    async def test_hierarchical_numbering_consistency(self, temp_db_path):
         """Test that hierarchical numbering is consistent."""
         db = Database(temp_db_path)
         db.initialize()
@@ -1055,7 +1059,7 @@ class TestIssueTaskIntegration:
         assert "1.2" in issue_numbers
         assert "2" in issue_numbers
 
-        tasks = db.get_tasks_by_issue(issue2_id)
+        tasks = await db.get_tasks_by_issue(issue2_id)
         task_numbers = [t.task_number for t in tasks]
 
         assert "1.1.1" in task_numbers

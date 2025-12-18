@@ -124,7 +124,7 @@ class Issue:
     status: TaskStatus = TaskStatus.PENDING
     priority: int = 2  # 0-4, 0 = highest
     workflow_step: int = 1
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
     def to_dict(self) -> dict:
@@ -168,7 +168,7 @@ class Task:
     requires_mcp: bool = False
     estimated_tokens: int = 0
     actual_tokens: Optional[int] = None
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
     def to_dict(self) -> dict:

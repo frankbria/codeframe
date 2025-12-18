@@ -208,7 +208,7 @@ class GitWorkflowManager:
                 pass
             raise
 
-    def is_issue_complete(self, issue_id: int) -> bool:
+    async def is_issue_complete(self, issue_id: int) -> bool:
         """Check if all tasks for an issue are completed.
 
         Args:
@@ -217,7 +217,7 @@ class GitWorkflowManager:
         Returns:
             True if all tasks completed, False otherwise
         """
-        tasks = self.db.get_tasks_by_issue(issue_id)
+        tasks = await self.db.get_tasks_by_issue(issue_id)
 
         # No tasks = incomplete
         if not tasks:

@@ -1313,7 +1313,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             "status": "created",
         }
 
-    def complete_issue(self, issue_id: int) -> Dict[str, Any]:
+    async def complete_issue(self, issue_id: int) -> Dict[str, Any]:
         """
         Complete an issue by merging feature branch to main.
 
@@ -1345,8 +1345,8 @@ Generate the PRD in markdown format with clear sections and professional languag
         if not issue:
             raise ValueError(f"Issue {issue_id} not found")
 
-        # 2. Validate all tasks completed using GitWorkflowManager
-        if not self.git_workflow.is_issue_complete(issue_id):
+        # 2. Validate all tasks completed using GitWorkflowManager (async)
+        if not await self.git_workflow.is_issue_complete(issue_id):
             raise ValueError(
                 f"Cannot complete issue {issue.issue_number}: incomplete tasks remain"
             )
@@ -1362,8 +1362,8 @@ Generate the PRD in markdown format with clear sections and professional languag
         # 5. Update issue status to 'completed'
         self.db.update_issue(issue_id, {"status": "completed"})
 
-        # 6. Count tasks
-        tasks = self.db.get_tasks_by_issue(issue_id)
+        # 6. Count tasks (async)
+        tasks = await self.db.get_tasks_by_issue(issue_id)
         tasks_completed = len(tasks)
 
         # 7. Trigger deployment after successful merge
