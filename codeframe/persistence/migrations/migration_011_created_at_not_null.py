@@ -19,6 +19,46 @@ from codeframe.persistence.migrations import Migration
 
 logger = logging.getLogger(__name__)
 
+# Full column list for tasks table (includes all columns from base schema + migrations 006, 007)
+TASKS_COLUMNS = [
+    "id",
+    "project_id",
+    "issue_id",
+    "task_number",
+    "parent_issue_number",
+    "title",
+    "description",
+    "status",
+    "assigned_to",
+    "depends_on",
+    "can_parallelize",
+    "priority",
+    "workflow_step",
+    "requires_mcp",
+    "estimated_tokens",
+    "actual_tokens",
+    "commit_sha",
+    "created_at",
+    "completed_at",
+    "quality_gate_status",
+    "quality_gate_failures",
+    "requires_human_approval",
+]
+
+# Full column list for issues table
+ISSUES_COLUMNS = [
+    "id",
+    "project_id",
+    "issue_number",
+    "title",
+    "description",
+    "status",
+    "priority",
+    "workflow_step",
+    "created_at",
+    "completed_at",
+]
+
 
 class CreatedAtNotNull(Migration):
     """Backfill NULL created_at and add NOT NULL constraint."""
@@ -105,7 +145,8 @@ class CreatedAtNotNull(Migration):
         cursor.execute("PRAGMA foreign_keys = OFF")
 
         try:
-            # Create new tasks table with NOT NULL
+            # Create new tasks table with NOT NULL on created_at
+            # Includes all columns from base schema + migrations 006 (commit_sha) and 007 (quality gates)
             cursor.execute(
                 """
                 CREATE TABLE tasks_new (
@@ -127,16 +168,20 @@ class CreatedAtNotNull(Migration):
                     actual_tokens INTEGER,
                     commit_sha TEXT,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP
+                    completed_at TIMESTAMP,
+                    quality_gate_status TEXT CHECK(quality_gate_status IN ('pending', 'running', 'passed', 'failed')) DEFAULT 'pending',
+                    quality_gate_failures JSON,
+                    requires_human_approval BOOLEAN DEFAULT FALSE
                 )
                 """
             )
 
-            # Copy data
+            # Copy data with explicit column list to be robust to schema changes
+            columns_str = ", ".join(TASKS_COLUMNS)
             cursor.execute(
-                """
-                INSERT INTO tasks_new
-                SELECT * FROM tasks
+                f"""
+                INSERT INTO tasks_new ({columns_str})
+                SELECT {columns_str} FROM tasks
                 """
             )
 
@@ -181,11 +226,12 @@ class CreatedAtNotNull(Migration):
                 """
             )
 
-            # Copy data
+            # Copy data with explicit column list
+            issues_columns_str = ", ".join(ISSUES_COLUMNS)
             cursor.execute(
-                """
-                INSERT INTO issues_new
-                SELECT * FROM issues
+                f"""
+                INSERT INTO issues_new ({issues_columns_str})
+                SELECT {issues_columns_str} FROM issues
                 """
             )
 
@@ -221,7 +267,8 @@ class CreatedAtNotNull(Migration):
         cursor.execute("PRAGMA foreign_keys = OFF")
 
         try:
-            # Recreate tasks table without NOT NULL
+            # Recreate tasks table without NOT NULL on created_at
+            # Includes all columns from base schema + migrations 006 and 007
             cursor.execute(
                 """
                 CREATE TABLE tasks_new (
@@ -243,12 +290,23 @@ class CreatedAtNotNull(Migration):
                     actual_tokens INTEGER,
                     commit_sha TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMP
+                    completed_at TIMESTAMP,
+                    quality_gate_status TEXT CHECK(quality_gate_status IN ('pending', 'running', 'passed', 'failed')) DEFAULT 'pending',
+                    quality_gate_failures JSON,
+                    requires_human_approval BOOLEAN DEFAULT FALSE
                 )
                 """
             )
 
-            cursor.execute("INSERT INTO tasks_new SELECT * FROM tasks")
+            # Copy data with explicit column list
+            columns_str = ", ".join(TASKS_COLUMNS)
+            cursor.execute(
+                f"""
+                INSERT INTO tasks_new ({columns_str})
+                SELECT {columns_str} FROM tasks
+                """
+            )
+
             cursor.execute("DROP TABLE tasks")
             cursor.execute("ALTER TABLE tasks_new RENAME TO tasks")
 
@@ -266,7 +324,7 @@ class CreatedAtNotNull(Migration):
                 """
             )
 
-            # Recreate issues table without NOT NULL
+            # Recreate issues table without NOT NULL on created_at
             cursor.execute(
                 """
                 CREATE TABLE issues_new (
@@ -285,7 +343,15 @@ class CreatedAtNotNull(Migration):
                 """
             )
 
-            cursor.execute("INSERT INTO issues_new SELECT * FROM issues")
+            # Copy data with explicit column list
+            issues_columns_str = ", ".join(ISSUES_COLUMNS)
+            cursor.execute(
+                f"""
+                INSERT INTO issues_new ({issues_columns_str})
+                SELECT {issues_columns_str} FROM issues
+                """
+            )
+
             cursor.execute("DROP TABLE issues")
             cursor.execute("ALTER TABLE issues_new RENAME TO issues")
 
