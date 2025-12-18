@@ -1356,8 +1356,8 @@ Generate the PRD in markdown format with clear sections and professional languag
         if not branch_record:
             raise ValueError(f"No active branch found for issue {issue.issue_number}")
 
-        # 4. Merge to main via GitWorkflowManager
-        merge_result = self.git_workflow.merge_to_main(issue.issue_number)
+        # 4. Merge to main via GitWorkflowManager (async)
+        merge_result = await self.git_workflow.merge_to_main(issue.issue_number)
 
         # 5. Update issue status to 'completed'
         self.db.update_issue(issue_id, {"status": "completed"})

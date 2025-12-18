@@ -131,7 +131,7 @@ class GitWorkflowManager:
 
         return sanitized
 
-    def merge_to_main(self, issue_number: str) -> Dict[str, Any]:
+    async def merge_to_main(self, issue_number: str) -> Dict[str, Any]:
         """Merge feature branch to main after all tasks complete.
 
         Args:
@@ -160,8 +160,8 @@ class GitWorkflowManager:
 
         issue_id = matching_issue.id
 
-        # Check all tasks are completed
-        if not self.is_issue_complete(issue_id):
+        # Check all tasks are completed (async)
+        if not await self.is_issue_complete(issue_id):
             raise ValueError(f"Cannot merge issue {issue_number}: incomplete tasks remain")
 
         # Get branch name from database

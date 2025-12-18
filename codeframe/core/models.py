@@ -124,7 +124,7 @@ class Issue:
     status: TaskStatus = TaskStatus.PENDING
     priority: int = 2  # 0-4, 0 = highest
     workflow_step: int = 1
-    created_at: Optional[datetime] = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
     def to_dict(self) -> dict:
@@ -138,7 +138,7 @@ class Issue:
             "status": self.status.value,
             "priority": self.priority,
             "workflow_step": self.workflow_step,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
@@ -168,7 +168,7 @@ class Task:
     requires_mcp: bool = False
     estimated_tokens: int = 0
     actual_tokens: Optional[int] = None
-    created_at: Optional[datetime] = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
     def to_dict(self) -> dict:
@@ -190,7 +190,7 @@ class Task:
             "requires_mcp": self.requires_mcp,
             "estimated_tokens": self.estimated_tokens,
             "actual_tokens": self.actual_tokens,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_at": self.created_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 

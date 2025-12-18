@@ -793,10 +793,24 @@ class Database:
         return self._row_to_task(row) if row else None
 
     def close(self) -> None:
-        """Close database connection."""
+        """Close database connection (sync only).
+
+        Note: Call close_async() to close async connections.
+        """
         if self.conn:
             self.conn.close()
             self.conn = None
+
+    async def close_async(self) -> None:
+        """Close async database connection."""
+        if self._async_conn:
+            await self._async_conn.close()
+            self._async_conn = None
+
+    async def close_all(self) -> None:
+        """Close both sync and async database connections."""
+        self.close()
+        await self.close_async()
 
     def _parse_datetime(
         self, value: str, field_name: str, row_id: Optional[int] = None
@@ -833,12 +847,14 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps with logging - preserve None to surface data quality issues
+        # Parse timestamps - created_at should never be NULL after migration 011
+        # Use datetime.now() as fallback for pre-migration data
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
-        if created_at is None and row["created_at"] is None:
+        if created_at is None:
             logger.warning(
-                f"Task {row_id} has NULL created_at in database"
+                f"Task {row_id} has NULL created_at - run migration 011 to backfill"
             )
+            created_at = datetime.now()
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
@@ -883,12 +899,14 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps with logging - preserve None to surface data quality issues
+        # Parse timestamps - created_at should never be NULL after migration 011
+        # Use datetime.now() as fallback for pre-migration data
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
-        if created_at is None and row["created_at"] is None:
+        if created_at is None:
             logger.warning(
-                f"Issue {row_id} has NULL created_at in database"
+                f"Issue {row_id} has NULL created_at - run migration 011 to backfill"
             )
+            created_at = datetime.now()
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
