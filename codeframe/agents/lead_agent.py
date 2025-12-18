@@ -1579,15 +1579,20 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         # Calculate summary statistics
         execution_time = time.time() - start_time
-        failed_count = len([t for t in tasks if self.db.get_task(t.id) and self.db.get_task(t.id).status == TaskStatus.FAILED])
+
+        # Fetch current task states once to avoid redundant DB calls and race conditions
+        current_tasks = self.db.get_project_tasks(self.project_id)
+        task_status_map = {t.id: t.status for t in current_tasks}
+
+        failed_count = sum(
+            1 for t in tasks
+            if task_status_map.get(t.id) == TaskStatus.FAILED
+        )
         # Completed count = tasks in completed_tasks that are not failed
-        completed_count = len(
-            [
-                t
-                for t in tasks
-                if t.id in self.dependency_resolver.completed_tasks
-                and self.db.get_task(t.id) and self.db.get_task(t.id).status != TaskStatus.FAILED
-            ]
+        completed_count = sum(
+            1 for t in tasks
+            if t.id in self.dependency_resolver.completed_tasks
+            and task_status_map.get(t.id) != TaskStatus.FAILED
         )
 
         summary = {
