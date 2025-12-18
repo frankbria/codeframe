@@ -667,7 +667,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                         self.project_id,
                         task_id,
                         agent_id,
-                        task_title=task.get("title")
+                        task_title=task.title
                     )
                 )
             except RuntimeError:
@@ -676,27 +676,25 @@ Generate the PRD in markdown format with clear sections and professional languag
                 )
 
         # Logging
-        task_title = task.get("title", "Untitled")
+        task_title = task.title or "Untitled"
         logger.info(
             f"✅ Task {task_id} ({task_title}) assigned to agent {agent_id}"
         )
 
-    def _calculate_wait_time(self, task: dict) -> int:
+    def _calculate_wait_time(self, task: Task) -> int:
         """
         Calculate minutes elapsed since task creation.
 
         Args:
-            task: Task dictionary with created_at timestamp
+            task: Task object with created_at datetime
 
         Returns:
             Wait time in minutes as int
         """
         try:
-            created_at_str = task.get("created_at")
-            if not created_at_str:
+            created_at = task.created_at
+            if not created_at:
                 return 0
-
-            created_at = datetime.fromisoformat(created_at_str)
 
             # Normalize both datetimes to same timezone to avoid TypeError
             if created_at.tzinfo is not None:
@@ -709,7 +707,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             wait_minutes = int((now - created_at).total_seconds() / 60)
             return max(0, wait_minutes)
         except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to calculate wait time for task {task.get('id')}: {e}")
+            logger.warning(f"Failed to calculate wait time for task {task.id}: {e}")
             return 0
 
     def _get_agent_workload(self) -> dict:
