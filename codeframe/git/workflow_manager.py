@@ -95,15 +95,15 @@ class GitWorkflowManager:
 
             for project in projects:
                 issues = self.db.get_project_issues(project["id"])
-                matches = [i for i in issues if i["issue_number"] == issue_number_clean]
+                matches = [i for i in issues if i.issue_number == issue_number_clean]
                 if matches:
                     matching_issue = matches[0]
                     break
 
             if matching_issue:
-                self.db.create_git_branch(matching_issue["id"], branch_name)
+                self.db.create_git_branch(matching_issue.id, branch_name)
                 logger.debug(
-                    f"Stored branch {branch_name} in database for issue {matching_issue['id']}"
+                    f"Stored branch {branch_name} in database for issue {matching_issue.id}"
                 )
         except Exception as e:
             logger.warning(f"Could not store branch in database: {e}")
@@ -131,7 +131,7 @@ class GitWorkflowManager:
 
         return sanitized
 
-    def merge_to_main(self, issue_number: str) -> Dict[str, Any]:
+    async def merge_to_main(self, issue_number: str) -> Dict[str, Any]:
         """Merge feature branch to main after all tasks complete.
 
         Args:
@@ -150,7 +150,7 @@ class GitWorkflowManager:
 
         for project in projects:
             issues = self.db.get_project_issues(project["id"])
-            matches = [i for i in issues if i["issue_number"] == issue_number]
+            matches = [i for i in issues if i.issue_number == issue_number]
             if matches:
                 matching_issue = matches[0]
                 break
@@ -158,10 +158,10 @@ class GitWorkflowManager:
         if not matching_issue:
             raise ValueError(f"Issue {issue_number} not found")
 
-        issue_id = matching_issue["id"]
+        issue_id = matching_issue.id
 
-        # Check all tasks are completed
-        if not self.is_issue_complete(issue_id):
+        # Check all tasks are completed (async)
+        if not await self.is_issue_complete(issue_id):
             raise ValueError(f"Cannot merge issue {issue_number}: incomplete tasks remain")
 
         # Get branch name from database
@@ -208,7 +208,7 @@ class GitWorkflowManager:
                 pass
             raise
 
-    def is_issue_complete(self, issue_id: int) -> bool:
+    async def is_issue_complete(self, issue_id: int) -> bool:
         """Check if all tasks for an issue are completed.
 
         Args:
@@ -217,14 +217,15 @@ class GitWorkflowManager:
         Returns:
             True if all tasks completed, False otherwise
         """
-        tasks = self.db.get_tasks_by_issue(issue_id)
+        tasks = await self.db.get_tasks_by_issue(issue_id)
 
         # No tasks = incomplete
         if not tasks:
             return False
 
         # Check all tasks are completed
-        all_completed = all(task["status"] == "completed" for task in tasks)
+        from codeframe.core.models import TaskStatus
+        all_completed = all(task.status == TaskStatus.COMPLETED for task in tasks)
 
         logger.debug(
             f"Issue {issue_id} completion check: {len(tasks)} tasks, " f"completed={all_completed}"

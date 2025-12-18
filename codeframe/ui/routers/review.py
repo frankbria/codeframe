@@ -24,7 +24,7 @@ from codeframe.ui.shared import manager, review_cache
 from codeframe.persistence.database import Database
 from codeframe.agents.review_worker_agent import ReviewWorkerAgent
 from codeframe.agents.review_agent import ReviewAgent
-from codeframe.core.models import Task, TaskStatus
+from codeframe.core.models import Task
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -100,10 +100,11 @@ async def trigger_review(agent_id: str, request: ReviewRequest, db: Database = D
         # Build task dict for execute_task
         task = {
             "id": request.task_id,
-            "task_number": task_data.get("task_number", "unknown"),
-            "title": task_data.get("title", ""),
-            "description": task_data.get("description", ""),
+            "task_number": task_data.task_number or "unknown",
+            "title": task_data.title or "",
+            "description": task_data.description or "",
             "files_modified": request.files_modified,
+            "project_id": task_data.project_id,
         }
 
         # Execute review
@@ -320,7 +321,7 @@ async def analyze_code_review(
 
         # Use project_id from request or task data
         if not project_id:
-            project_id = task_data.get("project_id")
+            project_id = task_data.project_id
 
         # Generate job ID
         job_id = str(uuid.uuid4())
@@ -340,11 +341,11 @@ async def analyze_code_review(
                 # Build Task object from task_data
                 task = Task(
                     id=task_id,
-                    title=task_data.get("title", ""),
-                    description=task_data.get("description", ""),
+                    title=task_data.title or "",
+                    description=task_data.description or "",
                     project_id=project_id,
-                    status=TaskStatus(task_data.get("status", "pending")),
-                    priority=task_data.get("priority", 0),
+                    status=task_data.status,
+                    priority=task_data.priority,
                 )
 
                 # Execute review (this saves findings to database)

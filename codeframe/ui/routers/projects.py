@@ -15,6 +15,7 @@ from datetime import datetime, UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from codeframe.core.models import TaskStatus
 from codeframe.core.session_manager import SessionManager
 from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
@@ -24,6 +25,9 @@ from codeframe.ui.models import (
     ProjectResponse,
     SourceType,
 )
+
+# Valid task status values for API validation
+VALID_TASK_STATUSES = {s.value for s in TaskStatus}
 
 
 logger = logging.getLogger(__name__)
@@ -186,12 +190,12 @@ async def create_project(
         )
 
     return ProjectResponse(
-        id=project["id"],
-        name=project["name"],
-        status=project.get("status", "init"),
-        phase=project.get("phase", "discovery"),
-        created_at=project["created_at"],
-        config=project.get("config"),
+        id=project.id,
+        name=project.name,
+        status=project.status.value,
+        phase=project.phase.value,
+        created_at=project.created_at.isoformat(),
+        config=project.config,
     )
 
 
@@ -208,11 +212,11 @@ async def get_project_status(project_id: int, db: Database = Depends(get_db)):
     progress = db._calculate_project_progress(project_id)
 
     return {
-        "project_id": project["id"],
-        "name": project["name"],
-        "status": project["status"],
-        "phase": project.get("phase", "discovery"),
-        "workflow_step": project.get("workflow_step", 1),
+        "project_id": project.id,
+        "name": project.name,
+        "status": project.status.value,
+        "phase": project.phase.value,
+        "workflow_step": 1,  # Project doesn't have workflow_step, default to 1
         "progress": progress,
     }
 
@@ -229,7 +233,8 @@ async def get_tasks(
 
     Args:
         project_id: Project ID to get tasks for
-        status: Optional filter by task status (e.g., 'pending', 'in_progress', 'completed')
+        status: Optional filter by task status. Valid values:
+            'pending', 'assigned', 'in_progress', 'blocked', 'completed', 'failed'
         limit: Maximum number of tasks to return (1-1000, default: 50)
         offset: Number of tasks to skip for pagination (>=0, default: 0)
         db: Database instance (injected)
@@ -241,16 +246,25 @@ async def get_tasks(
 
     Raises:
         HTTPException:
+            - 400: Invalid status value
             - 404: Project not found
             - 422: Invalid parameters (negative offset, limit out of range)
             - 500: Database error
 
     Security Notes:
         - Input validation: limit constrained to 1-1000, offset must be >=0
+        - Status parameter validated against TaskStatus enum values
         - TODO: Add authorization check when auth infrastructure is implemented
           (verify user has access to this project)
     """
     try:
+        # Validate status parameter against TaskStatus enum values
+        if status is not None and status not in VALID_TASK_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status '{status}'. Valid values: {', '.join(sorted(VALID_TASK_STATUSES))}"
+            )
+
         # Validate project exists
         project = db.get_project(project_id)
         if not project:
@@ -267,7 +281,7 @@ async def get_tasks(
         # NOTE: Client-side filtering used here. For large datasets (1000+ tasks),
         # consider adding database-level filtering in future optimization.
         if status is not None:
-            tasks = [t for t in tasks if t.get("status") == status]
+            tasks = [t for t in tasks if t.status.value == status]
 
         # Calculate total count before pagination
         total = len(tasks)
@@ -275,7 +289,10 @@ async def get_tasks(
         # Apply pagination
         tasks = tasks[offset : offset + limit]
 
-        return {"tasks": tasks, "total": total}
+        # Convert Task objects to dictionaries for JSON serialization
+        tasks_dicts = [t.to_dict() for t in tasks]
+
+        return {"tasks": tasks_dicts, "total": total}
 
     except sqlite3.Error as e:
         logger.error(f"Database error fetching tasks for project {project_id}: {e}", exc_info=True)

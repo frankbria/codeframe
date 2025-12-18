@@ -18,6 +18,10 @@ class TaskStatus(Enum):
     FAILED = "failed"
 
 
+# Valid task status values for API validation and database constraints
+VALID_TASK_STATUSES: frozenset[str] = frozenset(s.value for s in TaskStatus)
+
+
 class AgentMaturity(Enum):
     """Agent maturity levels based on Situational Leadership II."""
 
@@ -37,6 +41,68 @@ class ProjectStatus(Enum):
     PAUSED = "paused"
     STOPPED = "stopped"  # Agent terminated, project not active
     COMPLETED = "completed"
+
+
+class ProjectPhase(Enum):
+    """Project workflow phase."""
+
+    DISCOVERY = "discovery"
+    PLANNING = "planning"
+    ACTIVE = "active"
+    REVIEW = "review"
+    COMPLETE = "complete"
+
+
+class SourceType(Enum):
+    """Project source type."""
+
+    GIT_REMOTE = "git_remote"
+    LOCAL_PATH = "local_path"
+    UPLOAD = "upload"
+    EMPTY = "empty"
+
+
+@dataclass
+class Project:
+    """Represents a CodeFRAME project.
+
+    Projects are the top-level container for issues and tasks. Each project
+    has a managed workspace, optional source tracking, and workflow state.
+    """
+
+    id: Optional[int] = None
+    name: str = ""
+    description: str = ""
+    source_type: SourceType = SourceType.EMPTY
+    source_location: Optional[str] = None
+    source_branch: str = "main"
+    workspace_path: str = ""
+    git_initialized: bool = False
+    current_commit: Optional[str] = None
+    status: ProjectStatus = ProjectStatus.INIT
+    phase: ProjectPhase = ProjectPhase.DISCOVERY
+    created_at: datetime = field(default_factory=datetime.now)
+    paused_at: Optional[datetime] = None
+    config: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> dict:
+        """Convert Project to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "source_type": self.source_type.value,
+            "source_location": self.source_location,
+            "source_branch": self.source_branch,
+            "workspace_path": self.workspace_path,
+            "git_initialized": self.git_initialized,
+            "current_commit": self.current_commit,
+            "status": self.status.value,
+            "phase": self.phase.value,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "paused_at": self.paused_at.isoformat() if self.paused_at else None,
+            "config": self.config,
+        }
 
 
 class BlockerSeverity(Enum):
@@ -127,6 +193,64 @@ class Issue:
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
+    def to_dict(self) -> dict:
+        """Convert Issue to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "issue_number": self.issue_number,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status.value,
+            "priority": self.priority,
+            "workflow_step": self.workflow_step,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+@dataclass
+class IssueWithTaskCount:
+    """Issue with associated task count for summary views.
+
+    Uses composition to wrap an Issue and add task_count, reducing
+    field duplication and ensuring changes to Issue are automatically
+    reflected here.
+
+    Used by get_issue_with_task_counts() to return typed results
+    instead of raw dictionaries.
+    """
+
+    issue: Issue
+    task_count: int = 0
+
+    # Convenience accessors for common Issue fields
+    @property
+    def id(self) -> Optional[int]:
+        return self.issue.id
+
+    @property
+    def project_id(self) -> Optional[int]:
+        return self.issue.project_id
+
+    @property
+    def issue_number(self) -> str:
+        return self.issue.issue_number
+
+    @property
+    def title(self) -> str:
+        return self.issue.title
+
+    @property
+    def status(self) -> TaskStatus:
+        return self.issue.status
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        result = self.issue.to_dict()
+        result["task_count"] = self.task_count
+        return result
+
 
 @dataclass
 class Task:
@@ -155,6 +279,29 @@ class Task:
     actual_tokens: Optional[int] = None
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
+
+    def to_dict(self) -> dict:
+        """Convert Task to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "issue_id": self.issue_id,
+            "task_number": self.task_number,
+            "parent_issue_number": self.parent_issue_number,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status.value,
+            "assigned_to": self.assigned_to,
+            "depends_on": self.depends_on,
+            "can_parallelize": self.can_parallelize,
+            "priority": self.priority,
+            "workflow_step": self.workflow_step,
+            "requires_mcp": self.requires_mcp,
+            "estimated_tokens": self.estimated_tokens,
+            "actual_tokens": self.actual_tokens,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
 
 
 @dataclass

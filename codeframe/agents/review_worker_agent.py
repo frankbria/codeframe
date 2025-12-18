@@ -102,7 +102,7 @@ class ReviewWorkerAgent(WorkerAgent):
         elif self.db and task_id:
             # Fallback: fetch from database
             task_from_db = self.db.get_task(task_id)
-            project_id = task_from_db.get("project_id") if task_from_db else None
+            project_id = task_from_db.project_id if task_from_db else None
         else:
             project_id = None
 

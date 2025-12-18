@@ -19,8 +19,6 @@ from codeframe.ui.shared import manager
 from codeframe.persistence.database import Database
 from codeframe.lib.quality_gates import QualityGates
 from codeframe.core.models import (
-    Task,
-    TaskStatus,
     QualityGateResult,
     QualityGateFailure,
     QualityGateType,
@@ -156,7 +154,7 @@ async def trigger_quality_gates(
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
     # Get project_id from task
-    project_id = task_data.get("project_id")
+    project_id = task_data.project_id
     if not project_id:
         raise HTTPException(status_code=500, detail=f"Task {task_id} has no project_id")
 
@@ -175,15 +173,8 @@ async def trigger_quality_gates(
     # Generate job ID
     job_id = str(uuid.uuid4())
 
-    # Build Task object for quality gates
-    task = Task(
-        id=task_id,
-        project_id=project_id,
-        task_number=task_data.get("task_number", "unknown"),
-        title=task_data.get("title", ""),
-        description=task_data.get("description", ""),
-        status=TaskStatus(task_data.get("status", "pending")),
-    )
+    # Build Task object for quality gates - task_data is already a Task object
+    task = task_data
 
     # Determine which gates to run
     gates_to_run = gate_types if gate_types else ["all"]

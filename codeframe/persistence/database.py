@@ -4,9 +4,25 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
 import logging
-from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue, CallType
+
+import asyncio
+
+import aiosqlite
+
+from codeframe.core.models import (
+    ProjectStatus,
+    ProjectPhase,
+    SourceType,
+    Project,
+    Task,
+    TaskStatus,
+    AgentMaturity,
+    Issue,
+    IssueWithTaskCount,
+    CallType,
+)
 
 if TYPE_CHECKING:
     from codeframe.core.models import (
@@ -21,11 +37,48 @@ logger = logging.getLogger(__name__)
 
 
 class Database:
-    """SQLite database manager for project state."""
+    """SQLite database manager for project state.
+
+    Supports both synchronous (sqlite3) and asynchronous (aiosqlite) operations.
+
+    Sync vs Async Methods:
+        Most methods are synchronous for simplicity and broad compatibility.
+        Selected methods have async variants for use in async contexts:
+        - get_tasks_by_issue() - async, use in async methods like complete_issue()
+
+        Pattern: Sync methods remain the default. Async methods are added incrementally
+        for performance-critical paths or methods called from async contexts.
+        Future work may convert more methods to async as the codebase migrates.
+
+    Async Connection Lifecycle:
+        - Call initialize_async() to explicitly set up the async connection
+        - Or let it initialize lazily on first async operation (thread-safe)
+        - IMPORTANT: Always call close_async() or close_all() when done to release resources
+        - The async connection includes automatic health checks and reconnection
+        - Use 'async with db:' context manager for automatic cleanup
+
+    Example (manual lifecycle):
+        db = Database("state.db")
+        db.initialize()  # Sync initialization
+
+        await db.initialize_async()
+        tasks = await db.get_tasks_by_issue(issue_id)
+        await db.close_async()
+
+    Example (context manager - recommended):
+        db = Database("state.db")
+        db.initialize()
+
+        async with db:
+            tasks = await db.get_tasks_by_issue(issue_id)
+        # Async connection automatically closed
+    """
 
     def __init__(self, db_path: Path | str):
         self.db_path = Path(db_path) if db_path != ":memory:" else db_path
         self.conn: Optional[sqlite3.Connection] = None
+        self._async_conn: Optional[aiosqlite.Connection] = None
+        self._async_lock = asyncio.Lock()  # Prevents race condition during lazy init
 
     def initialize(self, run_migrations: bool = True) -> None:
         """Initialize database schema.
@@ -536,6 +589,9 @@ class Database:
             from codeframe.persistence.migrations.migration_010_pause_functionality import (
                 migration as migration_010,
             )
+            from codeframe.persistence.migrations.migration_011_created_at_not_null import (
+                migration as migration_011,
+            )
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -555,6 +611,7 @@ class Database:
             runner.register(migration_008)
             runner.register(migration_009)
             runner.register(migration_010)
+            runner.register(migration_011)
 
             # Apply all pending migrations
             runner.apply_all()
@@ -612,12 +669,19 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_project(self, project_id: int) -> Optional[dict]:
-        """Get project by ID."""
+    def get_project(self, project_id: int) -> Optional[Project]:
+        """Get project by ID.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Project object or None if not found
+        """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_project(row) if row else None
 
     def create_issue(self, issue: Issue | dict) -> int:
         """Create a new issue.
@@ -670,28 +734,28 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_issue(self, issue_id: int) -> Optional[Dict[str, Any]]:
+    def get_issue(self, issue_id: int) -> Optional[Issue]:
         """Get issue by ID.
 
         Args:
             issue_id: Issue ID
 
         Returns:
-            Issue dictionary or None if not found
+            Issue object or None if not found
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM issues WHERE id = ?", (issue_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_issue(row) if row else None
 
-    def get_project_issues(self, project_id: int) -> List[Dict[str, Any]]:
+    def get_project_issues(self, project_id: int) -> List[Issue]:
         """Get all issues for a project.
 
         Args:
             project_id: Project ID
 
         Returns:
-            List of issue dictionaries ordered by issue_number
+            List of Issue objects ordered by issue_number
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -699,7 +763,7 @@ class Database:
             (project_id,),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_issue(row) for row in rows]
 
     def create_task(self, task: Task) -> int:
         """Create a new task."""
@@ -724,14 +788,14 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_project_tasks(self, project_id: int) -> List[Dict[str, Any]]:
+    def get_project_tasks(self, project_id: int) -> List[Task]:
         """Get all tasks for a project (all statuses).
 
         Args:
             project_id: Project ID
 
         Returns:
-            List of task dictionaries ordered by task_number
+            List of Task objects ordered by task_number
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -739,7 +803,7 @@ class Database:
             (project_id,),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_task(row) for row in rows]
 
     def update_task(self, task_id: int, updates: Dict[str, Any]) -> int:
         """Update task fields.
@@ -774,25 +838,316 @@ class Database:
 
         return cursor.rowcount
 
-    def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+    def get_task(self, task_id: int) -> Optional[Task]:
         """Get task by ID.
 
         Args:
             task_id: Task ID
 
         Returns:
-            Task dictionary or None if not found
+            Task object or None if not found
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_task(row) if row else None
 
     def close(self) -> None:
-        """Close database connection."""
+        """Close database connection (sync only).
+
+        Note: Call close_async() to close async connections.
+        """
         if self.conn:
             self.conn.close()
             self.conn = None
+
+    async def close_async(self) -> None:
+        """Close async database connection."""
+        if self._async_conn:
+            await self._async_conn.close()
+            self._async_conn = None
+
+    async def close_all(self) -> None:
+        """Close both sync and async database connections."""
+        self.close()
+        await self.close_async()
+
+    def __del__(self) -> None:
+        """Destructor with warning for unclosed connections.
+
+        Warns if async connection was not explicitly closed via close_async()
+        or async context manager. This helps detect connection leaks in
+        long-running processes.
+        """
+        if self._async_conn is not None:
+            logger.warning(
+                f"Database async connection for {self.db_path} was not explicitly closed. "
+                "Use 'async with db:' or call close_async() to properly close async connections."
+            )
+        if self.conn is not None:
+            # Close sync connection silently - less critical than async
+            self.close()
+
+    async def initialize_async(self) -> None:
+        """Explicitly initialize the async database connection.
+
+        This method allows you to set up the async connection upfront rather than
+        relying on lazy initialization. This is recommended for production use.
+
+        The connection is protected by a lock to prevent race conditions if called
+        concurrently.
+        """
+        async with self._async_lock:
+            if self._async_conn is None:
+                self._async_conn = await aiosqlite.connect(str(self.db_path))
+                self._async_conn.row_factory = aiosqlite.Row
+                logger.debug(f"Async connection initialized for {self.db_path}")
+
+    async def _get_async_conn(self) -> aiosqlite.Connection:
+        """Get async connection with health check and automatic reconnection.
+
+        This method:
+        1. Creates connection if none exists (lazy initialization)
+        2. Checks connection health via simple query
+        3. Reconnects automatically if connection is dead
+        4. Uses a lock to prevent race conditions
+
+        Returns:
+            Active aiosqlite connection
+
+        Raises:
+            aiosqlite.Error: If connection cannot be established
+        """
+        async with self._async_lock:
+            # Create connection if needed
+            if self._async_conn is None:
+                self._async_conn = await aiosqlite.connect(str(self.db_path))
+                self._async_conn.row_factory = aiosqlite.Row
+                logger.debug(f"Async connection created (lazy init) for {self.db_path}")
+                return self._async_conn
+
+            # Health check - try a simple query
+            try:
+                await self._async_conn.execute("SELECT 1")
+                return self._async_conn
+            except Exception as e:
+                logger.warning(f"Async connection health check failed: {e}, reconnecting...")
+                # Connection is dead, try to close gracefully
+                try:
+                    await self._async_conn.close()
+                except Exception:
+                    pass  # Ignore close errors on dead connection
+
+                # Reconnect
+                self._async_conn = await aiosqlite.connect(str(self.db_path))
+                self._async_conn.row_factory = aiosqlite.Row
+                logger.info(f"Async connection reconnected for {self.db_path}")
+                return self._async_conn
+
+    def _parse_datetime(
+        self, value: str, field_name: str, row_id: Optional[int] = None
+    ) -> Optional[datetime]:
+        """Parse ISO datetime string with logging for failures.
+
+        Args:
+            value: ISO 8601 datetime string or None
+            field_name: Name of the field being parsed (for logging)
+            row_id: Optional row ID for context in log messages
+
+        Returns:
+            Parsed datetime or None if parsing fails or value is empty
+        """
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except (ValueError, TypeError) as e:
+            row_context = f" (row {row_id})" if row_id else ""
+            logger.warning(
+                f"Failed to parse {field_name}{row_context}: '{value}', error: {e}"
+            )
+            return None
+
+    def _row_to_task(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Task:
+        """Convert a database row to a Task object.
+
+        Args:
+            row: SQLite Row object from tasks table (sync or async)
+
+        Returns:
+            Task dataclass instance
+
+        Note:
+            Both sqlite3.Row and aiosqlite.Row support dictionary-style access
+            via row["column_name"], which this method relies on.
+        """
+        row_id = row["id"]
+
+        # Parse timestamps - created_at should never be NULL after migration 011
+        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        if created_at is None:
+            raise ValueError(
+                f"Task {row_id} has NULL created_at - database integrity issue. "
+                "Run migration 011 to backfill NULL values."
+            )
+        completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
+
+        # Convert status string to enum
+        status = TaskStatus.PENDING
+        if row["status"]:
+            try:
+                status = TaskStatus(row["status"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid task status '{row['status']}' for task {row_id}, defaulting to PENDING"
+                )
+
+        return Task(
+            id=row_id,
+            project_id=row["project_id"],
+            issue_id=row["issue_id"],
+            task_number=row["task_number"] or "",
+            parent_issue_number=row["parent_issue_number"] or "",
+            title=row["title"] or "",
+            description=row["description"] or "",
+            status=status,
+            assigned_to=row["assigned_to"],
+            depends_on=row["depends_on"] or "",
+            can_parallelize=bool(row["can_parallelize"]),
+            priority=row["priority"] if row["priority"] is not None else 2,
+            workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
+            requires_mcp=bool(row["requires_mcp"]),
+            estimated_tokens=row["estimated_tokens"] if row["estimated_tokens"] is not None else 0,
+            actual_tokens=row["actual_tokens"],
+            created_at=created_at,
+            completed_at=completed_at,
+        )
+
+    def _row_to_issue(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Issue:
+        """Convert a database row to an Issue object.
+
+        Args:
+            row: SQLite Row object from issues table (sync or async)
+
+        Returns:
+            Issue dataclass instance
+
+        Note:
+            Both sqlite3.Row and aiosqlite.Row support dictionary-style access
+            via row["column_name"], which this method relies on.
+        """
+        row_id = row["id"]
+
+        # Parse timestamps - created_at should never be NULL after migration 011
+        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        if created_at is None:
+            raise ValueError(
+                f"Issue {row_id} has NULL created_at - database integrity issue. "
+                "Run migration 011 to backfill NULL values."
+            )
+        completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
+
+        # Convert status string to enum
+        status = TaskStatus.PENDING
+        if row["status"]:
+            try:
+                status = TaskStatus(row["status"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid issue status '{row['status']}' for issue {row_id}, defaulting to PENDING"
+                )
+
+        return Issue(
+            id=row_id,
+            project_id=row["project_id"],
+            issue_number=row["issue_number"] or "",
+            title=row["title"] or "",
+            description=row["description"] or "",
+            status=status,
+            priority=row["priority"] if row["priority"] is not None else 2,
+            workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
+            created_at=created_at,
+            completed_at=completed_at,
+        )
+
+    def _row_to_project(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Project:
+        """Convert a database row to a Project object.
+
+        Args:
+            row: SQLite Row object from projects table (sync or async)
+
+        Returns:
+            Project dataclass instance
+
+        Note:
+            Both sqlite3.Row and aiosqlite.Row support dictionary-style access
+            via row["column_name"], which this method relies on.
+        """
+        row_id = row["id"]
+
+        # Parse timestamps
+        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        if created_at is None:
+            logger.warning(
+                f"Project {row_id} has NULL created_at - using datetime.now() as fallback"
+            )
+            created_at = datetime.now()
+        paused_at = self._parse_datetime(row.get("paused_at"), "paused_at", row_id)
+
+        # Convert status string to enum
+        status = ProjectStatus.INIT
+        if row["status"]:
+            try:
+                status = ProjectStatus(row["status"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid project status '{row['status']}' for project {row_id}, defaulting to INIT"
+                )
+
+        # Convert phase string to enum
+        phase = ProjectPhase.DISCOVERY
+        if row.get("phase"):
+            try:
+                phase = ProjectPhase(row["phase"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid project phase '{row['phase']}' for project {row_id}, defaulting to DISCOVERY"
+                )
+
+        # Convert source_type string to enum
+        source_type = SourceType.EMPTY
+        if row.get("source_type"):
+            try:
+                source_type = SourceType(row["source_type"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid source_type '{row['source_type']}' for project {row_id}, defaulting to EMPTY"
+                )
+
+        # Parse config JSON
+        config = None
+        if row.get("config"):
+            try:
+                config = json.loads(row["config"]) if isinstance(row["config"], str) else row["config"]
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse config for project {row_id}: {e}")
+
+        return Project(
+            id=row_id,
+            name=row["name"] or "",
+            description=row["description"] or "",
+            source_type=source_type,
+            source_location=row.get("source_location"),
+            source_branch=row.get("source_branch") or "main",
+            workspace_path=row["workspace_path"] or "",
+            git_initialized=bool(row.get("git_initialized")),
+            current_commit=row.get("current_commit"),
+            status=status,
+            phase=phase,
+            created_at=created_at,
+            paused_at=paused_at,
+            config=config,
+        )
 
     def __enter__(self) -> "Database":
         """Context manager entry."""
@@ -803,6 +1158,29 @@ class Database:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         """Context manager exit."""
         self.close()
+
+    async def __aenter__(self) -> "Database":
+        """Async context manager entry.
+
+        Initializes sync connection if needed and prepares for async operations.
+        Use this when you need to perform async database operations.
+
+        Example:
+            async with db:
+                tasks = await db.get_tasks_by_issue(issue_id)
+            # Async connection automatically closed
+        """
+        if not self.conn:
+            self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit.
+
+        Closes async connection. Sync connection remains open for continued sync use.
+        Call close() separately if you want to close the sync connection too.
+        """
+        await self.close_async()
 
     # Blocker CRUD operations (049-human-in-loop)
 
@@ -1111,6 +1489,11 @@ class Database:
 
     def list_projects(self) -> List[Dict[str, Any]]:
         """List all projects with progress metrics.
+
+        Note:
+            Returns dicts rather than Project objects because this method adds
+            computed 'progress' metrics that aren't part of the Project schema.
+            Use get_project() for typed Project returns.
 
         Returns:
             List of project dictionaries, each with a 'progress' field containing:
@@ -1710,31 +2093,36 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_tasks_by_issue(self, issue_id: int) -> List[Dict[str, Any]]:
+    async def get_tasks_by_issue(self, issue_id: int) -> List[Task]:
         """Get all tasks for an issue.
 
         Args:
             issue_id: Issue ID
 
         Returns:
-            List of task dictionaries ordered by task_number
+            List of Task objects ordered by task_number
+
+        Note:
+            Uses async connection with automatic health check and reconnection.
+            Call close_async() when done to release database resources.
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        conn = await self._get_async_conn()
+
+        async with conn.execute(
             "SELECT * FROM tasks WHERE issue_id = ? ORDER BY task_number",
             (issue_id,),
-        )
-        rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [self._row_to_task(row) for row in rows]
 
-    def get_tasks_by_parent_issue_number(self, parent_issue_number: str) -> List[Dict[str, Any]]:
+    def get_tasks_by_parent_issue_number(self, parent_issue_number: str) -> List[Task]:
         """Get all tasks by parent issue number.
 
         Args:
             parent_issue_number: Parent issue number (e.g., "1.5")
 
         Returns:
-            List of task dictionaries
+            List of Task objects
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -1742,16 +2130,16 @@ class Database:
             (parent_issue_number,),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_task(row) for row in rows]
 
-    def get_issue_with_task_counts(self, issue_id: int) -> Optional[Dict[str, Any]]:
+    def get_issue_with_task_counts(self, issue_id: int) -> Optional[IssueWithTaskCount]:
         """Get issue with count of associated tasks.
 
         Args:
             issue_id: Issue ID
 
         Returns:
-            Issue dictionary with task_count field, or None if not found
+            IssueWithTaskCount object (using composition) or None if not found
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -1765,7 +2153,15 @@ class Database:
             (issue_id,),
         )
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+
+        # Use _row_to_issue for consistent parsing, then wrap with task count
+        issue = self._row_to_issue(row)
+        return IssueWithTaskCount(
+            issue=issue,
+            task_count=row["task_count"],
+        )
 
     def get_issue_completion_status(self, issue_id: int) -> Dict[str, Any]:
         """Calculate issue completion based on task statuses.
