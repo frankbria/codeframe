@@ -4,7 +4,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any, TYPE_CHECKING
+from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
 import logging
 
 import aiosqlite
@@ -836,14 +836,18 @@ class Database:
             )
             return None
 
-    def _row_to_task(self, row: sqlite3.Row) -> Task:
+    def _row_to_task(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Task:
         """Convert a database row to a Task object.
 
         Args:
-            row: SQLite Row object from tasks table
+            row: SQLite Row object from tasks table (sync or async)
 
         Returns:
             Task dataclass instance
+
+        Note:
+            Both sqlite3.Row and aiosqlite.Row support dictionary-style access
+            via row["column_name"], which this method relies on.
         """
         row_id = row["id"]
 
@@ -888,14 +892,18 @@ class Database:
             completed_at=completed_at,
         )
 
-    def _row_to_issue(self, row: sqlite3.Row) -> Issue:
+    def _row_to_issue(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Issue:
         """Convert a database row to an Issue object.
 
         Args:
-            row: SQLite Row object from issues table
+            row: SQLite Row object from issues table (sync or async)
 
         Returns:
             Issue dataclass instance
+
+        Note:
+            Both sqlite3.Row and aiosqlite.Row support dictionary-style access
+            via row["column_name"], which this method relies on.
         """
         row_id = row["id"]
 
