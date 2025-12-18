@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
 import logging
 
+import asyncio
+
 import aiosqlite
 
 from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue, CallType
@@ -24,12 +26,35 @@ logger = logging.getLogger(__name__)
 
 
 class Database:
-    """SQLite database manager for project state."""
+    """SQLite database manager for project state.
+
+    Supports both synchronous (sqlite3) and asynchronous (aiosqlite) operations.
+
+    Async Connection Lifecycle:
+        - Call initialize_async() to explicitly set up the async connection
+        - Or let it initialize lazily on first async operation (thread-safe)
+        - IMPORTANT: Always call close_async() or close_all() when done to release resources
+        - The async connection includes automatic health checks and reconnection
+
+    Example:
+        db = Database("state.db")
+        db.initialize()  # Sync initialization
+
+        # Option 1: Explicit async setup
+        await db.initialize_async()
+        tasks = await db.get_tasks_by_issue(issue_id)
+        await db.close_async()
+
+        # Option 2: Lazy initialization (connection created on first use)
+        tasks = await db.get_tasks_by_issue(issue_id)
+        await db.close_async()  # Still must close!
+    """
 
     def __init__(self, db_path: Path | str):
         self.db_path = Path(db_path) if db_path != ":memory:" else db_path
         self.conn: Optional[sqlite3.Connection] = None
         self._async_conn: Optional[aiosqlite.Connection] = None
+        self._async_lock = asyncio.Lock()  # Prevents race condition during lazy init
 
     def initialize(self, run_migrations: bool = True) -> None:
         """Initialize database schema.
@@ -811,6 +836,62 @@ class Database:
         """Close both sync and async database connections."""
         self.close()
         await self.close_async()
+
+    async def initialize_async(self) -> None:
+        """Explicitly initialize the async database connection.
+
+        This method allows you to set up the async connection upfront rather than
+        relying on lazy initialization. This is recommended for production use.
+
+        The connection is protected by a lock to prevent race conditions if called
+        concurrently.
+        """
+        async with self._async_lock:
+            if self._async_conn is None:
+                self._async_conn = await aiosqlite.connect(str(self.db_path))
+                self._async_conn.row_factory = aiosqlite.Row
+                logger.debug(f"Async connection initialized for {self.db_path}")
+
+    async def _get_async_conn(self) -> aiosqlite.Connection:
+        """Get async connection with health check and automatic reconnection.
+
+        This method:
+        1. Creates connection if none exists (lazy initialization)
+        2. Checks connection health via simple query
+        3. Reconnects automatically if connection is dead
+        4. Uses a lock to prevent race conditions
+
+        Returns:
+            Active aiosqlite connection
+
+        Raises:
+            aiosqlite.Error: If connection cannot be established
+        """
+        async with self._async_lock:
+            # Create connection if needed
+            if self._async_conn is None:
+                self._async_conn = await aiosqlite.connect(str(self.db_path))
+                self._async_conn.row_factory = aiosqlite.Row
+                logger.debug(f"Async connection created (lazy init) for {self.db_path}")
+                return self._async_conn
+
+            # Health check - try a simple query
+            try:
+                await self._async_conn.execute("SELECT 1")
+                return self._async_conn
+            except Exception as e:
+                logger.warning(f"Async connection health check failed: {e}, reconnecting...")
+                # Connection is dead, try to close gracefully
+                try:
+                    await self._async_conn.close()
+                except Exception:
+                    pass  # Ignore close errors on dead connection
+
+                # Reconnect
+                self._async_conn = await aiosqlite.connect(str(self.db_path))
+                self._async_conn.row_factory = aiosqlite.Row
+                logger.info(f"Async connection reconnected for {self.db_path}")
+                return self._async_conn
 
     def _parse_datetime(
         self, value: str, field_name: str, row_id: Optional[int] = None
@@ -1864,13 +1945,14 @@ class Database:
 
         Returns:
             List of Task objects ordered by task_number
-        """
-        # Use async connection if available, otherwise fall back to sync
-        if self._async_conn is None:
-            self._async_conn = await aiosqlite.connect(str(self.db_path))
-            self._async_conn.row_factory = aiosqlite.Row
 
-        async with self._async_conn.execute(
+        Note:
+            Uses async connection with automatic health check and reconnection.
+            Call close_async() when done to release database resources.
+        """
+        conn = await self._get_async_conn()
+
+        async with conn.execute(
             "SELECT * FROM tasks WHERE issue_id = ? ORDER BY task_number",
             (issue_id,),
         ) as cursor:
