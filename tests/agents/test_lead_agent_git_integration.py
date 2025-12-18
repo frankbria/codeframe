@@ -180,7 +180,8 @@ class TestLeadAgentStartIssueWork:
 class TestLeadAgentCompleteIssue:
     """Test LeadAgent.complete_issue() method."""
 
-    def test_complete_issue_merges_when_all_tasks_done(self, lead_agent, test_db, temp_git_repo):
+    @pytest.mark.asyncio
+    async def test_complete_issue_merges_when_all_tasks_done(self, lead_agent, test_db, temp_git_repo):
         """Test completing issue merges branch to main."""
         repo_path, repo = temp_git_repo
 
@@ -222,7 +223,7 @@ class TestLeadAgentCompleteIssue:
         repo.git.checkout("main")
 
         # Complete issue
-        result = lead_agent.complete_issue(issue_id)
+        result = await lead_agent.complete_issue(issue_id)
 
         # Verify result structure
         assert "merge_commit" in result
@@ -243,7 +244,8 @@ class TestLeadAgentCompleteIssue:
         # Verify merge actually happened
         assert (repo_path / "feature.txt").exists()
 
-    def test_complete_issue_fails_when_tasks_incomplete(self, lead_agent, test_db):
+    @pytest.mark.asyncio
+    async def test_complete_issue_fails_when_tasks_incomplete(self, lead_agent, test_db):
         """Test completing issue fails if tasks not done."""
         # Create issue with incomplete task
         issue = Issue(
@@ -275,9 +277,10 @@ class TestLeadAgentCompleteIssue:
 
         # Try to complete
         with pytest.raises(ValueError, match="incomplete tasks"):
-            lead_agent.complete_issue(issue_id)
+            await lead_agent.complete_issue(issue_id)
 
-    def test_complete_issue_fails_without_active_branch(self, lead_agent, test_db):
+    @pytest.mark.asyncio
+    async def test_complete_issue_fails_without_active_branch(self, lead_agent, test_db):
         """Test completing issue fails if no active branch."""
         # Create issue with completed tasks but no branch
         issue = Issue(
@@ -306,9 +309,10 @@ class TestLeadAgentCompleteIssue:
 
         # Try to complete without starting work first
         with pytest.raises(ValueError, match="No active branch"):
-            lead_agent.complete_issue(issue_id)
+            await lead_agent.complete_issue(issue_id)
 
-    def test_complete_issue_updates_database(self, lead_agent, test_db, temp_git_repo):
+    @pytest.mark.asyncio
+    async def test_complete_issue_updates_database(self, lead_agent, test_db, temp_git_repo):
         """Test that completing issue updates database."""
         repo_path, repo = temp_git_repo
 
@@ -348,7 +352,7 @@ class TestLeadAgentCompleteIssue:
         repo.git.checkout("main")
 
         # Complete issue
-        result = lead_agent.complete_issue(issue_id)
+        result = await lead_agent.complete_issue(issue_id)
 
         # Verify database updated
         branches = test_db.get_all_branches_for_issue(issue_id)
@@ -361,12 +365,14 @@ class TestLeadAgentCompleteIssue:
         updated_issue = test_db.get_issue(issue_id)
         assert updated_issue.status == TaskStatus.COMPLETED
 
-    def test_complete_issue_nonexistent_issue(self, lead_agent):
+    @pytest.mark.asyncio
+    async def test_complete_issue_nonexistent_issue(self, lead_agent):
         """Test completing nonexistent issue raises ValueError."""
         with pytest.raises(ValueError, match="Issue .* not found"):
-            lead_agent.complete_issue(99999)
+            await lead_agent.complete_issue(99999)
 
-    def test_complete_issue_with_multiple_completed_tasks(self, lead_agent, test_db, temp_git_repo):
+    @pytest.mark.asyncio
+    async def test_complete_issue_with_multiple_completed_tasks(self, lead_agent, test_db, temp_git_repo):
         """Test completing issue counts all completed tasks."""
         repo_path, repo = temp_git_repo
 
@@ -406,7 +412,7 @@ class TestLeadAgentCompleteIssue:
         repo.index.commit("Feature commit")
         repo.git.checkout("main")
 
-        result = lead_agent.complete_issue(issue_id)
+        result = await lead_agent.complete_issue(issue_id)
 
         # Verify task count
         assert result["tasks_completed"] == 3
@@ -415,7 +421,8 @@ class TestLeadAgentCompleteIssue:
 class TestLeadAgentGitWorkflowIntegration:
     """Integration tests for end-to-end git workflow."""
 
-    def test_full_workflow_start_to_merge(self, lead_agent, test_db, temp_git_repo):
+    @pytest.mark.asyncio
+    async def test_full_workflow_start_to_merge(self, lead_agent, test_db, temp_git_repo):
         """Test complete workflow: create issue → start work → complete → merge."""
         repo_path, repo = temp_git_repo
 
@@ -458,7 +465,7 @@ class TestLeadAgentGitWorkflowIntegration:
         repo.git.checkout("main")
 
         # 5. Complete issue
-        complete_result = lead_agent.complete_issue(issue_id)
+        complete_result = await lead_agent.complete_issue(issue_id)
         assert complete_result["status"] == "merged"
         assert complete_result["tasks_completed"] == 1
 
@@ -467,7 +474,8 @@ class TestLeadAgentGitWorkflowIntegration:
         updated_issue = test_db.get_issue(issue_id)
         assert updated_issue.status == TaskStatus.COMPLETED
 
-    def test_workflow_with_no_tasks_fails(self, lead_agent, test_db):
+    @pytest.mark.asyncio
+    async def test_workflow_with_no_tasks_fails(self, lead_agent, test_db):
         """Test workflow fails if issue has no tasks."""
         # Create issue without tasks
         issue = Issue(
@@ -485,7 +493,7 @@ class TestLeadAgentGitWorkflowIntegration:
 
         # Complete should fail (no tasks)
         with pytest.raises(ValueError, match="incomplete tasks"):
-            lead_agent.complete_issue(issue_id)
+            await lead_agent.complete_issue(issue_id)
 
     def test_multiple_issues_separate_branches(self, lead_agent, test_db, temp_git_repo):
         """Test that multiple issues create separate branches."""

@@ -18,6 +18,10 @@ class TaskStatus(Enum):
     FAILED = "failed"
 
 
+# Valid task status values for API validation and database constraints
+VALID_TASK_STATUSES: frozenset[str] = frozenset(s.value for s in TaskStatus)
+
+
 class AgentMaturity(Enum):
     """Agent maturity levels based on Situational Leadership II."""
 
@@ -209,37 +213,43 @@ class Issue:
 class IssueWithTaskCount:
     """Issue with associated task count for summary views.
 
+    Uses composition to wrap an Issue and add task_count, reducing
+    field duplication and ensuring changes to Issue are automatically
+    reflected here.
+
     Used by get_issue_with_task_counts() to return typed results
     instead of raw dictionaries.
     """
 
-    id: Optional[int] = None
-    project_id: Optional[int] = None
-    issue_number: str = ""
-    title: str = ""
-    description: str = ""
-    status: TaskStatus = TaskStatus.PENDING
-    priority: int = 2
-    workflow_step: int = 1
-    created_at: datetime = field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
-    task_count: int = 0  # Count of associated tasks
+    issue: Issue
+    task_count: int = 0
+
+    # Convenience accessors for common Issue fields
+    @property
+    def id(self) -> Optional[int]:
+        return self.issue.id
+
+    @property
+    def project_id(self) -> Optional[int]:
+        return self.issue.project_id
+
+    @property
+    def issue_number(self) -> str:
+        return self.issue.issue_number
+
+    @property
+    def title(self) -> str:
+        return self.issue.title
+
+    @property
+    def status(self) -> TaskStatus:
+        return self.issue.status
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
-            "id": self.id,
-            "project_id": self.project_id,
-            "issue_number": self.issue_number,
-            "title": self.title,
-            "description": self.description,
-            "status": self.status.value,
-            "priority": self.priority,
-            "workflow_step": self.workflow_step,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
-            "task_count": self.task_count,
-        }
+        result = self.issue.to_dict()
+        result["task_count"] = self.task_count
+        return result
 
 
 @dataclass

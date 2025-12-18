@@ -872,6 +872,22 @@ class Database:
         self.close()
         await self.close_async()
 
+    def __del__(self) -> None:
+        """Destructor with warning for unclosed connections.
+
+        Warns if async connection was not explicitly closed via close_async()
+        or async context manager. This helps detect connection leaks in
+        long-running processes.
+        """
+        if self._async_conn is not None:
+            logger.warning(
+                f"Database async connection for {self.db_path} was not explicitly closed. "
+                "Use 'async with db:' or call close_async() to properly close async connections."
+            )
+        if self.conn is not None:
+            # Close sync connection silently - less critical than async
+            self.close()
+
     async def initialize_async(self) -> None:
         """Explicitly initialize the async database connection.
 
@@ -968,13 +984,12 @@ class Database:
         row_id = row["id"]
 
         # Parse timestamps - created_at should never be NULL after migration 011
-        # Use datetime.now() as fallback for pre-migration data
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
         if created_at is None:
-            logger.warning(
-                f"Task {row_id} has NULL created_at - run migration 011 to backfill"
+            raise ValueError(
+                f"Task {row_id} has NULL created_at - database integrity issue. "
+                "Run migration 011 to backfill NULL values."
             )
-            created_at = datetime.now()
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
@@ -1024,13 +1039,12 @@ class Database:
         row_id = row["id"]
 
         # Parse timestamps - created_at should never be NULL after migration 011
-        # Use datetime.now() as fallback for pre-migration data
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
         if created_at is None:
-            logger.warning(
-                f"Issue {row_id} has NULL created_at - run migration 011 to backfill"
+            raise ValueError(
+                f"Issue {row_id} has NULL created_at - database integrity issue. "
+                "Run migration 011 to backfill NULL values."
             )
-            created_at = datetime.now()
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
@@ -2125,7 +2139,7 @@ class Database:
             issue_id: Issue ID
 
         Returns:
-            IssueWithTaskCount object or None if not found
+            IssueWithTaskCount object (using composition) or None if not found
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -2142,32 +2156,10 @@ class Database:
         if not row:
             return None
 
-        # Parse timestamps
-        row_id = row["id"]
-        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
-        if created_at is None:
-            created_at = datetime.now()
-        completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
-
-        # Convert status string to enum
-        status = TaskStatus.PENDING
-        if row["status"]:
-            try:
-                status = TaskStatus(row["status"])
-            except ValueError:
-                pass
-
+        # Use _row_to_issue for consistent parsing, then wrap with task count
+        issue = self._row_to_issue(row)
         return IssueWithTaskCount(
-            id=row_id,
-            project_id=row["project_id"],
-            issue_number=row["issue_number"] or "",
-            title=row["title"] or "",
-            description=row["description"] or "",
-            status=status,
-            priority=row["priority"] if row["priority"] is not None else 2,
-            workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
-            created_at=created_at,
-            completed_at=completed_at,
+            issue=issue,
             task_count=row["task_count"],
         )
 
