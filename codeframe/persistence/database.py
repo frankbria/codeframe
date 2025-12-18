@@ -794,6 +794,30 @@ class Database:
             self.conn.close()
             self.conn = None
 
+    def _parse_datetime(
+        self, value: str, field_name: str, row_id: Optional[int] = None
+    ) -> Optional[datetime]:
+        """Parse ISO datetime string with logging for failures.
+
+        Args:
+            value: ISO 8601 datetime string or None
+            field_name: Name of the field being parsed (for logging)
+            row_id: Optional row ID for context in log messages
+
+        Returns:
+            Parsed datetime or None if parsing fails or value is empty
+        """
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value)
+        except (ValueError, TypeError) as e:
+            row_context = f" (row {row_id})" if row_id else ""
+            logger.warning(
+                f"Failed to parse {field_name}{row_context}: '{value}', error: {e}"
+            )
+            return None
+
     def _row_to_task(self, row: sqlite3.Row) -> Task:
         """Convert a database row to a Task object.
 
@@ -803,20 +827,11 @@ class Database:
         Returns:
             Task dataclass instance
         """
-        # Parse timestamps
-        created_at = None
-        if row["created_at"]:
-            try:
-                created_at = datetime.fromisoformat(row["created_at"])
-            except (ValueError, TypeError):
-                created_at = datetime.now()
+        row_id = row["id"]
 
-        completed_at = None
-        if row["completed_at"]:
-            try:
-                completed_at = datetime.fromisoformat(row["completed_at"])
-            except (ValueError, TypeError):
-                pass
+        # Parse timestamps with logging
+        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
         status = TaskStatus.PENDING
@@ -824,10 +839,12 @@ class Database:
             try:
                 status = TaskStatus(row["status"])
             except ValueError:
-                pass
+                logger.warning(
+                    f"Invalid task status '{row['status']}' for task {row_id}, defaulting to PENDING"
+                )
 
         return Task(
-            id=row["id"],
+            id=row_id,
             project_id=row["project_id"],
             issue_id=row["issue_id"],
             task_number=row["task_number"] or "",
@@ -856,20 +873,11 @@ class Database:
         Returns:
             Issue dataclass instance
         """
-        # Parse timestamps
-        created_at = None
-        if row["created_at"]:
-            try:
-                created_at = datetime.fromisoformat(row["created_at"])
-            except (ValueError, TypeError):
-                created_at = datetime.now()
+        row_id = row["id"]
 
-        completed_at = None
-        if row["completed_at"]:
-            try:
-                completed_at = datetime.fromisoformat(row["completed_at"])
-            except (ValueError, TypeError):
-                pass
+        # Parse timestamps with logging
+        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
         # Convert status string to enum
         status = TaskStatus.PENDING
@@ -877,10 +885,12 @@ class Database:
             try:
                 status = TaskStatus(row["status"])
             except ValueError:
-                pass
+                logger.warning(
+                    f"Invalid issue status '{row['status']}' for issue {row_id}, defaulting to PENDING"
+                )
 
         return Issue(
-            id=row["id"],
+            id=row_id,
             project_id=row["project_id"],
             issue_number=row["issue_number"] or "",
             title=row["title"] or "",

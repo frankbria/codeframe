@@ -127,6 +127,21 @@ class Issue:
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
+    def to_dict(self) -> dict:
+        """Convert Issue to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "issue_number": self.issue_number,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status.value,
+            "priority": self.priority,
+            "workflow_step": self.workflow_step,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
 
 @dataclass
 class Task:
@@ -155,6 +170,29 @@ class Task:
     actual_tokens: Optional[int] = None
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
+
+    def to_dict(self) -> dict:
+        """Convert Task to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "project_id": self.project_id,
+            "issue_id": self.issue_id,
+            "task_number": self.task_number,
+            "parent_issue_number": self.parent_issue_number,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status.value,
+            "assigned_to": self.assigned_to,
+            "depends_on": self.depends_on,
+            "can_parallelize": self.can_parallelize,
+            "priority": self.priority,
+            "workflow_step": self.workflow_step,
+            "requires_mcp": self.requires_mcp,
+            "estimated_tokens": self.estimated_tokens,
+            "actual_tokens": self.actual_tokens,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
 
 
 @dataclass

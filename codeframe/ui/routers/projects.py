@@ -290,29 +290,7 @@ async def get_tasks(
         tasks = tasks[offset : offset + limit]
 
         # Convert Task objects to dictionaries for JSON serialization
-        tasks_dicts = [
-            {
-                "id": t.id,
-                "project_id": t.project_id,
-                "issue_id": t.issue_id,
-                "task_number": t.task_number,
-                "parent_issue_number": t.parent_issue_number,
-                "title": t.title,
-                "description": t.description,
-                "status": t.status.value,
-                "assigned_to": t.assigned_to,
-                "depends_on": t.depends_on,
-                "can_parallelize": t.can_parallelize,
-                "priority": t.priority,
-                "workflow_step": t.workflow_step,
-                "requires_mcp": t.requires_mcp,
-                "estimated_tokens": t.estimated_tokens,
-                "actual_tokens": t.actual_tokens,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
-                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
-            }
-            for t in tasks
-        ]
+        tasks_dicts = [t.to_dict() for t in tasks]
 
         return {"tasks": tasks_dicts, "total": total}
 

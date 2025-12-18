@@ -132,14 +132,19 @@ async def run_lint_manual(request: Request, db: Database = Depends(get_db)):
 
     # Get files to lint
     if task_id:
-        # Get files from task metadata (placeholder - would need implementation)
+        # Verify task exists
         task = db.get_task(task_id)
-        # Note: Task model doesn't have files_modified field, this would need
-        # custom implementation to track modified files per task
-        if task and hasattr(task, "files_modified") and task.files_modified:
-            files = task.files_modified
-        else:
-            raise HTTPException(status_code=422, detail="Task has no files to lint")
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        # TODO: Implement task-based file discovery. The Task model doesn't currently
+        # track modified files. Options: (1) add files_modified field to Task model,
+        # (2) query git diff for commits associated with task, (3) track via changelog.
+        # For now, require explicit files list when using task_id.
+        if not files:
+            raise HTTPException(
+                status_code=422,
+                detail="Task-based file discovery not yet implemented. Please provide explicit 'files' list."
+            )
     elif not files:
         raise HTTPException(status_code=422, detail="Either task_id or files must be provided")
 

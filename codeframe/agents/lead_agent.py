@@ -1580,7 +1580,10 @@ Generate the PRD in markdown format with clear sections and professional languag
         # Calculate summary statistics
         execution_time = time.time() - start_time
 
-        # Fetch current task states once to avoid redundant DB calls and race conditions
+        # Re-fetch task states from database to get accurate final statuses.
+        # The original `tasks` list was loaded at the start of execution and may be stale
+        # after concurrent task updates during multi-agent execution. A single bulk fetch
+        # here avoids N individual get_task() calls and ensures consistent status snapshot.
         current_tasks = self.db.get_project_tasks(self.project_id)
         task_status_map = {t.id: t.status for t in current_tasks}
 
@@ -1776,7 +1779,8 @@ Generate the PRD in markdown format with clear sections and professional languag
                 return False
 
         # Check if task depends on tasks with pending SYNC blockers
-        depends_on_str = task.depends_on or ""
+        # Note: task.depends_on defaults to "" so no None check needed
+        depends_on_str = task.depends_on
         if depends_on_str and depends_on_str.strip():
             # Parse depends_on field (JSON array or comma-separated format)
             # Similar to dependency_resolver.py lines 71-83
