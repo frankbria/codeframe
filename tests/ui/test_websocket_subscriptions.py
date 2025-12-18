@@ -10,8 +10,7 @@ Tests cover:
 
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Set
+from unittest.mock import AsyncMock, MagicMock
 
 from codeframe.ui.shared import WebSocketSubscriptionManager, ConnectionManager
 
