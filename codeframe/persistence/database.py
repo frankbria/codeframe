@@ -589,6 +589,9 @@ class Database:
             from codeframe.persistence.migrations.migration_010_pause_functionality import (
                 migration as migration_010,
             )
+            from codeframe.persistence.migrations.migration_011_created_at_not_null import (
+                migration as migration_011,
+            )
 
             # Skip migrations for in-memory databases
             if self.db_path == ":memory:":
@@ -608,6 +611,7 @@ class Database:
             runner.register(migration_008)
             runner.register(migration_009)
             runner.register(migration_010)
+            runner.register(migration_011)
 
             # Apply all pending migrations
             runner.apply_all()
