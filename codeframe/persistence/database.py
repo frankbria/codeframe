@@ -860,7 +860,7 @@ class Database:
             requires_mcp=bool(row["requires_mcp"]),
             estimated_tokens=row["estimated_tokens"] if row["estimated_tokens"] is not None else 0,
             actual_tokens=row["actual_tokens"],
-            created_at=created_at or datetime.now(),
+            created_at=created_at if created_at is not None else datetime.now(),
             completed_at=completed_at,
         )
 
@@ -898,7 +898,7 @@ class Database:
             status=status,
             priority=row["priority"] if row["priority"] is not None else 2,
             workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
-            created_at=created_at or datetime.now(),
+            created_at=created_at if created_at is not None else datetime.now(),
             completed_at=completed_at,
         )
 
