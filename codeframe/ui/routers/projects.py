@@ -190,12 +190,12 @@ async def create_project(
         )
 
     return ProjectResponse(
-        id=project["id"],
-        name=project["name"],
-        status=project.get("status", "init"),
-        phase=project.get("phase", "discovery"),
-        created_at=project["created_at"],
-        config=project.get("config"),
+        id=project.id,
+        name=project.name,
+        status=project.status.value,
+        phase=project.phase.value,
+        created_at=project.created_at.isoformat(),
+        config=project.config,
     )
 
 
@@ -212,11 +212,11 @@ async def get_project_status(project_id: int, db: Database = Depends(get_db)):
     progress = db._calculate_project_progress(project_id)
 
     return {
-        "project_id": project["id"],
-        "name": project["name"],
-        "status": project["status"],
-        "phase": project.get("phase", "discovery"),
-        "workflow_step": project.get("workflow_step", 1),
+        "project_id": project.id,
+        "name": project.name,
+        "status": project.status.value,
+        "phase": project.phase.value,
+        "workflow_step": 1,  # Project doesn't have workflow_step, default to 1
         "progress": progress,
     }
 

@@ -39,6 +39,68 @@ class ProjectStatus(Enum):
     COMPLETED = "completed"
 
 
+class ProjectPhase(Enum):
+    """Project workflow phase."""
+
+    DISCOVERY = "discovery"
+    PLANNING = "planning"
+    ACTIVE = "active"
+    REVIEW = "review"
+    COMPLETE = "complete"
+
+
+class SourceType(Enum):
+    """Project source type."""
+
+    GIT_REMOTE = "git_remote"
+    LOCAL_PATH = "local_path"
+    UPLOAD = "upload"
+    EMPTY = "empty"
+
+
+@dataclass
+class Project:
+    """Represents a CodeFRAME project.
+
+    Projects are the top-level container for issues and tasks. Each project
+    has a managed workspace, optional source tracking, and workflow state.
+    """
+
+    id: Optional[int] = None
+    name: str = ""
+    description: str = ""
+    source_type: SourceType = SourceType.EMPTY
+    source_location: Optional[str] = None
+    source_branch: str = "main"
+    workspace_path: str = ""
+    git_initialized: bool = False
+    current_commit: Optional[str] = None
+    status: ProjectStatus = ProjectStatus.INIT
+    phase: ProjectPhase = ProjectPhase.DISCOVERY
+    created_at: datetime = field(default_factory=datetime.now)
+    paused_at: Optional[datetime] = None
+    config: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> dict:
+        """Convert Project to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "source_type": self.source_type.value,
+            "source_location": self.source_location,
+            "source_branch": self.source_branch,
+            "workspace_path": self.workspace_path,
+            "git_initialized": self.git_initialized,
+            "current_commit": self.current_commit,
+            "status": self.status.value,
+            "phase": self.phase.value,
+            "created_at": self.created_at.isoformat(),
+            "paused_at": self.paused_at.isoformat() if self.paused_at else None,
+            "config": self.config,
+        }
+
+
 class BlockerSeverity(Enum):
     """Blocker severity for escalation (deprecated, use BlockerType)."""
 

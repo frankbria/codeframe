@@ -11,7 +11,17 @@ import asyncio
 
 import aiosqlite
 
-from codeframe.core.models import ProjectStatus, Task, TaskStatus, AgentMaturity, Issue, CallType
+from codeframe.core.models import (
+    ProjectStatus,
+    ProjectPhase,
+    SourceType,
+    Project,
+    Task,
+    TaskStatus,
+    AgentMaturity,
+    Issue,
+    CallType,
+)
 
 if TYPE_CHECKING:
     from codeframe.core.models import (
@@ -641,12 +651,19 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_project(self, project_id: int) -> Optional[dict]:
-        """Get project by ID."""
+    def get_project(self, project_id: int) -> Optional[Project]:
+        """Get project by ID.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Project object or None if not found
+        """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_project(row) if row else None
 
     def create_issue(self, issue: Issue | dict) -> int:
         """Create a new issue.
@@ -1021,6 +1038,85 @@ class Database:
             completed_at=completed_at,
         )
 
+    def _row_to_project(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Project:
+        """Convert a database row to a Project object.
+
+        Args:
+            row: SQLite Row object from projects table (sync or async)
+
+        Returns:
+            Project dataclass instance
+
+        Note:
+            Both sqlite3.Row and aiosqlite.Row support dictionary-style access
+            via row["column_name"], which this method relies on.
+        """
+        row_id = row["id"]
+
+        # Parse timestamps
+        created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
+        if created_at is None:
+            logger.warning(
+                f"Project {row_id} has NULL created_at - using datetime.now() as fallback"
+            )
+            created_at = datetime.now()
+        paused_at = self._parse_datetime(row.get("paused_at"), "paused_at", row_id)
+
+        # Convert status string to enum
+        status = ProjectStatus.INIT
+        if row["status"]:
+            try:
+                status = ProjectStatus(row["status"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid project status '{row['status']}' for project {row_id}, defaulting to INIT"
+                )
+
+        # Convert phase string to enum
+        phase = ProjectPhase.DISCOVERY
+        if row.get("phase"):
+            try:
+                phase = ProjectPhase(row["phase"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid project phase '{row['phase']}' for project {row_id}, defaulting to DISCOVERY"
+                )
+
+        # Convert source_type string to enum
+        source_type = SourceType.EMPTY
+        if row.get("source_type"):
+            try:
+                source_type = SourceType(row["source_type"])
+            except ValueError:
+                logger.warning(
+                    f"Invalid source_type '{row['source_type']}' for project {row_id}, defaulting to EMPTY"
+                )
+
+        # Parse config JSON
+        config = None
+        if row.get("config"):
+            try:
+                config = json.loads(row["config"]) if isinstance(row["config"], str) else row["config"]
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse config for project {row_id}: {e}")
+
+        return Project(
+            id=row_id,
+            name=row["name"] or "",
+            description=row["description"] or "",
+            source_type=source_type,
+            source_location=row.get("source_location"),
+            source_branch=row.get("source_branch") or "main",
+            workspace_path=row["workspace_path"] or "",
+            git_initialized=bool(row.get("git_initialized")),
+            current_commit=row.get("current_commit"),
+            status=status,
+            phase=phase,
+            created_at=created_at,
+            paused_at=paused_at,
+            config=config,
+        )
+
     def __enter__(self) -> "Database":
         """Context manager entry."""
         if not self.conn:
@@ -1338,6 +1434,11 @@ class Database:
 
     def list_projects(self) -> List[Dict[str, Any]]:
         """List all projects with progress metrics.
+
+        Note:
+            Returns dicts rather than Project objects because this method adds
+            computed 'progress' metrics that aren't part of the Project schema.
+            Use get_project() for typed Project returns.
 
         Returns:
             List of project dictionaries, each with a 'progress' field containing:
