@@ -19,8 +19,6 @@ from codeframe.ui.shared import manager
 from codeframe.persistence.database import Database
 from codeframe.lib.quality_gates import QualityGates
 from codeframe.core.models import (
-    Task,
-    TaskStatus,
     QualityGateResult,
     QualityGateFailure,
     QualityGateType,

@@ -268,7 +268,7 @@ class TestIssueCRUD:
         issues = db.list_issues(project1_id)
 
         assert len(issues) == 1
-        assert issues[0]["title"] == "Project 1 Issue"
+        assert issues[0].title == "Project 1 Issue"
 
     def test_update_issue_status(self, temp_db_path):
         """Test updating issue status."""

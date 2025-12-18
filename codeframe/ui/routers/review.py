@@ -24,7 +24,7 @@ from codeframe.ui.shared import manager, review_cache
 from codeframe.persistence.database import Database
 from codeframe.agents.review_worker_agent import ReviewWorkerAgent
 from codeframe.agents.review_agent import ReviewAgent
-from codeframe.core.models import Task, TaskStatus
+from codeframe.core.models import Task
 
 # Module logger
 logger = logging.getLogger(__name__)
