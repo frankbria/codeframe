@@ -95,15 +95,15 @@ class GitWorkflowManager:
 
             for project in projects:
                 issues = self.db.get_project_issues(project["id"])
-                matches = [i for i in issues if i["issue_number"] == issue_number_clean]
+                matches = [i for i in issues if i.issue_number == issue_number_clean]
                 if matches:
                     matching_issue = matches[0]
                     break
 
             if matching_issue:
-                self.db.create_git_branch(matching_issue["id"], branch_name)
+                self.db.create_git_branch(matching_issue.id, branch_name)
                 logger.debug(
-                    f"Stored branch {branch_name} in database for issue {matching_issue['id']}"
+                    f"Stored branch {branch_name} in database for issue {matching_issue.id}"
                 )
         except Exception as e:
             logger.warning(f"Could not store branch in database: {e}")
@@ -150,7 +150,7 @@ class GitWorkflowManager:
 
         for project in projects:
             issues = self.db.get_project_issues(project["id"])
-            matches = [i for i in issues if i["issue_number"] == issue_number]
+            matches = [i for i in issues if i.issue_number == issue_number]
             if matches:
                 matching_issue = matches[0]
                 break
@@ -158,7 +158,7 @@ class GitWorkflowManager:
         if not matching_issue:
             raise ValueError(f"Issue {issue_number} not found")
 
-        issue_id = matching_issue["id"]
+        issue_id = matching_issue.id
 
         # Check all tasks are completed
         if not self.is_issue_complete(issue_id):
@@ -224,7 +224,8 @@ class GitWorkflowManager:
             return False
 
         # Check all tasks are completed
-        all_completed = all(task["status"] == "completed" for task in tasks)
+        from codeframe.core.models import TaskStatus
+        all_completed = all(task.status == TaskStatus.COMPLETED for task in tasks)
 
         logger.debug(
             f"Issue {issue_id} completion check: {len(tasks)} tasks, " f"completed={all_completed}"

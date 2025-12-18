@@ -267,7 +267,7 @@ async def get_tasks(
         # NOTE: Client-side filtering used here. For large datasets (1000+ tasks),
         # consider adding database-level filtering in future optimization.
         if status is not None:
-            tasks = [t for t in tasks if t.get("status") == status]
+            tasks = [t for t in tasks if t.status.value == status]
 
         # Calculate total count before pagination
         total = len(tasks)
@@ -275,7 +275,32 @@ async def get_tasks(
         # Apply pagination
         tasks = tasks[offset : offset + limit]
 
-        return {"tasks": tasks, "total": total}
+        # Convert Task objects to dictionaries for JSON serialization
+        tasks_dicts = [
+            {
+                "id": t.id,
+                "project_id": t.project_id,
+                "issue_id": t.issue_id,
+                "task_number": t.task_number,
+                "parent_issue_number": t.parent_issue_number,
+                "title": t.title,
+                "description": t.description,
+                "status": t.status.value,
+                "assigned_to": t.assigned_to,
+                "depends_on": t.depends_on,
+                "can_parallelize": t.can_parallelize,
+                "priority": t.priority,
+                "workflow_step": t.workflow_step,
+                "requires_mcp": t.requires_mcp,
+                "estimated_tokens": t.estimated_tokens,
+                "actual_tokens": t.actual_tokens,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+            }
+            for t in tasks
+        ]
+
+        return {"tasks": tasks_dicts, "total": total}
 
     except sqlite3.Error as e:
         logger.error(f"Database error fetching tasks for project {project_id}: {e}", exc_info=True)

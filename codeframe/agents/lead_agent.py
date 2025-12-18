@@ -616,7 +616,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             raise ValueError(f"Task {task_id} not found")
 
         # 2. Verify task belongs to this project
-        if task["project_id"] != self.project_id:
+        if task.project_id != self.project_id:
             raise ValueError(
                 f"Task {task_id} does not belong to project {self.project_id}"
             )
@@ -634,11 +634,11 @@ Generate the PRD in markdown format with clear sections and professional languag
             )
 
         # 5. Check task is not completed
-        if task["status"] == TaskStatus.COMPLETED.value:
+        if task.status == TaskStatus.COMPLETED:
             raise ValueError(f"Cannot assign completed task {task_id}")
 
         # 6. Check for reassignment
-        old_agent = task.get("assigned_to")
+        old_agent = task.assigned_to
         if old_agent and old_agent != agent_id:
             logger.warning(
                 f"⚠️  Task {task_id} reassigned from {old_agent} to {agent_id}"
@@ -869,13 +869,13 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             # 1. Dependency Wait Bottlenecks
             for task in tasks:
-                if task["status"] == "blocked" or task["id"] in blocked_tasks:
+                if task.status == TaskStatus.BLOCKED or task.id in blocked_tasks:
                     wait_minutes = self._calculate_wait_time(task)
                     if wait_minutes >= self.DEPENDENCY_WAIT_THRESHOLD_MINUTES:
-                        blocking_task_ids = blocked_tasks.get(task["id"], [])
+                        blocking_task_ids = blocked_tasks.get(task.id, [])
                         bottleneck = {
                             "type": "dependency_wait",
-                            "task_id": task["id"],
+                            "task_id": task.id,
                             "wait_time_minutes": wait_minutes,
                             "blocking_task_id": blocking_task_ids[0] if blocking_task_ids else None,
                             "severity": self._determine_severity(
@@ -904,7 +904,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             idle_agents = [
                 aid for aid, info in agent_status.items() if info.get("status") == "idle"
             ]
-            pending_tasks = [t for t in tasks if t["status"] == "pending"]
+            pending_tasks = [t for t in tasks if t.status == TaskStatus.PENDING]
 
             if idle_agents and pending_tasks:
                 bottleneck = {
@@ -917,22 +917,22 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             # 4. Critical Path Bottlenecks
             for task in tasks:
-                if task["status"] in ["pending", "assigned", "in_progress", "blocked"]:
+                if task.status in [TaskStatus.PENDING, TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED]:
                     # Get all dependent task IDs
-                    dependent_ids = self.dependency_resolver.dependents.get(task["id"], set())
+                    dependent_ids = self.dependency_resolver.dependents.get(task.id, set())
 
                     # Filter to only count active (non-completed) dependents
                     active_dependents = [
                         dep_id
                         for dep_id in dependent_ids
-                        if any(t["id"] == dep_id and t["status"] != "completed" for t in tasks)
+                        if any(t.id == dep_id and t.status != TaskStatus.COMPLETED for t in tasks)
                     ]
                     dependent_count = len(active_dependents)
 
                     if dependent_count >= self.CRITICAL_PATH_THRESHOLD:
                         bottleneck = {
                             "type": "critical_path",
-                            "task_id": task["id"],
+                            "task_id": task.id,
                             "blocked_dependents": dependent_count,
                             "severity": self._determine_severity(
                                 "critical_path", {"blocked_dependents": dependent_count}
@@ -1096,28 +1096,14 @@ Generate the PRD in markdown format with clear sections and professional languag
                 issues = self.generate_issues(sprint_number)
             else:
                 logger.info("Loading existing issues from database")
-                issue_dicts = self.db.get_project_issues(self.project_id)
+                issues = self.db.get_project_issues(self.project_id)
 
-                if not issue_dicts:
+                if not issues:
                     raise ValueError(
                         "No issues found in database. "
                         "Generate issues first using generate_issues(sprint_number) "
                         "or provide sprint_number parameter."
                     )
-
-                # Convert dict to Issue objects
-                issues = []
-                for issue_dict in issue_dicts:
-                    issue = Issue(
-                        id=issue_dict["id"],
-                        project_id=issue_dict["project_id"],
-                        issue_number=issue_dict["issue_number"],
-                        title=issue_dict["title"],
-                        description=issue_dict["description"],
-                        priority=issue_dict["priority"],
-                        workflow_step=issue_dict["workflow_step"],
-                    )
-                    issues.append(issue)
 
             if not issues:
                 raise ValueError("No issues available for decomposition")
@@ -1310,22 +1296,22 @@ Generate the PRD in markdown format with clear sections and professional languag
         existing_branch = self.db.get_branch_for_issue(issue_id)
         if existing_branch:
             raise ValueError(
-                f"Issue {issue['issue_number']} already has an active branch: "
+                f"Issue {issue.issue_number} already has an active branch: "
                 f"{existing_branch['branch_name']}"
             )
 
         # 3. Create feature branch via GitWorkflowManager
-        branch_name = self.git_workflow.create_feature_branch(issue["issue_number"], issue["title"])
+        branch_name = self.git_workflow.create_feature_branch(issue.issue_number, issue.title)
 
         # 4. Record in git_branches table (already done by GitWorkflowManager)
         # GitWorkflowManager.create_feature_branch() already stores in database
 
         # 5. Return branch info
-        logger.info(f"Started work on issue {issue['issue_number']}: created branch {branch_name}")
+        logger.info(f"Started work on issue {issue.issue_number}: created branch {branch_name}")
 
         return {
             "branch_name": branch_name,
-            "issue_number": issue["issue_number"],
+            "issue_number": issue.issue_number,
             "status": "created",
         }
 
@@ -1364,16 +1350,16 @@ Generate the PRD in markdown format with clear sections and professional languag
         # 2. Validate all tasks completed using GitWorkflowManager
         if not self.git_workflow.is_issue_complete(issue_id):
             raise ValueError(
-                f"Cannot complete issue {issue['issue_number']}: incomplete tasks remain"
+                f"Cannot complete issue {issue.issue_number}: incomplete tasks remain"
             )
 
         # 3. Get active branch for issue
         branch_record = self.db.get_branch_for_issue(issue_id)
         if not branch_record:
-            raise ValueError(f"No active branch found for issue {issue['issue_number']}")
+            raise ValueError(f"No active branch found for issue {issue.issue_number}")
 
         # 4. Merge to main via GitWorkflowManager
-        merge_result = self.git_workflow.merge_to_main(issue["issue_number"])
+        merge_result = self.git_workflow.merge_to_main(issue.issue_number)
 
         # 5. Update issue status to 'completed'
         self.db.update_issue(issue_id, {"status": "completed"})
@@ -1391,7 +1377,7 @@ Generate the PRD in markdown format with clear sections and professional languag
         )
 
         logger.info(
-            f"Completed issue {issue['issue_number']}: merged {merge_result['branch_name']} "
+            f"Completed issue {issue.issue_number}: merged {merge_result['branch_name']} "
             f"with {tasks_completed} tasks, deployment {deployment_result['status']}"
         )
 
@@ -1452,29 +1438,9 @@ Generate the PRD in markdown format with clear sections and professional languag
         start_time = time.time()
 
         # Load all tasks for project
-        task_dicts = self.db.get_project_tasks(self.project_id)
-        if not task_dicts:
+        tasks = self.db.get_project_tasks(self.project_id)
+        if not tasks:
             raise ValueError(f"No tasks found for project {self.project_id}")
-
-        # Convert to Task objects
-        tasks = []
-        for task_dict in task_dicts:
-            task = Task(
-                id=task_dict["id"],
-                project_id=task_dict["project_id"],
-                issue_id=task_dict.get("issue_id"),
-                task_number=task_dict["task_number"],
-                parent_issue_number=task_dict.get("parent_issue_number"),
-                title=task_dict["title"],
-                description=task_dict["description"],
-                status=task_dict["status"],
-                priority=task_dict.get("priority", "medium"),
-                workflow_step=task_dict.get("workflow_step"),
-                can_parallelize=task_dict.get("can_parallelize", False),
-                requires_mcp=task_dict.get("requires_mcp", False),
-                depends_on=task_dict.get("depends_on", "[]"),
-            )
-            tasks.append(task)
 
         logger.info(f"🚀 Multi-agent execution started: {len(tasks)} tasks")
 
@@ -1613,14 +1579,14 @@ Generate the PRD in markdown format with clear sections and professional languag
 
         # Calculate summary statistics
         execution_time = time.time() - start_time
-        failed_count = len([t for t in tasks if self.db.get_task(t.id).get("status") == "failed"])
+        failed_count = len([t for t in tasks if self.db.get_task(t.id) and self.db.get_task(t.id).status == TaskStatus.FAILED])
         # Completed count = tasks in completed_tasks that are not failed
         completed_count = len(
             [
                 t
                 for t in tasks
                 if t.id in self.dependency_resolver.completed_tasks
-                and self.db.get_task(t.id).get("status") != "failed"
+                and self.db.get_task(t.id) and self.db.get_task(t.id).status != TaskStatus.FAILED
             ]
         )
 
@@ -1805,7 +1771,7 @@ Generate the PRD in markdown format with clear sections and professional languag
                 return False
 
         # Check if task depends on tasks with pending SYNC blockers
-        depends_on_str = task.get("depends_on", "")
+        depends_on_str = task.depends_on or ""
         if depends_on_str and depends_on_str.strip():
             # Parse depends_on field (JSON array or comma-separated format)
             # Similar to dependency_resolver.py lines 71-83
@@ -1864,17 +1830,17 @@ Generate the PRD in markdown format with clear sections and professional languag
         Returns:
             True if all tasks are in terminal state (completed/failed) OR deadlocked
         """
-        task_dicts = self.db.get_project_tasks(self.project_id)
+        tasks = self.db.get_project_tasks(self.project_id)
 
         incomplete = []
         blocked = []
 
-        for task_dict in task_dicts:
-            status = task_dict.get("status", "pending")
-            if status not in ("completed", "failed"):
-                incomplete.append(task_dict["id"])
-                if status == "blocked":
-                    blocked.append(task_dict["id"])
+        for task in tasks:
+            status = task.status
+            if status not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+                incomplete.append(task.id)
+                if status == TaskStatus.BLOCKED:
+                    blocked.append(task.id)
 
         # No incomplete tasks means all done
         if not incomplete:

@@ -359,7 +359,7 @@ class TestLeadAgentCompleteIssue:
 
         # Verify issue status updated
         updated_issue = test_db.get_issue(issue_id)
-        assert updated_issue["status"] == "completed"
+        assert updated_issue.status == TaskStatus.COMPLETED
 
     def test_complete_issue_nonexistent_issue(self, lead_agent):
         """Test completing nonexistent issue raises ValueError."""
@@ -465,7 +465,7 @@ class TestLeadAgentGitWorkflowIntegration:
         # 6. Verify final state
         assert (repo_path / "auth.py").exists()
         updated_issue = test_db.get_issue(issue_id)
-        assert updated_issue["status"] == "completed"
+        assert updated_issue.status == TaskStatus.COMPLETED
 
     def test_workflow_with_no_tasks_fails(self, lead_agent, test_db):
         """Test workflow fails if issue has no tasks."""

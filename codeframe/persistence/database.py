@@ -670,28 +670,28 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_issue(self, issue_id: int) -> Optional[Dict[str, Any]]:
+    def get_issue(self, issue_id: int) -> Optional[Issue]:
         """Get issue by ID.
 
         Args:
             issue_id: Issue ID
 
         Returns:
-            Issue dictionary or None if not found
+            Issue object or None if not found
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM issues WHERE id = ?", (issue_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_issue(row) if row else None
 
-    def get_project_issues(self, project_id: int) -> List[Dict[str, Any]]:
+    def get_project_issues(self, project_id: int) -> List[Issue]:
         """Get all issues for a project.
 
         Args:
             project_id: Project ID
 
         Returns:
-            List of issue dictionaries ordered by issue_number
+            List of Issue objects ordered by issue_number
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -699,7 +699,7 @@ class Database:
             (project_id,),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_issue(row) for row in rows]
 
     def create_task(self, task: Task) -> int:
         """Create a new task."""
@@ -724,14 +724,14 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_project_tasks(self, project_id: int) -> List[Dict[str, Any]]:
+    def get_project_tasks(self, project_id: int) -> List[Task]:
         """Get all tasks for a project (all statuses).
 
         Args:
             project_id: Project ID
 
         Returns:
-            List of task dictionaries ordered by task_number
+            List of Task objects ordered by task_number
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -739,7 +739,7 @@ class Database:
             (project_id,),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_task(row) for row in rows]
 
     def update_task(self, task_id: int, updates: Dict[str, Any]) -> int:
         """Update task fields.
@@ -774,25 +774,123 @@ class Database:
 
         return cursor.rowcount
 
-    def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
+    def get_task(self, task_id: int) -> Optional[Task]:
         """Get task by ID.
 
         Args:
             task_id: Task ID
 
         Returns:
-            Task dictionary or None if not found
+            Task object or None if not found
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_task(row) if row else None
 
     def close(self) -> None:
         """Close database connection."""
         if self.conn:
             self.conn.close()
             self.conn = None
+
+    def _row_to_task(self, row: sqlite3.Row) -> Task:
+        """Convert a database row to a Task object.
+
+        Args:
+            row: SQLite Row object from tasks table
+
+        Returns:
+            Task dataclass instance
+        """
+        # Parse timestamps
+        created_at = None
+        if row["created_at"]:
+            try:
+                created_at = datetime.fromisoformat(row["created_at"])
+            except (ValueError, TypeError):
+                created_at = datetime.now()
+
+        completed_at = None
+        if row["completed_at"]:
+            try:
+                completed_at = datetime.fromisoformat(row["completed_at"])
+            except (ValueError, TypeError):
+                pass
+
+        # Convert status string to enum
+        status = TaskStatus.PENDING
+        if row["status"]:
+            try:
+                status = TaskStatus(row["status"])
+            except ValueError:
+                pass
+
+        return Task(
+            id=row["id"],
+            project_id=row["project_id"],
+            issue_id=row["issue_id"],
+            task_number=row["task_number"] or "",
+            parent_issue_number=row["parent_issue_number"] or "",
+            title=row["title"] or "",
+            description=row["description"] or "",
+            status=status,
+            assigned_to=row["assigned_to"],
+            depends_on=row["depends_on"] or "",
+            can_parallelize=bool(row["can_parallelize"]),
+            priority=row["priority"] if row["priority"] is not None else 2,
+            workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
+            requires_mcp=bool(row["requires_mcp"]),
+            estimated_tokens=row["estimated_tokens"] if row["estimated_tokens"] is not None else 0,
+            actual_tokens=row["actual_tokens"],
+            created_at=created_at or datetime.now(),
+            completed_at=completed_at,
+        )
+
+    def _row_to_issue(self, row: sqlite3.Row) -> Issue:
+        """Convert a database row to an Issue object.
+
+        Args:
+            row: SQLite Row object from issues table
+
+        Returns:
+            Issue dataclass instance
+        """
+        # Parse timestamps
+        created_at = None
+        if row["created_at"]:
+            try:
+                created_at = datetime.fromisoformat(row["created_at"])
+            except (ValueError, TypeError):
+                created_at = datetime.now()
+
+        completed_at = None
+        if row["completed_at"]:
+            try:
+                completed_at = datetime.fromisoformat(row["completed_at"])
+            except (ValueError, TypeError):
+                pass
+
+        # Convert status string to enum
+        status = TaskStatus.PENDING
+        if row["status"]:
+            try:
+                status = TaskStatus(row["status"])
+            except ValueError:
+                pass
+
+        return Issue(
+            id=row["id"],
+            project_id=row["project_id"],
+            issue_number=row["issue_number"] or "",
+            title=row["title"] or "",
+            description=row["description"] or "",
+            status=status,
+            priority=row["priority"] if row["priority"] is not None else 2,
+            workflow_step=row["workflow_step"] if row["workflow_step"] is not None else 1,
+            created_at=created_at or datetime.now(),
+            completed_at=completed_at,
+        )
 
     def __enter__(self) -> "Database":
         """Context manager entry."""
@@ -1710,14 +1808,14 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_tasks_by_issue(self, issue_id: int) -> List[Dict[str, Any]]:
+    def get_tasks_by_issue(self, issue_id: int) -> List[Task]:
         """Get all tasks for an issue.
 
         Args:
             issue_id: Issue ID
 
         Returns:
-            List of task dictionaries ordered by task_number
+            List of Task objects ordered by task_number
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -1725,16 +1823,16 @@ class Database:
             (issue_id,),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_task(row) for row in rows]
 
-    def get_tasks_by_parent_issue_number(self, parent_issue_number: str) -> List[Dict[str, Any]]:
+    def get_tasks_by_parent_issue_number(self, parent_issue_number: str) -> List[Task]:
         """Get all tasks by parent issue number.
 
         Args:
             parent_issue_number: Parent issue number (e.g., "1.5")
 
         Returns:
-            List of task dictionaries
+            List of Task objects
         """
         cursor = self.conn.cursor()
         cursor.execute(
@@ -1742,7 +1840,7 @@ class Database:
             (parent_issue_number,),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_task(row) for row in rows]
 
     def get_issue_with_task_counts(self, issue_id: int) -> Optional[Dict[str, Any]]:
         """Get issue with count of associated tasks.

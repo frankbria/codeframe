@@ -133,11 +133,11 @@ class TestIssueCRUD:
 
         # Verify it was created correctly
         saved_issue = db.get_issue(issue_id)
-        assert saved_issue["issue_number"] == "2.3"
-        assert saved_issue["title"] == "API endpoint for issues"
-        assert saved_issue["status"] == "in_progress"
-        assert saved_issue["priority"] == 0
-        assert saved_issue["workflow_step"] == 5
+        assert saved_issue.issue_number == "2.3"
+        assert saved_issue.title == "API endpoint for issues"
+        assert saved_issue.status == TaskStatus.IN_PROGRESS
+        assert saved_issue.priority == 0
+        assert saved_issue.workflow_step == 5
 
     def test_get_issue_by_id(self, temp_db_path):
         """Test retrieving an issue by ID."""
@@ -159,14 +159,14 @@ class TestIssueCRUD:
         issue = db.get_issue(issue_id)
 
         assert issue is not None
-        assert issue["id"] == issue_id
-        assert issue["project_id"] == project_id
-        assert issue["issue_number"] == "1.1"
-        assert issue["title"] == "Test Issue"
-        assert issue["description"] == "This is a test"
-        assert issue["status"] == "pending"
-        assert issue["priority"] == 2
-        assert "created_at" in issue
+        assert issue.id == issue_id
+        assert issue.project_id == project_id
+        assert issue.issue_number == "1.1"
+        assert issue.title == "Test Issue"
+        assert issue.description == "This is a test"
+        assert issue.status == TaskStatus.PENDING
+        assert issue.priority == 2
+        assert issue.created_at is not None
 
     def test_get_nonexistent_issue_returns_none(self, temp_db_path):
         """Test that getting non-existent issue returns None."""
@@ -219,7 +219,7 @@ class TestIssueCRUD:
         issues = db.list_issues(project_id)
 
         assert len(issues) == 3
-        issue_numbers = [i["issue_number"] for i in issues]
+        issue_numbers = [i.issue_number for i in issues]
         assert "1.1" in issue_numbers
         assert "1.2" in issue_numbers
         assert "2.1" in issue_numbers
@@ -292,7 +292,7 @@ class TestIssueCRUD:
 
         # Verify update
         issue = db.get_issue(issue_id)
-        assert issue["status"] == "in_progress"
+        assert issue.status == TaskStatus.IN_PROGRESS
 
     def test_update_issue_multiple_fields(self, temp_db_path):
         """Test updating multiple issue fields at once."""
@@ -325,11 +325,11 @@ class TestIssueCRUD:
 
         # Verify updates
         issue = db.get_issue(issue_id)
-        assert issue["title"] == "Updated Title"
-        assert issue["description"] == "Updated Description"
-        assert issue["status"] == "completed"
-        assert issue["priority"] == 0
-        assert issue["workflow_step"] == 10
+        assert issue.title == "Updated Title"
+        assert issue.description == "Updated Description"
+        assert issue.status == TaskStatus.COMPLETED
+        assert issue.priority == 0
+        assert issue.workflow_step == 10
 
     def test_update_issue_with_completed_timestamp(self, temp_db_path):
         """Test that completing an issue sets completed_at timestamp."""
@@ -355,7 +355,7 @@ class TestIssueCRUD:
 
         # Verify completed_at is set
         issue = db.get_issue(issue_id)
-        assert issue["completed_at"] is not None
+        assert issue.completed_at is not None
 
     def test_update_nonexistent_issue(self, temp_db_path):
         """Test that updating non-existent issue returns 0."""
@@ -463,7 +463,7 @@ class TestTaskIssueRelationship:
         tasks = db.get_tasks_by_issue(issue_id)
 
         assert len(tasks) == 3
-        task_numbers = [t["task_number"] for t in tasks]
+        task_numbers = [t.task_number for t in tasks]
         assert "1.5.1" in task_numbers
         assert "1.5.2" in task_numbers
         assert "1.5.3" in task_numbers
@@ -555,7 +555,7 @@ class TestTaskIssueRelationship:
 
         assert len(tasks) == 2
         for task in tasks:
-            assert task["parent_issue_number"] == "2.3"
+            assert task.parent_issue_number == "2.3"
 
 
 @pytest.mark.unit
@@ -917,11 +917,11 @@ class TestIssueTaskIntegration:
 
         # 7. Verify final state
         issue = db.get_issue(issue_id)
-        assert issue["status"] == "completed"
-        assert issue["completed_at"] is not None
+        assert issue.status == TaskStatus.COMPLETED
+        assert issue.completed_at is not None
 
         tasks = db.get_tasks_by_issue(issue_id)
-        assert all(t["status"] == "completed" for t in tasks)
+        assert all(t.status == TaskStatus.COMPLETED for t in tasks)
 
     def test_parallel_task_execution(self, temp_db_path):
         """Test workflow with parallelizable tasks."""
@@ -1048,7 +1048,7 @@ class TestIssueTaskIntegration:
 
         # Verify hierarchy
         issues = db.list_issues(project_id)
-        issue_numbers = [i["issue_number"] for i in issues]
+        issue_numbers = [i.issue_number for i in issues]
 
         assert "1" in issue_numbers
         assert "1.1" in issue_numbers
@@ -1056,7 +1056,7 @@ class TestIssueTaskIntegration:
         assert "2" in issue_numbers
 
         tasks = db.get_tasks_by_issue(issue2_id)
-        task_numbers = [t["task_number"] for t in tasks]
+        task_numbers = [t.task_number for t in tasks]
 
         assert "1.1.1" in task_numbers
         assert "1.1.2" in task_numbers

@@ -134,8 +134,10 @@ async def run_lint_manual(request: Request, db: Database = Depends(get_db)):
     if task_id:
         # Get files from task metadata (placeholder - would need implementation)
         task = db.get_task(task_id)
-        if task and "files_modified" in task:
-            files = task["files_modified"]
+        # Note: Task model doesn't have files_modified field, this would need
+        # custom implementation to track modified files per task
+        if task and hasattr(task, "files_modified") and task.files_modified:
+            files = task.files_modified
         else:
             raise HTTPException(status_code=422, detail="Task has no files to lint")
     elif not files:
