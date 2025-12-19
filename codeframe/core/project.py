@@ -455,7 +455,6 @@ class Project:
             - quality: Quality metrics (test_pass_rate, coverage_pct)
             - last_activity: Formatted timestamp of most recent activity
         """
-        from datetime import datetime, timezone
         from codeframe.enforcement.quality_tracker import QualityTracker
 
         # Helper to safely get status value (handles both enum and string)

@@ -15,7 +15,6 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import tempfile
-import json
 
 from codeframe.core.project import Project
 from codeframe.core.models import TaskStatus, Task, ProjectStatus
