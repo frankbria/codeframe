@@ -128,8 +128,8 @@ def test_database_operations(test_database):
     # Verify project was created
     project = test_database.get_project(project_id)
     assert project is not None
-    assert project["name"] == "E2ETestProject"
-    assert project["status"] == "init"
+    assert project.name == "E2ETestProject"
+    assert project.status.value == "init"
 
     # Create task
     task = Task(
@@ -150,8 +150,8 @@ def test_database_operations(test_database):
     # Verify task was created
     retrieved_task = test_database.get_task(task_id)
     assert retrieved_task is not None
-    assert retrieved_task["title"] == "Test Task"
-    assert retrieved_task["status"] == "pending"
+    assert retrieved_task.title == "Test Task"
+    assert retrieved_task.status.value == "pending"
 
 
 @pytest.mark.e2e
@@ -320,14 +320,14 @@ def test_task_status_transitions(test_database):
 
     # Verify initial status
     retrieved = test_database.get_task(task_id)
-    assert retrieved["status"] == "pending"
+    assert retrieved.status.value == "pending"
 
     # Update to in_progress
     test_database.conn.execute("UPDATE tasks SET status = ? WHERE id = ?", ("in_progress", task_id))
     test_database.conn.commit()
 
     retrieved = test_database.get_task(task_id)
-    assert retrieved["status"] == "in_progress"
+    assert retrieved.status.value == "in_progress"
 
     # Update to completed
     test_database.conn.execute(
@@ -337,8 +337,8 @@ def test_task_status_transitions(test_database):
     test_database.conn.commit()
 
     retrieved = test_database.get_task(task_id)
-    assert retrieved["status"] == "completed"
-    assert retrieved["completed_at"] is not None
+    assert retrieved.status.value == "completed"
+    assert retrieved.completed_at is not None
 
 
 @pytest.mark.e2e

@@ -1092,7 +1092,7 @@ class Database:
                 f"Project {row_id} has NULL created_at - using datetime.now() as fallback"
             )
             created_at = datetime.now()
-        paused_at = self._parse_datetime(row.get("paused_at"), "paused_at", row_id)
+        paused_at = self._parse_datetime(row["paused_at"], "paused_at", row_id)
 
         # Convert status string to enum
         status = ProjectStatus.INIT
@@ -1106,7 +1106,7 @@ class Database:
 
         # Convert phase string to enum
         phase = ProjectPhase.DISCOVERY
-        if row.get("phase"):
+        if row["phase"]:
             try:
                 phase = ProjectPhase(row["phase"])
             except ValueError:
@@ -1116,7 +1116,7 @@ class Database:
 
         # Convert source_type string to enum
         source_type = SourceType.EMPTY
-        if row.get("source_type"):
+        if row["source_type"]:
             try:
                 source_type = SourceType(row["source_type"])
             except ValueError:
@@ -1126,7 +1126,7 @@ class Database:
 
         # Parse config JSON
         config = None
-        if row.get("config"):
+        if row["config"]:
             try:
                 config = json.loads(row["config"]) if isinstance(row["config"], str) else row["config"]
             except (json.JSONDecodeError, TypeError) as e:
@@ -1137,11 +1137,11 @@ class Database:
             name=row["name"] or "",
             description=row["description"] or "",
             source_type=source_type,
-            source_location=row.get("source_location"),
-            source_branch=row.get("source_branch") or "main",
+            source_location=row["source_location"],
+            source_branch=row["source_branch"] or "main",
             workspace_path=row["workspace_path"] or "",
-            git_initialized=bool(row.get("git_initialized")),
-            current_commit=row.get("current_commit"),
+            git_initialized=bool(row["git_initialized"]),
+            current_commit=row["current_commit"],
             status=status,
             phase=phase,
             created_at=created_at,
