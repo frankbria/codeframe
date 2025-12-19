@@ -96,6 +96,9 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
 
       // US3: Call parent onSuccess callback with project ID
       onSuccess(response.data.id);
+
+      // Reset submitting state to allow clean unmount during navigation
+      setIsSubmitting(false);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       setIsSubmitting(false);
