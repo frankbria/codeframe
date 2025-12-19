@@ -55,6 +55,7 @@ class SecurityPolicy:
         custom_safe_commands: Additional commands to consider safe
         blocked_commands: Commands to explicitly block
         max_command_length: Maximum allowed command length
+        enable_skip_detection: Whether to enable skip pattern detection in quality gates
     """
 
     enforcement_level: SecurityEnforcement = SecurityEnforcement.WARN
@@ -63,6 +64,7 @@ class SecurityPolicy:
     custom_safe_commands: Set[str] = None
     blocked_commands: Set[str] = None
     max_command_length: int = 1000
+    enable_skip_detection: bool = True
 
     def __post_init__(self):
         if self.custom_safe_commands is None:
@@ -127,12 +129,16 @@ class SecurityConfig:
             os.getenv("CODEFRAME_ALLOW_SHELL_OPERATORS", "true").lower() == "true"
         )
         safe_commands_only = os.getenv("CODEFRAME_SAFE_COMMANDS_ONLY", "false").lower() == "true"
+        enable_skip_detection = (
+            os.getenv("CODEFRAME_ENABLE_SKIP_DETECTION", "true").lower() == "true"
+        )
 
         # Create policy
         policy = SecurityPolicy(
             enforcement_level=enforcement,
             allow_shell_operators=allow_shell_operators,
             safe_commands_only=safe_commands_only,
+            enable_skip_detection=enable_skip_detection,
         )
 
         return cls(deployment_mode=deployment_mode, policy=policy)
@@ -201,6 +207,15 @@ class SecurityConfig:
             True if warnings should be logged
         """
         return self.policy.enforcement_level != SecurityEnforcement.DISABLED
+
+    def should_enable_skip_detection(self) -> bool:
+        """
+        Determine if skip pattern detection should be enabled.
+
+        Returns:
+            True if skip detection should run in quality gates
+        """
+        return self.policy.enable_skip_detection
 
 
 # Global security config instance

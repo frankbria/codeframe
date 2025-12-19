@@ -378,3 +378,67 @@ def login(username, password):
         # when it detects risky files, not by the quality gates system directly.
         # This test validates that the _contains_risky_changes() method works correctly,
         # which is what WorkerAgent uses to make the determination.
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_in_run_all_gates(self, db, project_id, task_id, project_root):
+        """Test skip detection gate runs in run_all_gates() orchestration."""
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+
+        # Fetch task
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+
+        task = Task(
+            id=row[0],
+            project_id=row[1],
+            task_number=row[3],
+            title=row[5],
+            description=row[6],
+            status=TaskStatus.IN_PROGRESS,
+        )
+        task._test_files = ["tests/test_feature.py"]
+
+        quality_gates = QualityGates(db=db, project_id=project_id, project_root=project_root)
+
+        # Mock skip pattern detector to return violations
+        mock_violations = [
+            SkipViolation(
+                file="tests/test_feature.py",
+                line=42,
+                pattern="@pytest.mark.skip",
+                context="@pytest.mark.skip(reason='Flaky test')",
+                reason="Flaky test",
+                severity="error",
+            )
+        ]
+
+        # Mock all other gates to pass
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout="All tests passed\nTOTAL coverage: 92%",
+                stderr="",
+            )
+
+            with patch("codeframe.agents.review_agent.ReviewAgent") as MockReviewAgent:
+                mock_agent = MockReviewAgent.return_value
+                mock_result = Mock()
+                mock_result.status = "completed"
+                mock_result.findings = []
+                mock_agent.execute_task = AsyncMock(return_value=mock_result)
+
+                with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+                    mock_detector = MockDetector.return_value
+                    mock_detector.detect_all.return_value = mock_violations
+
+                    with patch.object(quality_gates, "_create_quality_blocker"):
+                        result = await quality_gates.run_all_gates(task)
+
+                        # Verify skip detection ran and failed
+                        assert result.status == "failed"
+                        skip_failures = [
+                            f for f in result.failures if f.gate.value == "skip_detection"
+                        ]
+                        assert len(skip_failures) == 1
+                        assert "@pytest.mark.skip" in skip_failures[0].reason

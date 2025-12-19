@@ -84,7 +84,8 @@ class TestGetStatusBasic:
 
         status = project.get_status()
 
-        assert status["project_name"] == "test_project"
+        assert status["id"] is None
+        assert status["name"] == "test_project"
         assert status["status"] == "init"
         assert status["tasks"]["total"] == 0
         assert status["agents"]["total"] == 0
@@ -105,7 +106,8 @@ class TestGetStatusBasic:
 
         status = project.get_status()
 
-        assert status["project_name"] == "nonexistent_project"
+        assert status["id"] is None
+        assert status["name"] == "nonexistent_project"
         assert status["tasks"]["total"] == 0
         assert status["last_activity"] == "No activity yet"
 

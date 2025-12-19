@@ -47,6 +47,8 @@ from codeframe.core.models import (
     BlockerType,
 )
 from codeframe.persistence.database import Database
+from codeframe.config.security import get_security_config
+from codeframe.enforcement.skip_pattern_detector import SkipPatternDetector
 
 logger = logging.getLogger(__name__)
 
@@ -484,6 +486,117 @@ class QualityGates:
 
         return result
 
+    async def run_skip_detection_gate(self, task: Task) -> QualityGateResult:
+        """Execute skip pattern detection gate - detect test skips across all languages.
+
+        This gate scans test files for skip patterns (e.g., @pytest.mark.skip, it.skip,
+        #[ignore]) that indicate tests are being bypassed. Skip patterns reduce test
+        coverage and can hide bugs.
+
+        Supported Languages:
+            - Python: @skip, @pytest.mark.skip, @unittest.skip
+            - JavaScript/TypeScript: it.skip, test.skip, describe.skip, xit, xtest
+            - Go: t.Skip(), testing.Skip(), build tags
+            - Rust: #[ignore]
+            - Java: @Ignore, @Disabled
+            - Ruby: skip, pending, xit
+            - C#: [Ignore], [Skip]
+
+        Args:
+            task: Task to validate for skip patterns
+
+        Returns:
+            QualityGateResult with status "passed" or "failed". If failed, includes
+            violations with file path, line number, and skip pattern details.
+
+        Example:
+            >>> result = await gates.run_skip_detection_gate(task)
+            >>> if not result.passed:
+            ...     print(f"Found {len(result.failures)} skip patterns")
+            Found 3 skip patterns
+
+        Note:
+            This gate can be disabled by setting CODEFRAME_ENABLE_SKIP_DETECTION=false
+            in environment variables.
+        """
+        start_time = datetime.now(timezone.utc)
+        failures: List[QualityGateFailure] = []
+
+        # Check configuration flag - early return if disabled
+        security_config = get_security_config()
+        if not security_config.should_enable_skip_detection():
+            logger.info("Skip detection gate is disabled via configuration")
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+            return QualityGateResult(
+                task_id=task.id,  # type: ignore[arg-type]
+                status="passed",
+                failures=[],
+                execution_time_seconds=execution_time,
+            )
+
+        # Initialize skip pattern detector
+        try:
+            detector = SkipPatternDetector(project_path=str(self.project_root))
+            violations = detector.detect_all()
+
+            # Convert each SkipViolation to QualityGateFailure
+            for violation in violations:
+                # Map violation severity to QualityGateFailure severity
+                severity = Severity.HIGH if violation.severity == "error" else Severity.MEDIUM
+
+                # Build detailed message
+                details_parts = [
+                    f"File: {violation.file}:{violation.line}",
+                    f"Pattern: {violation.pattern}",
+                    f"Context: {violation.context}",
+                ]
+                if violation.reason:
+                    details_parts.append(f"Reason: {violation.reason}")
+
+                failures.append(
+                    QualityGateFailure(
+                        gate=QualityGateType.SKIP_DETECTION,
+                        reason=f"Skip pattern found in {violation.file}:{violation.line} - {violation.pattern}",
+                        details="\n".join(details_parts),
+                        severity=severity,
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Skip detection failed with error: {e}")
+            # Don't fail the gate if detection itself fails - treat as warning
+            failures.append(
+                QualityGateFailure(
+                    gate=QualityGateType.SKIP_DETECTION,
+                    reason=f"Skip detection failed: {str(e)}",
+                    details="The skip pattern detector encountered an error. Manual review recommended.",
+                    severity=Severity.LOW,
+                )
+            )
+
+        execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+
+        status = "passed" if len(failures) == 0 else "failed"
+        result = QualityGateResult(
+            task_id=task.id,  # type: ignore[arg-type]
+            status=status,
+            failures=failures,
+            execution_time_seconds=execution_time,
+        )
+
+        # Update database
+        self.db.update_quality_gate_status(
+            task_id=task.id,  # type: ignore[arg-type]
+            status=status,
+            failures=failures,
+        )
+
+        # Create blocker if failed
+        if not result.passed:
+            self._create_quality_blocker(task, failures)
+
+        return result
+
     async def run_all_gates(self, task: Task) -> QualityGateResult:
         """Orchestrator: Run all quality gates in sequence and aggregate results.
 
@@ -494,9 +607,10 @@ class QualityGates:
         Execution Order:
             1. Linting gate (fast, catches obvious issues)
             2. Type check gate (fast, catches type errors)
-            3. Test gate (slower, validates functionality)
-            4. Coverage gate (runs with tests, checks coverage)
-            5. Review gate (slowest, deep code analysis)
+            3. Skip detection gate (fast, scans for test skips)
+            4. Test gate (slower, validates functionality)
+            5. Coverage gate (runs with tests, checks coverage)
+            6. Review gate (slowest, deep code analysis)
 
         Args:
             task: Task to validate against all quality gates
@@ -538,15 +652,19 @@ class QualityGates:
         type_check_result = await self.run_type_check_gate(task)
         all_failures.extend(type_check_result.failures)
 
-        # 3. Test gate
+        # 3. Skip detection gate (fast, scans for test skips)
+        skip_detection_result = await self.run_skip_detection_gate(task)
+        all_failures.extend(skip_detection_result.failures)
+
+        # 4. Test gate
         test_result = await self.run_tests_gate(task)
         all_failures.extend(test_result.failures)
 
-        # 4. Coverage gate
+        # 5. Coverage gate
         coverage_result = await self.run_coverage_gate(task)
         all_failures.extend(coverage_result.failures)
 
-        # 5. Review gate (slowest, most comprehensive)
+        # 6. Review gate (slowest, most comprehensive)
         review_result = await self.run_review_gate(task)
         all_failures.extend(review_result.failures)
 
@@ -956,7 +1074,7 @@ class QualityGates:
         self.db.create_blocker(
             agent_id="quality-gates",
             project_id=self.project_id,
-            task_id=task.id,  # type: ignore[arg-type]
+            task_id=task.id,
             blocker_type=BlockerType.SYNC,
             question=question,
         )
