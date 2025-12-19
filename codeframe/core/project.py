@@ -440,15 +440,213 @@ class Project:
             raise RuntimeError("Checkpoint restoration failed")
 
     def get_status(self) -> dict:
-        """Get current project status."""
-        # TODO: Implement comprehensive status gathering
-        return {
-            "project_name": self.config.load().project_name,
-            "status": self._status.value,
-            "completion_percentage": 0,  # Placeholder
-            "active_tasks": [],
-            "blocked_tasks": [],
-        }
+        """Get comprehensive project status with real-time data from database.
+
+        Returns:
+            Dictionary with comprehensive project state including:
+            - id: Project ID
+            - name: Project name
+            - status: Current project status
+            - created_at: Project creation timestamp
+            - tasks: Task statistics (total, completed, in_progress, blocked, pending)
+            - agents: Agent counts (active, idle, total)
+            - progress_pct: Completion percentage based on tasks
+            - blockers: Count of pending blockers
+            - quality: Quality metrics (test_pass_rate, coverage_pct)
+            - last_activity: Formatted timestamp of most recent activity
+        """
+        from datetime import datetime, timezone
+        from codeframe.enforcement.quality_tracker import QualityTracker
+
+        # Helper to safely get status value (handles both enum and string)
+        def get_status_value(status):
+            return status.value if hasattr(status, "value") else str(status)
+
+        # Handle case where database is not initialized
+        if not self.db:
+            logger.warning("Database not initialized, returning minimal status")
+            return {
+                "project_name": self.config.load().project_name,
+                "status": get_status_value(self._status),
+                "tasks": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "pending": 0},
+                "agents": {"active": 0, "idle": 0, "total": 0},
+                "progress_pct": 0.0,
+                "blockers": 0,
+                "quality": None,
+                "last_activity": "No activity yet",
+            }
+
+        try:
+            # Step 1: Get project ID and metadata from database
+            project_config = self.config.load()
+            cursor = self.db.conn.cursor()
+            cursor.execute(
+                "SELECT id, name, status, created_at FROM projects WHERE name = ?",
+                (project_config.project_name,),
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                logger.warning(f"Project '{project_config.project_name}' not found in database")
+                return {
+                    "project_name": project_config.project_name,
+                    "status": get_status_value(self._status),
+                    "tasks": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "pending": 0},
+                    "agents": {"active": 0, "idle": 0, "total": 0},
+                    "progress_pct": 0.0,
+                    "blockers": 0,
+                    "quality": None,
+                    "last_activity": "No activity yet",
+                }
+
+            project_id = row["id"]
+            project_name = row["name"]
+            created_at_str = row["created_at"]
+
+            # Step 2: Query and aggregate task statistics
+            tasks = self.db.get_project_tasks(project_id)
+            task_stats = {
+                "total": len(tasks),
+                "completed": 0,
+                "in_progress": 0,
+                "blocked": 0,
+                "pending": 0,
+            }
+
+            for task in tasks:
+                status_value = task.status.value if hasattr(task.status, "value") else str(task.status)
+                if status_value == "completed":
+                    task_stats["completed"] += 1
+                elif status_value == "in_progress":
+                    task_stats["in_progress"] += 1
+                elif status_value == "blocked":
+                    task_stats["blocked"] += 1
+                elif status_value in ("pending", "assigned"):
+                    task_stats["pending"] += 1
+
+            # Step 3: Query agent information and count active/idle
+            agents = self.db.get_agents_for_project(project_id, active_only=True)
+            agent_stats = {
+                "active": 0,
+                "idle": 0,
+                "total": len(agents),
+            }
+
+            for agent in agents:
+                # Agent is active if status is 'working' or has a current_task_id
+                agent_status = agent.get("status", "idle")
+                current_task_id = agent.get("current_task_id")
+
+                if agent_status == "working" or current_task_id is not None:
+                    agent_stats["active"] += 1
+                else:
+                    agent_stats["idle"] += 1
+
+            # Step 4: Calculate progress percentage
+            if task_stats["total"] > 0:
+                progress_pct = round((task_stats["completed"] / task_stats["total"]) * 100, 1)
+            else:
+                progress_pct = 0.0
+
+            # Step 5: Count active blockers
+            blockers_data = self.db.list_blockers(project_id, status="PENDING")
+            pending_blockers = blockers_data.get("pending_count", 0)
+
+            # Step 6: Retrieve quality metrics
+            quality_metrics = None
+            try:
+                tracker = QualityTracker(project_path=self.project_dir)
+                stats = tracker.get_stats()
+
+                if stats.get("has_data"):
+                    current = stats.get("current", {})
+                    quality_metrics = {
+                        "test_pass_rate": current.get("test_pass_rate", 0.0),
+                        "coverage_pct": current.get("coverage_percentage", 0.0),
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to retrieve quality metrics: {e}")
+                quality_metrics = None
+
+            # Step 7: Format last activity timestamp
+            activity = self.db.get_recent_activity(project_id, limit=1)
+            if activity and len(activity) > 0:
+                last_activity = self._format_time_ago(activity[0]["timestamp"])
+            else:
+                last_activity = "No activity yet"
+
+            # Step 8: Construct and return comprehensive status dictionary
+            return {
+                "id": project_id,
+                "name": project_name,
+                "status": get_status_value(self._status),
+                "created_at": created_at_str,
+                "tasks": task_stats,
+                "agents": agent_stats,
+                "progress_pct": progress_pct,
+                "blockers": pending_blockers,
+                "quality": quality_metrics,
+                "last_activity": last_activity,
+            }
+
+        except Exception as e:
+            # Step 9: Error handling - never raise exceptions, always return valid dict
+            logger.error(f"Error retrieving project status: {e}", exc_info=True)
+            return {
+                "project_name": self.config.load().project_name if self.config else "Unknown",
+                "status": get_status_value(self._status),
+                "tasks": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "pending": 0},
+                "agents": {"active": 0, "idle": 0, "total": 0},
+                "progress_pct": 0.0,
+                "blockers": 0,
+                "quality": None,
+                "last_activity": "Error retrieving activity",
+                "error": str(e),
+            }
+
+    def _format_time_ago(self, timestamp_str: str) -> str:
+        """Format a timestamp as 'X ago' (e.g., '5 minutes ago', '2 hours ago').
+
+        Args:
+            timestamp_str: ISO format timestamp string
+
+        Returns:
+            Human-readable time difference string
+        """
+        from datetime import datetime, timezone
+
+        try:
+            # Parse timestamp (handle both ISO format and SQLite datetime format)
+            if 'T' in timestamp_str:
+                # ISO format: 2025-12-18T10:30:00Z or 2025-12-18T10:30:00+00:00
+                timestamp_str = timestamp_str.replace('Z', '+00:00')
+                timestamp = datetime.fromisoformat(timestamp_str)
+            else:
+                # SQLite format: 2025-12-18 10:30:00
+                timestamp = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
+
+            # Calculate time difference
+            now = datetime.now(timezone.utc)
+            delta = now - timestamp
+
+            # Convert to human-readable format
+            seconds = delta.total_seconds()
+
+            if seconds < 60:
+                return "just now"
+            elif seconds < 3600:  # Less than 1 hour
+                minutes = int(seconds / 60)
+                return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+            elif seconds < 86400:  # Less than 1 day
+                hours = int(seconds / 3600)
+                return f"{hours} hour{'s' if hours != 1 else ''} ago"
+            else:  # Days
+                days = int(seconds / 86400)
+                return f"{days} day{'s' if days != 1 else ''} ago"
+
+        except Exception as e:
+            logger.warning(f"Failed to parse timestamp '{timestamp_str}': {e}")
+            return timestamp_str  # Return original string if parsing fails
 
     def get_lead_agent(self):
         """Get Lead Agent instance for interaction.
