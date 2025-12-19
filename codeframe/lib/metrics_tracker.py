@@ -291,11 +291,11 @@ class MetricsTracker:
         # Convert to lists and round costs
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
         result["by_agent"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in agent_stats.values()
         ]
         result["by_model"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in model_stats.values()
         ]
 
@@ -376,11 +376,11 @@ class MetricsTracker:
         # Convert to lists and round costs
         result["total_cost_usd"] = round(result["total_cost_usd"], 6)  # type: ignore[call-overload]
         result["by_call_type"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in call_type_stats.values()
         ]
         result["by_project"] = [
-            {**stats, "cost_usd": round(stats["cost_usd"], 6)}  # type: ignore[call-overload]
+            {**stats, "cost_usd": round(stats["cost_usd"], 6)}
             for stats in project_stats.values()
         ]
 

@@ -536,7 +536,7 @@ class QualityGates:
 
         # Initialize skip pattern detector
         try:
-            detector = SkipPatternDetector(project_root=str(self.project_root))
+            detector = SkipPatternDetector(project_path=str(self.project_root))
             violations = detector.detect_all()
 
             # Convert each SkipViolation to QualityGateFailure
@@ -1074,7 +1074,7 @@ class QualityGates:
         self.db.create_blocker(
             agent_id="quality-gates",
             project_id=self.project_id,
-            task_id=task.id,  # type: ignore[arg-type]
+            task_id=task.id,
             blocker_type=BlockerType.SYNC,
             question=question,
         )

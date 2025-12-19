@@ -85,7 +85,7 @@ class Project:
     paused_at: Optional[datetime] = None
     config: Optional[Dict[str, Any]] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert Project to dictionary for JSON serialization."""
         return {
             "id": self.id,
@@ -194,7 +194,7 @@ class Issue:
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert Issue to dictionary for JSON serialization."""
         return {
             "id": self.id,
@@ -246,7 +246,7 @@ class IssueWithTaskCount:
     def status(self) -> TaskStatus:
         return self.issue.status
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = self.issue.to_dict()
         result["task_count"] = self.task_count
@@ -281,7 +281,7 @@ class Task:
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert Task to dictionary for JSON serialization."""
         return {
             "id": self.id,
@@ -628,7 +628,7 @@ class LintResult(BaseModel):
         """Total issues (errors + warnings)."""
         return self.error_count + self.warning_count
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database storage."""
         return {
             "task_id": self.task_id,
