@@ -84,7 +84,8 @@ class Database:
         """Initialize database schema.
 
         Args:
-            run_migrations: Whether to run database migrations after schema creation
+            run_migrations: Deprecated parameter, kept for backward compatibility.
+                           Migrations have been flattened into v1.0 schema.
         """
         # Create parent directories if needed (skip for in-memory databases)
         if self.db_path != ":memory:":
@@ -96,11 +97,8 @@ class Database:
         # Enable foreign key constraints
         self.conn.execute("PRAGMA foreign_keys = ON")
 
+        # Create v1.0 schema (all migrations flattened)
         self._create_schema()
-
-        # Run migrations if requested
-        if run_migrations:
-            self._run_migrations()
 
     def _create_schema(self) -> None:
         """Create database tables."""
@@ -149,7 +147,7 @@ class Database:
                 status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
                 priority INTEGER CHECK(priority BETWEEN 0 AND 4),
                 workflow_step INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP,
                 UNIQUE(project_id, issue_number)
             )
@@ -185,8 +183,11 @@ class Database:
                 estimated_tokens INTEGER,
                 actual_tokens INTEGER,
                 commit_sha TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP,
+                quality_gate_status TEXT CHECK(quality_gate_status IN ('pending', 'running', 'passed', 'failed')) DEFAULT 'pending',
+                quality_gate_failures JSON,
+                requires_human_approval BOOLEAN DEFAULT FALSE
             )
         """
         )
@@ -397,7 +398,12 @@ class Database:
                 state_snapshot JSON,
                 git_commit TEXT,
                 db_backup_path TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT,
+                description TEXT,
+                database_backup_path TEXT,
+                context_snapshot_path TEXT,
+                metadata JSON
             )
         """
         )
@@ -547,6 +553,94 @@ class Database:
             """
             CREATE INDEX IF NOT EXISTS idx_task_dependencies_depends_on
             ON task_dependencies(depends_on_task_id)
+        """
+        )
+
+        # Code Reviews table (Sprint 10: Review & Polish)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS code_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                file_path TEXT NOT NULL,
+                line_number INTEGER,
+                severity TEXT NOT NULL CHECK(severity IN ('critical', 'high', 'medium', 'low', 'info')),
+                category TEXT NOT NULL CHECK(category IN ('security', 'performance', 'quality', 'maintainability', 'style')),
+                message TEXT NOT NULL,
+                recommendation TEXT,
+                code_snippet TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        # Code reviews indexes
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_reviews_task
+            ON code_reviews(task_id)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_reviews_severity
+            ON code_reviews(severity, created_at)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_reviews_project
+            ON code_reviews(project_id, created_at)
+        """
+        )
+
+        # Token Usage table (Sprint 10: Metrics & Cost Tracking)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS token_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+                agent_id TEXT NOT NULL,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                model_name TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL CHECK(input_tokens >= 0),
+                output_tokens INTEGER NOT NULL CHECK(output_tokens >= 0),
+                estimated_cost_usd REAL NOT NULL CHECK(estimated_cost_usd >= 0),
+                actual_cost_usd REAL CHECK(actual_cost_usd >= 0),
+                call_type TEXT CHECK(call_type IN ('task_execution', 'code_review', 'coordination', 'other')),
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                session_id TEXT DEFAULT NULL
+            )
+        """
+        )
+
+        # Token usage indexes
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_token_usage_agent
+            ON token_usage(agent_id, timestamp)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_token_usage_project
+            ON token_usage(project_id, timestamp)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_token_usage_task
+            ON token_usage(task_id)
+        """
+        )
+
+        # Checkpoints index (Sprint 10)
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_checkpoints_project
+            ON checkpoints(project_id, created_at DESC)
         """
         )
 
