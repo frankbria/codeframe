@@ -163,6 +163,7 @@ class QualityGateType(str, Enum):
     COVERAGE = "coverage"
     CODE_REVIEW = "code_review"
     LINTING = "linting"
+    SKIP_DETECTION = "skip_detection"
 
 
 class CallType(str, Enum):

@@ -1011,3 +1011,201 @@ class TestQualityGatesIntegration:
                     )
                     row = cursor.fetchone()
                     assert row[0] == 1, f"Risky file {risky_file} should require human approval"
+
+    # ========================================================================
+    # Skip Detection Gate Tests
+    # ========================================================================
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_gate_with_violations(self, quality_gates, task):
+        """Gate should fail when skip patterns are detected."""
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+
+        # Mock SkipPatternDetector to return violations
+        mock_violations = [
+            SkipViolation(
+                file="tests/test_auth.py",
+                line=42,
+                pattern="@pytest.mark.skip",
+                context="@pytest.mark.skip(reason='TODO: fix flaky test')",
+                reason="TODO: fix flaky test",
+                severity="error",
+            ),
+            SkipViolation(
+                file="tests/test_payments.py",
+                line=101,
+                pattern="it.skip",
+                context="it.skip('Payment processing test', () => {...})",
+                reason=None,
+                severity="warning",
+            ),
+        ]
+
+        with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+            mock_detector = MockDetector.return_value
+            mock_detector.detect_all.return_value = mock_violations
+
+            with patch.object(quality_gates, "_create_quality_blocker"):
+                result = await quality_gates.run_skip_detection_gate(task)
+
+                assert result.status == "failed"
+                assert len(result.failures) == 2
+
+                # Check first failure (error severity → HIGH)
+                failure1 = result.failures[0]
+                assert failure1.gate == QualityGateType.SKIP_DETECTION
+                assert "tests/test_auth.py:42" in failure1.reason
+                assert "@pytest.mark.skip" in failure1.reason
+                assert failure1.severity == Severity.HIGH
+                assert "TODO: fix flaky test" in failure1.details
+
+                # Check second failure (warning severity → MEDIUM)
+                failure2 = result.failures[1]
+                assert failure2.gate == QualityGateType.SKIP_DETECTION
+                assert "tests/test_payments.py:101" in failure2.reason
+                assert failure2.severity == Severity.MEDIUM
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_gate_without_violations(self, quality_gates, task):
+        """Gate should pass when no skip patterns are found."""
+        with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+            mock_detector = MockDetector.return_value
+            mock_detector.detect_all.return_value = []
+
+            result = await quality_gates.run_skip_detection_gate(task)
+
+            assert result.status == "passed"
+            assert len(result.failures) == 0
+            assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_gate_disabled_via_config(self, quality_gates, task):
+        """Gate should pass immediately when disabled via configuration."""
+        with patch("codeframe.lib.quality_gates.get_security_config") as mock_get_config:
+            mock_config = Mock()
+            mock_config.should_enable_skip_detection.return_value = False
+            mock_get_config.return_value = mock_config
+
+            result = await quality_gates.run_skip_detection_gate(task)
+
+            assert result.status == "passed"
+            assert len(result.failures) == 0
+            # Detector should not be called when disabled
+            assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_gate_handles_detector_errors(self, quality_gates, task):
+        """Gate should gracefully handle detector errors with LOW severity failure."""
+        with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+            mock_detector = MockDetector.return_value
+            mock_detector.detect_all.side_effect = Exception("Language detection failed")
+
+            with patch.object(quality_gates, "_create_quality_blocker"):
+                result = await quality_gates.run_skip_detection_gate(task)
+
+                assert result.status == "failed"
+                assert len(result.failures) == 1
+                failure = result.failures[0]
+                assert failure.gate == QualityGateType.SKIP_DETECTION
+                assert "Skip detection failed" in failure.reason
+                assert failure.severity == Severity.LOW
+                assert "Language detection failed" in failure.reason
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_severity_mapping(self, quality_gates, task):
+        """Verify error → HIGH severity, warning → MEDIUM severity mapping."""
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+
+        mock_violations = [
+            SkipViolation(
+                file="test1.py", line=1, pattern="@skip", context="", reason=None, severity="error"
+            ),
+            SkipViolation(
+                file="test2.py", line=2, pattern="skip", context="", reason=None, severity="warning"
+            ),
+        ]
+
+        with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+            mock_detector = MockDetector.return_value
+            mock_detector.detect_all.return_value = mock_violations
+
+            with patch.object(quality_gates, "_create_quality_blocker"):
+                result = await quality_gates.run_skip_detection_gate(task)
+
+                assert len(result.failures) == 2
+                assert result.failures[0].severity == Severity.HIGH  # error
+                assert result.failures[1].severity == Severity.MEDIUM  # warning
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_violation_details(self, quality_gates, task):
+        """Verify violation details are properly included in failure."""
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+
+        violation = SkipViolation(
+            file="tests/test_feature.py",
+            line=123,
+            pattern="@unittest.skip",
+            context="@unittest.skip('Broken since v2.0')",
+            reason="Broken since v2.0",
+            severity="error",
+        )
+
+        with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+            mock_detector = MockDetector.return_value
+            mock_detector.detect_all.return_value = [violation]
+
+            with patch.object(quality_gates, "_create_quality_blocker"):
+                result = await quality_gates.run_skip_detection_gate(task)
+
+                failure = result.failures[0]
+                assert "tests/test_feature.py:123" in failure.details
+                assert "@unittest.skip" in failure.details
+                assert "@unittest.skip('Broken since v2.0')" in failure.details
+                assert "Reason: Broken since v2.0" in failure.details
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_database_update(self, quality_gates, task, db):
+        """Verify database is updated with skip detection results."""
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+
+        violation = SkipViolation(
+            file="test.py", line=1, pattern="skip", context="", reason=None, severity="error"
+        )
+
+        with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+            mock_detector = MockDetector.return_value
+            mock_detector.detect_all.return_value = [violation]
+
+            with patch.object(quality_gates, "_create_quality_blocker"):
+                await quality_gates.run_skip_detection_gate(task)
+
+                # Check database was updated
+                cursor = db.conn.cursor()
+                cursor.execute(
+                    "SELECT quality_gate_status FROM tasks WHERE id = ?",
+                    (task.id,),
+                )
+                row = cursor.fetchone()
+                assert row[0] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_skip_detection_calls_blocker_on_failures(self, quality_gates, task):
+        """Verify _create_quality_blocker is called when skip patterns are found."""
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+
+        violation = SkipViolation(
+            file="test.py", line=1, pattern="skip", context="", reason=None, severity="error"
+        )
+
+        with patch("codeframe.lib.quality_gates.SkipPatternDetector") as MockDetector:
+            mock_detector = MockDetector.return_value
+            mock_detector.detect_all.return_value = [violation]
+
+            with patch.object(quality_gates, "_create_quality_blocker") as mock_create_blocker:
+                await quality_gates.run_skip_detection_gate(task)
+
+                # Verify blocker creation was called
+                assert mock_create_blocker.called
+                call_args = mock_create_blocker.call_args
+                assert call_args[0][0] == task  # First arg is task
+                assert len(call_args[0][1]) == 1  # Second arg is failures list

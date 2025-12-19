@@ -532,28 +532,65 @@ Quality gates run **before** marking tasks complete, preventing bad code from be
 ```python
 # In WorkerAgent.complete_task()
 async def complete_task(self, task: Task) -> TaskResult:
-    # Stage 1: Run tests
-    test_result = await self._run_tests(task)
-    if not test_result.passed:
-        return self._create_blocker(task, "Tests failed", test_result)
+    # Stage 1: Linting (fast, catches obvious issues)
+    linting_result = await self._run_linting_gate(task)
+    if not linting_result.passed:
+        return self._create_blocker(task, "Linting errors", linting_result)
 
-    # Stage 2: Type checking
+    # Stage 2: Type checking (fast, catches type errors)
     type_result = await self._run_type_check(task)
     if not type_result.passed:
         return self._create_blocker(task, "Type errors", type_result)
 
-    # Stage 3: Coverage check
+    # Stage 3: Skip detection (fast, scans for test skips)
+    skip_result = await self._run_skip_detection_gate(task)
+    if not skip_result.passed:
+        return self._create_blocker(task, "Skip patterns found", skip_result)
+
+    # Stage 4: Run tests (slower, validates functionality)
+    test_result = await self._run_tests(task)
+    if not test_result.passed:
+        return self._create_blocker(task, "Tests failed", test_result)
+
+    # Stage 5: Coverage check (runs with tests, checks coverage)
     coverage = await self._check_coverage(task)
     if coverage < 0.85:
         return self._create_blocker(task, f"Coverage {coverage}% < 85%")
 
-    # Stage 4: Code review (Review Agent)
+    # Stage 6: Code review (slowest, deep code analysis)
     review_result = await self._trigger_review_agent(task)
     if review_result.has_critical_issues:
         return self._create_blocker(task, "Critical review findings", review_result)
 
     # All gates passed
     return TaskResult(status="completed")
+```
+
+#### Skip Detection Gate
+
+The skip detection gate scans test files for skip patterns across multiple languages, preventing tests from being bypassed. This gate can be disabled via environment variable if needed.
+
+**Supported Languages:**
+- Python: `@skip`, `@pytest.mark.skip`, `@unittest.skip`
+- JavaScript/TypeScript: `it.skip`, `test.skip`, `describe.skip`, `xit`, `xtest`
+- Go: `t.Skip()`, `testing.Skip()`, build tags
+- Rust: `#[ignore]`
+- Java: `@Ignore`, `@Disabled`
+- Ruby: `skip`, `pending`, `xit`
+- C#: `[Ignore]`, `[Skip]`
+
+**Configuration:**
+```bash
+# Enable/disable skip detection (default: enabled)
+export CODEFRAME_ENABLE_SKIP_DETECTION=true  # or false
+```
+
+**Example violation:**
+```python
+# This will trigger the skip detection gate:
+@pytest.mark.skip(reason="TODO: fix flaky test")
+def test_payment_processing():
+    assert process_payment(100) == "success"
 ```
 
 #### API Usage
@@ -570,12 +607,13 @@ POST /api/tasks/{task_id}/quality-gates?project_id=1
   "status": "failed",  # or "passed"
   "failures": [
     {
-      "gate": "tests",
-      "reason": "3 tests failed",
-      "details": "test_auth.py::test_login FAILED\n..."
+      "gate": "skip_detection",
+      "reason": "Skip pattern found in tests/test_payment.py:42 - @pytest.mark.skip",
+      "details": "File: tests/test_payment.py:42\nPattern: @pytest.mark.skip\nContext: @pytest.mark.skip(reason='TODO: fix flaky test')\nReason: TODO: fix flaky test",
+      "severity": "high"
     }
   ],
-  "execution_time_seconds": 45.2
+  "execution_time_seconds": 0.15
 }
 ```
 
