@@ -48,7 +48,7 @@ from codeframe.core.models import (
 )
 from codeframe.persistence.database import Database
 from codeframe.config.security import get_security_config
-from codeframe.enforcement.skip_pattern_detector import SkipPatternDetector, SkipViolation
+from codeframe.enforcement.skip_pattern_detector import SkipPatternDetector
 
 logger = logging.getLogger(__name__)
 

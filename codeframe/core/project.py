@@ -461,11 +461,15 @@ class Project:
         def get_status_value(status):
             return status.value if hasattr(status, "value") else str(status)
 
+        # Load project config once at the top (before any DB access or fallbacks)
+        project_config = self.config.load()
+
         # Handle case where database is not initialized
         if not self.db:
             logger.warning("Database not initialized, returning minimal status")
             return {
-                "project_name": self.config.load().project_name,
+                "id": None,
+                "name": project_config.project_name,
                 "status": get_status_value(self._status),
                 "tasks": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "pending": 0},
                 "agents": {"active": 0, "idle": 0, "total": 0},
@@ -477,7 +481,6 @@ class Project:
 
         try:
             # Step 1: Get project ID and metadata from database
-            project_config = self.config.load()
             cursor = self.db.conn.cursor()
             cursor.execute(
                 "SELECT id, name, status, created_at FROM projects WHERE name = ?",
@@ -488,7 +491,8 @@ class Project:
             if not row:
                 logger.warning(f"Project '{project_config.project_name}' not found in database")
                 return {
-                    "project_name": project_config.project_name,
+                    "id": None,
+                    "name": project_config.project_name,
                     "status": get_status_value(self._status),
                     "tasks": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "pending": 0},
                     "agents": {"active": 0, "idle": 0, "total": 0},
@@ -590,9 +594,11 @@ class Project:
 
         except Exception as e:
             # Step 9: Error handling - never raise exceptions, always return valid dict
+            # Use project_config loaded at the top to preserve original exception context
             logger.error(f"Error retrieving project status: {e}", exc_info=True)
             return {
-                "project_name": self.config.load().project_name if self.config else "Unknown",
+                "id": None,
+                "name": project_config.project_name,
                 "status": get_status_value(self._status),
                 "tasks": {"total": 0, "completed": 0, "in_progress": 0, "blocked": 0, "pending": 0},
                 "agents": {"active": 0, "idle": 0, "total": 0},
@@ -620,6 +626,9 @@ class Project:
                 # ISO format: 2025-12-18T10:30:00Z or 2025-12-18T10:30:00+00:00
                 timestamp_str = timestamp_str.replace('Z', '+00:00')
                 timestamp = datetime.fromisoformat(timestamp_str)
+                # Ensure timezone-aware (add UTC if naive)
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
             else:
                 # SQLite format: 2025-12-18 10:30:00
                 timestamp = datetime.fromisoformat(timestamp_str).replace(tzinfo=timezone.utc)
