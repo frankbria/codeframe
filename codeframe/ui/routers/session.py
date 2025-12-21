@@ -11,14 +11,18 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 
 from codeframe.persistence.database import Database
-from codeframe.ui.dependencies import get_db
+from codeframe.ui.dependencies import get_db, get_current_user, User
 from codeframe.core.session_manager import SessionManager
 
 router = APIRouter(prefix="/api/projects", tags=["session"])
 
 
 @router.get("/{project_id}/session")
-async def get_session_state(project_id: int, db: Database = Depends(get_db)) -> Dict[str, Any]:
+async def get_session_state(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
     """Get current session state for project (T028).
 
     Args:
@@ -42,6 +46,10 @@ async def get_session_state(project_id: int, db: Database = Depends(get_db)) -> 
         raise HTTPException(
             status_code=404, detail={"error": "Project not found", "project_id": project_id}
         )
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get project path
     workspace_path = project.get("workspace_path")
