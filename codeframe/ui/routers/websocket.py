@@ -28,6 +28,15 @@ async def websocket_endpoint(websocket: WebSocket):
     Handles real-time communication between the backend and frontend dashboard.
     Supports ping/pong heartbeat and project subscription messages.
 
+    TODO: Implement authorization for WebSocket connections (Issue #132)
+    WebSocket connections require token-based authentication since they cannot use
+    session cookies like HTTP endpoints. Implementation approach:
+    1. Accept auth token as query parameter: ws://host/ws?token=...
+    2. Validate token and extract user_id on connection
+    3. Store user_id with WebSocket connection in manager
+    4. Check db.user_has_project_access() on subscribe/unsubscribe messages
+    5. Return authorization error if user lacks project access
+
     Args:
         websocket: WebSocket connection instance
 
