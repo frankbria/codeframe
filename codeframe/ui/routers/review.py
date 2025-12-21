@@ -19,7 +19,7 @@ import logging
 import uuid
 
 from codeframe.ui.models import ReviewRequest
-from codeframe.ui.dependencies import get_db
+from codeframe.ui.dependencies import get_db, get_current_user, User
 from codeframe.ui.shared import manager, review_cache
 from codeframe.persistence.database import Database
 from codeframe.agents.review_worker_agent import ReviewWorkerAgent
@@ -35,7 +35,12 @@ router = APIRouter(tags=["review"])
 
 
 @router.post("/api/agents/{agent_id}/review")
-async def trigger_review(agent_id: str, request: ReviewRequest, db: Database = Depends(get_db)):
+async def trigger_review(
+    agent_id: str,
+    request: ReviewRequest,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Trigger code review for a task (T056).
 
     Sprint 9 - User Story 1: Review Agent API
@@ -78,6 +83,17 @@ async def trigger_review(agent_id: str, request: ReviewRequest, db: Database = D
         }
     """
     try:
+        # Verify project exists and user has access
+        project = db.get_project(request.project_id)
+        if not project:
+            raise HTTPException(
+                status_code=404, detail=f"Project {request.project_id} not found"
+            )
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, request.project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Emit review started event (T059)
         await manager.broadcast(
             {
@@ -160,7 +176,9 @@ async def trigger_review(agent_id: str, request: ReviewRequest, db: Database = D
 
 
 @router.get("/api/tasks/{task_id}/review-status")
-async def get_review_status(task_id: int):
+async def get_review_status(
+    task_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """Get review status for a task (T057).
 
     Returns the cached review report if available, otherwise indicates no review exists.
@@ -181,6 +199,17 @@ async def get_review_status(task_id: int):
         }
     """
     try:
+        # Get task to obtain project_id for authorization
+        task = db.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+        project_id = task.project_id
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Check if review exists in cache
         if task_id in review_cache:
             report = review_cache[task_id]
@@ -203,7 +232,11 @@ async def get_review_status(task_id: int):
 
 
 @router.get("/api/projects/{project_id}/review-stats")
-async def get_review_stats(project_id: int):
+async def get_review_stats(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get aggregated review statistics for a project (T058).
 
     Returns counts and averages for all reviews in the project.
@@ -225,6 +258,15 @@ async def get_review_stats(project_id: int):
         }
     """
     try:
+        # Verify project exists
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Filter reviews for this project
         project_reviews = [
             report for report in review_cache.values() if report.get("project_id") == project_id
@@ -270,7 +312,10 @@ async def get_review_stats(project_id: int):
 
 @router.post("/api/agents/review/analyze", status_code=202)
 async def analyze_code_review(
-    request: Request, background_tasks: BackgroundTasks, db: Database = Depends(get_db)
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Trigger code review analysis for a task (T034).
 
@@ -322,6 +367,15 @@ async def analyze_code_review(
         # Use project_id from request or task data
         if not project_id:
             project_id = task_data.project_id
+
+        # Verify project exists
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # Generate job ID
         job_id = str(uuid.uuid4())
@@ -435,7 +489,10 @@ def _extract_enum_value(obj, attr_name: str, default: str):
 
 @router.get("/api/tasks/{task_id}/reviews")
 async def get_task_reviews(
-    task_id: int, severity: Optional[str] = None, db: Database = Depends(get_db)
+    task_id: int,
+    severity: Optional[str] = None,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get code review findings for a task (T035).
 
@@ -508,6 +565,11 @@ async def get_task_reviews(
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
+    # Authorization check - get project_id from task
+    project_id = task.project_id
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get code reviews from database
     reviews = db.get_code_reviews(task_id=task_id, severity=severity)
 
@@ -572,7 +634,10 @@ async def get_task_reviews(
 
 @router.get("/api/projects/{project_id}/code-reviews")
 async def get_project_code_reviews(
-    project_id: int, severity: Optional[str] = None, db: Database = Depends(get_db)
+    project_id: int,
+    severity: Optional[str] = None,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get aggregated code review findings for all tasks in a project.
 
@@ -645,6 +710,10 @@ async def get_project_code_reviews(
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get code reviews from database
     reviews = db.get_code_reviews_by_project(project_id=project_id, severity=severity)
