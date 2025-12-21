@@ -12,7 +12,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
 
 from codeframe.persistence.database import Database
-from codeframe.ui.dependencies import get_db, get_current_user, User
+from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.ui.shared import manager
 from codeframe.core.models import BlockerResolve
 

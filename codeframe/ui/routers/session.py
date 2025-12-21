@@ -11,7 +11,8 @@ from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 
 from codeframe.persistence.database import Database
-from codeframe.ui.dependencies import get_db, get_current_user, User
+from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.core.session_manager import SessionManager
 
 router = APIRouter(prefix="/api/projects", tags=["session"])

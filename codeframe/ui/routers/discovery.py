@@ -13,7 +13,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from codeframe.persistence.database import Database
 from codeframe.core.models import DiscoveryAnswer, DiscoveryAnswerResponse
 from codeframe.agents.lead_agent import LeadAgent
-from codeframe.ui.dependencies import get_db, get_current_user, User
+from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.ui.shared import manager
 
 # Module logger

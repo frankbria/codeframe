@@ -15,7 +15,8 @@ from fastapi.responses import JSONResponse
 
 from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
-from codeframe.ui.dependencies import get_db, get_current_user, User
+from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.ui.shared import running_agents, start_agent
 from codeframe.ui.services.agent_service import AgentService
 from codeframe.ui.models import (

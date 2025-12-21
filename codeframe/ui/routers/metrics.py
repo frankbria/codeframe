@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from codeframe.lib.metrics_tracker import MetricsTracker
 from codeframe.persistence.database import Database
-from codeframe.ui.dependencies import get_db, get_current_user, User
+from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 
 # Module logger
 logger = logging.getLogger(__name__)
