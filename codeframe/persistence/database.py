@@ -23,6 +23,7 @@ from codeframe.core.models import (
     IssueWithTaskCount,
     CallType,
 )
+from codeframe.lib.audit_logger import AuditLogger, AuditEventType
 
 if TYPE_CHECKING:
     from codeframe.core.models import (
@@ -1758,6 +1759,17 @@ class Database:
             (project_id, user_id),
         )
         if cursor.fetchone():
+            # Log access granted (owner)
+            audit = AuditLogger(self)
+            audit.log_authz_event(
+                event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
+                user_id=user_id,
+                resource_type="project",
+                resource_id=project_id,
+                granted=True,
+                ip_address=None,  # TODO: Pass from request context
+                metadata={"access_type": "owner"},
+            )
             return True
 
         # Check if user has collaborator/viewer access
@@ -1765,7 +1777,32 @@ class Database:
             "SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?",
             (project_id, user_id),
         )
-        return cursor.fetchone() is not None
+        has_access = cursor.fetchone() is not None
+
+        # Log authorization result
+        audit = AuditLogger(self)
+        if has_access:
+            audit.log_authz_event(
+                event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
+                user_id=user_id,
+                resource_type="project",
+                resource_id=project_id,
+                granted=True,
+                ip_address=None,  # TODO: Pass from request context
+                metadata={"access_type": "collaborator"},
+            )
+        else:
+            audit.log_authz_event(
+                event_type=AuditEventType.AUTHZ_ACCESS_DENIED,
+                user_id=user_id,
+                resource_type="project",
+                resource_id=project_id,
+                granted=False,
+                ip_address=None,  # TODO: Pass from request context
+                metadata={"reason": "No access"},
+            )
+
+        return has_access
 
     def get_user_projects(self, user_id: int) -> List[Dict[str, Any]]:
         """Get all projects accessible to a user.
