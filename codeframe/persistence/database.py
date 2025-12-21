@@ -658,6 +658,22 @@ class Database:
         """
         )
 
+        # Audit logs table (Issue #132 - Authentication & Authorization)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                resource_type TEXT NOT NULL,
+                resource_id INTEGER,
+                ip_address TEXT,
+                metadata TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
         # Token usage indexes
         cursor.execute(
             """
@@ -683,6 +699,26 @@ class Database:
             """
             CREATE INDEX IF NOT EXISTS idx_checkpoints_project
             ON checkpoints(project_id, created_at DESC)
+        """
+        )
+
+        # Audit logs indexes (Issue #132)
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id
+            ON audit_logs(user_id, timestamp DESC)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type
+            ON audit_logs(event_type, timestamp DESC)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_resource
+            ON audit_logs(resource_type, resource_id, timestamp DESC)
         """
         )
 
@@ -1771,6 +1807,54 @@ class Database:
             projects.append(project)
 
         return projects
+
+    def create_audit_log(
+        self,
+        event_type: str,
+        user_id: Optional[int],
+        resource_type: str,
+        resource_id: Optional[int],
+        ip_address: Optional[str],
+        metadata: Optional[Dict[str, Any]],
+        timestamp: datetime,
+    ) -> int:
+        """Create an audit log entry (Issue #132).
+
+        Args:
+            event_type: Type of event (e.g., "auth.login.success")
+            user_id: User ID (if authenticated)
+            resource_type: Type of resource (e.g., "project", "task")
+            resource_id: ID of the resource
+            ip_address: Client IP address
+            metadata: Additional event metadata (stored as JSON)
+            timestamp: Event timestamp
+
+        Returns:
+            ID of the created audit log entry
+        """
+        import json
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO audit_logs (
+                event_type, user_id, resource_type, resource_id,
+                ip_address, metadata, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_type,
+                user_id,
+                resource_type,
+                resource_id,
+                ip_address,
+                json.dumps(metadata) if metadata else None,
+                timestamp.isoformat(),
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
 
     def _calculate_project_progress(self, project_id: int) -> Dict[str, Any]:
         """Calculate task completion progress for a project.
