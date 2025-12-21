@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from codeframe.core.models import ProjectStatus
 from codeframe.persistence.database import Database
-from codeframe.ui.dependencies import get_db
+from codeframe.ui.dependencies import get_db, get_current_user, User
 from codeframe.ui.shared import running_agents, start_agent
 from codeframe.ui.services.agent_service import AgentService
 from codeframe.ui.models import (
@@ -37,6 +37,7 @@ async def start_project_agent(
     project_id: int,
     background_tasks: BackgroundTasks,
     db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Start Lead Agent for a project (cf-10.2).
 
@@ -46,20 +47,26 @@ async def start_project_agent(
         project_id: Project ID to start agent for
         background_tasks: FastAPI background tasks
         db: Database connection
+        current_user: Authenticated user
 
     Returns:
         202 Accepted with message
         200 OK if already running
         404 Not Found if project doesn't exist
+        403 Forbidden if user lacks project access
 
     Raises:
-        HTTPException: 404 if project not found, 500 if API key not configured
+        HTTPException: 403 if unauthorized, 404 if project not found, 500 if API key not configured
     """
     # cf-10.2: Check if project exists
     project = db.get_project(project_id)
 
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # cf-10.2: Handle idempotent behavior - already running
     if project["status"] == ProjectStatus.RUNNING.value:
@@ -81,7 +88,7 @@ async def start_project_agent(
 
 
 @router.post("/projects/{project_id}/pause")
-async def pause_project(project_id: int, db: Database = Depends(get_db)):
+async def pause_project(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Pause project execution.
 
     Args:
@@ -99,6 +106,10 @@ async def pause_project(project_id: int, db: Database = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Use AgentService to pause agent
     agent_service = AgentService(db=db, running_agents=running_agents)
     paused = await agent_service.pause_agent(project_id)
@@ -112,7 +123,7 @@ async def pause_project(project_id: int, db: Database = Depends(get_db)):
 
 
 @router.post("/projects/{project_id}/resume")
-async def resume_project(project_id: int, db: Database = Depends(get_db)):
+async def resume_project(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Resume project execution.
 
     Args:
@@ -129,6 +140,10 @@ async def resume_project(project_id: int, db: Database = Depends(get_db)):
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Use AgentService to resume agent
     agent_service = AgentService(db=db, running_agents=running_agents)
@@ -147,6 +162,7 @@ async def get_project_agents(
     project_id: int,
     active_only: bool = Query(True, alias="is_active"),
     db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get all agents assigned to a project.
 
@@ -169,6 +185,10 @@ async def get_project_agents(
         if not project:
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Get agents for project using database method
         agents = db.get_agents_for_project(project_id, active_only=active_only)
 
@@ -184,7 +204,7 @@ async def get_project_agents(
 async def assign_agent_to_project(
     project_id: int,
     request: AgentAssignmentRequest,
-    db: Database = Depends(get_db),
+    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Assign an agent to a project.
 
@@ -206,6 +226,10 @@ async def assign_agent_to_project(
         project = db.get_project(project_id)
         if not project:
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
 
         # Verify agent exists
         agent = db.get_agent(request.agent_id)
@@ -244,7 +268,7 @@ async def assign_agent_to_project(
 async def remove_agent_from_project(
     project_id: int,
     agent_id: str,
-    db: Database = Depends(get_db),
+    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Remove an agent from a project (soft delete).
 
@@ -262,6 +286,15 @@ async def remove_agent_from_project(
         HTTPException: 404 if assignment not found, 500 on error
     """
     try:
+        # Verify project exists
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Remove agent from project
         rows_affected = db.remove_agent_from_project(project_id, agent_id)
 
@@ -286,7 +319,7 @@ async def update_agent_role(
     project_id: int,
     agent_id: str,
     request: AgentRoleUpdateRequest,
-    db: Database = Depends(get_db),
+    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Update an agent's role on a project.
 
@@ -305,6 +338,15 @@ async def update_agent_role(
         HTTPException: 404 if assignment not found, 500 on error
     """
     try:
+        # Verify project exists
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Update agent role
         rows_affected = db.reassign_agent_role(
             project_id=project_id, agent_id=agent_id, new_role=request.role
@@ -362,7 +404,7 @@ async def patch_agent_role(
     project_id: int,
     agent_id: str,
     request: AgentRoleUpdateRequest,
-    db: Database = Depends(get_db),
+    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Update an agent's role on a project (PATCH variant).
 
@@ -381,6 +423,15 @@ async def patch_agent_role(
         HTTPException: 404 if assignment not found, 422 for validation errors, 500 on error
     """
     try:
+        # Verify project exists
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Update agent role
         rows_affected = db.reassign_agent_role(
             project_id=project_id, agent_id=agent_id, new_role=request.role
