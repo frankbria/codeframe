@@ -23,7 +23,6 @@ from codeframe.core.models import (
     IssueWithTaskCount,
     CallType,
 )
-from codeframe.lib.audit_logger import AuditLogger, AuditEventType
 
 if TYPE_CHECKING:
     from codeframe.core.models import (
@@ -890,6 +889,7 @@ class Database:
 
         # Log project creation
         if user_id is not None:
+            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
             audit = AuditLogger(self)
             audit.log_project_event(
                 event_type=AuditEventType.PROJECT_CREATED,
@@ -1771,6 +1771,7 @@ class Database:
         )
         if cursor.fetchone():
             # Log access granted (owner)
+            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
             audit = AuditLogger(self)
             audit.log_authz_event(
                 event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
@@ -1791,6 +1792,7 @@ class Database:
         has_access = cursor.fetchone() is not None
 
         # Log authorization result
+        from codeframe.lib.audit_logger import AuditLogger, AuditEventType
         audit = AuditLogger(self)
         if has_access:
             audit.log_authz_event(
