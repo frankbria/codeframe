@@ -13,14 +13,18 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 
 from codeframe.persistence.database import Database
 from codeframe.testing.lint_runner import LintRunner
-from codeframe.ui.dependencies import get_db
+from codeframe.ui.dependencies import get_db, get_current_user, User
 from codeframe.ui.shared import manager
 
 router = APIRouter(prefix="/api/lint", tags=["lint"])
 
 
 @router.get("/results")
-async def get_lint_results(task_id: int, db: Database = Depends(get_db)):
+async def get_lint_results(
+    task_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get lint results for a specific task (T116).
 
     Args:
@@ -33,12 +37,28 @@ async def get_lint_results(task_id: int, db: Database = Depends(get_db)):
     Example:
         GET /api/lint/results?task_id=123
     """
+    # Get task to obtain project_id for authorization
+    task = db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    project_id = task.project_id
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     results = db.get_lint_results_for_task(task_id)
     return {"task_id": task_id, "results": results}
 
 
 @router.get("/trend")
-async def get_lint_trend(project_id: int, days: int = 7, db: Database = Depends(get_db)):
+async def get_lint_trend(
+    project_id: int,
+    days: int = 7,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get lint error trend for project over time (T117).
 
     Args:
@@ -52,12 +72,25 @@ async def get_lint_trend(project_id: int, days: int = 7, db: Database = Depends(
     Example:
         GET /api/lint/trend?project_id=1&days=7
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     trend = db.get_lint_trend(project_id, days=days)
     return {"project_id": project_id, "days": days, "trend": trend}
 
 
 @router.get("/config")
-async def get_lint_config(project_id: int, db: Database = Depends(get_db)):
+async def get_lint_config(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get current lint configuration for project (T118).
 
     Args:
@@ -77,6 +110,10 @@ async def get_lint_config(project_id: int, db: Database = Depends(get_db)):
             status_code=404, detail={"error": "Project not found", "project_id": project_id}
         )
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     workspace_path = Path(project.get("workspace_path", "."))
 
     # Load config using LintRunner
@@ -91,7 +128,11 @@ async def get_lint_config(project_id: int, db: Database = Depends(get_db)):
 
 
 @router.post("/run", status_code=202)
-async def run_lint_manual(request: Request, db: Database = Depends(get_db)):
+async def run_lint_manual(
+    request: Request,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Trigger manual lint run for specific files or task (T115).
 
     Args:
@@ -127,6 +168,10 @@ async def run_lint_manual(request: Request, db: Database = Depends(get_db)):
         raise HTTPException(
             status_code=404, detail={"error": "Project not found", "project_id": project_id}
         )
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     workspace_path = Path(project.get("workspace_path", "."))
 
