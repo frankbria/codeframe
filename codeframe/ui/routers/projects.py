@@ -19,7 +19,7 @@ from codeframe.core.models import TaskStatus
 from codeframe.core.session_manager import SessionManager
 from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
-from codeframe.ui.dependencies import get_db, get_workspace_manager
+from codeframe.ui.dependencies import get_db, get_workspace_manager, get_current_user, User
 from codeframe.ui.models import (
     ProjectCreateRequest,
     ProjectResponse,
@@ -48,11 +48,14 @@ def is_hosted_mode() -> bool:
 
 
 @router.get("")
-async def list_projects(db: Database = Depends(get_db)):
-    """List all CodeFRAME projects."""
+async def list_projects(
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List all CodeFRAME projects accessible to the authenticated user."""
 
-    # Get projects from database
-    projects = db.list_projects()
+    # Get projects accessible to the current user
+    projects = db.get_user_projects(current_user.id)
 
     return {"projects": projects}
 
@@ -62,6 +65,7 @@ async def create_project(
     request: ProjectCreateRequest,
     db: Database = Depends(get_db),
     workspace_manager: WorkspaceManager = Depends(get_workspace_manager),
+    current_user: User = Depends(get_current_user),
 ):
     """Create a new project.
 
@@ -69,6 +73,7 @@ async def create_project(
         request: Project creation request with name, description, source config
         db: Database connection
         workspace_manager: Workspace manager
+        current_user: Authenticated user creating the project
 
     Returns:
         Created project details
@@ -102,6 +107,7 @@ async def create_project(
             source_location=request.source_location,
             source_branch=request.source_branch,
             workspace_path="",  # Will be updated after workspace creation
+            user_id=current_user.id,  # Assign project to current user
         )
     except sqlite3.Error as e:
         logger.error(f"Database error creating project: {str(e)}")
@@ -200,13 +206,21 @@ async def create_project(
 
 
 @router.get("/{project_id}/status")
-async def get_project_status(project_id: int, db: Database = Depends(get_db)):
+async def get_project_status(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get comprehensive project status."""
     # Get project from database
     project = db.get_project(project_id)
 
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Calculate progress metrics (cf-46)
     progress = db._calculate_project_progress(project_id)
@@ -228,8 +242,11 @@ async def get_tasks(
     limit: int = Query(default=50, ge=1, le=1000, description="Max tasks to return (1-1000)"),
     offset: int = Query(default=0, ge=0, description="Tasks to skip for pagination"),
     db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get project tasks with filtering and pagination.
+
+    Authorization: Requires project access.
 
     Args:
         project_id: Project ID to get tasks for
@@ -254,8 +271,7 @@ async def get_tasks(
     Security Notes:
         - Input validation: limit constrained to 1-1000, offset must be >=0
         - Status parameter validated against TaskStatus enum values
-        - TODO: Add authorization check when auth infrastructure is implemented
-          (verify user has access to this project)
+        - Authorization: User must have project access (owner/collaborator/viewer)
     """
     try:
         # Validate status parameter against TaskStatus enum values
@@ -270,7 +286,9 @@ async def get_tasks(
         if not project:
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
-        # TODO: Add authorization check when auth system is implemented
+        # Authorization check
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
         # if not db.user_has_project_access(current_user.id, project_id):
         #     raise HTTPException(status_code=403, detail="Access denied")
 
@@ -300,7 +318,7 @@ async def get_tasks(
 
 
 @router.get("/{project_id}/activity")
-async def get_activity(project_id: int, limit: int = 50, db: Database = Depends(get_db)):
+async def get_activity(project_id: int, limit: int = 50, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get recent activity log."""
     try:
         # Query changelog table for activity
@@ -313,7 +331,7 @@ async def get_activity(project_id: int, limit: int = 50, db: Database = Depends(
 
 
 @router.get("/{project_id}/prd")
-async def get_project_prd(project_id: int, db: Database = Depends(get_db)):
+async def get_project_prd(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get PRD for a project (cf-26).
 
     Sprint 2 Foundation Contract:
@@ -363,7 +381,7 @@ async def get_project_prd(project_id: int, db: Database = Depends(get_db)):
 
 
 @router.get("/{project_id}/issues")
-async def get_project_issues(project_id: int, include: str = None, db: Database = Depends(get_db)):
+async def get_project_issues(project_id: int, include: str = None, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get issues for a project (cf-26).
 
     Sprint 2 Foundation Contract:
@@ -415,7 +433,7 @@ async def get_project_issues(project_id: int, include: str = None, db: Database 
 
 
 @router.get("/{project_id}/session", tags=["session"])
-async def get_session_state(project_id: int, db: Database = Depends(get_db)):
+async def get_session_state(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get current session state for project (T028).
 
     Args:
