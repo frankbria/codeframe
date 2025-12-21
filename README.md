@@ -122,6 +122,7 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 - Python 3.11+
 - Node.js 18+ (for frontend)
 - Anthropic API key
+- SQLite 3 (included with Python)
 
 ### Installation
 
@@ -140,6 +141,9 @@ uv sync
 
 # Set up environment
 export ANTHROPIC_API_KEY="your-api-key-here"
+
+# Optional: Enable authentication (default: false for development)
+export AUTH_REQUIRED=false  # Set to 'true' for production
 
 # Set up frontend
 cd web-ui
@@ -236,11 +240,15 @@ curl -X POST http://localhost:8080/api/projects/1/checkpoints/5/restore
 # Required
 ANTHROPIC_API_KEY=sk-ant-...           # Anthropic API key
 
+# Optional - Authentication
+AUTH_REQUIRED=false                    # Enable authentication (default: false for development)
+
 # Optional - Database
 DATABASE_PATH=./codeframe.db           # SQLite database path (default: in-memory)
 
 # Optional - Quality Enforcement
 MIN_COVERAGE_PERCENT=85                # Minimum test coverage required
+CODEFRAME_ENABLE_SKIP_DETECTION=true   # Enable skip detection gate (default: true)
 
 # Optional - Git Integration
 AUTO_COMMIT_ENABLED=true               # Enable automatic commits after test passes
@@ -352,6 +360,7 @@ For detailed documentation, see:
 
 - **Product Requirements**: [PRD.md](PRD.md)
 - **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
+- **Authentication & Authorization**: [docs/authentication.md](docs/authentication.md) - Complete guide to security features
 - **Architecture Decisions**: [`docs/architecture/`](docs/architecture/) - Technical design decisions and data model semantics
 - **Sprint Planning**: [SPRINTS.md](SPRINTS.md)
 - **Feature Specs**: `specs/{feature}/spec.md`
