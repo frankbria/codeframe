@@ -321,6 +321,13 @@ async def get_tasks(
 async def get_activity(project_id: int, limit: int = 50, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get recent activity log."""
     try:
+        # Authorization check
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Query changelog table for activity
         activity_items = db.get_recent_activity(project_id, limit=limit)
 
@@ -356,6 +363,10 @@ async def get_project_prd(project_id: int, db: Database = Depends(get_db), curre
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get PRD from database
     prd_data = db.get_prd(project_id)
@@ -422,6 +433,10 @@ async def get_project_issues(project_id: int, include: str = None, db: Database 
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Determine if tasks should be included
     include_tasks = include == "tasks"
 
@@ -456,6 +471,10 @@ async def get_session_state(project_id: int, db: Database = Depends(get_db), cur
         raise HTTPException(
             status_code=404, detail={"error": "Project not found", "project_id": project_id}
         )
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get project path
     workspace_path = project.get("workspace_path")
