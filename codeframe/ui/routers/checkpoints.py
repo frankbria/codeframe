@@ -27,7 +27,7 @@ from codeframe.ui.models import (
     CheckpointDiffResponse,
     RestoreCheckpointRequest,
 )
-from codeframe.ui.dependencies import get_db
+from codeframe.ui.dependencies import get_db, get_current_user, User
 from codeframe.ui.shared import manager
 from codeframe.persistence.database import Database
 from codeframe.lib.checkpoint_manager import CheckpointManager
@@ -40,7 +40,11 @@ router = APIRouter(prefix="/api/projects/{project_id}/checkpoints", tags=["check
 
 
 @router.get("")
-async def list_checkpoints(project_id: int, db: Database = Depends(get_db)):
+async def list_checkpoints(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """List all checkpoints for a project (T092).
 
     Sprint 10 - Phase 4: Checkpoint API
@@ -92,6 +96,10 @@ async def list_checkpoints(project_id: int, db: Database = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get checkpoints from database
     checkpoints = db.get_checkpoints(project_id)
 
@@ -118,7 +126,10 @@ async def list_checkpoints(project_id: int, db: Database = Depends(get_db)):
 
 @router.post("", status_code=201)
 async def create_checkpoint(
-    project_id: int, request: CheckpointCreateRequest, db: Database = Depends(get_db)
+    project_id: int,
+    request: CheckpointCreateRequest,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Create a new checkpoint for a project (T093).
 
@@ -175,6 +186,10 @@ async def create_checkpoint(
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get project workspace path
     workspace_path = project.get("workspace_path")
@@ -287,6 +302,10 @@ async def get_checkpoint(project_id: int, checkpoint_id: int, db: Database = Dep
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get checkpoint from database
     checkpoint = db.get_checkpoint_by_id(checkpoint_id)
     if not checkpoint:
@@ -342,6 +361,10 @@ async def delete_checkpoint(project_id: int, checkpoint_id: int, db: Database = 
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get checkpoint from database
     checkpoint = db.get_checkpoint_by_id(checkpoint_id)
@@ -453,6 +476,10 @@ async def restore_checkpoint(
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get project workspace path
     workspace_path = project.get("workspace_path")
     if not workspace_path:
@@ -555,6 +582,10 @@ async def get_checkpoint_diff(
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get project workspace path
     workspace_path = project.get("workspace_path")
