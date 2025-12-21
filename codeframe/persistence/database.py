@@ -888,6 +888,17 @@ class Database:
             )
             self.conn.commit()
 
+        # Log project creation
+        if user_id is not None:
+            audit = AuditLogger(self)
+            audit.log_project_event(
+                event_type=AuditEventType.PROJECT_CREATED,
+                user_id=user_id,
+                project_id=project_id,
+                ip_address=None,  # TODO: Pass from request context
+                metadata={"name": name, "source_type": source_type},
+            )
+
         return project_id
 
     def get_project(self, project_id: int) -> Optional[Project]:
@@ -1934,6 +1945,9 @@ class Database:
     def update_project(self, project_id: int, updates: Dict[str, Any]) -> int:
         """Update project fields.
 
+        TODO(Issue #132): Add audit logging for PROJECT_UPDATED event.
+        Requires adding user_id parameter and updating all callers.
+
         Args:
             project_id: Project ID to update
             updates: Dictionary of fields to update
@@ -1967,6 +1981,10 @@ class Database:
 
     def delete_project(self, project_id: int) -> None:
         """Delete a project.
+
+        TODO(Issue #132): Add audit logging for PROJECT_DELETED event.
+        Requires adding user_id parameter to distinguish user-initiated
+        deletions from automatic cleanup operations.
 
         Args:
             project_id: Project ID to delete
