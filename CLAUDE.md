@@ -38,12 +38,14 @@ Quick reference:
 └── docs/             # Additional documentation
 ```
 
+NOTE: This is a pre-production application, so there is no need for database migration scripting or backward compatibility. Keep the schema flat as much as possible.
+
 ## Commands
 ```bash
-pytest                 # Run all tests
-pytest tests/test_*worker_agent.py  # Worker agent tests (async)
-ruff check .           # Lint code
-cd web-ui && npm test  # Frontend tests
+uv run pytest                              # Run all tests
+uv run pytest tests/test_*worker_agent.py  # Worker agent tests (async)
+uv run ruff check .                        # Lint code
+cd web-ui && npm test                      # Frontend tests
 ```
 
 ## Context Management for AI Conversations

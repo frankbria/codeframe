@@ -9,6 +9,7 @@ from fastapi import Request
 
 from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
+from codeframe.ui.auth import get_current_user, get_current_user_optional, User
 
 
 def get_db(request: Request) -> Database:
@@ -45,3 +46,13 @@ def get_workspace_manager(request: Request) -> WorkspaceManager:
             ...
     """
     return request.app.state.workspace_manager
+
+
+# Re-export auth dependencies for convenience
+__all__ = [
+    "get_db",
+    "get_workspace_manager",
+    "get_current_user",
+    "get_current_user_optional",
+    "User",
+]

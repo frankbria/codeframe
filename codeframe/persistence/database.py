@@ -104,6 +104,45 @@ class Database:
         """Create database tables."""
         cursor = self.conn.cursor()
 
+        # Users table (authentication)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        # Sessions table (authentication)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        # Project users table (authorization)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_users (
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK(role IN ('owner', 'collaborator', 'viewer')),
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (project_id, user_id)
+            )
+        """
+        )
+
         # Projects table
         cursor.execute(
             """
@@ -111,6 +150,9 @@ class Database:
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT NOT NULL,
+
+                -- Owner tracking (authentication)
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
 
                 -- Source tracking (optional, can be set during setup or later)
                 source_type TEXT CHECK(source_type IN ('git_remote', 'local_path', 'upload', 'empty')) DEFAULT 'empty',
@@ -644,6 +686,38 @@ class Database:
         """
         )
 
+        # Authentication indexes
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_users_email
+            ON users(email)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sessions_user_id
+            ON sessions(user_id)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
+            ON sessions(expires_at)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_users_user_id
+            ON project_users(user_id)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_projects_user_id
+            ON projects(user_id)
+        """
+        )
+
         self.conn.commit()
 
     def _run_migrations(self) -> None:
@@ -724,6 +798,7 @@ class Database:
         source_location: Optional[str] = None,
         source_branch: str = "main",
         workspace_path: Optional[str] = None,
+        user_id: Optional[int] = None,
         **kwargs,
     ) -> int:
         """Create a new project.
@@ -735,6 +810,7 @@ class Database:
             source_location: Git URL, local path, or upload filename
             source_branch: Git branch (for git_remote)
             workspace_path: Path to workspace directory
+            user_id: ID of the user creating the project (owner)
             **kwargs: Additional fields (config, status, etc.)
 
         Returns:
@@ -745,9 +821,9 @@ class Database:
             """
             INSERT INTO projects (
                 name, description, source_type, source_location,
-                source_branch, workspace_path, git_initialized, status
+                source_branch, workspace_path, git_initialized, status, user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -758,10 +834,24 @@ class Database:
                 workspace_path or "",
                 False,  # Will be set to True after workspace initialization
                 "init",  # Default status
+                user_id,
             ),
         )
         self.conn.commit()
-        return cursor.lastrowid
+        project_id = cursor.lastrowid
+
+        # Automatically add owner to project_users table
+        if user_id is not None:
+            cursor.execute(
+                """
+                INSERT INTO project_users (project_id, user_id, role)
+                VALUES (?, ?, 'owner')
+                """,
+                (project_id, user_id),
+            )
+            self.conn.commit()
+
+        return project_id
 
     def get_project(self, project_id: int) -> Optional[Project]:
         """Get project by ID.
@@ -1597,6 +1687,76 @@ class Database:
         """
         cursor = self.conn.cursor()
         cursor.execute("SELECT * FROM projects ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+
+        projects = []
+        for row in rows:
+            project = dict(row)
+            project_id = project["id"]
+
+            # Calculate progress metrics for this project
+            progress = self._calculate_project_progress(project_id)
+            project["progress"] = progress
+
+            projects.append(project)
+
+        return projects
+
+    def user_has_project_access(self, user_id: int, project_id: int) -> bool:
+        """Check if a user has access to a project.
+
+        Checks both ownership (projects.user_id) and collaborator access (project_users table).
+
+        Args:
+            user_id: ID of the user
+            project_id: ID of the project
+
+        Returns:
+            True if user is owner or has collaborator/viewer access, False otherwise
+        """
+        cursor = self.conn.cursor()
+
+        # Check if user is the project owner
+        cursor.execute(
+            "SELECT 1 FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user_id),
+        )
+        if cursor.fetchone():
+            return True
+
+        # Check if user has collaborator/viewer access
+        cursor.execute(
+            "SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?",
+            (project_id, user_id),
+        )
+        return cursor.fetchone() is not None
+
+    def get_user_projects(self, user_id: int) -> List[Dict[str, Any]]:
+        """Get all projects accessible to a user.
+
+        Returns projects where the user is either:
+        - The owner (projects.user_id matches)
+        - A collaborator/viewer (exists in project_users table)
+
+        Args:
+            user_id: ID of the user
+
+        Returns:
+            List of project dictionaries with progress metrics
+        """
+        cursor = self.conn.cursor()
+
+        # Get projects where user is owner or collaborator
+        cursor.execute(
+            """
+            SELECT DISTINCT p.*
+            FROM projects p
+            LEFT JOIN project_users pu ON p.id = pu.project_id
+            WHERE p.user_id = ? OR pu.user_id = ?
+            ORDER BY p.created_at DESC
+            """,
+            (user_id, user_id),
+        )
         rows = cursor.fetchall()
 
         projects = []
