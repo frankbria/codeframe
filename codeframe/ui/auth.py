@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
+from codeframe.lib.audit_logger import AuditLogger, AuditEventType
 
 
 class User(BaseModel):
@@ -94,6 +95,16 @@ async def get_current_user(
     row = cursor.fetchone()
 
     if not row:
+        # Log failed authentication attempt
+        audit = AuditLogger(db)
+        audit.log_auth_event(
+            event_type=AuditEventType.AUTH_LOGIN_FAILED,
+            user_id=None,
+            email=None,
+            ip_address=None,  # TODO: Extract from request
+            metadata={"reason": "Invalid token"},
+        )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
@@ -105,6 +116,16 @@ async def get_current_user(
     # Check if session has expired
     expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
     if expires_at < datetime.now(timezone.utc):
+        # Log session expiry
+        audit = AuditLogger(db)
+        audit.log_auth_event(
+            event_type=AuditEventType.AUTH_SESSION_EXPIRED,
+            user_id=user_id,
+            email=email,
+            ip_address=None,  # TODO: Extract from request
+            metadata={"expires_at": expires_at_str},
+        )
+
         # Delete expired session
         db.conn.execute("DELETE FROM sessions WHERE id = ?", (token,))
         db.conn.commit()
@@ -114,6 +135,16 @@ async def get_current_user(
             detail="Session expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Log successful authentication
+    audit = AuditLogger(db)
+    audit.log_auth_event(
+        event_type=AuditEventType.AUTH_LOGIN_SUCCESS,
+        user_id=user_id,
+        email=email,
+        ip_address=None,  # TODO: Extract from request
+        metadata={"session_id": token},
+    )
 
     return User(id=user_id, email=email, name=name)
 
