@@ -276,7 +276,7 @@ class TestAgentMetricsEndpoint:
             None,
         )
         assert task_exec_stats is not None
-        assert task_exec_stats["call_count"] == 1
+        assert task_exec_stats["calls"] == 1
 
         # Find code review stats
         code_review_stats = next(
@@ -284,7 +284,7 @@ class TestAgentMetricsEndpoint:
             None,
         )
         assert code_review_stats is not None
-        assert code_review_stats["call_count"] == 1
+        assert code_review_stats["calls"] == 1
 
         # Check by_project breakdown
         assert len(data["by_project"]) == 1
@@ -327,14 +327,14 @@ class TestAgentMetricsEndpoint:
         """Test that agent with no data for project returns empty metrics."""
         project_id, _ = project_with_token_usage
 
-        # Get metrics for review-001 filtered by a different project
-        response = api_client.get("/api/agents/review-001/metrics?project_id=99999")
+        # Get metrics for frontend-001 filtered by the existing project (frontend-001 has no data for this project)
+        response = api_client.get(f"/api/agents/frontend-001/metrics?project_id={project_id}")
 
         assert response.status_code == 200
         data = response.json()
 
-        # Should return empty metrics
-        assert data["agent_id"] == "review-001"
+        # Should return empty metrics (frontend-001 has no token usage for this project)
+        assert data["agent_id"] == "frontend-001"
         assert data["total_cost_usd"] == 0.0
         assert data["total_tokens"] == 0
         assert data["total_calls"] == 0

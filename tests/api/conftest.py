@@ -54,7 +54,12 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
         Configured TestClient instance for making API requests
     """
     # Capture original environment state for cleanup
-    env_vars_to_restore = ["DATABASE_PATH", "WORKSPACE_ROOT", "ANTHROPIC_API_KEY"]
+    env_vars_to_restore = [
+        "DATABASE_PATH",
+        "WORKSPACE_ROOT",
+        "ANTHROPIC_API_KEY",
+        "AUTH_REQUIRED",
+    ]
     original_env = {}
     for var in env_vars_to_restore:
         if var in os.environ:
@@ -70,6 +75,9 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     # Set test API key for discovery endpoints
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
 
+    # Disable authentication for tests (default admin user behavior)
+    os.environ["AUTH_REQUIRED"] = "false"
+
     # Reload server module to pick up environment changes
     # This happens ONCE per test class instead of per test
     from codeframe.ui import server
@@ -79,6 +87,49 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
 
     # Create and yield TestClient
     with TestClient(server.app) as client:
+        # Ensure default admin user exists (id=1) to match get_current_user behavior
+        # when AUTH_REQUIRED=false (see codeframe/ui/auth.py:98)
+        db = server.app.state.db
+        cursor = db.conn.cursor()
+
+        # Insert or replace default admin user
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO users (id, email, password_hash, name)
+            VALUES (1, 'admin@localhost', 'not-used-in-tests', 'Admin User')
+            """
+        )
+        db.conn.commit()
+
+        # Patch Database.create_project to inject user_id=1 when not provided
+        original_create_project = db.create_project
+
+        def patched_create_project(
+            name: str,
+            description: str,
+            source_type: str = "empty",
+            source_location: str = None,
+            source_branch: str = "main",
+            workspace_path: str = None,
+            user_id: int = None,
+            **kwargs,
+        ) -> int:
+            # Default to admin user (id=1) if no user_id provided
+            if user_id is None:
+                user_id = 1
+            return original_create_project(
+                name=name,
+                description=description,
+                source_type=source_type,
+                source_location=source_location,
+                source_branch=source_branch,
+                workspace_path=workspace_path,
+                user_id=user_id,
+                **kwargs,
+            )
+
+        db.create_project = patched_create_project
+
         yield client
 
     # Restore original environment state
@@ -128,7 +179,10 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         cursor.execute("DELETE FROM issues")
         cursor.execute("DELETE FROM project_agents")  # Multi-agent junction table
         cursor.execute("DELETE FROM agents")
+        cursor.execute("DELETE FROM sessions")  # Auth sessions
+        cursor.execute("DELETE FROM project_users")  # Project-user relationships
         cursor.execute("DELETE FROM projects")
+        # Note: Keep users table (especially default admin user with id=1)
 
         db.conn.commit()
 

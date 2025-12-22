@@ -227,10 +227,10 @@ async def get_project_status(
     progress = db._calculate_project_progress(project_id)
 
     return {
-        "project_id": project.id,
-        "name": project.name,
-        "status": project.status.value,
-        "phase": project.phase.value,
+        "project_id": project["id"],
+        "name": project["name"],
+        "status": project["status"],
+        "phase": project["phase"],
         "workflow_step": 1,  # Project doesn't have workflow_step, default to 1
         "progress": progress,
     }
