@@ -128,8 +128,8 @@ def test_database_operations(test_database):
     # Verify project was created
     project = test_database.get_project(project_id)
     assert project is not None
-    assert project.name == "E2ETestProject"
-    assert project.status.value == "init"
+    assert project["name"] == "E2ETestProject"
+    assert project["status"] == "init"
 
     # Create task
     task = Task(
@@ -394,7 +394,7 @@ def test_metrics_database_schema(test_database):
 
     # Verify columns exist
     cursor.execute("PRAGMA table_info(token_usage)")
-    columns = {row["name"] for row in cursor.fetchall()}
+    columns = {row[1] for row in cursor.fetchall()}
 
     expected_columns = {
         "id",

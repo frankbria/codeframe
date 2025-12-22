@@ -160,7 +160,8 @@ def run_command(cmd):
 
         # Verify: If approved, no blocker created
         if report.status == "approved":
-            result = db.list_blockers(project_id=db.get_task(task_id)["project_id"])
+            task = db.get_task(task_id)
+            result = db.list_blockers(project_id=task.project_id)
             blockers = result.get("blockers", [])
             task_blockers = [b for b in blockers if b["task_id"] == task_id]
             review_blockers = [b for b in task_blockers if "review" in b.get("details", "").lower()]
@@ -223,7 +224,8 @@ def run_command(cmd):
 
         # Verify: If changes requested or rejected, blocker created
         if report.status in ["changes_requested", "rejected"]:
-            result = db.list_blockers(project_id=db.get_task(task_id)["project_id"])
+            task = db.get_task(task_id)
+            result = db.list_blockers(project_id=task.project_id)
             blockers = result.get("blockers", [])
             task_blockers = [b for b in blockers if b["task_id"] == task_id]
             assert len(task_blockers) > 0
@@ -272,7 +274,8 @@ def run_command(cmd):
             assert len(categories) >= 2  # At least complexity and security
 
             # Check blocker details include findings
-            result = db.list_blockers(project_id=db.get_task(task_id)["project_id"])
+            task = db.get_task(task_id)
+            result = db.list_blockers(project_id=task.project_id)
             blockers = result.get("blockers", [])
             task_blockers = [b for b in blockers if b["task_id"] == task_id]
             review_blocker = next(
@@ -356,7 +359,8 @@ def better():
                 # Check that iteration limit is enforced
                 # (Implementation may track this in database or agent state)
                 # After 2 iterations, should escalate to human
-                result = db.list_blockers(project_id=db.get_task(task_id)["project_id"])
+                task = db.get_task(task_id)
+                result = db.list_blockers(project_id=task.project_id)
                 blockers = result.get("blockers", [])
                 task_blockers = [b for b in blockers if b["task_id"] == task_id]
 
@@ -457,7 +461,8 @@ def simple():
 
             # After 2 iterations, should create escalation blocker
             if report2.status in ["changes_requested", "rejected"]:
-                result = db.list_blockers(project_id=db.get_task(task_id)["project_id"])
+                task = db.get_task(task_id)
+                result = db.list_blockers(project_id=task.project_id)
                 blockers = result.get("blockers", [])
                 task_blockers = [b for b in blockers if b["task_id"] == task_id]
 

@@ -206,6 +206,47 @@ async def create_project(
     )
 
 
+@router.get("/{project_id}")
+async def get_project(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get project by ID.
+
+    Args:
+        project_id: Project ID to retrieve
+
+    Returns:
+        Project details
+
+    Raises:
+        HTTPException:
+            - 403: Access denied (user doesn't have access to this project)
+            - 404: Project not found
+    """
+    # Get project from database
+    project = db.get_project(project_id)
+
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check - return 403 if user lacks access to existing project
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return {
+        "id": project["id"],
+        "name": project["name"],
+        "description": project.get("description", ""),
+        "status": project["status"],
+        "phase": project["phase"],
+        "created_at": project.get("created_at"),
+        "workspace_path": project.get("workspace_path"),
+        "config": project.get("config"),
+    }
+
+
 @router.get("/{project_id}/status")
 async def get_project_status(
     project_id: int,

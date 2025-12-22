@@ -252,7 +252,7 @@ class TestExpireStaleBlockersJob:
 
         # Verify task was failed
         task = temp_db_file.get_task(task_id)
-        assert task["status"] == TaskStatus.FAILED.value
+        assert task.status == TaskStatus.FAILED
 
     @pytest.mark.asyncio
     async def test_expire_stale_blockers_job_with_websocket_broadcast(self, temp_db_file):
@@ -333,4 +333,4 @@ class TestExpireStaleBlockersJob:
 
         # Task should still be failed (no status update)
         task = temp_db_file.get_task(task_id)
-        assert task["status"] == TaskStatus.FAILED.value
+        assert task.status == TaskStatus.FAILED

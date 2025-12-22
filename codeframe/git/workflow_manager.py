@@ -173,10 +173,10 @@ class GitWorkflowManager:
 
         # Ensure we're on main/master branch
         try:
-            main_branch = self.repo.heads.main
-        except AttributeError:
+            main_branch = self.repo.heads['main']
+        except (AttributeError, IndexError):
             # Fall back to master if main doesn't exist
-            main_branch = self.repo.heads.master
+            main_branch = self.repo.heads['master']
 
         main_branch.checkout()
 

@@ -67,7 +67,7 @@ async def expire_stale_blockers_job(
             if task_id:
                 try:
                     task = db.get_task(task_id)
-                    if task and task.get("status") != TaskStatus.FAILED.value:
+                    if task and task.status != TaskStatus.FAILED:
                         db.update_task(
                             task_id=task_id,
                             updates={

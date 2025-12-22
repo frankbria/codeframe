@@ -746,8 +746,8 @@ class TestIssueTaskQueries:
         # Get issue with task count
         issue_with_counts = db.get_issue_with_task_counts(issue_id)
 
-        assert issue_with_counts["id"] == issue_id
-        assert issue_with_counts["task_count"] == 3
+        assert issue_with_counts.id == issue_id
+        assert issue_with_counts.task_count == 3
 
     def test_get_issue_completion_status(self, temp_db_path):
         """Test calculating issue completion based on task statuses."""

@@ -167,7 +167,8 @@ class TestCreateFeatureBranch:
 class TestMergeToMain:
     """Test merging feature branches to main."""
 
-    def test_merge_to_main_success(self, workflow_manager, temp_git_repo, test_db):
+    @pytest.mark.asyncio
+    async def test_merge_to_main_success(self, workflow_manager, temp_git_repo, test_db):
         """Test successful merge to main when all tasks complete."""
         repo_path, repo = temp_git_repo
 
@@ -227,7 +228,7 @@ class TestMergeToMain:
         repo.git.checkout("main")
 
         # Merge to main
-        result = workflow_manager.merge_to_main("2.1")
+        result = await workflow_manager.merge_to_main("2.1")
 
         assert result["status"] == "merged"
         assert result["branch_name"] == branch_name
@@ -237,7 +238,8 @@ class TestMergeToMain:
         # Verify merge commit exists
         assert (repo_path / "feature.txt").exists()
 
-    def test_merge_to_main_incomplete_tasks(self, workflow_manager, temp_git_repo, test_db):
+    @pytest.mark.asyncio
+    async def test_merge_to_main_incomplete_tasks(self, workflow_manager, temp_git_repo, test_db):
         """Test merge fails when not all tasks are completed."""
         repo_path, repo = temp_git_repo
 
@@ -276,12 +278,13 @@ class TestMergeToMain:
 
         # Try to merge
         with pytest.raises(ValueError, match="Cannot merge.*incomplete tasks"):
-            workflow_manager.merge_to_main("2.1")
+            await workflow_manager.merge_to_main("2.1")
 
-    def test_merge_to_main_nonexistent_issue(self, workflow_manager):
+    @pytest.mark.asyncio
+    async def test_merge_to_main_nonexistent_issue(self, workflow_manager):
         """Test merge fails for nonexistent issue."""
         with pytest.raises(ValueError, match="Issue.*not found"):
-            workflow_manager.merge_to_main("99.99")
+            await workflow_manager.merge_to_main("99.99")
 
     def test_merge_to_main_conflict_handling(self, workflow_manager, temp_git_repo, test_db):
         """Test merge conflict detection and handling."""
@@ -339,7 +342,8 @@ class TestMergeToMain:
             # Expected - conflict detected
             assert True
 
-    def test_merge_to_main_updates_database(self, workflow_manager, temp_git_repo, test_db):
+    @pytest.mark.asyncio
+    async def test_merge_to_main_updates_database(self, workflow_manager, temp_git_repo, test_db):
         """Test that merge updates database tracking."""
         repo_path, repo = temp_git_repo
 
@@ -380,7 +384,7 @@ class TestMergeToMain:
         repo.index.commit("Test commit")
         repo.git.checkout("main")
 
-        workflow_manager.merge_to_main("2.1")
+        await workflow_manager.merge_to_main("2.1")
 
         # Check database was updated
         # get_all_branches_for_issue returns all branches (including merged)
@@ -394,7 +398,8 @@ class TestMergeToMain:
 class TestIsIssueComplete:
     """Test issue completion checking."""
 
-    def test_is_issue_complete_all_tasks_done(self, workflow_manager, test_db):
+    @pytest.mark.asyncio
+    async def test_is_issue_complete_all_tasks_done(self, workflow_manager, test_db):
         """Test issue is complete when all tasks are completed."""
         from codeframe.core.models import Issue, TaskStatus
 
@@ -426,9 +431,10 @@ class TestIsIssueComplete:
                 can_parallelize=False,
             )
 
-        assert workflow_manager.is_issue_complete(issue_id) is True
+        assert await workflow_manager.is_issue_complete(issue_id) is True
 
-    def test_is_issue_complete_with_pending_tasks(self, workflow_manager, test_db):
+    @pytest.mark.asyncio
+    async def test_is_issue_complete_with_pending_tasks(self, workflow_manager, test_db):
         """Test issue is not complete with pending tasks."""
         from codeframe.core.models import Issue, TaskStatus
 
@@ -471,9 +477,10 @@ class TestIsIssueComplete:
             can_parallelize=False,
         )
 
-        assert workflow_manager.is_issue_complete(issue_id) is False
+        assert await workflow_manager.is_issue_complete(issue_id) is False
 
-    def test_is_issue_complete_no_tasks(self, workflow_manager, test_db):
+    @pytest.mark.asyncio
+    async def test_is_issue_complete_no_tasks(self, workflow_manager, test_db):
         """Test issue with no tasks is considered incomplete."""
         from codeframe.core.models import Issue, TaskStatus
 
@@ -490,7 +497,7 @@ class TestIsIssueComplete:
         )
         issue_id = test_db.create_issue(issue)
 
-        assert workflow_manager.is_issue_complete(issue_id) is False
+        assert await workflow_manager.is_issue_complete(issue_id) is False
 
 
 class TestGetCurrentBranch:

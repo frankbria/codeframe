@@ -5,7 +5,7 @@ shared application state (database, workspace manager, etc.) across
 all API endpoints.
 """
 
-from fastapi import Request
+from fastapi import Request, WebSocket
 
 from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
@@ -47,7 +47,26 @@ def get_workspace_manager(request: Request) -> WorkspaceManager:
     return request.app.state.workspace_manager
 
 
+def get_db_websocket(websocket: WebSocket) -> Database:
+    """Get database connection from application state for WebSocket endpoints.
+
+    Args:
+        websocket: FastAPI WebSocket object
+
+    Returns:
+        Database instance from app.state.db
+
+    Usage:
+        @router.websocket("/ws/endpoint")
+        async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db_websocket)):
+            # Use db here
+            ...
+    """
+    return websocket.app.state.db
+
+
 __all__ = [
     "get_db",
+    "get_db_websocket",
     "get_workspace_manager",
 ]

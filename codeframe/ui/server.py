@@ -30,6 +30,7 @@ from codeframe.ui.routers import (
     quality_gates,
     review,
     session,
+    tasks,
     websocket,
 )
 
@@ -304,6 +305,7 @@ app.include_router(projects.router)
 app.include_router(quality_gates.router)
 app.include_router(review.router)
 app.include_router(session.router)
+app.include_router(tasks.router)
 app.include_router(websocket.router)
 
 

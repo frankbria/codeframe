@@ -202,8 +202,8 @@ class TestNotificationWorkflow:
             # Send notification with context
             await router.send(
                 blocker_type=BlockerType.SYNC,
-                title=f"🚨 SYNC Blocker in {task_data['title']}",
-                message=f"Task: {task_data['description']}\n\nSecurity vulnerability detected",
+                title=f"🚨 SYNC Blocker in {task_data.title}",
+                message=f"Task: {task_data.description}\n\nSecurity vulnerability detected",
             )
 
             # Verify notification includes context

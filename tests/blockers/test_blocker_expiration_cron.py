@@ -134,7 +134,7 @@ class TestExpireStaleBlockersCronJob:
             db = Database(db_path)
             db.initialize()
             task = db.get_task(task_id)
-            assert task["status"] == TaskStatus.FAILED.value
+            assert task.status == TaskStatus.FAILED
             db.close()
 
         finally:

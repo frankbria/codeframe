@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 
 from codeframe.ui.shared import manager
-from codeframe.ui.dependencies import get_db
+from codeframe.ui.dependencies import get_db_websocket
 from codeframe.persistence.database import Database
 
 # Module logger
@@ -26,7 +26,7 @@ router = APIRouter(tags=["websocket"])
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db)):
+async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db_websocket)):
     """WebSocket connection for real-time updates with authentication.
 
     Handles real-time communication between the backend and frontend dashboard.

@@ -552,13 +552,13 @@ class TestLeadAgentBlockerHandlingIntegration:
             task_c = db.get_task(task_c_id)
 
             # Task A should be blocked
-            assert task_a["status"] in [
+            assert task_a.status.value in [
                 "blocked",
                 "in_progress",
             ], "Task A should be blocked or in_progress"
 
             # Task B should NOT be started (dependent on blocked Task A)
-            assert task_b["status"] == "pending", "Task B should remain pending (blocked by Task A)"
+            assert task_b.status.value == "pending", "Task B should remain pending (blocked by Task A)"
 
             # Task C should have completed (independent)
-            assert task_c["status"] == "completed", "Task C should complete (independent)"
+            assert task_c.status.value == "completed", "Task C should complete (independent)"

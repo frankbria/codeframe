@@ -61,12 +61,47 @@ def client(db):
 
 
 @pytest.fixture
-def project_id(db):
-    """Create a test project."""
+def user_id(db):
+    """Create a test user."""
+    from datetime import datetime, timezone
+
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO users (id, email, password_hash, name, created_at)
+        VALUES (1, 'test@example.com', 'hashed_password', 'Test User', ?)
+        """,
+        (datetime.now(timezone.utc).isoformat(),)
+    )
+    db.conn.commit()
+    return 1
+
+
+@pytest.fixture
+def auth_token(db, user_id):
+    """Create a test authentication token."""
+    from datetime import datetime, timezone, timedelta
+
+    token = 'test_token_12345'
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO sessions (token, user_id, expires_at)
+        VALUES (?, ?, ?)
+        """,
+        (token, user_id, expires_at)
+    )
+    db.conn.commit()
+    return token
+
+
+@pytest.fixture
+def project_id(db, user_id):
+    """Create a test project owned by test user."""
     project_id = db.create_project(
         name="Test Project",
         description="Project for review API testing",
         project_path="/tmp/test_project",
+        user_id=user_id,  # Assign project to test user
     )
     return project_id
 
@@ -186,7 +221,7 @@ def validate_input(value: any) -> bool:
 class TestReviewAPI:
     """Test Review API endpoints."""
 
-    def test_post_review_endpoint_exists(self, client, project_id, task_id, bad_code_file):
+    def test_post_review_endpoint_exists(self, client, project_id, task_id, bad_code_file, auth_token):
         """T056: POST /api/agents/{agent_id}/review endpoint exists and returns valid response.
 
         RED PHASE: This test should FAIL because the endpoint doesn't exist yet.
@@ -200,7 +235,11 @@ class TestReviewAPI:
         }
 
         # Act
-        response = client.post(f"/api/agents/{agent_id}/review", json=review_request)
+        response = client.post(
+            f"/api/agents/{agent_id}/review",
+            json=review_request,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert (
@@ -213,7 +252,7 @@ class TestReviewAPI:
         assert "findings" in data
         assert isinstance(data["findings"], list)
 
-    def test_post_review_endpoint_validates_request(self, client):
+    def test_post_review_endpoint_validates_request(self, client, auth_token):
         """T056: POST /api/agents/{agent_id}/review validates request body.
 
         RED PHASE: This test should FAIL because the endpoint doesn't exist yet.
@@ -223,7 +262,11 @@ class TestReviewAPI:
         invalid_request = {}  # Missing required fields
 
         # Act
-        response = client.post(f"/api/agents/{agent_id}/review", json=invalid_request)
+        response = client.post(
+            f"/api/agents/{agent_id}/review",
+            json=invalid_request,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert response.status_code in [
@@ -232,7 +275,7 @@ class TestReviewAPI:
         ], f"Expected validation error (400 or 422), got {response.status_code}"
 
     def test_post_review_endpoint_runs_quality_checks(
-        self, client, project_id, task_id, bad_code_file
+        self, client, project_id, task_id, bad_code_file, auth_token
     ):
         """T056: POST /api/agents/{agent_id}/review runs all quality checks.
 
@@ -247,7 +290,11 @@ class TestReviewAPI:
         }
 
         # Act
-        response = client.post(f"/api/agents/{agent_id}/review", json=review_request)
+        response = client.post(
+            f"/api/agents/{agent_id}/review",
+            json=review_request,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert response.status_code == 200
@@ -270,7 +317,7 @@ class TestReviewAPI:
         ), f"Expected poor score for bad code, got {data['overall_score']}"
 
     def test_post_review_endpoint_creates_blocker_on_failure(
-        self, client, db, project_id, task_id, bad_code_file
+        self, client, db, project_id, task_id, bad_code_file, auth_token
     ):
         """T056: POST /api/agents/{agent_id}/review creates blocker when review fails.
 
@@ -285,7 +332,11 @@ class TestReviewAPI:
         }
 
         # Act
-        response = client.post(f"/api/agents/{agent_id}/review", json=review_request)
+        response = client.post(
+            f"/api/agents/{agent_id}/review",
+            json=review_request,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert response.status_code == 200
@@ -307,7 +358,7 @@ class TestReviewAPI:
                 or "code review" in blocker["question"].lower()
             )
 
-    def test_get_review_status_endpoint_exists(self, client, project_id, task_id, bad_code_file):
+    def test_get_review_status_endpoint_exists(self, client, project_id, task_id, bad_code_file, auth_token):
         """T057: GET /api/tasks/{task_id}/review-status endpoint exists.
 
         RED PHASE: This test should FAIL because the endpoint doesn't exist yet.
@@ -319,10 +370,17 @@ class TestReviewAPI:
             "project_id": project_id,
             "files_modified": [str(bad_code_file)],
         }
-        client.post(f"/api/agents/{agent_id}/review", json=review_request)
+        client.post(
+            f"/api/agents/{agent_id}/review",
+            json=review_request,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Act: Get review status
-        response = client.get(f"/api/tasks/{task_id}/review-status")
+        response = client.get(
+            f"/api/tasks/{task_id}/review-status",
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert (
@@ -335,13 +393,16 @@ class TestReviewAPI:
         assert "overall_score" in data
         assert "findings_count" in data
 
-    def test_get_review_status_no_review_yet(self, client, task_id):
+    def test_get_review_status_no_review_yet(self, client, task_id, auth_token):
         """T057: GET /api/tasks/{task_id}/review-status returns empty when no review exists.
 
         RED PHASE: This test should FAIL because the endpoint doesn't exist yet.
         """
         # Act: Get review status for task with no review
-        response = client.get(f"/api/tasks/{task_id}/review-status")
+        response = client.get(
+            f"/api/tasks/{task_id}/review-status",
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert response.status_code == 200
@@ -350,7 +411,7 @@ class TestReviewAPI:
         assert data["status"] is None
         assert data["overall_score"] is None
 
-    def test_get_review_stats_endpoint_exists(self, client, project_id, task_id, bad_code_file):
+    def test_get_review_stats_endpoint_exists(self, client, project_id, task_id, bad_code_file, auth_token):
         """T058: GET /api/projects/{project_id}/review-stats endpoint exists.
 
         RED PHASE: This test should FAIL because the endpoint doesn't exist yet.
@@ -364,10 +425,17 @@ class TestReviewAPI:
             "project_id": project_id,
             "files_modified": [str(bad_code_file)],
         }
-        client.post(f"/api/agents/{agent_id}/review", json=review_request)
+        client.post(
+            f"/api/agents/{agent_id}/review",
+            json=review_request,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Act: Get review stats
-        response = client.get(f"/api/projects/{project_id}/review-stats")
+        response = client.get(
+            f"/api/projects/{project_id}/review-stats",
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert (
@@ -382,7 +450,7 @@ class TestReviewAPI:
         assert "average_score" in data
 
     def test_get_review_stats_aggregates_correctly(
-        self, client, db, project_id, good_code_file, bad_code_file
+        self, client, db, project_id, good_code_file, bad_code_file, auth_token
     ):
         """T058: GET /api/projects/{project_id}/review-stats aggregates multiple reviews.
 
@@ -418,7 +486,11 @@ class TestReviewAPI:
             "project_id": project_id,
             "files_modified": [str(good_code_file)],
         }
-        response1 = client.post(f"/api/agents/{agent_id}/review", json=review_request1)
+        response1 = client.post(
+            f"/api/agents/{agent_id}/review",
+            json=review_request1,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
         review1_data = response1.json()
 
         # Review task 2 with bad code (should request changes or reject)
@@ -427,11 +499,18 @@ class TestReviewAPI:
             "project_id": project_id,
             "files_modified": [str(bad_code_file)],
         }
-        response2 = client.post(f"/api/agents/{agent_id}/review", json=review_request2)
+        response2 = client.post(
+            f"/api/agents/{agent_id}/review",
+            json=review_request2,
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
         review2_data = response2.json()
 
         # Act: Get review stats
-        response = client.get(f"/api/projects/{project_id}/review-stats")
+        response = client.get(
+            f"/api/projects/{project_id}/review-stats",
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert response.status_code == 200
@@ -450,13 +529,16 @@ class TestReviewAPI:
         avg_score = (review1_data["overall_score"] + review2_data["overall_score"]) / 2
         assert data["average_score"] == pytest.approx(avg_score, rel=0.1)
 
-    def test_get_review_stats_no_reviews_yet(self, client, project_id):
+    def test_get_review_stats_no_reviews_yet(self, client, project_id, auth_token):
         """T058: GET /api/projects/{project_id}/review-stats returns zeros when no reviews exist.
 
         RED PHASE: This test should FAIL because the endpoint doesn't exist yet.
         """
         # Act: Get review stats for project with no reviews
-        response = client.get(f"/api/projects/{project_id}/review-stats")
+        response = client.get(
+            f"/api/projects/{project_id}/review-stats",
+            headers={"Authorization": f"Bearer {auth_token}"}
+        )
 
         # Assert
         assert response.status_code == 200
