@@ -1856,12 +1856,47 @@ class Database:
 
         return deleted_count
 
+    def cleanup_old_audit_logs(self, retention_days: int = 90) -> int:
+        """Delete audit logs older than the retention period.
+
+        This should be called periodically (e.g., daily) to prevent
+        the audit_logs table from growing indefinitely.
+
+        Args:
+            retention_days: Number of days to retain audit logs (default: 90)
+
+        Returns:
+            Number of audit log entries deleted
+        """
+        from datetime import datetime, timezone, timedelta
+
+        cursor = self.conn.cursor()
+
+        # Calculate cutoff date
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+        # Delete audit logs older than retention period
+        cursor.execute(
+            """
+            DELETE FROM audit_logs
+            WHERE datetime(timestamp) < datetime(?)
+            """,
+            (cutoff_date.isoformat(),),
+        )
+
+        deleted_count = cursor.rowcount
+        self.conn.commit()
+
+        return deleted_count
+
     def get_user_projects(self, user_id: int) -> List[Dict[str, Any]]:
-        """Get all projects accessible to a user.
+        """Get all projects accessible to a user with progress metrics.
 
         Returns projects where the user is either:
         - The owner (projects.user_id matches)
         - A collaborator/viewer (exists in project_users table)
+
+        Performance: Single query using LEFT JOIN to calculate progress for all projects.
 
         Args:
             user_id: ID of the user
@@ -1871,12 +1906,30 @@ class Database:
         """
         cursor = self.conn.cursor()
 
-        # Get projects where user is owner or collaborator
+        # Single query with progress calculation using LEFT JOIN and aggregation
+        # Fixes N+1 query issue: 100 projects = 1 query instead of 101
         cursor.execute(
             """
-            SELECT DISTINCT p.*
+            SELECT DISTINCT
+                p.*,
+                COALESCE(task_stats.total_tasks, 0) as total_tasks,
+                COALESCE(task_stats.completed_tasks, 0) as completed_tasks,
+                COALESCE(task_stats.percentage, 0.0) as percentage
             FROM projects p
             LEFT JOIN project_users pu ON p.id = pu.project_id
+            LEFT JOIN (
+                SELECT
+                    project_id,
+                    COUNT(*) as total_tasks,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+                    CASE
+                        WHEN COUNT(*) > 0
+                        THEN CAST(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) * 100.0
+                        ELSE 0.0
+                    END as percentage
+                FROM tasks
+                GROUP BY project_id
+            ) task_stats ON p.id = task_stats.project_id
             WHERE p.user_id = ? OR pu.user_id = ?
             ORDER BY p.created_at DESC
             """,
@@ -1887,10 +1940,13 @@ class Database:
         projects = []
         for row in rows:
             project = dict(row)
-            project_id = project["id"]
 
-            # Calculate progress metrics for this project
-            progress = self._calculate_project_progress(project_id)
+            # Extract progress metrics from the joined columns
+            progress = {
+                "completed_tasks": project.pop("completed_tasks"),
+                "total_tasks": project.pop("total_tasks"),
+                "percentage": project.pop("percentage"),
+            }
             project["progress"] = progress
 
             projects.append(project)

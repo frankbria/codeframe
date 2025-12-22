@@ -109,24 +109,45 @@ def _validate_auth_config():
 
 
 async def _cleanup_expired_sessions_task(db: Database):
-    """Background task to periodically clean up expired sessions.
+    """Background task to periodically clean up expired sessions and old audit logs.
 
-    Runs every hour to delete expired sessions from the database.
+    Runs periodically to:
+    - Delete expired sessions (every hour by default)
+    - Delete audit logs older than retention period (every 24 hours by default)
 
     Args:
         db: Database instance
     """
     logger = logging.getLogger(__name__)
-    cleanup_interval = int(os.getenv("SESSION_CLEANUP_INTERVAL", "3600"))  # Default: 1 hour
+    session_cleanup_interval = int(os.getenv("SESSION_CLEANUP_INTERVAL", "3600"))  # Default: 1 hour
+    audit_cleanup_interval = int(os.getenv("AUDIT_CLEANUP_INTERVAL", "86400"))  # Default: 24 hours
+    audit_retention_days = int(os.getenv("AUDIT_RETENTION_DAYS", "90"))  # Default: 90 days
+
+    # Track last audit cleanup time
+    last_audit_cleanup = 0
 
     while True:
         try:
-            await asyncio.sleep(cleanup_interval)
-            deleted_count = db.cleanup_expired_sessions()
-            if deleted_count > 0:
-                logger.info(f"🧹 Cleaned up {deleted_count} expired session(s)")
+            await asyncio.sleep(session_cleanup_interval)
+
+            # Always clean up expired sessions
+            deleted_sessions = db.cleanup_expired_sessions()
+            if deleted_sessions > 0:
+                logger.info(f"🧹 Cleaned up {deleted_sessions} expired session(s)")
+
+            # Clean up old audit logs periodically (less frequently)
+            import time
+            current_time = time.time()
+            if current_time - last_audit_cleanup >= audit_cleanup_interval:
+                deleted_logs = db.cleanup_old_audit_logs(retention_days=audit_retention_days)
+                if deleted_logs > 0:
+                    logger.info(
+                        f"🗑️  Cleaned up {deleted_logs} audit log(s) older than {audit_retention_days} days"
+                    )
+                last_audit_cleanup = current_time
+
         except Exception as e:
-            logger.error(f"Error during session cleanup: {e}", exc_info=True)
+            logger.error(f"Error during cleanup task: {e}", exc_info=True)
 
 
 @asynccontextmanager
