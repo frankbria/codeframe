@@ -24,6 +24,46 @@ from codeframe.persistence.database import Database
 from codeframe.ui.shared import ConnectionManager, WebSocketSubscriptionManager
 
 
+def broadcast_sync(manager, message: dict, project_id: int = None):
+    """Synchronous broadcast using threading for TestClient compatibility.
+
+    TestClient's WebSocket runs in a background thread. To broadcast messages,
+    we need to run the async broadcast in the same event loop as the TestClient's
+    background thread.
+    """
+    import threading
+    import asyncio
+
+    result = {'done': False, 'error': None}
+
+    def run_broadcast():
+        try:
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(manager.broadcast(message, project_id=project_id))
+            finally:
+                loop.close()
+            result['done'] = True
+        except Exception as e:
+            result['error'] = e
+
+    thread = threading.Thread(target=run_broadcast)
+    thread.start()
+    thread.join(timeout=2.0)
+
+    if not result['done']:
+        raise TimeoutError("Broadcast timed out")
+    if result['error']:
+        raise result['error']
+
+
+def get_subscriptions_sync(manager, websocket):
+    """Synchronous helper to get subscriptions for a websocket."""
+    return manager.subscription_manager._subscriptions.get(websocket, set()).copy()
+
+
 @pytest.fixture
 def test_client():
     """Create test client with temporary database and clean manager state."""
@@ -111,15 +151,11 @@ class TestFullSubscriptionWorkflow:
             # Simulate broadcast to project 1
             from codeframe.ui.shared import manager
 
-            import asyncio
-
-            async def broadcast():
-                await manager.broadcast(
-                    {"type": "task_status_changed", "task_id": 42, "status": "completed"},
-                    project_id=1,
-                )
-
-            asyncio.run(broadcast())
+            broadcast_sync(
+                manager,
+                {"type": "task_status_changed", "task_id": 42, "status": "completed"},
+                project_id=1
+            )
 
             # Client should receive the message
             data = websocket.receive_json()
@@ -143,15 +179,11 @@ class TestFullSubscriptionWorkflow:
             # Broadcast to project 1 should NOT be received
             from codeframe.ui.shared import manager
 
-            import asyncio
-
-            async def broadcast():
-                await manager.broadcast(
-                    {"type": "task_status_changed", "task_id": 99, "status": "failed"},
-                    project_id=1,
-                )
-
-            asyncio.run(broadcast())
+            broadcast_sync(
+                manager,
+                {"type": "task_status_changed", "task_id": 99, "status": "failed"},
+                project_id=1
+            )
 
             # Client should NOT receive this message
             # Use a timeout to verify no message arrives
@@ -179,15 +211,7 @@ class TestFullSubscriptionWorkflow:
         # Verify subscriptions exist
         from codeframe.ui.shared import manager
 
-        import asyncio
-
-        async def check_subscriptions():
-            subs = await manager.subscription_manager.get_subscriptions(
-                websocket1
-            )
-            return subs
-
-        subs = asyncio.run(check_subscriptions())
+        subs = get_subscriptions_sync(manager, websocket1)
         assert 1 in subs
         assert 2 in subs
 
@@ -195,13 +219,7 @@ class TestFullSubscriptionWorkflow:
         ws1.__exit__(None, None, None)
 
         # Verify subscriptions are cleaned up
-        async def check_after_disconnect():
-            subs = await manager.subscription_manager.get_subscriptions(
-                websocket1
-            )
-            return subs
-
-        subs = asyncio.run(check_after_disconnect())
+        subs = get_subscriptions_sync(manager, websocket1)
         assert len(subs) == 0
 
 
@@ -236,15 +254,12 @@ class TestMultiClientScenario:
 
         # Broadcast to project 1
         from codeframe.ui.shared import manager
-        import asyncio
 
-        async def broadcast_p1():
-            await manager.broadcast(
-                {"type": "task_status_changed", "project_id": 1, "task_id": 101},
-                project_id=1,
-            )
-
-        asyncio.run(broadcast_p1())
+        broadcast_sync(
+            manager,
+            {"type": "task_status_changed", "project_id": 1, "task_id": 101},
+            project_id=1
+        )
 
         # Client 1 should receive (subscribed to project 1)
         data1 = ws1.receive_json()
@@ -257,13 +272,11 @@ class TestMultiClientScenario:
         assert data3["task_id"] == 101
 
         # Broadcast to project 2
-        async def broadcast_p2():
-            await manager.broadcast(
-                {"type": "task_status_changed", "project_id": 2, "task_id": 202},
-                project_id=2,
-            )
-
-        asyncio.run(broadcast_p2())
+        broadcast_sync(
+            manager,
+            {"type": "task_status_changed", "project_id": 2, "task_id": 202},
+            project_id=2
+        )
 
         # Client 2 should receive (subscribed to project 2)
         data2 = ws2.receive_json()
@@ -298,15 +311,12 @@ class TestMultiClientScenario:
 
         # Broadcast to project 1
         from codeframe.ui.shared import manager
-        import asyncio
 
-        async def broadcast():
-            await manager.broadcast(
-                {"type": "test_result", "project_id": 1, "status": "passed"},
-                project_id=1,
-            )
-
-        asyncio.run(broadcast())
+        broadcast_sync(
+            manager,
+            {"type": "test_result", "project_id": 1, "status": "passed"},
+            project_id=1
+        )
 
         # Client 1 receives message
         data1 = ws1.receive_json()
@@ -346,24 +356,8 @@ class TestSubscribeUnsubscribeFlow:
 
             # Verify all subscriptions are active
             from codeframe.ui.shared import manager
-            import asyncio
 
-            async def check():
-                # Try broadcasting to each project
-                messages_received = []
-
-                # This is a simplified test - in real scenario we'd verify each separately
-                async def check_subs():
-                    # Access the websocket's subscriptions
-                    subs = await manager.subscription_manager.get_subscriptions(
-                        websocket
-                    )
-                    return subs
-
-                subs = await check_subs()
-                return subs
-
-            subs = asyncio.run(check())
+            subs = get_subscriptions_sync(manager, websocket)
             assert 1 in subs
             assert 2 in subs
             assert 3 in subs
@@ -381,15 +375,8 @@ class TestSubscribeUnsubscribeFlow:
 
             # Should still work - single subscription
             from codeframe.ui.shared import manager
-            import asyncio
 
-            async def check():
-                subs = await manager.subscription_manager.get_subscriptions(
-                    websocket
-                )
-                return len(subs)
-
-            sub_count = asyncio.run(check())
+            sub_count = len(get_subscriptions_sync(manager, websocket))
             assert sub_count == 1
 
     def test_unsubscribe_then_resubscribe(self, test_client):
@@ -409,15 +396,8 @@ class TestSubscribeUnsubscribeFlow:
 
             # Verify subscription is active
             from codeframe.ui.shared import manager
-            import asyncio
 
-            async def check():
-                subs = await manager.subscription_manager.get_subscriptions(
-                    websocket
-                )
-                return 1 in subs
-
-            is_subscribed = asyncio.run(check())
+            is_subscribed = 1 in get_subscriptions_sync(manager, websocket)
             assert is_subscribed
 
 
@@ -427,7 +407,6 @@ class TestDisconnectCleanup:
     def test_disconnect_removes_all_subscriptions(self, test_client):
         """Test that disconnect removes all subscriptions for a client."""
         from codeframe.ui.shared import manager
-        import asyncio
 
         # Create connection
         ws_ctx = test_client.websocket_connect("/ws")
@@ -439,32 +418,19 @@ class TestDisconnectCleanup:
             websocket.receive_json()
 
         # Verify subscriptions before disconnect
-        async def check_before():
-            subs = await manager.subscription_manager.get_subscriptions(
-                websocket
-            )
-            return len(subs)
-
-        count_before = asyncio.run(check_before())
+        count_before = len(get_subscriptions_sync(manager, websocket))
         assert count_before == 3
 
         # Disconnect
         ws_ctx.__exit__(None, None, None)
 
         # Verify subscriptions are gone
-        async def check_after():
-            subs = await manager.subscription_manager.get_subscriptions(
-                websocket
-            )
-            return len(subs)
-
-        count_after = asyncio.run(check_after())
+        count_after = len(get_subscriptions_sync(manager, websocket))
         assert count_after == 0
 
     def test_disconnect_during_subscription_cleanup(self, test_client):
         """Test that disconnect properly cleans up even with active subscriptions."""
         from codeframe.ui.shared import manager
-        import asyncio
 
         websocket_refs = []
 
@@ -479,18 +445,20 @@ class TestDisconnectCleanup:
             ws.receive_json()
 
         # Verify all subscriptions exist
-        async def count_subscribers():
-            subs = await manager.subscription_manager.get_subscribers(1)
-            return len(subs)
-
-        count = asyncio.run(count_subscribers())
+        count = len([
+            ws for ws, projects in manager.subscription_manager._subscriptions.items()
+            if 1 in projects
+        ])
         assert count == 3
 
         # Disconnect first client
         websocket_refs[0][0].__exit__(None, None, None)
 
         # Verify subscription count decreased
-        count = asyncio.run(count_subscribers())
+        count = len([
+            ws for ws, projects in manager.subscription_manager._subscriptions.items()
+            if 1 in projects
+        ])
         assert count == 2
 
         # Cleanup remaining
@@ -498,7 +466,10 @@ class TestDisconnectCleanup:
             ctx.__exit__(None, None, None)
 
         # Verify all cleaned up
-        count = asyncio.run(count_subscribers())
+        count = len([
+            ws for ws, projects in manager.subscription_manager._subscriptions.items()
+            if 1 in projects
+        ])
         assert count == 0
 
 
@@ -515,16 +486,13 @@ class TestBackwardCompatibility:
 
         # Don't subscribe - just connected
         from codeframe.ui.shared import manager
-        import asyncio
 
         # Broadcast WITHOUT project_id (backward compatible)
-        async def broadcast():
-            await manager.broadcast(
-                {"type": "agent_started", "agent_id": "lead-1"}
-                # Note: no project_id parameter
-            )
-
-        asyncio.run(broadcast())
+        broadcast_sync(
+            manager,
+            {"type": "agent_started", "agent_id": "lead-1"}
+            # Note: no project_id parameter
+        )
 
         # Both clients should receive the message
         data1 = ws1.receive_json()
@@ -549,16 +517,13 @@ class TestBackwardCompatibility:
         ws2 = ws2_ctx.__enter__()
 
         from codeframe.ui.shared import manager
-        import asyncio
 
         # Broadcast to project 1 (filtered)
-        async def broadcast_filtered():
-            await manager.broadcast(
-                {"type": "task_status_changed", "task_id": 42},
-                project_id=1,
-            )
-
-        asyncio.run(broadcast_filtered())
+        broadcast_sync(
+            manager,
+            {"type": "task_status_changed", "task_id": 42},
+            project_id=1
+        )
 
         # Client 1 should receive (subscribed)
         data1 = ws1.receive_json()
@@ -572,13 +537,11 @@ class TestBackwardCompatibility:
             pass
 
         # Now broadcast to ALL (no project_id)
-        async def broadcast_all():
-            await manager.broadcast(
-                {"type": "agent_status_changed", "agent_id": "worker-1"}
-                # No project_id
-            )
-
-        asyncio.run(broadcast_all())
+        broadcast_sync(
+            manager,
+            {"type": "agent_status_changed", "agent_id": "worker-1"}
+            # No project_id
+        )
 
         # Both should receive unfiltered broadcast
         data1 = ws1.receive_json()
@@ -814,15 +777,12 @@ class TestEdgeCases:
 
             # Broadcast to large project ID
             from codeframe.ui.shared import manager
-            import asyncio
 
-            async def broadcast():
-                await manager.broadcast(
-                    {"type": "test", "data": "test"},
-                    project_id=large_id,
-                )
-
-            asyncio.run(broadcast())
+            broadcast_sync(
+                manager,
+                {"type": "test", "data": "test"},
+                project_id=large_id
+            )
 
             # Should receive
             data = websocket.receive_json()
