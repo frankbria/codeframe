@@ -461,6 +461,7 @@ async def get_agent_projects(
     agent_id: str,
     active_only: bool = Query(True),
     db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get all projects an agent is assigned to.
 
@@ -470,9 +471,10 @@ async def get_agent_projects(
         agent_id: Agent ID
         active_only: If True, only return active assignments (default: True)
         db: Database connection
+        current_user: Authenticated user
 
     Returns:
-        List of projects with assignment metadata
+        List of projects with assignment metadata (filtered by user access)
 
     Raises:
         HTTPException: 404 if agent not found, 500 on database error
@@ -486,7 +488,13 @@ async def get_agent_projects(
         # Get projects for agent using database method
         projects = db.get_projects_for_agent(agent_id, active_only=active_only)
 
-        return projects
+        # Security: Filter to only include projects the user has access to
+        filtered_projects = [
+            project for project in projects
+            if db.user_has_project_access(current_user.id, project["project_id"])
+        ]
+
+        return filtered_projects
     except HTTPException:
         raise
     except Exception as e:

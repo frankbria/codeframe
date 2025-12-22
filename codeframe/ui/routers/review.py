@@ -228,6 +228,9 @@ async def get_review_status(
                 "overall_score": None,
                 "findings_count": 0,
             }
+    except HTTPException:
+        # Re-raise HTTPException (including 403 Forbidden) without masking
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get review status: {str(e)}")
 
@@ -304,6 +307,9 @@ async def get_review_stats(
             "average_score": average_score,
         }
 
+    except HTTPException:
+        # Re-raise HTTPException (including 403 Forbidden) without masking
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get review stats: {str(e)}")
 

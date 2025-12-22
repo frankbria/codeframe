@@ -294,6 +294,55 @@ async def get_agent_metrics(
         tracker = MetricsTracker(db=db)
         costs = await tracker.get_agent_costs(agent_id=agent_id)
 
+        # Security: Filter by_project to only include projects the user has access to
+        # This prevents cross-project data leakage when project_id is not specified
+        if project_id is None:
+            # Get user's accessible projects
+            user_projects = db.get_user_projects(current_user.id)
+            accessible_project_ids = {p["id"] for p in user_projects}
+
+            # Filter by_project to only include accessible projects
+            costs["by_project"] = [
+                p for p in costs["by_project"]
+                if p["project_id"] in accessible_project_ids
+            ]
+
+            # Recalculate totals based on filtered projects
+            # Get all usage records for this agent across accessible projects only
+            all_usage_records = []
+            for proj_id in accessible_project_ids:
+                project_records = db.get_token_usage(agent_id=agent_id, project_id=proj_id)
+                all_usage_records.extend(project_records)
+
+            # Recalculate aggregates
+            total_cost = sum(r["estimated_cost_usd"] for r in all_usage_records)
+            total_tokens = sum(r["input_tokens"] + r["output_tokens"] for r in all_usage_records)
+            total_calls = len(all_usage_records)
+
+            # Aggregate by call type
+            call_type_stats = {}
+            for record in all_usage_records:
+                call_type = record["call_type"]
+                if call_type not in call_type_stats:
+                    call_type_stats[call_type] = {
+                        "call_type": call_type,
+                        "cost_usd": 0.0,
+                        "calls": 0,
+                    }
+                call_type_stats[call_type]["cost_usd"] += record["estimated_cost_usd"]
+                call_type_stats[call_type]["calls"] += 1
+
+            # Round costs
+            for stats in call_type_stats.values():
+                stats["cost_usd"] = round(stats["cost_usd"], 6)
+
+            # Update costs with filtered data
+            costs["total_cost_usd"] = round(total_cost, 6)
+            costs["total_tokens"] = total_tokens
+            costs["total_calls"] = total_calls
+            costs["by_call_type"] = list(call_type_stats.values())
+            # by_project already filtered above
+
         # If project_id is specified, filter the results
         if project_id is not None:
             # Filter by_project to only include the specified project

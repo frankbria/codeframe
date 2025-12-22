@@ -182,6 +182,14 @@ async def run_lint_manual(
         task = db.get_task(task_id)
         if not task:
             raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+        # Verify task belongs to requested project (security: prevent cross-project access)
+        if task.project_id != project_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Task does not belong to the specified project"
+            )
+
         # TODO: Implement task-based file discovery. The Task model doesn't currently
         # track modified files. Options: (1) add files_modified field to Task model,
         # (2) query git diff for commits associated with task, (3) track via changelog.

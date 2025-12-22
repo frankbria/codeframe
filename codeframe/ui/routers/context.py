@@ -348,14 +348,32 @@ async def list_flash_save_checkpoints(
     # Clamp limit to reasonable range
     limit = min(max(limit, 1), 100)
 
-    # Get checkpoints from database
-    checkpoints = db.list_checkpoints(agent_id, limit=limit)
+    # Get checkpoints from database (all checkpoints for this agent)
+    all_checkpoints = db.list_checkpoints(agent_id, limit=limit * 2)  # Get more to account for filtering
 
-    # Remove checkpoint_data from response (too large)
-    for checkpoint in checkpoints:
-        checkpoint.pop("checkpoint_data", None)
+    # Security: Filter checkpoints to only include those for this project
+    # The checkpoint_data JSON includes project_id, so we parse and filter
+    import json
 
-    return checkpoints
+    filtered_checkpoints = []
+    for checkpoint in all_checkpoints:
+        checkpoint_data_str = checkpoint.get("checkpoint_data", "{}")
+        try:
+            checkpoint_data = json.loads(checkpoint_data_str)
+            # Check if checkpoint belongs to requested project
+            if checkpoint_data.get("project_id") == project_id:
+                # Remove checkpoint_data from response (too large)
+                checkpoint.pop("checkpoint_data", None)
+                filtered_checkpoints.append(checkpoint)
+
+                # Stop when we have enough checkpoints
+                if len(filtered_checkpoints) >= limit:
+                    break
+        except json.JSONDecodeError:
+            # Skip malformed checkpoints
+            continue
+
+    return filtered_checkpoints
 
 
 @router.get("/api/agents/{agent_id}/context/stats")
