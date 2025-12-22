@@ -263,6 +263,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
                 type TEXT NOT NULL,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
                 provider TEXT,
                 maturity_level TEXT CHECK(maturity_level IN ('directive', 'coaching', 'supporting', 'delegating')),
                 status TEXT CHECK(status IN ('idle', 'working', 'blocked', 'offline')),

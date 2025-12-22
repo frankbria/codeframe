@@ -169,13 +169,21 @@ class TestCrossProjectDataLeak:
 
     def test_agent_metrics_filtered_by_user_access(self, client, alice_token, bob_token, db):
         """Test that /api/agents/{id}/metrics filters by accessible projects."""
-        # Create agent that worked on both projects
+        # Create agent with home project
         db.conn.execute(
             """
             INSERT INTO agents (id, type, status, project_id)
+            VALUES ('test_agent', 'backend', 'idle', 1)
+            """
+        )
+
+        # Assign agent to both projects via junction table
+        db.conn.execute(
+            """
+            INSERT INTO project_agents (project_id, agent_id, role, is_active)
             VALUES
-                ('test_agent', 'backend', 'active', 1),
-                ('test_agent', 'backend', 'active', 2)
+                (1, 'test_agent', 'backend', TRUE),
+                (2, 'test_agent', 'backend', TRUE)
             """
         )
 
@@ -184,8 +192,8 @@ class TestCrossProjectDataLeak:
             """
             INSERT INTO token_usage (agent_id, project_id, model_name, input_tokens, output_tokens, estimated_cost_usd, call_type)
             VALUES
-                ('test_agent', 1, 'claude-sonnet-4-5', 1000, 500, 0.01, 'task'),
-                ('test_agent', 2, 'claude-sonnet-4-5', 2000, 1000, 0.02, 'task')
+                ('test_agent', 1, 'claude-sonnet-4-5', 1000, 500, 0.01, 'task_execution'),
+                ('test_agent', 2, 'claude-sonnet-4-5', 2000, 1000, 0.02, 'task_execution')
             """
         )
         db.conn.commit()
