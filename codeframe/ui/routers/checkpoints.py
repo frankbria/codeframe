@@ -256,7 +256,12 @@ async def create_checkpoint(
 
 
 @router.get("/{checkpoint_id}")
-async def get_checkpoint(project_id: int, checkpoint_id: int, db: Database = Depends(get_db)):
+async def get_checkpoint(
+    project_id: int,
+    checkpoint_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get details of a specific checkpoint (T094).
 
     Sprint 10 - Phase 4: Checkpoint API
@@ -335,7 +340,12 @@ async def get_checkpoint(project_id: int, checkpoint_id: int, db: Database = Dep
 
 
 @router.delete("/{checkpoint_id}", status_code=204)
-async def delete_checkpoint(project_id: int, checkpoint_id: int, db: Database = Depends(get_db)):
+async def delete_checkpoint(
+    project_id: int,
+    checkpoint_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Delete a checkpoint and its files (T095).
 
     Sprint 10 - Phase 4: Checkpoint API
@@ -424,6 +434,7 @@ async def restore_checkpoint(
     checkpoint_id: int,
     request: RestoreCheckpointRequest = Body(default_factory=RestoreCheckpointRequest),
     db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Restore project to checkpoint state (T096, T097).
 
@@ -555,7 +566,10 @@ async def restore_checkpoint(
 
 @router.get("/{checkpoint_id}/diff")
 async def get_checkpoint_diff(
-    project_id: int, checkpoint_id: int, db: Database = Depends(get_db)
+    project_id: int,
+    checkpoint_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> CheckpointDiffResponse:
     """Get git diff for a checkpoint (Sprint 10 Phase 4).
 
