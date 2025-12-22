@@ -68,7 +68,7 @@ The backend uses FastAPI dependency injection for authentication.
 #### get_current_user Dependency
 
 ```python
-from codeframe.ui.dependencies import get_current_user, User
+from codeframe.ui.auth import get_current_user, User
 
 @router.get("/api/protected")
 async def protected_endpoint(current_user: User = Depends(get_current_user)):
