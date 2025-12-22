@@ -68,7 +68,7 @@ export default function SignupForm() {
         // Redirect to dashboard on successful signup
         router.push("/");
       }
-    } catch (err) {
+    } catch (_err) {
       setError("Network error. Please try again.");
     } finally {
       setIsLoading(false);

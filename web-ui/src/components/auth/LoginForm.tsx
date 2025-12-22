@@ -35,7 +35,7 @@ export default function LoginForm() {
         // Redirect to dashboard on successful login
         router.push("/");
       }
-    } catch (err) {
+    } catch (_err) {
       setError("Network error. Please try again.");
     } finally {
       setIsLoading(false);
