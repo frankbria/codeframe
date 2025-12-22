@@ -199,9 +199,9 @@ async def create_project(
     return ProjectResponse(
             id=project["id"],
             name=project["name"],
-            status=project["status"].value,
-            phase=project["phase"].value,
-            created_at=project["created_at"].isoformat(),
+            status=project["status"],
+            phase=project["phase"],
+            created_at=project["created_at"],
             config=project["config"],
     )
 
