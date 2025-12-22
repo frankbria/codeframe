@@ -88,7 +88,7 @@ async def get_current_user(
         SELECT s.user_id, s.expires_at, u.email, u.name
         FROM sessions s
         JOIN users u ON s.user_id = u.id
-        WHERE s.id = ?
+        WHERE s.token = ?
         """,
         (token,),
     )
@@ -127,7 +127,7 @@ async def get_current_user(
         )
 
         # Delete expired session
-        db.conn.execute("DELETE FROM sessions WHERE id = ?", (token,))
+        db.conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
         db.conn.commit()
 
         raise HTTPException(
