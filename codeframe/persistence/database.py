@@ -112,15 +112,16 @@ class Database:
         cursor = self.conn.cursor()
 
         # Users table (authentication)
-        # NOTE: password_hash column exists for future Better Auth integration
-        # Current implementation uses session tokens only (AUTH_REQUIRED=false for dev)
-        # When Better Auth is integrated, it will handle bcrypt/argon2 hashing
+        # Better Auth (v1.4.7) uses this table for user management
+        # password_hash is managed by Better Auth using bcrypt hashing
+        # Frontend: /api/auth/sign-up, /api/auth/sign-in (web-ui/src/app/api/auth/[...all]/route.ts)
+        # Backend: Validates sessions created by Better Auth (codeframe/ui/auth.py)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,  -- Reserved for Better Auth (bcrypt/argon2)
+                password_hash TEXT NOT NULL,  -- Better Auth bcrypt hashes
                 name TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
