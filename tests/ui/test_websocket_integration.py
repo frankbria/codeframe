@@ -33,6 +33,7 @@ def test_client():
 
     # Create fresh ConnectionManager for each test
     from codeframe.ui import server, shared
+    from datetime import datetime, timezone
 
     # Replace manager with fresh instance for test isolation
     fresh_manager = ConnectionManager()
@@ -44,6 +45,25 @@ def test_client():
     db = Database(db_path)
     db.initialize()
     server.app.state.db = db
+
+    # Create test user (user_id=1) for WebSocket authentication
+    db.conn.execute(
+        """
+        INSERT INTO users (id, email, password_hash, name, created_at)
+        VALUES (1, 'test@example.com', 'hashed_password', 'Test User', ?)
+        """,
+        (datetime.now(timezone.utc).isoformat(),)
+    )
+
+    # Create test project (project_id=1) owned by user 1
+    db.create_project(
+        name="Test Project",
+        description="Test project for WebSocket tests",
+        workspace_path=str(workspace_root / "1"),
+        user_id=1
+    )
+
+    db.conn.commit()
 
     from codeframe.workspace import WorkspaceManager
 

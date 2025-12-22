@@ -75,13 +75,13 @@ def test_project_agents_indexes_exist(db):
     assert expected_indexes.issubset(indexes), f"Missing indexes: {expected_indexes - indexes}"
 
 
-def test_agents_table_no_project_id(db):
-    """Verify agents table does NOT have project_id column."""
+def test_agents_table_has_project_id(db):
+    """Verify agents table has project_id column for multi-project support."""
     cursor = db.conn.cursor()
     cursor.execute("PRAGMA table_info(agents)")
     columns = {row[1] for row in cursor.fetchall()}
 
-    assert "project_id" not in columns, "agents table should not have project_id column"
+    assert "project_id" in columns, "agents table should have project_id column"
     assert "created_at" in columns, "agents table should have created_at column"
 
 

@@ -273,8 +273,11 @@ class TestCommitCreation:
         assert repo.active_branch.name == "feature-test"
         assert commit_hash == repo.head.commit.hexsha
 
-        # Verify commit is NOT on master (test repos use master not main)
-        repo.heads.master.checkout()
+        # Verify commit is NOT on master/main (test repos may use either)
+        try:
+            repo.heads['master'].checkout()
+        except (AttributeError, IndexError):
+            repo.heads['main'].checkout()
         assert commit_hash != repo.head.commit.hexsha
 
     def test_commit_returns_valid_sha(self, workflow_manager, temp_git_repo):
