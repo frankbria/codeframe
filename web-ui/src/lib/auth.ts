@@ -1,5 +1,4 @@
 import { betterAuth } from "better-auth";
-import Database from "better-auth/adapters/sqlite";
 import { resolve } from "path";
 
 /**
@@ -12,15 +11,16 @@ import { resolve } from "path";
  * Features:
  * - Email/password authentication
  * - Session management with 7-day expiry
- * - SQLite database adapter for persistence
+ * - SQLite database URL for persistence
  *
  * @see https://better-auth.com/docs/installation
  */
 export const auth = betterAuth({
-  database: new Database({
-    // Point to the CodeFRAME state database
-    filename: resolve(process.cwd(), "../.codeframe/state.db"),
-  }),
+  database: {
+    // SQLite database URL pointing to CodeFRAME state database
+    url: `file:${resolve(process.cwd(), "../.codeframe/state.db")}`,
+    type: "sqlite",
+  },
 
   // Email and password authentication
   emailAndPassword: {
