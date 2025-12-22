@@ -8,10 +8,14 @@ Endpoints:
 
 import json
 import logging
+import os
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 
 from codeframe.ui.shared import manager
+from codeframe.ui.dependencies import get_db
+from codeframe.persistence.database import Database
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -22,23 +26,21 @@ router = APIRouter(tags=["websocket"])
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket connection for real-time updates.
+async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db)):
+    """WebSocket connection for real-time updates with authentication.
 
     Handles real-time communication between the backend and frontend dashboard.
     Supports ping/pong heartbeat and project subscription messages.
 
-    TODO: Implement authorization for WebSocket connections (Issue #132)
-    WebSocket connections require token-based authentication since they cannot use
-    session cookies like HTTP endpoints. Implementation approach:
-    1. Accept auth token as query parameter: ws://host/ws?token=...
-    2. Validate token and extract user_id on connection
-    3. Store user_id with WebSocket connection in manager
-    4. Check db.user_has_project_access() on subscribe/unsubscribe messages
-    5. Return authorization error if user lacks project access
+    Authentication:
+        - Requires token as query parameter: ws://host/ws?token=YOUR_SESSION_TOKEN
+        - Token is validated against sessions table on connection
+        - User ID is extracted and stored with WebSocket connection
+        - Project access is checked on subscribe/unsubscribe messages
 
     Args:
         websocket: WebSocket connection instance
+        db: Database instance (injected)
 
     Message Types:
         - ping: Client heartbeat (responds with pong)
@@ -67,6 +69,54 @@ async def websocket_endpoint(websocket: WebSocket):
         - task_completed: Task completions
         - blocker_created: New blockers
     """
+    # Authentication: Extract and validate token from query parameters
+    auth_required = os.getenv("AUTH_REQUIRED", "false").lower() == "true"
+    user_id = None  # Will be set if authenticated
+
+    if auth_required:
+        # Get token from query parameter
+        token = websocket.query_params.get("token")
+
+        if not token:
+            # Authentication required but no token provided
+            await websocket.close(code=1008, reason="Authentication required: missing token")
+            return
+
+        # Validate token against sessions table
+        cursor = db.conn.execute(
+            """
+            SELECT s.user_id, s.expires_at
+            FROM sessions s
+            WHERE s.token = ?
+            """,
+            (token,),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            # Invalid token
+            await websocket.close(code=1008, reason="Invalid authentication token")
+            return
+
+        user_id, expires_at_str = row
+
+        # Check if session has expired
+        expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+        if expires_at < datetime.now(timezone.utc):
+            # Expired token - delete session and reject connection
+            db.conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            db.conn.commit()
+            await websocket.close(code=1008, reason="Session expired")
+            return
+
+        logger.info(f"WebSocket authenticated: user_id={user_id}")
+    else:
+        # AUTH_REQUIRED=false: Allow unauthenticated connections (development mode)
+        user_id = 1  # Default admin user
+        logger.warning("WebSocket connection allowed without authentication (AUTH_REQUIRED=false)")
+
+    # Accept WebSocket connection after successful authentication
+    # Note: user_id is captured in closure and used for authorization checks below
     await manager.connect(websocket)
     try:
         while True:
@@ -120,10 +170,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     })
                     continue
 
+                # Authorization check: Verify user has access to project
+                if user_id and not db.user_has_project_access(user_id, project_id):
+                    logger.warning(f"User {user_id} denied access to project {project_id}")
+                    await websocket.send_json({
+                        "type": "error",
+                        "error": "Access denied: you do not have permission to access this project"
+                    })
+                    continue
+
                 # Track subscription
                 try:
                     await manager.subscription_manager.subscribe(websocket, project_id)
-                    logger.info(f"WebSocket subscribed to project {project_id}")
+                    logger.info(f"WebSocket (user_id={user_id}) subscribed to project {project_id}")
                     await websocket.send_json({
                         "type": "subscribed",
                         "project_id": project_id
