@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codeframe.persistence.migrations.migration_011_created_at_not_null import (
+from codeframe.persistence.migrations.archive.migration_011_created_at_not_null import (
     CreatedAtNotNull,
 )
 

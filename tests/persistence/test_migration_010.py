@@ -11,7 +11,7 @@ Tests cover:
 import pytest
 import sqlite3
 
-from codeframe.persistence.migrations.migration_010_pause_functionality import (
+from codeframe.persistence.migrations.archive.migration_010_pause_functionality import (
     PauseFunctionality,
 )
 

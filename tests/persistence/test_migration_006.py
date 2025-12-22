@@ -10,7 +10,7 @@ Tests cover:
 import pytest
 import sqlite3
 
-from codeframe.persistence.migrations.migration_006_mvp_completion import MVPCompletion
+from codeframe.persistence.migrations.archive.migration_006_mvp_completion import MVPCompletion
 
 
 class TestMigration006Upgrade:
