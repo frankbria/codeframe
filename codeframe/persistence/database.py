@@ -126,23 +126,15 @@ class Database:
         )
 
         # Sessions table (authentication)
+        # Note: token is PRIMARY KEY to match Better Auth convention and eliminate redundant id column
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                token TEXT UNIQUE NOT NULL,
+                token TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 expires_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
-
-        # Index on token for fast authentication lookups (O(1) instead of O(n))
-        cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_sessions_token
-            ON sessions(token)
         """
         )
 
