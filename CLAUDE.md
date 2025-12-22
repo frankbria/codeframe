@@ -38,7 +38,7 @@ Quick reference:
 └── docs/             # Additional documentation
 ```
 
-NOTE: This is a pre-production application, so there is no need for database migration scripting or backward compatibility. Keep the schema flat as much as possible.
+NOTE: This is a pre-production application with a flattened v1.0 database schema. The schema uses direct table creation with no migration system.
 
 ## Commands
 ```bash
@@ -93,7 +93,7 @@ python scripts/quality-ratchet.py show
   * **Before**: One project per agent (broken architecture)
   * **After**: Multiple agents (orchestrator, backend, frontend, test, review) collaborate on same project
   * **Tests**: 59/59 passing (100%) - Full multi-agent test coverage
-  * Phase 2: Foundational layer (Pydantic models, migrations, database methods, TokenCounter)
+  * Phase 2: Foundational layer (Pydantic models, database methods, TokenCounter)
   * Phase 3: Context item storage (save/load/get context with persistence)
   * Phase 4: Importance scoring with hybrid exponential decay algorithm (T027-T036)
   * Phase 5: Automatic tier assignment HOT/WARM/COLD (T037-T043, T046)

@@ -12,7 +12,7 @@ def temp_db():
     """Create a temporary in-memory database for testing."""
     # Use in-memory database for speed (no migrations needed)
     db = Database(":memory:")
-    db.initialize(run_migrations=False)
+    db.initialize()
 
     # Create test project
     cursor = db.conn.execute(

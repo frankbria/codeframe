@@ -87,13 +87,8 @@ class Database:
         self._async_conn: Optional[aiosqlite.Connection] = None
         self._async_lock = asyncio.Lock()  # Prevents race condition during lazy init
 
-    def initialize(self, run_migrations: bool = True) -> None:
-        """Initialize database schema.
-
-        Args:
-            run_migrations: Deprecated parameter, kept for backward compatibility.
-                           Migrations have been flattened into v1.0 schema.
-        """
+    def initialize(self) -> None:
+        """Initialize database schema with flattened v1.0 schema."""
         # Create parent directories if needed (skip for in-memory databases)
         if self.db_path != ":memory:":
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -806,75 +801,6 @@ class Database:
             logger.info("Created default admin user (id=1, email='admin@localhost')")
         self.conn.commit()
 
-    def _run_migrations(self) -> None:
-        """Run database migrations.
-
-        Automatically discovers and runs migration scripts from the migrations directory.
-        """
-        try:
-            from codeframe.persistence.migrations import MigrationRunner
-            from codeframe.persistence.migrations.migration_001_remove_agent_type_constraint import (
-                migration as migration_001,
-            )
-            from codeframe.persistence.migrations.migration_002_refactor_projects_schema import (
-                migration as migration_002,
-            )
-            from codeframe.persistence.migrations.migration_003_update_blockers_schema import (
-                migration as migration_003,
-            )
-            from codeframe.persistence.migrations.migration_004_add_context_checkpoints import (
-                migration as migration_004,
-            )
-            from codeframe.persistence.migrations.migration_005_add_context_indexes import (
-                migration as migration_005,
-            )
-            from codeframe.persistence.migrations.migration_006_mvp_completion import (
-                migration as migration_006,
-            )
-            from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
-                migration as migration_007,
-            )
-            from codeframe.persistence.migrations.migration_008_add_session_id import (
-                migration as migration_008,
-            )
-            from codeframe.persistence.migrations.migration_009_add_project_agents import (
-                migration as migration_009,
-            )
-            from codeframe.persistence.migrations.migration_010_pause_functionality import (
-                migration as migration_010,
-            )
-            from codeframe.persistence.migrations.migration_011_created_at_not_null import (
-                migration as migration_011,
-            )
-
-            # Skip migrations for in-memory databases
-            if self.db_path == ":memory:":
-                logger.debug("Skipping migrations for in-memory database")
-                return
-
-            runner = MigrationRunner(str(self.db_path))
-
-            # Register migrations
-            runner.register(migration_001)
-            runner.register(migration_002)
-            runner.register(migration_003)
-            runner.register(migration_004)
-            runner.register(migration_005)
-            runner.register(migration_006)
-            runner.register(migration_007)
-            runner.register(migration_008)
-            runner.register(migration_009)
-            runner.register(migration_010)
-            runner.register(migration_011)
-
-            # Apply all pending migrations
-            runner.apply_all()
-
-        except ImportError as e:
-            logger.warning(f"Migration system not available: {e}")
-        except Exception as e:
-            logger.error(f"Migration failed: {e}")
-            raise
 
     def create_project(
         self,
@@ -1268,12 +1194,12 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps - created_at should never be NULL after migration 011
+        # Parse timestamps - created_at should never be NULL (enforced by schema)
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
         if created_at is None:
             raise ValueError(
                 f"Task {row_id} has NULL created_at - database integrity issue. "
-                "Run migration 011 to backfill NULL values."
+                "The schema enforces NOT NULL on created_at."
             )
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
@@ -1323,12 +1249,12 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps - created_at should never be NULL after migration 011
+        # Parse timestamps - created_at should never be NULL (enforced by schema)
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
         if created_at is None:
             raise ValueError(
                 f"Issue {row_id} has NULL created_at - database integrity issue. "
-                "Run migration 011 to backfill NULL values."
+                "The schema enforces NOT NULL on created_at."
             )
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 

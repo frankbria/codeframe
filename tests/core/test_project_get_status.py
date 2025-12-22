@@ -28,7 +28,7 @@ def test_db():
         db_path = Path(f.name)
 
     db = Database(db_path)
-    db.initialize(run_migrations=False)
+    db.initialize()
 
     yield db
 

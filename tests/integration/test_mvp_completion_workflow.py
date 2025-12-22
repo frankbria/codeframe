@@ -51,7 +51,7 @@ def test_db():
     """Create test database with migrations applied."""
     # Use :memory: database instead of tempfile to avoid WSL filesystem issues
     db = Database(":memory:")
-    db.initialize(run_migrations=True)  # Apply all migrations including 006 and 007
+    db.initialize()  # Apply all migrations including 006 and 007
 
     yield db
 

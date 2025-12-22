@@ -554,7 +554,7 @@ class CheckpointManager:
 
         # Reconnect to restored database
         self.db.conn = None
-        self.db.initialize(run_migrations=False)
+        self.db.initialize()
 
     def _restore_context(self, snapshot_path: str) -> int:
         """Restore context items from JSON snapshot.
