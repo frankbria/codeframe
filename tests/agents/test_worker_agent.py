@@ -20,17 +20,9 @@ from codeframe.persistence.database import Database
 
 @pytest.fixture
 def db():
-    """Create in-memory database for testing with migrations."""
+    """Create in-memory database for testing."""
     database = Database(":memory:")
     database.initialize()
-
-    # Apply Sprint 10 migration for token_usage table
-    from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
-        migration as migration_007,
-    )
-
-    if migration_007.can_apply(database.conn):
-        migration_007.apply(database.conn)
 
     return database
 

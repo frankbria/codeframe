@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.ui.shared import manager, running_agents
 
 # Create router for chat endpoints
@@ -23,7 +24,12 @@ router = APIRouter(prefix="/api/projects/{project_id}/chat", tags=["chat"])
 
 
 @router.post("")
-async def chat_with_lead(project_id: int, message: Dict[str, str], db: Database = Depends(get_db)):
+async def chat_with_lead(
+    project_id: int,
+    message: Dict[str, str],
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Chat with Lead Agent (cf-14.1).
 
     Send user message to Lead Agent and get AI response.
@@ -52,6 +58,10 @@ async def chat_with_lead(project_id: int, message: Dict[str, str], db: Database 
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Check if Lead Agent is running
     agent = running_agents.get(project_id)
@@ -94,7 +104,11 @@ async def chat_with_lead(project_id: int, message: Dict[str, str], db: Database 
 
 @router.get("/history")
 async def get_chat_history(
-    project_id: int, limit: int = 100, offset: int = 0, db: Database = Depends(get_db)
+    project_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get conversation history for a project (cf-14.1).
 
@@ -115,6 +129,10 @@ async def get_chat_history(
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get conversation history from database
     db_messages = db.get_conversation(project_id)

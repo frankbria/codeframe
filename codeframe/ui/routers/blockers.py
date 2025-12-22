@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.ui.shared import manager
 from codeframe.core.models import BlockerResolve
 
@@ -23,7 +24,10 @@ router = APIRouter(prefix="/api/projects/{project_id}/blockers", tags=["blockers
 
 @router.get("")
 async def get_project_blockers(
-    project_id: int, status: Optional[str] = None, db: Database = Depends(get_db)
+    project_id: int,
+    status: Optional[str] = None,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get blockers for a project (049-human-in-loop).
 
@@ -49,6 +53,10 @@ async def get_project_blockers(
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get blockers from database
     blockers_data = db.list_blockers(project_id, status)
 
@@ -56,7 +64,11 @@ async def get_project_blockers(
 
 
 @router.get("/metrics")
-async def get_blocker_metrics_endpoint(project_id: int, db: Database = Depends(get_db)):
+async def get_blocker_metrics_endpoint(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get blocker metrics for a project (049-human-in-loop, Phase 10/T062).
 
     Provides analytics on blocker resolution times and expiration rates.
@@ -95,6 +107,10 @@ async def get_blocker_metrics_endpoint(project_id: int, db: Database = Depends(g
             status_code=404, detail={"error": "Project not found", "project_id": project_id}
         )
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get metrics
     metrics = db.get_blocker_metrics(project_id)
     return metrics
@@ -105,7 +121,11 @@ blocker_router = APIRouter(prefix="/api/blockers", tags=["blockers"])
 
 
 @blocker_router.get("/{blocker_id}")
-async def get_blocker(blocker_id: int, db: Database = Depends(get_db)):
+async def get_blocker(
+    blocker_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get details of a specific blocker (049-human-in-loop).
 
     Args:
@@ -124,12 +144,20 @@ async def get_blocker(blocker_id: int, db: Database = Depends(get_db)):
     if not blocker:
         raise HTTPException(status_code=404, detail=f"Blocker {blocker_id} not found")
 
+    # Authorization check - verify user has access to the blocker's project
+    project_id = blocker.get("project_id")
+    if project_id and not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     return blocker
 
 
 @blocker_router.post("/{blocker_id}/resolve")
 async def resolve_blocker_endpoint(
-    blocker_id: int, request: BlockerResolve, db: Database = Depends(get_db)
+    blocker_id: int,
+    request: BlockerResolve,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Resolve a blocker with user's answer (049-human-in-loop, Phase 4/US2).
 
@@ -172,6 +200,11 @@ async def resolve_blocker_endpoint(
         raise HTTPException(
             status_code=404, detail={"error": "Blocker not found", "blocker_id": blocker_id}
         )
+
+    # Authorization check - verify user has access to the blocker's project
+    project_id = blocker.get("project_id")
+    if project_id and not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Attempt to resolve blocker (returns False if already resolved)
     success = db.resolve_blocker(blocker_id, request.answer)

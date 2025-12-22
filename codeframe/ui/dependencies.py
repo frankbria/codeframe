@@ -45,3 +45,9 @@ def get_workspace_manager(request: Request) -> WorkspaceManager:
             ...
     """
     return request.app.state.workspace_manager
+
+
+__all__ = [
+    "get_db",
+    "get_workspace_manager",
+]

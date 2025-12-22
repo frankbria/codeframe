@@ -16,14 +16,6 @@ def db():
     database = Database(":memory:")
     database.initialize()
 
-    # Manually apply Sprint 10 migration for in-memory database
-    from codeframe.persistence.migrations.migration_007_sprint10_review_polish import (
-        migration as migration_007,
-    )
-
-    if migration_007.can_apply(database.conn):
-        migration_007.apply(database.conn)
-
     # Create test project
     cursor = database.conn.cursor()
     cursor.execute(

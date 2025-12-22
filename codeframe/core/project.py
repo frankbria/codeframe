@@ -119,7 +119,10 @@ class Project:
         project.db.initialize()
 
         # Create initial project record
-        project.db.create_project(project_name, ProjectStatus.INIT)
+        project.db.create_project(
+            name=project_name,
+            description=""
+        )
 
         return project
 

@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from codeframe.lib.metrics_tracker import MetricsTracker
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ async def get_project_token_metrics(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get token usage metrics for a project (T127).
 
@@ -85,6 +87,10 @@ async def get_project_token_metrics(
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Parse and validate date parameters
     start_dt = None
     end_dt = None
@@ -128,7 +134,11 @@ async def get_project_token_metrics(
 
 
 @router.get("/api/projects/{project_id}/metrics/costs")
-async def get_project_cost_metrics(project_id: int, db: Database = Depends(get_db)):
+async def get_project_cost_metrics(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get cost breakdown for a project (T128).
 
     Sprint 10 - Phase 5: Metrics & Cost Tracking
@@ -190,6 +200,10 @@ async def get_project_cost_metrics(project_id: int, db: Database = Depends(get_d
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     try:
         # Get project costs using MetricsTracker
         tracker = MetricsTracker(db=db)
@@ -208,7 +222,10 @@ async def get_project_cost_metrics(project_id: int, db: Database = Depends(get_d
 
 @router.get("/api/agents/{agent_id}/metrics")
 async def get_agent_metrics(
-    agent_id: str, project_id: Optional[int] = None, db: Database = Depends(get_db)
+    agent_id: str,
+    project_id: Optional[int] = None,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Get metrics for a specific agent (T129).
 
@@ -264,10 +281,67 @@ async def get_agent_metrics(
             ]
         }
     """
+    # Authorization check - if project_id provided, verify access
+    if project_id is not None:
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        if not db.user_has_project_access(current_user.id, project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+
     try:
         # Get agent costs using MetricsTracker
         tracker = MetricsTracker(db=db)
         costs = await tracker.get_agent_costs(agent_id=agent_id)
+
+        # Security: Filter by_project to only include projects the user has access to
+        # This prevents cross-project data leakage when project_id is not specified
+        if project_id is None:
+            # Get user's accessible projects
+            user_projects = db.get_user_projects(current_user.id)
+            accessible_project_ids = {p["id"] for p in user_projects}
+
+            # Filter by_project to only include accessible projects
+            costs["by_project"] = [
+                p for p in costs["by_project"]
+                if p["project_id"] in accessible_project_ids
+            ]
+
+            # Recalculate totals based on filtered projects
+            # Get all usage records for this agent across accessible projects only
+            all_usage_records = []
+            for proj_id in accessible_project_ids:
+                project_records = db.get_token_usage(agent_id=agent_id, project_id=proj_id)
+                all_usage_records.extend(project_records)
+
+            # Recalculate aggregates
+            total_cost = sum(r["estimated_cost_usd"] for r in all_usage_records)
+            total_tokens = sum(r["input_tokens"] + r["output_tokens"] for r in all_usage_records)
+            total_calls = len(all_usage_records)
+
+            # Aggregate by call type
+            call_type_stats = {}
+            for record in all_usage_records:
+                call_type = record["call_type"]
+                if call_type not in call_type_stats:
+                    call_type_stats[call_type] = {
+                        "call_type": call_type,
+                        "cost_usd": 0.0,
+                        "calls": 0,
+                    }
+                call_type_stats[call_type]["cost_usd"] += record["estimated_cost_usd"]
+                call_type_stats[call_type]["calls"] += 1
+
+            # Round costs
+            for stats in call_type_stats.values():
+                stats["cost_usd"] = round(stats["cost_usd"], 6)
+
+            # Update costs with filtered data
+            costs["total_cost_usd"] = round(total_cost, 6)
+            costs["total_tokens"] = total_tokens
+            costs["total_calls"] = total_calls
+            costs["by_call_type"] = list(call_type_stats.values())
+            # by_project already filtered above
 
         # If project_id is specified, filter the results
         if project_id is not None:
@@ -302,10 +376,10 @@ async def get_agent_metrics(
                     call_type_stats[call_type] = {
                         "call_type": call_type,
                         "cost_usd": 0.0,
-                        "call_count": 0,
+                        "calls": 0,
                     }
                 call_type_stats[call_type]["cost_usd"] += record["estimated_cost_usd"]
-                call_type_stats[call_type]["call_count"] += 1
+                call_type_stats[call_type]["calls"] += 1
 
             # Round costs
             for stats in call_type_stats.values():

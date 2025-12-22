@@ -132,15 +132,9 @@ class TestCompositeIndexPerformance:
 
 @pytest_asyncio.fixture
 async def db_with_index():
-    """Create database WITH composite index"""
+    """Create database WITH composite index (normal schema)"""
     db = Database(":memory:")
-    db.initialize(run_migrations=False)  # Don't run migrations yet
-
-    # Apply migration to create composite index
-    from codeframe.persistence.migrations.migration_006_mvp_completion import MVPCompletion
-
-    migration = MVPCompletion()
-    migration.apply(db.conn)
+    db.initialize()  # Index is now part of base schema
 
     yield db
     db.close()
@@ -148,12 +142,13 @@ async def db_with_index():
 
 @pytest_asyncio.fixture
 async def db_without_index():
-    """Create database WITHOUT composite index (baseline)"""
+    """Create database WITHOUT composite index (baseline for comparison)"""
     db = Database(":memory:")
-    db.initialize(run_migrations=False)  # Don't run migrations
+    db.initialize()  # Create tables with index
 
-    # Do NOT apply migration_006 to keep as baseline
-    # Just ensure context_items table exists (should from initialize())
+    # Drop the composite index to create baseline for performance comparison
+    db.conn.execute("DROP INDEX IF EXISTS idx_context_project_agent")
+    db.conn.commit()
 
     yield db
     db.close()

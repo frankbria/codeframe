@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.ui.shared import manager
 from codeframe.core.models import ContextItemResponse
 from codeframe.lib.context_manager import ContextManager
@@ -27,7 +28,7 @@ async def list_context_items(
     tier: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
-    db: Database = Depends(get_db),
+    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """List context items for an agent with optional filters (T021).
 
@@ -50,6 +51,15 @@ async def list_context_items(
         HTTPException:
             - 422: Invalid request (validation error)
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get context items from database (returns a list, not a dict)
     items_list = db.list_context_items(
         project_id=project_id, agent_id=agent_id, tier=tier, limit=limit, offset=offset
@@ -76,7 +86,7 @@ async def list_context_items(
 
 @router.delete("/api/agents/{agent_id}/context/{item_id}", status_code=204)
 async def delete_context_item(
-    agent_id: str, item_id: str, project_id: int, db: Database = Depends(get_db)
+    agent_id: str, item_id: str, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Delete a context item (T022).
 
@@ -94,6 +104,15 @@ async def delete_context_item(
             - 404: Context item not found
             - 403: Context item does not belong to specified agent/project
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Check if item exists
     item = db.get_context_item(item_id)
 
@@ -121,7 +140,7 @@ async def delete_context_item(
 
 
 @router.post("/api/agents/{agent_id}/context/update-scores", response_model=dict)
-async def update_context_scores(agent_id: str, project_id: int, db: Database = Depends(get_db)):
+async def update_context_scores(agent_id: str, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Recalculate importance scores for all context items (T033).
 
     Triggers batch recalculation of importance scores for all context items
@@ -147,6 +166,15 @@ async def update_context_scores(agent_id: str, project_id: int, db: Database = D
         POST /api/agents/backend-worker-001/context/update-scores?project_id=123
         Response: {"updated_count": 150}
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Create context manager
     context_mgr = ContextManager(db=db)
 
@@ -157,7 +185,7 @@ async def update_context_scores(agent_id: str, project_id: int, db: Database = D
 
 
 @router.post("/api/agents/{agent_id}/context/update-tiers", response_model=dict)
-async def update_context_tiers(agent_id: str, project_id: int, db: Database = Depends(get_db)):
+async def update_context_tiers(agent_id: str, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Recalculate scores and reassign tiers for all context items (T042).
 
     Triggers batch recalculation of importance scores AND tier reassignment
@@ -182,6 +210,15 @@ async def update_context_tiers(agent_id: str, project_id: int, db: Database = De
         POST /api/agents/backend-worker-001/context/update-tiers?project_id=123
         Response: {"updated_count": 150}
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Create context manager
     context_mgr = ContextManager(db=db)
 
@@ -193,7 +230,7 @@ async def update_context_tiers(agent_id: str, project_id: int, db: Database = De
 
 @router.post("/api/agents/{agent_id}/flash-save")
 async def flash_save_context(
-    agent_id: str, project_id: int, force: bool = False, db: Database = Depends(get_db)
+    agent_id: str, project_id: int, force: bool = False, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Trigger flash save for an agent's context (T054).
 
@@ -223,6 +260,15 @@ async def flash_save_context(
             "warm_items_retained": 15
         }
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Create context manager
     context_mgr = ContextManager(db=db)
 
@@ -255,7 +301,11 @@ async def flash_save_context(
 
 @router.get("/api/agents/{agent_id}/flash-save/checkpoints")
 async def list_flash_save_checkpoints(
-    agent_id: str, limit: int = 10, db: Database = Depends(get_db)
+    agent_id: str,
+    project_id: int,
+    limit: int = 10,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List checkpoints for an agent (T055).
 
@@ -264,6 +314,7 @@ async def list_flash_save_checkpoints(
 
     Args:
         agent_id: Agent ID to list checkpoints for
+        project_id: Project ID for authorization (query parameter)
         limit: Maximum number of checkpoints to return (default: 10, max: 100)
         db: Database instance (injected)
 
@@ -271,7 +322,7 @@ async def list_flash_save_checkpoints(
         200 OK: List of checkpoint metadata objects
 
     Example:
-        GET /api/agents/backend-worker-001/flash-save/checkpoints?limit=5
+        GET /api/agents/backend-worker-001/flash-save/checkpoints?project_id=123&limit=5
         Response: [
             {
                 "id": 42,
@@ -285,21 +336,48 @@ async def list_flash_save_checkpoints(
             ...
         ]
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Clamp limit to reasonable range
     limit = min(max(limit, 1), 100)
 
-    # Get checkpoints from database
-    checkpoints = db.list_checkpoints(agent_id, limit=limit)
+    # Get checkpoints from database (all checkpoints for this agent)
+    all_checkpoints = db.list_checkpoints(agent_id, limit=limit * 2)  # Get more to account for filtering
 
-    # Remove checkpoint_data from response (too large)
-    for checkpoint in checkpoints:
-        checkpoint.pop("checkpoint_data", None)
+    # Security: Filter checkpoints to only include those for this project
+    # The checkpoint_data JSON includes project_id, so we parse and filter
+    import json
 
-    return checkpoints
+    filtered_checkpoints = []
+    for checkpoint in all_checkpoints:
+        checkpoint_data_str = checkpoint.get("checkpoint_data", "{}")
+        try:
+            checkpoint_data = json.loads(checkpoint_data_str)
+            # Check if checkpoint belongs to requested project
+            if checkpoint_data.get("project_id") == project_id:
+                # Remove checkpoint_data from response (too large)
+                checkpoint.pop("checkpoint_data", None)
+                filtered_checkpoints.append(checkpoint)
+
+                # Stop when we have enough checkpoints
+                if len(filtered_checkpoints) >= limit:
+                    break
+        except json.JSONDecodeError:
+            # Skip malformed checkpoints
+            continue
+
+    return filtered_checkpoints
 
 
 @router.get("/api/agents/{agent_id}/context/stats")
-async def get_context_stats(agent_id: str, project_id: int, db: Database = Depends(get_db)):
+async def get_context_stats(agent_id: str, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get context statistics for an agent (T067).
 
     Returns tier counts and token usage breakdown for an agent's context.
@@ -329,6 +407,15 @@ async def get_context_stats(agent_id: str, project_id: int, db: Database = Depen
             "calculated_at": "2025-11-14T10:30:00Z"
         }
     """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get all context items for this agent
     hot_items = db.list_context_items(
         project_id=project_id, agent_id=agent_id, tier="hot", limit=10000
@@ -377,7 +464,7 @@ async def get_context_items(
     project_id: int,
     tier: Optional[str] = None,
     limit: int = 100,
-    db: Database = Depends(get_db),
+    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Get context items for an agent, optionally filtered by tier.
 
@@ -399,11 +486,22 @@ async def get_context_items(
     # Clamp limit to reasonable range
     limit = min(max(limit, 1), 1000)
 
-    # Validate tier if provided
-    if tier and tier not in ["hot", "warm", "cold"]:
-        raise HTTPException(
-            status_code=400, detail="Invalid tier. Must be 'hot', 'warm', or 'cold'"
-        )
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Normalize and validate tier if provided
+    if tier:
+        tier = tier.lower()
+        if tier not in ["hot", "warm", "cold"]:
+            raise HTTPException(
+                status_code=400, detail="Invalid tier. Must be 'hot', 'warm', or 'cold'"
+            )
 
     # Get items from database
     items = db.list_context_items(project_id=project_id, agent_id=agent_id, tier=tier, limit=limit)

@@ -1,6 +1,7 @@
 """Database management for CodeFRAME state."""
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,12 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+# Audit verbosity configuration (performance optimization to avoid repeated os.getenv calls)
+AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
+if AUDIT_VERBOSITY not in ("low", "high"):
+    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
+    AUDIT_VERBOSITY = "low"
 
 
 class Database:
@@ -104,13 +111,47 @@ class Database:
         """Create database tables."""
         cursor = self.conn.cursor()
 
-        # Projects table
+        # Users table (authentication)
+        # Better Auth (v1.4.7) uses this table for user management
+        # password_hash is managed by Better Auth using bcrypt hashing
+        # Frontend: /api/auth/sign-up, /api/auth/sign-in (web-ui/src/app/api/auth/[...all]/route.ts)
+        # Backend: Validates sessions created by Better Auth (codeframe/ui/auth.py)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,  -- Better Auth bcrypt hashes
+                name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        # Sessions table (authentication)
+        # Note: token is PRIMARY KEY to match Better Auth convention and eliminate redundant id column
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        # Projects table (parent table - must come before project_users)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT NOT NULL,
+
+                -- Owner tracking (authentication)
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
 
                 -- Source tracking (optional, can be set during setup or later)
                 source_type TEXT CHECK(source_type IN ('git_remote', 'local_path', 'upload', 'empty')) DEFAULT 'empty',
@@ -131,6 +172,19 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 paused_at TIMESTAMP NULL,
                 config JSON
+            )
+        """
+        )
+
+        # Project users table (authorization - references projects.id)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_users (
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK(role IN ('owner', 'collaborator', 'viewer')),
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (project_id, user_id)
             )
         """
         )
@@ -388,6 +442,14 @@ class Database:
         """
         )
 
+        # Composite index on context_items for multi-agent queries
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_context_project_agent
+            ON context_items(project_id, agent_id, current_tier)
+        """
+        )
+
         # Checkpoints table
         cursor.execute(
             """
@@ -616,6 +678,22 @@ class Database:
         """
         )
 
+        # Audit logs table (Issue #132 - Authentication & Authorization)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                resource_type TEXT NOT NULL,
+                resource_id INTEGER,
+                ip_address TEXT,
+                metadata TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
         # Token usage indexes
         cursor.execute(
             """
@@ -644,6 +722,88 @@ class Database:
         """
         )
 
+        # Audit logs indexes (Issue #132)
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id
+            ON audit_logs(user_id, timestamp DESC)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type
+            ON audit_logs(event_type, timestamp DESC)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_resource
+            ON audit_logs(resource_type, resource_id, timestamp DESC)
+        """
+        )
+
+        # Authentication indexes
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_users_email
+            ON users(email)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sessions_user_id
+            ON sessions(user_id)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
+            ON sessions(expires_at)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_users_user_id
+            ON project_users(user_id)
+        """
+        )
+        # Composite index for faster authorization checks (user_has_project_access)
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_users_user_project
+            ON project_users(user_id, project_id)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_projects_user_id
+            ON projects(user_id)
+        """
+        )
+
+        self.conn.commit()
+
+        # Ensure default admin user exists (for AUTH_REQUIRED=false mode)
+        self._ensure_default_admin_user()
+
+    def _ensure_default_admin_user(self) -> None:
+        """Ensure default admin user exists in database.
+
+        Creates admin user with id=1 if it doesn't exist. This is used
+        when AUTH_REQUIRED=false to provide a default user for development.
+
+        Uses INSERT OR IGNORE to avoid conflicts with test fixtures.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO users (id, email, password_hash, name)
+            VALUES (1, 'admin@localhost', '', 'Admin User')
+            """
+        )
+        # Only log if user was actually created (rowcount > 0)
+        if cursor.rowcount > 0:
+            logger.info("Created default admin user (id=1, email='admin@localhost')")
         self.conn.commit()
 
     def _run_migrations(self) -> None:
@@ -724,6 +884,7 @@ class Database:
         source_location: Optional[str] = None,
         source_branch: str = "main",
         workspace_path: Optional[str] = None,
+        user_id: Optional[int] = None,
         **kwargs,
     ) -> int:
         """Create a new project.
@@ -735,6 +896,7 @@ class Database:
             source_location: Git URL, local path, or upload filename
             source_branch: Git branch (for git_remote)
             workspace_path: Path to workspace directory
+            user_id: ID of the user creating the project (owner)
             **kwargs: Additional fields (config, status, etc.)
 
         Returns:
@@ -745,9 +907,9 @@ class Database:
             """
             INSERT INTO projects (
                 name, description, source_type, source_location,
-                source_branch, workspace_path, git_initialized, status
+                source_branch, workspace_path, git_initialized, status, user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -758,24 +920,53 @@ class Database:
                 workspace_path or "",
                 False,  # Will be set to True after workspace initialization
                 "init",  # Default status
+                user_id,
             ),
         )
         self.conn.commit()
-        return cursor.lastrowid
+        project_id = cursor.lastrowid
 
-    def get_project(self, project_id: int) -> Optional[Project]:
-        """Get project by ID.
+        # Automatically add owner to project_users table
+        if user_id is not None:
+            cursor.execute(
+                """
+                INSERT INTO project_users (project_id, user_id, role)
+                VALUES (?, ?, 'owner')
+                """,
+                (project_id, user_id),
+            )
+            self.conn.commit()
+
+        # Log project creation
+        if user_id is not None:
+            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+            audit = AuditLogger(self)
+            audit.log_project_event(
+                event_type=AuditEventType.PROJECT_CREATED,
+                user_id=user_id,
+                project_id=project_id,
+                ip_address=None,  # TODO: Pass from request context
+                metadata={"name": name, "source_type": source_type},
+            )
+
+        return project_id
+
+    def get_project(self, project_identifier: int | str) -> Optional[dict]:
+        """Get project by ID or name.
 
         Args:
-            project_id: Project ID
+            project_identifier: Project ID (int) or project name (str)
 
         Returns:
-            Project object or None if not found
+            Project dictionary or None if not found
         """
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        if isinstance(project_identifier, int):
+            cursor.execute("SELECT * FROM projects WHERE id = ?", (project_identifier,))
+        else:
+            cursor.execute("SELECT * FROM projects WHERE name = ?", (project_identifier,))
         row = cursor.fetchone()
-        return self._row_to_project(row) if row else None
+        return dict(row) if row else None
 
     def create_issue(self, issue: Issue | dict) -> int:
         """Create a new issue.
@@ -1612,6 +1803,253 @@ class Database:
 
         return projects
 
+    def user_has_project_access(self, user_id: int, project_id: int) -> bool:
+        """Check if a user has access to a project.
+
+        Checks both ownership (projects.user_id) and collaborator access (project_users table).
+
+        Performance Note:
+            By default, only access DENIALS are logged to avoid excessive DB writes.
+            Set AUDIT_VERBOSITY=high to log all access checks (owner + collaborator grants).
+
+        Args:
+            user_id: ID of the user
+            project_id: ID of the project
+
+        Returns:
+            True if user is owner or has collaborator/viewer access, False otherwise
+        """
+        cursor = self.conn.cursor()
+
+        # Check if user is the project owner
+        cursor.execute(
+            "SELECT 1 FROM projects WHERE id = ? AND user_id = ?",
+            (project_id, user_id),
+        )
+        if cursor.fetchone():
+            # Only log if verbose auditing enabled (performance optimization)
+            if AUDIT_VERBOSITY == "high":
+                from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+                audit = AuditLogger(self)
+                audit.log_authz_event(
+                    event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
+                    user_id=user_id,
+                    resource_type="project",
+                    resource_id=project_id,
+                    granted=True,
+                    ip_address=None,  # TODO: Pass from request context
+                    metadata={"access_type": "owner"},
+                )
+            return True
+
+        # Check if user has collaborator/viewer access
+        cursor.execute(
+            "SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?",
+            (project_id, user_id),
+        )
+        has_access = cursor.fetchone() is not None
+
+        # Log authorization result
+        from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+        audit = AuditLogger(self)
+        if has_access:
+            # Only log if verbose auditing enabled (performance optimization)
+            if AUDIT_VERBOSITY == "high":
+                audit.log_authz_event(
+                    event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
+                    user_id=user_id,
+                    resource_type="project",
+                    resource_id=project_id,
+                    granted=True,
+                    ip_address=None,  # TODO: Pass from request context
+                    metadata={"access_type": "collaborator"},
+                )
+        else:
+            # ALWAYS log access denials for security monitoring
+            audit.log_authz_event(
+                event_type=AuditEventType.AUTHZ_ACCESS_DENIED,
+                user_id=user_id,
+                resource_type="project",
+                resource_id=project_id,
+                granted=False,
+                ip_address=None,  # TODO: Pass from request context
+                metadata={"reason": "No access"},
+            )
+
+        return has_access
+
+    async def cleanup_expired_sessions(self) -> int:
+        """Delete expired sessions from the database.
+
+        This should be called periodically (e.g., every hour) to prevent
+        the sessions table from growing indefinitely.
+
+        Returns:
+            Number of sessions deleted
+        """
+        from datetime import datetime, timezone
+
+        conn = await self._get_async_conn()
+
+        # Delete sessions where expires_at < now
+        cursor = await conn.execute(
+            """
+            DELETE FROM sessions
+            WHERE datetime(expires_at) < datetime(?)
+            """,
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+
+        deleted_count = cursor.rowcount
+        await conn.commit()
+
+        return deleted_count
+
+    async def cleanup_old_audit_logs(self, retention_days: int = 90) -> int:
+        """Delete audit logs older than the retention period.
+
+        This should be called periodically (e.g., daily) to prevent
+        the audit_logs table from growing indefinitely.
+
+        Args:
+            retention_days: Number of days to retain audit logs (default: 90)
+
+        Returns:
+            Number of audit log entries deleted
+        """
+        from datetime import datetime, timezone, timedelta
+
+        conn = await self._get_async_conn()
+
+        # Calculate cutoff date
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+        # Delete audit logs older than retention period
+        cursor = await conn.execute(
+            """
+            DELETE FROM audit_logs
+            WHERE datetime(timestamp) < datetime(?)
+            """,
+            (cutoff_date.isoformat(),),
+        )
+
+        deleted_count = cursor.rowcount
+        await conn.commit()
+
+        return deleted_count
+
+    def get_user_projects(self, user_id: int) -> List[Dict[str, Any]]:
+        """Get all projects accessible to a user with progress metrics.
+
+        Returns projects where the user is either:
+        - The owner (projects.user_id matches)
+        - A collaborator/viewer (exists in project_users table)
+
+        Performance: Single query using LEFT JOIN to calculate progress for all projects.
+
+        Args:
+            user_id: ID of the user
+
+        Returns:
+            List of project dictionaries with progress metrics
+        """
+        cursor = self.conn.cursor()
+
+        # Single query with progress calculation using LEFT JOIN and aggregation
+        # Fixes N+1 query issue: 100 projects = 1 query instead of 101
+        cursor.execute(
+            """
+            SELECT DISTINCT
+                p.*,
+                COALESCE(task_stats.total_tasks, 0) as total_tasks,
+                COALESCE(task_stats.completed_tasks, 0) as completed_tasks,
+                COALESCE(task_stats.percentage, 0.0) as percentage
+            FROM projects p
+            LEFT JOIN project_users pu ON p.id = pu.project_id
+            LEFT JOIN (
+                SELECT
+                    project_id,
+                    COUNT(*) as total_tasks,
+                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_tasks,
+                    CASE
+                        WHEN COUNT(*) > 0
+                        THEN CAST(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) * 100.0
+                        ELSE 0.0
+                    END as percentage
+                FROM tasks
+                GROUP BY project_id
+            ) task_stats ON p.id = task_stats.project_id
+            WHERE p.user_id = ? OR pu.user_id = ?
+            ORDER BY p.created_at DESC
+            """,
+            (user_id, user_id),
+        )
+        rows = cursor.fetchall()
+
+        projects = []
+        for row in rows:
+            project = dict(row)
+
+            # Extract progress metrics from the joined columns
+            progress = {
+                "completed_tasks": project.pop("completed_tasks"),
+                "total_tasks": project.pop("total_tasks"),
+                "percentage": project.pop("percentage"),
+            }
+            project["progress"] = progress
+
+            projects.append(project)
+
+        return projects
+
+    def create_audit_log(
+        self,
+        event_type: str,
+        user_id: Optional[int],
+        resource_type: str,
+        resource_id: Optional[int],
+        ip_address: Optional[str],
+        metadata: Optional[Dict[str, Any]],
+        timestamp: datetime,
+    ) -> int:
+        """Create an audit log entry (Issue #132).
+
+        Args:
+            event_type: Type of event (e.g., "auth.login.success")
+            user_id: User ID (if authenticated)
+            resource_type: Type of resource (e.g., "project", "task")
+            resource_id: ID of the resource
+            ip_address: Client IP address
+            metadata: Additional event metadata (stored as JSON)
+            timestamp: Event timestamp
+
+        Returns:
+            ID of the created audit log entry
+        """
+        import json
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO audit_logs (
+                event_type, user_id, resource_type, resource_id,
+                ip_address, metadata, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_type,
+                user_id,
+                resource_type,
+                resource_id,
+                ip_address,
+                json.dumps(metadata) if metadata else None,
+                timestamp.isoformat(),
+            ),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
+
     def _calculate_project_progress(self, project_id: int) -> Dict[str, Any]:
         """Calculate task completion progress for a project.
 
@@ -1653,6 +2091,9 @@ class Database:
     def update_project(self, project_id: int, updates: Dict[str, Any]) -> int:
         """Update project fields.
 
+        TODO(Issue #132): Add audit logging for PROJECT_UPDATED event.
+        Requires adding user_id parameter and updating all callers.
+
         Args:
             project_id: Project ID to update
             updates: Dictionary of fields to update
@@ -1686,6 +2127,10 @@ class Database:
 
     def delete_project(self, project_id: int) -> None:
         """Delete a project.
+
+        TODO(Issue #132): Add audit logging for PROJECT_DELETED event.
+        Requires adding user_id parameter to distinguish user-initiated
+        deletions from automatic cleanup operations.
 
         Args:
             project_id: Project ID to delete

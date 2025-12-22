@@ -15,6 +15,7 @@ import uuid
 
 from codeframe.ui.models import QualityGatesRequest
 from codeframe.ui.dependencies import get_db
+from codeframe.ui.auth import get_current_user, User
 from codeframe.ui.shared import manager
 from codeframe.persistence.database import Database
 from codeframe.lib.quality_gates import QualityGates
@@ -34,7 +35,11 @@ router = APIRouter(tags=["quality-gates"])
 
 
 @router.get("/api/tasks/{task_id}/quality-gates")
-async def get_quality_gate_status(task_id: int, db: Database = Depends(get_db)):
+async def get_quality_gate_status(
+    task_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get quality gate status for a task (T064).
 
     Sprint 10 - Phase 3: Quality Gates API
@@ -74,6 +79,11 @@ async def get_quality_gate_status(task_id: int, db: Database = Depends(get_db)):
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
+    # Authorization check - get project_id from task
+    project_id = task.project_id
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Get quality gate status from database
     status_data = db.get_quality_gate_status(task_id)
 
@@ -93,6 +103,7 @@ async def trigger_quality_gates(
     background_tasks: BackgroundTasks,
     request: QualityGatesRequest = QualityGatesRequest(),
     db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Manually trigger quality gates for a task (T065).
 
@@ -157,6 +168,10 @@ async def trigger_quality_gates(
     project_id = task_data.project_id
     if not project_id:
         raise HTTPException(status_code=500, detail=f"Task {task_id} has no project_id")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     # Get project workspace path
     project = db.get_project(project_id)
