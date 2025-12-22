@@ -180,7 +180,7 @@ async def get_current_user(
         user_id=user_id,
         email=email,
         ip_address=client_ip,
-        metadata={"session_id": token},
+        metadata={"session_id": f"...{token[-8:]}" if token else None},  # Only log last 8 chars for security
     )
 
     return User(id=user_id, email=email, name=name)
