@@ -1755,6 +1755,10 @@ class Database:
 
         Checks both ownership (projects.user_id) and collaborator access (project_users table).
 
+        Performance Note:
+            By default, only access DENIALS are logged to avoid excessive DB writes.
+            Set AUDIT_VERBOSITY=high to log all access checks (owner + collaborator grants).
+
         Args:
             user_id: ID of the user
             project_id: ID of the project
@@ -1762,7 +1766,11 @@ class Database:
         Returns:
             True if user is owner or has collaborator/viewer access, False otherwise
         """
+        import os
         cursor = self.conn.cursor()
+
+        # Check audit verbosity setting
+        audit_verbosity = os.getenv("AUDIT_VERBOSITY", "low").lower()
 
         # Check if user is the project owner
         cursor.execute(
@@ -1770,18 +1778,19 @@ class Database:
             (project_id, user_id),
         )
         if cursor.fetchone():
-            # Log access granted (owner)
-            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
-            audit = AuditLogger(self)
-            audit.log_authz_event(
-                event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
-                user_id=user_id,
-                resource_type="project",
-                resource_id=project_id,
-                granted=True,
-                ip_address=None,  # TODO: Pass from request context
-                metadata={"access_type": "owner"},
-            )
+            # Only log if verbose auditing enabled (performance optimization)
+            if audit_verbosity == "high":
+                from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+                audit = AuditLogger(self)
+                audit.log_authz_event(
+                    event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
+                    user_id=user_id,
+                    resource_type="project",
+                    resource_id=project_id,
+                    granted=True,
+                    ip_address=None,  # TODO: Pass from request context
+                    metadata={"access_type": "owner"},
+                )
             return True
 
         # Check if user has collaborator/viewer access
@@ -1795,16 +1804,19 @@ class Database:
         from codeframe.lib.audit_logger import AuditLogger, AuditEventType
         audit = AuditLogger(self)
         if has_access:
-            audit.log_authz_event(
-                event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
-                user_id=user_id,
-                resource_type="project",
-                resource_id=project_id,
-                granted=True,
-                ip_address=None,  # TODO: Pass from request context
-                metadata={"access_type": "collaborator"},
-            )
+            # Only log if verbose auditing enabled (performance optimization)
+            if audit_verbosity == "high":
+                audit.log_authz_event(
+                    event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
+                    user_id=user_id,
+                    resource_type="project",
+                    resource_id=project_id,
+                    granted=True,
+                    ip_address=None,  # TODO: Pass from request context
+                    metadata={"access_type": "collaborator"},
+                )
         else:
+            # ALWAYS log access denials for security monitoring
             audit.log_authz_event(
                 event_type=AuditEventType.AUTHZ_ACCESS_DENIED,
                 user_id=user_id,
@@ -1816,6 +1828,33 @@ class Database:
             )
 
         return has_access
+
+    def cleanup_expired_sessions(self) -> int:
+        """Delete expired sessions from the database.
+
+        This should be called periodically (e.g., every hour) to prevent
+        the sessions table from growing indefinitely.
+
+        Returns:
+            Number of sessions deleted
+        """
+        from datetime import datetime, timezone
+
+        cursor = self.conn.cursor()
+
+        # Delete sessions where expires_at < now
+        cursor.execute(
+            """
+            DELETE FROM sessions
+            WHERE datetime(expires_at) < datetime(?)
+            """,
+            (datetime.now(timezone.utc).isoformat(),),
+        )
+
+        deleted_count = cursor.rowcount
+        self.conn.commit()
+
+        return deleted_count
 
     def get_user_projects(self, user_id: int) -> List[Dict[str, Any]]:
         """Get all projects accessible to a user.

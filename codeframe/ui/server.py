@@ -1,6 +1,7 @@
 """FastAPI Status Server for CodeFRAME."""
 
 # Standard library imports
+import asyncio
 import logging
 import os
 import subprocess
@@ -76,6 +77,58 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
+def _validate_auth_config():
+    """Validate authentication configuration at startup.
+
+    Prevents accidental production deployment with authentication disabled.
+
+    Raises:
+        RuntimeError: If AUTH_REQUIRED=false in production environment
+    """
+    auth_required = os.getenv("AUTH_REQUIRED", "false").lower() == "true"
+    deployment_mode = get_deployment_mode()
+
+    # In production (hosted mode), authentication must be enabled
+    if deployment_mode == DeploymentMode.HOSTED and not auth_required:
+        raise RuntimeError(
+            "CRITICAL: AUTH_REQUIRED must be 'true' in production (DEPLOYMENT_MODE=hosted). "
+            "Running with AUTH_REQUIRED=false grants all requests admin access (user_id=1). "
+            "Set AUTH_REQUIRED=true to enable authentication."
+        )
+
+    # Log authentication status on startup
+    logger = logging.getLogger(__name__)
+    if auth_required:
+        logger.info("🔒 Authentication: ENABLED (AUTH_REQUIRED=true)")
+    else:
+        logger.warning(
+            "⚠️  Authentication: DISABLED (AUTH_REQUIRED=false) - "
+            "All requests default to admin user (user_id=1). "
+            "Set AUTH_REQUIRED=true for production."
+        )
+
+
+async def _cleanup_expired_sessions_task(db: Database):
+    """Background task to periodically clean up expired sessions.
+
+    Runs every hour to delete expired sessions from the database.
+
+    Args:
+        db: Database instance
+    """
+    logger = logging.getLogger(__name__)
+    cleanup_interval = int(os.getenv("SESSION_CLEANUP_INTERVAL", "3600"))  # Default: 1 hour
+
+    while True:
+        try:
+            await asyncio.sleep(cleanup_interval)
+            deleted_count = db.cleanup_expired_sessions()
+            if deleted_count > 0:
+                logger.info(f"🧹 Cleaned up {deleted_count} expired session(s)")
+        except Exception as e:
+            logger.error(f"Error during session cleanup: {e}", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
@@ -100,9 +153,21 @@ async def lifespan(app: FastAPI):
     workspace_root = Path(workspace_root_str)
     app.state.workspace_manager = WorkspaceManager(workspace_root)
 
+    # Validate authentication configuration
+    _validate_auth_config()
+
+    # Start background session cleanup task
+    cleanup_task = asyncio.create_task(_cleanup_expired_sessions_task(app.state.db))
+
     yield
 
-    # Shutdown: Close database connection
+    # Shutdown: Cancel cleanup task and close database connection
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
     if hasattr(app.state, "db") and app.state.db:
         app.state.db.close()
 

@@ -11,7 +11,7 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -38,7 +38,32 @@ class User(BaseModel):
 security = HTTPBearer(auto_error=False)
 
 
+def _get_client_ip(request: Request) -> Optional[str]:
+    """Extract client IP address from request.
+
+    Handles X-Forwarded-For header for proxies/load balancers.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Client IP address or None if unavailable
+    """
+    # Check X-Forwarded-For header (set by proxies/load balancers)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # X-Forwarded-For can be a comma-separated list; take the first one
+        return forwarded_for.split(",")[0].strip()
+
+    # Fall back to direct client IP
+    if request.client:
+        return request.client.host
+
+    return None
+
+
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Database = Depends(get_db),
 ) -> User:
@@ -82,6 +107,9 @@ async def get_current_user(
 
     token = credentials.credentials
 
+    # Extract client IP address for audit logging
+    client_ip = _get_client_ip(request)
+
     # Query sessions table to verify token
     cursor = db.conn.execute(
         """
@@ -101,7 +129,7 @@ async def get_current_user(
             event_type=AuditEventType.AUTH_LOGIN_FAILED,
             user_id=None,
             email=None,
-            ip_address=None,  # TODO: Extract from request
+            ip_address=client_ip,
             metadata={"reason": "Invalid token"},
         )
 
@@ -122,7 +150,7 @@ async def get_current_user(
             event_type=AuditEventType.AUTH_SESSION_EXPIRED,
             user_id=user_id,
             email=email,
-            ip_address=None,  # TODO: Extract from request
+            ip_address=client_ip,
             metadata={"expires_at": expires_at_str},
         )
 
@@ -142,7 +170,7 @@ async def get_current_user(
         event_type=AuditEventType.AUTH_LOGIN_SUCCESS,
         user_id=user_id,
         email=email,
-        ip_address=None,  # TODO: Extract from request
+        ip_address=client_ip,
         metadata={"session_id": token},
     )
 
@@ -150,6 +178,7 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Database = Depends(get_db),
 ) -> Optional[User]:
@@ -159,6 +188,7 @@ async def get_current_user_optional(
     that optionally use authentication (e.g., during migration period).
 
     Args:
+        request: FastAPI request object
         credentials: Bearer token from Authorization header
         db: Database instance
 
@@ -174,6 +204,6 @@ async def get_current_user_optional(
                 return {"message": "Hello, guest"}
     """
     try:
-        return await get_current_user(credentials, db)
+        return await get_current_user(request, credentials, db)
     except HTTPException:
         return None
