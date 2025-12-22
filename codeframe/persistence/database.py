@@ -1194,12 +1194,12 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps - created_at should never be NULL after migration 011
+        # Parse timestamps - created_at should never be NULL (enforced by schema)
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
         if created_at is None:
             raise ValueError(
                 f"Task {row_id} has NULL created_at - database integrity issue. "
-                "Run migration 011 to backfill NULL values."
+                "The schema enforces NOT NULL on created_at."
             )
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 
@@ -1249,12 +1249,12 @@ class Database:
         """
         row_id = row["id"]
 
-        # Parse timestamps - created_at should never be NULL after migration 011
+        # Parse timestamps - created_at should never be NULL (enforced by schema)
         created_at = self._parse_datetime(row["created_at"], "created_at", row_id)
         if created_at is None:
             raise ValueError(
                 f"Issue {row_id} has NULL created_at - database integrity issue. "
-                "Run migration 011 to backfill NULL values."
+                "The schema enforces NOT NULL on created_at."
             )
         completed_at = self._parse_datetime(row["completed_at"], "completed_at", row_id)
 

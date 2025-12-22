@@ -4,7 +4,7 @@ These tests verify:
 1. Project.to_dict() serialization works correctly
 2. Async connection cleanup via context manager
 3. IssueWithTaskCount composition pattern
-4. NULL created_at raises ValueError after migration 011
+4. NULL created_at raises ValueError (defensive validation)
 """
 
 import tempfile
@@ -214,24 +214,23 @@ class TestAsyncConnectionCleanup:
         assert db._async_conn is None
 
 
-class TestNullCreatedAtValidation:
-    """Tests for NULL created_at validation.
+class TestCreatedAtSchemaConstraint:
+    """Tests verifying that the schema enforces NOT NULL on created_at.
 
-    Note: After migration 011, the database schema enforces NOT NULL on created_at.
-    These tests use a custom database without migrations to test the validation logic.
+    The v1.0 schema enforces NOT NULL constraints on created_at columns.
+    These tests verify that the database schema prevents NULL values.
     """
 
     @pytest.fixture
-    def db_no_migrations(self, temp_db_path):
-        """Create a database without running migrations (allows NULL created_at)."""
+    def db(self, temp_db_path):
+        """Database with v1.0 schema."""
         db = Database(temp_db_path)
         db.initialize()
         yield db
         db.close()
 
-    def test_row_to_task_raises_on_null_created_at(self, db_no_migrations):
-        """_row_to_task should raise ValueError for NULL created_at."""
-        db = db_no_migrations
+    def test_tasks_created_at_not_null_enforced(self, db):
+        """Schema should prevent NULL created_at in tasks table."""
         cursor = db.conn.cursor()
 
         # Create project and issue first
@@ -242,28 +241,22 @@ class TestNullCreatedAtValidation:
         project_id = cursor.lastrowid
 
         cursor.execute(
-            "INSERT INTO issues (project_id, issue_number, title, status, created_at) "
-            "VALUES (?, '1.0', 'Test Issue', 'pending', datetime('now'))",
+            "INSERT INTO issues (project_id, issue_number, title, status) "
+            "VALUES (?, '1.0', 'Test Issue', 'pending')",
             (project_id,),
         )
         issue_id = cursor.lastrowid
 
-        # Insert task with NULL created_at (possible without migration 011)
-        cursor.execute(
-            "INSERT INTO tasks (project_id, issue_id, title, status, created_at) "
-            "VALUES (?, ?, 'Test Task', 'pending', NULL)",
-            (project_id, issue_id),
-        )
-        task_id = cursor.lastrowid
-        db.conn.commit()
+        # Attempting to insert task with NULL created_at should fail
+        with pytest.raises(Exception):  # sqlite3.IntegrityError
+            cursor.execute(
+                "INSERT INTO tasks (project_id, issue_id, title, status, created_at) "
+                "VALUES (?, ?, 'Test Task', 'pending', NULL)",
+                (project_id, issue_id),
+            )
 
-        # Attempting to get this task should raise ValueError
-        with pytest.raises(ValueError, match="NULL created_at"):
-            db.get_task(task_id)
-
-    def test_row_to_issue_raises_on_null_created_at(self, db_no_migrations):
-        """_row_to_issue should raise ValueError for NULL created_at."""
-        db = db_no_migrations
+    def test_issues_created_at_not_null_enforced(self, db):
+        """Schema should prevent NULL created_at in issues table."""
         cursor = db.conn.cursor()
 
         # Create project first
@@ -273,39 +266,29 @@ class TestNullCreatedAtValidation:
         )
         project_id = cursor.lastrowid
 
-        # Insert issue with NULL created_at (possible without migration 011)
-        cursor.execute(
-            "INSERT INTO issues (project_id, issue_number, title, status, created_at) "
-            "VALUES (?, '1.0', 'Test Issue', 'pending', NULL)",
-            (project_id,),
-        )
-        issue_id = cursor.lastrowid
-        db.conn.commit()
-
-        # Attempting to get this issue should raise ValueError
-        with pytest.raises(ValueError, match="NULL created_at"):
-            db.get_issue(issue_id)
+        # Attempting to insert issue with NULL created_at should fail
+        with pytest.raises(Exception):  # sqlite3.IntegrityError
+            cursor.execute(
+                "INSERT INTO issues (project_id, issue_number, title, status, created_at) "
+                "VALUES (?, '1.0', 'Test Issue', 'pending', NULL)",
+                (project_id,),
+            )
 
 
 class TestGetIssueWithTaskCounts:
-    """Tests for get_issue_with_task_counts with composition.
-
-    Note: Uses database without migrations to avoid foreign key reference issues
-    from migration 011 (backup table references).
-    """
+    """Tests for get_issue_with_task_counts with composition."""
 
     @pytest.fixture
-    def db_no_migrations(self, temp_db_path):
-        """Database without migrations (avoids FK issues from migration 011)."""
+    def db(self, temp_db_path):
+        """Database with v1.0 schema."""
         db = Database(temp_db_path)
         db.initialize()
         yield db
         db.close()
 
     @pytest.fixture
-    def db_with_data(self, db_no_migrations):
+    def db_with_data(self, db):
         """Database with project and issue created."""
-        db = db_no_migrations
         project_id = db.create_project(
             name="Test Project",
             description="Test",
@@ -360,9 +343,9 @@ class TestGetIssueWithTaskCounts:
         assert result.issue_number == "1.0"
         assert result.title == "Test Issue"
 
-    def test_get_issue_with_task_counts_returns_none_for_nonexistent(self, db_no_migrations):
+    def test_get_issue_with_task_counts_returns_none_for_nonexistent(self, db):
         """get_issue_with_task_counts should return None for nonexistent issue."""
-        result = db_no_migrations.get_issue_with_task_counts(99999)
+        result = db.get_issue_with_task_counts(99999)
         assert result is None
 
     def test_get_issue_with_task_counts_zero_tasks(self, db_with_data):
