@@ -8,11 +8,10 @@ Tests cover:
 - Edge cases and security scenarios
 """
 
-import os
 import pytest
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
 from codeframe.persistence.database import Database
 from codeframe.ui.auth import get_current_user, get_current_user_optional, User
