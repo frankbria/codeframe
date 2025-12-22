@@ -142,7 +142,16 @@ async def get_current_user(
     user_id, expires_at_str, email, name = row
 
     # Check if session has expired
-    expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+    try:
+        expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+    except (ValueError, AttributeError, TypeError):
+        # Invalid timestamp format in database - treat as invalid session
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid session data",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     if expires_at < datetime.now(timezone.utc):
         # Log session expiry
         audit = AuditLogger(db)

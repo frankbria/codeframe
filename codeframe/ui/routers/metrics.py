@@ -376,10 +376,10 @@ async def get_agent_metrics(
                     call_type_stats[call_type] = {
                         "call_type": call_type,
                         "cost_usd": 0.0,
-                        "call_count": 0,
+                        "calls": 0,
                     }
                 call_type_stats[call_type]["cost_usd"] += record["estimated_cost_usd"]
-                call_type_stats[call_type]["call_count"] += 1
+                call_type_stats[call_type]["calls"] += 1
 
             # Round costs
             for stats in call_type_stats.values():

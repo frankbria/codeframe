@@ -1,6 +1,7 @@
 """Database management for CodeFRAME state."""
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,12 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+# Audit verbosity configuration (performance optimization to avoid repeated os.getenv calls)
+AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
+if AUDIT_VERBOSITY not in ("low", "high"):
+    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
+    AUDIT_VERBOSITY = "low"
 
 
 class Database:
@@ -756,6 +763,13 @@ class Database:
             ON project_users(user_id)
         """
         )
+        # Composite index for faster authorization checks (user_has_project_access)
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_project_users_user_project
+            ON project_users(user_id, project_id)
+        """
+        )
         cursor.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_projects_user_id
@@ -763,6 +777,29 @@ class Database:
         """
         )
 
+        self.conn.commit()
+
+        # Ensure default admin user exists (for AUTH_REQUIRED=false mode)
+        self._ensure_default_admin_user()
+
+    def _ensure_default_admin_user(self) -> None:
+        """Ensure default admin user exists in database.
+
+        Creates admin user with id=1 if it doesn't exist. This is used
+        when AUTH_REQUIRED=false to provide a default user for development.
+
+        Uses INSERT OR IGNORE to avoid conflicts with test fixtures.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO users (id, email, password_hash, name)
+            VALUES (1, 'admin@localhost', '', 'Admin User')
+            """
+        )
+        # Only log if user was actually created (rowcount > 0)
+        if cursor.rowcount > 0:
+            logger.info("Created default admin user (id=1, email='admin@localhost')")
         self.conn.commit()
 
     def _run_migrations(self) -> None:
@@ -1775,11 +1812,7 @@ class Database:
         Returns:
             True if user is owner or has collaborator/viewer access, False otherwise
         """
-        import os
         cursor = self.conn.cursor()
-
-        # Check audit verbosity setting
-        audit_verbosity = os.getenv("AUDIT_VERBOSITY", "low").lower()
 
         # Check if user is the project owner
         cursor.execute(
@@ -1788,7 +1821,7 @@ class Database:
         )
         if cursor.fetchone():
             # Only log if verbose auditing enabled (performance optimization)
-            if audit_verbosity == "high":
+            if AUDIT_VERBOSITY == "high":
                 from codeframe.lib.audit_logger import AuditLogger, AuditEventType
                 audit = AuditLogger(self)
                 audit.log_authz_event(
@@ -1814,7 +1847,7 @@ class Database:
         audit = AuditLogger(self)
         if has_access:
             # Only log if verbose auditing enabled (performance optimization)
-            if audit_verbosity == "high":
+            if AUDIT_VERBOSITY == "high":
                 audit.log_authz_event(
                     event_type=AuditEventType.AUTHZ_ACCESS_GRANTED,
                     user_id=user_id,
@@ -1838,7 +1871,7 @@ class Database:
 
         return has_access
 
-    def cleanup_expired_sessions(self) -> int:
+    async def cleanup_expired_sessions(self) -> int:
         """Delete expired sessions from the database.
 
         This should be called periodically (e.g., every hour) to prevent
@@ -1849,10 +1882,10 @@ class Database:
         """
         from datetime import datetime, timezone
 
-        cursor = self.conn.cursor()
+        conn = await self._get_async_conn()
 
         # Delete sessions where expires_at < now
-        cursor.execute(
+        cursor = await conn.execute(
             """
             DELETE FROM sessions
             WHERE datetime(expires_at) < datetime(?)
@@ -1861,11 +1894,11 @@ class Database:
         )
 
         deleted_count = cursor.rowcount
-        self.conn.commit()
+        await conn.commit()
 
         return deleted_count
 
-    def cleanup_old_audit_logs(self, retention_days: int = 90) -> int:
+    async def cleanup_old_audit_logs(self, retention_days: int = 90) -> int:
         """Delete audit logs older than the retention period.
 
         This should be called periodically (e.g., daily) to prevent
@@ -1879,13 +1912,13 @@ class Database:
         """
         from datetime import datetime, timezone, timedelta
 
-        cursor = self.conn.cursor()
+        conn = await self._get_async_conn()
 
         # Calculate cutoff date
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
         # Delete audit logs older than retention period
-        cursor.execute(
+        cursor = await conn.execute(
             """
             DELETE FROM audit_logs
             WHERE datetime(timestamp) < datetime(?)
@@ -1894,7 +1927,7 @@ class Database:
         )
 
         deleted_count = cursor.rowcount
-        self.conn.commit()
+        await conn.commit()
 
         return deleted_count
 

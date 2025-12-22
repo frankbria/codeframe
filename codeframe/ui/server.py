@@ -131,7 +131,7 @@ async def _cleanup_expired_sessions_task(db: Database):
             await asyncio.sleep(session_cleanup_interval)
 
             # Always clean up expired sessions
-            deleted_sessions = db.cleanup_expired_sessions()
+            deleted_sessions = await db.cleanup_expired_sessions()
             if deleted_sessions > 0:
                 logger.info(f"🧹 Cleaned up {deleted_sessions} expired session(s)")
 
@@ -139,7 +139,7 @@ async def _cleanup_expired_sessions_task(db: Database):
             import time
             current_time = time.time()
             if current_time - last_audit_cleanup >= audit_cleanup_interval:
-                deleted_logs = db.cleanup_old_audit_logs(retention_days=audit_retention_days)
+                deleted_logs = await db.cleanup_old_audit_logs(retention_days=audit_retention_days)
                 if deleted_logs > 0:
                     logger.info(
                         f"🗑️  Cleaned up {deleted_logs} audit log(s) older than {audit_retention_days} days"

@@ -24,10 +24,10 @@ def db(tmp_path):
     db = Database(db_path)
     db.initialize()
     
-    # Create test user
+    # Create test user (use INSERT OR REPLACE to handle default admin user from initialize())
     db.conn.execute(
         """
-        INSERT INTO users (id, email, password_hash, name)
+        INSERT OR REPLACE INTO users (id, email, password_hash, name)
         VALUES (1, 'test@example.com', 'hashed_password', 'Test User')
         """
     )
@@ -306,10 +306,11 @@ class TestAuthorization:
 class TestSessionCleanup:
     """Test session cleanup functionality."""
     
-    def test_cleanup_expired_sessions(self, db):
+    @pytest.mark.asyncio
+    async def test_cleanup_expired_sessions(self, db):
         """Test that cleanup_expired_sessions() removes only expired sessions."""
         now = datetime.now(timezone.utc)
-        
+
         # Create expired session
         db.conn.execute(
             """
@@ -318,7 +319,7 @@ class TestSessionCleanup:
             """,
             ((now - timedelta(days=1)).isoformat(),)
         )
-        
+
         # Create valid session
         db.conn.execute(
             """
@@ -328,12 +329,12 @@ class TestSessionCleanup:
             ((now + timedelta(days=7)).isoformat(),)
         )
         db.conn.commit()
-        
+
         # Run cleanup
-        deleted_count = db.cleanup_expired_sessions()
-        
+        deleted_count = await db.cleanup_expired_sessions()
+
         assert deleted_count == 1
-        
+
         # Verify only expired session was deleted
         cursor = db.conn.execute("SELECT token FROM sessions")
         remaining_tokens = [row[0] for row in cursor.fetchall()]

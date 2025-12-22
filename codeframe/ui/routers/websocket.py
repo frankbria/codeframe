@@ -101,7 +101,13 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
         user_id, expires_at_str = row
 
         # Check if session has expired
-        expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+        except (ValueError, AttributeError, TypeError):
+            # Invalid timestamp format - reject connection
+            await websocket.close(code=1008, reason="Invalid session data")
+            return
+
         if expires_at < datetime.now(timezone.utc):
             # Expired token - delete session and reject connection
             db.conn.execute("DELETE FROM sessions WHERE token = ?", (token,))

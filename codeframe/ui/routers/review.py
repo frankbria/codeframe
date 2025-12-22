@@ -387,14 +387,20 @@ async def analyze_code_review(
         # Generate job ID
         job_id = str(uuid.uuid4())
 
+        # Capture app reference for background task (db is request-scoped)
+        app = request.app
+
         # Create background task to run review
         async def run_review():
             """Background task to execute code review."""
             try:
+                # Get database connection from app state (not request-scoped)
+                task_db = app.state.db
+
                 # Create ReviewAgent instance
                 review_agent = ReviewAgent(
                     agent_id=f"review-{job_id[:8]}",
-                    db=db,
+                    db=task_db,
                     project_id=project_id,
                     ws_manager=manager,
                 )

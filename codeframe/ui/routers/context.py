@@ -495,11 +495,13 @@ async def get_context_items(
     if not db.user_has_project_access(current_user.id, project_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Validate tier if provided
-    if tier and tier not in ["hot", "warm", "cold"]:
-        raise HTTPException(
-            status_code=400, detail="Invalid tier. Must be 'hot', 'warm', or 'cold'"
-        )
+    # Normalize and validate tier if provided
+    if tier:
+        tier = tier.lower()
+        if tier not in ["hot", "warm", "cold"]:
+            raise HTTPException(
+                status_code=400, detail="Invalid tier. Must be 'hot', 'warm', or 'cold'"
+            )
 
     # Get items from database
     items = db.list_context_items(project_id=project_id, agent_id=agent_id, tier=tier, limit=limit)
