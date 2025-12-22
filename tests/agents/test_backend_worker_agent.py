@@ -1482,7 +1482,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         from codeframe.testing.models import TestResult
 
         db = Database(":memory:")
-        db.initialize(run_migrations=True)  # Enable migrations to ensure blockers table exists
+        db.initialize()  # Enable migrations to ensure blockers table exists
 
         project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue(
@@ -1613,7 +1613,7 @@ class TestBackendWorkerAgentTestRunnerIntegration:
         from codeframe.testing.models import TestResult
 
         db = Database(":memory:")
-        db.initialize(run_migrations=True)  # Enable migrations to ensure blockers table exists
+        db.initialize()  # Enable migrations to ensure blockers table exists
 
         project_id = db.create_project("test", "Test project")
         issue_id = db.create_issue(

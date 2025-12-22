@@ -99,10 +99,9 @@
 
 ### Phase 2: Database & Environment Fixes (Medium Priority)
 
-#### Task 2.1: Fix Database Migration Warnings
+#### Task 2.1: Fix Database Initialization
 **File**: `codeframe/persistence/database.py`
 **Investigation needed**:
-- Check why migrations "cannot be applied"
 - Ensure database is initialized before server starts
 - Add explicit database creation step in workflow
 
@@ -116,7 +115,7 @@
     echo "✅ Database initialized"
 ```
 
-**Rationale**: Pre-creating database avoids migration issues during server startup.
+**Rationale**: Pre-creating database ensures schema is available during server startup.
 
 #### Task 2.2: Set Environment Variables for Testing
 **File**: `.github/workflows/test.yml`
@@ -224,7 +223,7 @@
 3. **Task 1.3**: Verify server startup ✅ Medium impact, low risk
 
 ### Next Sprint:
-4. **Task 2.1**: Fix database migrations ⚠️ Medium impact, medium risk
+4. **Task 2.1**: Fix database initialization ⚠️ Medium impact, medium risk
 5. **Task 2.2**: Set environment variables ✅ Low impact, low risk
 6. **Task 4.1**: Apply fixes to frontend tests ✅ High impact, low risk
 
@@ -243,7 +242,7 @@
 
 ### Nice to Have:
 - ✅ Server logs captured for all runs
-- ✅ Database migrations run cleanly (no warnings)
+- ✅ Database initializes cleanly (no warnings)
 - ✅ Diagnostic info available on failures
 
 ## Risk Assessment
@@ -302,7 +301,7 @@ pytest tests/e2e/ -v -m e2e
 
 - The server health endpoint exists and works (`/health` returns JSON)
 - Server startup is the bottleneck (package rebuild)
-- Database migrations are non-fatal but should be investigated
+- Database initialization is required before server starts
 - Playwright tests depend on both backend and frontend servers
 
 ## Next Steps

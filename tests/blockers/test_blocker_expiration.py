@@ -17,7 +17,7 @@ def temp_db():
     """Create a temporary in-memory database for fast unit testing."""
     # Use in-memory database for speed (no migrations needed)
     db = Database(":memory:")
-    db.initialize(run_migrations=False)
+    db.initialize()
 
     # Create test project
     cursor = db.conn.execute(
@@ -49,7 +49,7 @@ def temp_db_file():
         db_path = f.name
 
     db = Database(db_path)
-    db.initialize(run_migrations=False)
+    db.initialize()
 
     # Create test project
     cursor = db.conn.execute(

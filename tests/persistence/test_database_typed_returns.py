@@ -225,7 +225,7 @@ class TestNullCreatedAtValidation:
     def db_no_migrations(self, temp_db_path):
         """Create a database without running migrations (allows NULL created_at)."""
         db = Database(temp_db_path)
-        db.initialize(run_migrations=False)
+        db.initialize()
         yield db
         db.close()
 
@@ -298,7 +298,7 @@ class TestGetIssueWithTaskCounts:
     def db_no_migrations(self, temp_db_path):
         """Database without migrations (avoids FK issues from migration 011)."""
         db = Database(temp_db_path)
-        db.initialize(run_migrations=False)
+        db.initialize()
         yield db
         db.close()
 

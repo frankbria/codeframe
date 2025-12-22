@@ -24,7 +24,7 @@ class TestExpireStaleBlockersCronJob:
 
         try:
             db = Database(db_path)
-            db.initialize(run_migrations=False)
+            db.initialize()
             db.close()
 
             # Run cron job
@@ -44,7 +44,7 @@ class TestExpireStaleBlockersCronJob:
         try:
             # Setup database
             db = Database(db_path)
-            db.initialize(run_migrations=False)
+            db.initialize()
 
             # Create test project and task
             cursor = db.conn.execute(
@@ -79,7 +79,7 @@ class TestExpireStaleBlockersCronJob:
 
             # Verify blocker was expired
             db = Database(db_path)
-            db.initialize(run_migrations=False)
+            db.initialize()
             blocker = db.get_blocker(blocker_id)
             assert blocker["status"] == "EXPIRED"
             db.close()
@@ -96,7 +96,7 @@ class TestExpireStaleBlockersCronJob:
         try:
             # Setup database
             db = Database(db_path)
-            db.initialize(run_migrations=False)
+            db.initialize()
 
             # Create test project
             cursor = db.conn.execute(
@@ -132,7 +132,7 @@ class TestExpireStaleBlockersCronJob:
 
             # Verify task was failed
             db = Database(db_path)
-            db.initialize(run_migrations=False)
+            db.initialize()
             task = db.get_task(task_id)
             assert task["status"] == TaskStatus.FAILED.value
             db.close()
@@ -149,7 +149,7 @@ class TestExpireStaleBlockersCronJob:
         try:
             # Setup database
             db = Database(db_path)
-            db.initialize(run_migrations=False)
+            db.initialize()
 
             cursor = db.conn.execute(
                 """INSERT INTO projects (name, description, workspace_path, status)
@@ -207,7 +207,7 @@ class TestExpireStaleBlockersCronJob:
 
         try:
             db = Database(db_path)
-            db.initialize(run_migrations=False)
+            db.initialize()
 
             # Create project first (required by FOREIGN KEY)
             project_id = db.create_project(

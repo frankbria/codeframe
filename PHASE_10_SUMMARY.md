@@ -117,8 +117,7 @@
 
 ### Medium-term (Next Sprint)
 1. Document router architecture
-2. Add migration test coverage
-3. Optimize test performance
+2. Optimize test performance
 
 ---
 

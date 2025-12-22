@@ -41,8 +41,7 @@ Gap:              -9.95%
 
 **Coverage Gap:** The 78% coverage is below the 88% target, but this is primarily due to:
 1. Uncovered code in new router modules (expected during refactoring)
-2. Low coverage in some migration scripts (0-41%)
-3. Low coverage in some service modules (0-36%)
+2. Low coverage in some service modules (0-36%)
 
 ---
 
@@ -191,10 +190,7 @@ running_agents.clear()
 ```
 Module                                                   Coverage  Missing
 ------------------------------------------------------------------------
-migration_008_add_session_id.py                         0.00%     14/14
-migration_009_add_project_agents.py                     0.00%     79/79
 codeframe/ui/services/review_service.py                 0.00%     29/29
-migration_003_update_blockers_schema.py                29.69%     45/64
 codeframe/ui/routers/checkpoints.py                    14.97%    142/167
 codeframe/ui/routers/quality_gates.py                  21.25%     63/80
 codeframe/core/project.py                              21.13%     56/71
@@ -202,8 +198,6 @@ codeframe/ui/routers/lint.py                           26.67%     44/60
 codeframe/ui/services/agent_service.py                 36.11%     23/36
 codeframe/ui/routers/context.py                        39.13%     42/69
 codeframe/ui/routers/review.py                         38.36%     98/159
-migration_004_add_context_checkpoints.py               41.03%     23/39
-migration_002_refactor_projects_schema.py              41.30%     27/46
 codeframe/ui/routers/websocket.py                      40.00%     12/20
 codeframe/providers/sdk_client.py                      42.55%     27/47
 codeframe/ui/routers/session.py                        45.00%     11/20
@@ -376,9 +370,8 @@ The refactoring is highly successful with only minor test compatibility issues t
 3. Achieve 88%+ coverage target
 
 **Priority 3 (Next Sprint):**
-1. Add migration test coverage
-2. Add service layer test coverage
-3. Document router architecture
+1. Add service layer test coverage
+2. Document router architecture
 
 ---
 

@@ -44,7 +44,7 @@ def test_db():
     """Create test database."""
     # Use :memory: database instead of tempfile to avoid WSL filesystem issues
     db = Database(":memory:")
-    db.initialize(run_migrations=True)  # Enable migrations to add commit_sha column
+    db.initialize()  # Enable migrations to add commit_sha column
 
     yield db
 

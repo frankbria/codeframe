@@ -129,7 +129,7 @@ High‑level architecture is defined in [`specs/CODEFRAME_SPEC.md`](specs/CODEFR
 - **CLI** (`codeframe/cli.py`) – project initialization, server start, session commands.
 - **Backend API** (`codeframe/ui/server.py`) – projects, agents, tasks, blockers, discovery, PRD, context, session.
 - **Agent layer** (`codeframe/agents/*`) – lead + worker agents + pool + dependency resolver.
-- **Persistence** (`codeframe/persistence/database.py` + migrations) – all state.
+- **Persistence** (`codeframe/persistence/database.py`) – all state with flattened v1.0 schema.
 - **Context & session** (`codeframe/lib/context_manager.py`, `codeframe/core/session_manager.py`).
 - **Dashboard** (`web-ui/*`) – React/TypeScript UI with SWR and WebSocket integration.
 
