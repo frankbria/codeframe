@@ -239,7 +239,7 @@ class TestAuthorization:
         # Create project owned by user 2
         db.conn.execute(
             """
-            INSERT INTO users (id, email, password_hash)
+            INSERT OR REPLACE INTO users (id, email, password_hash)
             VALUES (2, 'owner@example.com', 'hashed')
             """
         )
@@ -264,7 +264,7 @@ class TestAuthorization:
         """Test that viewer has read-only access."""
         db.conn.execute(
             """
-            INSERT INTO users (id, email, password_hash)
+            INSERT OR REPLACE INTO users (id, email, password_hash)
             VALUES (3, 'owner2@example.com', 'hashed')
             """
         )
@@ -288,7 +288,7 @@ class TestAuthorization:
         """Test that non-member is denied access."""
         db.conn.execute(
             """
-            INSERT INTO users (id, email, password_hash)
+            INSERT OR REPLACE INTO users (id, email, password_hash)
             VALUES (4, 'other@example.com', 'hashed')
             """
         )

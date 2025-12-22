@@ -442,6 +442,14 @@ class Database:
         """
         )
 
+        # Composite index on context_items for multi-agent queries
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_context_project_agent
+            ON context_items(project_id, agent_id, current_tier)
+        """
+        )
+
         # Checkpoints table
         cursor.execute(
             """
@@ -943,19 +951,22 @@ class Database:
 
         return project_id
 
-    def get_project(self, project_id: int) -> Optional[Project]:
-        """Get project by ID.
+    def get_project(self, project_identifier: int | str) -> Optional[dict]:
+        """Get project by ID or name.
 
         Args:
-            project_id: Project ID
+            project_identifier: Project ID (int) or project name (str)
 
         Returns:
-            Project object or None if not found
+            Project dictionary or None if not found
         """
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        if isinstance(project_identifier, int):
+            cursor.execute("SELECT * FROM projects WHERE id = ?", (project_identifier,))
+        else:
+            cursor.execute("SELECT * FROM projects WHERE name = ?", (project_identifier,))
         row = cursor.fetchone()
-        return self._row_to_project(row) if row else None
+        return dict(row) if row else None
 
     def create_issue(self, issue: Issue | dict) -> int:
         """Create a new issue.

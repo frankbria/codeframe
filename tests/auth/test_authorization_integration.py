@@ -20,10 +20,10 @@ def db(tmp_path):
     db = Database(db_path)
     db.initialize()
 
-    # Create test users
+    # Create test users (use INSERT OR REPLACE to avoid conflicts)
     db.conn.execute(
         """
-        INSERT INTO users (id, email, password_hash, name)
+        INSERT OR REPLACE INTO users (id, email, password_hash, name)
         VALUES
             (1, 'alice@example.com', 'hashed', 'Alice'),
             (2, 'bob@example.com', 'hashed', 'Bob')
