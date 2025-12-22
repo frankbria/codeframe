@@ -313,9 +313,9 @@ Guidelines:
 
         if issue_context:
             user_prompt_parts.append("Issue Context:")
-            user_prompt_parts.append(f"- Issue: {issue_context.get('title', 'Unknown')}")
+            user_prompt_parts.append(f"- Issue: {issue_context.title}")
             user_prompt_parts.append(
-                f"- Description: {issue_context.get('description', 'No description')}"
+                f"- Description: {issue_context.description}"
             )
             user_prompt_parts.append("")
 

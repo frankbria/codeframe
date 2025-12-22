@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
+from codeframe.core.models import Task, TaskStatus
 
 
 @pytest.fixture
@@ -40,7 +41,14 @@ class TestCalculateWaitTime:
         now = datetime.now()
         past = now - timedelta(minutes=45)
 
-        task = {"id": 1, "created_at": past.isoformat()}
+        task = Task(
+            id=1,
+            project_id=1,
+            task_number="1.1",
+            title="Test Task",
+            status=TaskStatus.PENDING,
+            created_at=past
+        )
         wait_time = lead_agent._calculate_wait_time(task)
 
         # Should be approximately 45 minutes
@@ -49,21 +57,28 @@ class TestCalculateWaitTime:
     def test_calculate_wait_time_zero_minutes(self, lead_agent):
         """Test wait time calculation with recent task."""
         now = datetime.now()
-        task = {"id": 1, "created_at": now.isoformat()}
+        task = Task(
+            id=1,
+            project_id=1,
+            task_number="1.1",
+            title="Test Task",
+            status=TaskStatus.PENDING,
+            created_at=now
+        )
         wait_time = lead_agent._calculate_wait_time(task)
 
         assert wait_time == 0
 
     def test_calculate_wait_time_missing_timestamp(self, lead_agent):
         """Test wait time calculation with missing created_at."""
-        task = {"id": 1}
-        wait_time = lead_agent._calculate_wait_time(task)
-
-        assert wait_time == 0
-
-    def test_calculate_wait_time_invalid_timestamp(self, lead_agent):
-        """Test wait time calculation with invalid timestamp format."""
-        task = {"id": 1, "created_at": "invalid-date"}
+        task = Task(
+            id=1,
+            project_id=1,
+            task_number="1.1",
+            title="Test Task",
+            status=TaskStatus.PENDING,
+            created_at=None  # type: ignore
+        )
         wait_time = lead_agent._calculate_wait_time(task)
 
         assert wait_time == 0
@@ -71,7 +86,14 @@ class TestCalculateWaitTime:
     def test_calculate_wait_time_future_timestamp(self, lead_agent):
         """Test wait time calculation with future timestamp."""
         future = datetime.now() + timedelta(minutes=10)
-        task = {"id": 1, "created_at": future.isoformat()}
+        task = Task(
+            id=1,
+            project_id=1,
+            task_number="1.1",
+            title="Test Task",
+            status=TaskStatus.PENDING,
+            created_at=future
+        )
         wait_time = lead_agent._calculate_wait_time(task)
 
         # Should return 0 or negative (clamped to 0)
@@ -297,12 +319,14 @@ class TestDetectBottlenecks:
         """Test detection of dependency wait bottleneck."""
         past = datetime.now() - timedelta(minutes=90)
         tasks = [
-            {
-                "id": 1,
-                "status": "blocked",
-                "created_at": past.isoformat(),
-                "title": "Task 1",
-            }
+            Task(
+                id=1,
+                project_id=1,
+                task_number="1.1",
+                title="Task 1",
+                status=TaskStatus.BLOCKED,
+                created_at=past
+            )
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -325,8 +349,8 @@ class TestDetectBottlenecks:
         This test verifies the detection logic works if workload > threshold.
         """
         tasks = [
-            {"id": 1, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 2, "status": "pending", "created_at": datetime.now().isoformat()},
+            Task(id=1, project_id=1, task_number="1.1", title="Task 1", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=2, project_id=1, task_number="1.2", title="Task 2", status=TaskStatus.PENDING, created_at=datetime.now()),
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -346,7 +370,7 @@ class TestDetectBottlenecks:
     def test_detect_agent_idle_bottleneck(self, lead_agent):
         """Test detection of agent idle bottleneck."""
         tasks = [
-            {"id": 1, "status": "pending", "created_at": datetime.now().isoformat()},
+            Task(id=1, project_id=1, task_number="1.1", title="Task 1", status=TaskStatus.PENDING, created_at=datetime.now()),
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -363,11 +387,11 @@ class TestDetectBottlenecks:
     def test_detect_critical_path_bottleneck(self, lead_agent):
         """Test detection of critical path bottleneck."""
         tasks = [
-            {"id": 1, "status": "in_progress", "created_at": datetime.now().isoformat()},
-            {"id": 2, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 3, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 4, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 5, "status": "pending", "created_at": datetime.now().isoformat()},
+            Task(id=1, project_id=1, task_number="1.1", title="Task 1", status=TaskStatus.IN_PROGRESS, created_at=datetime.now()),
+            Task(id=2, project_id=1, task_number="1.2", title="Task 2", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=3, project_id=1, task_number="1.3", title="Task 3", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=4, project_id=1, task_number="1.4", title="Task 4", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=5, project_id=1, task_number="1.5", title="Task 5", status=TaskStatus.PENDING, created_at=datetime.now()),
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -384,16 +408,11 @@ class TestDetectBottlenecks:
         """Test detection of multiple bottlenecks simultaneously."""
         past = datetime.now() - timedelta(minutes=90)
         tasks = [
-            {
-                "id": 1,
-                "status": "blocked",
-                "created_at": past.isoformat(),
-                "title": "Blocked task",
-            },
-            {"id": 2, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 3, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 4, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 5, "status": "pending", "created_at": datetime.now().isoformat()},
+            Task(id=1, project_id=1, task_number="1.1", title="Blocked task", status=TaskStatus.BLOCKED, created_at=past),
+            Task(id=2, project_id=1, task_number="1.2", title="Task 2", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=3, project_id=1, task_number="1.3", title="Task 3", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=4, project_id=1, task_number="1.4", title="Task 4", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=5, project_id=1, task_number="1.5", title="Task 5", status=TaskStatus.PENDING, created_at=datetime.now()),
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -423,11 +442,7 @@ class TestDetectBottlenecks:
         """Test that detected bottlenecks include recommendations."""
         past = datetime.now() - timedelta(minutes=90)
         tasks = [
-            {
-                "id": 1,
-                "status": "blocked",
-                "created_at": past.isoformat(),
-            }
+            Task(id=1, project_id=1, task_number="1.1", title="Task 1", status=TaskStatus.BLOCKED, created_at=past)
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -445,11 +460,7 @@ class TestDetectBottlenecks:
         """Test that detected bottlenecks include severity level."""
         past = datetime.now() - timedelta(minutes=90)
         tasks = [
-            {
-                "id": 1,
-                "status": "blocked",
-                "created_at": past.isoformat(),
-            }
+            Task(id=1, project_id=1, task_number="1.1", title="Task 1", status=TaskStatus.BLOCKED, created_at=past)
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -466,11 +477,7 @@ class TestDetectBottlenecks:
         """Test that tasks with short wait times are not flagged."""
         # Task created just now (< 60 min threshold)
         tasks = [
-            {
-                "id": 1,
-                "status": "blocked",
-                "created_at": datetime.now().isoformat(),
-            }
+            Task(id=1, project_id=1, task_number="1.1", title="Task 1", status=TaskStatus.BLOCKED, created_at=datetime.now())
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks
@@ -491,9 +498,9 @@ class TestDetectBottlenecks:
         """
         # Populate with realistic task dicts
         tasks = [
-            {"id": 1, "status": "pending", "created_at": datetime.now().isoformat()},
-            {"id": 2, "status": "assigned", "created_at": datetime.now().isoformat()},
-            {"id": 3, "status": "in_progress", "created_at": datetime.now().isoformat()},
+            Task(id=1, project_id=1, task_number="1.1", title="Task 1", status=TaskStatus.PENDING, created_at=datetime.now()),
+            Task(id=2, project_id=1, task_number="1.2", title="Task 2", status=TaskStatus.ASSIGNED, created_at=datetime.now()),
+            Task(id=3, project_id=1, task_number="1.3", title="Task 3", status=TaskStatus.IN_PROGRESS, created_at=datetime.now()),
         ]
 
         lead_agent.db.get_project_tasks.return_value = tasks

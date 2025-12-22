@@ -482,8 +482,8 @@ class TestLeadAgentTaskAssignment:
 
             # ASSERT
             task = db.get_task(task_id)
-            assert task["assigned_to"] == "agent-001"
-            assert task["status"] == "assigned"
+            assert task.assigned_to == "agent-001"
+            assert task.status.value == "assigned"
 
     def test_t2_task_not_found_raises_error(self, temp_db_path):
         """T2: Non-existent task_id raises ValueError."""
@@ -823,8 +823,8 @@ class TestLeadAgentTaskAssignment:
 
             # ASSERT
             task = db.get_task(task_id)
-            assert task["assigned_to"] == "agent-b"
-            assert task["status"] == "assigned"
+            assert task.assigned_to == "agent-b"
+            assert task.status.value == "assigned"
 
             # Verify warning was logged
             log_messages = [record.message for record in caplog.records]
@@ -955,8 +955,8 @@ class TestLeadAgentTaskAssignment:
 
             # ASSERT
             task = db.get_task(task_id)
-            assert task["assigned_to"] == "agent-001"
-            assert task["status"] == "assigned"
+            assert task.assigned_to == "agent-001"
+            assert task.status.value == "assigned"
 
             # Verify debug log may mention skipping websocket broadcast
             log_messages = [record.message for record in caplog.records]

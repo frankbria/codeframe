@@ -165,7 +165,7 @@ class TestMinimalIntegration:
 
             # Verify task completed in database
             task = db.get_task(task_id)
-            assert task["status"] == "completed"
+            assert task.status.value == "completed"
 
             # Verify agent was called
             assert mock_agent_instance.execute_task.called
@@ -255,9 +255,9 @@ class TestThreeAgentParallelExecution:
             frontend_task = db.get_task(frontend_task_id)
             test_task = db.get_task(test_task_id)
 
-            assert backend_task["status"] == "completed"
-            assert frontend_task["status"] == "completed"
-            assert test_task["status"] == "completed"
+            assert backend_task.status.value == "completed"
+            assert frontend_task.status.value == "completed"
+            assert test_task.status.value == "completed"
 
 
 class TestDependencyBlocking:
@@ -510,7 +510,7 @@ class TestComplexDependencyGraph:
             # Verify no deadlocks occurred
             for i in range(1, 11):
                 task = db.get_task(task_ids[i])
-                assert task["status"] == "completed"
+                assert task.status.value == "completed"
 
 
 class TestAgentReuse:
@@ -592,7 +592,7 @@ class TestErrorRecovery:
 
             # Verify task marked as completed
             task = db.get_task(task_id)
-            assert task["status"] == "completed"
+            assert task.status.value == "completed"
 
     @pytest.mark.asyncio
     async def test_task_fails_after_max_retries(self, lead_agent, db, project_id):
@@ -617,7 +617,7 @@ class TestErrorRecovery:
 
             # Verify task marked as failed in database
             task = db.get_task(task_id)
-            assert task["status"] == "failed"
+            assert task.status.value == "failed"
 
 
 class TestCompletionDetection:
@@ -685,9 +685,9 @@ class TestConcurrentDatabaseAccess:
             # Verify database consistency (all tasks have valid status)
             for task_id in task_ids:
                 task = db.get_task(task_id)
-                assert task["status"] in ("completed", "failed", "in_progress", "pending")
+                assert task.status.value in ("completed", "failed", "in_progress", "pending")
                 # Should be completed since execution finished
-                assert task["status"] == "completed"
+                assert task.status.value == "completed"
 
 
 class TestWebSocketBroadcasts:
@@ -825,18 +825,7 @@ async def test_bottleneck_detection_end_to_end(db, api_key):
     
     # Build dependency graph
     tasks = db.get_project_tasks(project_id)
-    task_objects = [
-        Task(
-            id=t["id"],
-            project_id=t["project_id"],
-            task_number=t["task_number"],
-            title=t["title"],
-            description=t["description"],
-            status=TaskStatus(t["status"]),
-            depends_on=t.get("depends_on", "")
-        )
-        for t in tasks
-    ]
+    task_objects = tasks  # Already Task objects, no conversion needed
     lead_agent.dependency_resolver.build_dependency_graph(task_objects)
     
     # Execute bottleneck detection
@@ -912,18 +901,7 @@ async def test_bottleneck_detection_during_coordination_loop(db, api_key):
     
     # Build dependency graph
     tasks = db.get_project_tasks(project_id)
-    task_objects = [
-        Task(
-            id=t["id"],
-            project_id=t["project_id"],
-            task_number=t["task_number"],
-            title=t["title"],
-            description=t["description"],
-            status=TaskStatus(t["status"]),
-            depends_on=t.get("depends_on", "")
-        )
-        for t in tasks
-    ]
+    task_objects = tasks  # Already Task objects, no conversion needed
     lead_agent.dependency_resolver.build_dependency_graph(task_objects)
     
     # Execute bottleneck detection during coordination
@@ -1007,18 +985,7 @@ async def test_bottleneck_detection_performance(db, api_key):
     
     # Build dependency graph
     tasks = db.get_project_tasks(project_id)
-    task_objects = [
-        Task(
-            id=t["id"],
-            project_id=t["project_id"],
-            task_number=t["task_number"],
-            title=t["title"],
-            description=t["description"],
-            status=TaskStatus(t["status"]),
-            depends_on=t.get("depends_on", "")
-        )
-        for t in tasks
-    ]
+    task_objects = tasks  # Already Task objects, no conversion needed
     lead_agent.dependency_resolver.build_dependency_graph(task_objects)
     
     # Measure execution time
