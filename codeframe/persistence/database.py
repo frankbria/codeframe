@@ -130,20 +130,7 @@ class Database:
         """
         )
 
-        # Project users table (authorization)
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS project_users (
-                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                role TEXT NOT NULL CHECK(role IN ('owner', 'collaborator', 'viewer')),
-                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (project_id, user_id)
-            )
-        """
-        )
-
-        # Projects table
+        # Projects table (parent table - must come before project_users)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS projects (
@@ -173,6 +160,19 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 paused_at TIMESTAMP NULL,
                 config JSON
+            )
+        """
+        )
+
+        # Project users table (authorization - references projects.id)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS project_users (
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK(role IN ('owner', 'collaborator', 'viewer')),
+                granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (project_id, user_id)
             )
         """
         )
