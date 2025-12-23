@@ -116,6 +116,76 @@ function seedDatabaseDirectly(projectId: number): void {
   }
 }
 
+/**
+ * Create a test user with known credentials for E2E tests.
+ * Returns the session token to use in authenticated requests.
+ */
+async function createTestUser(page: any): Promise<string> {
+  console.log('\n👤 Creating test user...');
+
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const TEST_USER = {
+    email: 'test@example.com',
+    password: 'testpassword123',
+    name: 'E2E Test User'
+  };
+
+  try {
+    // Try to sign up the test user
+    const signupResponse = await page.request.post(`${FRONTEND_URL}/api/auth/signup`, {
+      data: TEST_USER,
+      failOnStatusCode: false
+    });
+
+    if (signupResponse.ok()) {
+      console.log('✅ Test user created successfully');
+    } else if (signupResponse.status() === 400) {
+      // User might already exist, try to sign in
+      console.log('   Test user already exists, signing in...');
+    } else {
+      console.warn(`⚠️  Signup failed with status ${signupResponse.status()}: ${await signupResponse.text()}`);
+    }
+
+    // Sign in to get session token
+    const signinResponse = await page.request.post(`${FRONTEND_URL}/api/auth/signin`, {
+      data: {
+        email: TEST_USER.email,
+        password: TEST_USER.password
+      }
+    });
+
+    if (!signinResponse.ok()) {
+      throw new Error(`Failed to sign in test user: ${signinResponse.status()} - ${await signinResponse.text()}`);
+    }
+
+    // Extract session token from response cookies
+    const cookies = await page.context().cookies();
+    const sessionCookie = cookies.find(c => c.name === 'better-auth.session_token' || c.name === 'session_token' || c.name === 'auth_token');
+
+    if (!sessionCookie) {
+      console.warn('⚠️  No session cookie found, available cookies:', cookies.map(c => c.name));
+      // Return empty token - tests will need to handle authentication differently
+      return '';
+    }
+
+    console.log('✅ Test user authenticated successfully');
+    console.log(`   Email: ${TEST_USER.email}`);
+    console.log(`   Session token: ${sessionCookie.value.substring(0, 20)}...`);
+
+    // Store credentials for tests to use
+    process.env.E2E_TEST_USER_EMAIL = TEST_USER.email;
+    process.env.E2E_TEST_USER_PASSWORD = TEST_USER.password;
+    process.env.E2E_TEST_SESSION_TOKEN = sessionCookie.value;
+
+    return sessionCookie.value;
+  } catch (error) {
+    console.error('❌ Failed to create test user:', error);
+    // Don't throw - tests can still run without auth if AUTH_REQUIRED=false
+    console.warn('⚠️  Tests will run without authentication');
+    return '';
+  }
+}
+
 async function globalSetup(config: FullConfig) {
   console.log('🔧 Setting up E2E test environment...');
 
@@ -135,6 +205,31 @@ async function globalSetup(config: FullConfig) {
   const browser = await chromium.launch();
   const context = await browser.newContext();
   const page = await context.newPage();
+
+  // Wait for frontend to be ready before creating user
+  console.log('\n⏳ Waiting for frontend to be ready...');
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+  let frontendReady = false;
+  for (let i = 0; i < 60; i++) {
+    try {
+      const response = await page.request.get(FRONTEND_URL, { timeout: 2000 });
+      if (response.ok() || response.status() === 404) {
+        frontendReady = true;
+        console.log('✅ Frontend is ready');
+        break;
+      }
+    } catch (e) {
+      // Frontend not ready yet
+    }
+    await page.waitForTimeout(1000);
+  }
+
+  if (!frontendReady) {
+    console.warn('⚠️  Frontend did not become ready in time, continuing anyway...');
+  }
+
+  // Create test user and get session token
+  await createTestUser(page);
 
   try {
     // ========================================

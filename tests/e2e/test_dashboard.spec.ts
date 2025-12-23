@@ -74,6 +74,23 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   test.beforeEach(async ({ page: testPage }) => {
     page = testPage;
 
+    // Set auth cookie if available from global setup
+    const sessionToken = process.env.E2E_TEST_SESSION_TOKEN;
+    if (sessionToken) {
+      await page.context().addCookies([{
+        name: 'better-auth.session_token',
+        value: sessionToken,
+        domain: 'localhost',
+        path: '/',
+        httpOnly: true,
+        secure: false,
+        sameSite: 'Lax'
+      }]);
+      console.log('✅ Auth cookie set for test');
+    } else {
+      console.warn('⚠️  No session token available - test may fail if auth is required');
+    }
+
     // Navigate to dashboard for test project
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
 
