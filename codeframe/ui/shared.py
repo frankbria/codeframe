@@ -134,8 +134,25 @@ class ConnectionManager:
             if websocket in self.active_connections:
                 self.active_connections.remove(websocket)
 
+    async def _send_to_connection(self, connection: WebSocket, message: dict) -> Optional[WebSocket]:
+        """Send message to a single connection, returning connection on failure.
+
+        Args:
+            connection: WebSocket connection to send to
+            message: Message dict to send
+
+        Returns:
+            The connection object if sending failed (for cleanup), None on success
+        """
+        try:
+            await connection.send_json(message)
+            return None
+        except Exception:
+            # Return connection for cleanup
+            return connection
+
     async def broadcast(self, message: dict, project_id: Optional[int] = None):
-        """Broadcast message to connected clients.
+        """Broadcast message to connected clients concurrently.
 
         Args:
             message: Message dict to broadcast
@@ -152,13 +169,20 @@ class ConnectionManager:
             # Filtered broadcast: only to subscribers of this project
             connections = await self.subscription_manager.get_subscribers(project_id)
 
-        # Send to target connections (no lock held during I/O)
-        for connection in connections:
-            try:
-                await connection.send_json(message)
-            except Exception:
-                # Client disconnected, remove from active list
-                await self.disconnect(connection)
+        # Send to all connections concurrently (no lock held during I/O)
+        tasks = [
+            asyncio.create_task(self._send_to_connection(conn, message))
+            for conn in connections
+        ]
+
+        # Wait for all sends to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Disconnect any connections that failed
+        for result in results:
+            if result is not None:
+                # This was a failed connection, disconnect it
+                await self.disconnect(result)
 
 
 class SharedState:
