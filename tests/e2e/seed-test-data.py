@@ -47,6 +47,12 @@ def seed_test_data(db_path: str, project_id: int):
         # ========================================
         # 0. Seed Test User (for authentication)
         # ========================================
+        # ⚠️  SECURITY WARNING: Test credentials only
+        # This seeding creates a test user with a KNOWN password and session token.
+        # NEVER use these credentials in production environments!
+        # - Test password: 'testpassword123' (bcrypt hashed)
+        # - Test session token: hardcoded, predictable value
+        # - Only safe for local E2E testing where AUTH_REQUIRED=false
         print("👤 Seeding test user...")
         # Hash: bcrypt hash of 'testpassword123'
         # Generated with: python -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"

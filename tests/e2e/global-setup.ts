@@ -119,21 +119,28 @@ function seedDatabaseDirectly(projectId: number): void {
 /**
  * Load test user session token created during database seeding.
  * The session token is created directly in the database by seed-test-data.py.
+ *
+ * @throws {Error} If session token file cannot be loaded (authentication is required)
  */
 function loadTestUserSession(): string {
   console.log('\n👤 Loading test user session...');
 
+  // Read session token from file created by seed-test-data.py
+  const tokenFile = path.join(path.dirname(TEST_DB_PATH), 'test-session-token.txt');
+
+  if (!fs.existsSync(tokenFile)) {
+    throw new Error(
+      `Session token file not found: ${tokenFile}\n` +
+      `Test user authentication setup failed. Ensure seed-test-data.py ran successfully.`
+    );
+  }
+
   try {
-    // Read session token from file created by seed-test-data.py
-    const tokenFile = path.join(path.dirname(TEST_DB_PATH), 'test-session-token.txt');
-
-    if (!fs.existsSync(tokenFile)) {
-      console.warn('⚠️  Session token file not found:', tokenFile);
-      console.warn('⚠️  Tests will run without authentication');
-      return '';
-    }
-
     const sessionToken = fs.readFileSync(tokenFile, 'utf-8').trim();
+
+    if (!sessionToken) {
+      throw new Error('Session token file is empty');
+    }
 
     console.log('✅ Test user session loaded');
     console.log(`   Email: test@example.com`);
@@ -147,9 +154,7 @@ function loadTestUserSession(): string {
 
     return sessionToken;
   } catch (error) {
-    console.error('❌ Failed to load test user session:', error);
-    console.warn('⚠️  Tests will run without authentication');
-    return '';
+    throw new Error(`Failed to load test user session: ${error}`);
   }
 }
 
@@ -172,28 +177,6 @@ async function globalSetup(config: FullConfig) {
   const browser = await chromium.launch();
   const context = await browser.newContext();
   const page = await context.newPage();
-
-  // Wait for frontend to be ready before creating user
-  console.log('\n⏳ Waiting for frontend to be ready...');
-  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-  let frontendReady = false;
-  for (let i = 0; i < 60; i++) {
-    try {
-      const response = await page.request.get(FRONTEND_URL, { timeout: 2000 });
-      if (response.ok() || response.status() === 404) {
-        frontendReady = true;
-        console.log('✅ Frontend is ready');
-        break;
-      }
-    } catch (e) {
-      // Frontend not ready yet
-    }
-    await page.waitForTimeout(1000);
-  }
-
-  if (!frontendReady) {
-    console.warn('⚠️  Frontend did not become ready in time, continuing anyway...');
-  }
 
   try {
     // ========================================

@@ -12,8 +12,10 @@ import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import WebSocket, WebSocketDisconnect
+from fastapi.testclient import TestClient
 
-from codeframe.ui.routers.websocket import websocket_endpoint
+from codeframe.ui.routers.websocket import router, websocket_endpoint
+from codeframe.ui.server import app
 
 
 @pytest.fixture
@@ -530,3 +532,64 @@ class TestDocstringCompliance:
             if call[0][0].get("type") == "pong"
         ]
         assert len(pong_calls) > 0
+
+
+class TestWebSocketHealthEndpoint:
+    """Tests for /ws/health HTTP endpoint."""
+
+    def test_websocket_health_endpoint_returns_ready_status(self):
+        """Test /ws/health endpoint returns ready status."""
+        # Create test client with the router
+        from fastapi import FastAPI
+        test_app = FastAPI()
+        test_app.include_router(router)
+
+        with TestClient(test_app) as client:
+            response = client.get("/ws/health")
+
+            assert response.status_code == 200
+            assert response.json() == {"status": "ready"}
+
+    def test_websocket_health_endpoint_is_http_get(self):
+        """Test /ws/health endpoint only accepts GET requests."""
+        # Create test client with the router
+        from fastapi import FastAPI
+        test_app = FastAPI()
+        test_app.include_router(router)
+
+        with TestClient(test_app) as client:
+            # GET should work
+            response = client.get("/ws/health")
+            assert response.status_code == 200
+
+            # POST should fail
+            response = client.post("/ws/health")
+            assert response.status_code == 405  # Method Not Allowed
+
+    def test_websocket_health_endpoint_content_type(self):
+        """Test /ws/health endpoint returns JSON content type."""
+        # Create test client with the router
+        from fastapi import FastAPI
+        test_app = FastAPI()
+        test_app.include_router(router)
+
+        with TestClient(test_app) as client:
+            response = client.get("/ws/health")
+
+            assert response.status_code == 200
+            assert "application/json" in response.headers["content-type"]
+
+    def test_websocket_health_endpoint_is_fast(self):
+        """Test /ws/health endpoint responds quickly (<100ms)."""
+        import time
+        from fastapi import FastAPI
+        test_app = FastAPI()
+        test_app.include_router(router)
+
+        with TestClient(test_app) as client:
+            start_time = time.time()
+            response = client.get("/ws/health")
+            elapsed_time = time.time() - start_time
+
+            assert response.status_code == 200
+            assert elapsed_time < 0.1  # Should respond in less than 100ms
