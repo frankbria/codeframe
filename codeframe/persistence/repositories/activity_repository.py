@@ -3,8 +3,6 @@
 Extracted from monolithic Database class for better maintainability.
 """
 
-import os
-from datetime import datetime
 from typing import List, Optional, Dict, Any
 import logging
 
@@ -12,12 +10,6 @@ import logging
 from codeframe.persistence.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
-
-# Audit verbosity configuration
-AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
-if AUDIT_VERBOSITY not in ("low", "high"):
-    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
-    AUDIT_VERBOSITY = "low"
 
 
 class ActivityRepository(BaseRepository):
@@ -112,29 +104,13 @@ class ActivityRepository(BaseRepository):
         )
         generated_row = cursor.fetchone()
 
-        # Convert SQLite timestamps to RFC 3339 format
-        def ensure_rfc3339(timestamp_str: str) -> str:
-            """Ensure timestamp is in RFC 3339 format with timezone."""
-            if not timestamp_str:
-                return timestamp_str
-            # If already has 'Z' or timezone, return as-is
-            if "Z" in timestamp_str or "+" in timestamp_str:
-                return timestamp_str
-            # Parse and add Z suffix for UTC
-            try:
-                # SQLite format: "2025-10-17 22:01:56"
-                dt = datetime.fromisoformat(timestamp_str)
-                return dt.isoformat() + "Z"
-            except ValueError:
-                return timestamp_str
-
         # Determine generated_at
         generated_at = (
-            generated_row["value"] if generated_row else ensure_rfc3339(prd_row["created_at"])
+            generated_row["value"] if generated_row else self._ensure_rfc3339(prd_row["created_at"])
         )
 
         # Determine updated_at - use generated_at if updated_at is same as created_at
-        updated_at = ensure_rfc3339(
+        updated_at = self._ensure_rfc3339(
             prd_row["updated_at"] if prd_row["updated_at"] else prd_row["created_at"]
         )
 

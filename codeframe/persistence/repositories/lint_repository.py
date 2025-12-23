@@ -3,19 +3,12 @@
 Extracted from monolithic Database class for better maintainability.
 """
 
-import os
 import logging
 
 
 from codeframe.persistence.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
-
-# Audit verbosity configuration
-AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
-if AUDIT_VERBOSITY not in ("low", "high"):
-    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
-    AUDIT_VERBOSITY = "low"
 
 
 class LintRepository(BaseRepository):

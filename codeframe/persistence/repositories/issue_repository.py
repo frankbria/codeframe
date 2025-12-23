@@ -4,9 +4,7 @@ Extracted from monolithic Database class for better maintainability.
 """
 
 import json
-import os
 import sqlite3
-from datetime import datetime
 from typing import List, Optional, Dict, Any, Union
 import logging
 
@@ -20,12 +18,6 @@ from codeframe.core.models import (
 from codeframe.persistence.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
-
-# Audit verbosity configuration
-AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
-if AUDIT_VERBOSITY not in ("low", "high"):
-    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
-    AUDIT_VERBOSITY = "low"
 
 
 class IssueRepository(BaseRepository):
@@ -143,19 +135,6 @@ class IssueRepository(BaseRepository):
         )
         issue_rows = cursor.fetchall()
 
-        # Helper function for RFC 3339 timestamps
-        def ensure_rfc3339(timestamp_str: str) -> str:
-            """Ensure timestamp is in RFC 3339 format with timezone."""
-            if not timestamp_str:
-                return timestamp_str
-            if "Z" in timestamp_str or "+" in timestamp_str:
-                return timestamp_str
-            try:
-                dt = datetime.fromisoformat(timestamp_str)
-                return dt.isoformat() + "Z"
-            except ValueError:
-                return timestamp_str
-
         # Format issues according to API contract
         issues = []
         total_tasks = 0
@@ -173,10 +152,10 @@ class IssueRepository(BaseRepository):
                 "priority": issue_dict["priority"],
                 "depends_on": [],  # TODO: Parse from database if stored
                 "proposed_by": "agent",  # Default for now
-                "created_at": ensure_rfc3339(issue_dict["created_at"]),
-                "updated_at": ensure_rfc3339(issue_dict["created_at"]),  # Use created_at for now
+                "created_at": self._ensure_rfc3339(issue_dict["created_at"]),
+                "updated_at": self._ensure_rfc3339(issue_dict["created_at"]),  # Use created_at for now
                 "completed_at": (
-                    ensure_rfc3339(issue_dict["completed_at"])
+                    self._ensure_rfc3339(issue_dict["completed_at"])
                     if issue_dict.get("completed_at")
                     else None
                 ),
@@ -221,12 +200,12 @@ class IssueRepository(BaseRepository):
                         "status": task_dict["status"],
                         "depends_on": depends_on,
                         "proposed_by": "agent",  # Default for now
-                        "created_at": ensure_rfc3339(task_dict["created_at"]),
-                        "updated_at": ensure_rfc3339(
+                        "created_at": self._ensure_rfc3339(task_dict["created_at"]),
+                        "updated_at": self._ensure_rfc3339(
                             task_dict["created_at"]
                         ),  # Use created_at for now
                         "completed_at": (
-                            ensure_rfc3339(task_dict["completed_at"])
+                            self._ensure_rfc3339(task_dict["completed_at"])
                             if task_dict.get("completed_at")
                             else None
                         ),

@@ -247,3 +247,29 @@ class BaseRepository:
             raise RuntimeError("Async connection not available, use sync methods")
         cursor = await self._async_conn.cursor()
         return cursor.lastrowid
+
+    def _ensure_rfc3339(self, timestamp_str: Optional[str]) -> Optional[str]:
+        """Ensure timestamp is in RFC 3339 format with timezone.
+
+        Args:
+            timestamp_str: Timestamp string (may be SQLite format or RFC 3339)
+
+        Returns:
+            RFC 3339 formatted timestamp (with 'Z' suffix for UTC) or None
+
+        Note:
+            Converts SQLite timestamps like "2025-10-17 22:01:56" to "2025-10-17T22:01:56Z".
+            Timestamps already in RFC 3339 format are returned as-is.
+        """
+        if not timestamp_str:
+            return timestamp_str
+        # If already has 'Z' or timezone, return as-is
+        if "Z" in timestamp_str or "+" in timestamp_str:
+            return timestamp_str
+        # Parse and add Z suffix for UTC
+        try:
+            # SQLite format: "2025-10-17 22:01:56"
+            dt = datetime.fromisoformat(timestamp_str)
+            return dt.isoformat() + "Z"
+        except ValueError:
+            return timestamp_str

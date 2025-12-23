@@ -12,7 +12,7 @@ The CodeFRAME persistence layer has been refactored from a monolithic `Database`
 
 ### Before: Monolithic Database Class
 
-```
+```text
 database.py (4,531 lines)
 ├── Schema creation (600+ lines)
 ├── Project CRUD (300 lines)
@@ -43,7 +43,7 @@ database.py (4,531 lines)
 
 ### After: Repository Pattern
 
-```
+```text
 persistence/
 ├── database.py (301 lines) - Facade class
 ├── schema_manager.py (700 lines) - Schema creation
@@ -236,7 +236,7 @@ uv run pytest tests/persistence/test_correction_database.py -v
 
 ## File Organization
 
-```
+```text
 codeframe/persistence/
 ├── database.py                    # Main facade (301 lines)
 ├── database.py.backup             # Original backup (4531 lines)
@@ -287,8 +287,8 @@ Potential improvements for future consideration:
 ## References
 
 - Original database.py: `/home/frankbria/projects/codeframe/codeframe/persistence/database.py.backup`
-- Repository pattern: https://martinfowler.com/eaaCatalog/repository.html
-- Pull Request: #[PR_NUMBER]
+- Repository pattern: [Martin Fowler's Repository Pattern](https://martinfowler.com/eaaCatalog/repository.html)
+- Pull Request: #147
 
 ## Approval
 

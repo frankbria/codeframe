@@ -3,8 +3,7 @@
 Extracted from monolithic Database class for better maintainability.
 """
 
-import os
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import List, Optional, Dict, Any
 import logging
 
@@ -12,12 +11,6 @@ import logging
 from codeframe.persistence.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
-
-# Audit verbosity configuration
-AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
-if AUDIT_VERBOSITY not in ("low", "high"):
-    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
-    AUDIT_VERBOSITY = "low"
 
 
 class BlockerRepository(BaseRepository):
@@ -105,8 +98,6 @@ class BlockerRepository(BaseRepository):
         Returns:
             True if blocker was resolved, False if already resolved or not found
         """
-        from datetime import UTC
-
         cursor = self.conn.cursor()
         resolved_at = datetime.now(UTC).isoformat()
         cursor.execute(
@@ -207,11 +198,12 @@ class BlockerRepository(BaseRepository):
         """
         cursor = self.conn.cursor()
         cursor.execute(
-            f"""UPDATE blockers
+            """UPDATE blockers
                SET status = 'EXPIRED'
                WHERE status = 'PENDING'
-                 AND datetime(created_at) < datetime('now', '-{hours} hours')
-               RETURNING id"""
+                 AND datetime(created_at) < datetime('now', ? || ' hours')
+               RETURNING id""",
+            (f"-{hours}",)
         )
         # Fetch results BEFORE commit (SQLite requirement for RETURNING clause)
         expired_ids = [row[0] for row in cursor.fetchall()]
@@ -293,16 +285,14 @@ class BlockerRepository(BaseRepository):
                 resolved_count += 1
                 # Calculate resolution time
                 if created_at and resolved_at:
-                    from datetime import datetime, timezone
-
                     created = datetime.fromisoformat(created_at)
                     resolved = datetime.fromisoformat(resolved_at)
 
                     # Normalize both to timezone-aware (assume UTC if naive)
                     if created.tzinfo is None:
-                        created = created.replace(tzinfo=timezone.utc)
+                        created = created.replace(tzinfo=UTC)
                     if resolved.tzinfo is None:
-                        resolved = resolved.replace(tzinfo=timezone.utc)
+                        resolved = resolved.replace(tzinfo=UTC)
 
                     resolution_time_seconds = (resolved - created).total_seconds()
                     resolution_times.append(resolution_time_seconds)

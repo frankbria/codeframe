@@ -3,7 +3,6 @@
 Extracted from monolithic Database class for better maintainability.
 """
 
-import os
 from datetime import datetime
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 import logging
@@ -18,12 +17,6 @@ if TYPE_CHECKING:
     from codeframe.core.models import TokenUsage
 
 logger = logging.getLogger(__name__)
-
-# Audit verbosity configuration
-AUDIT_VERBOSITY = os.getenv("AUDIT_VERBOSITY", "low").lower()
-if AUDIT_VERBOSITY not in ("low", "high"):
-    logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
-    AUDIT_VERBOSITY = "low"
 
 
 class TokenRepository(BaseRepository):

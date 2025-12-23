@@ -6,7 +6,7 @@ Extracted from monolithic Database class for better maintainability.
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Union
 import logging
 
@@ -545,8 +545,6 @@ class ProjectRepository(BaseRepository):
         Returns:
             Number of sessions deleted
         """
-        from datetime import datetime
-
         conn = await self._get_async_conn()
 
         # Delete sessions where expires_at < now
@@ -575,8 +573,6 @@ class ProjectRepository(BaseRepository):
         Returns:
             Number of audit log entries deleted
         """
-        from datetime import datetime, timedelta
-
         conn = await self._get_async_conn()
 
         # Calculate cutoff date
