@@ -6,24 +6,14 @@ Extracted from monolithic Database class for better maintainability.
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 import logging
 
 import aiosqlite
 
 from codeframe.core.models import (
-    ProjectStatus,
-    ProjectPhase,
-    SourceType,
-    Project,
     Task,
     TaskStatus,
-    AgentMaturity,
-    Issue,
-    IssueWithTaskCount,
-    CallType,
 )
 from codeframe.persistence.repositories.base import BaseRepository
 
@@ -240,32 +230,6 @@ class TaskRepository(BaseRepository):
             (project_id, limit),
         )
         return [dict(row) for row in cursor.fetchall()]
-
-
-
-    async def get_tasks_by_issue(self, issue_id: int) -> List[Task]:
-        """Get all tasks for an issue.
-
-        Args:
-            issue_id: Issue ID
-
-        Returns:
-            List of Task objects ordered by task_number
-
-        Note:
-            Uses async connection with automatic health check and reconnection.
-            Call close_async() when done to release database resources.
-        """
-        conn = await self._get_async_conn()
-
-        async with conn.execute(
-            "SELECT * FROM tasks WHERE issue_id = ? ORDER BY task_number",
-            (issue_id,),
-        ) as cursor:
-            rows = await cursor.fetchall()
-            return [self._row_to_task(row) for row in rows]
-
-
 
     def add_task_dependency(self, task_id: int, depends_on_task_id: int) -> None:
         """Add a dependency relationship between tasks.

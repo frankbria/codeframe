@@ -6,7 +6,6 @@ Extracted from the monolithic Database class for better maintainability.
 
 import sqlite3
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

@@ -3,28 +3,12 @@
 Extracted from monolithic Database class for better maintainability.
 """
 
-import json
 import os
-import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Union
+from datetime import datetime
+from typing import List, Optional, Dict, Any
 import logging
 
-import aiosqlite
 
-from codeframe.core.models import (
-    ProjectStatus,
-    ProjectPhase,
-    SourceType,
-    Project,
-    Task,
-    TaskStatus,
-    AgentMaturity,
-    Issue,
-    IssueWithTaskCount,
-    CallType,
-)
 from codeframe.persistence.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -60,7 +44,7 @@ class ContextRepository(BaseRepository):
             Created context item ID (UUID string)
         """
         import uuid
-        from datetime import datetime, UTC
+        from datetime import UTC
         from codeframe.lib.importance_scorer import calculate_importance_score, assign_tier
 
         # Auto-calculate importance score for new item

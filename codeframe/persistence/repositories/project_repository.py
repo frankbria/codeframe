@@ -7,7 +7,6 @@ import json
 import os
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 import logging
 
@@ -19,11 +18,6 @@ from codeframe.core.models import (
     SourceType,
     Project,
     Task,
-    TaskStatus,
-    AgentMaturity,
-    Issue,
-    IssueWithTaskCount,
-    CallType,
 )
 from codeframe.persistence.repositories.base import BaseRepository
 
@@ -551,7 +545,7 @@ class ProjectRepository(BaseRepository):
         Returns:
             Number of sessions deleted
         """
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         conn = await self._get_async_conn()
 
@@ -581,7 +575,7 @@ class ProjectRepository(BaseRepository):
         Returns:
             Number of audit log entries deleted
         """
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
 
         conn = await self._get_async_conn()
 

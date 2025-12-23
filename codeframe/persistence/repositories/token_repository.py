@@ -3,29 +3,19 @@
 Extracted from monolithic Database class for better maintainability.
 """
 
-import json
 import os
-import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Union
+from datetime import datetime
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 import logging
 
-import aiosqlite
 
 from codeframe.core.models import (
-    ProjectStatus,
-    ProjectPhase,
-    SourceType,
-    Project,
-    Task,
-    TaskStatus,
-    AgentMaturity,
-    Issue,
-    IssueWithTaskCount,
     CallType,
 )
 from codeframe.persistence.repositories.base import BaseRepository
+
+if TYPE_CHECKING:
+    from codeframe.core.models import TokenUsage
 
 logger = logging.getLogger(__name__)
 

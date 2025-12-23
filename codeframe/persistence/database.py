@@ -4,29 +4,16 @@ Refactored to use domain-specific repositories for better maintainability.
 The Database class now acts as a facade, delegating operations to repositories.
 """
 
-import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any, TYPE_CHECKING, Union
+from typing import Optional, TYPE_CHECKING
 import logging
 
 import asyncio
 import aiosqlite
 
-from codeframe.core.models import (
-    ProjectStatus,
-    ProjectPhase,
-    SourceType,
-    Project,
-    Task,
-    TaskStatus,
-    AgentMaturity,
-    Issue,
-    IssueWithTaskCount,
-    CallType,
-)
 from codeframe.persistence.schema_manager import SchemaManager
 from codeframe.persistence.repositories import (
     ProjectRepository,
@@ -49,13 +36,7 @@ from codeframe.persistence.repositories import (
 )
 
 if TYPE_CHECKING:
-    from codeframe.core.models import (
-        CodeReview,
-        QualityGateFailure,
-        Checkpoint,
-        CheckpointMetadata,
-        TokenUsage,
-    )
+    pass
 
 logger = logging.getLogger(__name__)
 

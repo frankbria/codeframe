@@ -6,24 +6,16 @@ Extracted from monolithic Database class for better maintainability.
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 from typing import List, Optional, Dict, Any, Union
 import logging
 
 import aiosqlite
 
 from codeframe.core.models import (
-    ProjectStatus,
-    ProjectPhase,
-    SourceType,
-    Project,
-    Task,
     TaskStatus,
-    AgentMaturity,
     Issue,
     IssueWithTaskCount,
-    CallType,
 )
 from codeframe.persistence.repositories.base import BaseRepository
 
@@ -137,7 +129,6 @@ class IssueRepository(BaseRepository):
         Returns:
             Dictionary with issues, total_issues, total_tasks
         """
-        from datetime import datetime
 
         cursor = self.conn.cursor()
 
