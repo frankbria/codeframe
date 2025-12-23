@@ -117,70 +117,37 @@ function seedDatabaseDirectly(projectId: number): void {
 }
 
 /**
- * Create a test user with known credentials for E2E tests.
- * Returns the session token to use in authenticated requests.
+ * Load test user session token created during database seeding.
+ * The session token is created directly in the database by seed-test-data.py.
  */
-async function createTestUser(page: any): Promise<string> {
-  console.log('\n👤 Creating test user...');
-
-  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const TEST_USER = {
-    email: 'test@example.com',
-    password: 'testpassword123',
-    name: 'E2E Test User'
-  };
+function loadTestUserSession(): string {
+  console.log('\n👤 Loading test user session...');
 
   try {
-    // Try to sign up the test user
-    const signupResponse = await page.request.post(`${FRONTEND_URL}/api/auth/sign-up`, {
-      data: TEST_USER,
-      failOnStatusCode: false
-    });
+    // Read session token from file created by seed-test-data.py
+    const tokenFile = path.join(path.dirname(TEST_DB_PATH), 'test-session-token.txt');
 
-    if (signupResponse.ok()) {
-      console.log('✅ Test user created successfully');
-    } else if (signupResponse.status() === 400) {
-      // User might already exist, try to sign in
-      console.log('   Test user already exists, signing in...');
-    } else {
-      console.warn(`⚠️  Signup failed with status ${signupResponse.status()}: ${await signupResponse.text()}`);
-    }
-
-    // Sign in to get session token
-    const signinResponse = await page.request.post(`${FRONTEND_URL}/api/auth/sign-in`, {
-      data: {
-        email: TEST_USER.email,
-        password: TEST_USER.password
-      }
-    });
-
-    if (!signinResponse.ok()) {
-      throw new Error(`Failed to sign in test user: ${signinResponse.status()} - ${await signinResponse.text()}`);
-    }
-
-    // Extract session token from response cookies
-    const cookies = await page.context().cookies();
-    const sessionCookie = cookies.find(c => c.name === 'better-auth.session_token' || c.name === 'session_token' || c.name === 'auth_token');
-
-    if (!sessionCookie) {
-      console.warn('⚠️  No session cookie found, available cookies:', cookies.map(c => c.name));
-      // Return empty token - tests will need to handle authentication differently
+    if (!fs.existsSync(tokenFile)) {
+      console.warn('⚠️  Session token file not found:', tokenFile);
+      console.warn('⚠️  Tests will run without authentication');
       return '';
     }
 
-    console.log('✅ Test user authenticated successfully');
-    console.log(`   Email: ${TEST_USER.email}`);
-    console.log(`   Session token: ${sessionCookie.value.substring(0, 20)}...`);
+    const sessionToken = fs.readFileSync(tokenFile, 'utf-8').trim();
+
+    console.log('✅ Test user session loaded');
+    console.log(`   Email: test@example.com`);
+    console.log(`   Password: testpassword123`);
+    console.log(`   Session token: ${sessionToken.substring(0, 20)}...`);
 
     // Store credentials for tests to use
-    process.env.E2E_TEST_USER_EMAIL = TEST_USER.email;
-    process.env.E2E_TEST_USER_PASSWORD = TEST_USER.password;
-    process.env.E2E_TEST_SESSION_TOKEN = sessionCookie.value;
+    process.env.E2E_TEST_USER_EMAIL = 'test@example.com';
+    process.env.E2E_TEST_USER_PASSWORD = 'testpassword123';
+    process.env.E2E_TEST_SESSION_TOKEN = sessionToken;
 
-    return sessionCookie.value;
+    return sessionToken;
   } catch (error) {
-    console.error('❌ Failed to create test user:', error);
-    // Don't throw - tests can still run without auth if AUTH_REQUIRED=false
+    console.error('❌ Failed to load test user session:', error);
     console.warn('⚠️  Tests will run without authentication');
     return '';
   }
@@ -227,9 +194,6 @@ async function globalSetup(config: FullConfig) {
   if (!frontendReady) {
     console.warn('⚠️  Frontend did not become ready in time, continuing anyway...');
   }
-
-  // Create test user and get session token
-  await createTestUser(page);
 
   try {
     // ========================================
@@ -294,8 +258,14 @@ async function globalSetup(config: FullConfig) {
     // ========================================
     // Use Python script to seed directly into SQLite instead of API calls
     // (many create endpoints don't exist)
-    // Note: This now includes checkpoint seeding
+    // Note: This now includes checkpoint seeding and test user creation
     seedDatabaseDirectly(projectId);
+
+    // ========================================
+    // 3. Load test user session token
+    // ========================================
+    // The session token was created during database seeding
+    loadTestUserSession();
 
     console.log('\n✅ E2E test environment ready!');
     console.log(`   Project ID: ${projectId}`);

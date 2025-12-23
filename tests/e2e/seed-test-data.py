@@ -45,6 +45,50 @@ def seed_test_data(db_path: str, project_id: int):
         now_ts = now.isoformat()
 
         # ========================================
+        # 0. Seed Test User (for authentication)
+        # ========================================
+        print("👤 Seeding test user...")
+        # Hash: bcrypt hash of 'testpassword123'
+        # Generated with: python -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"
+        test_user_password_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYb9K0rJ5n6"
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO users (id, email, password_hash, name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                "test@example.com",
+                test_user_password_hash,
+                "E2E Test User",
+                now_ts,
+                now_ts,
+            ),
+        )
+
+        # Create a session for the test user (expires in 7 days)
+        session_token = "test-session-token-12345678901234567890"
+        expires_at = (now + timedelta(days=7)).isoformat()
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO sessions (token, user_id, expires_at, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (session_token, 1, expires_at, now_ts),
+        )
+
+        print(f"✅ Seeded test user (email: test@example.com)")
+        print(f"   Session token: {session_token[:20]}...")
+
+        # Export session token for tests to use via output file
+        # Write to a file that global-setup.ts can read
+        token_file = os.path.join(os.path.dirname(db_path), "test-session-token.txt")
+        with open(token_file, "w") as f:
+            f.write(session_token)
+
+        # ========================================
         # 1. Seed Agents (5)
         # ========================================
         print("👥 Seeding agents...")
