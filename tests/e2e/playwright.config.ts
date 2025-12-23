@@ -87,7 +87,7 @@ export default defineConfig({
         // Backend FastAPI server
         {
           command: `cd ../.. && DATABASE_PATH=${TEST_DB_PATH} uv run uvicorn codeframe.ui.server:app --port 8080`,
-          url: 'http://localhost:8080/health',
+          url: 'http://localhost:8080/ws/health',
           reuseExistingServer: !process.env.CI,
           timeout: 120000,
         },

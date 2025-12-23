@@ -15,6 +15,59 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
 const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
 
+/**
+ * Helper function to wait for WebSocket endpoint to be ready
+ * Polls /ws/health endpoint until it responds successfully
+ */
+async function waitForWebSocketReady(baseURL: string, timeoutMs: number = 30000): Promise<void> {
+  const startTime = Date.now();
+  const pollInterval = 500; // Poll every 500ms
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const response = await fetch(`${baseURL}/ws/health`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'ready') {
+          console.log('WebSocket endpoint is ready');
+          return;
+        }
+      }
+    } catch (error) {
+      // Connection not ready yet, continue polling
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  throw new Error(`WebSocket endpoint not ready after ${timeoutMs}ms`);
+}
+
+/**
+ * Helper function to wait for WebSocket connection in the UI
+ * Checks for connection status indicator
+ */
+async function waitForWebSocketConnection(page: Page, timeoutMs: number = 10000): Promise<void> {
+  const startTime = Date.now();
+
+  try {
+    // Wait for the AgentStateProvider to mount
+    await page.waitForSelector('[data-testid="agent-status-panel"]', {
+      timeout: timeoutMs,
+      state: 'visible'
+    });
+
+    // Note: We don't check for ws-connection-status here since it might not exist
+    // in the current Dashboard implementation. The WebSocket connection test
+    // will verify that the connection is established via the browser's WebSocket event.
+
+    console.log('Dashboard component loaded successfully');
+  } catch (error) {
+    const elapsed = Date.now() - startTime;
+    throw new Error(`Dashboard not ready after ${elapsed}ms: ${error}`);
+  }
+}
+
 test.describe('Dashboard - Sprint 10 Features', () => {
   let page: Page;
 
@@ -202,39 +255,58 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   });
 
   test('should receive real-time updates via WebSocket', async () => {
-    // WebSocket may have connected during beforeEach page load.
-    // We need to reload the page while listening for the WebSocket event.
+    // Step 1: Verify WebSocket backend endpoint is ready
+    await waitForWebSocketReady(BACKEND_URL);
+
+    // Step 2: Set up WebSocket event listener before reload
+    // This ensures we catch the connection attempt
     const wsPromise = page.waitForEvent('websocket', { timeout: 15000 });
 
-    // Reload the page to trigger a fresh WebSocket connection
+    // Step 3: Reload the page to trigger a fresh WebSocket connection
     await page.reload({ waitUntil: 'networkidle' });
 
-    // Wait for WebSocket connection
-    const ws = await wsPromise;
-    expect(ws).toBeDefined();
+    // Step 4: Wait for WebSocket connection
+    let ws;
+    try {
+      ws = await wsPromise;
+      expect(ws).toBeDefined();
+      console.log('WebSocket connection detected via browser event');
+    } catch (error) {
+      // If we timeout waiting for WebSocket event, provide detailed error
+      throw new Error(`WebSocket connection not established: ${error}\n` +
+        `Backend URL: ${BACKEND_URL}\n` +
+        `Frontend URL: ${FRONTEND_URL}\n` +
+        `Check that the WebSocket endpoint is accessible and CORS is configured correctly.`);
+    }
 
-    // Listen for WebSocket messages
+    // Step 5: Listen for WebSocket messages
     const messages: string[] = [];
     ws.on('framereceived', (frame) => {
       try {
         const payload = frame.payload.toString();
         if (payload) {
           messages.push(payload);
+          console.log('WebSocket message received:', payload.substring(0, 100));
         }
       } catch (e) {
         // Ignore decoding errors
       }
     });
 
-    // Wait for agent panel to render (indicates page is loaded)
+    // Step 6: Wait for Dashboard UI to be ready
+    await waitForWebSocketConnection(page);
+
+    // Step 7: Wait for agent panel to render (indicates page is loaded)
     await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'visible', timeout: 10000 });
 
-    // Wait a bit for WebSocket messages to arrive
+    // Step 8: Wait a bit for WebSocket messages to arrive
     await page.waitForTimeout(2000);
 
-    // We should have received at least one message (heartbeat, initial state, etc.)
-    // Note: If WebSocket doesn't send periodic updates, this may need adjustment
-    expect(messages.length).toBeGreaterThanOrEqual(0); // Allow 0 for now - connection success is the main test
+    // Step 9: Verify connection was successful
+    // The main test is that the WebSocket connection was established (steps 4-6)
+    // Message count may be 0 if no updates are sent immediately
+    expect(messages.length).toBeGreaterThanOrEqual(0);
+    console.log(`WebSocket test complete - received ${messages.length} messages`);
   });
 
   test('should navigate between dashboard sections', async () => {

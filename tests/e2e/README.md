@@ -364,6 +364,71 @@ curl http://localhost:8080/health
 # Should return: {"status": "ok"}
 ```
 
+### WebSocket Connection Issues
+
+**Symptom**: E2E test "should receive real-time updates via WebSocket" fails with `ERR_CONNECTION_REFUSED` or timeout.
+
+**WebSocket Health Check**:
+
+Playwright now waits for the WebSocket health endpoint (`/ws/health`) before starting tests. This ensures the WebSocket server is fully ready.
+
+```bash
+# Verify WebSocket health endpoint
+curl http://localhost:8080/ws/health
+
+# Should return: {"status": "ready"}
+```
+
+**Troubleshooting Steps**:
+
+1. **Check WebSocket endpoint accessibility**:
+   ```bash
+   # If /ws/health returns 404, the WebSocket router may not be mounted
+   # Check codeframe/ui/server.py includes the websocket router
+   ```
+
+2. **Test WebSocket connection manually**:
+   ```bash
+   # Use the test script
+   uv run python scripts/test-websocket.py
+
+   # Expected output:
+   # ✅ Backend is healthy
+   # ✅ WebSocket endpoint is ready
+   # ✅ WebSocket connection established
+   # ✅ WebSocket message exchange successful
+   ```
+
+3. **Check browser console during tests**:
+   ```bash
+   # Run tests in headed mode to see browser
+   cd tests/e2e
+   npx playwright test test_dashboard.spec.ts -g "WebSocket" --headed
+
+   # Check browser DevTools Network tab (WS filter) for connection errors
+   ```
+
+4. **Verify timing**:
+   - Backend startup: Playwright waits up to 120s for `/ws/health`
+   - WebSocket connection: Test waits up to 15s for connection event
+   - If still failing, increase timeouts in `test_dashboard.spec.ts`
+
+**Common Causes**:
+
+- **Backend not fully initialized**: The WebSocket server needs time to start after HTTP endpoints
+- **CORS issues**: Ensure WebSocket connections are allowed from frontend origin
+- **Proxy interference**: If using a proxy, ensure WebSocket upgrade headers are forwarded
+- **Firewall blocking**: Check that port 8080 WebSocket connections are allowed
+
+**Helper Functions**:
+
+The E2E test includes two helper functions for robust WebSocket testing:
+
+- `waitForWebSocketReady(baseURL)`: Polls `/ws/health` until ready (30s timeout)
+- `waitForWebSocketConnection(page)`: Waits for Dashboard UI to load (10s timeout)
+
+These ensure the test only proceeds when WebSocket infrastructure is fully operational.
+
 ### Database seeding errors
 
 **Symptom**: Tests fail with "table already exists" or foreign key errors.

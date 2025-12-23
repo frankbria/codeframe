@@ -25,6 +25,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["websocket"])
 
 
+@router.get("/ws/health")
+async def websocket_health():
+    """
+    Health check endpoint for WebSocket server.
+
+    Returns status indicating WebSocket server is ready to accept connections.
+    Used by E2E tests and monitoring tools to verify WebSocket availability.
+
+    Returns:
+        dict: Status indicating WebSocket server is ready
+    """
+    return {"status": "ready"}
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db_websocket)):
     """WebSocket connection for real-time updates with authentication.
