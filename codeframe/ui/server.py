@@ -288,6 +288,32 @@ async def health_check():
 
 
 # ============================================================================
+# Test-Only Endpoints (for WebSocket integration tests)
+# ============================================================================
+
+
+@app.post("/test/broadcast")
+async def test_broadcast(message: dict, project_id: int = None):
+    """Trigger a WebSocket broadcast for testing purposes.
+
+    This endpoint is only intended for use in integration tests to trigger
+    broadcasts from the server subprocess. In production, broadcasts are
+    triggered by actual server-side events.
+
+    Args:
+        message: The message dict to broadcast
+        project_id: Optional project ID for filtered broadcasts
+
+    Returns:
+        Success confirmation
+    """
+    from codeframe.ui.shared import manager
+
+    await manager.broadcast(message, project_id=project_id)
+    return {"status": "broadcast_sent", "project_id": project_id}
+
+
+# ============================================================================
 # Router Mounting
 # ============================================================================
 

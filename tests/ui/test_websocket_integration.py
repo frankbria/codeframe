@@ -9,440 +9,358 @@ This test suite validates the complete WebSocket subscription lifecycle includin
 - Backward compatibility with unfiltered broadcasts
 - Invalid message handling and error responses
 
-The tests use FastAPI's TestClient WebSocket testing capabilities to simulate
-real WebSocket connections and validate message routing correctness.
+The tests use real WebSocket connections via the `websockets` library to
+validate message routing correctness against a running FastAPI server.
 """
 
+import asyncio
+import json
 import pytest
-import tempfile
-import shutil
-from pathlib import Path
-from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock
-
-from codeframe.persistence.database import Database
-from codeframe.ui.shared import ConnectionManager, WebSocketSubscriptionManager
+import requests
+import websockets
 
 
-def broadcast_sync(manager, message: dict, project_id: int = None):
-    """Synchronous broadcast using threading for TestClient compatibility.
+async def trigger_broadcast(server_url: str, message: dict, project_id: int = None):
+    """Trigger a broadcast via the test API endpoint.
 
-    TestClient's WebSocket runs in a background thread. To broadcast messages,
-    we need to run the async broadcast in the same event loop as the TestClient's
-    background thread.
+    Args:
+        server_url: Base server URL (e.g., http://localhost:8080)
+        message: Message dict to broadcast
+        project_id: Optional project ID for filtered broadcasts
     """
-    import threading
-    import asyncio
-
-    result = {'done': False, 'error': None}
-
-    def run_broadcast():
-        try:
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(manager.broadcast(message, project_id=project_id))
-            finally:
-                loop.close()
-            result['done'] = True
-        except Exception as e:
-            result['error'] = e
-
-    thread = threading.Thread(target=run_broadcast)
-    thread.start()
-    thread.join(timeout=2.0)
-
-    if not result['done']:
-        raise TimeoutError("Broadcast timed out")
-    if result['error']:
-        raise result['error']
-
-
-def get_subscriptions_sync(manager, websocket):
-    """Synchronous helper to get subscriptions for a websocket."""
-    return manager.subscription_manager._subscriptions.get(websocket, set()).copy()
-
-
-@pytest.fixture
-def test_client():
-    """Create test client with temporary database and clean manager state."""
-    temp_dir = Path(tempfile.mkdtemp())
-    db_path = temp_dir / "test.db"
-    workspace_root = temp_dir / "workspaces"
-
-    # Create fresh ConnectionManager for each test
-    from codeframe.ui import server, shared
-    from datetime import datetime, timezone
-
-    # Replace manager with fresh instance for test isolation
-    fresh_manager = ConnectionManager()
-    original_manager = shared.manager
-    shared.manager = fresh_manager
-    server.manager = fresh_manager
-
-    # Initialize database
-    db = Database(db_path)
-    db.initialize()
-    server.app.state.db = db
-
-    # Create test user (user_id=1) for WebSocket authentication
-    db.conn.execute(
-        """
-        INSERT OR REPLACE INTO users (id, email, password_hash, name, created_at)
-        VALUES (1, 'test@example.com', 'hashed_password', 'Test User', ?)
-        """,
-        (datetime.now(timezone.utc).isoformat(),)
-    )
-    db.conn.commit()
-
-    # Create test project (project_id=1) owned by user 1
-    try:
-        db.create_project(
-            name="Test Project",
-            description="Test project for WebSocket tests",
-            workspace_path=str(workspace_root / "1"),
-            user_id=1
-        )
-    except Exception:
-        # Project might already exist from previous test, that's OK
-        pass
-
-    db.conn.commit()
-
-    from codeframe.workspace import WorkspaceManager
-
-    server.app.state.workspace_manager = WorkspaceManager(workspace_root)
-
-    client = TestClient(server.app)
-
-    yield client
-
-    # Cleanup
-    db.close()
-    shutil.rmtree(temp_dir, ignore_errors=True)
-
-    # Restore original manager
-    shared.manager = original_manager
-    server.manager = original_manager
+    url = f"{server_url}/test/broadcast"
+    params = {"project_id": project_id} if project_id is not None else {}
+    response = requests.post(url, json=message, params=params, timeout=5.0)
+    response.raise_for_status()
+    return response.json()
 
 
 class TestFullSubscriptionWorkflow:
     """Test complete subscription workflow: connect → subscribe → receive → unsubscribe."""
 
-    def test_connect_and_subscribe_single_project(self, test_client):
+    @pytest.mark.asyncio
+    async def test_connect_and_subscribe_single_project(self, running_server, ws_url):
         """Test connecting and subscribing to a single project."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Send subscribe message
-            websocket.send_json({"type": "subscribe", "project_id": 1})
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
 
             # Receive subscription confirmation
-            data = websocket.receive_json()
+            data = json.loads(await websocket.recv())
             assert data["type"] == "subscribed"
             assert data["project_id"] == 1
 
-    def test_receive_filtered_broadcast_after_subscribe(self, test_client):
+    @pytest.mark.asyncio
+    async def test_receive_filtered_broadcast_after_subscribe(self, running_server, ws_url):
         """Test that client receives broadcasts for subscribed project."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Subscribe to project 1
-            websocket.send_json({"type": "subscribe", "project_id": 1})
-            websocket.receive_json()  # subscription confirmation
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            data = json.loads(await websocket.recv())  # subscription confirmation
+            assert data["type"] == "subscribed"
 
-            # Simulate broadcast to project 1
-            from codeframe.ui.shared import manager
-
-            broadcast_sync(
-                manager,
+            # Trigger broadcast via test API endpoint
+            await trigger_broadcast(
+                running_server,
                 {"type": "task_status_changed", "task_id": 42, "status": "completed"},
                 project_id=1
             )
 
             # Client should receive the message
-            data = websocket.receive_json()
+            data = json.loads(await websocket.recv())
             assert data["type"] == "task_status_changed"
             assert data["task_id"] == 42
             assert data["status"] == "completed"
 
-    def test_unsubscribe_stops_receiving_messages(self, test_client):
+    @pytest.mark.asyncio
+    async def test_unsubscribe_stops_receiving_messages(self, running_server, ws_url):
         """Test that client stops receiving messages after unsubscribe."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Subscribe to project 1
-            websocket.send_json({"type": "subscribe", "project_id": 1})
-            websocket.receive_json()  # confirmation
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await websocket.recv()  # confirmation
 
             # Unsubscribe from project 1
-            websocket.send_json({"type": "unsubscribe", "project_id": 1})
-            unsubscribe_response = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "unsubscribe", "project_id": 1}))
+            unsubscribe_response = json.loads(await websocket.recv())
             assert unsubscribe_response["type"] == "unsubscribed"
             assert unsubscribe_response["project_id"] == 1
 
             # Broadcast to project 1 should NOT be received
-            from codeframe.ui.shared import manager
-
-            broadcast_sync(
-                manager,
+            await trigger_broadcast(running_server, 
                 {"type": "task_status_changed", "task_id": 99, "status": "failed"},
                 project_id=1
             )
 
             # Client should NOT receive this message
-            # Use a timeout to verify no message arrives
+            # Use asyncio.wait_for with timeout to verify no message arrives
             try:
-                data = websocket.receive_json(timeout=0.1)
-                # If we get here without timeout, the test should fail
+                await asyncio.wait_for(websocket.recv(), timeout=0.2)
                 pytest.fail("Should not receive message after unsubscribe")
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 # Expected: no message received
                 pass
 
-    def test_disconnect_cleanup(self, test_client):
+    @pytest.mark.asyncio
+    async def test_disconnect_cleanup(self, running_server, ws_url):
         """Test that disconnect properly cleans up subscriptions."""
         # Create first WebSocket connection
-        ws1 = test_client.websocket_connect("/ws")
-        websocket1 = ws1.__enter__()
+        websocket1 = await websockets.connect(f"{ws_url}/ws")
 
-        # Subscribe to projects
-        websocket1.send_json({"type": "subscribe", "project_id": 1})
-        websocket1.receive_json()
+        try:
+            # Subscribe to projects
+            await websocket1.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await websocket1.recv()
 
-        websocket1.send_json({"type": "subscribe", "project_id": 2})
-        websocket1.receive_json()
+            await websocket1.send(json.dumps({"type": "subscribe", "project_id": 2}))
+            await websocket1.recv()
 
-        # Verify subscriptions exist
-        from codeframe.ui.shared import manager
+            # Verify subscriptions work by receiving a broadcast
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_message", "data": "before_disconnect"},
+                project_id=1
+            )
+            msg = json.loads(await websocket1.recv())
+            assert msg["type"] == "test_message"
 
-        subs = get_subscriptions_sync(manager, websocket1)
-        assert 1 in subs
-        assert 2 in subs
+            # Disconnect
+            await websocket1.close()
 
-        # Disconnect
-        ws1.__exit__(None, None, None)
+            # Give server time to process disconnect
+            await asyncio.sleep(0.2)
 
-        # Verify subscriptions are cleaned up
-        subs = get_subscriptions_sync(manager, websocket1)
-        assert len(subs) == 0
+            # Create second connection and subscribe to same project
+            websocket2 = await websockets.connect(f"{ws_url}/ws")
+            await websocket2.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await websocket2.recv()
+
+            # Trigger broadcast - only websocket2 should receive it
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_message", "data": "after_disconnect"},
+                project_id=1
+            )
+
+            # websocket2 receives the message
+            msg = json.loads(await websocket2.recv())
+            assert msg["data"] == "after_disconnect"
+
+            await websocket2.close()
+
+        finally:
+            if websocket1.close_code is None:
+                await websocket1.close()
 
 
 class TestMultiClientScenario:
     """Test multi-client scenarios with independent subscriptions."""
 
-    def test_three_clients_with_independent_subscriptions(self, test_client):
+    @pytest.mark.asyncio
+    async def test_three_clients_with_independent_subscriptions(self, running_server, ws_url):
         """Test 3 clients with different project subscriptions."""
         # Create 3 WebSocket connections
-        ws1_ctx = test_client.websocket_connect("/ws")
-        ws1 = ws1_ctx.__enter__()
+        ws1 = await websockets.connect(f"{ws_url}/ws")
+        ws2 = await websockets.connect(f"{ws_url}/ws")
+        ws3 = await websockets.connect(f"{ws_url}/ws")
 
-        ws2_ctx = test_client.websocket_connect("/ws")
-        ws2 = ws2_ctx.__enter__()
-
-        ws3_ctx = test_client.websocket_connect("/ws")
-        ws3 = ws3_ctx.__enter__()
-
-        # Client 1: subscribe to project 1
-        ws1.send_json({"type": "subscribe", "project_id": 1})
-        ws1.receive_json()
-
-        # Client 2: subscribe to project 2
-        ws2.send_json({"type": "subscribe", "project_id": 2})
-        ws2.receive_json()
-
-        # Client 3: subscribe to both projects
-        ws3.send_json({"type": "subscribe", "project_id": 1})
-        ws3.receive_json()
-        ws3.send_json({"type": "subscribe", "project_id": 2})
-        ws3.receive_json()
-
-        # Broadcast to project 1
-        from codeframe.ui.shared import manager
-
-        broadcast_sync(
-            manager,
-            {"type": "task_status_changed", "project_id": 1, "task_id": 101},
-            project_id=1
-        )
-
-        # Client 1 should receive (subscribed to project 1)
-        data1 = ws1.receive_json()
-        assert data1["project_id"] == 1
-        assert data1["task_id"] == 101
-
-        # Client 3 should receive (subscribed to project 1)
-        data3 = ws3.receive_json()
-        assert data3["project_id"] == 1
-        assert data3["task_id"] == 101
-
-        # Broadcast to project 2
-        broadcast_sync(
-            manager,
-            {"type": "task_status_changed", "project_id": 2, "task_id": 202},
-            project_id=2
-        )
-
-        # Client 2 should receive (subscribed to project 2)
-        data2 = ws2.receive_json()
-        assert data2["project_id"] == 2
-        assert data2["task_id"] == 202
-
-        # Client 3 should receive (subscribed to project 2)
-        data3 = ws3.receive_json()
-        assert data3["project_id"] == 2
-        assert data3["task_id"] == 202
-
-        # Cleanup
-        ws1_ctx.__exit__(None, None, None)
-        ws2_ctx.__exit__(None, None, None)
-        ws3_ctx.__exit__(None, None, None)
-
-    def test_broadcast_isolation_between_projects(self, test_client):
-        """Test that broadcasts to one project don't leak to other project subscribers."""
-        ws1_ctx = test_client.websocket_connect("/ws")
-        ws1 = ws1_ctx.__enter__()
-
-        ws2_ctx = test_client.websocket_connect("/ws")
-        ws2 = ws2_ctx.__enter__()
-
-        # Client 1: subscribe to project 1 only
-        ws1.send_json({"type": "subscribe", "project_id": 1})
-        ws1.receive_json()
-
-        # Client 2: subscribe to project 2 only
-        ws2.send_json({"type": "subscribe", "project_id": 2})
-        ws2.receive_json()
-
-        # Broadcast to project 1
-        from codeframe.ui.shared import manager
-
-        broadcast_sync(
-            manager,
-            {"type": "test_result", "project_id": 1, "status": "passed"},
-            project_id=1
-        )
-
-        # Client 1 receives message
-        data1 = ws1.receive_json()
-        assert data1["project_id"] == 1
-
-        # Client 2 should NOT receive anything (timeout)
         try:
-            ws2.receive_json(timeout=0.1)
-            pytest.fail("Client 2 should not receive project 1 broadcasts")
-        except TimeoutError:
-            pass
+            # Client 1: subscribe to project 1
+            await ws1.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await ws1.recv()
 
-        ws1_ctx.__exit__(None, None, None)
-        ws2_ctx.__exit__(None, None, None)
+            # Client 2: subscribe to project 2
+            await ws2.send(json.dumps({"type": "subscribe", "project_id": 2}))
+            await ws2.recv()
+
+            # Client 3: subscribe to both projects
+            await ws3.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await ws3.recv()
+            await ws3.send(json.dumps({"type": "subscribe", "project_id": 2}))
+            await ws3.recv()
+
+            # Broadcast to project 1
+            await trigger_broadcast(running_server, 
+                {"type": "task_status_changed", "project_id": 1, "task_id": 101},
+                project_id=1
+            )
+
+            # Client 1 should receive (subscribed to project 1)
+            data1 = json.loads(await ws1.recv())
+            assert data1["project_id"] == 1
+            assert data1["task_id"] == 101
+
+            # Client 3 should receive (subscribed to project 1)
+            data3 = json.loads(await ws3.recv())
+            assert data3["project_id"] == 1
+            assert data3["task_id"] == 101
+
+            # Broadcast to project 2
+            await trigger_broadcast(running_server, 
+                {"type": "task_status_changed", "project_id": 2, "task_id": 202},
+                project_id=2
+            )
+
+            # Client 2 should receive (subscribed to project 2)
+            data2 = json.loads(await ws2.recv())
+            assert data2["project_id"] == 2
+            assert data2["task_id"] == 202
+
+            # Client 3 should receive (subscribed to project 2)
+            data3 = json.loads(await ws3.recv())
+            assert data3["project_id"] == 2
+            assert data3["task_id"] == 202
+
+        finally:
+            # Cleanup
+            await ws1.close()
+            await ws2.close()
+            await ws3.close()
+
+    @pytest.mark.asyncio
+    async def test_broadcast_isolation_between_projects(self, running_server, ws_url):
+        """Test that broadcasts to one project don't leak to other project subscribers."""
+        ws1 = await websockets.connect(f"{ws_url}/ws")
+        ws2 = await websockets.connect(f"{ws_url}/ws")
+
+        try:
+            # Client 1: subscribe to project 1 only
+            await ws1.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await ws1.recv()
+
+            # Client 2: subscribe to project 2 only
+            await ws2.send(json.dumps({"type": "subscribe", "project_id": 2}))
+            await ws2.recv()
+
+            # Broadcast to project 1
+            await trigger_broadcast(running_server, 
+                {"type": "test_result", "project_id": 1, "status": "passed"},
+                project_id=1
+            )
+
+            # Client 1 receives message
+            data1 = json.loads(await ws1.recv())
+            assert data1["project_id"] == 1
+
+            # Client 2 should NOT receive anything (timeout)
+            try:
+                await asyncio.wait_for(ws2.recv(), timeout=0.2)
+                pytest.fail("Client 2 should not receive project 1 broadcasts")
+            except asyncio.TimeoutError:
+                pass
+
+        finally:
+            await ws1.close()
+            await ws2.close()
 
 
 class TestSubscribeUnsubscribeFlow:
     """Test subscribe/unsubscribe flow and message filtering."""
 
-    def test_subscribe_to_multiple_projects_sequentially(self, test_client):
+    @pytest.mark.asyncio
+    async def test_subscribe_to_multiple_projects_sequentially(self, running_server, ws_url):
         """Test subscribing to multiple projects one after another."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Subscribe to project 1
-            websocket.send_json({"type": "subscribe", "project_id": 1})
-            resp1 = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            resp1 = json.loads(await websocket.recv())
             assert resp1["project_id"] == 1
 
             # Subscribe to project 2
-            websocket.send_json({"type": "subscribe", "project_id": 2})
-            resp2 = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 2}))
+            resp2 = json.loads(await websocket.recv())
             assert resp2["project_id"] == 2
 
             # Subscribe to project 3
-            websocket.send_json({"type": "subscribe", "project_id": 3})
-            resp3 = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 3}))
+            resp3 = json.loads(await websocket.recv())
             assert resp3["project_id"] == 3
 
-            # Verify all subscriptions are active
-            from codeframe.ui.shared import manager
+            # Verify all subscriptions are active (check manager's internal state)
+            subs_count = len([
+                ws for ws, projects in manager.subscription_manager._subscriptions.items()
+                if ws == websocket and 1 in projects and 2 in projects and 3 in projects
+            ])
+            assert subs_count == 1
 
-            subs = get_subscriptions_sync(manager, websocket)
-            assert 1 in subs
-            assert 2 in subs
-            assert 3 in subs
-
-    def test_resubscribe_to_same_project(self, test_client):
+    @pytest.mark.asyncio
+    async def test_resubscribe_to_same_project(self, running_server, ws_url):
         """Test that resubscribing to same project doesn't cause issues."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Subscribe to project 1
-            websocket.send_json({"type": "subscribe", "project_id": 1})
-            websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await websocket.recv()
 
             # Subscribe to same project again
-            websocket.send_json({"type": "subscribe", "project_id": 1})
-            websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await websocket.recv()
 
             # Should still work - single subscription
-            from codeframe.ui.shared import manager
+            subs = manager.subscription_manager._subscriptions.get(websocket, set())
+            assert len(subs) == 1
+            assert 1 in subs
 
-            sub_count = len(get_subscriptions_sync(manager, websocket))
-            assert sub_count == 1
-
-    def test_unsubscribe_then_resubscribe(self, test_client):
+    @pytest.mark.asyncio
+    async def test_unsubscribe_then_resubscribe(self, running_server, ws_url):
         """Test unsubscribing and then resubscribing to project."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Subscribe to project 1
-            websocket.send_json({"type": "subscribe", "project_id": 1})
-            websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await websocket.recv()
 
             # Unsubscribe
-            websocket.send_json({"type": "unsubscribe", "project_id": 1})
-            websocket.receive_json()
+            await websocket.send(json.dumps({"type": "unsubscribe", "project_id": 1}))
+            await websocket.recv()
 
             # Resubscribe
-            websocket.send_json({"type": "subscribe", "project_id": 1})
-            websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await websocket.recv()
 
             # Verify subscription is active
-            from codeframe.ui.shared import manager
-
-            is_subscribed = 1 in get_subscriptions_sync(manager, websocket)
+            is_subscribed = 1 in manager.subscription_manager._subscriptions.get(websocket, set())
             assert is_subscribed
 
 
 class TestDisconnectCleanup:
     """Test disconnect cleanup and subscription removal."""
 
-    def test_disconnect_removes_all_subscriptions(self, test_client):
+    @pytest.mark.asyncio
+    async def test_disconnect_removes_all_subscriptions(self, running_server, ws_url):
         """Test that disconnect removes all subscriptions for a client."""
-        from codeframe.ui.shared import manager
-
         # Create connection
-        ws_ctx = test_client.websocket_connect("/ws")
-        websocket = ws_ctx.__enter__()
+        websocket = await websockets.connect(f"{ws_url}/ws")
 
         # Subscribe to multiple projects
         for project_id in [1, 2, 3]:
-            websocket.send_json({"type": "subscribe", "project_id": project_id})
-            websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": project_id}))
+            await websocket.recv()
 
         # Verify subscriptions before disconnect
-        count_before = len(get_subscriptions_sync(manager, websocket))
+        subs = manager.subscription_manager._subscriptions.get(websocket, set())
+        count_before = len(subs)
         assert count_before == 3
 
         # Disconnect
-        ws_ctx.__exit__(None, None, None)
+        await websocket.close()
+        await asyncio.sleep(0.1)  # Give server time to process disconnect
 
         # Verify subscriptions are gone
-        count_after = len(get_subscriptions_sync(manager, websocket))
+        count_after = len(manager.subscription_manager._subscriptions.get(websocket, set()))
         assert count_after == 0
 
-    def test_disconnect_during_subscription_cleanup(self, test_client):
+    @pytest.mark.asyncio
+    async def test_disconnect_during_subscription_cleanup(self, running_server, ws_url):
         """Test that disconnect properly cleans up even with active subscriptions."""
-        from codeframe.ui.shared import manager
-
         websocket_refs = []
 
         # Create multiple connections with subscriptions
         for i in range(3):
-            ws_ctx = test_client.websocket_connect("/ws")
-            ws = ws_ctx.__enter__()
-            websocket_refs.append((ws_ctx, ws))
+            ws = await websockets.connect(f"{ws_url}/ws")
+            websocket_refs.append(ws)
 
             # Subscribe to projects
-            ws.send_json({"type": "subscribe", "project_id": 1})
-            ws.receive_json()
+            await ws.send(json.dumps({"type": "subscribe", "project_id": 1}))
+            await ws.recv()
 
         # Verify all subscriptions exist
         count = len([
@@ -452,7 +370,8 @@ class TestDisconnectCleanup:
         assert count == 3
 
         # Disconnect first client
-        websocket_refs[0][0].__exit__(None, None, None)
+        await websocket_refs[0].close()
+        await asyncio.sleep(0.1)
 
         # Verify subscription count decreased
         count = len([
@@ -462,8 +381,10 @@ class TestDisconnectCleanup:
         assert count == 2
 
         # Cleanup remaining
-        for ctx, _ in websocket_refs[1:]:
-            ctx.__exit__(None, None, None)
+        for ws in websocket_refs[1:]:
+            await ws.close()
+
+        await asyncio.sleep(0.1)
 
         # Verify all cleaned up
         count = len([
@@ -476,147 +397,138 @@ class TestDisconnectCleanup:
 class TestBackwardCompatibility:
     """Test backward compatibility with unfiltered broadcasts."""
 
-    def test_broadcast_without_project_id_reaches_all_clients(self, test_client):
+    @pytest.mark.asyncio
+    async def test_broadcast_without_project_id_reaches_all_clients(self, running_server, ws_url):
         """Test that broadcasts without project_id reach all connected clients."""
-        ws1_ctx = test_client.websocket_connect("/ws")
-        ws1 = ws1_ctx.__enter__()
+        ws1 = await websockets.connect(f"{ws_url}/ws")
+        ws2 = await websockets.connect(f"{ws_url}/ws")
 
-        ws2_ctx = test_client.websocket_connect("/ws")
-        ws2 = ws2_ctx.__enter__()
+        try:
+            # Don't subscribe - just connected
 
-        # Don't subscribe - just connected
-        from codeframe.ui.shared import manager
+            # Broadcast WITHOUT project_id (backward compatible)
+            await trigger_broadcast(running_server, 
+                {"type": "agent_started", "agent_id": "lead-1"}
+                # Note: no project_id parameter
+            )
 
-        # Broadcast WITHOUT project_id (backward compatible)
-        broadcast_sync(
-            manager,
-            {"type": "agent_started", "agent_id": "lead-1"}
-            # Note: no project_id parameter
-        )
+            # Both clients should receive the message
+            data1 = json.loads(await ws1.recv())
+            assert data1["type"] == "agent_started"
 
-        # Both clients should receive the message
-        data1 = ws1.receive_json()
-        assert data1["type"] == "agent_started"
+            data2 = json.loads(await ws2.recv())
+            assert data2["type"] == "agent_started"
 
-        data2 = ws2.receive_json()
-        assert data2["type"] == "agent_started"
+        finally:
+            await ws1.close()
+            await ws2.close()
 
-        ws1_ctx.__exit__(None, None, None)
-        ws2_ctx.__exit__(None, None, None)
-
-    def test_mixed_subscription_and_unsubscribed_clients(self, test_client):
+    @pytest.mark.asyncio
+    async def test_mixed_subscription_and_unsubscribed_clients(self, running_server, ws_url):
         """Test mix of subscribed and unsubscribed clients with broadcasts."""
         # Client 1: subscribed to project 1
-        ws1_ctx = test_client.websocket_connect("/ws")
-        ws1 = ws1_ctx.__enter__()
-        ws1.send_json({"type": "subscribe", "project_id": 1})
-        ws1.receive_json()
+        ws1 = await websockets.connect(f"{ws_url}/ws")
+        await ws1.send(json.dumps({"type": "subscribe", "project_id": 1}))
+        await ws1.recv()
 
         # Client 2: not subscribed to anything
-        ws2_ctx = test_client.websocket_connect("/ws")
-        ws2 = ws2_ctx.__enter__()
+        ws2 = await websockets.connect(f"{ws_url}/ws")
 
-        from codeframe.ui.shared import manager
-
-        # Broadcast to project 1 (filtered)
-        broadcast_sync(
-            manager,
-            {"type": "task_status_changed", "task_id": 42},
-            project_id=1
-        )
-
-        # Client 1 should receive (subscribed)
-        data1 = ws1.receive_json()
-        assert data1["type"] == "task_status_changed"
-
-        # Client 2 should NOT receive (not subscribed)
         try:
-            ws2.receive_json(timeout=0.1)
-            pytest.fail("Unsubscribed client should not receive filtered broadcasts")
-        except TimeoutError:
-            pass
+            # Broadcast to project 1 (filtered)
+            await trigger_broadcast(running_server, 
+                {"type": "task_status_changed", "task_id": 42},
+                project_id=1
+            )
 
-        # Now broadcast to ALL (no project_id)
-        broadcast_sync(
-            manager,
-            {"type": "agent_status_changed", "agent_id": "worker-1"}
-            # No project_id
-        )
+            # Client 1 should receive (subscribed)
+            data1 = json.loads(await ws1.recv())
+            assert data1["type"] == "task_status_changed"
 
-        # Both should receive unfiltered broadcast
-        data1 = ws1.receive_json()
-        assert data1["type"] == "agent_status_changed"
+            # Client 2 should NOT receive (not subscribed)
+            try:
+                await asyncio.wait_for(ws2.recv(), timeout=0.2)
+                pytest.fail("Unsubscribed client should not receive filtered broadcasts")
+            except asyncio.TimeoutError:
+                pass
 
-        data2 = ws2.receive_json()
-        assert data2["type"] == "agent_status_changed"
+            # Now broadcast to ALL (no project_id)
+            await trigger_broadcast(running_server, 
+                {"type": "agent_status_changed", "agent_id": "worker-1"}
+                # No project_id
+            )
 
-        ws1_ctx.__exit__(None, None, None)
-        ws2_ctx.__exit__(None, None, None)
+            # Both should receive unfiltered broadcast
+            data1 = json.loads(await ws1.recv())
+            assert data1["type"] == "agent_status_changed"
+
+            data2 = json.loads(await ws2.recv())
+            assert data2["type"] == "agent_status_changed"
+
+        finally:
+            await ws1.close()
+            await ws2.close()
 
 
 class TestInvalidMessageHandling:
     """Test error handling for invalid subscribe messages."""
 
-    def test_subscribe_with_invalid_project_id_string(self, test_client):
+    @pytest.mark.asyncio
+    async def test_subscribe_with_invalid_project_id_string(self, running_server, ws_url):
         """Test error handling when project_id is string instead of int."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Send subscribe with string project_id
-            websocket.send_json({"type": "subscribe", "project_id": "invalid"})
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": "invalid"}))
 
             # Should receive error response
-            response = websocket.receive_json()
+            response = json.loads(await websocket.recv())
             assert response["type"] == "error"
             assert "invalid" in response["error"].lower() or "project_id" in response["error"].lower()
 
-    def test_subscribe_with_null_project_id(self, test_client):
+    @pytest.mark.asyncio
+    async def test_subscribe_with_null_project_id(self, running_server, ws_url):
         """Test error handling when project_id is null."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Send subscribe with null project_id
-            websocket.send_json({"type": "subscribe", "project_id": None})
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": None}))
 
             # Should receive error response
-            response = websocket.receive_json()
+            response = json.loads(await websocket.recv())
             assert response["type"] == "error"
 
-    def test_subscribe_with_missing_project_id(self, test_client):
+    @pytest.mark.asyncio
+    async def test_subscribe_with_missing_project_id(self, running_server, ws_url):
         """Test error handling when project_id is missing."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Send subscribe without project_id
-            websocket.send_json({"type": "subscribe"})
+            await websocket.send(json.dumps({"type": "subscribe"}))
 
             # Should receive error response
-            response = websocket.receive_json()
+            response = json.loads(await websocket.recv())
             assert response["type"] == "error"
 
-    def test_malformed_json_handling(self, test_client):
-        """Test error handling for malformed JSON.
+    @pytest.mark.asyncio
+    async def test_malformed_json_handling(self, running_server, ws_url):
+        """Test error handling for malformed JSON."""
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
+            # Send malformed JSON
+            await websocket.send("{ invalid json")
 
-        Note: Malformed JSON at receive_text() level causes connection close
-        rather than a recoverable error response. This is expected behavior
-        as the JSON parsing happens before our error handler.
-        """
-        # The TestClient WebSocket will raise WebSocketDisconnect when receiving
-        # malformed JSON at the receive_text() level
-        from starlette.websockets import WebSocketDisconnect
+            # Should receive error response
+            response = json.loads(await websocket.recv())
+            assert response["type"] == "error"
+            assert "JSON" in response["error"] or "json" in response["error"]
 
-        with pytest.raises(WebSocketDisconnect):
-            with test_client.websocket_connect("/ws") as websocket:
-                # Send malformed JSON - this will cause receive_text() to fail
-                websocket.send("{ invalid json")
-                # Try to receive - will raise WebSocketDisconnect
-                websocket.receive_json()
-
-    def test_invalid_message_type(self, test_client):
+    @pytest.mark.asyncio
+    async def test_invalid_message_type(self, running_server, ws_url):
         """Test handling of unknown message types."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Send message with unknown type
-            websocket.send_json({"type": "unknown_type", "data": "something"})
+            await websocket.send(json.dumps({"type": "unknown_type", "data": "something"}))
 
-            # Should handle gracefully (either ignore or send back acknowledgment)
-            # The behavior depends on implementation, but shouldn't crash
-            # Try to send a valid message after - connection should still work
-            websocket.send_json({"type": "ping"})
-            response = websocket.receive_json()
+            # Connection should still work - send a valid message after
+            await websocket.send(json.dumps({"type": "ping"}))
+            response = json.loads(await websocket.recv())
             assert response["type"] == "pong"
 
 
@@ -626,6 +538,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_subscribe_new_websocket(self):
         """Test subscribing a new websocket."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
         ws = AsyncMock()
 
@@ -638,6 +553,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_subscribe_multiple_projects(self):
         """Test subscribing to multiple projects."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
         ws = AsyncMock()
 
@@ -651,6 +569,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_unsubscribe_removes_project(self):
         """Test unsubscribing from a project."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
         ws = AsyncMock()
 
@@ -666,6 +587,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_unsubscribe_all_removes_websocket(self):
         """Test that unsubscribing from all projects removes websocket."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
         ws = AsyncMock()
 
@@ -678,6 +602,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_cleanup_removes_all_subscriptions(self):
         """Test cleanup removes all subscriptions for a websocket."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
         ws = AsyncMock()
 
@@ -693,6 +620,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_get_subscribers_for_project(self):
         """Test getting all subscribers for a specific project."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
 
         ws1 = AsyncMock()
@@ -722,6 +652,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_unsubscribe_nonexistent_project(self):
         """Test unsubscribing from a project that wasn't subscribed."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
         ws = AsyncMock()
 
@@ -737,6 +670,9 @@ class TestWebSocketSubscriptionManager:
     @pytest.mark.asyncio
     async def test_cleanup_nonexistent_websocket(self):
         """Test cleanup on websocket that has no subscriptions."""
+        from unittest.mock import AsyncMock
+        from codeframe.ui.shared import WebSocketSubscriptionManager
+
         manager = WebSocketSubscriptionManager()
         ws = AsyncMock()
 
@@ -750,66 +686,67 @@ class TestWebSocketSubscriptionManager:
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
-    def test_rapid_subscribe_unsubscribe(self, test_client):
+    @pytest.mark.asyncio
+    async def test_rapid_subscribe_unsubscribe(self, running_server, ws_url):
         """Test rapid subscribe/unsubscribe operations."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Rapidly subscribe and unsubscribe
             for i in range(10):
-                websocket.send_json({"type": "subscribe", "project_id": 1})
-                websocket.receive_json()
-                websocket.send_json({"type": "unsubscribe", "project_id": 1})
-                websocket.receive_json()
+                await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
+                await websocket.recv()
+                await websocket.send(json.dumps({"type": "unsubscribe", "project_id": 1}))
+                await websocket.recv()
 
             # Connection should still be valid
-            websocket.send_json({"type": "ping"})
-            response = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "ping"}))
+            response = json.loads(await websocket.recv())
             assert response["type"] == "pong"
 
-    def test_large_project_id(self, test_client):
+    @pytest.mark.asyncio
+    async def test_large_project_id(self, running_server, ws_url):
         """Test with very large project IDs."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             large_id = 999999999
 
             # Subscribe to large project ID
-            websocket.send_json({"type": "subscribe", "project_id": large_id})
-            response = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": large_id}))
+            response = json.loads(await websocket.recv())
             assert response["project_id"] == large_id
 
             # Broadcast to large project ID
-            from codeframe.ui.shared import manager
-
-            broadcast_sync(
-                manager,
+            await trigger_broadcast(running_server, 
                 {"type": "test", "data": "test"},
                 project_id=large_id
             )
 
             # Should receive
-            data = websocket.receive_json()
+            data = json.loads(await websocket.recv())
             assert data["type"] == "test"
 
-    def test_zero_project_id_rejected(self, test_client):
+    @pytest.mark.asyncio
+    async def test_zero_project_id_rejected(self, running_server, ws_url):
         """Test that project_id of 0 is rejected."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Try to subscribe to project 0
-            websocket.send_json({"type": "subscribe", "project_id": 0})
-            response = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": 0}))
+            response = json.loads(await websocket.recv())
             # Should receive error
             assert response["type"] == "error"
             assert "positive" in response["error"].lower()
 
-    def test_negative_project_id_rejected(self, test_client):
+    @pytest.mark.asyncio
+    async def test_negative_project_id_rejected(self, running_server, ws_url):
         """Test that negative project IDs are rejected."""
-        with test_client.websocket_connect("/ws") as websocket:
+        async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Try to subscribe to negative project ID
-            websocket.send_json({"type": "subscribe", "project_id": -1})
+            await websocket.send(json.dumps({"type": "subscribe", "project_id": -1}))
 
             # Should receive error
-            response = websocket.receive_json()
+            response = json.loads(await websocket.recv())
             assert response["type"] == "error"
             assert "positive" in response["error"].lower()
 
             # Connection should still work
-            websocket.send_json({"type": "ping"})
-            pong = websocket.receive_json()
+            await websocket.send(json.dumps({"type": "ping"}))
+            pong = json.loads(await websocket.recv())
             assert pong["type"] == "pong"
