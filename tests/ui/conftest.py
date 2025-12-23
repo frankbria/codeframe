@@ -20,7 +20,6 @@ import requests
 import shutil
 
 from codeframe.persistence.database import Database
-from codeframe.ui import shared
 
 
 def find_free_port() -> int:

@@ -79,7 +79,7 @@ def seed_test_data(db_path: str, project_id: int):
             (session_token, 1, expires_at, now_ts),
         )
 
-        print(f"✅ Seeded test user (email: test@example.com)")
+        print("✅ Seeded test user (email: test@example.com)")
         print(f"   Session token: {session_token[:20]}...")
 
         # Export session token for tests to use via output file
