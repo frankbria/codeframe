@@ -25,6 +25,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["websocket"])
 
 
+@router.get("/ws/health")
+async def websocket_health():
+    """
+    Health check endpoint for WebSocket server.
+
+    Returns status indicating WebSocket server is ready to accept connections.
+    Used by E2E tests and monitoring tools to verify WebSocket availability.
+
+    Returns:
+        dict: Status indicating WebSocket server is ready
+    """
+    return {"status": "ready"}
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db_websocket)):
     """WebSocket connection for real-time updates with authentication.
@@ -177,7 +191,8 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
                     continue
 
                 # Authorization check: Verify user has access to project
-                if user_id and not db.user_has_project_access(user_id, project_id):
+                # Skip check when AUTH_REQUIRED=false (development/testing mode)
+                if auth_required and user_id and not db.user_has_project_access(user_id, project_id):
                     logger.warning(f"User {user_id} denied access to project {project_id}")
                     await websocket.send_json({
                         "type": "error",

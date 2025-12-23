@@ -20,7 +20,6 @@ import requests
 import shutil
 
 from codeframe.persistence.database import Database
-from codeframe.ui import shared
 
 
 def find_free_port() -> int:
@@ -91,18 +90,19 @@ def running_server():
     )
     db.conn.commit()
 
-    # Create test project (project_id=1)
-    try:
-        db.create_project(
-            name="Test Project",
-            description="Test project for WebSocket tests",
-            workspace_path=str(workspace_root / "1"),
-            user_id=1
-        )
-        db.conn.commit()
-    except Exception:
-        # Project might already exist, that's OK
-        pass
+    # Create test projects (project_id=1, 2, 3)
+    for project_id in [1, 2, 3]:
+        try:
+            db.create_project(
+                name=f"Test Project {project_id}",
+                description=f"Test project {project_id} for WebSocket tests",
+                workspace_path=str(workspace_root / str(project_id)),
+                user_id=1
+            )
+            db.conn.commit()
+        except Exception:
+            # Project might already exist, that's OK
+            pass
 
     # Close the database before server starts (server will re-open it)
     db.close()
