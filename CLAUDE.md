@@ -73,6 +73,14 @@ python scripts/quality-ratchet.py show
 **Auto-suggestion**: When quality degrades >10%, the tool recommends context reset with handoff template from `.claude/rules.md`.
 
 ## Recent Changes
+- **Database Repository Refactoring** (2025-12-22): Refactored monolithic Database class into modular repository architecture
+  * **Architecture**: Repository pattern with 17 domain-specific repositories
+  * **Code Reduction**: Database class reduced from 4,531 lines to 301 lines (93.4% reduction)
+  * **Maintainability**: Each repository handles a single domain (150-530 lines each)
+  * **Backward Compatibility**: 100% - all existing imports and method signatures preserved
+  * **Testing**: 71/71 tests passing (100% pass rate)
+  * **Structure**: `persistence/database.py` (facade) + `schema_manager.py` + `repositories/` (17 repos)
+  * **Documentation**: See `docs/architecture/database-repository-pattern.md` for details
 - 015-review-polish (Sprint 10 - COMPLETE): MVP COMPLETE! 🎉
   * **Quality Gates System**: Multi-stage pre-completion checks (tests → type → coverage → review)
   * **Checkpoint & Recovery**: Git + SQLite + context snapshots for project state rollback
@@ -623,7 +631,7 @@ POST /api/tasks/{task_id}/quality-gates?project_id=1
 ```
 codeframe/lib/quality_gates.py              # Core quality gate logic
 codeframe/agents/worker_agent.py            # Pre-completion hooks
-codeframe/persistence/database.py           # update_quality_gate_status()
+codeframe/persistence/repositories/quality_repository.py  # update_quality_gate_status()
 web-ui/src/components/quality-gates/        # Frontend components
 tests/lib/test_quality_gates.py             # Unit tests (150 tests)
 tests/integration/test_quality_gates_integration.py  # Integration tests
@@ -690,7 +698,7 @@ POST /api/projects/1/checkpoints/5/restore
 #### File Locations
 ```
 codeframe/lib/checkpoint_manager.py         # Core checkpoint logic
-codeframe/persistence/database.py           # save_checkpoint(), get_checkpoints()
+codeframe/persistence/repositories/checkpoint_repository.py  # save_checkpoint(), get_checkpoints()
 codeframe/core/project.py                   # Project.resume() implementation
 .codeframe/checkpoints/                     # Checkpoint storage
   ├── checkpoint-001.json                   # Metadata
@@ -763,7 +771,7 @@ GET /api/projects/1/metrics/costs
 ```
 codeframe/lib/metrics_tracker.py            # Core metrics logic
 codeframe/agents/worker_agent.py            # Token tracking hooks
-codeframe/persistence/database.py           # save_token_usage(), get_project_costs_aggregate()
+codeframe/persistence/repositories/token_repository.py  # save_token_usage(), get_project_costs_aggregate()
 web-ui/src/components/metrics/              # Frontend components
   ├── CostDashboard.tsx                     # Main cost dashboard
   ├── TokenUsageChart.tsx                   # Token usage visualization
