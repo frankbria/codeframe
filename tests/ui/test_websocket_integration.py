@@ -19,8 +19,6 @@ import pytest
 import requests
 import websockets
 
-from codeframe.ui.shared import manager
-
 
 async def trigger_broadcast(server_url: str, message: dict, project_id: int = None):
     """Trigger a broadcast via the test API endpoint.
