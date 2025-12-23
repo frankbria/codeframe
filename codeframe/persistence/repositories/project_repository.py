@@ -29,6 +29,23 @@ if AUDIT_VERBOSITY not in ("low", "high"):
     logger.warning(f"Invalid AUDIT_VERBOSITY='{AUDIT_VERBOSITY}', defaulting to 'low'")
     AUDIT_VERBOSITY = "low"
 
+# Whitelist of allowed project fields for updates (prevents SQL injection)
+ALLOWED_PROJECT_FIELDS = {
+    "name",
+    "description",
+    "user_id",
+    "source_type",
+    "source_location",
+    "source_branch",
+    "workspace_path",
+    "git_initialized",
+    "current_commit",
+    "status",
+    "phase",
+    "paused_at",
+    "config",
+}
+
 
 class ProjectRepository(BaseRepository):
     """Repository for project repository operations."""
@@ -176,14 +193,26 @@ class ProjectRepository(BaseRepository):
 
         Returns:
             Number of rows affected
+
+        Raises:
+            ValueError: If any update key is not in the allowed fields whitelist
         """
         if not updates:
             return 0
+
+        # Validate all keys against whitelist to prevent SQL injection
+        invalid_fields = set(updates.keys()) - ALLOWED_PROJECT_FIELDS
+        if invalid_fields:
+            raise ValueError(
+                f"Invalid project fields: {invalid_fields}. "
+                f"Allowed fields: {ALLOWED_PROJECT_FIELDS}"
+            )
 
         # Build UPDATE query dynamically
         fields = []
         values = []
         for key, value in updates.items():
+            # Safe to use key here since it's been validated against whitelist
             fields.append(f"{key} = ?")
             # Handle enum values
             if isinstance(value, ProjectStatus):

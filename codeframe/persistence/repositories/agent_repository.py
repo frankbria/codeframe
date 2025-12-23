@@ -66,6 +66,18 @@ class AgentRepository(BaseRepository):
 
 
 
+    # Whitelist of allowed agent fields for updates (prevents SQL injection)
+    ALLOWED_AGENT_FIELDS = {
+        "type",
+        "project_id",
+        "provider",
+        "maturity_level",
+        "status",
+        "current_task_id",
+        "last_heartbeat",
+        "metrics",
+    }
+
     def update_agent(self, agent_id: str, updates: Dict[str, Any]) -> int:
         """Update agent fields.
 
@@ -75,13 +87,25 @@ class AgentRepository(BaseRepository):
 
         Returns:
             Number of rows affected
+
+        Raises:
+            ValueError: If any update key is not in the allowed fields whitelist
         """
         if not updates:
             return 0
 
+        # Validate all keys against whitelist to prevent SQL injection
+        invalid_fields = set(updates.keys()) - self.ALLOWED_AGENT_FIELDS
+        if invalid_fields:
+            raise ValueError(
+                f"Invalid agent fields: {invalid_fields}. "
+                f"Allowed fields: {self.ALLOWED_AGENT_FIELDS}"
+            )
+
         fields = []
         values = []
         for key, value in updates.items():
+            # Safe to use key here since it's been validated against whitelist
             fields.append(f"{key} = ?")
             # Handle enum values
             if isinstance(value, AgentMaturity):

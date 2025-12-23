@@ -18,6 +18,30 @@ from codeframe.persistence.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
+# Whitelist of allowed task fields for updates (prevents SQL injection)
+ALLOWED_TASK_FIELDS = {
+    "project_id",
+    "issue_id",
+    "task_number",
+    "parent_issue_number",
+    "title",
+    "description",
+    "status",
+    "assigned_to",
+    "depends_on",
+    "can_parallelize",
+    "priority",
+    "workflow_step",
+    "requires_mcp",
+    "estimated_tokens",
+    "actual_tokens",
+    "commit_sha",
+    "completed_at",
+    "quality_gate_status",
+    "quality_gate_failures",
+    "requires_human_approval",
+}
+
 
 class TaskRepository(BaseRepository):
     """Repository for task repository operations."""
@@ -73,13 +97,25 @@ class TaskRepository(BaseRepository):
 
         Returns:
             Number of rows affected
+
+        Raises:
+            ValueError: If any update key is not in the allowed fields whitelist
         """
         if not updates:
             return 0
 
+        # Validate all keys against whitelist to prevent SQL injection
+        invalid_fields = set(updates.keys()) - ALLOWED_TASK_FIELDS
+        if invalid_fields:
+            raise ValueError(
+                f"Invalid task fields: {invalid_fields}. "
+                f"Allowed fields: {ALLOWED_TASK_FIELDS}"
+            )
+
         fields = []
         values = []
         for key, value in updates.items():
+            # Safe to use key here since it's been validated against whitelist
             fields.append(f"{key} = ?")
             # Handle enum values
             if isinstance(value, TaskStatus):

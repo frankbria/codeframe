@@ -19,6 +19,18 @@ from codeframe.persistence.repositories.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
+# Whitelist of allowed issue fields for updates (prevents SQL injection)
+ALLOWED_ISSUE_FIELDS = {
+    "project_id",
+    "issue_number",
+    "title",
+    "description",
+    "status",
+    "priority",
+    "workflow_step",
+    "completed_at",
+}
+
 
 class IssueRepository(BaseRepository):
     """Repository for issue repository operations."""
@@ -357,13 +369,25 @@ class IssueRepository(BaseRepository):
 
         Returns:
             Number of rows affected
+
+        Raises:
+            ValueError: If any update key is not in the allowed fields whitelist
         """
         if not updates:
             return 0
 
+        # Validate all keys against whitelist to prevent SQL injection
+        invalid_fields = set(updates.keys()) - ALLOWED_ISSUE_FIELDS
+        if invalid_fields:
+            raise ValueError(
+                f"Invalid issue fields: {invalid_fields}. "
+                f"Allowed fields: {ALLOWED_ISSUE_FIELDS}"
+            )
+
         fields = []
         values = []
         for key, value in updates.items():
+            # Safe to use key here since it's been validated against whitelist
             fields.append(f"{key} = ?")
             values.append(value)
 
