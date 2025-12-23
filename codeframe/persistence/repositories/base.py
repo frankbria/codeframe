@@ -248,6 +248,30 @@ class BaseRepository:
         cursor = await self._async_conn.cursor()
         return cursor.lastrowid
 
+    async def _get_async_conn(self) -> aiosqlite.Connection:
+        """Get async connection with health check and automatic reconnection.
+
+        This method delegates to the parent Database instance which:
+        1. Creates connection if none exists (lazy initialization)
+        2. Checks connection health via simple query
+        3. Reconnects automatically if connection is dead
+        4. Uses a lock to prevent race conditions
+
+        Returns:
+            Active aiosqlite connection
+
+        Raises:
+            RuntimeError: If database reference is not available
+            aiosqlite.Error: If connection cannot be established
+
+        Note:
+            Uses async connection with automatic health check and reconnection.
+            Call close_async() when done to release database resources.
+        """
+        if self._database is None:
+            raise RuntimeError("Database reference not available for async connection")
+        return await self._database._get_async_conn()
+
     def _ensure_rfc3339(self, timestamp_str: Optional[str]) -> Optional[str]:
         """Ensure timestamp is in RFC 3339 format with timezone.
 
