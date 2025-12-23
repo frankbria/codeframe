@@ -15,7 +15,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.testclient import TestClient
 
 from codeframe.ui.routers.websocket import router, websocket_endpoint
-from codeframe.ui.server import app
 
 
 @pytest.fixture
