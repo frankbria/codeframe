@@ -40,11 +40,20 @@ def mock_manager():
     return manager
 
 
+@pytest.fixture
+def mock_db():
+    """Create a mock Database."""
+    db = MagicMock()
+    # Mock user_has_project_access to always return True (user has access to all projects)
+    db.user_has_project_access = MagicMock(return_value=True)
+    return db
+
+
 class TestSubscribeHandler:
     """Tests for subscribe message handler."""
 
     @pytest.mark.asyncio
-    async def test_subscribe_valid_project_id(self, mock_websocket, mock_manager):
+    async def test_subscribe_valid_project_id(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe with valid project_id."""
         # Setup: Subscribe then disconnect
         mock_websocket.receive_text.side_effect = [
@@ -53,7 +62,7 @@ class TestSubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Verify subscription was tracked
         mock_manager.subscription_manager.subscribe.assert_called_once_with(mock_websocket, 1)
@@ -68,7 +77,7 @@ class TestSubscribeHandler:
         assert confirm_call[0][0][0]["project_id"] == 1
 
     @pytest.mark.asyncio
-    async def test_subscribe_missing_project_id(self, mock_websocket, mock_manager):
+    async def test_subscribe_missing_project_id(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe with missing project_id."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe"}),
@@ -76,7 +85,7 @@ class TestSubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call subscribe
         mock_manager.subscription_manager.subscribe.assert_not_called()
@@ -90,7 +99,7 @@ class TestSubscribeHandler:
         assert "project_id" in error_calls[0][0][0].get("error", "").lower()
 
     @pytest.mark.asyncio
-    async def test_subscribe_invalid_project_id_type_string(self, mock_websocket, mock_manager):
+    async def test_subscribe_invalid_project_id_type_string(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe with string project_id (invalid type)."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": "not_an_int"}),
@@ -98,7 +107,7 @@ class TestSubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call subscribe
         mock_manager.subscription_manager.subscribe.assert_not_called()
@@ -112,7 +121,7 @@ class TestSubscribeHandler:
         assert "integer" in error_calls[0][0][0].get("error", "").lower()
 
     @pytest.mark.asyncio
-    async def test_subscribe_invalid_project_id_type_float(self, mock_websocket, mock_manager):
+    async def test_subscribe_invalid_project_id_type_float(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe with float project_id (invalid type)."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": 1.5}),
@@ -120,7 +129,7 @@ class TestSubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call subscribe (float is not int)
         mock_manager.subscription_manager.subscribe.assert_not_called()
@@ -133,7 +142,7 @@ class TestSubscribeHandler:
         assert len(error_calls) > 0
 
     @pytest.mark.asyncio
-    async def test_subscribe_negative_project_id(self, mock_websocket, mock_manager):
+    async def test_subscribe_negative_project_id(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe with negative project_id."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": -1}),
@@ -141,7 +150,7 @@ class TestSubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call subscribe
         mock_manager.subscription_manager.subscribe.assert_not_called()
@@ -155,7 +164,7 @@ class TestSubscribeHandler:
         assert "positive" in error_calls[0][0][0].get("error", "").lower()
 
     @pytest.mark.asyncio
-    async def test_subscribe_zero_project_id(self, mock_websocket, mock_manager):
+    async def test_subscribe_zero_project_id(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe with zero project_id."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": 0}),
@@ -163,7 +172,7 @@ class TestSubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call subscribe
         mock_manager.subscription_manager.subscribe.assert_not_called()
@@ -176,7 +185,7 @@ class TestSubscribeHandler:
         assert len(error_calls) > 0
 
     @pytest.mark.asyncio
-    async def test_subscribe_exception_handling(self, mock_websocket, mock_manager):
+    async def test_subscribe_exception_handling(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe handles exceptions gracefully."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": 1}),
@@ -187,7 +196,7 @@ class TestSubscribeHandler:
         mock_manager.subscription_manager.subscribe.side_effect = Exception("DB error")
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should send error response
         error_calls = [
@@ -198,7 +207,7 @@ class TestSubscribeHandler:
         assert "subscribe" in error_calls[0][0][0].get("error", "").lower()
 
     @pytest.mark.asyncio
-    async def test_subscribe_multiple_projects(self, mock_websocket, mock_manager):
+    async def test_subscribe_multiple_projects(self, mock_websocket, mock_manager, mock_db):
         """Test subscribing to multiple projects."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": 1}),
@@ -207,7 +216,7 @@ class TestSubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should call subscribe twice
         assert mock_manager.subscription_manager.subscribe.call_count == 2
@@ -222,7 +231,7 @@ class TestUnsubscribeHandler:
     """Tests for unsubscribe message handler."""
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_valid_project_id(self, mock_websocket, mock_manager):
+    async def test_unsubscribe_valid_project_id(self, mock_websocket, mock_manager, mock_db):
         """Test unsubscribe with valid project_id."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "unsubscribe", "project_id": 1}),
@@ -230,7 +239,7 @@ class TestUnsubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Verify unsubscription was tracked
         mock_manager.subscription_manager.unsubscribe.assert_called_once_with(mock_websocket, 1)
@@ -244,7 +253,7 @@ class TestUnsubscribeHandler:
         assert confirm_calls[0][0][0]["project_id"] == 1
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_missing_project_id(self, mock_websocket, mock_manager):
+    async def test_unsubscribe_missing_project_id(self, mock_websocket, mock_manager, mock_db):
         """Test unsubscribe with missing project_id."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "unsubscribe"}),
@@ -252,7 +261,7 @@ class TestUnsubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call unsubscribe
         mock_manager.subscription_manager.unsubscribe.assert_not_called()
@@ -266,7 +275,7 @@ class TestUnsubscribeHandler:
         assert "project_id" in error_calls[0][0][0].get("error", "").lower()
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_invalid_project_id_type(self, mock_websocket, mock_manager):
+    async def test_unsubscribe_invalid_project_id_type(self, mock_websocket, mock_manager, mock_db):
         """Test unsubscribe with string project_id (invalid type)."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "unsubscribe", "project_id": "not_an_int"}),
@@ -274,7 +283,7 @@ class TestUnsubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call unsubscribe
         mock_manager.subscription_manager.unsubscribe.assert_not_called()
@@ -287,7 +296,7 @@ class TestUnsubscribeHandler:
         assert len(error_calls) > 0
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_negative_project_id(self, mock_websocket, mock_manager):
+    async def test_unsubscribe_negative_project_id(self, mock_websocket, mock_manager, mock_db):
         """Test unsubscribe with negative project_id."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "unsubscribe", "project_id": -1}),
@@ -295,7 +304,7 @@ class TestUnsubscribeHandler:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should NOT call unsubscribe
         mock_manager.subscription_manager.unsubscribe.assert_not_called()
@@ -308,7 +317,7 @@ class TestUnsubscribeHandler:
         assert len(error_calls) > 0
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_exception_handling(self, mock_websocket, mock_manager):
+    async def test_unsubscribe_exception_handling(self, mock_websocket, mock_manager, mock_db):
         """Test unsubscribe handles exceptions gracefully."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "unsubscribe", "project_id": 1}),
@@ -319,7 +328,7 @@ class TestUnsubscribeHandler:
         mock_manager.subscription_manager.unsubscribe.side_effect = Exception("DB error")
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should send error response
         error_calls = [
@@ -330,7 +339,7 @@ class TestUnsubscribeHandler:
         assert "unsubscribe" in error_calls[0][0][0].get("error", "").lower()
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_not_subscribed(self, mock_websocket, mock_manager):
+    async def test_unsubscribe_not_subscribed(self, mock_websocket, mock_manager, mock_db):
         """Test unsubscribe from project not subscribed to."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "unsubscribe", "project_id": 1}),
@@ -339,7 +348,7 @@ class TestUnsubscribeHandler:
 
         # unsubscribe should still succeed (idempotent)
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should call unsubscribe
         mock_manager.subscription_manager.unsubscribe.assert_called_once_with(mock_websocket, 1)
@@ -356,7 +365,7 @@ class TestSubscribeUnsubscribeSequence:
     """Tests for complex subscription sequences."""
 
     @pytest.mark.asyncio
-    async def test_subscribe_unsubscribe_sequence(self, mock_websocket, mock_manager):
+    async def test_subscribe_unsubscribe_sequence(self, mock_websocket, mock_manager, mock_db):
         """Test subscribe then unsubscribe sequence."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": 1}),
@@ -365,14 +374,14 @@ class TestSubscribeUnsubscribeSequence:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Verify both calls were made
         mock_manager.subscription_manager.subscribe.assert_called_once_with(mock_websocket, 1)
         mock_manager.subscription_manager.unsubscribe.assert_called_once_with(mock_websocket, 1)
 
     @pytest.mark.asyncio
-    async def test_ping_subscribe_ping_sequence(self, mock_websocket, mock_manager):
+    async def test_ping_subscribe_ping_sequence(self, mock_websocket, mock_manager, mock_db):
         """Test ping, subscribe, then ping again."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "ping"}),
@@ -382,7 +391,7 @@ class TestSubscribeUnsubscribeSequence:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Verify subscribe was called
         mock_manager.subscription_manager.subscribe.assert_called_once_with(mock_websocket, 1)
@@ -395,7 +404,7 @@ class TestSubscribeUnsubscribeSequence:
         assert len(pong_calls) == 2
 
     @pytest.mark.asyncio
-    async def test_mixed_valid_and_invalid_messages(self, mock_websocket, mock_manager):
+    async def test_mixed_valid_and_invalid_messages(self, mock_websocket, mock_manager, mock_db):
         """Test handling mix of valid and invalid messages."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": 1}),
@@ -405,7 +414,7 @@ class TestSubscribeUnsubscribeSequence:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should call subscribe twice (for valid messages)
         assert mock_manager.subscription_manager.subscribe.call_count == 2
@@ -427,7 +436,7 @@ class TestDisconnectCleanup:
     """Tests for disconnect cleanup behavior."""
 
     @pytest.mark.asyncio
-    async def test_disconnect_calls_cleanup(self, mock_websocket, mock_manager):
+    async def test_disconnect_calls_cleanup(self, mock_websocket, mock_manager, mock_db):
         """Test that disconnect calls subscription cleanup."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "subscribe", "project_id": 1}),
@@ -435,24 +444,24 @@ class TestDisconnectCleanup:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Verify disconnect was called
         mock_manager.disconnect.assert_called_once_with(mock_websocket)
 
     @pytest.mark.asyncio
-    async def test_disconnect_on_exception(self, mock_websocket, mock_manager):
+    async def test_disconnect_on_exception(self, mock_websocket, mock_manager, mock_db):
         """Test that disconnect is called even on exception."""
         mock_websocket.receive_text.side_effect = Exception("Connection error")
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Verify disconnect was called despite exception
         mock_manager.disconnect.assert_called_once_with(mock_websocket)
 
     @pytest.mark.asyncio
-    async def test_websocket_close_on_disconnect(self, mock_websocket, mock_manager):
+    async def test_websocket_close_on_disconnect(self, mock_websocket, mock_manager, mock_db):
         """Test that WebSocket is closed on disconnect."""
         mock_websocket.receive_text.side_effect = [
             json.dumps({"type": "ping"}),
@@ -460,7 +469,7 @@ class TestDisconnectCleanup:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Verify close was called
         mock_websocket.close.assert_called_once()
@@ -470,7 +479,7 @@ class TestMalformedJsonHandling:
     """Tests for malformed JSON handling."""
 
     @pytest.mark.asyncio
-    async def test_malformed_json_error_response(self, mock_websocket, mock_manager):
+    async def test_malformed_json_error_response(self, mock_websocket, mock_manager, mock_db):
         """Test malformed JSON sends error response."""
         mock_websocket.receive_text.side_effect = [
             '{"type": "subscribe" invalid json}',
@@ -478,7 +487,7 @@ class TestMalformedJsonHandling:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should send error
         error_calls = [
@@ -489,7 +498,7 @@ class TestMalformedJsonHandling:
         assert "JSON" in error_calls[0][0][0].get("error", "")
 
     @pytest.mark.asyncio
-    async def test_continues_after_malformed_json(self, mock_websocket, mock_manager):
+    async def test_continues_after_malformed_json(self, mock_websocket, mock_manager, mock_db):
         """Test connection continues after malformed JSON."""
         mock_websocket.receive_text.side_effect = [
             '{"type": "subscribe" invalid json}',
@@ -498,7 +507,7 @@ class TestMalformedJsonHandling:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Should send pong response (shows connection continued)
         pong_calls = [
@@ -512,7 +521,7 @@ class TestDocstringCompliance:
     """Tests to verify WebSocket endpoint follows documented behavior."""
 
     @pytest.mark.asyncio
-    async def test_documented_message_types_supported(self, mock_websocket, mock_manager):
+    async def test_documented_message_types_supported(self, mock_websocket, mock_manager, mock_db):
         """Test that all documented message types are handled."""
         # From docstring: ping, subscribe
         mock_websocket.receive_text.side_effect = [
@@ -522,7 +531,7 @@ class TestDocstringCompliance:
         ]
 
         with patch("codeframe.ui.routers.websocket.manager", mock_manager):
-            await websocket_endpoint(mock_websocket)
+            await websocket_endpoint(mock_websocket, db=mock_db)
 
         # Both should be handled without error
         assert mock_manager.subscription_manager.subscribe.called
