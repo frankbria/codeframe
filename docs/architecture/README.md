@@ -7,6 +7,7 @@ This directory contains technical architecture documentation for CodeFRAME. Thes
 | Document | Description |
 |----------|-------------|
 | [task-identifiers.md](task-identifiers.md) | Task identifier types (`id` vs `task_number`), dependency semantics, and the tolerant lookup pattern |
+| [database-repository-pattern.md](database-repository-pattern.md) | Database refactoring from monolithic class (4,531 lines) to repository pattern (17 domain-specific repositories) |
 
 ## Purpose
 
