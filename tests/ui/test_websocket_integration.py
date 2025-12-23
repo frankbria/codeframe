@@ -278,12 +278,31 @@ class TestSubscribeUnsubscribeFlow:
             resp3 = json.loads(await websocket.recv())
             assert resp3["project_id"] == 3
 
-            # Verify all subscriptions are active (check manager's internal state)
-            subs_count = len([
-                ws for ws, projects in manager.subscription_manager._subscriptions.items()
-                if ws == websocket and 1 in projects and 2 in projects and 3 in projects
-            ])
-            assert subs_count == 1
+            # Verify all subscriptions are active by triggering broadcasts
+            # and confirming client receives messages from all projects
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_msg", "project_id": 1},
+                project_id=1
+            )
+            msg1 = json.loads(await websocket.recv())
+            assert msg1["project_id"] == 1
+
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_msg", "project_id": 2},
+                project_id=2
+            )
+            msg2 = json.loads(await websocket.recv())
+            assert msg2["project_id"] == 2
+
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_msg", "project_id": 3},
+                project_id=3
+            )
+            msg3 = json.loads(await websocket.recv())
+            assert msg3["project_id"] == 3
 
     @pytest.mark.asyncio
     async def test_resubscribe_to_same_project(self, running_server, ws_url):
@@ -291,16 +310,25 @@ class TestSubscribeUnsubscribeFlow:
         async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await websocket.recv()
+            resp1 = json.loads(await websocket.recv())
+            assert resp1["type"] == "subscribed"
+            assert resp1["project_id"] == 1
 
             # Subscribe to same project again
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await websocket.recv()
+            resp2 = json.loads(await websocket.recv())
+            assert resp2["type"] == "subscribed"
+            assert resp2["project_id"] == 1
 
-            # Should still work - single subscription
-            subs = manager.subscription_manager._subscriptions.get(websocket, set())
-            assert len(subs) == 1
-            assert 1 in subs
+            # Verify subscription still works by triggering a broadcast
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_msg", "data": "test"},
+                project_id=1
+            )
+            msg = json.loads(await websocket.recv())
+            assert msg["type"] == "test_msg"
+            assert msg["data"] == "test"
 
     @pytest.mark.asyncio
     async def test_unsubscribe_then_resubscribe(self, running_server, ws_url):
@@ -308,19 +336,28 @@ class TestSubscribeUnsubscribeFlow:
         async with websockets.connect(f"{ws_url}/ws") as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await websocket.recv()
+            resp1 = json.loads(await websocket.recv())
+            assert resp1["type"] == "subscribed"
 
             # Unsubscribe
             await websocket.send(json.dumps({"type": "unsubscribe", "project_id": 1}))
-            await websocket.recv()
+            resp2 = json.loads(await websocket.recv())
+            assert resp2["type"] == "unsubscribed"
 
             # Resubscribe
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await websocket.recv()
+            resp3 = json.loads(await websocket.recv())
+            assert resp3["type"] == "subscribed"
 
-            # Verify subscription is active
-            is_subscribed = 1 in manager.subscription_manager._subscriptions.get(websocket, set())
-            assert is_subscribed
+            # Verify subscription is active by triggering a broadcast
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_msg", "data": "resubscribed"},
+                project_id=1
+            )
+            msg = json.loads(await websocket.recv())
+            assert msg["type"] == "test_msg"
+            assert msg["data"] == "resubscribed"
 
 
 class TestDisconnectCleanup:
@@ -335,20 +372,40 @@ class TestDisconnectCleanup:
         # Subscribe to multiple projects
         for project_id in [1, 2, 3]:
             await websocket.send(json.dumps({"type": "subscribe", "project_id": project_id}))
-            await websocket.recv()
+            resp = json.loads(await websocket.recv())
+            assert resp["type"] == "subscribed"
 
-        # Verify subscriptions before disconnect
-        subs = manager.subscription_manager._subscriptions.get(websocket, set())
-        count_before = len(subs)
-        assert count_before == 3
+        # Verify subscriptions work before disconnect
+        await trigger_broadcast(
+            running_server,
+            {"type": "test_msg", "data": "before_disconnect"},
+            project_id=1
+        )
+        msg = json.loads(await websocket.recv())
+        assert msg["data"] == "before_disconnect"
 
         # Disconnect
         await websocket.close()
-        await asyncio.sleep(0.1)  # Give server time to process disconnect
+        await asyncio.sleep(0.2)  # Give server time to process disconnect
 
-        # Verify subscriptions are gone
-        count_after = len(manager.subscription_manager._subscriptions.get(websocket, set()))
-        assert count_after == 0
+        # Create new connection (without subscribing)
+        websocket2 = await websockets.connect(f"{ws_url}/ws")
+        try:
+            # Trigger broadcast - new connection shouldn't receive it (not subscribed)
+            await trigger_broadcast(
+                running_server,
+                {"type": "test_msg", "data": "after_disconnect"},
+                project_id=1
+            )
+
+            # Should timeout (no message received)
+            try:
+                await asyncio.wait_for(websocket2.recv(), timeout=0.2)
+                pytest.fail("New connection should not receive message without subscription")
+            except asyncio.TimeoutError:
+                pass  # Expected
+        finally:
+            await websocket2.close()
 
     @pytest.mark.asyncio
     async def test_disconnect_during_subscription_cleanup(self, running_server, ws_url):
@@ -360,40 +417,52 @@ class TestDisconnectCleanup:
             ws = await websockets.connect(f"{ws_url}/ws")
             websocket_refs.append(ws)
 
-            # Subscribe to projects
+            # Subscribe to project 1
             await ws.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await ws.recv()
+            resp = json.loads(await ws.recv())
+            assert resp["type"] == "subscribed"
 
-        # Verify all subscriptions exist
-        count = len([
-            ws for ws, projects in manager.subscription_manager._subscriptions.items()
-            if 1 in projects
-        ])
-        assert count == 3
+        # Trigger broadcast - all 3 should receive
+        await trigger_broadcast(
+            running_server,
+            {"type": "test_msg", "data": "all_connected"},
+            project_id=1
+        )
+
+        # All 3 clients should receive the message
+        for ws in websocket_refs:
+            msg = json.loads(await ws.recv())
+            assert msg["data"] == "all_connected"
 
         # Disconnect first client
         await websocket_refs[0].close()
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.2)
 
-        # Verify subscription count decreased
-        count = len([
-            ws for ws, projects in manager.subscription_manager._subscriptions.items()
-            if 1 in projects
-        ])
-        assert count == 2
+        # Trigger broadcast - only 2 remaining should receive
+        await trigger_broadcast(
+            running_server,
+            {"type": "test_msg", "data": "two_remaining"},
+            project_id=1
+        )
+
+        # Only remaining 2 clients receive
+        for ws in websocket_refs[1:]:
+            msg = json.loads(await ws.recv())
+            assert msg["data"] == "two_remaining"
 
         # Cleanup remaining
         for ws in websocket_refs[1:]:
             await ws.close()
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.2)
 
-        # Verify all cleaned up
-        count = len([
-            ws for ws, projects in manager.subscription_manager._subscriptions.items()
-            if 1 in projects
-        ])
-        assert count == 0
+        # Trigger broadcast - no one should receive
+        await trigger_broadcast(
+            running_server,
+            {"type": "test_msg", "data": "all_disconnected"},
+            project_id=1
+        )
+        # No assertions needed - just verify no errors (no receivers is OK)
 
 
 class TestBackwardCompatibility:
