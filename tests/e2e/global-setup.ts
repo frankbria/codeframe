@@ -132,7 +132,7 @@ async function createTestUser(page: any): Promise<string> {
 
   try {
     // Try to sign up the test user
-    const signupResponse = await page.request.post(`${FRONTEND_URL}/api/auth/signup`, {
+    const signupResponse = await page.request.post(`${FRONTEND_URL}/api/auth/sign-up`, {
       data: TEST_USER,
       failOnStatusCode: false
     });
@@ -147,7 +147,7 @@ async function createTestUser(page: any): Promise<string> {
     }
 
     // Sign in to get session token
-    const signinResponse = await page.request.post(`${FRONTEND_URL}/api/auth/signin`, {
+    const signinResponse = await page.request.post(`${FRONTEND_URL}/api/auth/sign-in`, {
       data: {
         email: TEST_USER.email,
         password: TEST_USER.password
