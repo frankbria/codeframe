@@ -22,7 +22,7 @@ export const Spinner: React.FC<SpinnerProps> = ({ size = 'md' }) => {
 
   return (
     <div
-      className={`${sizeClasses[validSize]} border-blue-600 border-t-transparent rounded-full animate-spin`}
+      className={`${sizeClasses[validSize]} border-primary border-t-transparent rounded-full animate-spin`}
       role="status"
       aria-label="Loading"
       data-testid="spinner"

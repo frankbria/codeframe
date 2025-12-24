@@ -48,15 +48,15 @@ export const LintTrendChart: React.FC<LintTrendChartProps> = ({
   }
 
   if (error) {
-    return <div className="p-4 text-red-500">{error}</div>;
+    return <div className="p-4 text-destructive">{error}</div>;
   }
 
   if (data.length === 0) {
-    return <div className="p-4 text-gray-500">No lint data available</div>;
+    return <div className="p-4 text-muted-foreground">No lint data available</div>;
   }
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow">
+    <div className="p-4 bg-card rounded-lg shadow">
       <h3 className="text-lg font-semibold mb-4">Lint Quality Trend (Last {days} days)</h3>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data}>

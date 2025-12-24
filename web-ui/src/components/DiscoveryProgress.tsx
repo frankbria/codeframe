@@ -136,8 +136,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   // Loading state
   if (loading) {
     return (
-      <div className="w-full bg-white rounded-lg shadow p-6" role="region" aria-label="Discovery Progress">
-        <div className="text-center text-gray-500">Loading...</div>
+      <div className="w-full bg-card rounded-lg shadow p-6" role="region" aria-label="Discovery Progress">
+        <div className="text-center text-muted-foreground">Loading...</div>
       </div>
     );
   }
@@ -145,8 +145,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   // Error state
   if (error) {
     return (
-      <div className="w-full bg-white rounded-lg shadow p-6" role="region" aria-label="Discovery Progress">
-        <div className="text-center text-red-600">{error}</div>
+      <div className="w-full bg-card rounded-lg shadow p-6" role="region" aria-label="Discovery Progress">
+        <div className="text-center text-destructive">{error}</div>
       </div>
     );
   }
@@ -161,7 +161,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const isIdle = discovery?.state === 'idle' || !discovery;
 
   return (
-    <div className="w-full bg-white rounded-lg shadow p-6 mb-6" role="region" aria-label="Discovery Progress">
+    <div className="w-full bg-card rounded-lg shadow p-6 mb-6" role="region" aria-label="Discovery Progress">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Discovery Progress</h2>
         <PhaseIndicator phase={phase} />
@@ -177,16 +177,16 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
               showPercentage={true}
             />
 
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-muted-foreground">
               Answered: {discovery.answered_count} / {discovery.total_required}
             </div>
 
             {discovery.current_question && (
-              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="text-xs font-medium text-blue-800 uppercase mb-1">
+              <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary">
+                <div className="text-xs font-medium text-primary uppercase mb-1">
                   Current Question ({discovery.current_question.category})
                 </div>
-                <div className="text-sm text-gray-900">
+                <div className="text-sm text-foreground">
                   {discovery.current_question.question}
                 </div>
               </div>
@@ -206,14 +206,14 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                   aria-label="Discovery question answer"
                   aria-describedby={submissionError ? 'answer-error' : undefined}
                   aria-invalid={submissionError ? 'true' : 'false'}
-                  className={`w-full resize-none rounded-lg border px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none ${
-                    submissionError ? 'border-red-500' : 'border-gray-300'
-                  } ${isSubmitting ? 'bg-gray-100' : 'bg-white'}`}
+                  className={`w-full resize-none rounded-lg border px-4 py-3 focus:ring-2 focus:ring-primary focus:outline-none ${
+                    submissionError ? 'border-destructive' : 'border-input'
+                  } ${isSubmitting ? 'bg-muted' : 'bg-card'}`}
                 />
 
                 {/* Feature: 012-discovery-answer-ui - Character Counter (T020, T021) */}
                 <div className="mt-2 flex items-center justify-between">
-                  <span className={`text-sm ${answer.length > 4500 ? 'text-red-600' : 'text-gray-500'}`}>
+                  <span className={`text-sm ${answer.length > 4500 ? 'text-destructive' : 'text-muted-foreground'}`}>
                     {answer.length} / 5000 characters
                   </span>
 
@@ -224,8 +224,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                     disabled={isSubmitting || !answer.trim()}
                     className={`py-2 px-6 rounded-lg font-semibold transition-colors ${
                       isSubmitting || !answer.trim()
-                        ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        ? 'bg-muted cursor-not-allowed text-muted-foreground'
+                        : 'bg-primary hover:bg-primary/90 text-primary-foreground'
                     }`}
                   >
                     {isSubmitting ? 'Submitting...' : 'Submit Answer'}
@@ -249,15 +249,15 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                     id="answer-error"
                     role="alert"
                     aria-live="assertive"
-                    className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm"
+                    className="mt-2 p-3 bg-destructive/10 border border-destructive rounded-lg text-destructive text-sm"
                   >
                     {submissionError}
                   </div>
                 )}
 
                 {/* Feature: 012-discovery-answer-ui - Keyboard Shortcut Hint (T050) */}
-                <div className="mt-2 text-center text-xs text-gray-500">
-                  💡 Tip: Press <kbd className="px-2 py-1 bg-gray-100 border border-gray-300 rounded">Ctrl+Enter</kbd> to submit
+                <div className="mt-2 text-center text-xs text-muted-foreground">
+                  💡 Tip: Press <kbd className="px-2 py-1 bg-muted border border-border rounded">Ctrl+Enter</kbd> to submit
                 </div>
               </div>
             )}
@@ -276,7 +276,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
         {/* Idle/Not Started State */}
         {isIdle && (
-          <div className="text-sm text-gray-500 italic">
+          <div className="text-sm text-muted-foreground italic">
             Discovery not started
           </div>
         )}

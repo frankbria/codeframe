@@ -55,13 +55,13 @@ function TaskStats(): JSX.Element {
     <div className="task-stats">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Total Tasks */}
-        <div className="p-4 rounded-lg bg-blue-50">
+        <div className="p-4 rounded-lg bg-primary/10 border border-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">📋</span>
           </div>
-          <div className="text-sm text-gray-600 mb-1">Total Tasks</div>
+          <div className="text-sm text-muted-foreground mb-1">Total Tasks</div>
           <div
-            className="text-3xl font-bold text-blue-600"
+            className="text-3xl font-bold text-primary"
             data-testid="total-tasks"
           >
             {stats.total}
@@ -69,13 +69,13 @@ function TaskStats(): JSX.Element {
         </div>
 
         {/* Completed Tasks */}
-        <div className="p-4 rounded-lg bg-green-50">
+        <div className="p-4 rounded-lg bg-secondary/10 border border-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">✅</span>
           </div>
-          <div className="text-sm text-gray-600 mb-1">Completed</div>
+          <div className="text-sm text-muted-foreground mb-1">Completed</div>
           <div
-            className="text-3xl font-bold text-green-600"
+            className="text-3xl font-bold text-secondary"
             data-testid="completed-tasks"
           >
             {stats.completed}
@@ -83,13 +83,13 @@ function TaskStats(): JSX.Element {
         </div>
 
         {/* Blocked Tasks */}
-        <div className="p-4 rounded-lg bg-red-50">
+        <div className="p-4 rounded-lg bg-destructive/10 border border-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">🚫</span>
           </div>
-          <div className="text-sm text-gray-600 mb-1">Blocked</div>
+          <div className="text-sm text-muted-foreground mb-1">Blocked</div>
           <div
-            className="text-3xl font-bold text-red-600"
+            className="text-3xl font-bold text-destructive"
             data-testid="blocked-tasks"
           >
             {stats.blocked}
@@ -97,13 +97,13 @@ function TaskStats(): JSX.Element {
         </div>
 
         {/* In-Progress Tasks */}
-        <div className="p-4 rounded-lg bg-yellow-50">
+        <div className="p-4 rounded-lg bg-accent/10 border border-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">⚙️</span>
           </div>
-          <div className="text-sm text-gray-600 mb-1">In Progress</div>
+          <div className="text-sm text-muted-foreground mb-1">In Progress</div>
           <div
-            className="text-3xl font-bold text-yellow-600"
+            className="text-3xl font-bold text-accent-foreground"
             data-testid="in-progress-tasks"
           >
             {stats.inProgress}

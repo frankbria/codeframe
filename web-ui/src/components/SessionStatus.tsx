@@ -54,10 +54,10 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
 
   if (isLoading) {
     return (
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-primary/10 border border-primary rounded-lg p-4">
         <div className="flex items-center space-x-2">
           <span className="text-2xl">📋</span>
-          <span className="text-blue-700 font-medium">Loading session...</span>
+          <span className="text-primary font-medium">Loading session...</span>
         </div>
       </div>
     );
@@ -65,10 +65,10 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
 
   if (error) {
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
         <div className="flex items-center space-x-2">
           <span className="text-2xl">⚠️</span>
-          <span className="text-yellow-700 font-medium">
+          <span className="text-destructive font-medium">
             Could not load session state: {error}
           </span>
         </div>
@@ -84,18 +84,18 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
   const isNewSession = session.last_session.summary === 'No previous session';
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+    <div className="bg-primary/10 border border-primary rounded-lg p-6">
       <div className="flex items-start space-x-3">
         <span className="text-3xl">📋</span>
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-blue-900 mb-3">
+          <h3 className="text-lg font-semibold text-foreground mb-3">
             Session Context
           </h3>
 
           {isNewSession ? (
-            <div className="text-blue-700">
+            <div className="text-foreground">
               <p className="font-medium">🚀 Starting new session...</p>
-              <p className="text-sm text-blue-600 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 No previous session state found
               </p>
             </div>
@@ -103,11 +103,11 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
             <>
               {/* Last Session */}
               <div className="mb-4">
-                <h4 className="text-sm font-medium text-blue-800 mb-1">
+                <h4 className="text-sm font-medium text-foreground mb-1">
                   Last session:
                 </h4>
-                <p className="text-blue-700">{session.last_session.summary}</p>
-                <p className="text-sm text-blue-600 mt-1">
+                <p className="text-foreground">{session.last_session.summary}</p>
+                <p className="text-sm text-muted-foreground mt-1">
                   {formatDistanceToNow(new Date(session.last_session.timestamp), {
                     addSuffix: true,
                   })}
@@ -117,10 +117,10 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
               {/* Next Actions */}
               {session.next_actions && session.next_actions.length > 0 && (
                 <div className="mb-4">
-                  <h4 className="text-sm font-medium text-blue-800 mb-1">
+                  <h4 className="text-sm font-medium text-foreground mb-1">
                     Next actions:
                   </h4>
-                  <ul className="list-disc list-inside text-blue-700 space-y-1">
+                  <ul className="list-disc list-inside text-foreground space-y-1">
                     {session.next_actions.slice(0, 3).map((action, index) => (
                       <li key={index} className="text-sm">
                         {action}
@@ -132,25 +132,25 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
 
               {/* Progress */}
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-blue-800">
+                <span className="text-sm font-medium text-foreground">
                   Progress:
                 </span>
-                <span className="text-blue-700 font-semibold">
+                <span className="text-primary font-semibold">
                   {Math.round(session.progress_pct)}%
                 </span>
               </div>
 
               {/* Progress Bar */}
-              <div className="w-full bg-blue-200 rounded-full h-2 mb-4">
+              <div className="w-full bg-muted rounded-full h-2 mb-4">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
                   style={{ width: `${Math.min(session.progress_pct, 100)}%` }}
                 />
               </div>
 
               {/* Blockers */}
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-blue-800">
+                <span className="text-sm font-medium text-foreground">
                   Blockers:
                 </span>
                 {session.active_blockers.length > 0 ? (

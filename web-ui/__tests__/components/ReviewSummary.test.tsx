@@ -50,7 +50,7 @@ describe('ReviewSummary', () => {
     it('displays error banner with red styling', () => {
       render(<ReviewSummary reviewResult={null} error="Network error" />);
       const errorDiv = screen.getByText(/Network error/).closest('div');
-      expect(errorDiv).toHaveClass('text-red-600');
+      expect(errorDiv).toHaveClass('text-destructive');
     });
 
     it('does not render summary when error exists', () => {
@@ -124,8 +124,8 @@ describe('ReviewSummary', () => {
     it('applies red styling to blocking banner', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
       const banner = screen.getByTestId('blocking-banner');
-      expect(banner).toHaveClass('bg-red-100');
-      expect(banner).toHaveClass('border-red-500');
+      expect(banner).toHaveClass('bg-destructive/10');
+      expect(banner).toHaveClass('border-destructive');
     });
   });
 
@@ -150,8 +150,8 @@ describe('ReviewSummary', () => {
     it('applies green styling to success banner', () => {
       render(<ReviewSummary reviewResult={mockReviewResultEmpty} />);
       const banner = screen.getByTestId('success-banner');
-      expect(banner).toHaveClass('bg-green-100');
-      expect(banner).toHaveClass('border-green-500');
+      expect(banner).toHaveClass('bg-secondary/10');
+      expect(banner).toHaveClass('border-secondary');
     });
 
     it('does not display success banner when blocking findings exist', () => {
@@ -224,7 +224,7 @@ describe('ReviewSummary', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
 
       const criticalBar = screen.getByTestId('severity-critical');
-      const progressBar = criticalBar.querySelector('.bg-red-500');
+      const progressBar = criticalBar.querySelector('.bg-destructive');
       expect(progressBar).toBeInTheDocument();
     });
   });
@@ -287,7 +287,7 @@ describe('ReviewSummary', () => {
     it('renders severity bars with proper styling', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
       const severityBar = screen.getByTestId('severity-critical');
-      const progressContainer = severityBar.querySelector('.h-2.bg-gray-200');
+      const progressContainer = severityBar.querySelector('.h-2.bg-muted');
       expect(progressContainer).toBeInTheDocument();
     });
   });

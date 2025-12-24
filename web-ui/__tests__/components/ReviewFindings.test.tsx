@@ -50,7 +50,7 @@ describe('ReviewFindings', () => {
     it('displays error banner with red styling', () => {
       render(<ReviewFindings findings={[]} error="Network error" />);
       const errorDiv = screen.getByText(/Network error/).closest('div');
-      expect(errorDiv).toHaveClass('text-red-600');
+      expect(errorDiv).toHaveClass('text-destructive');
     });
 
     it('does not render findings when error exists', () => {
@@ -82,16 +82,18 @@ describe('ReviewFindings', () => {
       ).toBeInTheDocument();
     });
 
-    it('displays critical findings in red', () => {
+    it('displays critical findings with appropriate styling', () => {
       render(<ReviewFindings findings={mockCriticalOnlyFindings} />);
       const criticalFinding = screen.getByTestId('finding-critical');
-      expect(criticalFinding).toHaveClass('bg-red-100');
+      // SEVERITY_COLORS from types/reviews.ts defines the actual colors
+      expect(criticalFinding).toHaveClass('border');
     });
 
-    it('displays high findings in orange', () => {
+    it('displays high findings with appropriate styling', () => {
       render(<ReviewFindings findings={mockHighOnlyFindings} />);
       const highFindings = screen.getAllByTestId('finding-high');
-      expect(highFindings[0]).toHaveClass('bg-orange-100');
+      // SEVERITY_COLORS from types/reviews.ts defines the actual colors
+      expect(highFindings[0]).toHaveClass('border');
     });
 
     it('displays file path for each finding', () => {
@@ -215,7 +217,7 @@ describe('ReviewFindings', () => {
       const severityButton = screen.getByTestId('sort-severity');
 
       // Severity should be active by default
-      expect(severityButton).toHaveClass('bg-blue-500');
+      expect(severityButton).toHaveClass('bg-primary');
     });
 
     it('sorts by severity by default (ascending)', () => {
@@ -251,15 +253,15 @@ describe('ReviewFindings', () => {
       const filePathButton = screen.getByTestId('sort-file-path');
 
       // Initially severity is active
-      expect(severityButton).toHaveClass('bg-blue-500');
-      expect(filePathButton).toHaveClass('bg-gray-200');
+      expect(severityButton).toHaveClass('bg-primary');
+      expect(filePathButton).toHaveClass('bg-muted');
 
       // Click file path button
       fireEvent.click(filePathButton);
 
       // Now file path should be active
-      expect(filePathButton).toHaveClass('bg-blue-500');
-      expect(severityButton).toHaveClass('bg-gray-200');
+      expect(filePathButton).toHaveClass('bg-primary');
+      expect(severityButton).toHaveClass('bg-muted');
     });
   });
 

@@ -120,7 +120,7 @@ export function ReviewFindings({
     return (
       <div className="review-findings" data-testid="review-findings">
         <h3 className="text-lg font-semibold mb-4">Code Review Findings</h3>
-        <div className="text-gray-500">Loading findings...</div>
+        <div className="text-muted-foreground">Loading findings...</div>
       </div>
     );
   }
@@ -130,7 +130,7 @@ export function ReviewFindings({
     return (
       <div className="review-findings" data-testid="review-findings">
         <h3 className="text-lg font-semibold mb-4">Code Review Findings</h3>
-        <div className="text-red-600 bg-red-50 p-4 rounded border border-red-200">
+        <div className="text-destructive bg-destructive/10 p-4 rounded border border-destructive">
           <strong>Error:</strong> {error}
         </div>
       </div>
@@ -142,7 +142,7 @@ export function ReviewFindings({
     return (
       <div className="review-findings" data-testid="review-findings">
         <h3 className="text-lg font-semibold mb-4">Code Review Findings</h3>
-        <div className="text-gray-500 bg-gray-50 p-8 rounded text-center">
+        <div className="text-muted-foreground bg-muted p-8 rounded text-center">
           No review findings. Code looks good! ✅
         </div>
       </div>
@@ -185,8 +185,8 @@ export function ReviewFindings({
             onClick={() => handleSort('severity')}
             className={`px-3 py-1 text-sm rounded ${
               sortField === 'severity'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground'
             }`}
             data-testid="sort-severity"
           >
@@ -196,8 +196,8 @@ export function ReviewFindings({
             onClick={() => handleSort('file_path')}
             className={`px-3 py-1 text-sm rounded ${
               sortField === 'file_path'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground'
             }`}
             data-testid="sort-file-path"
           >
@@ -230,7 +230,7 @@ export function ReviewFindings({
                     {/* Header: File path and line number */}
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
-                        <code className="text-sm font-mono bg-white bg-opacity-50 px-2 py-1 rounded">
+                        <code className="text-sm font-mono bg-muted px-2 py-1 rounded">
                           {finding.file_path}
                           {finding.line_number && `:${finding.line_number}`}
                         </code>
@@ -239,7 +239,7 @@ export function ReviewFindings({
                         <span className="text-lg" title={finding.category}>
                           {CATEGORY_ICONS[finding.category]}
                         </span>
-                        <span className="text-xs font-semibold uppercase px-2 py-1 bg-white bg-opacity-50 rounded">
+                        <span className="text-xs font-semibold uppercase px-2 py-1 bg-muted rounded">
                           {finding.severity}
                         </span>
                       </div>
@@ -252,7 +252,7 @@ export function ReviewFindings({
 
                     {/* Recommendation */}
                     {finding.recommendation && (
-                      <div className="mb-2 bg-white bg-opacity-50 rounded p-2">
+                      <div className="mb-2 bg-muted rounded p-2">
                         <p className="text-xs font-semibold mb-1">Recommendation:</p>
                         <p className="text-sm">{finding.recommendation}</p>
                       </div>
@@ -260,14 +260,14 @@ export function ReviewFindings({
 
                     {/* Code snippet */}
                     {finding.code_snippet && (
-                      <div className="bg-gray-900 text-gray-100 rounded p-2 overflow-x-auto">
+                      <div className="bg-muted text-foreground rounded p-2 overflow-x-auto">
                         <pre className="text-xs font-mono">{finding.code_snippet}</pre>
                       </div>
                     )}
 
                     {/* Category badge */}
                     <div className="mt-2">
-                      <span className="text-xs text-gray-600 capitalize">
+                      <span className="text-xs text-muted-foreground capitalize">
                         {finding.category}
                       </span>
                     </div>
@@ -281,7 +281,7 @@ export function ReviewFindings({
 
       {/* No findings after filtering */}
       {processedFindings.length === 0 && findings.length > 0 && (
-        <div className="text-gray-500 bg-gray-50 p-4 rounded text-center">
+        <div className="text-muted-foreground bg-muted p-4 rounded text-center">
           No findings match the selected filter.
         </div>
       )}

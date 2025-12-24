@@ -137,7 +137,7 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
       data-backdrop="true"
       onClick={handleBackdropClick}
     >
@@ -145,18 +145,18 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
         role="dialog"
         aria-labelledby="blocker-modal-title"
         aria-modal="true"
-        className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-card rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-border"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 id="blocker-modal-title" className="text-xl font-semibold text-gray-900">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 id="blocker-modal-title" className="text-xl font-semibold text-foreground">
             Resolve Blocker
           </h2>
           <button
             onClick={onClose}
             disabled={isSubmitting}
             aria-label="Close modal"
-            className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -171,13 +171,13 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
             {/* Badge and Waiting Time */}
             <div className="flex items-center gap-3">
               <BlockerBadge type={blocker.blocker_type} />
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-muted-foreground">
                 {formatWaitingTime(blocker.time_waiting_ms)}
               </span>
             </div>
 
             {/* Agent and Task Info */}
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-muted-foreground">
               <div>
                 <span className="font-medium">Agent:</span> {blocker.agent_name || blocker.agent_id}
               </div>
@@ -189,16 +189,16 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
             </div>
 
             {/* Question */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm font-medium text-gray-700 mb-2">Question:</p>
-              <p className="text-gray-900 whitespace-pre-wrap">{blocker.question}</p>
+            <div className="bg-muted p-4 rounded-lg border border-border">
+              <p className="text-sm font-medium text-foreground mb-2">Question:</p>
+              <p className="text-foreground whitespace-pre-wrap">{blocker.question}</p>
             </div>
           </div>
 
           {/* Answer Input */}
           <div className="space-y-2">
-            <label htmlFor="answer" className="block text-sm font-medium text-gray-700">
-              Your Answer <span className="text-red-500">*</span>
+            <label htmlFor="answer" className="block text-sm font-medium text-foreground">
+              Your Answer <span className="text-destructive">*</span>
             </label>
             <textarea
               id="answer"
@@ -208,18 +208,18 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
               placeholder="Enter your answer here... (Ctrl+Enter to submit)"
               disabled={isSubmitting}
               className={`w-full px-3 py-2 border ${
-                showMaxLengthError ? 'border-red-500' : 'border-gray-300'
-              } rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[120px] disabled:bg-gray-100 disabled:cursor-not-allowed`}
+                showMaxLengthError ? 'border-destructive' : 'border-border'
+              } rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background resize-y min-h-[120px] disabled:bg-muted disabled:cursor-not-allowed`}
             />
 
             {/* Character Counter and Validation */}
             <div className="flex items-center justify-between text-sm">
               <div>
                 {showMaxLengthError && (
-                  <span className="text-red-600">Answer cannot exceed maximum length of 5000 characters</span>
+                  <span className="text-destructive">Answer cannot exceed maximum length of 5000 characters</span>
                 )}
               </div>
-              <span className={showMaxLengthError ? 'text-red-600 font-medium' : 'text-gray-500'}>
+              <span className={showMaxLengthError ? 'text-destructive font-medium' : 'text-muted-foreground'}>
                 {charCount} / 5000
               </span>
             </div>
@@ -227,18 +227,18 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted">
           <button
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={!isValid || isSubmitting}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Answer'}
           </button>
@@ -252,8 +252,8 @@ export function BlockerModal({ isOpen, blocker, onClose, onResolved }: BlockerMo
             key={toast.id}
             className={`px-4 py-3 rounded-lg shadow-lg ${
               toast.type === 'success'
-                ? 'bg-green-50 border border-green-200 text-green-800'
-                : 'bg-red-50 border border-red-200 text-red-800'
+                ? 'bg-secondary/10 border border-secondary/20 text-secondary-foreground'
+                : 'bg-destructive/10 border border-destructive/20 text-destructive'
             } animate-slide-in`}
           >
             <div className="flex items-center gap-2">

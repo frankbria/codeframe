@@ -62,25 +62,25 @@ export function getGateName(gateType: GateTypeE2E | string): string {
 }
 
 /**
- * Get Tailwind CSS classes for status badge styling
+ * Get Tailwind CSS classes for status badge styling (Nova palette)
  * @param status - The quality gate status value
  * @returns Tailwind CSS class string for background, text, and border colors
  * @example
- * getStatusClasses('passed') // returns 'bg-green-100 text-green-800 border-green-300'
- * getStatusClasses('failed') // returns 'bg-red-100 text-red-800 border-red-300'
+ * getStatusClasses('passed') // returns 'bg-secondary text-secondary-foreground border-border'
+ * getStatusClasses('failed') // returns 'bg-destructive text-destructive-foreground border-destructive'
  */
 export function getStatusClasses(status: QualityGateStatusValue): string {
   switch (status) {
     case 'passed':
-      return 'bg-green-100 text-green-800 border-green-300';
+      return 'bg-secondary text-secondary-foreground border-border';
     case 'failed':
-      return 'bg-red-100 text-red-800 border-red-300';
+      return 'bg-destructive text-destructive-foreground border-destructive';
     case 'running':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      return 'bg-primary/20 text-foreground border-border';
     case 'pending':
-      return 'bg-gray-100 text-gray-800 border-gray-300';
+      return 'bg-muted text-muted-foreground border-border';
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-muted text-muted-foreground border-border';
   }
 }
 
@@ -109,24 +109,24 @@ export function getStatusIcon(status: QualityGateStatusValue): string {
 }
 
 /**
- * Get Tailwind CSS classes for severity badge styling
+ * Get Tailwind CSS classes for severity badge styling (Nova palette)
  * @param severity - The failure severity level (critical, high, medium, low)
  * @returns Tailwind CSS class string for background, text, and border colors
  * @example
- * getSeverityClasses('critical') // returns 'bg-red-100 text-red-900 border-red-300'
- * getSeverityClasses('high') // returns 'bg-orange-100 text-orange-900 border-orange-300'
+ * getSeverityClasses('critical') // returns 'bg-destructive text-destructive-foreground border-destructive'
+ * getSeverityClasses('high') // returns 'bg-destructive/80 text-destructive-foreground border-destructive'
  */
 export function getSeverityClasses(severity: string): string {
   switch (severity) {
     case 'critical':
-      return 'bg-red-100 text-red-900 border-red-300';
+      return 'bg-destructive text-destructive-foreground border-destructive';
     case 'high':
-      return 'bg-orange-100 text-orange-900 border-orange-300';
+      return 'bg-destructive/80 text-destructive-foreground border-destructive';
     case 'medium':
-      return 'bg-yellow-100 text-yellow-900 border-yellow-300';
+      return 'bg-muted text-foreground border-border';
     case 'low':
-      return 'bg-blue-100 text-blue-900 border-blue-300';
+      return 'bg-secondary text-secondary-foreground border-border';
     default:
-      return 'bg-gray-100 text-gray-900 border-gray-300';
+      return 'bg-muted text-muted-foreground border-border';
   }
 }

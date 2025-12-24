@@ -69,7 +69,7 @@ describe('AgentCard Component', () => {
       const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
-      expect(card).toHaveClass('bg-green-100', 'border-green-500', 'text-green-800');
+      expect(card).toHaveClass('bg-secondary', 'border-border', 'text-secondary-foreground');
       expect(screen.getByText('Idle')).toBeInTheDocument();
     });
 
@@ -85,7 +85,7 @@ describe('AgentCard Component', () => {
       const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
-      expect(card).toHaveClass('bg-yellow-100', 'border-yellow-500', 'text-yellow-800');
+      expect(card).toHaveClass('bg-primary/20', 'border-border', 'text-foreground');
       expect(screen.getByText('Working')).toBeInTheDocument();
     });
 
@@ -101,7 +101,7 @@ describe('AgentCard Component', () => {
       const { container } = render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const card = container.firstChild as HTMLElement;
-      expect(card).toHaveClass('bg-red-100', 'border-red-500', 'text-red-800');
+      expect(card).toHaveClass('bg-destructive/10', 'border-destructive', 'text-destructive-foreground');
       expect(screen.getByText('Blocked')).toBeInTheDocument();
     });
   });
@@ -208,7 +208,7 @@ describe('AgentCard Component', () => {
       render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const badge = screen.getByText('Backend Worker').parentElement;
-      expect(badge).toHaveClass('bg-blue-100', 'text-blue-800');
+      expect(badge).toHaveClass('bg-primary/10', 'text-primary-foreground');
       expect(screen.getByText('⚙️')).toBeInTheDocument();
     });
 
@@ -223,7 +223,7 @@ describe('AgentCard Component', () => {
       render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const badge = screen.getByText('Frontend Specialist').parentElement;
-      expect(badge).toHaveClass('bg-purple-100', 'text-purple-800');
+      expect(badge).toHaveClass('bg-secondary', 'text-secondary-foreground');
       expect(screen.getByText('🎨')).toBeInTheDocument();
     });
 
@@ -238,7 +238,7 @@ describe('AgentCard Component', () => {
       render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const badge = screen.getByText('Test Engineer').parentElement;
-      expect(badge).toHaveClass('bg-emerald-100', 'text-emerald-800');
+      expect(badge).toHaveClass('bg-secondary', 'text-secondary-foreground');
       expect(screen.getByText('🧪')).toBeInTheDocument();
     });
 
@@ -253,7 +253,7 @@ describe('AgentCard Component', () => {
       render(<AgentCard agent={agent} onAgentClick={mockOnAgentClick} />);
 
       const badge = screen.getByText('Custom Agent').parentElement;
-      expect(badge).toHaveClass('bg-gray-100', 'text-gray-800');
+      expect(badge).toHaveClass('bg-muted', 'text-foreground');
       expect(screen.getByText('🤖')).toBeInTheDocument();
     });
   });
@@ -327,7 +327,7 @@ describe('AgentCard Component', () => {
       const card = container.firstChild as HTMLElement;
       expect(card).toHaveClass('rounded-lg', 'border-2', 'p-4');
       expect(card).toHaveClass('transition-all', 'duration-200');
-      expect(card).toHaveClass('hover:shadow-md', 'cursor-pointer');
+      expect(card).toHaveClass('hover:shadow-sm', 'cursor-pointer');
     });
 
     it('should truncate long agent IDs', () => {

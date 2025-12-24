@@ -179,11 +179,11 @@ function QualityGatesPanel({
   if (eligibleTasks.length === 0) {
     return (
       <div
-        className="p-4 bg-gray-50 rounded-lg border border-gray-200"
+        className="p-4 bg-muted rounded-lg border border-border"
         role="status"
         aria-label="No tasks available"
       >
-        <div className="flex items-center gap-2 text-gray-600">
+        <div className="flex items-center gap-2 text-muted-foreground">
           <span aria-hidden="true">ℹ️</span>
           <span className="text-sm">
             No tasks available for quality gate evaluation. Complete or start a task first.
@@ -197,14 +197,14 @@ function QualityGatesPanel({
     <div className="space-y-4">
       {/* Task Selector */}
       <div className="flex items-center gap-3">
-        <label htmlFor="task-selector" className="text-sm font-medium text-gray-700">
+        <label htmlFor="task-selector" className="text-sm font-medium text-foreground">
           Select Task:
         </label>
         <select
           id="task-selector"
           value={selectedTaskId || ''}
           onChange={(e) => setSelectedTaskId(Number(e.target.value))}
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          className="flex-1 px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-border text-sm bg-background text-foreground"
           aria-label="Select task for quality gate status"
         >
           {eligibleTasks.map(task => (
@@ -218,15 +218,15 @@ function QualityGatesPanel({
       {/* Error State */}
       {error && (
         <div
-          className="p-4 bg-red-50 rounded-lg border border-red-200"
+          className="p-4 bg-destructive/10 rounded-lg border border-destructive/30"
           role="alert"
           aria-live="polite"
         >
           <div className="flex items-start">
-            <span className="text-red-600 text-xl mr-2" aria-hidden="true">⚠️</span>
+            <span className="text-destructive text-xl mr-2" aria-hidden="true">⚠️</span>
             <div className="flex-1">
-              <h4 className="text-sm font-medium text-red-900">Error Loading Quality Gates</h4>
-              <p className="text-sm text-red-700 mt-1">{error}</p>
+              <h4 className="text-sm font-medium text-destructive">Error Loading Quality Gates</h4>
+              <p className="text-sm text-destructive/80 mt-1">{error}</p>
             </div>
           </div>
         </div>
@@ -240,8 +240,8 @@ function QualityGatesPanel({
           aria-live="polite"
           aria-label="Loading quality gates"
         >
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" aria-hidden="true"></div>
-          <span className="ml-3 text-sm text-gray-600">Loading quality gates...</span>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" aria-hidden="true"></div>
+          <span className="ml-3 text-sm text-muted-foreground">Loading quality gates...</span>
         </div>
       ) : !error && (
         <>
@@ -264,8 +264,8 @@ function QualityGatesPanel({
 
           {/* Detailed Status View */}
           {selectedTaskId && (
-            <div className="border-t border-gray-200 pt-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Detailed Status</h3>
+            <div className="border-t border-border pt-4">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Detailed Status</h3>
               <QualityGateStatus taskId={selectedTaskId} />
             </div>
           )}

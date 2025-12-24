@@ -671,9 +671,9 @@ describe('Dashboard with AgentStateProvider', () => {
       const contextTab = screen.getByRole('tab', { name: /context/i });
       fireEvent.click(contextTab);
 
-      // Check for blue text and border styling
-      expect(contextTab).toHaveClass('text-blue-600');
-      expect(contextTab).toHaveClass('border-blue-600');
+      // Check for Nova design tokens styling
+      expect(contextTab).toHaveClass('text-primary');
+      expect(contextTab).toHaveClass('border-primary');
     });
   });
 

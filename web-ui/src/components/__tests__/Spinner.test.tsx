@@ -58,7 +58,7 @@ describe('Spinner', () => {
     render(<Spinner />);
 
     const spinner = screen.getByTestId('spinner');
-    expect(spinner).toHaveClass('border-blue-600', 'border-t-transparent');
+    expect(spinner).toHaveClass('border-primary', 'border-t-transparent');
   });
 
   test('has rounded-full class', () => {

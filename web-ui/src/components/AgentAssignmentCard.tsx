@@ -43,7 +43,7 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
     idle: 'bg-green-100 border-green-500 text-green-800',
     working: 'bg-yellow-100 border-yellow-500 text-yellow-800',
     blocked: 'bg-red-100 border-red-500 text-red-800',
-    offline: 'bg-gray-100 border-gray-400 text-gray-600',
+    offline: 'bg-muted border-border text-muted-foreground',
   };
 
   // Status indicator dot color
@@ -51,35 +51,35 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
     idle: 'bg-green-500',
     working: 'bg-yellow-500',
     blocked: 'bg-red-500',
-    offline: 'bg-gray-400',
+    offline: 'bg-muted-foreground',
   };
 
-  // Agent type badge colors
+  // Agent type badge colors (using Nova design tokens)
   const agentTypeBadges: Record<
     string,
     { bg: string; text: string; icon: string }
   > = {
-    lead: { bg: 'bg-purple-100', text: 'text-purple-800', icon: '👑' },
-    backend: { bg: 'bg-blue-100', text: 'text-blue-800', icon: '⚙️' },
-    'backend-worker': { bg: 'bg-blue-100', text: 'text-blue-800', icon: '⚙️' },
-    frontend: { bg: 'bg-pink-100', text: 'text-pink-800', icon: '🎨' },
+    lead: { bg: 'bg-accent/10', text: 'text-accent-foreground', icon: '👑' },
+    backend: { bg: 'bg-primary/10', text: 'text-primary', icon: '⚙️' },
+    'backend-worker': { bg: 'bg-primary/10', text: 'text-primary', icon: '⚙️' },
+    frontend: { bg: 'bg-secondary/10', text: 'text-secondary-foreground', icon: '🎨' },
     'frontend-specialist': {
-      bg: 'bg-pink-100',
-      text: 'text-pink-800',
+      bg: 'bg-secondary/10',
+      text: 'text-secondary-foreground',
       icon: '🎨',
     },
-    test: { bg: 'bg-emerald-100', text: 'text-emerald-800', icon: '🧪' },
+    test: { bg: 'bg-accent/10', text: 'text-accent-foreground', icon: '🧪' },
     'test-engineer': {
-      bg: 'bg-emerald-100',
-      text: 'text-emerald-800',
+      bg: 'bg-accent/10',
+      text: 'text-accent-foreground',
       icon: '🧪',
     },
-    review: { bg: 'bg-indigo-100', text: 'text-indigo-800', icon: '🔍' },
+    review: { bg: 'bg-muted', text: 'text-muted-foreground', icon: '🔍' },
   };
 
   const agentTypeBadge = agentTypeBadges[assignment.type] || {
-    bg: 'bg-gray-100',
-    text: 'text-gray-800',
+    bg: 'bg-muted',
+    text: 'text-foreground',
     icon: '🤖',
   };
 
@@ -187,24 +187,24 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
 
       {/* Role Badge */}
       <div className="mb-3">
-        <div className="text-xs text-gray-600 mb-1">Role:</div>
-        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-white bg-opacity-70">
+        <div className="text-xs text-muted-foreground mb-1">Role:</div>
+        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-card bg-opacity-70">
           {formatRole(assignment.role)}
         </span>
       </div>
 
       {/* Provider & Maturity Level */}
       {(assignment.provider || assignment.maturity_level) && (
-        <div className="mb-3 p-2 bg-white bg-opacity-50 rounded">
+        <div className="mb-3 p-2 bg-card bg-opacity-50 rounded">
           {assignment.provider && (
             <div className="text-xs">
-              <span className="text-gray-600">Provider:</span>{' '}
+              <span className="text-muted-foreground">Provider:</span>{' '}
               <span className="font-medium">{assignment.provider}</span>
             </div>
           )}
           {assignment.maturity_level && (
             <div className="text-xs mt-1">
-              <span className="text-gray-600">Maturity:</span>{' '}
+              <span className="text-muted-foreground">Maturity:</span>{' '}
               <span className="font-medium capitalize">
                 {assignment.maturity_level}
               </span>
@@ -215,8 +215,8 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
 
       {/* Current Task (if working) */}
       {currentStatus === 'working' && assignment.current_task_id && (
-        <div className="mb-3 p-2 bg-white bg-opacity-50 rounded">
-          <div className="text-xs text-gray-600 mb-1">Current Task:</div>
+        <div className="mb-3 p-2 bg-card bg-opacity-50 rounded">
+          <div className="text-xs text-muted-foreground mb-1">Current Task:</div>
           <div className="text-sm font-medium">
             Task #{assignment.current_task_id}
           </div>
@@ -225,8 +225,8 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
 
       {/* Last Activity */}
       {assignment.last_heartbeat && (
-        <div className="mb-3 p-2 bg-white bg-opacity-50 rounded">
-          <div className="text-xs text-gray-600 mb-1">Last Activity:</div>
+        <div className="mb-3 p-2 bg-card bg-opacity-50 rounded">
+          <div className="text-xs text-muted-foreground mb-1">Last Activity:</div>
           <div className="text-xs font-medium">
             {formatTimestamp(assignment.last_heartbeat)}
           </div>
@@ -235,7 +235,7 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
 
       {/* Assignment Info */}
       <div className="flex items-center justify-between pt-3 border-t border-current border-opacity-20">
-        <span className="text-xs text-gray-600">Assigned</span>
+        <span className="text-xs text-muted-foreground">Assigned</span>
         <span className="text-xs font-medium">
           {formatTimestamp(assignment.assigned_at)}
         </span>

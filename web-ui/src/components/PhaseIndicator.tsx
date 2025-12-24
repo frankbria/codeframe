@@ -20,13 +20,13 @@ interface PhaseConfig {
 const PHASE_CONFIGS: Record<string, PhaseConfig> = {
   discovery: {
     label: 'Discovery',
-    bgColor: 'bg-blue-100',
-    textColor: 'text-blue-800',
+    bgColor: 'bg-primary/10',
+    textColor: 'text-primary',
   },
   planning: {
     label: 'Planning',
-    bgColor: 'bg-purple-100',
-    textColor: 'text-purple-800',
+    bgColor: 'bg-secondary',
+    textColor: 'text-secondary-foreground',
   },
   active: {
     label: 'Active',
@@ -40,15 +40,15 @@ const PHASE_CONFIGS: Record<string, PhaseConfig> = {
   },
   complete: {
     label: 'Complete',
-    bgColor: 'bg-gray-100',
-    textColor: 'text-gray-800',
+    bgColor: 'bg-muted',
+    textColor: 'text-muted-foreground',
   },
 };
 
 const DEFAULT_PHASE_CONFIG: PhaseConfig = {
   label: 'Unknown',
-  bgColor: 'bg-gray-100',
-  textColor: 'text-gray-800',
+  bgColor: 'bg-muted',
+  textColor: 'text-muted-foreground',
 };
 
 export default function PhaseIndicator({ phase }: PhaseIndicatorProps) {

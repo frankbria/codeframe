@@ -669,4 +669,8 @@ class Database:
         """Delegate to audit_logs.create_audit_log()."""
         return self.audit_logs.create_audit_log(*args, **kwargs)
 
+    async def cleanup_expired_sessions(self, *args, **kwargs):
+        """Delegate to projects.cleanup_expired_sessions()."""
+        return await self.projects.cleanup_expired_sessions(*args, **kwargs)
+
     # End of delegated methods

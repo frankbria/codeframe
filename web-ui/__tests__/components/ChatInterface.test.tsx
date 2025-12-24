@@ -167,19 +167,19 @@ describe('ChatInterface', () => {
       expect(screen.getByText('Hello, how are you?')).toBeInTheDocument();
     });
 
-    // Check user messages have correct styling (blue background)
+    // Check user messages have correct styling (primary background)
     const userMessages = screen.getAllByText(/Hello, how are you?|Can you help me with my task?/);
     userMessages.forEach((msg) => {
-      const messageDiv = msg.closest('div.bg-blue-600');
+      const messageDiv = msg.closest('div.bg-primary');
       expect(messageDiv).toBeInTheDocument();
-      expect(messageDiv).toHaveClass('text-white');
+      expect(messageDiv).toHaveClass('text-primary-foreground');
     });
 
-    // Check assistant messages have correct styling (gray background)
+    // Check assistant messages have correct styling (muted background)
     const assistantMessage = screen.getByText('I am doing well, thank you!');
-    const assistantDiv = assistantMessage.closest('div.bg-gray-100');
+    const assistantDiv = assistantMessage.closest('div.bg-muted');
     expect(assistantDiv).toBeInTheDocument();
-    expect(assistantDiv).toHaveClass('text-gray-900');
+    expect(assistantDiv).toHaveClass('text-foreground');
   });
 
   it('test_auto_scrolls_to_latest_message', async () => {
@@ -316,7 +316,7 @@ describe('ChatInterface', () => {
     expect(sendButton).toBeDisabled();
 
     // Status shows offline
-    expect(screen.getByText('offline')).toHaveClass('text-gray-400');
+    expect(screen.getByText('offline')).toHaveClass('text-muted-foreground');
   });
 
   it('test_prevents_send_when_agent_offline', async () => {
@@ -382,9 +382,9 @@ describe('ChatInterface', () => {
       expect(screen.getByText(errorMessage)).toBeInTheDocument();
     });
 
-    // Error has red styling
+    // Error has destructive styling
     const errorDiv = screen.getByText(errorMessage).closest('div');
-    expect(errorDiv).toHaveClass('bg-red-50', 'border-red-200', 'text-red-700');
+    expect(errorDiv).toHaveClass('bg-destructive/10', 'text-destructive');
   });
 
   it('test_shows_default_error_message_when_no_detail', async () => {
@@ -780,11 +780,11 @@ describe('ChatInterface', () => {
       ).toBeInTheDocument();
     });
 
-    // Error has red styling
+    // Error has destructive styling
     const errorDiv = screen.getByText(
       'Failed to load chat history. Please refresh the page.'
     ).closest('div');
-    expect(errorDiv).toHaveClass('bg-red-50', 'text-red-600');
+    expect(errorDiv).toHaveClass('bg-destructive/10', 'text-destructive');
   });
 
   it('test_displays_agent_status_with_correct_styling', async () => {
@@ -795,20 +795,20 @@ describe('ChatInterface', () => {
 
     const { rerender } = render(<ChatInterface projectId={123} agentStatus="working" />);
 
-    // ASSERT: Working status is green
+    // ASSERT: Working status is green (keeping semantic color)
     await waitFor(() => {
       expect(screen.getByText('working')).toHaveClass('text-green-600');
     });
 
-    // Blocked status is red
+    // Blocked status is destructive
     rerender(<ChatInterface projectId={123} agentStatus="blocked" />);
-    expect(screen.getByText('blocked')).toHaveClass('text-red-600');
+    expect(screen.getByText('blocked')).toHaveClass('text-destructive');
 
-    // Offline status is gray
+    // Offline status is muted
     rerender(<ChatInterface projectId={123} agentStatus="offline" />);
-    expect(screen.getByText('offline')).toHaveClass('text-gray-400');
+    expect(screen.getByText('offline')).toHaveClass('text-muted-foreground');
 
-    // Idle status is yellow
+    // Idle status is yellow (keeping semantic color for warning)
     rerender(<ChatInterface projectId={123} agentStatus="idle" />);
     expect(screen.getByText('idle')).toHaveClass('text-yellow-600');
   });

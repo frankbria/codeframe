@@ -126,7 +126,7 @@ describe('TokenUsageChart', () => {
 
     // Verify 7 Days button is active
     const sevenDaysButton = screen.getByText('7 Days');
-    expect(sevenDaysButton).toHaveClass('bg-blue-600');
+    expect(sevenDaysButton).toHaveClass('bg-primary');
   });
 
   it('test_date_range_14_days', async () => {
@@ -147,7 +147,7 @@ describe('TokenUsageChart', () => {
 
     // ASSERT: Verify button is now active
     await waitFor(() => {
-      expect(fourteenDaysButton).toHaveClass('bg-blue-600');
+      expect(fourteenDaysButton).toHaveClass('bg-primary');
     });
 
     // Verify API called again with new date range
@@ -172,7 +172,7 @@ describe('TokenUsageChart', () => {
 
     // ASSERT: Verify button is now active
     await waitFor(() => {
-      expect(thirtyDaysButton).toHaveClass('bg-blue-600');
+      expect(thirtyDaysButton).toHaveClass('bg-primary');
     });
 
     // Verify API called again with new date range

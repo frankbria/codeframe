@@ -31,7 +31,7 @@ export default function ProgressBar({ percentage, label, showPercentage = false 
       {label && (
         <div
           data-testid="progress-bar-label"
-          className="text-sm font-medium text-gray-700 mb-1"
+          className="text-sm font-medium text-foreground mb-1"
         >
           {label}
         </div>
@@ -45,7 +45,7 @@ export default function ProgressBar({ percentage, label, showPercentage = false 
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={ariaLabel}
-        className="w-full bg-gray-200 rounded-full h-4 relative overflow-hidden"
+        className="w-full bg-muted rounded-full h-4 relative overflow-hidden"
       >
         {/* Filled Progress Bar */}
         <div
@@ -57,7 +57,7 @@ export default function ProgressBar({ percentage, label, showPercentage = false 
         {/* Percentage Text Overlay */}
         {showPercentage && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-semibold text-gray-800">
+            <span className="text-xs font-semibold text-foreground">
               {clampedPercentage}%
             </span>
           </div>

@@ -45,11 +45,11 @@ export default function ReviewResultsPanel({
   // Loading state
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-card rounded-lg shadow p-6 border border-border">
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
         </div>
-        <p className="text-center text-gray-500 mt-4">Loading review...</p>
+        <p className="text-center text-muted-foreground mt-4">Loading review...</p>
       </div>
     );
   }
@@ -57,11 +57,11 @@ export default function ReviewResultsPanel({
   // Error state
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-card rounded-lg shadow p-6 border border-border">
         <div className="text-center py-8">
           <div className="text-4xl mb-2">⚠️</div>
-          <p className="text-red-600 font-medium">Error Loading Review</p>
-          <p className="text-sm text-gray-500 mt-2">{error}</p>
+          <p className="text-destructive font-medium">Error Loading Review</p>
+          <p className="text-sm text-muted-foreground mt-2">{error}</p>
         </div>
       </div>
     );
@@ -70,11 +70,11 @@ export default function ReviewResultsPanel({
   // No review exists
   if (!reviewStatus?.has_review) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-card rounded-lg shadow p-6 border border-border">
         <div className="text-center py-8">
           <div className="text-4xl mb-2">📝</div>
-          <p className="text-gray-600 font-medium">No Review Available</p>
-          <p className="text-sm text-gray-500 mt-2">
+          <p className="text-foreground font-medium">No Review Available</p>
+          <p className="text-sm text-muted-foreground mt-2">
             This task has not been reviewed yet.
           </p>
         </div>
@@ -86,17 +86,17 @@ export default function ReviewResultsPanel({
   // In a real implementation, we'd fetch the full report
   // For this MVP, we'll show the status information we have
   return (
-    <div className="bg-white rounded-lg shadow">
+    <div className="bg-card rounded-lg shadow border border-border">
       {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b">
+      <div className="flex items-center justify-between p-6 border-b border-border">
         <div>
-          <h2 className="text-xl font-semibold text-gray-800">Code Review Results</h2>
-          <p className="text-sm text-gray-500 mt-1">Task #{taskId}</p>
+          <h2 className="text-xl font-semibold text-foreground">Code Review Results</h2>
+          <p className="text-sm text-muted-foreground mt-1">Task #{taskId}</p>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Close"
           >
             <svg
@@ -120,31 +120,31 @@ export default function ReviewResultsPanel({
       <div className="p-6">
         <div className="text-center py-8">
           <div className="text-6xl font-bold mb-4">
-            <span className={reviewStatus.overall_score! >= 70 ? 'text-green-500' : 'text-orange-500'}>
+            <span className={reviewStatus.overall_score! >= 70 ? 'text-secondary' : 'text-destructive'}>
               {reviewStatus.overall_score}
             </span>
-            <span className="text-2xl text-gray-400">/100</span>
+            <span className="text-2xl text-muted-foreground">/100</span>
           </div>
 
           <div className="mb-6">
             <span
               className={`px-4 py-2 rounded-full text-sm font-medium border ${
                 reviewStatus.status === 'approved'
-                  ? 'bg-green-100 text-green-800 border-green-300'
+                  ? 'bg-secondary text-secondary-foreground border-border'
                   : reviewStatus.status === 'changes_requested'
-                  ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
-                  : 'bg-red-100 text-red-800 border-red-300'
+                  ? 'bg-muted text-foreground border-border'
+                  : 'bg-destructive text-destructive-foreground border-destructive'
               }`}
             >
               {reviewStatus.status?.replace('_', ' ').toUpperCase()}
             </span>
           </div>
 
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-muted-foreground">
             <p className="mb-2">
-              <span className="font-medium">{reviewStatus.findings_count}</span> findings detected
+              <span className="font-medium text-foreground">{reviewStatus.findings_count}</span> findings detected
             </p>
-            <p className="text-xs text-gray-500 mt-4">
+            <p className="text-xs text-muted-foreground mt-4">
               Full review details coming soon...
             </p>
           </div>

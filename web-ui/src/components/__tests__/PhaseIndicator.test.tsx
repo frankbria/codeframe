@@ -44,16 +44,16 @@ describe('PhaseIndicator Component', () => {
       const { container } = render(<PhaseIndicator phase="discovery" />);
 
       const badge = container.querySelector('[data-testid="phase-badge"]');
-      expect(badge).toHaveClass('bg-blue-100');
-      expect(badge).toHaveClass('text-blue-800');
+      expect(badge).toHaveClass('bg-primary/10');
+      expect(badge).toHaveClass('text-primary');
     });
 
     it('should display purple background for planning phase', () => {
       const { container } = render(<PhaseIndicator phase="planning" />);
 
       const badge = container.querySelector('[data-testid="phase-badge"]');
-      expect(badge).toHaveClass('bg-purple-100');
-      expect(badge).toHaveClass('text-purple-800');
+      expect(badge).toHaveClass('bg-secondary');
+      expect(badge).toHaveClass('text-secondary-foreground');
     });
 
     it('should display green background for active phase', () => {
@@ -76,8 +76,8 @@ describe('PhaseIndicator Component', () => {
       const { container } = render(<PhaseIndicator phase="complete" />);
 
       const badge = container.querySelector('[data-testid="phase-badge"]');
-      expect(badge).toHaveClass('bg-gray-100');
-      expect(badge).toHaveClass('text-gray-800');
+      expect(badge).toHaveClass('bg-muted');
+      expect(badge).toHaveClass('text-muted-foreground');
     });
   });
 
@@ -92,8 +92,8 @@ describe('PhaseIndicator Component', () => {
       const { container } = render(<PhaseIndicator phase="invalid" />);
 
       const badge = container.querySelector('[data-testid="phase-badge"]');
-      expect(badge).toHaveClass('bg-gray-100');
-      expect(badge).toHaveClass('text-gray-800');
+      expect(badge).toHaveClass('bg-muted');
+      expect(badge).toHaveClass('text-muted-foreground');
     });
 
     it('should handle empty string phase', () => {

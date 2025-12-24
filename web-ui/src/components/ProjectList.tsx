@@ -53,7 +53,7 @@ export default function ProjectList() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-gray-600">Loading projects...</div>
+        <div className="text-muted-foreground">Loading projects...</div>
       </div>
     );
   }
@@ -62,7 +62,7 @@ export default function ProjectList() {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-red-600">Failed to load projects. Please try again.</div>
+        <div className="text-destructive">Failed to load projects. Please try again.</div>
       </div>
     );
   }
@@ -73,10 +73,10 @@ export default function ProjectList() {
     <div className="space-y-6">
       {/* Header with Create button */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Your Projects</h2>
+        <h2 className="text-2xl font-bold text-foreground">Your Projects</h2>
         <button
           onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
         >
           Create New Project
         </button>
@@ -84,12 +84,12 @@ export default function ProjectList() {
 
       {/* Project Creation Form */}
       {showForm && (
-        <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+        <div className="bg-muted rounded-lg p-6 border border-border">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Create New Project</h3>
+            <h3 className="text-lg font-semibold text-foreground">Create New Project</h3>
             <button
               onClick={() => setShowForm(false)}
-              className="text-gray-500 hover:text-gray-700"
+              className="text-muted-foreground hover:text-foreground"
             >
               ✕
             </button>
@@ -100,9 +100,9 @@ export default function ProjectList() {
 
       {/* Projects Grid or Empty State */}
       {projects.length === 0 ? (
-        <div className="flex items-center justify-center min-h-[300px] bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+        <div className="flex items-center justify-center min-h-[300px] bg-muted rounded-lg border-2 border-dashed border-border">
           <div className="text-center">
-            <p className="text-gray-600 text-lg">
+            <p className="text-muted-foreground text-lg">
               No projects yet. Create your first project!
             </p>
           </div>
@@ -113,10 +113,10 @@ export default function ProjectList() {
             <div
               key={project.id}
               onClick={() => handleProjectClick(project.id)}
-              className="bg-white rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+              className="bg-card rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
             >
-              <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
-              <div className="mt-2 space-y-1 text-sm text-gray-600">
+              <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
+              <div className="mt-2 space-y-1 text-sm text-foreground">
                 <p>
                   Status: <span className="font-medium">{project.status}</span>
                 </p>
@@ -124,7 +124,7 @@ export default function ProjectList() {
                   Phase: <span className="font-medium">{project.phase}</span>
                 </p>
                 {project.created_at && (
-                  <p className="text-gray-500">{formatDate(project.created_at)}</p>
+                  <p className="text-muted-foreground">{formatDate(project.created_at)}</p>
                 )}
               </div>
             </div>
