@@ -38,7 +38,7 @@ describe('SessionStatus', () => {
       );
 
       const { container } = render(<SessionStatus projectId={1} />);
-      const loadingDiv = container.querySelector('.bg-blue-50');
+      const loadingDiv = container.querySelector('.bg-primary\\/10');
       expect(loadingDiv).toBeInTheDocument();
     });
   });
@@ -227,7 +227,7 @@ describe('SessionStatus', () => {
       const { container } = render(<SessionStatus projectId={1} />);
 
       await waitFor(() => {
-        const progressBar = container.querySelector('.bg-blue-600');
+        const progressBar = container.querySelector('.bg-primary');
         expect(progressBar).toHaveStyle({ width: '68.5%' });
       });
     });
@@ -379,7 +379,7 @@ describe('SessionStatus', () => {
       const { container } = render(<SessionStatus projectId={1} />);
 
       await waitFor(() => {
-        const progressBar = container.querySelector('.bg-blue-600');
+        const progressBar = container.querySelector('.bg-primary');
         // Component uses Math.min(progress_pct, 100)
         expect(progressBar).toHaveStyle({ width: '100%' });
       });
@@ -402,7 +402,7 @@ describe('SessionStatus', () => {
       const { container } = render(<SessionStatus projectId={1} />);
 
       await waitFor(() => {
-        const progressBar = container.querySelector('.bg-blue-600');
+        const progressBar = container.querySelector('.bg-primary');
         expect(progressBar).toHaveStyle({ width: '0%' });
       });
     });

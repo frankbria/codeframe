@@ -18,8 +18,8 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
   // Status color mapping (Nova palette)
   const statusColors = {
     idle: 'bg-secondary border-border text-secondary-foreground',
-    busy: 'bg-muted border-border text-muted-foreground',
-    blocked: 'bg-destructive border-destructive text-destructive-foreground',
+    busy: 'bg-primary/20 border-border text-foreground',
+    blocked: 'bg-destructive/10 border-destructive text-destructive-foreground',
   };
 
   // Status indicator dot color (Nova palette)
@@ -31,15 +31,15 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
 
   // Agent type badge colors (Nova palette)
   const agentTypeBadges: Record<string, { bg: string; text: string; icon: string }> = {
-    'backend': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '⚙️' },
-    'backend-worker': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '⚙️' },
+    'backend': { bg: 'bg-primary/10', text: 'text-primary-foreground', icon: '⚙️' },
+    'backend-worker': { bg: 'bg-primary/10', text: 'text-primary-foreground', icon: '⚙️' },
     'frontend': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🎨' },
     'frontend-specialist': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🎨' },
     'test': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🧪' },
     'test-engineer': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🧪' },
   };
 
-  const agentTypeBadge = agentTypeBadges[agent.type] || { bg: 'bg-muted', text: 'text-muted-foreground', icon: '🤖' };
+  const agentTypeBadge = agentTypeBadges[agent.type] || { bg: 'bg-muted', text: 'text-foreground', icon: '🤖' };
 
   // Format agent type for display
   const formatAgentType = (type: string): string => {

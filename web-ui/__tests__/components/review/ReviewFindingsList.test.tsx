@@ -84,7 +84,7 @@ describe('ReviewFindingsList', () => {
 
     it('applies hover effect to finding container', () => {
       const { container } = render(<ReviewFindingsList findings={[mockFinding]} />);
-      const findingCard = container.querySelector('.hover\\:bg-gray-50');
+      const findingCard = container.querySelector('.hover\\:bg-muted');
 
       expect(findingCard).toBeInTheDocument();
       expect(findingCard).toHaveClass('hover:bg-muted');
@@ -106,7 +106,7 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('CRITICAL');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-destructive/10');
+      expect(badge).toHaveClass('bg-destructive');
       expect(badge).toHaveClass('text-destructive-foreground');
       expect(badge).toHaveClass('border-destructive');
     });
@@ -118,7 +118,7 @@ describe('ReviewFindingsList', () => {
       expect(badge).toBeInTheDocument();
       expect(badge).toHaveClass('bg-destructive/80');
       expect(badge).toHaveClass('text-destructive-foreground');
-      expect(badge).toHaveClass('border-orange-300');
+      expect(badge).toHaveClass('border-destructive');
     });
 
     it('renders medium severity badge with yellow styling', () => {
@@ -126,7 +126,7 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('MEDIUM');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-primary/20');
+      expect(badge).toHaveClass('bg-muted');
       expect(badge).toHaveClass('text-foreground');
       expect(badge).toHaveClass('border-border');
     });
@@ -136,8 +136,8 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('LOW');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-primary/10');
-      expect(badge).toHaveClass('text-primary-foreground');
+      expect(badge).toHaveClass('bg-secondary');
+      expect(badge).toHaveClass('text-secondary-foreground');
       expect(badge).toHaveClass('border-border');
     });
 
@@ -147,7 +147,7 @@ describe('ReviewFindingsList', () => {
       const badge = screen.getByText('INFO');
       expect(badge).toBeInTheDocument();
       expect(badge).toHaveClass('bg-muted');
-      expect(badge).toHaveClass('text-foreground');
+      expect(badge).toHaveClass('text-muted-foreground');
       expect(badge).toHaveClass('border-border');
     });
 
@@ -308,10 +308,10 @@ describe('ReviewFindingsList', () => {
 
     it('applies suggestion box styling', () => {
       const { container } = render(<ReviewFindingsList findings={[mockFinding]} />);
-      const suggestionBox = container.querySelector('.bg-blue-50');
+      const suggestionBox = container.querySelector('.bg-muted');
 
       expect(suggestionBox).toBeInTheDocument();
-      expect(suggestionBox).toHaveClass('bg-primary/10');
+      expect(suggestionBox).toHaveClass('bg-muted');
       expect(suggestionBox).toHaveClass('border-border');
       expect(suggestionBox).toHaveClass('rounded');
     });

@@ -197,8 +197,9 @@ describe('QualityGateStatus Component', () => {
 
       await waitFor(() => {
         const badge = screen.getByText('failed');
-        expect(badge).toHaveClass('bg-destructive/10');
+        expect(badge).toHaveClass('bg-destructive');
         expect(badge).toHaveClass('text-destructive-foreground');
+        expect(badge).toHaveClass('border-destructive');
       });
     });
 
@@ -436,7 +437,8 @@ describe('QualityGateStatus Component', () => {
       await waitFor(() => {
         const badge = screen.getByText('pending');
         expect(badge).toHaveClass('bg-muted');
-        expect(badge).toHaveClass('text-foreground');
+        expect(badge).toHaveClass('text-muted-foreground');
+        expect(badge).toHaveClass('border-border');
       });
     });
   });

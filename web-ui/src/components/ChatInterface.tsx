@@ -138,16 +138,16 @@ const ChatInterface = memo(function ChatInterface({ projectId, agentStatus = 'id
   };
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow">
+    <div className="flex flex-col h-full bg-card rounded-lg shadow border border-border">
       {/* Chat Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Chat with Lead Agent</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="text-lg font-semibold text-foreground">Chat with Lead Agent</h3>
+          <p className="text-sm text-muted-foreground">
             Status: <span className={`font-medium ${
               agentStatus === 'working' ? 'text-green-600' :
-              agentStatus === 'blocked' ? 'text-red-600' :
-              agentStatus === 'offline' ? 'text-gray-400' :
+              agentStatus === 'blocked' ? 'text-destructive' :
+              agentStatus === 'offline' ? 'text-muted-foreground' :
               'text-yellow-600'
             }`}>{agentStatus}</span>
           </p>
@@ -157,13 +157,13 @@ const ChatInterface = memo(function ChatInterface({ projectId, agentStatus = 'id
       {/* Message History */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {historyError && (
-          <div className="text-center text-sm text-red-600 bg-red-50 rounded p-3">
+          <div className="text-center text-sm text-destructive bg-destructive/10 rounded p-3 border border-destructive/20">
             Failed to load chat history. Please refresh the page.
           </div>
         )}
 
         {messages.length === 0 && !historyError && (
-          <div className="text-center text-gray-500 py-8">
+          <div className="text-center text-muted-foreground py-8">
             <p className="text-sm">No messages yet.</p>
             <p className="text-xs mt-1">Start a conversation with the Lead Agent!</p>
           </div>
@@ -177,13 +177,13 @@ const ChatInterface = memo(function ChatInterface({ projectId, agentStatus = 'id
             <div
               className={`max-w-[70%] rounded-lg px-4 py-2 ${
                 msg.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-900'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-foreground'
               }`}
             >
               <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
               <p className={`text-xs mt-1 ${
-                msg.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                msg.role === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
               }`}>
                 {formatTimestamp(msg.timestamp)}
               </p>
@@ -196,13 +196,13 @@ const ChatInterface = memo(function ChatInterface({ projectId, agentStatus = 'id
 
       {/* Error Display */}
       {error && (
-        <div className="mx-6 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+        <div className="mx-6 mb-2 px-4 py-2 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
           {error}
         </div>
       )}
 
       {/* Message Input */}
-      <form onSubmit={handleSendMessage} className="px-6 py-4 border-t border-gray-200">
+      <form onSubmit={handleSendMessage} className="px-6 py-4 border-t border-border">
         <div className="flex gap-2">
           <input
             ref={inputRef}
@@ -215,12 +215,12 @@ const ChatInterface = memo(function ChatInterface({ projectId, agentStatus = 'id
                 : 'Type your message...'
             }
             disabled={isSending || agentStatus === 'offline'}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-muted disabled:cursor-not-allowed text-foreground bg-background"
           />
           <button
             type="submit"
             disabled={!inputMessage.trim() || isSending || agentStatus === 'offline'}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed transition-colors"
           >
             {isSending ? (
               <span className="flex items-center gap-2">

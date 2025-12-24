@@ -45,21 +45,21 @@ export function ContextTierChart({ stats }: ContextTierChartProps): JSX.Element 
           <div className="w-full h-8 rounded-lg overflow-hidden flex">
             {stats.hot_count > 0 && (
               <div
-                className="bg-foreground hover:opacity-90 transition-opacity"
+                className="chart-bar hot bg-foreground hover:opacity-90 transition-opacity"
                 style={{ width: `${hotPercentage}%` }}
                 title={`HOT: ${stats.hot_count} items (${hotPercentage.toFixed(1)}%)`}
               />
             )}
             {stats.warm_count > 0 && (
               <div
-                className="bg-muted-foreground hover:opacity-90 transition-opacity"
+                className="chart-bar warm bg-muted-foreground hover:opacity-90 transition-opacity"
                 style={{ width: `${warmPercentage}%` }}
                 title={`WARM: ${stats.warm_count} items (${warmPercentage.toFixed(1)}%)`}
               />
             )}
             {stats.cold_count > 0 && (
               <div
-                className="bg-muted hover:opacity-90 transition-opacity"
+                className="chart-bar cold bg-muted hover:opacity-90 transition-opacity"
                 style={{ width: `${coldPercentage}%` }}
                 title={`COLD: ${stats.cold_count} items (${coldPercentage.toFixed(1)}%)`}
               />
@@ -68,35 +68,35 @@ export function ContextTierChart({ stats }: ContextTierChartProps): JSX.Element 
 
           {/* Legend */}
           <div className="grid grid-cols-3 gap-4 py-2">
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-4 bg-foreground rounded"></span>
-              <span className="text-sm text-foreground">
+            <div className="legend-item hot flex items-center gap-2">
+              <span className="legend-color legend-indicator hot w-4 h-4 bg-foreground rounded"></span>
+              <span className="legend-label text-sm text-foreground">
                 HOT: {stats.hot_count} ({hotPercentage.toFixed(1)}%)
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-4 bg-muted-foreground rounded"></span>
-              <span className="text-sm text-foreground">
+            <div className="legend-item warm flex items-center gap-2">
+              <span className="legend-color legend-indicator warm w-4 h-4 bg-muted-foreground rounded"></span>
+              <span className="legend-label text-sm text-foreground">
                 WARM: {stats.warm_count} ({warmPercentage.toFixed(1)}%)
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-4 bg-muted rounded"></span>
-              <span className="text-sm text-foreground">
+            <div className="legend-item cold flex items-center gap-2">
+              <span className="legend-color legend-indicator cold w-4 h-4 bg-muted rounded"></span>
+              <span className="legend-label text-sm text-foreground">
                 COLD: {stats.cold_count} ({coldPercentage.toFixed(1)}%)
               </span>
             </div>
           </div>
 
           {/* Token breakdown */}
-          <div className="pt-4 border-t border-border space-y-2">
+          <div className="token-breakdown pt-4 border-t border-border space-y-2">
             <p className="text-sm font-medium text-foreground">
               Token Distribution:
             </p>
             <ul className="space-y-1">
-              <li className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li className="tier-hot flex items-center gap-2 text-sm text-muted-foreground">
                 <span className="w-3 h-3 bg-foreground rounded-sm"></span>
                 HOT: {stats.hot_tokens.toLocaleString()} tokens (
                 {stats.total_tokens > 0
@@ -104,7 +104,7 @@ export function ContextTierChart({ stats }: ContextTierChartProps): JSX.Element 
                   : 0}
                 %)
               </li>
-              <li className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li className="tier-warm flex items-center gap-2 text-sm text-muted-foreground">
                 <span className="w-3 h-3 bg-muted-foreground rounded-sm"></span>
                 WARM: {stats.warm_tokens.toLocaleString()} tokens (
                 {stats.total_tokens > 0
@@ -112,7 +112,7 @@ export function ContextTierChart({ stats }: ContextTierChartProps): JSX.Element 
                   : 0}
                 %)
               </li>
-              <li className="flex items-center gap-2 text-sm text-muted-foreground">
+              <li className="tier-cold flex items-center gap-2 text-sm text-muted-foreground">
                 <span className="w-3 h-3 bg-muted rounded-sm"></span>
                 COLD: {stats.cold_tokens.toLocaleString()} tokens (
                 {stats.total_tokens > 0

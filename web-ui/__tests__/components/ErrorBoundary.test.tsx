@@ -279,7 +279,7 @@ describe('ErrorBoundary', () => {
       );
 
       const refreshButton = screen.getByRole('button', { name: /refresh page/i });
-      expect(refreshButton).toHaveClass('bg-primary', 'text-white', 'rounded-md');
+      expect(refreshButton).toHaveClass('bg-primary', 'text-primary-foreground', 'rounded-md');
     });
   });
 

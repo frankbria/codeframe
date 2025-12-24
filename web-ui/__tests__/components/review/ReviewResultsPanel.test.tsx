@@ -65,7 +65,7 @@ describe('ReviewResultsPanel', () => {
       expect(spinner).toHaveClass('h-12');
       expect(spinner).toHaveClass('w-12');
       expect(spinner).toHaveClass('border-b-2');
-      expect(spinner).toHaveClass('border-border');
+      expect(spinner).toHaveClass('border-primary');
     });
 
     it('applies correct container styling during loading', () => {
@@ -111,7 +111,7 @@ describe('ReviewResultsPanel', () => {
 
       await waitFor(() => {
         const errorHeading = screen.getByText('Error Loading Review');
-        expect(errorHeading).toHaveClass('text-destructive-foreground');
+        expect(errorHeading).toHaveClass('text-destructive');
         expect(errorHeading).toHaveClass('font-medium');
       });
     });
@@ -185,7 +185,7 @@ describe('ReviewResultsPanel', () => {
 
       await waitFor(() => {
         const heading = screen.getByText('No Review Available');
-        expect(heading).toHaveClass('text-muted-foreground');
+        expect(heading).toHaveClass('text-foreground');
         expect(heading).toHaveClass('font-medium');
       });
     });
@@ -269,7 +269,7 @@ describe('ReviewResultsPanel', () => {
 
       await waitFor(() => {
         const scoreElement = screen.getByText('85');
-        expect(scoreElement).toHaveClass('text-green-500');
+        expect(scoreElement).toHaveClass('text-secondary');
       });
     });
 
@@ -285,7 +285,7 @@ describe('ReviewResultsPanel', () => {
 
       await waitFor(() => {
         const scoreElement = screen.getByText('65');
-        expect(scoreElement).toHaveClass('text-orange-500');
+        expect(scoreElement).toHaveClass('text-destructive');
       });
     });
 
@@ -353,7 +353,7 @@ describe('ReviewResultsPanel', () => {
       await waitFor(() => {
         const badge = screen.getByText('CHANGES REQUESTED');
         expect(badge).toBeInTheDocument();
-        expect(badge).toHaveClass('bg-primary/20');
+        expect(badge).toHaveClass('bg-muted');
         expect(badge).toHaveClass('text-foreground');
         expect(badge).toHaveClass('border-border');
       });
@@ -372,7 +372,7 @@ describe('ReviewResultsPanel', () => {
       await waitFor(() => {
         const badge = screen.getByText('REJECTED');
         expect(badge).toBeInTheDocument();
-        expect(badge).toHaveClass('bg-destructive/10');
+        expect(badge).toHaveClass('bg-destructive');
         expect(badge).toHaveClass('text-destructive-foreground');
         expect(badge).toHaveClass('border-destructive');
       });

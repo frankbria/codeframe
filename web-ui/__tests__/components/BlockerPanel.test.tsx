@@ -317,7 +317,7 @@ describe('BlockerPanel', () => {
       const buttons = screen.getAllByRole('button');
       // Skip first 3 filter buttons, check the first blocker button
       const blockerButton = buttons[3];
-      expect(blockerButton).toHaveClass('hover:bg-muted');
+      expect(blockerButton).toHaveClass('hover:bg-muted/50');
     });
 
     it('renders header with correct styling', () => {

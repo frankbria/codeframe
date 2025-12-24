@@ -35,12 +35,12 @@ jest.mock('@/lib/qualityGateUtils', () => ({
   }),
   getStatusClasses: jest.fn((status: QualityGateStatusValue) => {
     const classes: Record<string, string> = {
-      'passed': 'bg-green-100 text-green-800 border-green-300',
-      'failed': 'bg-red-100 text-red-800 border-red-300',
-      'running': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-      'pending': 'bg-gray-100 text-gray-800 border-gray-300',
+      'passed': 'bg-secondary text-secondary-foreground border-border',
+      'failed': 'bg-destructive text-destructive-foreground border-destructive',
+      'running': 'bg-primary/20 text-foreground border-border',
+      'pending': 'bg-muted text-muted-foreground border-border',
     };
-    return classes[status as string] || 'bg-gray-100 text-gray-800 border-gray-200';
+    return classes[status as string] || 'bg-muted text-muted-foreground border-border';
   }),
   getStatusIcon: jest.fn((status: QualityGateStatusValue) => {
     if (status === null) return '❓';
@@ -152,8 +152,9 @@ describe('GateStatusIndicator', () => {
       render(<GateStatusIndicator gateType="review" status="failed" />);
 
       const statusBadge = screen.getByRole('status');
-      expect(statusBadge).toHaveClass('bg-destructive/10');
+      expect(statusBadge).toHaveClass('bg-destructive');
       expect(statusBadge).toHaveClass('text-destructive-foreground');
+      expect(statusBadge).toHaveClass('border-destructive');
     });
 
     it('should apply running status classes correctly', () => {

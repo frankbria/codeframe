@@ -125,7 +125,7 @@ export function TokenUsageChart({
     return (
       <div className="p-6 bg-card rounded-lg border border-border">
         <h2 className="text-2xl font-bold text-foreground mb-4">Token Usage Over Time</h2>
-        <p className="text-red-600">Error: {error}</p>
+        <p className="text-destructive">Error: {error}</p>
       </div>
     );
   }

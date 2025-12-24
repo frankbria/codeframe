@@ -222,7 +222,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   }, [mutateBlockers]);
 
   if (!projectData) {
-    return <div className="p-8 text-center">Loading...</div>;
+    return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
   }
 
   // Defensive check: ensure progress object exists with defaults

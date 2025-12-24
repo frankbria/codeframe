@@ -71,18 +71,18 @@ export function DeleteConfirmationDialog({
         role="dialog"
         aria-labelledby="delete-dialog-title"
         aria-modal="true"
-        className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden"
+        className="bg-card rounded-lg shadow-xl max-w-md w-full overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 id="delete-dialog-title" className="text-xl font-semibold text-gray-900">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 id="delete-dialog-title" className="text-xl font-semibold text-foreground">
             Delete Checkpoint
           </h2>
           <button
             onClick={onCancel}
             disabled={isDeleting}
             aria-label="Close modal"
-            className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -95,7 +95,7 @@ export function DeleteConfirmationDialog({
           <div className="flex items-start space-x-3" data-testid="delete-warning">
             {/* Warning icon */}
             <svg
-              className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5"
+              className="w-6 h-6 text-destructive flex-shrink-0 mt-0.5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -110,13 +110,13 @@ export function DeleteConfirmationDialog({
 
             {/* Warning message */}
             <div className="flex-1 space-y-2">
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-sm font-semibold text-foreground">
                 Are you sure you want to delete this checkpoint?
               </p>
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-foreground">
                 <span className="font-medium">&quot;{checkpointName}&quot;</span>
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 This action cannot be undone. The checkpoint backup files will be permanently deleted.
               </p>
             </div>
@@ -124,12 +124,12 @@ export function DeleteConfirmationDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end space-x-3 px-6 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="flex justify-end space-x-3 px-6 py-4 bg-muted border-t border-border">
           <button
             ref={cancelButtonRef}
             onClick={onCancel}
             disabled={isDeleting}
-            className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 border border-input rounded-md text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="delete-cancel-button"
           >
             Cancel
@@ -137,7 +137,7 @@ export function DeleteConfirmationDialog({
           <button
             onClick={onConfirm}
             disabled={isDeleting}
-            className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-destructive focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="delete-confirm-button"
           >
             {isDeleting ? 'Deleting...' : 'Delete'}

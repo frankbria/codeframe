@@ -279,12 +279,12 @@ describe('ContextTierChart', () => {
 
       // ASSERT: Token list items have tier classes for styling
       const container = screen.getByText('Tier Distribution').parentElement;
-      const tokenBreakdown = container!.querySelector('.token-breakdown');
-      const tokenList = tokenBreakdown!.querySelector('ul');
+      const tokenDistSection = screen.getByText('Token Distribution:').parentElement?.parentElement;
+      const tokenList = tokenDistSection!.querySelector('ul');
 
-      const hotItem = tokenList!.querySelector('li.hot');
-      const warmItem = tokenList!.querySelector('li.warm');
-      const coldItem = tokenList!.querySelector('li.cold');
+      const hotItem = tokenList!.querySelector('li.tier-hot');
+      const warmItem = tokenList!.querySelector('li.tier-warm');
+      const coldItem = tokenList!.querySelector('li.tier-cold');
 
       expect(hotItem).toBeInTheDocument();
       expect(warmItem).toBeInTheDocument();
@@ -556,7 +556,7 @@ describe('ContextTierChart', () => {
       const container = screen.getByText('Tier Distribution').parentElement;
       const hotBar = container!.querySelector('.chart-bar.hot');
       const hotLegend = container!.querySelector('.legend-item.hot');
-      const hotToken = container!.querySelector('li.hot');
+      const hotToken = container!.querySelector('li.tier-hot');
 
       expect(hotBar).toBeInTheDocument();
       expect(hotLegend).toBeInTheDocument();
@@ -571,7 +571,7 @@ describe('ContextTierChart', () => {
       const container = screen.getByText('Tier Distribution').parentElement;
       const warmBar = container!.querySelector('.chart-bar.warm');
       const warmLegend = container!.querySelector('.legend-item.warm');
-      const warmToken = container!.querySelector('li.warm');
+      const warmToken = container!.querySelector('li.tier-warm');
 
       expect(warmBar).toBeInTheDocument();
       expect(warmLegend).toBeInTheDocument();
@@ -586,7 +586,7 @@ describe('ContextTierChart', () => {
       const container = screen.getByText('Tier Distribution').parentElement;
       const coldBar = container!.querySelector('.chart-bar.cold');
       const coldLegend = container!.querySelector('.legend-item.cold');
-      const coldToken = container!.querySelector('li.cold');
+      const coldToken = container!.querySelector('li.tier-cold');
 
       expect(coldBar).toBeInTheDocument();
       expect(coldLegend).toBeInTheDocument();
@@ -599,18 +599,19 @@ describe('ContextTierChart', () => {
       // ACT
       render(<ContextTierChart stats={mockStats} />);
 
-      // ASSERT: Root element has correct class
+      // ASSERT: Root element has correct classes (Nova design tokens)
       const container = screen.getByText('Tier Distribution').parentElement;
-      expect(container).toHaveClass('context-tier-chart');
+      expect(container).toHaveClass('bg-card');
+      expect(container).toHaveClass('border-border');
     });
 
     it('test_chart_bar_container_exists', () => {
       // ACT
       render(<ContextTierChart stats={mockStats} />);
 
-      // ASSERT: Chart bar container present
+      // ASSERT: Chart bar container present (flex container for bars)
       const container = screen.getByText('Tier Distribution').parentElement;
-      const barContainer = container!.querySelector('.chart-bar-container');
+      const barContainer = container!.querySelector('.flex.overflow-hidden');
 
       expect(barContainer).toBeInTheDocument();
     });
@@ -619,20 +620,17 @@ describe('ContextTierChart', () => {
       // ACT
       render(<ContextTierChart stats={mockStats} />);
 
-      // ASSERT: Token breakdown section present
-      const container = screen.getByText('Tier Distribution').parentElement;
-      const tokenBreakdown = container!.querySelector('.token-breakdown');
-
-      expect(tokenBreakdown).toBeInTheDocument();
+      // ASSERT: Token breakdown section present (identified by heading text)
+      expect(screen.getByText('Token Distribution:')).toBeInTheDocument();
     });
 
     it('test_renders_as_single_component', () => {
       // ACT
-      const { container } = render(<ContextTierChart stats={mockStats} />);
+      render(<ContextTierChart stats={mockStats} />);
 
-      // ASSERT: Only one root element
-      const chartElements = container.querySelectorAll('.context-tier-chart');
-      expect(chartElements.length).toBe(1);
+      // ASSERT: Component renders with heading (single instance)
+      const headings = screen.getAllByText('Tier Distribution');
+      expect(headings.length).toBe(1);
     });
   });
 });

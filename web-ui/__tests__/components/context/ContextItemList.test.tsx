@@ -16,7 +16,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ContextItemList } from '../../../src/components/context/ContextItemList';
 import * as contextApi from '../../../src/api/context';
@@ -174,15 +174,16 @@ describe('ContextItemList', () => {
       });
 
       // Verify tier badges are displayed (2 HOT, 1 WARM, 1 COLD)
-      // Note: getAllByText also includes the dropdown options, so we check for tier-badge specifically
-      const container = screen.getByText('Type').parentElement?.parentElement?.parentElement;
-      const hotBadges = container!.querySelectorAll('.tier-badge.hot');
+      // Count the tier badges in the table body (excluding the dropdown)
+      const table = screen.getByText('Type').closest('table');
+      const tbody = table!.querySelector('tbody');
+      const hotBadges = within(tbody as HTMLElement).getAllByText('HOT');
       expect(hotBadges).toHaveLength(2);
 
-      const warmBadges = container!.querySelectorAll('.tier-badge.warm');
+      const warmBadges = within(tbody as HTMLElement).getAllByText('WARM');
       expect(warmBadges).toHaveLength(1);
 
-      const coldBadges = container!.querySelectorAll('.tier-badge.cold');
+      const coldBadges = within(tbody as HTMLElement).getAllByText('COLD');
       expect(coldBadges).toHaveLength(1);
     });
 
@@ -845,15 +846,14 @@ describe('ContextItemList', () => {
 
       // ASSERT
       await waitFor(() => {
-        const rows = screen.getAllByRole('row');
-        // Find rows with tier classes (skip header row)
-        const hotRows = rows.filter((row) => row.className.includes('tier-hot'));
-        const warmRows = rows.filter((row) => row.className.includes('tier-warm'));
-        const coldRows = rows.filter((row) => row.className.includes('tier-cold'));
+        // Find tier badges by their text content
+        const hotBadges = screen.getAllByText('HOT');
+        const warmBadges = screen.getAllByText('WARM');
+        const coldBadges = screen.getAllByText('COLD');
 
-        expect(hotRows.length).toBeGreaterThan(0);
-        expect(warmRows.length).toBeGreaterThan(0);
-        expect(coldRows.length).toBeGreaterThan(0);
+        expect(hotBadges.length).toBeGreaterThan(0);
+        expect(warmBadges.length).toBeGreaterThan(0);
+        expect(coldBadges.length).toBeGreaterThan(0);
       });
     });
   });

@@ -298,7 +298,7 @@ export function CostDashboard({
     return (
       <div className="p-6 bg-card rounded-lg border border-border">
         <h2 className="text-2xl font-bold text-foreground mb-4">Cost Metrics</h2>
-        <p className="text-red-600">Error: {error}</p>
+        <p className="text-destructive">Error: {error}</p>
       </div>
     );
   }

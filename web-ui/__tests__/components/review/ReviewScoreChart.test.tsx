@@ -48,36 +48,36 @@ describe('ReviewScoreChart', () => {
       expect(screen.getByText('Overall Code Quality')).toBeInTheDocument();
     });
 
-    it('applies green color for excellent score (>90)', () => {
+    it('applies secondary color for excellent score (>90)', () => {
       const report = createMockReport({ overall_score: 95 });
       const { container } = render(<ReviewScoreChart report={report} />);
       const scoreElement = screen.getByText('95.0');
 
-      expect(scoreElement).toHaveClass('text-green-500');
+      expect(scoreElement).toHaveClass('text-secondary');
     });
 
-    it('applies yellow color for good score (70-89)', () => {
+    it('applies primary color for good score (70-89)', () => {
       const report = createMockReport({ overall_score: 75 });
       const { container } = render(<ReviewScoreChart report={report} />);
       const scoreElement = screen.getByText('75.0');
 
-      expect(scoreElement).toHaveClass('text-yellow-500');
+      expect(scoreElement).toHaveClass('text-primary/60');
     });
 
-    it('applies orange color for fair score (50-69)', () => {
+    it('applies destructive color for fair score (50-69)', () => {
       const report = createMockReport({ overall_score: 60 });
       const { container } = render(<ReviewScoreChart report={report} />);
       const scoreElement = screen.getByText('60.0');
 
-      expect(scoreElement).toHaveClass('text-orange-500');
+      expect(scoreElement).toHaveClass('text-destructive/60');
     });
 
-    it('applies red color for poor score (<50)', () => {
+    it('applies destructive color for poor score (<50)', () => {
       const report = createMockReport({ overall_score: 40 });
       const { container } = render(<ReviewScoreChart report={report} />);
       const scoreElement = screen.getByText('40.0');
 
-      expect(scoreElement).toHaveClass('text-red-500');
+      expect(scoreElement).toHaveClass('text-destructive');
     });
 
     it('handles perfect score (100)', () => {
@@ -113,7 +113,7 @@ describe('ReviewScoreChart', () => {
 
       const badge = screen.getByText('CHANGES REQUESTED');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-primary/20');
+      expect(badge).toHaveClass('bg-muted');
       expect(badge).toHaveClass('text-foreground');
       expect(badge).toHaveClass('border-border');
     });
@@ -124,7 +124,7 @@ describe('ReviewScoreChart', () => {
 
       const badge = screen.getByText('REJECTED');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-destructive/10');
+      expect(badge).toHaveClass('bg-destructive');
       expect(badge).toHaveClass('text-destructive-foreground');
       expect(badge).toHaveClass('border-destructive');
     });
@@ -191,7 +191,7 @@ describe('ReviewScoreChart', () => {
       const report = createMockReport();
       const { container } = render(<ReviewScoreChart report={report} />);
 
-      const scoreBars = container.querySelectorAll('.bg-gray-200.rounded-full.h-3');
+      const scoreBars = container.querySelectorAll('.h-3.rounded-full');
       expect(scoreBars).toHaveLength(4); // Security, Complexity, Style, Coverage
     });
   });
@@ -207,44 +207,44 @@ describe('ReviewScoreChart', () => {
       expect(securityBar).toHaveStyle({ width: '90%' });
     });
 
-    it('renders progress bar with green color for excellent score', () => {
+    it('renders progress bar with secondary color for excellent score', () => {
       const report = createMockReport({ security_score: 95 });
       const { container } = render(<ReviewScoreChart report={report} />);
 
       const progressBars = container.querySelectorAll('.h-full.rounded-full');
       const securityBar = progressBars[0];
 
-      expect(securityBar).toHaveClass('bg-green-500');
+      expect(securityBar).toHaveClass('bg-secondary');
     });
 
-    it('renders progress bar with yellow color for good score', () => {
+    it('renders progress bar with primary color for good score', () => {
       const report = createMockReport({ complexity_score: 75 });
       const { container } = render(<ReviewScoreChart report={report} />);
 
       const progressBars = container.querySelectorAll('.h-full.rounded-full');
       const complexityBar = progressBars[1];
 
-      expect(complexityBar).toHaveClass('bg-yellow-500');
+      expect(complexityBar).toHaveClass('bg-primary/60');
     });
 
-    it('renders progress bar with orange color for fair score', () => {
+    it('renders progress bar with destructive color for fair score', () => {
       const report = createMockReport({ style_score: 60 });
       const { container } = render(<ReviewScoreChart report={report} />);
 
       const progressBars = container.querySelectorAll('.h-full.rounded-full');
       const styleBar = progressBars[2];
 
-      expect(styleBar).toHaveClass('bg-orange-500');
+      expect(styleBar).toHaveClass('bg-destructive/60');
     });
 
-    it('renders progress bar with red color for poor score', () => {
+    it('renders progress bar with destructive color for poor score', () => {
       const report = createMockReport({ security_score: 40 });
       const { container } = render(<ReviewScoreChart report={report} />);
 
       const progressBars = container.querySelectorAll('.h-full.rounded-full');
       const securityBar = progressBars[0];
 
-      expect(securityBar).toHaveClass('bg-red-500');
+      expect(securityBar).toHaveClass('bg-destructive');
     });
 
     it('applies transition animation to progress bars', () => {
@@ -430,8 +430,8 @@ describe('ReviewScoreChart', () => {
       const { container } = render(<ReviewScoreChart report={report} />);
       const scoreElement = screen.getByText('89.9');
 
-      // Should be yellow, not green (since < 90)
-      expect(scoreElement).toHaveClass('text-yellow-500');
+      // Should be primary/60, not secondary (since < 90)
+      expect(scoreElement).toHaveClass('text-primary/60');
     });
   });
 

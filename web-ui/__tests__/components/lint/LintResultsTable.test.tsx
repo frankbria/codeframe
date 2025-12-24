@@ -170,7 +170,7 @@ describe('LintResultsTable', () => {
       // ASSERT: Timestamps are formatted using toLocaleString()
       await waitFor(() => {
         const timeElements = screen.getAllByText((content, element) => {
-          return element?.className.includes('text-sm text-gray-500') || false;
+          return element?.className.includes('text-sm text-muted-foreground') || false;
         });
         expect(timeElements.length).toBeGreaterThan(0);
       });
@@ -219,7 +219,7 @@ describe('LintResultsTable', () => {
         expect(badge).toHaveClass('font-semibold');
         expect(badge).toHaveClass('rounded');
         expect(badge).toHaveClass('bg-primary/10');
-        expect(badge).toHaveClass('text-primary-foreground');
+        expect(badge).toHaveClass('text-primary');
       });
     });
 
@@ -245,7 +245,7 @@ describe('LintResultsTable', () => {
         const badge = screen.getByText('eslint');
         expect(badge).toBeInTheDocument();
         expect(badge).toHaveClass('bg-primary/10');
-        expect(badge).toHaveClass('text-primary-foreground');
+        expect(badge).toHaveClass('text-primary');
       });
     });
 
@@ -271,7 +271,7 @@ describe('LintResultsTable', () => {
         const badge = screen.getByText('other');
         expect(badge).toBeInTheDocument();
         expect(badge).toHaveClass('bg-primary/10');
-        expect(badge).toHaveClass('text-primary-foreground');
+        expect(badge).toHaveClass('text-primary');
       });
     });
   });
@@ -298,7 +298,7 @@ describe('LintResultsTable', () => {
       await waitFor(() => {
         const errorCount = screen.getByText('5');
         expect(errorCount).toHaveClass('font-semibold');
-        expect(errorCount).toHaveClass('text-destructive-foreground');
+        expect(errorCount).toHaveClass('text-destructive');
       });
     });
 
@@ -324,11 +324,11 @@ describe('LintResultsTable', () => {
         // Find the error count cell (should be "0")
         const cells = screen.getAllByText('0');
         const errorCell = cells.find((cell) => {
-          return cell.className.includes('text-secondary-foreground');
+          return cell.className.includes('text-secondary');
         });
         expect(errorCell).toBeTruthy();
         expect(errorCell).toHaveClass('font-semibold');
-        expect(errorCell).toHaveClass('text-secondary-foreground');
+        expect(errorCell).toHaveClass('text-secondary');
       });
     });
   });
@@ -532,7 +532,7 @@ describe('LintResultsTable', () => {
       // ASSERT
       await waitFor(() => {
         expect(screen.getByText('9999')).toBeInTheDocument();
-        expect(screen.getByText('9999')).toHaveClass('text-destructive-foreground');
+        expect(screen.getByText('9999')).toHaveClass('text-destructive');
       });
     });
 
@@ -668,7 +668,7 @@ describe('LintResultsTable', () => {
         expect(screen.getByText('ruff')).toBeInTheDocument();
         // Date should be formatted (exact format depends on locale)
         const dateElements = screen.getAllByText((content, element) => {
-          return element?.className.includes('text-sm text-gray-500') || false;
+          return element?.className.includes('text-sm text-muted-foreground') || false;
         });
         expect(dateElements.length).toBeGreaterThan(0);
       });

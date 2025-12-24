@@ -20,7 +20,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for failed s
   </div>
   <div
     aria-label="Status: failed"
-    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-red-100 text-red-800 border-red-300"
+    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-destructive text-destructive-foreground border-destructive"
     role="status"
   >
     <span
@@ -55,7 +55,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for passed s
   </div>
   <div
     aria-label="Status: passed"
-    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-green-100 text-green-800 border-green-300"
+    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-secondary text-secondary-foreground border-border"
     role="status"
   >
     <span
@@ -90,7 +90,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for pending 
   </div>
   <div
     aria-label="Status: pending"
-    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-gray-100 text-gray-800 border-gray-200"
+    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-muted text-muted-foreground border-border"
     role="status"
   >
     <span
@@ -125,7 +125,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for running 
   </div>
   <div
     aria-label="Status: running"
-    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-yellow-100 text-yellow-800 border-yellow-300"
+    class="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border bg-primary/20 text-foreground border-border"
     role="status"
   >
     <span

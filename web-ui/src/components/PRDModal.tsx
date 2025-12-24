@@ -75,7 +75,7 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
   const renderContent = () => {
     if (!prdData) {
       return (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-muted-foreground">
           No PRD data available
         </div>
       );
@@ -84,15 +84,15 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
     if (prdData.status === 'generating') {
       return (
         <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Generating PRD...</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+          <p className="text-muted-foreground">Generating PRD...</p>
         </div>
       );
     }
 
     if (prdData.status === 'not_found') {
       return (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-muted-foreground">
           <p className="text-lg font-medium mb-2">PRD Not Found</p>
           <p className="text-sm">No Product Requirements Document has been generated for this project yet.</p>
         </div>
@@ -101,7 +101,7 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
 
     if (!prdData.prd_content || prdData.prd_content.trim() === '') {
       return (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-muted-foreground">
           No content available
         </div>
       );
@@ -127,17 +127,17 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
         role="dialog"
         aria-modal="true"
         aria-labelledby="prd-modal-title"
-        className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+        className="bg-card rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex-1">
-            <h2 id="prd-modal-title" className="text-xl font-semibold text-gray-900">
+            <h2 id="prd-modal-title" className="text-xl font-semibold text-foreground">
               Product Requirements Document
             </h2>
             {prdData && (
-              <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+              <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                 <span>Project: {prdData.project_id}</span>
                 <span
                   className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -145,7 +145,7 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
                       ? 'bg-green-100 text-green-800'
                       : prdData.status === 'generating'
                       ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-gray-100 text-gray-800'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {prdData.status.toUpperCase()}
@@ -156,7 +156,7 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
           <button
             ref={closeButtonRef}
             onClick={onClose}
-            className="ml-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+            className="ml-4 p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
             aria-label="Close"
           >
             <svg
@@ -182,8 +182,8 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
 
         {/* Footer with timestamps */}
         {prdData && prdData.status === 'available' && (
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="px-6 py-4 border-t border-border bg-muted">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
                 <span className="font-medium">Generated:</span>{' '}
                 {formatTimestamp(prdData.generated_at)}

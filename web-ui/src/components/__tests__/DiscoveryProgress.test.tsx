@@ -541,9 +541,9 @@ describe('DiscoveryProgress Component', () => {
       // Should show initial counter: 0 / 5000 characters
       expect(screen.getByText(/0 \/ 5000 characters/i)).toBeInTheDocument();
 
-      // Counter should have default color (gray)
+      // Counter should have default color (muted)
       const counter = screen.getByText(/0 \/ 5000 characters/i);
-      expect(counter).toHaveClass('text-gray-500');
+      expect(counter).toHaveClass('text-muted-foreground');
       expect(counter).toHaveClass('text-sm');
 
       // Type some text in textarea
@@ -562,8 +562,8 @@ describe('DiscoveryProgress Component', () => {
 
       // Counter should turn red when > 4500 characters
       const warningCounter = screen.getByText(/4501 \/ 5000 characters/i);
-      expect(warningCounter).toHaveClass('text-red-600');
-      expect(warningCounter).not.toHaveClass('text-gray-500');
+      expect(warningCounter).toHaveClass('text-destructive');
+      expect(warningCounter).not.toHaveClass('text-muted-foreground');
     });
   });
 
@@ -1008,9 +1008,9 @@ describe('DiscoveryProgress Component', () => {
         expect(errorMessage).toBeInTheDocument();
 
         // Verify error message styling
-        expect(errorMessage).toHaveClass('bg-red-50');
-        expect(errorMessage).toHaveClass('border-red-200');
-        expect(errorMessage).toHaveClass('text-red-800');
+        expect(errorMessage).toHaveClass('bg-destructive/10');
+        expect(errorMessage).toHaveClass('border-destructive');
+        expect(errorMessage).toHaveClass('text-destructive');
         expect(errorMessage).toHaveClass('p-3');
         expect(errorMessage).toHaveClass('rounded-lg');
       });
@@ -1073,9 +1073,9 @@ describe('DiscoveryProgress Component', () => {
         expect(errorMessage).toBeInTheDocument();
 
         // Verify error message styling
-        expect(errorMessage).toHaveClass('bg-red-50');
-        expect(errorMessage).toHaveClass('border-red-200');
-        expect(errorMessage).toHaveClass('text-red-800');
+        expect(errorMessage).toHaveClass('bg-destructive/10');
+        expect(errorMessage).toHaveClass('border-destructive');
+        expect(errorMessage).toHaveClass('text-destructive');
         expect(errorMessage).toHaveClass('p-3');
         expect(errorMessage).toHaveClass('rounded-lg');
       });

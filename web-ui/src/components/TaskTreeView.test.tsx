@@ -283,7 +283,7 @@ describe('TaskTreeView', () => {
 
       // Check for status badges with appropriate colors - use getAllByText
       const completedBadges = screen.getAllByText(/completed/i);
-      expect(completedBadges[0]).toHaveClass('bg-secondary');
+      expect(completedBadges[0]).toHaveClass('bg-secondary/10');
 
       const inProgressBadges = screen.getAllByText(/in_progress/i);
       expect(inProgressBadges[0]).toHaveClass('bg-primary/10');
@@ -428,7 +428,7 @@ describe('TaskTreeView', () => {
 
       const failedBadge = screen.getByText(/failed/i);
       expect(failedBadge).toHaveClass('bg-destructive/10');
-      expect(failedBadge).toHaveClass('text-destructive-foreground');
+      expect(failedBadge).toHaveClass('text-destructive');
     });
 
     it('should display assigned status correctly', async () => {
@@ -452,8 +452,8 @@ describe('TaskTreeView', () => {
       await user.click(expandButton);
 
       const assignedBadge = screen.getByText(/assigned/i);
-      expect(assignedBadge).toHaveClass('bg-primary/20');
-      expect(assignedBadge).toHaveClass('text-foreground');
+      expect(assignedBadge).toHaveClass('bg-accent/10');
+      expect(assignedBadge).toHaveClass('text-accent-foreground');
     });
 
     it('should display blocked status correctly', async () => {
@@ -478,7 +478,7 @@ describe('TaskTreeView', () => {
 
       const blockedBadge = screen.getByText(/blocked/i);
       expect(blockedBadge).toHaveClass('bg-destructive/10');
-      expect(blockedBadge).toHaveClass('text-destructive-foreground');
+      expect(blockedBadge).toHaveClass('text-destructive');
     });
   });
 
@@ -487,8 +487,8 @@ describe('TaskTreeView', () => {
       render(<TaskTreeView issues={mockIssues} />);
 
       const priority2Badge = screen.getByText(/Priority:.*2/i);
-      expect(priority2Badge).toHaveClass('bg-destructive/80');
-      expect(priority2Badge).toHaveClass('text-destructive-foreground');
+      expect(priority2Badge).toHaveClass('bg-destructive/20');
+      expect(priority2Badge).toHaveClass('text-destructive');
     });
 
     it('should display priority 3 correctly', () => {
@@ -502,8 +502,8 @@ describe('TaskTreeView', () => {
       render(<TaskTreeView issues={priority3Issue} />);
 
       const priority3Badge = screen.getByText(/Priority:.*3/i);
-      expect(priority3Badge).toHaveClass('bg-primary/20');
-      expect(priority3Badge).toHaveClass('text-foreground');
+      expect(priority3Badge).toHaveClass('bg-accent/10');
+      expect(priority3Badge).toHaveClass('text-accent-foreground');
     });
 
     it('should display priority 4+ correctly', () => {
@@ -518,7 +518,7 @@ describe('TaskTreeView', () => {
 
       const priority4Badge = screen.getByText(/Priority:.*4/i);
       expect(priority4Badge).toHaveClass('bg-muted');
-      expect(priority4Badge).toHaveClass('text-foreground');
+      expect(priority4Badge).toHaveClass('text-muted-foreground');
     });
   });
 

@@ -122,7 +122,7 @@ export function ContextItemList({
     return (
       <div className="p-6 bg-card rounded-lg border border-border">
         <h4 className="text-lg font-semibold text-foreground mb-2">Context Items</h4>
-        <p className="text-red-600">{error}</p>
+        <p className="text-destructive">{error}</p>
       </div>
     );
   }
