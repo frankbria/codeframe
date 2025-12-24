@@ -103,17 +103,17 @@ export function AgentMetrics({
 
   if (loading) {
     return (
-      <div className="agent-metrics p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Agent Metrics</h2>
-        <p className="text-gray-500">Loading...</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Agent Metrics</h2>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="agent-metrics p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Agent Metrics</h2>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Agent Metrics</h2>
         <p className="text-red-600">Error: {error}</p>
       </div>
     );
@@ -121,92 +121,92 @@ export function AgentMetrics({
 
   if (!metrics) {
     return (
-      <div className="agent-metrics p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Agent Metrics</h2>
-        <p className="text-gray-500">No metrics available</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Agent Metrics</h2>
+        <p className="text-muted-foreground">No metrics available</p>
       </div>
     );
   }
 
   return (
-    <div className="agent-metrics p-6 bg-white rounded-lg shadow space-y-6">
+    <div className="p-6 bg-card rounded-lg border border-border space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Agent Metrics</h2>
-        <p className="text-gray-600 mt-1">Agent ID: {metrics.agent_id}</p>
+        <h2 className="text-2xl font-bold text-foreground">Agent Metrics</h2>
+        <p className="text-muted-foreground mt-1">Agent ID: {metrics.agent_id}</p>
         {metrics.project_id && (
-          <p className="text-gray-600">Project ID: {metrics.project_id}</p>
+          <p className="text-muted-foreground">Project ID: {metrics.project_id}</p>
         )}
       </div>
 
       {/* Summary Stats */}
       <div className="summary-stats grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="stat-card p-4 bg-green-50 rounded">
-          <p className="text-sm text-gray-600">Total Cost</p>
-          <p className="text-2xl font-bold text-green-600">
+        <div className="stat-card p-4 bg-muted rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">Total Cost</p>
+          <p className="text-2xl font-bold text-foreground">
             {formatCurrency(metrics.total_cost_usd)}
           </p>
         </div>
-        <div className="stat-card p-4 bg-blue-50 rounded">
-          <p className="text-sm text-gray-600">Input Tokens</p>
-          <p className="text-2xl font-bold text-blue-600">
+        <div className="stat-card p-4 bg-muted rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">Input Tokens</p>
+          <p className="text-2xl font-bold text-foreground">
             {formatNumber(metrics.total_input_tokens)}
           </p>
         </div>
-        <div className="stat-card p-4 bg-purple-50 rounded">
-          <p className="text-sm text-gray-600">Output Tokens</p>
-          <p className="text-2xl font-bold text-purple-600">
+        <div className="stat-card p-4 bg-muted rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">Output Tokens</p>
+          <p className="text-2xl font-bold text-foreground">
             {formatNumber(metrics.total_output_tokens)}
           </p>
         </div>
-        <div className="stat-card p-4 bg-orange-50 rounded">
-          <p className="text-sm text-gray-600">Total Calls</p>
-          <p className="text-2xl font-bold text-orange-600">
+        <div className="stat-card p-4 bg-secondary rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">Total Calls</p>
+          <p className="text-2xl font-bold text-foreground">
             {formatNumber(metrics.total_calls)}
           </p>
         </div>
       </div>
 
       {/* Activity Period */}
-      <div className="activity-period p-4 bg-gray-50 rounded">
-        <p className="text-sm text-gray-600">
-          <strong>First Call:</strong> {formatDateTime(metrics.first_call_at)}
+      <div className="activity-period p-4 bg-muted rounded-lg border border-border">
+        <p className="text-sm text-muted-foreground">
+          <strong className="text-foreground">First Call:</strong> {formatDateTime(metrics.first_call_at)}
         </p>
-        <p className="text-sm text-gray-600">
-          <strong>Last Call:</strong> {formatDateTime(metrics.last_call_at)}
+        <p className="text-sm text-muted-foreground">
+          <strong className="text-foreground">Last Call:</strong> {formatDateTime(metrics.last_call_at)}
         </p>
       </div>
 
       {/* Breakdown by Call Type */}
       <div className="call-type-breakdown">
-        <h3 className="text-xl font-semibold mb-3">Breakdown by Call Type</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-3">Breakdown by Call Type</h3>
         {metrics.by_call_type.length === 0 ? (
-          <p className="text-gray-500">No call type data available</p>
+          <p className="text-muted-foreground">No call type data available</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Call Type
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Cost
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Calls
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {metrics.by_call_type.map((item) => (
-                  <tr key={item.call_type} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={item.call_type} className="hover:bg-muted/50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                       {item.call_type.replace(/_/g, ' ').toUpperCase()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-foreground">
                       {formatCurrency(item.cost_usd)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(item.call_count)}
                     </td>
                   </tr>
@@ -219,41 +219,41 @@ export function AgentMetrics({
 
       {/* Breakdown by Model */}
       <div className="model-breakdown">
-        <h3 className="text-xl font-semibold mb-3">Breakdown by Model</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-3">Breakdown by Model</h3>
         {metrics.by_model.length === 0 ? (
-          <p className="text-gray-500">No model data available</p>
+          <p className="text-muted-foreground">No model data available</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Model Name
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Cost
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Calls
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Total Tokens
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {metrics.by_model.map((model) => (
-                  <tr key={model.model_name} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <tr key={model.model_name} className="hover:bg-muted/50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                       {model.model_name}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-foreground">
                       {formatCurrency(model.cost_usd)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(model.call_count)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(model.total_tokens)}
                     </td>
                   </tr>
@@ -265,7 +265,7 @@ export function AgentMetrics({
       </div>
 
       {/* Last updated timestamp */}
-      <div className="text-xs text-gray-400 text-right">
+      <div className="text-xs text-muted-foreground text-right">
         Auto-refreshes every {refreshInterval / 1000} seconds
       </div>
     </div>

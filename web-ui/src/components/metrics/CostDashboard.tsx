@@ -8,7 +8,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Download } from 'lucide-react';
+import { Download01Icon } from '@hugeicons/react';
 import { format, subDays } from 'date-fns';
 import {
   LineChart,
@@ -287,17 +287,17 @@ export function CostDashboard({
 
   if (loading) {
     return (
-      <div className="cost-dashboard p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Cost Metrics</h2>
-        <p className="text-gray-500">Loading...</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Cost Metrics</h2>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="cost-dashboard p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Cost Metrics</h2>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Cost Metrics</h2>
         <p className="text-red-600">Error: {error}</p>
       </div>
     );
@@ -305,28 +305,28 @@ export function CostDashboard({
 
   if (!breakdown) {
     return (
-      <div className="cost-dashboard p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Cost Metrics</h2>
-        <p className="text-gray-500">No cost data available</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Cost Metrics</h2>
+        <p className="text-muted-foreground">No cost data available</p>
       </div>
     );
   }
 
   return (
     <div
-      className="cost-dashboard p-6 bg-white rounded-lg shadow space-y-6"
+      className="p-6 bg-card rounded-lg border border-border space-y-6"
       data-testid="cost-dashboard"
     >
       {/* Header with filters and export */}
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Cost Metrics</h2>
+        <h2 className="text-2xl font-bold text-foreground">Cost Metrics</h2>
         <div className="flex gap-4 items-center">
           {/* Date range filter */}
           <select
             data-testid="date-range-filter"
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value as DateRangeOption)}
-            className="px-4 py-2 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="last-7-days">Last 7 days</option>
             <option value="last-30-days">Last 30 days</option>
@@ -337,9 +337,9 @@ export function CostDashboard({
           <button
             data-testid="export-csv-button"
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
           >
-            <Download size={16} />
+            <Download01Icon size={16} />
             Export CSV
           </button>
         </div>
@@ -347,30 +347,30 @@ export function CostDashboard({
 
       {/* Token Usage Statistics */}
       <div className="token-stats-section" data-testid="token-stats">
-        <h3 className="text-xl font-semibold mb-3">Token Usage Statistics</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-3">Token Usage Statistics</h3>
         <div className="grid grid-cols-3 gap-4">
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Input Tokens</p>
+          <div className="bg-muted p-4 rounded-lg border border-border">
+            <p className="text-sm text-muted-foreground mb-1">Input Tokens</p>
             <p
-              className="text-2xl font-bold text-blue-600"
+              className="text-2xl font-bold text-foreground"
               data-testid="input-tokens"
             >
               {formatNumber(tokenStats.inputTokens)}
             </p>
           </div>
-          <div className="bg-green-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Output Tokens</p>
+          <div className="bg-muted p-4 rounded-lg border border-border">
+            <p className="text-sm text-muted-foreground mb-1">Output Tokens</p>
             <p
-              className="text-2xl font-bold text-green-600"
+              className="text-2xl font-bold text-foreground"
               data-testid="output-tokens"
             >
               {formatNumber(tokenStats.outputTokens)}
             </p>
           </div>
-          <div className="bg-purple-50 p-4 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Total Tokens</p>
+          <div className="bg-secondary p-4 rounded-lg border border-border">
+            <p className="text-sm text-muted-foreground mb-1">Total Tokens</p>
             <p
-              className="text-2xl font-bold text-purple-600"
+              className="text-2xl font-bold text-foreground"
               data-testid="total-tokens"
             >
               {formatNumber(tokenStats.totalTokens)}
@@ -382,28 +382,34 @@ export function CostDashboard({
       {/* Cost Trend Chart */}
       {timeSeries.length > 0 ? (
         <div className="trend-chart-section" data-testid="cost-trend-chart">
-          <h3 className="text-xl font-semibold mb-3">Cost Trend</h3>
+          <h3 className="text-xl font-semibold text-foreground mb-3">Cost Trend</h3>
           <div data-testid="trend-chart-data">
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={timeSeries}>
-                <CartesianGrid strokeDasharray="3 3" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="timestamp"
                   tickFormatter={(value) => format(new Date(value), 'MMM dd')}
                   data-testid="chart-x-axis"
+                  stroke="hsl(var(--muted-foreground))"
                 />
-                <YAxis />
+                <YAxis stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   formatter={(value: number) => formatCurrency(value)}
                   labelFormatter={(label) =>
                     format(new Date(label), 'MMM dd, yyyy')
                   }
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '0.5rem',
+                  }}
                 />
                 <Legend />
                 <Line
                   type="monotone"
                   dataKey="cost_usd"
-                  stroke="#10b981"
+                  stroke="hsl(var(--foreground))"
                   strokeWidth={2}
                   name="Cost (USD)"
                 />
@@ -413,8 +419,8 @@ export function CostDashboard({
         </div>
       ) : (
         <div className="trend-chart-section" data-testid="cost-trend-chart">
-          <h3 className="text-xl font-semibold mb-3">Cost Trend</h3>
-          <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500">
+          <h3 className="text-xl font-semibold text-foreground mb-3">Cost Trend</h3>
+          <div className="bg-muted p-4 rounded-lg text-center text-muted-foreground border border-border">
             No time series data available for selected range
           </div>
         </div>
@@ -422,9 +428,9 @@ export function CostDashboard({
 
       {/* Total Cost */}
       <div className="total-cost-section">
-        <h3 className="text-xl font-semibold mb-2">Total Project Cost</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-2">Total Project Cost</h3>
         <p
-          className="text-4xl font-bold text-green-600"
+          className="text-4xl font-bold text-foreground"
           data-testid="total-cost-display"
         >
           {formatCurrency(breakdown.total_cost_usd)}
@@ -433,53 +439,53 @@ export function CostDashboard({
 
       {/* Cost by Agent */}
       <div className="agent-cost-section" data-testid="cost-by-agent">
-        <h3 className="text-xl font-semibold mb-3">Cost by Agent</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-3">Cost by Agent</h3>
         {breakdown.by_agent.length === 0 ? (
-          <p className="text-gray-500" data-testid="agent-cost-empty">
+          <p className="text-muted-foreground" data-testid="agent-cost-empty">
             No agent data available
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Agent ID
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Cost
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Calls
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Total Tokens
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {breakdown.by_agent.map((agent) => (
                   <tr
                     key={agent.agent_id}
-                    className="hover:bg-gray-50"
+                    className="hover:bg-muted/50"
                     data-testid={`agent-cost-${agent.agent_id}`}
                   >
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
+                      className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground"
                       data-testid="agent-name"
                     >
                       {agent.agent_id}
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900"
+                      className="px-6 py-4 whitespace-nowrap text-sm text-right text-foreground"
                       data-testid="agent-cost"
                     >
                       {formatCurrency(agent.cost_usd)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(agent.call_count)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(agent.total_tokens)}
                     </td>
                   </tr>
@@ -492,50 +498,50 @@ export function CostDashboard({
 
       {/* Cost by Model */}
       <div className="model-cost-section" data-testid="cost-by-model">
-        <h3 className="text-xl font-semibold mb-3">Cost by Model</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-3">Cost by Model</h3>
         {breakdown.by_model.length === 0 ? (
-          <p className="text-gray-500" data-testid="model-cost-empty">
+          <p className="text-muted-foreground" data-testid="model-cost-empty">
             No model data available
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Model Name
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Cost
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Calls
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Total Tokens
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {breakdown.by_model.map((model) => (
                   <tr
                     key={model.model_name}
-                    className="hover:bg-gray-50"
+                    className="hover:bg-muted/50"
                     data-testid={`model-cost-${model.model_name}`}
                   >
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
+                      className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground"
                       data-testid="model-name"
                     >
                       {model.model_name}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-foreground">
                       {formatCurrency(model.cost_usd)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(model.call_count)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(model.total_tokens)}
                     </td>
                   </tr>
@@ -548,12 +554,12 @@ export function CostDashboard({
 
       {/* Model Pricing Information */}
       <div className="pricing-info-section" data-testid="model-pricing-info">
-        <h3 className="text-xl font-semibold mb-3">Model Pricing</h3>
-        <div className="bg-blue-50 p-4 rounded-lg space-y-2">
+        <h3 className="text-xl font-semibold text-foreground mb-3">Model Pricing</h3>
+        <div className="bg-muted p-4 rounded-lg border border-border space-y-2">
           {Object.entries(MODEL_PRICING).map(([modelKey, pricing]) => (
             <div
               key={modelKey}
-              className="text-sm text-gray-700"
+              className="text-sm text-foreground"
               data-testid={`pricing-${modelKey}`}
             >
               <span className="font-medium">{modelKey}:</span> $
@@ -561,7 +567,7 @@ export function CostDashboard({
               MTok (input/output)
             </div>
           ))}
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             Pricing as of November 2025 from Anthropic
           </p>
         </div>
@@ -569,56 +575,56 @@ export function CostDashboard({
 
       {/* Cost Per Task Table */}
       <div className="task-cost-section" data-testid="cost-per-task-table">
-        <h3 className="text-xl font-semibold mb-3">Cost by Task</h3>
+        <h3 className="text-xl font-semibold text-foreground mb-3">Cost by Task</h3>
         {taskCosts.length === 0 ? (
-          <p className="text-gray-500" data-testid="task-cost-empty">
+          <p className="text-muted-foreground" data-testid="task-cost-empty">
             No task data available
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
                 <tr>
                   <th
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
                     data-testid="task-column-header"
                   >
                     Task ID
                   </th>
                   <th
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider"
                     data-testid="cost-column-header"
                   >
                     Cost
                   </th>
                   <th
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider"
                     data-testid="tokens-column-header"
                   >
                     Total Tokens
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-border">
                 {taskCosts.map((task) => (
                   <tr
                     key={task.task_id}
-                    className="hover:bg-gray-50"
+                    className="hover:bg-muted/50"
                     data-testid={`task-cost-row-${task.task_id}`}
                   >
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
+                      className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground"
                       data-testid="task-description"
                     >
                       Task #{task.task_id}
                     </td>
                     <td
-                      className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900"
+                      className="px-6 py-4 whitespace-nowrap text-sm text-right text-foreground"
                       data-testid="task-cost"
                     >
                       {formatCurrency(task.cost_usd)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-muted-foreground">
                       {formatNumber(task.total_tokens)}
                     </td>
                   </tr>
@@ -630,7 +636,7 @@ export function CostDashboard({
       </div>
 
       {/* Last updated timestamp */}
-      <div className="text-xs text-gray-400 text-right">
+      <div className="text-xs text-muted-foreground text-right">
         Auto-refreshes every {refreshInterval / 1000} seconds
       </div>
     </div>

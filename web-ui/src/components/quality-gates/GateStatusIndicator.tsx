@@ -32,7 +32,7 @@ export default function GateStatusIndicator({
   return (
     <div
       data-testid={testId || `gate-${gateType}`}
-      className="flex flex-col items-center justify-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+      className="flex flex-col items-center justify-center p-4 bg-card rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow"
       role="listitem"
       aria-label={`${gateName} gate: ${statusText}`}
     >
@@ -42,7 +42,7 @@ export default function GateStatusIndicator({
       </div>
 
       {/* Gate Name */}
-      <div className="text-sm font-medium text-gray-900 mb-2 text-center">
+      <div className="text-sm font-medium text-foreground mb-2 text-center">
         {gateName}
       </div>
 

@@ -13,22 +13,22 @@ interface ReviewFindingsListProps {
 }
 
 /**
- * Get severity badge color classes
+ * Get severity badge color classes (Nova palette)
  */
 function getSeverityColor(severity: FindingSeverity): string {
   switch (severity) {
     case 'critical':
-      return 'bg-red-100 text-red-800 border-red-300';
+      return 'bg-destructive text-destructive-foreground border-destructive';
     case 'high':
-      return 'bg-orange-100 text-orange-800 border-orange-300';
+      return 'bg-destructive/80 text-destructive-foreground border-destructive';
     case 'medium':
-      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      return 'bg-muted text-foreground border-border';
     case 'low':
-      return 'bg-blue-100 text-blue-800 border-blue-300';
+      return 'bg-secondary text-secondary-foreground border-border';
     case 'info':
-      return 'bg-gray-100 text-gray-800 border-gray-300';
+      return 'bg-muted text-muted-foreground border-border';
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-300';
+      return 'bg-muted text-muted-foreground border-border';
   }
 }
 
@@ -55,7 +55,7 @@ function getCategoryIcon(category: string): string {
 export default function ReviewFindingsList({ findings }: ReviewFindingsListProps) {
   if (findings.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-8 text-muted-foreground">
         <div className="text-4xl mb-2">✅</div>
         <p className="text-sm">No findings - excellent code quality!</p>
       </div>
@@ -67,7 +67,7 @@ export default function ReviewFindingsList({ findings }: ReviewFindingsListProps
       {findings.map((finding, index) => (
         <div
           key={index}
-          className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+          className="border border-border rounded-lg p-4 hover:bg-muted transition-colors bg-card"
         >
           {/* Header: Severity + Category */}
           <div className="flex items-center justify-between mb-2">
@@ -80,30 +80,30 @@ export default function ReviewFindingsList({ findings }: ReviewFindingsListProps
               >
                 {finding.severity.toUpperCase()}
               </span>
-              <span className="text-sm font-medium text-gray-700 capitalize">
+              <span className="text-sm font-medium text-foreground capitalize">
                 {finding.category}
               </span>
             </div>
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-muted-foreground">
               Line {finding.line_number}
             </div>
           </div>
 
           {/* File path */}
-          <div className="text-sm text-gray-600 mb-2 font-mono">
+          <div className="text-sm text-muted-foreground mb-2 font-mono">
             {finding.file_path}
           </div>
 
           {/* Message */}
-          <div className="text-sm text-gray-800 mb-2">
+          <div className="text-sm text-foreground mb-2">
             {finding.message}
           </div>
 
           {/* Suggestion (if available) */}
           {finding.suggestion && (
-            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
-              <span className="font-medium text-blue-800">💡 Suggestion: </span>
-              <span className="text-blue-700">{finding.suggestion}</span>
+            <div className="mt-2 p-2 bg-muted border border-border rounded text-sm">
+              <span className="font-medium text-foreground">💡 Suggestion: </span>
+              <span className="text-muted-foreground">{finding.suggestion}</span>
             </div>
           )}
         </div>

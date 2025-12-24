@@ -263,21 +263,21 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
   const getTriggerBadge = (trigger: string): string => {
     switch (trigger) {
       case 'manual':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-primary/10 text-primary';
       case 'auto':
-        return 'bg-green-100 text-green-800';
+        return 'bg-secondary/10 text-secondary-foreground';
       case 'phase_transition':
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-accent/10 text-accent-foreground';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
   if (loading) {
     return (
       <div className="flex justify-center items-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-gray-600">Loading checkpoints...</span>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <span className="ml-3 text-muted-foreground">Loading checkpoints...</span>
       </div>
     );
   }
@@ -286,10 +286,10 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
     <div className="space-y-4" data-testid="checkpoint-list">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Checkpoints</h2>
+        <h2 className="text-2xl font-bold text-foreground">Checkpoints</h2>
         <button
           onClick={() => setShowCreateDialog(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           data-testid="create-checkpoint-button"
         >
           Create Checkpoint
@@ -298,18 +298,18 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
 
       {/* Error message */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-sm text-red-800">{error}</p>
+        <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4">
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
 
       {/* Create checkpoint dialog */}
       {showCreateDialog && (
-        <div className="bg-white border border-gray-200 rounded-md p-6 shadow-sm" data-testid="create-checkpoint-modal">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Checkpoint</h3>
+        <div className="bg-card border border-border rounded-md p-6 shadow-sm" data-testid="create-checkpoint-modal">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Create New Checkpoint</h3>
           <div className="space-y-4">
             <div>
-              <label htmlFor="checkpoint-name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="checkpoint-name" className="block text-sm font-medium text-foreground">
                 Name *
               </label>
               <input
@@ -322,13 +322,13 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                     setNameError(null);
                   }
                 }}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-ring focus:ring-ring sm:text-sm"
                 placeholder="e.g., Sprint 10 Phase 4 Complete"
                 disabled={creating}
                 data-testid="checkpoint-name-input"
               />
               {nameError && (
-                <p className="mt-1 text-sm text-red-600" data-testid="checkpoint-name-error">
+                <p className="mt-1 text-sm text-destructive" data-testid="checkpoint-name-error">
                   {nameError}
                 </p>
               )}
@@ -336,7 +336,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
             <div>
               <label
                 htmlFor="checkpoint-description"
-                className="block text-sm font-medium text-gray-700"
+                className="block text-sm font-medium text-foreground"
               >
                 Description (optional)
               </label>
@@ -345,7 +345,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                 value={newCheckpointDescription}
                 onChange={(e) => setNewCheckpointDescription(e.target.value)}
                 rows={3}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md bg-background border-border shadow-sm focus:border-ring focus:ring-ring sm:text-sm"
                 placeholder="Brief description of what was completed..."
                 disabled={creating}
                 data-testid="checkpoint-description-input"
@@ -359,7 +359,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                   setNewCheckpointDescription('');
                   setNameError(null);
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                className="px-4 py-2 border border-border rounded-md text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 disabled={creating}
                 data-testid="checkpoint-cancel-button"
               >
@@ -368,7 +368,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
               <button
                 onClick={handleCreateCheckpoint}
                 disabled={creating || !newCheckpointName.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 data-testid="checkpoint-save-button"
               >
                 {creating ? 'Creating...' : 'Create'}
@@ -380,22 +380,22 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
 
       {/* Checkpoints list */}
       {checkpoints.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-md" data-testid="checkpoint-empty-state">
-          <p className="text-gray-600">No checkpoints yet. Create your first checkpoint!</p>
+        <div className="text-center py-12 bg-muted rounded-md" data-testid="checkpoint-empty-state">
+          <p className="text-muted-foreground">No checkpoints yet. Create your first checkpoint!</p>
         </div>
       ) : (
         <div className="space-y-4">
           {checkpoints.map((checkpoint) => (
             <div
               key={checkpoint.id}
-              className="bg-white border border-gray-200 rounded-md p-6 hover:shadow-md transition-shadow cursor-pointer"
+              className="bg-card border border-border rounded-md p-6 hover:bg-muted/50 transition-all cursor-pointer"
               data-testid={`checkpoint-item-${checkpoint.id}`}
               onClick={() => handleCheckpointClick(checkpoint.id)}
             >
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900" data-testid="checkpoint-name">{checkpoint.name}</h3>
+                    <h3 className="text-lg font-semibold text-foreground" data-testid="checkpoint-name">{checkpoint.name}</h3>
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-medium ${getTriggerBadge(
                         checkpoint.trigger
@@ -405,48 +405,48 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                     </span>
                   </div>
                   {checkpoint.description && (
-                    <p className="text-sm text-gray-600 mb-3">{checkpoint.description}</p>
+                    <p className="text-sm text-muted-foreground mb-3">{checkpoint.description}</p>
                   )}
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-gray-500">Created:</span>{' '}
-                      <span className="text-gray-900" data-testid="checkpoint-timestamp">{formatDate(checkpoint.created_at)}</span>
+                      <span className="text-muted-foreground">Created:</span>{' '}
+                      <span className="text-foreground" data-testid="checkpoint-timestamp">{formatDate(checkpoint.created_at)}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Git Commit:</span>{' '}
-                      <span className="font-mono text-gray-900 text-xs" data-testid="checkpoint-git-sha">
+                      <span className="text-muted-foreground">Git Commit:</span>{' '}
+                      <span className="font-mono text-foreground text-xs" data-testid="checkpoint-git-sha">
                         {checkpoint.git_commit.substring(0, 7)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Tasks:</span>{' '}
-                      <span className="text-gray-900">
+                      <span className="text-muted-foreground">Tasks:</span>{' '}
+                      <span className="text-foreground">
                         {checkpoint.metadata.tasks_completed}/{checkpoint.metadata.tasks_total}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Active Agents:</span>{' '}
-                      <span className="text-gray-900">
+                      <span className="text-muted-foreground">Active Agents:</span>{' '}
+                      <span className="text-foreground">
                         {checkpoint.metadata.agents_active.length}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Context Items:</span>{' '}
-                      <span className="text-gray-900">
+                      <span className="text-muted-foreground">Context Items:</span>{' '}
+                      <span className="text-foreground">
                         {checkpoint.metadata.context_items_count}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Total Cost:</span>{' '}
-                      <span className="text-gray-900">
+                      <span className="text-muted-foreground">Total Cost:</span>{' '}
+                      <span className="text-foreground">
                         ${checkpoint.metadata.total_cost_usd.toFixed(2)}
                       </span>
                     </div>
                   </div>
                   {checkpoint.metadata.last_task_completed && (
                     <div className="mt-3 text-sm">
-                      <span className="text-gray-500">Last Task:</span>{' '}
-                      <span className="text-gray-900">
+                      <span className="text-muted-foreground">Last Task:</span>{' '}
+                      <span className="text-foreground">
                         {checkpoint.metadata.last_task_completed}
                       </span>
                     </div>
@@ -458,7 +458,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                       e.stopPropagation();
                       handleRestoreClick(checkpoint);
                     }}
-                    className="px-3 py-1 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                    className="px-3 py-1 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     data-testid="checkpoint-restore-button"
                   >
                     Restore
@@ -468,7 +468,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                       e.stopPropagation();
                       handleDeleteCheckpoint(checkpoint.id, checkpoint.name);
                     }}
-                    className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                    className="px-3 py-1 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     data-testid="checkpoint-delete-button"
                   >
                     Delete
@@ -478,17 +478,17 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
 
               {/* Diff display section */}
               {expandedCheckpointId === checkpoint.id && (
-                <div className="mt-4 border-t border-gray-200 pt-4">
+                <div className="mt-4 border-t border-border pt-4">
                   {loadingDiffs.has(checkpoint.id) && (
                     <div className="flex items-center justify-center py-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      <span className="ml-2 text-gray-600">Loading diff...</span>
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                      <span className="ml-2 text-muted-foreground">Loading diff...</span>
                     </div>
                   )}
 
                   {diffErrors.has(checkpoint.id) && (
-                    <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                      <p className="text-sm text-red-800">{diffErrors.get(checkpoint.id)}</p>
+                    <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4">
+                      <p className="text-sm text-destructive">{diffErrors.get(checkpoint.id)}</p>
                     </div>
                   )}
 
@@ -501,7 +501,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                         if (diff.files_changed === 0 && !diff.diff.trim()) {
                           return (
                             <div className="text-center py-4" data-testid="no-changes-message">
-                              <p className="text-gray-600">No changes detected</p>
+                              <p className="text-muted-foreground">No changes detected</p>
                             </div>
                           );
                         }
@@ -509,36 +509,36 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                         return (
                           <>
                             {/* Diff summary */}
-                            <div className="bg-gray-50 rounded-md p-3 mb-3">
+                            <div className="bg-muted rounded-md p-3 mb-3">
                               <div className="flex items-center space-x-6 text-sm">
                                 <div>
-                                  <span className="text-gray-500">Files changed:</span>{' '}
-                                  <span className="font-semibold text-gray-900">{diff.files_changed}</span>
+                                  <span className="text-muted-foreground">Files changed:</span>{' '}
+                                  <span className="font-semibold text-foreground">{diff.files_changed}</span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Insertions:</span>{' '}
-                                  <span className="font-semibold text-green-600">+{diff.insertions}</span>
+                                  <span className="text-muted-foreground">Insertions:</span>{' '}
+                                  <span className="font-semibold text-secondary">+{diff.insertions}</span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-500">Deletions:</span>{' '}
-                                  <span className="font-semibold text-red-600">-{diff.deletions}</span>
+                                  <span className="text-muted-foreground">Deletions:</span>{' '}
+                                  <span className="font-semibold text-destructive">-{diff.deletions}</span>
                                 </div>
                               </div>
                             </div>
 
                             {/* Diff content */}
-                            <div className="bg-gray-900 rounded-md p-4 overflow-x-auto">
-                              <pre className="text-xs text-gray-100 font-mono whitespace-pre-wrap">
+                            <div className="bg-popover rounded-md p-4 overflow-x-auto border border-border">
+                              <pre className="text-xs text-popover-foreground font-mono whitespace-pre-wrap">
                                 {diff.diff.split('\n').map((line, idx) => (
                                   <div
                                     key={idx}
                                     className={
                                       line.startsWith('+') && !line.startsWith('+++')
-                                        ? 'text-green-400'
+                                        ? 'text-secondary'
                                         : line.startsWith('-') && !line.startsWith('---')
-                                        ? 'text-red-400'
+                                        ? 'text-destructive'
                                         : line.startsWith('@@')
-                                        ? 'text-blue-400'
+                                        ? 'text-primary'
                                         : ''
                                     }
                                   >

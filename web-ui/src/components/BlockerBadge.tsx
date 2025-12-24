@@ -22,14 +22,14 @@ interface BadgeConfig {
 const BADGE_CONFIGS: Record<BlockerType, BadgeConfig> = {
   SYNC: {
     label: 'CRITICAL',
-    bgColor: 'bg-red-100',
-    textColor: 'text-red-800',
+    bgColor: 'bg-destructive/10',
+    textColor: 'text-destructive',
     icon: '🚨',
   },
   ASYNC: {
     label: 'INFO',
-    bgColor: 'bg-yellow-100',
-    textColor: 'text-yellow-800',
+    bgColor: 'bg-accent/10',
+    textColor: 'text-accent-foreground',
     icon: '💡',
   },
 };

@@ -39,8 +39,8 @@ const FindingCard = React.memo(({ finding, index, isExpanded, onToggle }: Findin
   // Use ID if available, fallback to index to avoid collisions (Issue #3)
   const findingId = finding.id ?? index;
 
-  // Defensive check for severity color (Issue #5)
-  const severityColor = SEVERITY_COLORS[finding.severity as Severity] || 'bg-gray-100 text-gray-800 border-gray-300';
+  // Defensive check for severity color (Issue #5) - Nova palette
+  const severityColor = SEVERITY_COLORS[finding.severity as Severity] || 'bg-muted text-muted-foreground border-border';
 
   // Defensive check for category icon (Issue #5)
   const categoryIcon = CATEGORY_ICONS[finding.category as ReviewCategory] || '📄';
@@ -68,19 +68,19 @@ const FindingCard = React.memo(({ finding, index, isExpanded, onToggle }: Findin
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
-            <code className="text-sm font-mono bg-white bg-opacity-50 px-2 py-1 rounded">
+            <code className="text-sm font-mono bg-card px-2 py-1 rounded border border-border">
               {finding.file_path}
               {finding.line_number && `:${finding.line_number}`}
             </code>
           </div>
-          <p className="text-sm font-medium">{finding.message}</p>
+          <p className="text-sm font-medium text-foreground">{finding.message}</p>
         </div>
         <div className="flex items-center gap-2 ml-4">
           <span className="text-lg" title={finding.category} aria-hidden="true">
             {categoryIcon}
           </span>
           <span
-            className="text-xs font-semibold uppercase px-2 py-1 bg-white bg-opacity-70 rounded border"
+            className="text-xs font-semibold uppercase px-2 py-1 bg-card rounded border border-border"
             data-testid="severity-badge"
           >
             {finding.severity}
@@ -93,25 +93,25 @@ const FindingCard = React.memo(({ finding, index, isExpanded, onToggle }: Findin
         <div className="finding-details mt-4 space-y-3" data-testid="finding-details">
           {/* Full Message (if needed) */}
           {finding.message && (
-            <div className="bg-white bg-opacity-50 rounded p-3">
-              <p className="text-xs font-semibold text-gray-600 mb-1">Details:</p>
-              <p className="text-sm">{finding.message}</p>
+            <div className="bg-muted rounded p-3">
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Details:</p>
+              <p className="text-sm text-foreground">{finding.message}</p>
             </div>
           )}
 
           {/* Recommendation */}
           {finding.recommendation && (
             <div
-              className="bg-blue-50 border border-blue-200 rounded p-3"
+              className="bg-muted border border-border rounded p-3"
               data-testid="finding-recommendation"
             >
               <div className="flex items-start gap-2">
-                <span className="text-blue-600 text-lg" aria-hidden="true">💡</span>
+                <span className="text-foreground text-lg" aria-hidden="true">💡</span>
                 <div>
-                  <p className="text-xs font-semibold text-blue-800 mb-1">
+                  <p className="text-xs font-semibold text-foreground mb-1">
                     Recommendation:
                   </p>
-                  <p className="text-sm text-blue-900">{finding.recommendation}</p>
+                  <p className="text-sm text-muted-foreground">{finding.recommendation}</p>
                 </div>
               </div>
             </div>
@@ -119,14 +119,14 @@ const FindingCard = React.memo(({ finding, index, isExpanded, onToggle }: Findin
 
           {/* Code Snippet */}
           {finding.code_snippet && (
-            <div className="bg-gray-900 text-gray-100 rounded p-3 overflow-x-auto">
-              <p className="text-xs font-semibold text-gray-400 mb-2">Code:</p>
+            <div className="bg-accent text-accent-foreground rounded p-3 overflow-x-auto border border-border">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Code:</p>
               <pre className="text-xs font-mono">{finding.code_snippet}</pre>
             </div>
           )}
 
           {/* File Details */}
-          <div className="text-xs text-gray-600 bg-white bg-opacity-50 rounded p-2">
+          <div className="text-xs text-muted-foreground bg-muted rounded p-2">
             <span className="font-semibold">File:</span> {finding.file_path}
             {finding.line_number && (
               <>
@@ -198,8 +198,8 @@ export function ReviewSummary({
   if (loading) {
     return (
       <div className="review-summary" data-testid="review-summary">
-        <h3 className="text-lg font-semibold mb-4">Review Summary</h3>
-        <div className="text-gray-500">Loading summary...</div>
+        <h3 className="text-lg font-semibold mb-4 text-foreground">Review Summary</h3>
+        <div className="text-muted-foreground">Loading summary...</div>
       </div>
     );
   }
@@ -208,8 +208,8 @@ export function ReviewSummary({
   if (error) {
     return (
       <div className="review-summary" data-testid="review-summary">
-        <h3 className="text-lg font-semibold mb-4">Review Summary</h3>
-        <div className="text-red-600 bg-red-50 p-4 rounded border border-red-200">
+        <h3 className="text-lg font-semibold mb-4 text-foreground">Review Summary</h3>
+        <div className="text-destructive bg-destructive/10 p-4 rounded border border-destructive/30">
           <strong>Error:</strong> {error}
         </div>
       </div>
@@ -220,13 +220,13 @@ export function ReviewSummary({
   if (!reviewResult) {
     return (
       <div className="review-summary" data-testid="review-summary">
-        <h3 className="text-lg font-semibold mb-4">Review Summary</h3>
-        <div className="text-gray-500 bg-gray-50 p-4 rounded mb-6">
+        <h3 className="text-lg font-semibold mb-4 text-foreground">Review Summary</h3>
+        <div className="text-muted-foreground bg-muted p-4 rounded mb-6">
           No review data available. Trigger a code review to see results.
         </div>
         {/* Always render review-findings-list container for test consistency */}
         <div className="review-findings-list" data-testid="review-findings-list">
-          <div className="text-gray-500 bg-gray-50 p-4 rounded text-center">
+          <div className="text-muted-foreground bg-muted p-4 rounded text-center">
             No review findings yet.
           </div>
         </div>
@@ -236,12 +236,12 @@ export function ReviewSummary({
 
   return (
     <div className="review-summary" data-testid="review-summary">
-      <h3 className="text-lg font-semibold mb-4">Review Summary</h3>
+      <h3 className="text-lg font-semibold mb-4 text-foreground">Review Summary</h3>
 
       {/* Blocking Status Banner */}
       {isBlocking && (
         <div
-          className="blocking-banner bg-red-100 border-2 border-red-500 text-red-800 p-4 rounded-lg mb-4"
+          className="blocking-banner bg-destructive/10 border-2 border-destructive text-destructive p-4 rounded-lg mb-4"
           data-testid="blocking-banner"
         >
           <div className="flex items-center gap-2">
@@ -261,7 +261,7 @@ export function ReviewSummary({
       {/* Non-blocking Success Banner */}
       {!isBlocking && reviewResult.total_count === 0 && (
         <div
-          className="success-banner bg-green-100 border-2 border-green-500 text-green-800 p-4 rounded-lg mb-4"
+          className="success-banner bg-secondary/10 border-2 border-secondary text-secondary-foreground p-4 rounded-lg mb-4"
           data-testid="success-banner"
         >
           <div className="flex items-center gap-2">
@@ -276,9 +276,9 @@ export function ReviewSummary({
 
       {/* Total Findings */}
       <div className="total-findings mb-6">
-        <div className="bg-gray-100 p-4 rounded-lg">
-          <p className="text-sm text-gray-600">Total Findings</p>
-          <p className="text-3xl font-bold" data-testid="total-count">
+        <div className="bg-muted p-4 rounded-lg">
+          <p className="text-sm text-muted-foreground">Total Findings</p>
+          <p className="text-3xl font-bold text-foreground" data-testid="total-count">
             {reviewResult.total_count}
           </p>
         </div>
@@ -286,14 +286,14 @@ export function ReviewSummary({
 
       {/* Review Score Chart (placeholder) */}
       <div className="review-score-chart mb-6" data-testid="review-score-chart">
-        <h4 className="text-md font-semibold mb-3">Score Overview</h4>
+        <h4 className="text-md font-semibold mb-3 text-foreground">Score Overview</h4>
         {reviewResult.total_count === 0 ? (
-          <div className="bg-gray-50 p-4 rounded-lg text-center text-gray-500" data-testid="chart-empty">
+          <div className="bg-muted p-4 rounded-lg text-center text-muted-foreground" data-testid="chart-empty">
             No findings to display
           </div>
         ) : (
-          <div className="bg-gray-50 p-4 rounded-lg" data-testid="chart-data">
-            <div className="text-center text-gray-600">
+          <div className="bg-muted p-4 rounded-lg" data-testid="chart-data">
+            <div className="text-center text-muted-foreground">
               Chart placeholder - {reviewResult.total_count} issues across {Object.keys(reviewResult.severity_counts).length} severity levels
             </div>
           </div>
@@ -302,7 +302,7 @@ export function ReviewSummary({
 
       {/* Severity Breakdown */}
       <div className="severity-breakdown mb-6">
-        <h4 className="text-md font-semibold mb-3">By Severity</h4>
+        <h4 className="text-md font-semibold mb-3 text-foreground">By Severity</h4>
         <div className="space-y-2">
           {(['critical', 'high', 'medium', 'low', 'info'] as Severity[]).map(
             (severity) => {
@@ -319,23 +319,23 @@ export function ReviewSummary({
                   data-testid={`severity-${severity}`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium capitalize">
+                    <span className="text-sm font-medium capitalize text-foreground">
                       {severity}
                     </span>
-                    <span className="text-sm font-semibold">{count}</span>
+                    <span className="text-sm font-semibold text-foreground">{count}</span>
                   </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
                     <div
                       className={`h-full ${
                         severity === 'critical'
-                          ? 'bg-red-500'
+                          ? 'bg-destructive'
                           : severity === 'high'
-                          ? 'bg-orange-500'
+                          ? 'bg-destructive/70'
                           : severity === 'medium'
-                          ? 'bg-yellow-500'
+                          ? 'bg-primary/60'
                           : severity === 'low'
-                          ? 'bg-blue-500'
-                          : 'bg-gray-500'
+                          ? 'bg-secondary'
+                          : 'bg-muted-foreground'
                       }`}
                       style={{ width: `${percentage}%` }}
                     />
@@ -349,7 +349,7 @@ export function ReviewSummary({
 
       {/* Category Breakdown */}
       <div className="category-breakdown mb-6">
-        <h4 className="text-md font-semibold mb-3">By Category</h4>
+        <h4 className="text-md font-semibold mb-3 text-foreground">By Category</h4>
         <div className="grid grid-cols-2 gap-2">
           {(
             [
@@ -366,17 +366,17 @@ export function ReviewSummary({
             return (
               <div
                 key={category}
-                className="category-card bg-gray-50 border border-gray-200 p-3 rounded"
+                className="category-card bg-muted border border-border p-3 rounded"
                 data-testid={`category-${category}`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{icon}</span>
-                    <span className="text-xs font-medium capitalize">
+                    <span className="text-xs font-medium capitalize text-foreground">
                       {category}
                     </span>
                   </div>
-                  <span className="text-sm font-semibold">{count}</span>
+                  <span className="text-sm font-semibold text-foreground">{count}</span>
                 </div>
               </div>
             );
@@ -389,14 +389,14 @@ export function ReviewSummary({
         {/* Severity Filter - only show if there are findings */}
         {reviewResult.findings.length > 0 && (
           <div className="mb-4">
-            <label htmlFor="severity-filter" className="text-sm font-medium mr-2">
+            <label htmlFor="severity-filter" className="text-sm font-medium mr-2 text-foreground">
               Filter by severity:
             </label>
             <select
               id="severity-filter"
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value as Severity | 'all')}
-              className="border border-gray-300 rounded px-3 py-1 text-sm"
+              className="border border-border rounded px-3 py-1 text-sm bg-background text-foreground"
               data-testid="severity-filter"
             >
               <option value="all">All</option>
@@ -412,11 +412,11 @@ export function ReviewSummary({
         {/* Findings List - always rendered */}
         <div className="review-findings-list space-y-3" data-testid="review-findings-list">
           {reviewResult.findings.length === 0 ? (
-            <div className="text-gray-500 bg-gray-50 p-4 rounded text-center">
+            <div className="text-muted-foreground bg-muted p-4 rounded text-center">
               No review findings. All code reviews will appear here.
             </div>
           ) : filteredFindings.length === 0 ? (
-            <div className="text-gray-500 bg-gray-50 p-4 rounded text-center">
+            <div className="text-muted-foreground bg-muted p-4 rounded text-center">
               No findings match the selected filter.
             </div>
           ) : (

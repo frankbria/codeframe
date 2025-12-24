@@ -114,17 +114,17 @@ export function TokenUsageChart({
 
   if (loading) {
     return (
-      <div className="token-usage-chart p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Token Usage Over Time</h2>
-        <p className="text-gray-500">Loading...</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Token Usage Over Time</h2>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="token-usage-chart p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Token Usage Over Time</h2>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Token Usage Over Time</h2>
         <p className="text-red-600">Error: {error}</p>
       </div>
     );
@@ -132,17 +132,17 @@ export function TokenUsageChart({
 
   if (data.length === 0) {
     return (
-      <div className="token-usage-chart p-6 bg-white rounded-lg shadow">
-        <h2 className="text-2xl font-bold mb-4">Token Usage Over Time</h2>
-        <p className="text-gray-500">No token usage data available</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h2 className="text-2xl font-bold text-foreground mb-4">Token Usage Over Time</h2>
+        <p className="text-muted-foreground">No token usage data available</p>
       </div>
     );
   }
 
   return (
-    <div className="token-usage-chart p-6 bg-white rounded-lg shadow space-y-6">
+    <div className="p-6 bg-card rounded-lg border border-border space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Token Usage Over Time</h2>
+        <h2 className="text-2xl font-bold text-foreground">Token Usage Over Time</h2>
 
         {/* Date Range Selector */}
         <div className="date-range-selector flex gap-2">
@@ -150,8 +150,8 @@ export function TokenUsageChart({
             onClick={() => setDays(7)}
             className={`px-4 py-2 rounded ${
               days === 7
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground hover:bg-muted/80'
             }`}
           >
             7 Days
@@ -160,8 +160,8 @@ export function TokenUsageChart({
             onClick={() => setDays(14)}
             className={`px-4 py-2 rounded ${
               days === 14
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground hover:bg-muted/80'
             }`}
           >
             14 Days
@@ -170,8 +170,8 @@ export function TokenUsageChart({
             onClick={() => setDays(30)}
             className={`px-4 py-2 rounded ${
               days === 30
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground hover:bg-muted/80'
             }`}
           >
             30 Days
@@ -181,21 +181,21 @@ export function TokenUsageChart({
 
       {/* Summary Stats */}
       <div className="summary-stats grid grid-cols-3 gap-4">
-        <div className="stat-card p-4 bg-blue-50 rounded">
-          <p className="text-sm text-gray-600">Total Input Tokens</p>
-          <p className="text-2xl font-bold text-blue-600">
+        <div className="stat-card p-4 bg-muted rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">Total Input Tokens</p>
+          <p className="text-2xl font-bold text-foreground">
             {formatNumber(totalInputTokens)}
           </p>
         </div>
-        <div className="stat-card p-4 bg-green-50 rounded">
-          <p className="text-sm text-gray-600">Total Output Tokens</p>
-          <p className="text-2xl font-bold text-green-600">
+        <div className="stat-card p-4 bg-muted rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">Total Output Tokens</p>
+          <p className="text-2xl font-bold text-foreground">
             {formatNumber(totalOutputTokens)}
           </p>
         </div>
-        <div className="stat-card p-4 bg-purple-50 rounded">
-          <p className="text-sm text-gray-600">Total Cost</p>
-          <p className="text-2xl font-bold text-purple-600">
+        <div className="stat-card p-4 bg-secondary rounded-lg border border-border">
+          <p className="text-sm text-muted-foreground">Total Cost</p>
+          <p className="text-2xl font-bold text-foreground">
             ${totalCost.toFixed(2)}
           </p>
         </div>
@@ -205,25 +205,25 @@ export function TokenUsageChart({
       <div className="chart-container">
         <div className="chart-legend flex justify-center gap-6 mb-4">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-500 rounded"></div>
-            <span className="text-sm text-gray-600">Input Tokens</span>
+            <div className="w-4 h-4 bg-muted-foreground rounded"></div>
+            <span className="text-sm text-muted-foreground">Input Tokens</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-green-500 rounded"></div>
-            <span className="text-sm text-gray-600">Output Tokens</span>
+            <div className="w-4 h-4 bg-foreground rounded"></div>
+            <span className="text-sm text-muted-foreground">Output Tokens</span>
           </div>
         </div>
 
-        <div className="chart-area h-64 flex items-end gap-2 border-l border-b border-gray-300 p-4">
+        <div className="chart-area h-64 flex items-end gap-2 border-l border-b border-border p-4">
           {data.map((point, index) => (
             <div
               key={index}
               className="chart-bar-group flex-1 flex flex-col items-center gap-1"
             >
-              {/* Output tokens bar (green) */}
+              {/* Output tokens bar (foreground) */}
               <div className="w-full flex flex-col items-center">
                 <div
-                  className="w-full bg-green-500 hover:bg-green-600 rounded-t transition-colors"
+                  className="w-full bg-foreground hover:opacity-90 rounded-t transition-opacity"
                   style={{
                     height: `${getBarHeight(point.output_tokens, maxTokens)}%`,
                     minHeight: point.output_tokens > 0 ? '2px' : '0',
@@ -232,10 +232,10 @@ export function TokenUsageChart({
                 ></div>
               </div>
 
-              {/* Input tokens bar (blue) */}
+              {/* Input tokens bar (muted-foreground) */}
               <div className="w-full flex flex-col items-center">
                 <div
-                  className="w-full bg-blue-500 hover:bg-blue-600 transition-colors"
+                  className="w-full bg-muted-foreground hover:opacity-90 transition-opacity"
                   style={{
                     height: `${getBarHeight(point.input_tokens, maxTokens)}%`,
                     minHeight: point.input_tokens > 0 ? '2px' : '0',
@@ -245,7 +245,7 @@ export function TokenUsageChart({
               </div>
 
               {/* Date label */}
-              <div className="text-xs text-gray-500 mt-2 whitespace-nowrap transform -rotate-45 origin-top-left">
+              <div className="text-xs text-muted-foreground mt-2 whitespace-nowrap transform -rotate-45 origin-top-left">
                 {formatDate(point.timestamp)}
               </div>
             </div>

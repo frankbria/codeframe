@@ -3,8 +3,14 @@
  */
 
 import type { Metadata } from 'next';
+import { Nunito_Sans } from 'next/font/google';
 import './globals.css';
 import Navigation from '@/components/Navigation';
+
+const nunitoSans = Nunito_Sans({
+  subsets: ['latin'],
+  variable: '--font-sans',
+});
 
 export const metadata: Metadata = {
   title: 'CodeFRAME Status Server',
@@ -18,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body className={`${nunitoSans.variable} antialiased font-sans`}>
         <Navigation />
         {children}
       </body>

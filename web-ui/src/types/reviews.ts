@@ -104,14 +104,14 @@ export interface ReviewResult {
 }
 
 /**
- * Severity color mapping for UI
+ * Severity color mapping for UI (Nova palette)
  */
 export const SEVERITY_COLORS: Record<Severity, string> = {
-  [Severity.CRITICAL]: "bg-red-100 text-red-800 border-red-300",
-  [Severity.HIGH]: "bg-orange-100 text-orange-800 border-orange-300",
-  [Severity.MEDIUM]: "bg-yellow-100 text-yellow-800 border-yellow-300",
-  [Severity.LOW]: "bg-blue-100 text-blue-800 border-blue-300",
-  [Severity.INFO]: "bg-gray-100 text-gray-800 border-gray-300",
+  [Severity.CRITICAL]: "bg-destructive text-destructive-foreground border-destructive",
+  [Severity.HIGH]: "bg-destructive/80 text-destructive-foreground border-destructive",
+  [Severity.MEDIUM]: "bg-muted text-foreground border-border",
+  [Severity.LOW]: "bg-secondary text-secondary-foreground border-border",
+  [Severity.INFO]: "bg-muted text-muted-foreground border-border",
 };
 
 /**

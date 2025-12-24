@@ -233,20 +233,20 @@ export default function Dashboard({ projectId }: DashboardProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200" data-testid="dashboard-header">
+      <header className="bg-card border-b border-border" data-testid="dashboard-header">
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between" data-testid="project-selector">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-2xl font-bold text-foreground">
                 CodeFRAME - {projectData.name}
               </h1>
               <div className="flex items-center gap-4 mt-1">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
                   {projectData.status.toUpperCase()}
                 </span>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-muted-foreground">
                   Phase: {projectData.phase} (Step {projectData.workflow_step}/15)
                 </span>
                 {/* Connection status from AgentStateProvider */}
@@ -266,7 +266,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
             <div className="flex gap-2">
               <button
                 onClick={() => setShowPRD(true)}
-                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                className="px-4 py-2 border border-border rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
               >
                 View PRD
               </button>
@@ -274,13 +274,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 onClick={() => setShowChat(!showChat)}
                 className={`px-4 py-2 rounded-md transition-colors ${
                   showChat
-                    ? 'bg-blue-700 text-white hover:bg-blue-800'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'bg-primary text-primary-foreground hover:bg-primary/90'
                 }`}
               >
                 {showChat ? 'Hide Chat' : 'Chat with Lead'}
               </button>
-              <button className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+              <button className="px-4 py-2 border border-border rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80">
                 Pause
               </button>
             </div>
@@ -289,7 +289,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
       </header>
 
       {/* Tab Navigation (T009 - Feature 013) */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="-mb-px flex space-x-8" role="tablist" aria-label="Dashboard tabs">
             <button
@@ -299,8 +299,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
               onClick={() => setActiveTab('overview')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'overview'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               Overview
@@ -312,8 +312,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
               onClick={() => setActiveTab('context')}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'context'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               Context
@@ -326,8 +326,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
               data-testid="checkpoint-tab"
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'checkpoints'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               Checkpoints
@@ -359,7 +359,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
             )}
 
             {/* Progress Section */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <div className="bg-card rounded-lg shadow p-6 mb-6">
               <h2 className="text-lg font-semibold mb-4">Progress</h2>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
@@ -369,9 +369,9 @@ export default function Dashboard({ projectId }: DashboardProps) {
                   </span>
                   <span>{progress.percentage}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-4">
+                <div className="w-full bg-muted rounded-full h-4">
                   <div
-                    className="bg-blue-600 h-4 rounded-full transition-all duration-500"
+                    className="bg-primary h-4 rounded-full transition-all duration-500"
                     style={{ width: `${progress.percentage}%` }}
                   ></div>
                 </div>
@@ -380,13 +380,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
               {projectData.time_tracking && (
                 <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
                   <div>
-                    <span className="text-gray-500">Elapsed:</span>{' '}
+                    <span className="text-muted-foreground">Elapsed:</span>{' '}
                     <span className="font-medium">
                       {projectData.time_tracking.elapsed_hours.toFixed(1)}h
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Remaining:</span>{' '}
+                    <span className="text-muted-foreground">Remaining:</span>{' '}
                     <span className="font-medium">
                       ~{projectData.time_tracking.estimated_remaining_hours.toFixed(1)}h
                     </span>
@@ -395,9 +395,9 @@ export default function Dashboard({ projectId }: DashboardProps) {
               )}
 
               {projectData.cost_tracking && (
-                <div className="mt-4 text-sm border-t pt-4">
+                <div className="mt-4 text-sm border-t border-border pt-4">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">
+                    <span className="text-muted-foreground">
                       Tokens: {(projectData.cost_tracking.input_tokens / 1000000).toFixed(1)}M input,{' '}
                       {(projectData.cost_tracking.output_tokens / 1000).toFixed(0)}K output
                     </span>
@@ -410,17 +410,17 @@ export default function Dashboard({ projectId }: DashboardProps) {
             </div>
 
             {/* Task Statistics Section */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <div className="bg-card rounded-lg shadow p-6 mb-6">
               <h2 className="text-lg font-semibold mb-4">📊 Task Statistics</h2>
               <TaskStats />
             </div>
 
             {/* Issues & Tasks Section (cf-26) */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <div className="bg-card rounded-lg shadow p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">🎯 Issues & Tasks</h2>
                 {issuesData && (
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-muted-foreground">
                     {issuesData.total_issues} issues, {issuesData.total_tasks} tasks
                   </span>
                 )}
@@ -429,7 +429,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
             </div>
 
             {/* Agents Section - Multi-Agent Per Project Architecture */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6" data-testid="agent-status-panel">
+            <div className="bg-card rounded-lg shadow p-6 mb-6" data-testid="agent-status-panel">
               <h2 className="text-lg font-semibold mb-4">🤖 Multi-Agent Team</h2>
               <AgentList
                 projectId={projectId}
@@ -441,10 +441,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
             {/* Legacy Agent Cards (from AgentStateProvider) - Keeping for backward compatibility */}
             {agents.length > 0 && (
-              <div className="bg-white rounded-lg shadow p-6 mb-6" data-testid="agent-state-panel">
+              <div className="bg-card rounded-lg shadow p-6 mb-6" data-testid="agent-state-panel">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold">🔄 Agent State (Real-time)</h2>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
                     {agents.length} agents active
                   </span>
                 </div>
@@ -499,7 +499,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
             {/* Review Findings Panel (T065, Sprint 10) */}
             <div className="mb-6" data-testid="review-findings-panel">
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="bg-card rounded-lg shadow p-6">
                 <h2 className="text-lg font-semibold mb-4">🔍 Code Review Findings</h2>
                 <ReviewSummary reviewResult={reviewData} loading={reviewLoading} />
               </div>
@@ -513,7 +513,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 onError={handleQualityGatesError}
               >
                 <div className="mb-6" data-testid="quality-gates-panel">
-                  <div className="bg-white rounded-lg shadow p-6">
+                  <div className="bg-card rounded-lg shadow p-6">
                     <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
                     <QualityGatesPanel projectId={projectId} tasks={tasks} />
                   </div>
@@ -524,20 +524,20 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
             {/* Metrics Panel (Sprint 10) */}
             <div className="mb-6" data-testid="metrics-panel">
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="bg-card rounded-lg shadow p-6">
                 <h2 className="text-lg font-semibold mb-4">📊 Cost & Token Metrics</h2>
                 <CostDashboard projectId={projectId} />
               </div>
             </div>
 
             {/* Recent Activity */}
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-card rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold mb-4">📝 Recent Activity</h2>
               <div className="space-y-2">
                 {activity.length > 0 ? (
                   activity.map((item, index) => (
                     <div key={index} className="flex items-start gap-3 text-sm">
-                      <span className="text-gray-400 min-w-[60px]">
+                      <span className="text-muted-foreground min-w-[60px]">
                         {new Date(item.timestamp).toLocaleTimeString()}
                       </span>
                       <span className="flex-1">
@@ -554,7 +554,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-4 text-gray-500">
+                  <div className="text-center py-4 text-muted-foreground">
                     No recent activity
                   </div>
                 )}
@@ -566,12 +566,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
         {/* Context Tab Panel (T011 - Feature 013) */}
         {activeTab === 'context' && (
           <div role="tabpanel" id="context-panel" aria-labelledby="context-tab">
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-card rounded-lg shadow p-6">
               {/* Agent Selector (T016-T019 - Feature 013) */}
               <div className="mb-6">
                 <label
                   htmlFor="agent-selector"
-                  className="block text-sm font-medium text-gray-700 mb-2"
+                  className="block text-sm font-medium text-foreground mb-2"
                 >
                   Select Agent
                 </label>
@@ -580,7 +580,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                   aria-label="Select agent"
                   value={selectedAgentId || ''}
                   onChange={(e) => setSelectedAgentId(e.target.value || null)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-border"
                 >
                   <option value="">-- Select an agent --</option>
                   {agents.map((agent) => (
@@ -599,7 +599,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                   refreshInterval={5000}
                 />
               ) : (
-                <div className="text-center py-12 text-gray-500">
+                <div className="text-center py-12 text-muted-foreground">
                   <p className="text-lg mb-2">Select an agent to view context</p>
                   <p className="text-sm">
                     Context items show what&apos;s in agent memory (HOT/WARM/COLD tiers)
@@ -613,7 +613,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
         {/* Checkpoints Tab Panel (Sprint 10) */}
         {activeTab === 'checkpoints' && (
           <div role="tabpanel" id="checkpoints-panel" aria-labelledby="checkpoints-tab">
-            <div className="bg-white rounded-lg shadow p-6" data-testid="checkpoint-panel">
+            <div className="bg-card rounded-lg shadow p-6" data-testid="checkpoint-panel">
               <h2 className="text-lg font-semibold mb-4">💾 Checkpoints</h2>
               <CheckpointList projectId={projectId} refreshInterval={30000} />
             </div>

@@ -47,27 +47,27 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
   const getStatusClasses = (status: WorkStatus) => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-800';
+        return 'bg-secondary/10 text-secondary-foreground';
       case 'in_progress':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-primary/10 text-primary';
       case 'blocked':
-        return 'bg-red-100 text-red-800';
+        return 'bg-destructive/10 text-destructive';
       case 'failed':
-        return 'bg-red-100 text-red-800';
+        return 'bg-destructive/10 text-destructive';
       case 'assigned':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-accent/10 text-accent-foreground';
       case 'pending':
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
   // Get priority badge classes
   const getPriorityClasses = (priority: number) => {
-    if (priority === 1) return 'bg-red-100 text-red-800';
-    if (priority === 2) return 'bg-orange-100 text-orange-800';
-    if (priority === 3) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-gray-100 text-gray-800';
+    if (priority === 1) return 'bg-destructive/10 text-destructive';
+    if (priority === 2) return 'bg-destructive/20 text-destructive';
+    if (priority === 3) return 'bg-accent/10 text-accent-foreground';
+    return 'bg-muted text-muted-foreground';
   };
 
   // Get provenance icon
@@ -107,7 +107,7 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
 
   if (!issues || issues.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
+      <div className="text-center py-8 text-muted-foreground">
         No issues available
       </div>
     );
@@ -120,15 +120,15 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
         const hasTasks = issue.tasks && issue.tasks.length > 0;
 
         return (
-          <div key={issue.id} className="border border-gray-200 rounded-lg">
+          <div key={issue.id} className="border border-border rounded-lg">
             {/* Issue Header */}
-            <div className="flex items-start gap-3 p-4 bg-white hover:bg-gray-50">
+            <div className="flex items-start gap-3 p-4 bg-card hover:bg-muted/50">
               {/* Expand/Collapse Button */}
               <button
                 onClick={() => toggleIssue(issue.id)}
                 aria-expanded={isExpanded}
                 aria-label={isExpanded ? 'Collapse' : 'Expand'}
-                className="flex-shrink-0 mt-1 text-gray-500 hover:text-gray-700"
+                className="flex-shrink-0 mt-1 text-muted-foreground hover:text-foreground"
               >
                 {isExpanded ? '▼' : '▶'}
               </button>
@@ -136,10 +136,10 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
               {/* Issue Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-start gap-2 mb-2">
-                  <span className="flex-shrink-0 text-sm font-mono text-gray-500">
+                  <span className="flex-shrink-0 text-sm font-mono text-muted-foreground">
                     {issue.issue_number}
                   </span>
-                  <h3 className="flex-1 font-medium text-gray-900">
+                  <h3 className="flex-1 font-medium text-foreground">
                     {issue.title}
                   </h3>
                   <span className="flex-shrink-0 text-lg" title={`Proposed by ${issue.proposed_by}`}>
@@ -163,7 +163,7 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                     Priority: {issue.priority}
                   </span>
                   {issue.depends_on && issue.depends_on.length > 0 && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-muted-foreground">
                       Depends on: {issue.depends_on.join(', ')}
                     </span>
                   )}
@@ -173,9 +173,9 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
 
             {/* Tasks (when expanded) */}
             {isExpanded && (
-              <div className="border-t border-gray-200 bg-gray-50 px-4 py-2">
+              <div className="border-t border-border bg-muted px-4 py-2">
                 {!hasTasks ? (
-                  <div className="text-sm text-gray-500 py-2 pl-8">
+                  <div className="text-sm text-muted-foreground py-2 pl-8">
                     No tasks available for this issue
                   </div>
                 ) : (
@@ -188,14 +188,14 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                       return (
                         <div
                           key={task.id}
-                          className={`ml-8 p-3 bg-white border rounded transition-colors ${
+                          className={`ml-8 p-3 bg-card border rounded transition-colors ${
                             blocked
-                              ? 'border-red-300 bg-red-50'
+                              ? 'border-destructive/20 bg-destructive/5'
                               : task.status === 'completed'
-                              ? 'border-green-200'
+                              ? 'border-secondary/20'
                               : task.status === 'in_progress'
-                              ? 'border-blue-200'
-                              : 'border-gray-200'
+                              ? 'border-primary/20'
+                              : 'border-border'
                           }`}
                         >
                           <div className="flex items-start gap-2 mb-1">
@@ -208,10 +208,10 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                                 🔗
                               </span>
                             )}
-                            <span className="flex-shrink-0 text-xs font-mono text-gray-500">
+                            <span className="flex-shrink-0 text-xs font-mono text-muted-foreground">
                               {task.task_number}
                             </span>
-                            <span className="flex-1 text-sm font-medium text-gray-900">
+                            <span className="flex-1 text-sm font-medium text-foreground">
                               {task.title}
                             </span>
                             <span className="flex-shrink-0" title={`Proposed by ${task.proposed_by}`}>
@@ -231,7 +231,7 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                             {/* Blocked badge */}
                             {blocked && (
                               <span
-                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800"
+                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive"
                                 title="Waiting for dependencies to complete"
                               >
                                 🚫 Blocked
@@ -244,7 +244,7 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                                 @see docs/architecture/task-identifiers.md */}
                             {hasDependencies && task.depends_on && (
                               <span
-                                className="ml-2 text-xs text-gray-500 cursor-help"
+                                className="ml-2 text-xs text-muted-foreground cursor-help"
                                 title={`Dependencies:\n${task.depends_on
                                   .map((depId) => {
                                     // Dual-lookup: supports both id and task_number references
@@ -263,17 +263,17 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                           </div>
 
                           {task.description && (
-                            <div className="ml-14 mt-2 text-xs text-gray-600">
+                            <div className="ml-14 mt-2 text-xs text-muted-foreground">
                               {task.description}
                             </div>
                           )}
 
                           {/* Quality Gates Section */}
                           {(task.status === 'completed' || task.status === 'in_progress') && (
-                            <div className="ml-14 mt-3 border-t border-gray-200 pt-3">
+                            <div className="ml-14 mt-3 border-t border-border pt-3">
                               <button
                                 onClick={() => toggleTask(task.id)}
-                                className="flex items-center gap-2 text-xs font-medium text-gray-700 hover:text-gray-900 mb-2"
+                                className="flex items-center gap-2 text-xs font-medium text-foreground hover:text-primary mb-2"
                                 aria-expanded={expandedTasks.has(task.id)}
                               >
                                 <span>{expandedTasks.has(task.id) ? '▼' : '▶'}</span>

@@ -111,34 +111,35 @@ export function ContextItemList({
 
   if (loading) {
     return (
-      <div className="context-item-list">
-        <h4>Context Items</h4>
-        <p>Loading...</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h4 className="text-lg font-semibold text-foreground mb-2">Context Items</h4>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="context-item-list error">
-        <h4>Context Items</h4>
-        <p className="error-message">{error}</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h4 className="text-lg font-semibold text-foreground mb-2">Context Items</h4>
+        <p className="text-red-600">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="context-item-list">
-      <div className="list-header">
-        <h4>Context Items</h4>
+    <div className="p-6 bg-card rounded-lg border border-border space-y-4">
+      <div className="flex justify-between items-center">
+        <h4 className="text-lg font-semibold text-foreground">Context Items</h4>
 
         {/* Tier Filter */}
-        <div className="filter-controls">
-          <label htmlFor="tier-filter">Filter by tier:</label>
+        <div className="flex items-center gap-2">
+          <label htmlFor="tier-filter" className="text-sm text-muted-foreground">Filter by tier:</label>
           <select
             id="tier-filter"
             value={tierFilter}
             onChange={(e) => setTierFilter(e.target.value)}
+            className="px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="">All Tiers</option>
             <option value="hot">HOT</option>
@@ -149,58 +150,62 @@ export function ContextItemList({
       </div>
 
       {items.length === 0 ? (
-        <p className="no-items">No context items found</p>
+        <p className="text-muted-foreground text-center py-8">No context items found</p>
       ) : (
         <>
           {/* Items Table */}
-          <table className="items-table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Content</th>
-                <th>Score</th>
-                <th>Tier</th>
-                <th>Age</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedItems.map((item) => (
-                <tr key={item.id} className={`tier-${item.current_tier.toLowerCase()}`}>
-                  <td className="item-type">{item.item_type}</td>
-                  <td className="item-content" title={item.content}>
-                    {truncate(item.content)}
-                  </td>
-                  <td className="item-score">
-                    {item.importance_score.toFixed(2)}
-                  </td>
-                  <td className="item-tier">
-                    <span className={`tier-badge ${item.current_tier.toLowerCase()}`}>
-                      {item.current_tier}
-                    </span>
-                  </td>
-                  <td className="item-age">{getAge(item.created_at)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Content</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Score</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Tier</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Age</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {paginatedItems.map((item) => (
+                  <tr key={item.id} className="hover:bg-muted/50 transition-colors">
+                    <td className="px-4 py-3 text-sm text-foreground">{item.item_type}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground max-w-md truncate" title={item.content}>
+                      {truncate(item.content)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-foreground">
+                      {item.importance_score.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex px-2 py-1 text-xs font-medium bg-muted text-foreground rounded-md border border-border">
+                        {item.current_tier}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">{getAge(item.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="pagination">
+            <div className="flex justify-between items-center pt-4 border-t border-border">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
+                className="px-4 py-2 text-sm font-medium bg-background border border-border rounded-md text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Previous
               </button>
 
-              <span className="page-info">
+              <span className="text-sm text-muted-foreground">
                 Page {currentPage} of {totalPages} ({items.length} total items)
               </span>
 
               <button
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
+                className="px-4 py-2 text-sm font-medium bg-background border border-border rounded-md text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Next
               </button>

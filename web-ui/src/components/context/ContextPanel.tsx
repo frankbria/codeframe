@@ -72,27 +72,27 @@ export function ContextPanel({
 
   if (loading) {
     return (
-      <div className="context-panel">
-        <h3>Context Overview</h3>
-        <p>Loading...</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h3 className="text-xl font-semibold text-foreground mb-2">Context Overview</h3>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="context-panel error">
-        <h3>Context Overview</h3>
-        <p className="error-message">{error}</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h3 className="text-xl font-semibold text-foreground mb-2">Context Overview</h3>
+        <p className="text-red-600">{error}</p>
       </div>
     );
   }
 
   if (!stats) {
     return (
-      <div className="context-panel">
-        <h3>Context Overview</h3>
-        <p>No data available</p>
+      <div className="p-6 bg-card rounded-lg border border-border">
+        <h3 className="text-xl font-semibold text-foreground mb-2">Context Overview</h3>
+        <p className="text-muted-foreground">No data available</p>
       </div>
     );
   }
@@ -101,66 +101,65 @@ export function ContextPanel({
   const tokenPercentage = stats.token_usage_percentage;
 
   return (
-    <div className="context-panel">
-      <h3>Context Overview - {agentId}</h3>
+    <div className="p-6 bg-card rounded-lg border border-border space-y-6">
+      <h3 className="text-xl font-semibold text-foreground">Context Overview - {agentId}</h3>
 
       {/* Token Usage Section */}
-      <div className="token-usage-section">
-        <h4>Token Usage</h4>
-        <div className="token-bar-container">
+      <div className="space-y-2">
+        <h4 className="text-lg font-medium text-foreground">Token Usage</h4>
+        <div className="w-full h-4 bg-muted rounded-full overflow-hidden">
           <div
-            className="token-bar"
+            className="h-full bg-secondary transition-all duration-300"
             style={{ width: `${Math.min(tokenPercentage, 100)}%` }}
             aria-valuenow={tokenPercentage}
             aria-valuemin={0}
             aria-valuemax={100}
           />
         </div>
-        <p className="token-usage-text">
+        <p className="text-sm text-muted-foreground">
           {stats.total_tokens.toLocaleString()} / {tokenLimit.toLocaleString()} tokens
           ({tokenPercentage.toFixed(1)}%)
         </p>
       </div>
 
       {/* Tier Breakdown Section */}
-      <div className="tier-breakdown-section">
-        <h4>Tier Breakdown</h4>
-        <div className="tier-stats">
-          <div className="tier-stat hot">
-            <span className="tier-label">HOT</span>
-            <span className="tier-count">{stats.hot_count}</span>
-            <span className="tier-tokens">
+      <div className="space-y-3">
+        <h4 className="text-lg font-medium text-foreground">Tier Breakdown</h4>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="p-4 bg-muted rounded-lg border border-border">
+            <span className="block text-xs font-medium text-muted-foreground uppercase mb-1">HOT</span>
+            <span className="block text-2xl font-bold text-foreground">{stats.hot_count}</span>
+            <span className="block text-xs text-muted-foreground mt-1">
               {stats.hot_tokens.toLocaleString()} tokens
             </span>
           </div>
 
-          <div className="tier-stat warm">
-            <span className="tier-label">WARM</span>
-            <span className="tier-count">{stats.warm_count}</span>
-            <span className="tier-tokens">
+          <div className="p-4 bg-muted rounded-lg border border-border">
+            <span className="block text-xs font-medium text-muted-foreground uppercase mb-1">WARM</span>
+            <span className="block text-2xl font-bold text-foreground">{stats.warm_count}</span>
+            <span className="block text-xs text-muted-foreground mt-1">
               {stats.warm_tokens.toLocaleString()} tokens
             </span>
           </div>
 
-          <div className="tier-stat cold">
-            <span className="tier-label">COLD</span>
-            <span className="tier-count">{stats.cold_count}</span>
-            <span className="tier-tokens">
+          <div className="p-4 bg-muted rounded-lg border border-border">
+            <span className="block text-xs font-medium text-muted-foreground uppercase mb-1">COLD</span>
+            <span className="block text-2xl font-bold text-foreground">{stats.cold_count}</span>
+            <span className="block text-xs text-muted-foreground mt-1">
               {stats.cold_tokens.toLocaleString()} tokens
             </span>
           </div>
         </div>
 
-        <div className="total-items">
-          <strong>Total Items:</strong> {stats.total_count}
+        <div className="pt-2 border-t border-border">
+          <span className="text-sm font-medium text-foreground">Total Items: </span>
+          <span className="text-sm text-muted-foreground">{stats.total_count}</span>
         </div>
       </div>
 
       {/* Last Updated */}
-      <div className="last-updated">
-        <small>
-          Last updated: {new Date(stats.calculated_at).toLocaleTimeString()}
-        </small>
+      <div className="text-xs text-muted-foreground text-right">
+        Last updated: {new Date(stats.calculated_at).toLocaleTimeString()}
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 exports[`GateStatusIndicator Snapshot Testing should match snapshot for failed status 1`] = `
 <div
   aria-label="Coverage gate: failed"
-  class="flex flex-col items-center justify-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+  class="flex flex-col items-center justify-center p-4 bg-card rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow"
   data-testid="gate-coverage"
   role="listitem"
 >
@@ -14,7 +14,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for failed s
     📊
   </div>
   <div
-    class="text-sm font-medium text-gray-900 mb-2 text-center"
+    class="text-sm font-medium text-foreground mb-2 text-center"
   >
     Coverage
   </div>
@@ -38,7 +38,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for failed s
 exports[`GateStatusIndicator Snapshot Testing should match snapshot for passed status 1`] = `
 <div
   aria-label="Tests gate: passed"
-  class="flex flex-col items-center justify-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+  class="flex flex-col items-center justify-center p-4 bg-card rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow"
   data-testid="gate-tests"
   role="listitem"
 >
@@ -49,7 +49,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for passed s
     🧪
   </div>
   <div
-    class="text-sm font-medium text-gray-900 mb-2 text-center"
+    class="text-sm font-medium text-foreground mb-2 text-center"
   >
     Tests
   </div>
@@ -73,7 +73,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for passed s
 exports[`GateStatusIndicator Snapshot Testing should match snapshot for pending status 1`] = `
 <div
   aria-label="Code Review gate: pending"
-  class="flex flex-col items-center justify-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+  class="flex flex-col items-center justify-center p-4 bg-card rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow"
   data-testid="gate-review"
   role="listitem"
 >
@@ -84,7 +84,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for pending 
     🔍
   </div>
   <div
-    class="text-sm font-medium text-gray-900 mb-2 text-center"
+    class="text-sm font-medium text-foreground mb-2 text-center"
   >
     Code Review
   </div>
@@ -108,7 +108,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for pending 
 exports[`GateStatusIndicator Snapshot Testing should match snapshot for running status 1`] = `
 <div
   aria-label="Linting gate: running"
-  class="flex flex-col items-center justify-center p-4 bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+  class="flex flex-col items-center justify-center p-4 bg-card rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow"
   data-testid="gate-lint"
   role="listitem"
 >
@@ -119,7 +119,7 @@ exports[`GateStatusIndicator Snapshot Testing should match snapshot for running 
     ✨
   </div>
   <div
-    class="text-sm font-medium text-gray-900 mb-2 text-center"
+    class="text-sm font-medium text-foreground mb-2 text-center"
   >
     Linting
   </div>

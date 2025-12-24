@@ -15,7 +15,7 @@ const customJestConfig = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   transformIgnorePatterns: [
-    '/node_modules/(?!(.pnpm|react-markdown|vfile|vfile-message|unist-.*|unified|bail|is-plain-obj|trough|remark-.*|mdast-util-.*|micromark.*|decode-named-character-reference|character-entities|property-information|hast-util-whitespace|space-separated-tokens|comma-separated-tokens|pretty-bytes|msw|@mswjs|strict-event-emitter|until-async|@bundled-es-modules|@open-draft|outvariant|cookie))',
+    '/node_modules/(?!(.pnpm|react-markdown|vfile|vfile-message|unist-.*|unified|bail|is-plain-obj|trough|remark-.*|mdast-util-.*|micromark.*|decode-named-character-reference|character-entities|property-information|hast-util-whitespace|space-separated-tokens|comma-separated-tokens|pretty-bytes|msw|@mswjs|strict-event-emitter|until-async|@bundled-es-modules|@open-draft|outvariant|cookie|@hugeicons))',
   ],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',

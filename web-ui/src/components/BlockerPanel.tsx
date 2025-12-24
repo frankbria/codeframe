@@ -67,11 +67,11 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
 
   if (pendingBlockers.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-lg font-semibold mb-3 text-gray-800">
-          Blockers <span className="text-sm font-normal text-gray-500">(0)</span>
+      <div className="bg-card rounded-lg shadow p-4 border border-border">
+        <h2 className="text-lg font-semibold mb-3 text-foreground">
+          Blockers <span className="text-sm font-normal text-muted-foreground">(0)</span>
         </h2>
-        <div className="text-center py-8 text-gray-500">
+        <div className="text-center py-8 text-muted-foreground">
           <div className="text-4xl mb-2">✅</div>
           <p className="text-sm">No blockers - agents are running smoothly!</p>
         </div>
@@ -80,12 +80,12 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
   }
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="p-4 border-b border-gray-200">
+    <div className="bg-card rounded-lg shadow border border-border">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-800">
+          <h2 className="text-lg font-semibold text-foreground">
             Blockers{' '}
-            <span className="text-sm font-normal text-gray-500">
+            <span className="text-sm font-normal text-muted-foreground">
               ({pendingBlockers.length})
             </span>
           </h2>
@@ -97,8 +97,8 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
             onClick={() => setFilter('all')}
             className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
               filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-foreground hover:bg-muted/80'
             }`}
           >
             All
@@ -107,8 +107,8 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
             onClick={() => setFilter('sync')}
             className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
               filter === 'sync'
-                ? 'bg-red-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-destructive text-destructive-foreground'
+                : 'bg-muted text-foreground hover:bg-muted/80'
             }`}
           >
             SYNC
@@ -117,8 +117,8 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
             onClick={() => setFilter('async')}
             className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
               filter === 'async'
-                ? 'bg-yellow-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-accent text-accent-foreground'
+                : 'bg-muted text-foreground hover:bg-muted/80'
             }`}
           >
             ASYNC
@@ -126,22 +126,22 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
         </div>
       </div>
 
-      <div className="divide-y divide-gray-200">
+      <div className="divide-y divide-border">
         {pendingBlockers.map((blocker) => (
           <button
             key={blocker.id}
             onClick={() => onBlockerClick?.(blocker)}
-            className="w-full text-left p-4 hover:bg-gray-50 transition-colors duration-150 focus:outline-none focus:bg-gray-50"
+            className="w-full text-left p-4 hover:bg-muted/50 transition-colors duration-150 focus:outline-none focus:bg-muted/50"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 {/* Question preview */}
-                <p className="text-sm font-medium text-gray-900 mb-1">
+                <p className="text-sm font-medium text-foreground mb-1">
                   {truncateText(blocker.question, 80)}
                 </p>
 
                 {/* Agent and task info */}
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="inline-flex items-center gap-1">
                     <span>🤖</span>
                     <span>{blocker.agent_name || blocker.agent_id}</span>
@@ -160,7 +160,7 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
               {/* Right side: Badge and time */}
               <div className="flex flex-col items-end gap-2 flex-shrink-0">
                 <BlockerBadge type={blocker.blocker_type} />
-                <span className="text-xs text-gray-500 whitespace-nowrap">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
                   {formatTimeAgo(blocker.time_waiting_ms || 0)}
                 </span>
               </div>
