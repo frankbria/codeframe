@@ -8,5 +8,8 @@ const React = require('react');
 // Mock all icon exports
 module.exports = {
   Download01Icon: (props) => React.createElement('svg', { 'data-testid': 'download-icon', ...props }),
-  // Add other icons as they are used in components
+  Cancel01Icon: (props) => React.createElement('svg', { 'data-testid': 'cancel-icon', ...props }),
+  Tick01Icon: (props) => React.createElement('svg', { 'data-testid': 'tick-icon', ...props }),
+  ArrowDown01Icon: (props) => React.createElement('svg', { 'data-testid': 'arrow-down-icon', ...props }),
+  ArrowUp01Icon: (props) => React.createElement('svg', { 'data-testid': 'arrow-up-icon', ...props }),
 };
