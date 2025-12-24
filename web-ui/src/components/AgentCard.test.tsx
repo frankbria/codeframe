@@ -327,7 +327,7 @@ describe('AgentCard Component', () => {
       const card = container.firstChild as HTMLElement;
       expect(card).toHaveClass('rounded-lg', 'border-2', 'p-4');
       expect(card).toHaveClass('transition-all', 'duration-200');
-      expect(card).toHaveClass('hover:shadow-md', 'cursor-pointer');
+      expect(card).toHaveClass('hover:shadow-sm', 'cursor-pointer');
     });
 
     it('should truncate long agent IDs', () => {

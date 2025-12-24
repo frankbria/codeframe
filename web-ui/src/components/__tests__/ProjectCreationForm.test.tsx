@@ -118,7 +118,7 @@ describe('ProjectCreationForm', () => {
       await user.type(nameInput, 'my-project_123');
       await user.tab(); // Blur
 
-      expect(screen.queryByText(/project name/i, { selector: '.text-red-600' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/project name/i, { selector: '.text-destructive' })).not.toBeInTheDocument();
     });
 
     test('shows red border on name field when error exists', async () => {

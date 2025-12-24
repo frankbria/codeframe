@@ -534,7 +534,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                                     key={idx}
                                     className={
                                       line.startsWith('+') && !line.startsWith('+++')
-                                        ? 'text-secondary'
+                                        ? 'text-emerald-600'
                                         : line.startsWith('-') && !line.startsWith('---')
                                         ? 'text-destructive'
                                         : line.startsWith('@@')

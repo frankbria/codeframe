@@ -83,7 +83,7 @@ export function ContextPanel({
     return (
       <div className="p-6 bg-card rounded-lg border border-border">
         <h3 className="text-xl font-semibold text-foreground mb-2">Context Overview</h3>
-        <p className="text-red-600">{error}</p>
+        <p className="text-destructive">{error}</p>
       </div>
     );
   }

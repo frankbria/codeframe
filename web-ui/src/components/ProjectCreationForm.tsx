@@ -150,14 +150,14 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
                       !isSubmitting;
 
   return (
-    <div className="bg-white shadow-md rounded-lg p-6 max-w-md w-full">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Create New Project</h2>
+    <div className="bg-card shadow-md rounded-lg p-6 max-w-md w-full border border-border">
+      <h2 className="text-2xl font-bold mb-6 text-foreground">Create New Project</h2>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* US2: Project Name Field with Validation */}
         <div>
-          <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
-            Project Name <span className="text-red-500">*</span>
+          <label htmlFor="project-name" className="block text-sm font-medium text-foreground mb-1">
+            Project Name <span className="text-destructive">*</span>
           </label>
           <input
             id="project-name"
@@ -165,33 +165,33 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={validateName}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 ${
-              errors.name ? 'border-red-500' : 'border-gray-300'
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground bg-background ${
+              errors.name ? 'border-destructive' : 'border-input'
             }`}
             placeholder="my-awesome-project"
             disabled={isSubmitting}
             maxLength={100}
           />
           {errors.name && (
-            <p className="mt-1 text-sm text-red-600">{errors.name}</p>
+            <p className="mt-1 text-sm text-destructive">{errors.name}</p>
           )}
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             Lowercase letters, numbers, hyphens, and underscores only (min 3 chars)
           </p>
         </div>
 
         {/* US2: Description Field with Validation and Character Counter */}
         <div>
-          <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-            Description <span className="text-red-500">*</span>
+          <label htmlFor="description" className="block text-sm font-medium text-foreground mb-1">
+            Description <span className="text-destructive">*</span>
           </label>
           <textarea
             id="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={validateDescription}
-            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 ${
-              errors.description ? 'border-red-500' : 'border-gray-300'
+            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground bg-background ${
+              errors.description ? 'border-destructive' : 'border-input'
             }`}
             rows={4}
             placeholder="Describe what your project will do..."
@@ -199,10 +199,10 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             maxLength={500}
           />
           {errors.description && (
-            <p className="mt-1 text-sm text-red-600">{errors.description}</p>
+            <p className="mt-1 text-sm text-destructive">{errors.description}</p>
           )}
           {/* US2: Character Counter */}
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-muted-foreground">
             {description.length} / 500 characters (min 10)
           </p>
         </div>
@@ -211,21 +211,21 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
         <button
           type="submit"
           disabled={!isFormValid}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          className="w-full bg-primary text-primary-foreground py-2 px-4 rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-muted disabled:cursor-not-allowed transition-colors"
         >
           {isSubmitting ? 'Creating...' : 'Create Project & Start Discovery'}
         </button>
 
         {/* US2: Hint text below button */}
-        <p className="text-xs text-gray-500 text-center">
+        <p className="text-xs text-muted-foreground text-center">
           After creation, you&apos;ll begin Socratic discovery with AI agents
         </p>
       </form>
 
       {/* US3: Error Message Display */}
       {errors.submit && (
-        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-red-700 text-sm">
+        <div className="mt-4 p-3 bg-destructive/10 border border-destructive rounded-md">
+          <p className="text-destructive text-sm">
             <span className="mr-2">⚠️</span>
             Error: {errors.submit}
           </p>

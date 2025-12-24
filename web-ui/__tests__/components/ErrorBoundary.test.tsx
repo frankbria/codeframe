@@ -304,7 +304,7 @@ describe('ErrorBoundary', () => {
       expect(refreshButton).toHaveTextContent('Refresh Page');
 
       // Verify button is in the error UI (not in normal children)
-      expect(container.querySelector('.bg-blue-600')).toBeInTheDocument();
+      expect(container.querySelector('.bg-primary')).toBeInTheDocument();
     });
 
     it('should render refresh button with proper styling', () => {

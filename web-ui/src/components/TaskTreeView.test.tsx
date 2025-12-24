@@ -293,7 +293,7 @@ describe('TaskTreeView', () => {
       render(<TaskTreeView issues={mockIssues} />);
 
       const pendingBadge = screen.getByText(/pending/i);
-      expect(pendingBadge).toHaveClass(/gray/);
+      expect(pendingBadge).toHaveClass('bg-muted');
     });
   });
 
