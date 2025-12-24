@@ -274,7 +274,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 onClick={() => setShowChat(!showChat)}
                 className={`px-4 py-2 rounded-md transition-colors ${
                   showChat
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                     : 'bg-primary text-primary-foreground hover:bg-primary/90'
                 }`}
               >
