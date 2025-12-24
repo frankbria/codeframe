@@ -147,6 +147,77 @@ web-ui/src/
 - 90 unit & integration tests covering reducer, WebSocket mapping, state sync, and Dashboard integration
 - Test files located in `web-ui/__tests__/`
 
+## UI Template Configuration
+
+### shadcn/ui Nova Template
+
+The web-ui uses shadcn/ui with the Nova template for consistent styling:
+
+**Configuration:**
+- **Base**: Radix UI primitives
+- **Style**: Nova (compact spacing)
+- **Base Color**: Gray
+- **Theme**: Gray palette
+- **Icon Library**: Hugeicons (@hugeicons/react)
+- **Font**: Nunito Sans
+- **Menu Accent**: Subtle
+- **Menu Color**: Default
+- **Radius**: Default
+
+**Adding New Components:**
+```bash
+cd web-ui
+npx shadcn@latest add <component-name>
+```
+
+Components are automatically styled with Nova theme.
+
+**Color Palette:**
+- Background: `bg-background`
+- Card: `bg-card`
+- Primary: `bg-primary`
+- Secondary: `bg-secondary`
+- Muted: `bg-muted`
+- Accent: `bg-accent`
+- Destructive: `bg-destructive`
+
+**Typography:**
+- Foreground: `text-foreground`
+- Muted: `text-muted-foreground`
+- Primary: `text-primary-foreground`
+
+**Verification:**
+Check `web-ui/components.json` for template configuration.
+
+### Component Styling Guidelines
+
+**DO:**
+- Use shadcn UI components from `@/components/ui/`
+- Use Nova color palette variables (`bg-card`, `text-foreground`, etc.)
+- Use Hugeicons for all icons
+- Follow Nova's compact spacing conventions
+- Use `cn()` utility for conditional classes
+
+**DON'T:**
+- Use hardcoded color values (e.g., `bg-blue-500`)
+- Mix lucide-react with Hugeicons
+- Create custom CSS classes (use Tailwind utilities)
+- Override Nova theme variables without documentation
+
+**Example:**
+```typescript
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Download01Icon } from '@hugeicons/react'
+
+<Card className="bg-card border-border">
+  <Button variant="secondary">
+    <Download01Icon className="mr-2 h-4 w-4" />
+    Export
+  </Button>
+</Card>
+```
+
 ## Context Management System (007-context-management)
 
 ### Overview
