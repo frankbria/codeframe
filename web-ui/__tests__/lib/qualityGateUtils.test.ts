@@ -98,46 +98,46 @@ describe('qualityGateUtils', () => {
   });
 
   describe('getStatusClasses', () => {
-    it('should return green classes for "passed" status', () => {
+    it('should return secondary classes for "passed" status', () => {
       const classes = getStatusClasses('passed');
-      expect(classes).toContain('bg-green-100');
-      expect(classes).toContain('text-green-800');
-      expect(classes).toContain('border-green-300');
+      expect(classes).toContain('bg-secondary');
+      expect(classes).toContain('text-secondary-foreground');
+      expect(classes).toContain('border-border');
     });
 
-    it('should return red classes for "failed" status', () => {
+    it('should return destructive classes for "failed" status', () => {
       const classes = getStatusClasses('failed');
-      expect(classes).toContain('bg-red-100');
-      expect(classes).toContain('text-red-800');
-      expect(classes).toContain('border-red-300');
+      expect(classes).toContain('bg-destructive');
+      expect(classes).toContain('text-destructive-foreground');
+      expect(classes).toContain('border-destructive');
     });
 
-    it('should return yellow classes for "running" status', () => {
+    it('should return primary classes for "running" status', () => {
       const classes = getStatusClasses('running');
-      expect(classes).toContain('bg-yellow-100');
-      expect(classes).toContain('text-yellow-800');
-      expect(classes).toContain('border-yellow-300');
+      expect(classes).toContain('bg-primary/20');
+      expect(classes).toContain('text-foreground');
+      expect(classes).toContain('border-border');
     });
 
-    it('should return gray classes for "pending" status', () => {
+    it('should return muted classes for "pending" status', () => {
       const classes = getStatusClasses('pending');
-      expect(classes).toContain('bg-gray-100');
-      expect(classes).toContain('text-gray-800');
-      expect(classes).toContain('border-gray-300');
+      expect(classes).toContain('bg-muted');
+      expect(classes).toContain('text-muted-foreground');
+      expect(classes).toContain('border-border');
     });
 
-    it('should return default gray classes for null status', () => {
+    it('should return default muted classes for null status', () => {
       const classes = getStatusClasses(null);
-      expect(classes).toContain('bg-gray-100');
-      expect(classes).toContain('text-gray-800');
-      expect(classes).toContain('border-gray-200');
+      expect(classes).toContain('bg-muted');
+      expect(classes).toContain('text-muted-foreground');
+      expect(classes).toContain('border-border');
     });
 
-    it('should return default gray classes for undefined status', () => {
+    it('should return default muted classes for undefined status', () => {
       const classes = getStatusClasses(undefined as any);
-      expect(classes).toContain('bg-gray-100');
-      expect(classes).toContain('text-gray-800');
-      expect(classes).toContain('border-gray-200');
+      expect(classes).toContain('bg-muted');
+      expect(classes).toContain('text-muted-foreground');
+      expect(classes).toContain('border-border');
     });
   });
 
@@ -172,46 +172,46 @@ describe('qualityGateUtils', () => {
   });
 
   describe('getSeverityClasses', () => {
-    it('should return red classes for "critical" severity', () => {
+    it('should return destructive classes for "critical" severity', () => {
       const classes = getSeverityClasses('critical');
-      expect(classes).toContain('bg-red-100');
-      expect(classes).toContain('text-red-900');
-      expect(classes).toContain('border-red-300');
+      expect(classes).toContain('bg-destructive');
+      expect(classes).toContain('text-destructive-foreground');
+      expect(classes).toContain('border-destructive');
     });
 
-    it('should return orange classes for "high" severity', () => {
+    it('should return destructive/80 classes for "high" severity', () => {
       const classes = getSeverityClasses('high');
-      expect(classes).toContain('bg-orange-100');
-      expect(classes).toContain('text-orange-900');
-      expect(classes).toContain('border-orange-300');
+      expect(classes).toContain('bg-destructive/80');
+      expect(classes).toContain('text-destructive-foreground');
+      expect(classes).toContain('border-destructive');
     });
 
-    it('should return yellow classes for "medium" severity', () => {
+    it('should return muted classes for "medium" severity', () => {
       const classes = getSeverityClasses('medium');
-      expect(classes).toContain('bg-yellow-100');
-      expect(classes).toContain('text-yellow-900');
-      expect(classes).toContain('border-yellow-300');
+      expect(classes).toContain('bg-muted');
+      expect(classes).toContain('text-foreground');
+      expect(classes).toContain('border-border');
     });
 
-    it('should return blue classes for "low" severity', () => {
+    it('should return secondary classes for "low" severity', () => {
       const classes = getSeverityClasses('low');
-      expect(classes).toContain('bg-blue-100');
-      expect(classes).toContain('text-blue-900');
-      expect(classes).toContain('border-blue-300');
+      expect(classes).toContain('bg-secondary');
+      expect(classes).toContain('text-secondary-foreground');
+      expect(classes).toContain('border-border');
     });
 
-    it('should return default gray classes for unknown severity', () => {
+    it('should return default muted classes for unknown severity', () => {
       const classes = getSeverityClasses('unknown');
-      expect(classes).toContain('bg-gray-100');
-      expect(classes).toContain('text-gray-900');
-      expect(classes).toContain('border-gray-300');
+      expect(classes).toContain('bg-muted');
+      expect(classes).toContain('text-muted-foreground');
+      expect(classes).toContain('border-border');
     });
 
-    it('should return default gray classes for empty string', () => {
+    it('should return default muted classes for empty string', () => {
       const classes = getSeverityClasses('');
-      expect(classes).toContain('bg-gray-100');
-      expect(classes).toContain('text-gray-900');
-      expect(classes).toContain('border-gray-300');
+      expect(classes).toContain('bg-muted');
+      expect(classes).toContain('text-muted-foreground');
+      expect(classes).toContain('border-border');
     });
   });
 

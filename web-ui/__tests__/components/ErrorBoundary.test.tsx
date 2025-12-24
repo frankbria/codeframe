@@ -279,7 +279,7 @@ describe('ErrorBoundary', () => {
       );
 
       const refreshButton = screen.getByRole('button', { name: /refresh page/i });
-      expect(refreshButton).toHaveClass('bg-blue-600', 'text-white', 'rounded-md');
+      expect(refreshButton).toHaveClass('bg-primary', 'text-white', 'rounded-md');
     });
   });
 
@@ -317,8 +317,8 @@ describe('ErrorBoundary', () => {
       const refreshButton = screen.getByRole('button', { name: /refresh page/i });
 
       // Verify button styling for clickability
-      expect(refreshButton).toHaveClass('bg-blue-600');
-      expect(refreshButton).toHaveClass('hover:bg-blue-700');
+      expect(refreshButton).toHaveClass('bg-primary');
+      expect(refreshButton).toHaveClass('hover:bg-primary/90');
       expect(refreshButton).toHaveClass('w-full');
 
       // Button should be clickable (enabled)
@@ -596,7 +596,7 @@ describe('ErrorBoundary', () => {
       expect(errorContainer).toBeInTheDocument();
 
       // Should have card-like container
-      const card = container.querySelector('.bg-white.rounded-lg.shadow-lg');
+      const card = container.querySelector('.bg-card.rounded-lg.shadow-lg');
       expect(card).toBeInTheDocument();
     });
 
@@ -626,7 +626,7 @@ describe('ErrorBoundary', () => {
       );
 
       // Should use gray-600 which has good contrast on white background
-      expect(errorMessage).toHaveClass('text-gray-600');
+      expect(errorMessage).toHaveClass('text-muted-foreground');
     });
   });
 

@@ -130,7 +130,7 @@ describe('ProjectCreationForm', () => {
       await user.tab();
 
       await waitFor(() => {
-        expect(nameInput).toHaveClass('border-red-500');
+        expect(nameInput).toHaveClass('border-destructive');
       });
     });
   });
@@ -177,7 +177,7 @@ describe('ProjectCreationForm', () => {
       await user.tab();
 
       await waitFor(() => {
-        expect(descInput).toHaveClass('border-red-500');
+        expect(descInput).toHaveClass('border-destructive');
       });
     });
   });

@@ -23,7 +23,7 @@ describe('ReviewFindingsList', () => {
 
       expect(emptyState).toHaveClass('text-center');
       expect(emptyState).toHaveClass('py-8');
-      expect(emptyState).toHaveClass('text-gray-500');
+      expect(emptyState).toHaveClass('text-muted-foreground');
     });
 
     it('displays checkmark emoji in empty state', () => {
@@ -87,7 +87,7 @@ describe('ReviewFindingsList', () => {
       const findingCard = container.querySelector('.hover\\:bg-gray-50');
 
       expect(findingCard).toBeInTheDocument();
-      expect(findingCard).toHaveClass('hover:bg-gray-50');
+      expect(findingCard).toHaveClass('hover:bg-muted');
       expect(findingCard).toHaveClass('transition-colors');
     });
   });
@@ -106,9 +106,9 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('CRITICAL');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-red-100');
-      expect(badge).toHaveClass('text-red-800');
-      expect(badge).toHaveClass('border-red-300');
+      expect(badge).toHaveClass('bg-destructive/10');
+      expect(badge).toHaveClass('text-destructive-foreground');
+      expect(badge).toHaveClass('border-destructive');
     });
 
     it('renders high severity badge with orange styling', () => {
@@ -116,8 +116,8 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('HIGH');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-orange-100');
-      expect(badge).toHaveClass('text-orange-800');
+      expect(badge).toHaveClass('bg-destructive/80');
+      expect(badge).toHaveClass('text-destructive-foreground');
       expect(badge).toHaveClass('border-orange-300');
     });
 
@@ -126,9 +126,9 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('MEDIUM');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-yellow-100');
-      expect(badge).toHaveClass('text-yellow-800');
-      expect(badge).toHaveClass('border-yellow-300');
+      expect(badge).toHaveClass('bg-primary/20');
+      expect(badge).toHaveClass('text-foreground');
+      expect(badge).toHaveClass('border-border');
     });
 
     it('renders low severity badge with blue styling', () => {
@@ -136,9 +136,9 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('LOW');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-blue-100');
-      expect(badge).toHaveClass('text-blue-800');
-      expect(badge).toHaveClass('border-blue-300');
+      expect(badge).toHaveClass('bg-primary/10');
+      expect(badge).toHaveClass('text-primary-foreground');
+      expect(badge).toHaveClass('border-border');
     });
 
     it('renders info severity badge with gray styling', () => {
@@ -146,9 +146,9 @@ describe('ReviewFindingsList', () => {
 
       const badge = screen.getByText('INFO');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-gray-100');
-      expect(badge).toHaveClass('text-gray-800');
-      expect(badge).toHaveClass('border-gray-300');
+      expect(badge).toHaveClass('bg-muted');
+      expect(badge).toHaveClass('text-foreground');
+      expect(badge).toHaveClass('border-border');
     });
 
     it('applies badge base classes', () => {
@@ -311,8 +311,8 @@ describe('ReviewFindingsList', () => {
       const suggestionBox = container.querySelector('.bg-blue-50');
 
       expect(suggestionBox).toBeInTheDocument();
-      expect(suggestionBox).toHaveClass('bg-blue-50');
-      expect(suggestionBox).toHaveClass('border-blue-200');
+      expect(suggestionBox).toHaveClass('bg-primary/10');
+      expect(suggestionBox).toHaveClass('border-border');
       expect(suggestionBox).toHaveClass('rounded');
     });
 

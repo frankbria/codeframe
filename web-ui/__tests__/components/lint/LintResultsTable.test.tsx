@@ -134,7 +134,7 @@ describe('LintResultsTable', () => {
         // Verify warning counts: 5, 8, 0
         // Find cells with warning styling
         const warningCells = screen.getAllByText(/^[0-9]+$/).filter((cell) => {
-          return cell.className.includes('text-yellow-600') || cell.className.includes('text-gray-400');
+          return cell.className.includes('text-yellow-600') || cell.className.includes('text-muted-foreground');
         });
         expect(warningCells.length).toBeGreaterThan(0);
       });
@@ -218,8 +218,8 @@ describe('LintResultsTable', () => {
         expect(badge).toHaveClass('text-xs');
         expect(badge).toHaveClass('font-semibold');
         expect(badge).toHaveClass('rounded');
-        expect(badge).toHaveClass('bg-blue-100');
-        expect(badge).toHaveClass('text-blue-800');
+        expect(badge).toHaveClass('bg-primary/10');
+        expect(badge).toHaveClass('text-primary-foreground');
       });
     });
 
@@ -244,8 +244,8 @@ describe('LintResultsTable', () => {
       await waitFor(() => {
         const badge = screen.getByText('eslint');
         expect(badge).toBeInTheDocument();
-        expect(badge).toHaveClass('bg-blue-100');
-        expect(badge).toHaveClass('text-blue-800');
+        expect(badge).toHaveClass('bg-primary/10');
+        expect(badge).toHaveClass('text-primary-foreground');
       });
     });
 
@@ -270,8 +270,8 @@ describe('LintResultsTable', () => {
       await waitFor(() => {
         const badge = screen.getByText('other');
         expect(badge).toBeInTheDocument();
-        expect(badge).toHaveClass('bg-blue-100');
-        expect(badge).toHaveClass('text-blue-800');
+        expect(badge).toHaveClass('bg-primary/10');
+        expect(badge).toHaveClass('text-primary-foreground');
       });
     });
   });
@@ -298,7 +298,7 @@ describe('LintResultsTable', () => {
       await waitFor(() => {
         const errorCount = screen.getByText('5');
         expect(errorCount).toHaveClass('font-semibold');
-        expect(errorCount).toHaveClass('text-red-600');
+        expect(errorCount).toHaveClass('text-destructive-foreground');
       });
     });
 
@@ -324,11 +324,11 @@ describe('LintResultsTable', () => {
         // Find the error count cell (should be "0")
         const cells = screen.getAllByText('0');
         const errorCell = cells.find((cell) => {
-          return cell.className.includes('text-green-600');
+          return cell.className.includes('text-secondary-foreground');
         });
         expect(errorCell).toBeTruthy();
         expect(errorCell).toHaveClass('font-semibold');
-        expect(errorCell).toHaveClass('text-green-600');
+        expect(errorCell).toHaveClass('text-secondary-foreground');
       });
     });
   });
@@ -381,11 +381,11 @@ describe('LintResultsTable', () => {
         // Find the warning count cell (should be "0")
         const cells = screen.getAllByText('0');
         const warningCell = cells.find((cell) => {
-          return cell.className.includes('text-gray-400');
+          return cell.className.includes('text-muted-foreground');
         });
         expect(warningCell).toBeTruthy();
         expect(warningCell).toHaveClass('font-semibold');
-        expect(warningCell).toHaveClass('text-gray-400');
+        expect(warningCell).toHaveClass('text-muted-foreground');
       });
     });
   });
@@ -417,7 +417,7 @@ describe('LintResultsTable', () => {
       // ASSERT
       await waitFor(() => {
         const emptyMessage = screen.getByText('No lint results for this task');
-        expect(emptyMessage).toHaveClass('text-gray-500');
+        expect(emptyMessage).toHaveClass('text-muted-foreground');
       });
     });
   });
@@ -532,7 +532,7 @@ describe('LintResultsTable', () => {
       // ASSERT
       await waitFor(() => {
         expect(screen.getByText('9999')).toBeInTheDocument();
-        expect(screen.getByText('9999')).toHaveClass('text-red-600');
+        expect(screen.getByText('9999')).toHaveClass('text-destructive-foreground');
       });
     });
 
@@ -775,7 +775,7 @@ describe('LintResultsTable', () => {
         const table = container.querySelector('table');
         expect(table).toHaveClass('min-w-full');
         expect(table).toHaveClass('divide-y');
-        expect(table).toHaveClass('divide-gray-200');
+        expect(table).toHaveClass('divide-border');
       });
     });
 
@@ -789,7 +789,7 @@ describe('LintResultsTable', () => {
       // ASSERT
       await waitFor(() => {
         const thead = container.querySelector('thead');
-        expect(thead).toHaveClass('bg-gray-50');
+        expect(thead).toHaveClass('bg-muted');
       });
     });
 
@@ -803,9 +803,9 @@ describe('LintResultsTable', () => {
       // ASSERT
       await waitFor(() => {
         const tbody = container.querySelector('tbody');
-        expect(tbody).toHaveClass('bg-white');
+        expect(tbody).toHaveClass('bg-card');
         expect(tbody).toHaveClass('divide-y');
-        expect(tbody).toHaveClass('divide-gray-200');
+        expect(tbody).toHaveClass('divide-border');
       });
     });
 
@@ -825,7 +825,7 @@ describe('LintResultsTable', () => {
           expect(cell).toHaveClass('text-left');
           expect(cell).toHaveClass('text-xs');
           expect(cell).toHaveClass('font-medium');
-          expect(cell).toHaveClass('text-gray-500');
+          expect(cell).toHaveClass('text-muted-foreground');
           expect(cell).toHaveClass('uppercase');
         });
       });

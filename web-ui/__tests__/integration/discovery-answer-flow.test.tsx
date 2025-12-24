@@ -344,7 +344,7 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       expect(textarea.value).toBe(originalAnswer);
 
       // Verify textarea has error border
-      expect(textarea).toHaveClass('border-red-500');
+      expect(textarea).toHaveClass('border-destructive');
 
       // Verify no success message
       expect(screen.queryByText(/answer submitted/i)).not.toBeInTheDocument();
@@ -391,7 +391,7 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       expect(textarea.value).toBe('');
 
       // Textarea should not have error border anymore
-      expect(textarea).not.toHaveClass('border-red-500');
+      expect(textarea).not.toHaveClass('border-destructive');
 
       jest.advanceTimersByTime(1000);
 

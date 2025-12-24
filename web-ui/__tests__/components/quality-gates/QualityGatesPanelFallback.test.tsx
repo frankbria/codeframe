@@ -300,7 +300,7 @@ describe('QualityGatesPanelFallback', () => {
       );
 
       const container = screen.getByTestId('quality-gates-panel-fallback');
-      expect(container).toHaveClass('bg-red-50', 'border-red-200');
+      expect(container).toHaveClass('bg-destructive/10', 'border-destructive');
     });
 
     it('should apply primary button styling to Retry button', () => {
@@ -313,7 +313,7 @@ describe('QualityGatesPanelFallback', () => {
       );
 
       const retryButton = screen.getByRole('button', { name: /retry/i });
-      expect(retryButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
+      expect(retryButton).toHaveClass('bg-primary', 'hover:bg-primary/90');
     });
 
     it('should apply secondary button styling to Dismiss button', () => {
@@ -326,7 +326,7 @@ describe('QualityGatesPanelFallback', () => {
       );
 
       const dismissButton = screen.getByRole('button', { name: /continue without quality gates/i });
-      expect(dismissButton).toHaveClass('bg-gray-100', 'hover:bg-gray-200');
+      expect(dismissButton).toHaveClass('bg-muted', 'hover:bg-muted');
     });
   });
 

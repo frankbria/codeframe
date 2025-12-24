@@ -102,9 +102,9 @@ describe('ReviewScoreChart', () => {
 
       const badge = screen.getByText('APPROVED');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-green-100');
-      expect(badge).toHaveClass('text-green-800');
-      expect(badge).toHaveClass('border-green-300');
+      expect(badge).toHaveClass('bg-secondary');
+      expect(badge).toHaveClass('text-secondary-foreground');
+      expect(badge).toHaveClass('border-border');
     });
 
     it('renders changes_requested status badge with yellow styling', () => {
@@ -113,9 +113,9 @@ describe('ReviewScoreChart', () => {
 
       const badge = screen.getByText('CHANGES REQUESTED');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-yellow-100');
-      expect(badge).toHaveClass('text-yellow-800');
-      expect(badge).toHaveClass('border-yellow-300');
+      expect(badge).toHaveClass('bg-primary/20');
+      expect(badge).toHaveClass('text-foreground');
+      expect(badge).toHaveClass('border-border');
     });
 
     it('renders rejected status badge with red styling', () => {
@@ -124,9 +124,9 @@ describe('ReviewScoreChart', () => {
 
       const badge = screen.getByText('REJECTED');
       expect(badge).toBeInTheDocument();
-      expect(badge).toHaveClass('bg-red-100');
-      expect(badge).toHaveClass('text-red-800');
-      expect(badge).toHaveClass('border-red-300');
+      expect(badge).toHaveClass('bg-destructive/10');
+      expect(badge).toHaveClass('text-destructive-foreground');
+      expect(badge).toHaveClass('border-destructive');
     });
 
     it('applies base badge classes', () => {
@@ -291,7 +291,7 @@ describe('ReviewScoreChart', () => {
 
       const summary = screen.getByText(report.summary);
       expect(summary).toHaveClass('text-sm');
-      expect(summary).toHaveClass('text-gray-700');
+      expect(summary).toHaveClass('text-foreground');
       expect(summary).toHaveClass('leading-relaxed');
     });
   });
@@ -452,7 +452,7 @@ describe('ReviewScoreChart', () => {
 
       const label = screen.getByText('Security');
       expect(label).toHaveClass('font-medium');
-      expect(label).toHaveClass('text-gray-700');
+      expect(label).toHaveClass('text-foreground');
     });
 
     it('applies correct text styling to scores', () => {
@@ -461,7 +461,7 @@ describe('ReviewScoreChart', () => {
 
       const score = screen.getByText('90.0');
       expect(score).toHaveClass('font-semibold');
-      expect(score).toHaveClass('text-gray-900');
+      expect(score).toHaveClass('text-foreground');
     });
 
     it('applies correct weight label styling', () => {
@@ -470,7 +470,7 @@ describe('ReviewScoreChart', () => {
 
       const weightLabel = screen.getByText('Weight: 40%');
       expect(weightLabel).toHaveClass('text-xs');
-      expect(weightLabel).toHaveClass('text-gray-500');
+      expect(weightLabel).toHaveClass('text-muted-foreground');
     });
   });
 });

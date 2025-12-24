@@ -145,8 +145,8 @@ describe('QualityGateStatus Component', () => {
 
       await waitFor(() => {
         const badge = screen.getByText('passed');
-        expect(badge).toHaveClass('bg-green-100');
-        expect(badge).toHaveClass('text-green-800');
+        expect(badge).toHaveClass('bg-secondary');
+        expect(badge).toHaveClass('text-secondary-foreground');
       });
     });
   });
@@ -197,8 +197,8 @@ describe('QualityGateStatus Component', () => {
 
       await waitFor(() => {
         const badge = screen.getByText('failed');
-        expect(badge).toHaveClass('bg-red-100');
-        expect(badge).toHaveClass('text-red-800');
+        expect(badge).toHaveClass('bg-destructive/10');
+        expect(badge).toHaveClass('text-destructive-foreground');
       });
     });
 
@@ -358,8 +358,8 @@ describe('QualityGateStatus Component', () => {
 
       await waitFor(() => {
         const badge = screen.getByText('running');
-        expect(badge).toHaveClass('bg-yellow-100');
-        expect(badge).toHaveClass('text-yellow-800');
+        expect(badge).toHaveClass('bg-primary/20');
+        expect(badge).toHaveClass('text-foreground');
       });
     });
 
@@ -435,8 +435,8 @@ describe('QualityGateStatus Component', () => {
 
       await waitFor(() => {
         const badge = screen.getByText('pending');
-        expect(badge).toHaveClass('bg-gray-100');
-        expect(badge).toHaveClass('text-gray-800');
+        expect(badge).toHaveClass('bg-muted');
+        expect(badge).toHaveClass('text-foreground');
       });
     });
   });

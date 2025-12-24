@@ -317,7 +317,7 @@ describe('BlockerPanel', () => {
       const buttons = screen.getAllByRole('button');
       // Skip first 3 filter buttons, check the first blocker button
       const blockerButton = buttons[3];
-      expect(blockerButton).toHaveClass('hover:bg-gray-50');
+      expect(blockerButton).toHaveClass('hover:bg-muted');
     });
 
     it('renders header with correct styling', () => {
@@ -328,7 +328,7 @@ describe('BlockerPanel', () => {
 
     it('uses white background for panel', () => {
       const { container } = render(<BlockerPanel blockers={[mockSyncBlocker]} />);
-      const panel = container.querySelector('.bg-white');
+      const panel = container.querySelector('.bg-card');
       expect(panel).toBeInTheDocument();
     });
   });

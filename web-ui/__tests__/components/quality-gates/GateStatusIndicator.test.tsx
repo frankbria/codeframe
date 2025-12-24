@@ -143,25 +143,25 @@ describe('GateStatusIndicator', () => {
       expect(qualityGateUtils.getStatusClasses).toHaveBeenCalledWith('passed');
 
       const statusBadge = screen.getByRole('status');
-      expect(statusBadge).toHaveClass('bg-green-100');
-      expect(statusBadge).toHaveClass('text-green-800');
-      expect(statusBadge).toHaveClass('border-green-300');
+      expect(statusBadge).toHaveClass('bg-secondary');
+      expect(statusBadge).toHaveClass('text-secondary-foreground');
+      expect(statusBadge).toHaveClass('border-border');
     });
 
     it('should apply failed status classes correctly', () => {
       render(<GateStatusIndicator gateType="review" status="failed" />);
 
       const statusBadge = screen.getByRole('status');
-      expect(statusBadge).toHaveClass('bg-red-100');
-      expect(statusBadge).toHaveClass('text-red-800');
+      expect(statusBadge).toHaveClass('bg-destructive/10');
+      expect(statusBadge).toHaveClass('text-destructive-foreground');
     });
 
     it('should apply running status classes correctly', () => {
       render(<GateStatusIndicator gateType="lint" status="running" />);
 
       const statusBadge = screen.getByRole('status');
-      expect(statusBadge).toHaveClass('bg-yellow-100');
-      expect(statusBadge).toHaveClass('text-yellow-800');
+      expect(statusBadge).toHaveClass('bg-primary/20');
+      expect(statusBadge).toHaveClass('text-foreground');
     });
   });
 
@@ -256,9 +256,9 @@ describe('GateStatusIndicator', () => {
       render(<GateStatusIndicator gateType="coverage" status="failed" />);
 
       const indicator = screen.getByTestId('gate-coverage');
-      expect(indicator).toHaveClass('bg-white');
+      expect(indicator).toHaveClass('bg-card');
       expect(indicator).toHaveClass('border');
-      expect(indicator).toHaveClass('border-gray-200');
+      expect(indicator).toHaveClass('border-border');
     });
 
     it('should have hover effect classes', () => {

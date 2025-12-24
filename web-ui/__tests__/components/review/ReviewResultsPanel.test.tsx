@@ -65,7 +65,7 @@ describe('ReviewResultsPanel', () => {
       expect(spinner).toHaveClass('h-12');
       expect(spinner).toHaveClass('w-12');
       expect(spinner).toHaveClass('border-b-2');
-      expect(spinner).toHaveClass('border-blue-500');
+      expect(spinner).toHaveClass('border-border');
     });
 
     it('applies correct container styling during loading', () => {
@@ -74,7 +74,7 @@ describe('ReviewResultsPanel', () => {
       );
 
       const { container } = render(<ReviewResultsPanel taskId={1} />);
-      const loadingContainer = container.querySelector('.bg-white.rounded-lg.shadow');
+      const loadingContainer = container.querySelector('.bg-card.rounded-lg.shadow');
 
       expect(loadingContainer).toBeInTheDocument();
       expect(loadingContainer).toHaveClass('p-6');
@@ -111,7 +111,7 @@ describe('ReviewResultsPanel', () => {
 
       await waitFor(() => {
         const errorHeading = screen.getByText('Error Loading Review');
-        expect(errorHeading).toHaveClass('text-red-600');
+        expect(errorHeading).toHaveClass('text-destructive-foreground');
         expect(errorHeading).toHaveClass('font-medium');
       });
     });
@@ -132,7 +132,7 @@ describe('ReviewResultsPanel', () => {
       const { container } = render(<ReviewResultsPanel taskId={1} />);
 
       await waitFor(() => {
-        const errorContainer = container.querySelector('.bg-white.rounded-lg.shadow');
+        const errorContainer = container.querySelector('.bg-card.rounded-lg.shadow');
         expect(errorContainer).toBeInTheDocument();
         expect(errorContainer).toHaveClass('p-6');
       });
@@ -185,7 +185,7 @@ describe('ReviewResultsPanel', () => {
 
       await waitFor(() => {
         const heading = screen.getByText('No Review Available');
-        expect(heading).toHaveClass('text-gray-600');
+        expect(heading).toHaveClass('text-muted-foreground');
         expect(heading).toHaveClass('font-medium');
       });
     });
@@ -334,9 +334,9 @@ describe('ReviewResultsPanel', () => {
       await waitFor(() => {
         const badge = screen.getByText('APPROVED');
         expect(badge).toBeInTheDocument();
-        expect(badge).toHaveClass('bg-green-100');
-        expect(badge).toHaveClass('text-green-800');
-        expect(badge).toHaveClass('border-green-300');
+        expect(badge).toHaveClass('bg-secondary');
+        expect(badge).toHaveClass('text-secondary-foreground');
+        expect(badge).toHaveClass('border-border');
       });
     });
 
@@ -353,9 +353,9 @@ describe('ReviewResultsPanel', () => {
       await waitFor(() => {
         const badge = screen.getByText('CHANGES REQUESTED');
         expect(badge).toBeInTheDocument();
-        expect(badge).toHaveClass('bg-yellow-100');
-        expect(badge).toHaveClass('text-yellow-800');
-        expect(badge).toHaveClass('border-yellow-300');
+        expect(badge).toHaveClass('bg-primary/20');
+        expect(badge).toHaveClass('text-foreground');
+        expect(badge).toHaveClass('border-border');
       });
     });
 
@@ -372,9 +372,9 @@ describe('ReviewResultsPanel', () => {
       await waitFor(() => {
         const badge = screen.getByText('REJECTED');
         expect(badge).toBeInTheDocument();
-        expect(badge).toHaveClass('bg-red-100');
-        expect(badge).toHaveClass('text-red-800');
-        expect(badge).toHaveClass('border-red-300');
+        expect(badge).toHaveClass('bg-destructive/10');
+        expect(badge).toHaveClass('text-destructive-foreground');
+        expect(badge).toHaveClass('border-destructive');
       });
     });
 
@@ -483,7 +483,7 @@ describe('ReviewResultsPanel', () => {
 
       await waitFor(() => {
         const closeButton = screen.getByLabelText('Close');
-        expect(closeButton).toHaveClass('hover:text-gray-600');
+        expect(closeButton).toHaveClass('hover:text-foreground');
         expect(closeButton).toHaveClass('transition-colors');
       });
     });
@@ -610,7 +610,7 @@ describe('ReviewResultsPanel', () => {
       const { container } = render(<ReviewResultsPanel taskId={1} />);
 
       await waitFor(() => {
-        const mainContainer = container.querySelector('.bg-white.rounded-lg.shadow');
+        const mainContainer = container.querySelector('.bg-card.rounded-lg.shadow');
         expect(mainContainer).toBeInTheDocument();
       });
     });

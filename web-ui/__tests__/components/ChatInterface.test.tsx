@@ -177,9 +177,9 @@ describe('ChatInterface', () => {
 
     // Check assistant messages have correct styling (gray background)
     const assistantMessage = screen.getByText('I am doing well, thank you!');
-    const assistantDiv = assistantMessage.closest('div.bg-gray-100');
+    const assistantDiv = assistantMessage.closest('div.bg-muted');
     expect(assistantDiv).toBeInTheDocument();
-    expect(assistantDiv).toHaveClass('text-gray-900');
+    expect(assistantDiv).toHaveClass('text-foreground');
   });
 
   it('test_auto_scrolls_to_latest_message', async () => {
@@ -316,7 +316,7 @@ describe('ChatInterface', () => {
     expect(sendButton).toBeDisabled();
 
     // Status shows offline
-    expect(screen.getByText('offline')).toHaveClass('text-gray-400');
+    expect(screen.getByText('offline')).toHaveClass('text-muted-foreground');
   });
 
   it('test_prevents_send_when_agent_offline', async () => {
@@ -384,7 +384,7 @@ describe('ChatInterface', () => {
 
     // Error has red styling
     const errorDiv = screen.getByText(errorMessage).closest('div');
-    expect(errorDiv).toHaveClass('bg-red-50', 'border-red-200', 'text-red-700');
+    expect(errorDiv).toHaveClass('bg-destructive/10', 'border-destructive', 'text-red-700');
   });
 
   it('test_shows_default_error_message_when_no_detail', async () => {
@@ -784,7 +784,7 @@ describe('ChatInterface', () => {
     const errorDiv = screen.getByText(
       'Failed to load chat history. Please refresh the page.'
     ).closest('div');
-    expect(errorDiv).toHaveClass('bg-red-50', 'text-red-600');
+    expect(errorDiv).toHaveClass('bg-destructive/10', 'text-destructive-foreground');
   });
 
   it('test_displays_agent_status_with_correct_styling', async () => {
@@ -797,16 +797,16 @@ describe('ChatInterface', () => {
 
     // ASSERT: Working status is green
     await waitFor(() => {
-      expect(screen.getByText('working')).toHaveClass('text-green-600');
+      expect(screen.getByText('working')).toHaveClass('text-secondary-foreground');
     });
 
     // Blocked status is red
     rerender(<ChatInterface projectId={123} agentStatus="blocked" />);
-    expect(screen.getByText('blocked')).toHaveClass('text-red-600');
+    expect(screen.getByText('blocked')).toHaveClass('text-destructive-foreground');
 
     // Offline status is gray
     rerender(<ChatInterface projectId={123} agentStatus="offline" />);
-    expect(screen.getByText('offline')).toHaveClass('text-gray-400');
+    expect(screen.getByText('offline')).toHaveClass('text-muted-foreground');
 
     // Idle status is yellow
     rerender(<ChatInterface projectId={123} agentStatus="idle" />);

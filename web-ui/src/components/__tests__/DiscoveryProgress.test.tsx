@@ -1016,7 +1016,7 @@ describe('DiscoveryProgress Component', () => {
       });
 
       // Textarea should have red border
-      expect(textarea).toHaveClass('border-red-500');
+      expect(textarea).toHaveClass('border-destructive');
 
       // Answer should be preserved (not cleared)
       expect(textarea.value).toBe(longAnswer);
@@ -1081,7 +1081,7 @@ describe('DiscoveryProgress Component', () => {
       });
 
       // Textarea should have red border
-      expect(textarea).toHaveClass('border-red-500');
+      expect(textarea).toHaveClass('border-destructive');
 
       // Answer should be preserved (not cleared)
       expect(textarea.value).toBe('A valid answer');

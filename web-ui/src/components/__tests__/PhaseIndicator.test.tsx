@@ -52,8 +52,8 @@ describe('PhaseIndicator Component', () => {
       const { container } = render(<PhaseIndicator phase="planning" />);
 
       const badge = container.querySelector('[data-testid="phase-badge"]');
-      expect(badge).toHaveClass('bg-purple-100');
-      expect(badge).toHaveClass('text-purple-800');
+      expect(badge).toHaveClass('bg-secondary');
+      expect(badge).toHaveClass('text-secondary-foreground');
     });
 
     it('should display green background for active phase', () => {

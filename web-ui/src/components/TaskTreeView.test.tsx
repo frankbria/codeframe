@@ -283,10 +283,10 @@ describe('TaskTreeView', () => {
 
       // Check for status badges with appropriate colors - use getAllByText
       const completedBadges = screen.getAllByText(/completed/i);
-      expect(completedBadges[0]).toHaveClass('bg-green-100');
+      expect(completedBadges[0]).toHaveClass('bg-secondary');
 
       const inProgressBadges = screen.getAllByText(/in_progress/i);
-      expect(inProgressBadges[0]).toHaveClass('bg-blue-100');
+      expect(inProgressBadges[0]).toHaveClass('bg-primary/10');
     });
 
     it('should apply color to pending status', () => {
@@ -427,8 +427,8 @@ describe('TaskTreeView', () => {
       await user.click(expandButton);
 
       const failedBadge = screen.getByText(/failed/i);
-      expect(failedBadge).toHaveClass('bg-red-100');
-      expect(failedBadge).toHaveClass('text-red-800');
+      expect(failedBadge).toHaveClass('bg-destructive/10');
+      expect(failedBadge).toHaveClass('text-destructive-foreground');
     });
 
     it('should display assigned status correctly', async () => {
@@ -452,8 +452,8 @@ describe('TaskTreeView', () => {
       await user.click(expandButton);
 
       const assignedBadge = screen.getByText(/assigned/i);
-      expect(assignedBadge).toHaveClass('bg-yellow-100');
-      expect(assignedBadge).toHaveClass('text-yellow-800');
+      expect(assignedBadge).toHaveClass('bg-primary/20');
+      expect(assignedBadge).toHaveClass('text-foreground');
     });
 
     it('should display blocked status correctly', async () => {
@@ -477,8 +477,8 @@ describe('TaskTreeView', () => {
       await user.click(expandButton);
 
       const blockedBadge = screen.getByText(/blocked/i);
-      expect(blockedBadge).toHaveClass('bg-red-100');
-      expect(blockedBadge).toHaveClass('text-red-800');
+      expect(blockedBadge).toHaveClass('bg-destructive/10');
+      expect(blockedBadge).toHaveClass('text-destructive-foreground');
     });
   });
 
@@ -487,8 +487,8 @@ describe('TaskTreeView', () => {
       render(<TaskTreeView issues={mockIssues} />);
 
       const priority2Badge = screen.getByText(/Priority:.*2/i);
-      expect(priority2Badge).toHaveClass('bg-orange-100');
-      expect(priority2Badge).toHaveClass('text-orange-800');
+      expect(priority2Badge).toHaveClass('bg-destructive/80');
+      expect(priority2Badge).toHaveClass('text-destructive-foreground');
     });
 
     it('should display priority 3 correctly', () => {
@@ -502,8 +502,8 @@ describe('TaskTreeView', () => {
       render(<TaskTreeView issues={priority3Issue} />);
 
       const priority3Badge = screen.getByText(/Priority:.*3/i);
-      expect(priority3Badge).toHaveClass('bg-yellow-100');
-      expect(priority3Badge).toHaveClass('text-yellow-800');
+      expect(priority3Badge).toHaveClass('bg-primary/20');
+      expect(priority3Badge).toHaveClass('text-foreground');
     });
 
     it('should display priority 4+ correctly', () => {
@@ -517,8 +517,8 @@ describe('TaskTreeView', () => {
       render(<TaskTreeView issues={priority4Issue} />);
 
       const priority4Badge = screen.getByText(/Priority:.*4/i);
-      expect(priority4Badge).toHaveClass('bg-gray-100');
-      expect(priority4Badge).toHaveClass('text-gray-800');
+      expect(priority4Badge).toHaveClass('bg-muted');
+      expect(priority4Badge).toHaveClass('text-foreground');
     });
   });
 
@@ -661,7 +661,7 @@ describe('TaskTreeView', () => {
       // Should show blocked badge
       const blockedBadge = screen.getByText(/🚫 Blocked/i);
       expect(blockedBadge).toBeInTheDocument();
-      expect(blockedBadge).toHaveClass('bg-red-100');
+      expect(blockedBadge).toHaveClass('bg-destructive/10');
     });
 
     it('should not mark task as blocked when dependencies are completed', async () => {

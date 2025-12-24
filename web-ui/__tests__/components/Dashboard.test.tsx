@@ -672,7 +672,7 @@ describe('Dashboard with AgentStateProvider', () => {
       fireEvent.click(contextTab);
 
       // Check for blue text and border styling
-      expect(contextTab).toHaveClass('text-blue-600');
+      expect(contextTab).toHaveClass('text-primary');
       expect(contextTab).toHaveClass('border-blue-600');
     });
   });

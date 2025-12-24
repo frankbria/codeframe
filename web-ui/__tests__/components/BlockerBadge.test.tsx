@@ -21,8 +21,8 @@ describe('BlockerBadge', () => {
     it('has red background and text colors', () => {
       const { container } = render(<BlockerBadge type="SYNC" />);
       const badge = container.querySelector('span');
-      expect(badge).toHaveClass('bg-red-100');
-      expect(badge).toHaveClass('text-red-800');
+      expect(badge).toHaveClass('bg-destructive/10');
+      expect(badge).toHaveClass('text-destructive');
     });
 
     it('has tooltip explaining sync blocker', () => {
@@ -59,8 +59,8 @@ describe('BlockerBadge', () => {
     it('has yellow background and text colors', () => {
       const { container } = render(<BlockerBadge type="ASYNC" />);
       const badge = container.querySelector('span');
-      expect(badge).toHaveClass('bg-yellow-100');
-      expect(badge).toHaveClass('text-yellow-800');
+      expect(badge).toHaveClass('bg-accent/10');
+      expect(badge).toHaveClass('text-accent-foreground');
     });
 
     it('has tooltip explaining async blocker', () => {
@@ -90,14 +90,14 @@ describe('BlockerBadge', () => {
       const badge = container.querySelector('span');
       expect(badge).toHaveClass('my-custom-class');
       expect(badge).toHaveClass('inline-flex');
-      expect(badge).toHaveClass('bg-red-100');
+      expect(badge).toHaveClass('bg-destructive/10');
     });
 
     it('works without custom className', () => {
       const { container } = render(<BlockerBadge type="ASYNC" />);
       const badge = container.querySelector('span');
       expect(badge).toHaveClass('inline-flex');
-      expect(badge).toHaveClass('bg-yellow-100');
+      expect(badge).toHaveClass('bg-accent/10');
     });
   });
 

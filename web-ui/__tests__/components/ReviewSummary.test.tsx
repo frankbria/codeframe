@@ -50,7 +50,7 @@ describe('ReviewSummary', () => {
     it('displays error banner with red styling', () => {
       render(<ReviewSummary reviewResult={null} error="Network error" />);
       const errorDiv = screen.getByText(/Network error/).closest('div');
-      expect(errorDiv).toHaveClass('text-red-600');
+      expect(errorDiv).toHaveClass('text-destructive-foreground');
     });
 
     it('does not render summary when error exists', () => {
@@ -124,8 +124,8 @@ describe('ReviewSummary', () => {
     it('applies red styling to blocking banner', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
       const banner = screen.getByTestId('blocking-banner');
-      expect(banner).toHaveClass('bg-red-100');
-      expect(banner).toHaveClass('border-red-500');
+      expect(banner).toHaveClass('bg-destructive/10');
+      expect(banner).toHaveClass('border-destructive');
     });
   });
 
@@ -150,8 +150,8 @@ describe('ReviewSummary', () => {
     it('applies green styling to success banner', () => {
       render(<ReviewSummary reviewResult={mockReviewResultEmpty} />);
       const banner = screen.getByTestId('success-banner');
-      expect(banner).toHaveClass('bg-green-100');
-      expect(banner).toHaveClass('border-green-500');
+      expect(banner).toHaveClass('bg-secondary');
+      expect(banner).toHaveClass('border-border');
     });
 
     it('does not display success banner when blocking findings exist', () => {
