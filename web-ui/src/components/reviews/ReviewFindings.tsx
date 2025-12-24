@@ -230,7 +230,7 @@ export function ReviewFindings({
                     {/* Header: File path and line number */}
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
-                        <code className="text-sm font-mono bg-white bg-opacity-50 px-2 py-1 rounded">
+                        <code className="text-sm font-mono bg-muted px-2 py-1 rounded">
                           {finding.file_path}
                           {finding.line_number && `:${finding.line_number}`}
                         </code>
@@ -239,7 +239,7 @@ export function ReviewFindings({
                         <span className="text-lg" title={finding.category}>
                           {CATEGORY_ICONS[finding.category]}
                         </span>
-                        <span className="text-xs font-semibold uppercase px-2 py-1 bg-white bg-opacity-50 rounded">
+                        <span className="text-xs font-semibold uppercase px-2 py-1 bg-muted rounded">
                           {finding.severity}
                         </span>
                       </div>
@@ -252,7 +252,7 @@ export function ReviewFindings({
 
                     {/* Recommendation */}
                     {finding.recommendation && (
-                      <div className="mb-2 bg-white bg-opacity-50 rounded p-2">
+                      <div className="mb-2 bg-muted rounded p-2">
                         <p className="text-xs font-semibold mb-1">Recommendation:</p>
                         <p className="text-sm">{finding.recommendation}</p>
                       </div>

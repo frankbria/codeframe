@@ -65,10 +65,10 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
 
   if (error) {
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
         <div className="flex items-center space-x-2">
           <span className="text-2xl">⚠️</span>
-          <span className="text-yellow-700 font-medium">
+          <span className="text-destructive font-medium">
             Could not load session state: {error}
           </span>
         </div>
