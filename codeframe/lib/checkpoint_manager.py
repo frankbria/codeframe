@@ -422,6 +422,26 @@ class CheckpointManager:
         except Exception:
             total_cost_usd = 0.0
 
+        # Get quality stats from QualityTracker
+        quality_stats = None
+        quality_trend = None
+        try:
+            from codeframe.enforcement.quality_tracker import QualityTracker
+
+            tracker = QualityTracker(project_path=str(self.project_root))
+            stats = tracker.get_stats()
+
+            if stats.get("has_data"):
+                quality_stats = {
+                    "current": stats.get("current"),
+                    "peak": stats.get("peak"),
+                    "average": stats.get("average"),
+                    "total_checkpoints": stats.get("total_checkpoints"),
+                }
+                quality_trend = stats.get("trend", "insufficient_data")
+        except Exception as e:
+            logger.debug(f"Failed to get quality stats for checkpoint: {e}")
+
         return CheckpointMetadata(
             project_id=self.project_id,
             phase=phase,
@@ -431,6 +451,8 @@ class CheckpointManager:
             last_task_completed=last_task_completed,
             context_items_count=context_items_count,
             total_cost_usd=total_cost_usd,
+            quality_stats=quality_stats,
+            quality_trend=quality_trend,
         )
 
     def _validate_path_safety(self, file_path: Path) -> bool:
