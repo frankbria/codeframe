@@ -581,5 +581,52 @@ class TaskRepository(BaseRepository):
         rows = cursor.fetchall()
         return [self._row_to_task(row) for row in rows]
 
+    async def get_tasks_by_agent_async(
+        self, agent_id: str, project_id: Optional[int] = None, limit: int = 100
+    ) -> List[Task]:
+        """Get all tasks assigned to an agent (async version).
+
+        Used for calculating agent maturity metrics based on task history.
+        This async version uses aiosqlite for non-blocking database access.
+
+        Args:
+            agent_id: Agent ID to filter by (matches assigned_to field)
+            project_id: Optional project ID to filter by
+            limit: Maximum number of tasks to return (default: 100)
+
+        Returns:
+            List of Task objects ordered by created_at DESC (most recent first)
+
+        Note:
+            Uses async connection with automatic health check and reconnection.
+            Leverages idx_tasks_assigned_to index for optimal query performance.
+        """
+        conn = await self._get_async_conn()
+
+        if project_id is not None:
+            async with conn.execute(
+                """
+                SELECT * FROM tasks
+                WHERE assigned_to = ? AND project_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (agent_id, project_id, limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [self._row_to_task(row) for row in rows]
+        else:
+            async with conn.execute(
+                """
+                SELECT * FROM tasks
+                WHERE assigned_to = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (agent_id, limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [self._row_to_task(row) for row in rows]
+
     # Code Review CRUD operations (Sprint 10: 015-review-polish)
 

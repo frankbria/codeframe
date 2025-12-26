@@ -533,3 +533,150 @@ class TestTasksByAgentQuery:
 
         p2_tasks = db.get_tasks_by_agent("multi-project-agent", project_id=project2_id)
         assert len(p2_tasks) == 2
+
+
+class TestAsyncTasksByAgentQuery:
+    """Test the async version of get_tasks_by_agent database query."""
+
+    @pytest.mark.asyncio
+    async def test_get_tasks_by_agent_async_returns_assigned_tasks(self, temp_db_path):
+        """Test that get_tasks_by_agent_async returns only tasks assigned to the agent."""
+        # Use file-based database for async tests (memory DB doesn't share between connections)
+        db = Database(temp_db_path)
+        db.initialize()
+
+        project_id = db.create_project(
+            name="async-test-project",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/async-test",
+        )
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test Issue",
+            "description": "Test",
+        })
+
+        # Create tasks for different agents
+        for i in range(3):
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.1.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Agent 1 Task {i+1}",
+                description="Test",
+                status=TaskStatus.COMPLETED,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "async-agent-1"})
+
+        for i in range(2):
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.2.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Agent 2 Task {i+1}",
+                description="Test",
+                status=TaskStatus.COMPLETED,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "async-agent-2"})
+
+        # Query for async-agent-1 using async method
+        agent1_tasks = await db.get_tasks_by_agent_async("async-agent-1")
+        assert len(agent1_tasks) == 3
+        for task in agent1_tasks:
+            assert task.assigned_to == "async-agent-1"
+
+        # Query for async-agent-2 using async method
+        agent2_tasks = await db.get_tasks_by_agent_async("async-agent-2")
+        assert len(agent2_tasks) == 2
+        for task in agent2_tasks:
+            assert task.assigned_to == "async-agent-2"
+
+    @pytest.mark.asyncio
+    async def test_get_tasks_by_agent_async_filters_by_project(self, temp_db_path):
+        """Test that get_tasks_by_agent_async can filter by project."""
+        # Use file-based database for async tests (memory DB doesn't share between connections)
+        db = Database(temp_db_path)
+        db.initialize()
+
+        # Create two projects
+        project1_id = db.create_project(
+            name="Async Project 1",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/async_p1",
+        )
+        project2_id = db.create_project(
+            name="Async Project 2",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/async_p2",
+        )
+
+        issue1_id = db.create_issue({
+            "project_id": project1_id,
+            "issue_number": "1.0",
+            "title": "Issue 1",
+            "description": "Test",
+        })
+        issue2_id = db.create_issue({
+            "project_id": project2_id,
+            "issue_number": "1.0",
+            "title": "Issue 2",
+            "description": "Test",
+        })
+
+        # Create tasks for multi-agent in different projects
+        for i in range(3):
+            task_id = db.create_task_with_issue(
+                project_id=project1_id,
+                issue_id=issue1_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"P1 Task {i+1}",
+                description="Test",
+                status=TaskStatus.COMPLETED,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "async-multi-project-agent"})
+
+        for i in range(2):
+            task_id = db.create_task_with_issue(
+                project_id=project2_id,
+                issue_id=issue2_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"P2 Task {i+1}",
+                description="Test",
+                status=TaskStatus.COMPLETED,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "async-multi-project-agent"})
+
+        # Query without project filter - should get all tasks
+        all_tasks = await db.get_tasks_by_agent_async("async-multi-project-agent")
+        assert len(all_tasks) == 5
+
+        # Query with project filter
+        p1_tasks = await db.get_tasks_by_agent_async(
+            "async-multi-project-agent", project_id=project1_id
+        )
+        assert len(p1_tasks) == 3
+
+        p2_tasks = await db.get_tasks_by_agent_async(
+            "async-multi-project-agent", project_id=project2_id
+        )
+        assert len(p2_tasks) == 2
