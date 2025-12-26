@@ -21,6 +21,7 @@ from tenacity import (
 )
 
 from codeframe.core.models import Task, AgentMaturity, ContextItemType, ContextTier, CallType
+from codeframe.enforcement.quality_tracker import QualityTracker, QualityMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,10 @@ class WorkerAgent:
         self._rate_limit = int(os.getenv("AGENT_RATE_LIMIT", "10"))  # Max calls per minute
         self._rate_limit_lock = asyncio.Lock()
 
+        # Quality tracking integration
+        self.response_count: int = 0  # Track AI conversation length
+        self.quality_tracker: Optional[QualityTracker] = None  # Lazy-initialized
+
     def _get_project_id(self) -> int:
         """Get project ID from current task.
 
@@ -102,6 +107,51 @@ class WorkerAgent:
             )
 
         return self.current_task.project_id
+
+    def _ensure_quality_tracker(self) -> Optional[QualityTracker]:
+        """Lazily initialize quality tracker when project context is available.
+
+        The quality tracker is initialized when:
+        1. A database connection is available
+        2. A current task with project_id is set
+        3. The project has a workspace_path in the database
+
+        Returns:
+            QualityTracker instance if initialization succeeds, None otherwise
+
+        Example:
+            >>> agent = WorkerAgent(agent_id="backend-001", ...)
+            >>> agent.current_task = task  # Task with project_id
+            >>> tracker = agent._ensure_quality_tracker()
+            >>> if tracker:
+            ...     tracker.record(metrics)
+        """
+        if self.quality_tracker is not None:
+            return self.quality_tracker
+
+        if not self.db or not self.current_task:
+            return None
+
+        try:
+            project_id = self._get_project_id()
+
+            # Get project workspace path from database
+            cursor = self.db.conn.cursor()
+            cursor.execute("SELECT workspace_path FROM projects WHERE id = ?", (project_id,))
+            row = cursor.fetchone()
+
+            if not row or not row[0]:
+                logger.debug(f"No workspace_path found for project {project_id}")
+                return None
+
+            workspace_path = row[0]
+            self.quality_tracker = QualityTracker(project_path=workspace_path)
+            logger.debug(f"Initialized quality tracker for project {project_id}")
+            return self.quality_tracker
+
+        except Exception as e:
+            logger.warning(f"Failed to initialize quality tracker: {e}")
+            return None
 
     def _estimate_cost(self, model_name: str, input_tokens: int, max_output_tokens: int) -> float:
         """Estimate maximum cost for an LLM call.
@@ -427,6 +477,13 @@ class WorkerAgent:
                 model_name=model_name,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+            )
+
+            # Increment response count for quality tracking
+            self.response_count += 1
+            logger.debug(
+                f"Agent {self.agent_id} response count: {self.response_count}",
+                extra={"event": "response_count_increment", "count": self.response_count}
             )
 
             return {
@@ -882,7 +939,30 @@ class WorkerAgent:
 
         quality_result = await quality_gates.run_all_gates(task)
 
-        # Step 2: Check if gates passed
+        # Step 2: Record quality metrics for tracking
+        await self._record_quality_metrics(quality_result, project_root)
+
+        # Step 3: Check for quality degradation
+        degradation_result = self._check_quality_degradation()
+        if degradation_result and degradation_result.get("has_degradation"):
+            # Quality has degraded significantly - create blocker
+            logger.warning(
+                f"Task {task.id} blocked due to quality degradation: {degradation_result.get('issues')}"
+            )
+
+            # Create blocker for degradation
+            blocker_id = self._create_degradation_blocker(task, degradation_result)
+
+            return {
+                "success": False,
+                "status": "blocked",
+                "quality_gate_result": quality_result,
+                "blocker_id": blocker_id,
+                "message": f"Quality degradation detected. {degradation_result.get('recommendation', 'Consider context reset.')}",
+                "degradation": degradation_result,
+            }
+
+        # Step 4: Check if gates passed
         if quality_result.passed:
             # All gates passed - mark task as completed
             cursor = self.db.conn.cursor()
@@ -994,3 +1074,236 @@ class WorkerAgent:
         )
 
         return blocker_id
+
+    # ========================================================================
+    # Quality Tracking Integration Methods
+    # ========================================================================
+
+    async def _record_quality_metrics(
+        self,
+        quality_result: Any,
+        project_root: Any,
+    ) -> None:
+        """Record quality metrics after quality gates run.
+
+        This method extracts metrics from quality gate results and records them
+        using the QualityTracker for trend analysis and degradation detection.
+
+        Args:
+            quality_result: QualityGateResult from quality gates
+            project_root: Project root path for language detection
+
+        Example:
+            >>> await agent._record_quality_metrics(quality_result, Path("/app"))
+        """
+        from codeframe.enforcement.language_detector import LanguageDetector
+
+        tracker = self._ensure_quality_tracker()
+        if not tracker:
+            logger.debug("Quality tracker not available, skipping metrics recording")
+            return
+
+        try:
+            # Extract metrics from quality gate result
+            test_pass_rate = 100.0
+            coverage_percentage = 0.0
+            total_tests = 0
+            passed_tests = 0
+            failed_tests = 0
+
+            # Parse failures to extract test and coverage metrics
+            for failure in quality_result.failures:
+                gate_name = getattr(failure, "gate", None)
+                if gate_name:
+                    gate_value = gate_name.value if hasattr(gate_name, "value") else str(gate_name)
+
+                    if gate_value == "tests":
+                        # Extract test counts from failure
+                        reason = getattr(failure, "reason", "")
+                        # Parse patterns like "3 tests failed" or "Pytest failed: 5 failed"
+                        import re
+                        failed_match = re.search(r"(\d+)\s*failed", reason)
+                        if failed_match:
+                            failed_tests = int(failed_match.group(1))
+
+                        passed_match = re.search(r"(\d+)\s*passed", reason)
+                        if passed_match:
+                            passed_tests = int(passed_match.group(1))
+
+                        total_tests = passed_tests + failed_tests
+                        if total_tests > 0:
+                            test_pass_rate = (passed_tests / total_tests) * 100
+
+                    elif gate_value == "coverage":
+                        # Extract coverage percentage from failure
+                        reason = getattr(failure, "reason", "")
+                        coverage_match = re.search(r"(\d+(?:\.\d+)?)\s*%", reason)
+                        if coverage_match:
+                            coverage_percentage = float(coverage_match.group(1))
+
+            # If no failures, assume perfect scores
+            if not quality_result.failures:
+                test_pass_rate = 100.0
+                # Try to get coverage from other sources if available
+                coverage_percentage = 100.0  # Assume passed coverage check
+
+            # Detect language for context
+            language = "unknown"
+            framework = None
+            try:
+                detector = LanguageDetector(str(project_root) if project_root else ".")
+                lang_info = detector.detect()
+                language = lang_info.language
+                framework = lang_info.framework
+            except Exception as e:
+                logger.debug(f"Language detection failed: {e}")
+
+            # Create and record metrics
+            metrics = QualityMetrics(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                response_count=self.response_count,
+                test_pass_rate=test_pass_rate,
+                coverage_percentage=coverage_percentage,
+                total_tests=total_tests,
+                passed_tests=passed_tests,
+                failed_tests=failed_tests,
+                language=language,
+                framework=framework,
+            )
+
+            tracker.record(metrics)
+            logger.info(
+                f"Quality metrics recorded: pass_rate={test_pass_rate:.1f}%, "
+                f"coverage={coverage_percentage:.1f}%, response_count={self.response_count}"
+            )
+
+        except Exception as e:
+            # Don't fail task completion if metrics recording fails
+            logger.warning(f"Failed to record quality metrics: {e}")
+
+    def _check_quality_degradation(self, threshold_percent: float = 10.0) -> Optional[Dict[str, Any]]:
+        """Check if quality has degraded significantly.
+
+        Args:
+            threshold_percent: Degradation threshold (default: 10%)
+
+        Returns:
+            Dict with degradation info if degraded, None otherwise
+
+        Example:
+            >>> result = agent._check_quality_degradation()
+            >>> if result and result.get("has_degradation"):
+            ...     print("Quality degraded!")
+        """
+        tracker = self._ensure_quality_tracker()
+        if not tracker:
+            return None
+
+        try:
+            return tracker.check_degradation(threshold_percent=threshold_percent)
+        except Exception as e:
+            logger.warning(f"Failed to check quality degradation: {e}")
+            return None
+
+    def _create_degradation_blocker(self, task: Task, degradation: Dict[str, Any]) -> int:
+        """Create a SYNC blocker for quality degradation.
+
+        Args:
+            task: Task that triggered degradation check
+            degradation: Degradation result from QualityTracker
+
+        Returns:
+            int: ID of the created blocker
+
+        Example:
+            >>> blocker_id = agent._create_degradation_blocker(task, degradation)
+        """
+        from codeframe.core.models import BlockerType
+
+        # Format degradation info into blocker question
+        question_parts = [
+            f"Quality degradation detected for task #{task.task_number} ({task.title}):",
+            "",
+            "Issues found:",
+        ]
+
+        issues = degradation.get("issues", [])
+        for i, issue in enumerate(issues[:5], 1):
+            question_parts.append(f"  {i}. {issue}")
+
+        question_parts.extend([
+            "",
+            f"Recommendation: {degradation.get('recommendation', 'Consider context reset.')}",
+            "",
+            "Options:",
+            "  1. Reset context and continue with fresh conversation",
+            "  2. Investigate and fix quality issues",
+            "  3. Type 'continue' to proceed anyway (not recommended)",
+        ])
+
+        question = "\n".join(question_parts)
+
+        # Get project_id from task
+        project_id = task.project_id if task.project_id else self._get_project_id()
+
+        # Create SYNC blocker
+        blocker_id = self.db.create_blocker(
+            agent_id=self.agent_id,
+            project_id=project_id,
+            task_id=task.id,
+            blocker_type=BlockerType.SYNC,
+            question=question,
+        )
+
+        logger.info(f"Created degradation blocker {blocker_id} for task {task.id}")
+        return blocker_id
+
+    async def should_recommend_context_reset(self, max_responses: int = 20) -> Dict[str, Any]:
+        """Check if context reset should be recommended.
+
+        This method checks both response count and quality degradation to determine
+        if the conversation context should be reset. Use this before starting new
+        tasks or periodically during long-running sessions.
+
+        Args:
+            max_responses: Maximum responses before reset is recommended (default: 20)
+
+        Returns:
+            Dict with:
+                - should_reset: bool
+                - reasons: List[str]
+                - recommendation: str
+
+        Example:
+            >>> result = await agent.should_recommend_context_reset()
+            >>> if result["should_reset"]:
+            ...     print(f"Reset recommended: {result['reasons']}")
+        """
+        tracker = self._ensure_quality_tracker()
+        if not tracker:
+            # Fallback to just response count check
+            if self.response_count >= max_responses:
+                return {
+                    "should_reset": True,
+                    "reasons": [f"Response count ({self.response_count}) exceeds maximum ({max_responses})"],
+                    "recommendation": "Context reset recommended due to conversation length",
+                }
+            return {
+                "should_reset": False,
+                "reasons": [],
+                "recommendation": "Context can continue",
+            }
+
+        try:
+            return tracker.should_reset_context(
+                response_count=self.response_count,
+                max_responses=max_responses,
+                check_degradation=True,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to check context reset recommendation: {e}")
+            return {
+                "should_reset": False,
+                "reasons": [],
+                "recommendation": f"Check failed: {e}",
+            }

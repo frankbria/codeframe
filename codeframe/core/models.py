@@ -934,6 +934,9 @@ class CheckpointMetadata(BaseModel):
     last_task_completed: Optional[str] = None
     context_items_count: int
     total_cost_usd: float
+    # Quality tracking fields (optional for backward compatibility)
+    quality_stats: Optional[Dict[str, Any]] = None  # Current quality metrics from QualityTracker
+    quality_trend: Optional[str] = None  # "improving", "stable", or "declining"
 
 
 class Checkpoint(BaseModel):
