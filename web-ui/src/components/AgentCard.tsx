@@ -1,5 +1,15 @@
 import React from 'react';
 
+export interface AgentMetrics {
+  task_count?: number;
+  completed_count?: number;
+  completion_rate?: number;
+  avg_test_pass_rate?: number;
+  self_correction_rate?: number;
+  maturity_score?: number;
+  last_assessed?: string;
+}
+
 export interface Agent {
   id: string;
   type: string;
@@ -7,6 +17,8 @@ export interface Agent {
   currentTask?: number;
   tasksCompleted: number;
   blockedBy?: number[];
+  maturityLevel?: 'directive' | 'coaching' | 'supporting' | 'delegating';
+  metrics?: AgentMetrics;
 }
 
 interface AgentCardProps {
@@ -40,6 +52,18 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
   };
 
   const agentTypeBadge = agentTypeBadges[agent.type] || { bg: 'bg-muted', text: 'text-foreground', icon: '🤖' };
+
+  // Maturity level badges (Nova palette)
+  const maturityBadges: Record<string, { bg: string; text: string; icon: string; label: string }> = {
+    'directive': { bg: 'bg-muted', text: 'text-muted-foreground', icon: '🌱', label: 'Novice' },
+    'coaching': { bg: 'bg-primary/20', text: 'text-primary-foreground', icon: '📚', label: 'Intermediate' },
+    'supporting': { bg: 'bg-accent', text: 'text-accent-foreground', icon: '⚡', label: 'Advanced' },
+    'delegating': { bg: 'bg-primary', text: 'text-primary-foreground', icon: '🏆', label: 'Expert' },
+  };
+
+  const maturityBadge = agent.maturityLevel
+    ? maturityBadges[agent.maturityLevel]
+    : null;
 
   // Format agent type for display
   const formatAgentType = (type: string): string => {
@@ -87,11 +111,22 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
       </div>
 
       {/* Agent Type Badge */}
-      <div className="mb-3">
+      <div className="mb-3 flex flex-wrap gap-2">
         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${agentTypeBadge.bg} ${agentTypeBadge.text}`}>
           <span>{agentTypeBadge.icon}</span>
           <span>{formatAgentType(agent.type)}</span>
         </span>
+
+        {/* Maturity Level Badge */}
+        {maturityBadge && (
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${maturityBadge.bg} ${maturityBadge.text}`}
+            title={agent.metrics ? `Score: ${((agent.metrics.maturity_score || 0) * 100).toFixed(0)}%` : undefined}
+          >
+            <span>{maturityBadge.icon}</span>
+            <span>{maturityBadge.label}</span>
+          </span>
+        )}
       </div>
 
       {/* Current Task (if busy) */}
@@ -113,6 +148,39 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
               `Task #${agent.blockedBy[0]}`
             ) : (
               `${agent.blockedBy.length} tasks`
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Maturity Metrics (if available) */}
+      {agent.metrics && (agent.metrics.completion_rate !== undefined || agent.metrics.avg_test_pass_rate !== undefined) && (
+        <div className="mb-3 p-2 bg-card bg-opacity-50 rounded">
+          <div className="text-xs text-muted-foreground mb-2">Performance Metrics:</div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {agent.metrics.completion_rate !== undefined && (
+              <div>
+                <span className="text-muted-foreground">Completion:</span>{' '}
+                <span className="font-medium">{(agent.metrics.completion_rate * 100).toFixed(0)}%</span>
+              </div>
+            )}
+            {agent.metrics.avg_test_pass_rate !== undefined && (
+              <div>
+                <span className="text-muted-foreground">Test Pass:</span>{' '}
+                <span className="font-medium">{(agent.metrics.avg_test_pass_rate * 100).toFixed(0)}%</span>
+              </div>
+            )}
+            {agent.metrics.self_correction_rate !== undefined && (
+              <div>
+                <span className="text-muted-foreground">First Try:</span>{' '}
+                <span className="font-medium">{(agent.metrics.self_correction_rate * 100).toFixed(0)}%</span>
+              </div>
+            )}
+            {agent.metrics.maturity_score !== undefined && (
+              <div>
+                <span className="text-muted-foreground">Score:</span>{' '}
+                <span className="font-medium">{(agent.metrics.maturity_score * 100).toFixed(0)}%</span>
+              </div>
             )}
           </div>
         </div>
@@ -145,7 +213,9 @@ export const AgentCard = React.memo(
       prevProps.agent.status === nextProps.agent.status &&
       prevProps.agent.currentTask === nextProps.agent.currentTask &&
       prevProps.agent.tasksCompleted === nextProps.agent.tasksCompleted &&
-      JSON.stringify(prevProps.agent.blockedBy) === JSON.stringify(nextProps.agent.blockedBy)
+      prevProps.agent.maturityLevel === nextProps.agent.maturityLevel &&
+      JSON.stringify(prevProps.agent.blockedBy) === JSON.stringify(nextProps.agent.blockedBy) &&
+      JSON.stringify(prevProps.agent.metrics) === JSON.stringify(nextProps.agent.metrics)
     );
   }
 );

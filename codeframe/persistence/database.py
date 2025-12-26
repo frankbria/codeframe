@@ -405,6 +405,10 @@ class Database:
         """Delegate to tasks.get_recently_completed_tasks()."""
         return self.tasks.get_recently_completed_tasks(*args, **kwargs)
 
+    def get_tasks_by_agent(self, *args, **kwargs):
+        """Delegate to tasks.get_tasks_by_agent()."""
+        return self.tasks.get_tasks_by_agent(*args, **kwargs)
+
     def create_agent(self, *args, **kwargs):
         """Delegate to agents.create_agent()."""
         return self.agents.create_agent(*args, **kwargs)

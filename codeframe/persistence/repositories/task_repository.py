@@ -540,5 +540,46 @@ class TaskRepository(BaseRepository):
         )
         return [dict(row) for row in cursor.fetchall()]
 
+    def get_tasks_by_agent(
+        self, agent_id: str, project_id: Optional[int] = None, limit: int = 100
+    ) -> List[Task]:
+        """Get all tasks assigned to an agent.
+
+        Used for calculating agent maturity metrics based on task history.
+
+        Args:
+            agent_id: Agent ID to filter by (matches assigned_to field)
+            project_id: Optional project ID to filter by
+            limit: Maximum number of tasks to return (default: 100)
+
+        Returns:
+            List of Task objects ordered by created_at DESC (most recent first)
+        """
+        cursor = self.conn.cursor()
+
+        if project_id is not None:
+            cursor.execute(
+                """
+                SELECT * FROM tasks
+                WHERE assigned_to = ? AND project_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (agent_id, project_id, limit),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT * FROM tasks
+                WHERE assigned_to = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (agent_id, limit),
+            )
+
+        rows = cursor.fetchall()
+        return [self._row_to_task(row) for row in rows]
+
     # Code Review CRUD operations (Sprint 10: 015-review-polish)
 

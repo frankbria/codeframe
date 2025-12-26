@@ -920,3 +920,512 @@ class TestWorkerAgentModelNameResolution:
         model_name = cursor.fetchone()[0]
 
         assert model_name == "claude-opus-4"
+
+
+class TestWorkerAgentMaturityAssessment:
+    """Test maturity assessment functionality."""
+
+    def test_assess_maturity_no_tasks(self, db):
+        """Test D1 (directive/novice) assigned when no task history exists."""
+        # Create agent in database
+        db.create_agent(
+            agent_id="test-agent-001",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-001",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        # Assess maturity with no tasks
+        result = agent.assess_maturity()
+
+        assert result["maturity_level"] == AgentMaturity.D1
+        assert result["maturity_score"] == 0.0
+        assert result["metrics"]["task_count"] == 0
+        assert result["metrics"]["maturity_level"] == "directive"
+
+    def test_assess_maturity_novice_low_scores(self, db):
+        """Test D1 (directive/novice) with low completion rate and no tests."""
+        # Setup: Create agent and project
+        db.create_agent(
+            agent_id="test-agent-002",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+        project_id = db.create_project(
+            name="test-project",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/test",
+        )
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test issue",
+            "description": "Test",
+        })
+
+        # Create 5 tasks: only 1 completed (20% completion rate)
+        for i in range(5):
+            status = TaskStatus.COMPLETED if i == 0 else TaskStatus.PENDING
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Task {i+1}",
+                description="Test task",
+                status=status,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            # Assign task to agent
+            db.update_task(task_id, {"assigned_to": "test-agent-002"})
+
+        agent = WorkerAgent(
+            agent_id="test-agent-002",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        result = agent.assess_maturity()
+
+        # 20% completion * 0.4 = 0.08, no tests/correction data = 0
+        # Total score should be < 0.5 -> D1 (novice)
+        assert result["maturity_level"] == AgentMaturity.D1
+        assert result["maturity_score"] < 0.5
+        assert result["metrics"]["completion_rate"] == 0.2
+
+    def test_assess_maturity_intermediate(self, db):
+        """Test D2 (coaching/intermediate) with moderate scores (0.5-0.7)."""
+        # Setup
+        db.create_agent(
+            agent_id="test-agent-003",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+        project_id = db.create_project(
+            name="test-project",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/test",
+        )
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test issue",
+            "description": "Test",
+        })
+
+        # Create 10 tasks: 6 completed (60% completion)
+        for i in range(10):
+            status = TaskStatus.COMPLETED if i < 6 else TaskStatus.PENDING
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Task {i+1}",
+                description="Test task",
+                status=status,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "test-agent-003"})
+
+            # Add test results for completed tasks (~50% pass rate)
+            if status == TaskStatus.COMPLETED:
+                passed = 5 if i % 2 == 0 else 3
+                failed = 5 if i % 2 == 0 else 7
+                db.create_test_result(
+                    task_id=task_id,
+                    status="passed" if passed > failed else "failed",
+                    passed=passed,
+                    failed=failed,
+                )
+
+                # Add correction attempts to 3 of the completed tasks (50% first-attempt success)
+                if i >= 3 and i < 6:
+                    db.create_correction_attempt(
+                        task_id=task_id,
+                        attempt_number=1,
+                        error_analysis="Test error",
+                        fix_description="Test fix",
+                    )
+                    db.create_correction_attempt(
+                        task_id=task_id,
+                        attempt_number=2,
+                        error_analysis="Another error",
+                        fix_description="Another fix",
+                    )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-003",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        result = agent.assess_maturity()
+
+        # Score calculation:
+        # - Completion: 60% * 0.4 = 0.24
+        # - Test pass: ~41% * 0.3 = 0.12
+        # - Self-correction: 50% * 0.3 = 0.15
+        # Total: ~0.51, which is D2 (0.5-0.7)
+        assert result["maturity_level"] == AgentMaturity.D2
+        assert 0.5 <= result["maturity_score"] < 0.7
+        assert result["metrics"]["maturity_level"] == "coaching"
+
+    def test_assess_maturity_advanced(self, db):
+        """Test D3 (supporting/advanced) with high scores (0.7-0.9)."""
+        # Setup
+        db.create_agent(
+            agent_id="test-agent-004",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+        project_id = db.create_project(
+            name="test-project",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/test",
+        )
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test issue",
+            "description": "Test",
+        })
+
+        # Create 10 tasks: 9 completed (90% completion)
+        for i in range(10):
+            status = TaskStatus.COMPLETED if i < 9 else TaskStatus.PENDING
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Task {i+1}",
+                description="Test task",
+                status=status,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "test-agent-004"})
+
+            # Add test results for completed tasks (80% pass rate)
+            if status == TaskStatus.COMPLETED:
+                db.create_test_result(
+                    task_id=task_id,
+                    status="passed",
+                    passed=8,
+                    failed=2,
+                )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-004",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        result = agent.assess_maturity()
+
+        # 90% completion * 0.4 + 80% test pass * 0.3 + 100% first attempt * 0.3
+        # = 0.36 + 0.24 + 0.30 = 0.90 -> D3 or D4
+        # Score should be around 0.7-0.9 for advanced
+        assert result["maturity_level"] in [AgentMaturity.D3, AgentMaturity.D4]
+        assert result["maturity_score"] >= 0.7
+
+    def test_assess_maturity_expert(self, db):
+        """Test D4 (delegating/expert) with excellent scores (>= 0.9)."""
+        # Setup
+        db.create_agent(
+            agent_id="test-agent-005",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+        project_id = db.create_project(
+            name="test-project",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/test",
+        )
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test issue",
+            "description": "Test",
+        })
+
+        # Create 10 tasks: all completed (100% completion)
+        for i in range(10):
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Task {i+1}",
+                description="Test task",
+                status=TaskStatus.COMPLETED,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "test-agent-005"})
+
+            # Add test results for all tasks (100% pass rate)
+            db.create_test_result(
+                task_id=task_id,
+                status="passed",
+                passed=10,
+                failed=0,
+            )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-005",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        result = agent.assess_maturity()
+
+        # 100% completion * 0.4 + 100% test pass * 0.3 + 100% first attempt * 0.3
+        # = 0.4 + 0.3 + 0.3 = 1.0 -> D4 (expert)
+        assert result["maturity_level"] == AgentMaturity.D4
+        assert result["maturity_score"] >= 0.9
+        assert result["metrics"]["maturity_level"] == "delegating"
+
+    def test_assess_maturity_updates_database(self, db):
+        """Test that assess_maturity updates agent record in database."""
+        # Setup
+        db.create_agent(
+            agent_id="test-agent-006",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-006",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        # Assess maturity
+        result = agent.assess_maturity()
+
+        # Verify database was updated
+        agent_data = db.get_agent("test-agent-006")
+        assert agent_data is not None
+        assert agent_data["maturity_level"] == result["maturity_level"].value
+
+        # Verify metrics JSON was stored
+        import json
+        metrics = json.loads(agent_data["metrics"])
+        assert "last_assessed" in metrics
+        assert "maturity_score" in metrics
+
+    def test_assess_maturity_logs_audit(self, db):
+        """Test that assess_maturity creates an audit log entry."""
+        # Setup
+        db.create_agent(
+            agent_id="test-agent-007",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-007",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        # Assess maturity
+        agent.assess_maturity()
+
+        # Verify audit log was created
+        cursor = db.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM audit_logs WHERE event_type = ? ORDER BY timestamp DESC LIMIT 1",
+            ("agent.maturity.assessed",),
+        )
+        row = cursor.fetchone()
+
+        assert row is not None
+        import json
+        metadata = json.loads(row["metadata"])
+        assert "new_maturity" in metadata
+        assert "maturity_score" in metadata
+
+    def test_assess_maturity_handles_missing_test_results(self, db):
+        """Test graceful handling of tasks without test results."""
+        # Setup
+        db.create_agent(
+            agent_id="test-agent-008",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+        project_id = db.create_project(
+            name="test-project",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/test",
+        )
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test issue",
+            "description": "Test",
+        })
+
+        # Create completed tasks without test results
+        for i in range(5):
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Task {i+1}",
+                description="Test task",
+                status=TaskStatus.COMPLETED,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "test-agent-008"})
+            # No test results added
+
+        agent = WorkerAgent(
+            agent_id="test-agent-008",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        # Should not raise exception
+        result = agent.assess_maturity()
+
+        # avg_test_pass_rate should be 0.0 when no test results
+        assert result["metrics"]["avg_test_pass_rate"] == 0.0
+        assert result["metrics"]["tasks_with_tests"] == 0
+        # Completion rate should still be 100%
+        assert result["metrics"]["completion_rate"] == 1.0
+
+    def test_assess_maturity_with_correction_attempts(self, db):
+        """Test self-correction rate calculation with correction attempts."""
+        # Setup
+        db.create_agent(
+            agent_id="test-agent-009",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+        project_id = db.create_project(
+            name="test-project",
+            description="Test",
+            source_type="empty",
+            workspace_path="/tmp/test",
+        )
+        issue_id = db.create_issue({
+            "project_id": project_id,
+            "issue_number": "1.0",
+            "title": "Test issue",
+            "description": "Test",
+        })
+
+        # Create 4 completed tasks
+        for i in range(4):
+            task_id = db.create_task_with_issue(
+                project_id=project_id,
+                issue_id=issue_id,
+                task_number=f"1.0.{i+1}",
+                parent_issue_number="1.0",
+                title=f"Task {i+1}",
+                description="Test task",
+                status=TaskStatus.COMPLETED,
+                priority=1,
+                workflow_step=1,
+                can_parallelize=False,
+            )
+            db.update_task(task_id, {"assigned_to": "test-agent-009"})
+
+            # Tasks 0 and 1 succeeded on first attempt (no correction attempts)
+            # Tasks 2 and 3 required correction attempts
+            if i >= 2:
+                db.create_correction_attempt(
+                    task_id=task_id,
+                    attempt_number=1,
+                    error_analysis="Test error",
+                    fix_description="Test fix",
+                )
+                db.create_correction_attempt(
+                    task_id=task_id,
+                    attempt_number=2,
+                    error_analysis="Another error",
+                    fix_description="Another fix",
+                )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-009",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        result = agent.assess_maturity()
+
+        # 2 out of 4 tasks succeeded on first attempt = 50% self-correction rate
+        assert result["metrics"]["first_attempt_success_count"] == 2
+        assert result["metrics"]["self_correction_rate"] == 0.5
+
+    def test_should_assess_maturity_never_assessed(self, db):
+        """Test should_assess_maturity returns True when never assessed."""
+        db.create_agent(
+            agent_id="test-agent-010",
+            agent_type="backend",
+            provider="anthropic",
+            maturity_level=AgentMaturity.D1,
+        )
+
+        agent = WorkerAgent(
+            agent_id="test-agent-010",
+            agent_type="backend",
+            provider="anthropic",
+            db=db,
+        )
+
+        # Agent has no metrics - should need assessment
+        assert agent.should_assess_maturity() is True
+
+    def test_assess_maturity_without_db_raises_error(self):
+        """Test that assess_maturity raises ValueError without database."""
+        agent = WorkerAgent(
+            agent_id="test-agent-011",
+            agent_type="backend",
+            provider="anthropic",
+            # No db parameter
+        )
+
+        with pytest.raises(ValueError, match="Database not initialized"):
+            agent.assess_maturity()
