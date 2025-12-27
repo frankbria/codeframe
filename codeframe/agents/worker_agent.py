@@ -20,7 +20,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from codeframe.core.models import Task, AgentMaturity, ContextItemType, ContextTier, CallType
+from codeframe.core.models import (
+    Task, TaskStatus, AgentMaturity, ContextItemType, ContextTier, CallType
+)
 from codeframe.enforcement.quality_tracker import QualityTracker, QualityMetrics
 
 logger = logging.getLogger(__name__)
@@ -690,8 +692,6 @@ class WorkerAgent:
             >>> print(f"Maturity: {result['maturity_level'].value}")
             Maturity: coaching
         """
-        from codeframe.core.models import TaskStatus
-
         if not self.db:
             raise ValueError("Database not initialized. Pass db parameter to __init__")
 
@@ -751,16 +751,15 @@ class WorkerAgent:
         )
 
         # Step 4: Calculate self-correction rate
-        # Tasks that succeeded on first attempt (no correction attempts OR only attempt_number=1)
+        # Tasks that succeeded on first attempt (no correction attempts needed)
         first_attempt_success_count = 0
         for task in completed_tasks:
             correction_attempts = self.db.get_correction_attempts_by_task(task.id)
             if not correction_attempts:
                 # No correction attempts means first attempt succeeded
                 first_attempt_success_count += 1
-            elif len(correction_attempts) == 1 and correction_attempts[0].get("attempt_number", 1) == 1:
-                # Only one attempt and it was the first one
-                first_attempt_success_count += 1
+            # Tasks with any correction_attempts records required fixes,
+            # so they don't count as first-attempt successes
 
         self_correction_rate = (
             first_attempt_success_count / len(completed_tasks)
@@ -967,7 +966,6 @@ class WorkerAgent:
         current_tasks = self.db.get_tasks_by_agent(self.agent_id)
 
         # Count completed tasks
-        from codeframe.core.models import TaskStatus
         current_completed = len([t for t in current_tasks if t.status == TaskStatus.COMPLETED])
         last_completed = metrics.get("completed_count", 0)
 
@@ -1219,7 +1217,6 @@ class WorkerAgent:
         import logging
         from pathlib import Path
         from codeframe.lib.quality_gates import QualityGates
-        from codeframe.core.models import TaskStatus
 
         logger = logging.getLogger(__name__)
 

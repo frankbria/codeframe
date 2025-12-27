@@ -503,7 +503,7 @@ class SchemaManager:
         )
         # Index for agent maturity queries (get_tasks_by_agent)
         cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to, project_id, created_at DESC)"
+            "CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to, project_id, created_at)"
         )
 
         # Project-Agent indexes
