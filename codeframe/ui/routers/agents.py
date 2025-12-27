@@ -180,6 +180,8 @@ async def get_project_agents(
     Raises:
         HTTPException: 404 if project not found, 500 on database error
     """
+    import json
+
     try:
         # Verify project exists
         project = db.get_project(project_id)
@@ -192,6 +194,21 @@ async def get_project_agents(
 
         # Get agents for project using database method
         agents = db.get_agents_for_project(project_id, active_only=active_only)
+
+        # Parse metrics JSON for each agent
+        for agent in agents:
+            metrics_json = agent.get("metrics")
+            if metrics_json:
+                try:
+                    agent["metrics"] = (
+                        json.loads(metrics_json)
+                        if isinstance(metrics_json, str)
+                        else metrics_json
+                    )
+                except (json.JSONDecodeError, TypeError):
+                    agent["metrics"] = None
+            else:
+                agent["metrics"] = None
 
         return agents
     except HTTPException:

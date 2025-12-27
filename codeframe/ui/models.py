@@ -162,6 +162,20 @@ class AgentRoleUpdateRequest(BaseModel):
     )
 
 
+class AgentMetricsResponse(BaseModel):
+    """Response model for agent maturity metrics."""
+
+    task_count: Optional[int] = Field(None, description="Total tasks assigned to agent")
+    completed_count: Optional[int] = Field(None, description="Number of completed tasks")
+    completion_rate: Optional[float] = Field(None, description="Task completion rate (0.0-1.0)")
+    avg_test_pass_rate: Optional[float] = Field(None, description="Average test pass rate (0.0-1.0)")
+    self_correction_rate: Optional[float] = Field(
+        None, description="Rate of first-attempt success (0.0-1.0)"
+    )
+    maturity_score: Optional[float] = Field(None, description="Weighted maturity score (0.0-1.0)")
+    last_assessed: Optional[str] = Field(None, description="ISO timestamp of last assessment")
+
+
 class AgentAssignmentResponse(BaseModel):
     """Response model for agent assignment data."""
 
@@ -174,6 +188,9 @@ class AgentAssignmentResponse(BaseModel):
     )
     current_task_id: Optional[int] = Field(None, description="Current task ID if agent is working")
     last_heartbeat: Optional[str] = Field(None, description="Last activity timestamp")
+    metrics: Optional[AgentMetricsResponse] = Field(
+        None, description="Agent maturity metrics (if assessed)"
+    )
     assignment_id: int = Field(..., description="Assignment ID from project_agents junction table")
     role: str = Field(..., description="Role in this project")
     assigned_at: str = Field(..., description="Assignment timestamp")

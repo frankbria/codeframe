@@ -20,7 +20,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from codeframe.core.models import Task, AgentMaturity, ContextItemType, ContextTier, CallType
+from codeframe.core.models import (
+    Task, TaskStatus, AgentMaturity, ContextItemType, ContextTier, CallType
+)
 from codeframe.enforcement.quality_tracker import QualityTracker, QualityMetrics
 
 logger = logging.getLogger(__name__)
@@ -658,10 +660,319 @@ class WorkerAgent:
             logger.warning(f"Failed to record token usage for task {task_id}: {e}")
             return True
 
-    def assess_maturity(self) -> None:
-        """Assess and update agent maturity level."""
-        # TODO: Implement maturity assessment
-        pass
+    def assess_maturity(self) -> Dict[str, Any]:
+        """Assess and update agent maturity level based on task performance history.
+
+        This method analyzes the agent's completed task history to calculate a
+        maturity score based on three weighted metrics:
+        - Completion Rate (40%): Ratio of completed tasks to total tasks
+        - Test Pass Rate (30%): Average test pass rate across completed tasks
+        - Self-Correction Rate (30%): Ratio of tasks that succeeded on first attempt
+
+        The weighted score is then mapped to maturity levels:
+        - directive (D1, Novice): score < 0.5
+        - coaching (D2, Intermediate): 0.5 <= score < 0.7
+        - supporting (D3, Advanced): 0.7 <= score < 0.9
+        - delegating (D4, Expert): score >= 0.9
+
+        Returns:
+            dict with keys:
+                - maturity_level: AgentMaturity enum value
+                - maturity_score: float (0.0-1.0)
+                - metrics: dict with detailed performance metrics
+                - changed: bool - whether maturity level changed
+
+        Raises:
+            ValueError: If db is not initialized
+
+        Example:
+            >>> agent = WorkerAgent(agent_id="backend-001", agent_type="backend",
+            ...                     provider="anthropic", db=db)
+            >>> result = agent.assess_maturity()
+            >>> print(f"Maturity: {result['maturity_level'].value}")
+            Maturity: coaching
+        """
+        if not self.db:
+            raise ValueError("Database not initialized. Pass db parameter to __init__")
+
+        # Get old maturity level for comparison
+        old_maturity = self._get_current_maturity()
+
+        # Step 1: Query task history for this agent
+        tasks = self.db.get_tasks_by_agent(self.agent_id)
+
+        # If no tasks, set to novice (D1)
+        if not tasks:
+            new_maturity = AgentMaturity.D1
+            metrics = {
+                "task_count": 0,
+                "completion_rate": 0.0,
+                "avg_test_pass_rate": 0.0,
+                "self_correction_rate": 0.0,
+                "maturity_score": 0.0,
+                "last_assessed": datetime.now(timezone.utc).isoformat(),
+                "maturity_level": new_maturity.value,
+            }
+
+            # Update agent in database
+            self._update_agent_maturity(new_maturity, metrics)
+
+            # Log audit event
+            self._log_maturity_assessment(old_maturity, new_maturity, metrics)
+
+            return {
+                "maturity_level": new_maturity,
+                "maturity_score": 0.0,
+                "metrics": metrics,
+                "changed": old_maturity != new_maturity if old_maturity else True,
+            }
+
+        # Step 2: Calculate completion rate
+        total_tasks = len(tasks)
+        completed_tasks = [t for t in tasks if t.status == TaskStatus.COMPLETED]
+        completion_rate = len(completed_tasks) / total_tasks if total_tasks > 0 else 0.0
+
+        # Step 3: Calculate average test pass rate
+        test_pass_rates = []
+        for task in completed_tasks:
+            test_results = self.db.get_test_results_by_task(task.id)
+            if test_results:
+                # Get the most recent test result
+                latest_result = test_results[0]  # Already ordered by created_at DESC
+                passed = latest_result.get("passed", 0)
+                failed = latest_result.get("failed", 0)
+                total_tests = passed + failed
+                if total_tests > 0:
+                    task_pass_rate = passed / total_tests
+                    test_pass_rates.append(task_pass_rate)
+
+        avg_test_pass_rate = (
+            sum(test_pass_rates) / len(test_pass_rates) if test_pass_rates else 0.0
+        )
+
+        # Step 4: Calculate self-correction rate
+        # Tasks that succeeded on first attempt (no correction attempts needed)
+        first_attempt_success_count = 0
+        for task in completed_tasks:
+            correction_attempts = self.db.get_correction_attempts_by_task(task.id)
+            if not correction_attempts:
+                # No correction attempts means first attempt succeeded
+                first_attempt_success_count += 1
+            # Tasks with any correction_attempts records required fixes,
+            # so they don't count as first-attempt successes
+
+        self_correction_rate = (
+            first_attempt_success_count / len(completed_tasks)
+            if completed_tasks
+            else 0.0
+        )
+
+        # Step 5: Compute weighted maturity score
+        # Formula: score = (completion_rate * 0.4) + (avg_test_pass_rate * 0.3) + (self_correction_rate * 0.3)
+        maturity_score = (
+            (completion_rate * 0.4)
+            + (avg_test_pass_rate * 0.3)
+            + (self_correction_rate * 0.3)
+        )
+
+        # Step 6: Map score to maturity level
+        if maturity_score >= 0.9:
+            new_maturity = AgentMaturity.D4  # Expert / delegating
+        elif maturity_score >= 0.7:
+            new_maturity = AgentMaturity.D3  # Advanced / supporting
+        elif maturity_score >= 0.5:
+            new_maturity = AgentMaturity.D2  # Intermediate / coaching
+        else:
+            new_maturity = AgentMaturity.D1  # Novice / directive
+
+        # Step 7: Build metrics dictionary
+        metrics = {
+            "task_count": total_tasks,
+            "completed_count": len(completed_tasks),
+            "completion_rate": round(completion_rate, 4),
+            "tasks_with_tests": len(test_pass_rates),
+            "avg_test_pass_rate": round(avg_test_pass_rate, 4),
+            "first_attempt_success_count": first_attempt_success_count,
+            "self_correction_rate": round(self_correction_rate, 4),
+            "maturity_score": round(maturity_score, 4),
+            "last_assessed": datetime.now(timezone.utc).isoformat(),
+            "maturity_level": new_maturity.value,
+        }
+
+        # Step 8: Update agent in database
+        self._update_agent_maturity(new_maturity, metrics)
+
+        # Step 9: Log audit event
+        self._log_maturity_assessment(old_maturity, new_maturity, metrics)
+
+        # Update instance maturity level
+        self.maturity = new_maturity
+
+        maturity_changed = old_maturity != new_maturity if old_maturity else True
+
+        logger.info(
+            f"Agent {self.agent_id} maturity assessed: {new_maturity.value} "
+            f"(score: {maturity_score:.2f}, changed: {maturity_changed})"
+        )
+
+        return {
+            "maturity_level": new_maturity,
+            "maturity_score": maturity_score,
+            "metrics": metrics,
+            "changed": maturity_changed,
+        }
+
+    def _get_current_maturity(self) -> Optional[AgentMaturity]:
+        """Get the current maturity level from the database.
+
+        Returns:
+            AgentMaturity enum value or None if not set
+        """
+        if not self.db:
+            return None
+
+        agent_data = self.db.get_agent(self.agent_id)
+        if not agent_data:
+            return None
+
+        maturity_str = agent_data.get("maturity_level")
+        if not maturity_str:
+            return None
+
+        try:
+            return AgentMaturity(maturity_str)
+        except ValueError:
+            logger.warning(f"Invalid maturity level in database: {maturity_str}")
+            return None
+
+    def _update_agent_maturity(
+        self, maturity: AgentMaturity, metrics: Dict[str, Any]
+    ) -> None:
+        """Update the agent's maturity level and metrics in the database.
+
+        Args:
+            maturity: New maturity level
+            metrics: Performance metrics dictionary
+        """
+        import json
+
+        if not self.db:
+            return
+
+        try:
+            self.db.update_agent(
+                self.agent_id,
+                {
+                    "maturity_level": maturity,
+                    "metrics": json.dumps(metrics),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to update agent maturity in database: {e}")
+
+    def _log_maturity_assessment(
+        self,
+        old_maturity: Optional[AgentMaturity],
+        new_maturity: AgentMaturity,
+        metrics: Dict[str, Any],
+    ) -> None:
+        """Log the maturity assessment to the audit log.
+
+        Args:
+            old_maturity: Previous maturity level (None if first assessment)
+            new_maturity: New maturity level
+            metrics: Performance metrics dictionary
+        """
+        if not self.db:
+            return
+
+        try:
+            metadata = {
+                "agent_id": self.agent_id,
+                "old_maturity": old_maturity.value if old_maturity else None,
+                "new_maturity": new_maturity.value,
+                "maturity_score": metrics.get("maturity_score"),
+                "metrics": metrics,
+                "changed": old_maturity != new_maturity if old_maturity else True,
+            }
+
+            self.db.create_audit_log(
+                event_type="agent.maturity.assessed",
+                user_id=None,  # System-initiated assessment
+                resource_type="agent",
+                resource_id=None,  # Agents use string IDs, not integers
+                ip_address=None,  # Server-side operation
+                metadata=metadata,  # Pass as dict, repository serializes
+                timestamp=datetime.now(timezone.utc),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log maturity assessment: {e}")
+
+    def should_assess_maturity(self, min_tasks_since_last: int = 5) -> bool:
+        """Determine if maturity assessment should be triggered.
+
+        Assessment is recommended when:
+        1. Agent has completed at least `min_tasks_since_last` new tasks since last assessment
+        2. 24 hours have passed since last assessment
+        3. Agent has never been assessed
+
+        Args:
+            min_tasks_since_last: Minimum completed tasks to trigger assessment (default: 5)
+
+        Returns:
+            bool: True if assessment should run
+
+        Example:
+            >>> if agent.should_assess_maturity():
+            ...     agent.assess_maturity()
+        """
+        import json
+
+        if not self.db:
+            return False
+
+        # Get agent data to check last assessment
+        agent_data = self.db.get_agent(self.agent_id)
+        if not agent_data:
+            return True  # Agent not in DB, needs assessment
+
+        # Parse metrics JSON
+        metrics_json = agent_data.get("metrics")
+        if not metrics_json:
+            return True  # Never assessed
+
+        try:
+            metrics = json.loads(metrics_json) if isinstance(metrics_json, str) else metrics_json
+        except (json.JSONDecodeError, TypeError):
+            return True  # Invalid metrics, needs reassessment
+
+        # Check last assessment time
+        last_assessed_str = metrics.get("last_assessed")
+        if not last_assessed_str:
+            return True  # No timestamp, needs assessment
+
+        try:
+            last_assessed = datetime.fromisoformat(last_assessed_str.replace("Z", "+00:00"))
+            hours_since_assessment = (
+                datetime.now(timezone.utc) - last_assessed
+            ).total_seconds() / 3600
+
+            if hours_since_assessment >= 24:
+                return True  # 24 hours passed
+        except (ValueError, TypeError):
+            return True  # Invalid timestamp
+
+        # Check completed task count since last assessment
+        current_tasks = self.db.get_tasks_by_agent(self.agent_id)
+
+        # Count completed tasks
+        current_completed = len([t for t in current_tasks if t.status == TaskStatus.COMPLETED])
+        last_completed = metrics.get("completed_count", 0)
+
+        if current_completed - last_completed >= min_tasks_since_last:
+            return True  # Enough new completed tasks
+
+        return False
 
     async def flash_save(self) -> Dict[str, Any]:
         """Save current state before context compactification (T056).
@@ -906,7 +1217,6 @@ class WorkerAgent:
         import logging
         from pathlib import Path
         from codeframe.lib.quality_gates import QualityGates
-        from codeframe.core.models import TaskStatus
 
         logger = logging.getLogger(__name__)
 

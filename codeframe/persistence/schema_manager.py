@@ -501,6 +501,10 @@ class SchemaManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_tasks_pending_priority ON tasks(project_id, status, priority, created_at)"
         )
+        # Index for agent maturity queries (get_tasks_by_agent)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to, project_id, created_at)"
+        )
 
         # Project-Agent indexes
         cursor.execute(
