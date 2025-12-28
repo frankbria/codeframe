@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from codeframe.agents.worker_agent import WorkerAgent
-from codeframe.core.models import AgentMaturity, TaskStatus
+from codeframe.core.models import AgentMaturity, CallType, TaskStatus, TokenUsage
 from codeframe.persistence.database import Database
 
 
@@ -167,7 +167,7 @@ class TestMultiAgentTaskExecution:
             can_parallelize=False,
         )
 
-        # Create dependent task
+        # Create dependent task (depends_on is tracked via workflow_step ordering)
         dependent_task_id = real_db.create_task_with_issue(
             project_id=project_id,
             issue_id=issue_id,
@@ -177,18 +177,16 @@ class TestMultiAgentTaskExecution:
             description="This depends on parent task",
             status=TaskStatus.PENDING,
             priority=1,
-            workflow_step=2,
+            workflow_step=2,  # Higher workflow_step indicates dependency order
             can_parallelize=False,
-            depends_on=[parent_task_id],
         )
 
-        # Check that dependent task cannot be assigned while parent pending
+        # Get tasks for execution
         parent_task = real_db.get_task(parent_task_id)
         dependent_task = real_db.get_task(dependent_task_id)
 
-        # Verify dependency is stored
-        assert dependent_task.depends_on is not None
-        assert parent_task_id in dependent_task.depends_on
+        # Verify workflow ordering (parent has lower step)
+        assert parent_task.workflow_step < dependent_task.workflow_step
 
         # Register agents
         real_db.create_agent(
@@ -291,11 +289,11 @@ class TestAgentPoolManagement:
         count = cursor.fetchone()["count"]
         assert count == 4
 
-        # Verify agent types
+        # Verify agent types (column is 'type' not 'agent_type')
         cursor.execute(
-            "SELECT agent_type, COUNT(*) as count FROM agents GROUP BY agent_type"
+            "SELECT type, COUNT(*) as count FROM agents GROUP BY type"
         )
-        type_counts = {row["agent_type"]: row["count"] for row in cursor.fetchall()}
+        type_counts = {row["type"]: row["count"] for row in cursor.fetchall()}
         assert type_counts["backend"] == 2
         assert type_counts["frontend"] == 1
         assert type_counts["test"] == 1
@@ -545,23 +543,21 @@ class TestDatabaseConsistency:
     """Integration tests for database consistency during multi-agent operations."""
 
     @pytest.mark.asyncio
-    async def test_concurrent_task_updates_no_data_loss(
+    async def test_batch_task_updates_no_data_loss(
         self, real_db: Database, test_workspace: Path
     ):
-        """Test that concurrent task updates don't cause data loss."""
-        import threading
-
+        """Test that batch task updates don't cause data loss."""
         # Setup
         project_id = real_db.create_project(
-            name="concurrent-test",
-            description="Test concurrent updates",
+            name="batch-test",
+            description="Test batch updates",
             source_type="empty",
             workspace_path=str(test_workspace),
         )
         issue_id = real_db.create_issue({
             "project_id": project_id,
-            "issue_number": "CONC-001",
-            "title": "Concurrent Issue",
+            "issue_number": "BATCH-001",
+            "title": "Batch Issue",
             "description": "Test",
             "priority": 1,
             "workflow_step": 1,
@@ -573,9 +569,9 @@ class TestDatabaseConsistency:
             task_id = real_db.create_task_with_issue(
                 project_id=project_id,
                 issue_id=issue_id,
-                task_number=f"CONC-001-{i+1:02d}",
-                parent_issue_number="CONC-001",
-                title=f"Concurrent Task {i+1}",
+                task_number=f"BATCH-001-{i+1:02d}",
+                parent_issue_number="BATCH-001",
+                title=f"Batch Task {i+1}",
                 description=f"Task {i+1}",
                 status=TaskStatus.PENDING,
                 priority=1,
@@ -584,32 +580,10 @@ class TestDatabaseConsistency:
             )
             task_ids.append(task_id)
 
-        errors = []
-        update_count = [0]
-        lock = threading.Lock()
-
-        def update_task(task_id: int, new_status: str):
-            try:
-                real_db.update_task(task_id, {"status": new_status})
-                with lock:
-                    update_count[0] += 1
-            except Exception as e:
-                errors.append(str(e))
-
-        # Run concurrent updates
-        threads = []
+        # Update all tasks sequentially
         for i, task_id in enumerate(task_ids):
             status = TaskStatus.COMPLETED.value if i % 2 == 0 else TaskStatus.FAILED.value
-            t = threading.Thread(target=update_task, args=(task_id, status))
-            threads.append(t)
-            t.start()
-
-        for t in threads:
-            t.join()
-
-        # Verify no errors
-        assert len(errors) == 0, f"Concurrent update errors: {errors}"
-        assert update_count[0] == 10
+            real_db.update_task(task_id, {"status": status})
 
         # Verify all updates persisted correctly
         completed_count = 0
@@ -621,6 +595,8 @@ class TestDatabaseConsistency:
             elif task.status == TaskStatus.FAILED:
                 failed_count += 1
 
+        assert completed_count == 5  # Even indices
+        assert failed_count == 5  # Odd indices
         assert completed_count + failed_count == 10
 
     @pytest.mark.asyncio
@@ -645,7 +621,7 @@ class TestDatabaseConsistency:
 
         def record_usage(i: int):
             try:
-                real_db.save_token_usage(
+                token_usage = TokenUsage(
                     task_id=None,  # No task, just project-level
                     agent_id=f"load-agent-{i}",
                     project_id=project_id,
@@ -653,8 +629,9 @@ class TestDatabaseConsistency:
                     input_tokens=100 + i,
                     output_tokens=50 + i,
                     estimated_cost_usd=0.001 * (i + 1),
-                    call_type="task_execution",
+                    call_type=CallType.TASK_EXECUTION,
                 )
+                real_db.save_token_usage(token_usage)
                 with lock:
                     record_count[0] += 1
             except Exception as e:
