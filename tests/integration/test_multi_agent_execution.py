@@ -298,7 +298,8 @@ class TestAgentPoolManagement:
         assert type_counts["frontend"] == 1
         assert type_counts["test"] == 1
 
-    def test_agent_reuse_after_task_completion(
+    @pytest.mark.asyncio
+    async def test_agent_reuse_after_task_completion(
         self, real_db: Database, test_workspace: Path
     ):
         """Test that agents can be reused for multiple tasks."""
@@ -362,9 +363,7 @@ class TestAgentPoolManagement:
 
                 for task_id in task_ids:
                     task = real_db.get_task(task_id)
-                    result = asyncio.get_event_loop().run_until_complete(
-                        agent.execute_task(task)
-                    )
+                    result = await agent.execute_task(task)
                     assert result["status"] == "completed"
 
         # Verify all tasks assigned to same agent
