@@ -83,3 +83,4 @@ testsprite_tests/tmp/config.json
 tests/e2e/playwright-report/
 tests/e2e/test-results/
 tests/e2e/.auth/
+test_audit_report.md
