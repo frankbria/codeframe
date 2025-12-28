@@ -22,7 +22,7 @@ import pytest
 
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
-from codeframe.core.models import AgentMaturity, CallType, Task, TaskStatus
+from codeframe.core.models import AgentMaturity, CallType, TaskStatus
 from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.persistence.database import Database
 

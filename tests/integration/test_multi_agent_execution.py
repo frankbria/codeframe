@@ -22,12 +22,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from codeframe.agents.agent_pool_manager import AgentPoolManager
 from codeframe.agents.worker_agent import WorkerAgent
-from codeframe.agents.backend_worker_agent import BackendWorkerAgent
-from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
 from codeframe.core.models import AgentMaturity, TaskStatus
-from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.persistence.database import Database
 
 

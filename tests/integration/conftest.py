@@ -15,11 +15,8 @@ Usage:
 """
 
 import json
-import os
-import shutil
-import tempfile
 from pathlib import Path
-from typing import Any, AsyncGenerator, Generator
+from typing import Any, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -223,7 +220,7 @@ def typescript_project_workspace(test_workspace: Path) -> Path:
         "compilerOptions": {
             "target": "ES2020",
             "module": "commonjs",
-            "strict": true,
+            "strict": True,
             "outDir": "./dist",
         },
         "include": ["src/**/*"],

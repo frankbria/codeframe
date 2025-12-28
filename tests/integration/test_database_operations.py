@@ -11,8 +11,6 @@ Unlike unit tests, these tests use real database instances to
 verify actual persistence behavior.
 """
 
-import asyncio
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 

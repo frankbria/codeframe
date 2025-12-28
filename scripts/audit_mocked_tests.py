@@ -17,7 +17,6 @@ Usage:
 import ast
 import json
 import sys
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
