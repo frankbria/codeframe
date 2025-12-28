@@ -268,7 +268,6 @@ def mock_anthropic_api():
             return response
 
         mock_client.messages.create = AsyncMock(return_value=create_response())
-        mock_client._create_response = create_response
 
         yield mock_client
 
@@ -295,44 +294,6 @@ def mock_llm_response_factory(mock_anthropic_api):
         return response
 
     return factory
-
-
-@pytest.fixture
-def mock_openai_api():
-    """Mock OpenAI API for integration tests.
-
-    Similar to mock_anthropic_api but for OpenAI client.
-
-    Yields:
-        Mock: Mock OpenAI client with configured responses.
-    """
-    with patch("openai.AsyncOpenAI") as mock_class:
-        mock_client = AsyncMock()
-        mock_class.return_value = mock_client
-
-        # Default successful response
-        response = Mock()
-        response.choices = [Mock(message=Mock(content="Task completed."))]
-        response.usage = Mock(prompt_tokens=100, completion_tokens=50)
-
-        mock_client.chat.completions.create = AsyncMock(return_value=response)
-
-        yield mock_client
-
-
-@pytest.fixture
-def mock_github_api():
-    """Mock GitHub API for integration tests.
-
-    Use this for tests that interact with GitHub (issues, PRs, etc.)
-
-    Yields:
-        Mock: Mock GitHub client.
-    """
-    with patch("github.Github") as mock_class:
-        mock_client = Mock()
-        mock_class.return_value = mock_client
-        yield mock_client
 
 
 # =============================================================================

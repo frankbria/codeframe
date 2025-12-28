@@ -340,17 +340,15 @@ class TestDatabaseConcurrentAccess:
 
         def update_task(priority: int):
             try:
-                # Each thread gets its own connection
-                thread_db = Database(":memory:")
-                # Actually use the shared db instance
+                # All threads share the same db instance (SQLite handles locking)
                 db.update_task(task_id, {"priority": priority})
                 update_count[0] += 1
             except Exception as e:
                 errors.append(e)
 
-        # Run 10 concurrent updates
+        # Run 10 concurrent updates (priority must be 0-4 per DB constraint)
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(update_task, i) for i in range(10)]
+            futures = [executor.submit(update_task, i % 5) for i in range(10)]
             for f in futures:
                 f.result()
 
