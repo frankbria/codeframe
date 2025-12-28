@@ -291,12 +291,13 @@ export default function Dashboard({ projectId }: DashboardProps) {
       {/* Tab Navigation (T009 - Feature 013) */}
       <div className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="-mb-px flex space-x-8" role="tablist" aria-label="Dashboard tabs">
+          <nav className="-mb-px flex space-x-8" role="tablist" aria-label="Dashboard tabs" data-testid="nav-menu">
             <button
               role="tab"
               aria-selected={activeTab === 'overview'}
               aria-controls="overview-panel"
               onClick={() => setActiveTab('overview')}
+              data-testid="overview-tab"
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'overview'
                   ? 'border-primary text-primary'
@@ -310,6 +311,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
               aria-selected={activeTab === 'context'}
               aria-controls="context-panel"
               onClick={() => setActiveTab('context')}
+              data-testid="context-tab"
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === 'context'
                   ? 'border-primary text-primary'
