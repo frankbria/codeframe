@@ -85,12 +85,16 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
     blocked: 'Blocked',
   };
 
+  // Extract base agent type for data-testid (e.g., "backend-worker" -> "backend")
+  const baseAgentType = agent.type.split('-')[0];
+
   return (
     <div
       className={`relative rounded-lg border-2 p-4 transition-all duration-200 hover:shadow-sm cursor-pointer ${
         statusColors[agent.status]
       }`}
       onClick={() => onAgentClick?.(agent.id)}
+      data-testid={`agent-${baseAgentType}`}
     >
       {/* Agent Header */}
       <div className="flex items-start justify-between mb-3">
