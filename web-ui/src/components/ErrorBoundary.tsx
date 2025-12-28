@@ -64,9 +64,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     if (this.state.hasError) {
       // Custom fallback UI if provided
       if (this.props.fallback) {
-        // Clone fallback element and inject error prop
+        // Minimal wrapper for test ID - no styling to avoid layout interference
         return (
-          <div data-testid="error-boundary">
+          <div data-testid="error-boundary" style={{ display: 'contents' }}>
             {React.cloneElement(this.props.fallback as React.ReactElement, {
               error: this.state.error,
             })}

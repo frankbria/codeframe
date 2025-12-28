@@ -86,7 +86,8 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
   };
 
   // Extract base agent type for data-testid (e.g., "backend-worker" -> "backend")
-  const baseAgentType = agent.type.split('-')[0];
+  // Defensive coding: handle undefined/empty agent.type gracefully
+  const baseAgentType = agent.type?.split('-')[0] ?? 'unknown';
 
   return (
     <div
