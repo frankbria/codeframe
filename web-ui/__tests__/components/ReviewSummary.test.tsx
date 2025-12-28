@@ -193,37 +193,37 @@ describe('ReviewSummary', () => {
 
     it('displays all severity levels', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
-      expect(screen.getByTestId('severity-critical')).toBeInTheDocument();
-      expect(screen.getByTestId('severity-high')).toBeInTheDocument();
-      expect(screen.getByTestId('severity-medium')).toBeInTheDocument();
-      expect(screen.getByTestId('severity-low')).toBeInTheDocument();
-      expect(screen.getByTestId('severity-info')).toBeInTheDocument();
+      expect(screen.getByTestId('severity-badge-critical')).toBeInTheDocument();
+      expect(screen.getByTestId('severity-badge-high')).toBeInTheDocument();
+      expect(screen.getByTestId('severity-badge-medium')).toBeInTheDocument();
+      expect(screen.getByTestId('severity-badge-low')).toBeInTheDocument();
+      expect(screen.getByTestId('severity-badge-info')).toBeInTheDocument();
     });
 
     it('displays correct counts for each severity', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
 
-      const criticalBar = screen.getByTestId('severity-critical');
+      const criticalBar = screen.getByTestId('severity-badge-critical');
       expect(criticalBar).toHaveTextContent('1');
 
-      const highBar = screen.getByTestId('severity-high');
+      const highBar = screen.getByTestId('severity-badge-high');
       expect(highBar).toHaveTextContent('2');
 
-      const mediumBar = screen.getByTestId('severity-medium');
+      const mediumBar = screen.getByTestId('severity-badge-medium');
       expect(mediumBar).toHaveTextContent('1');
     });
 
     it('displays zero counts when no findings of that severity', () => {
       render(<ReviewSummary reviewResult={mockReviewResultEmpty} />);
 
-      const criticalBar = screen.getByTestId('severity-critical');
+      const criticalBar = screen.getByTestId('severity-badge-critical');
       expect(criticalBar).toHaveTextContent('0');
     });
 
     it('renders progress bars with correct colors', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
 
-      const criticalBar = screen.getByTestId('severity-critical');
+      const criticalBar = screen.getByTestId('severity-badge-critical');
       const progressBar = criticalBar.querySelector('.bg-destructive');
       expect(progressBar).toBeInTheDocument();
     });
@@ -286,7 +286,7 @@ describe('ReviewSummary', () => {
 
     it('renders severity bars with proper styling', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
-      const severityBar = screen.getByTestId('severity-critical');
+      const severityBar = screen.getByTestId('severity-badge-critical');
       const progressContainer = severityBar.querySelector('.h-2.bg-muted');
       expect(progressContainer).toBeInTheDocument();
     });

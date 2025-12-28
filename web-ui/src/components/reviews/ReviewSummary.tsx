@@ -316,7 +316,7 @@ export function ReviewSummary({
                 <div
                   key={severity}
                   className="severity-bar"
-                  data-testid={`severity-${severity}`}
+                  data-testid={`severity-badge-${severity}`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium capitalize text-foreground">
@@ -412,11 +412,11 @@ export function ReviewSummary({
         {/* Findings List - always rendered */}
         <div className="review-findings-list space-y-3" data-testid="review-findings-list">
           {reviewResult.findings.length === 0 ? (
-            <div className="text-muted-foreground bg-muted p-4 rounded text-center">
+            <div className="text-muted-foreground bg-muted p-4 rounded text-center" data-testid="no-findings">
               No review findings. All code reviews will appear here.
             </div>
           ) : filteredFindings.length === 0 ? (
-            <div className="text-muted-foreground bg-muted p-4 rounded text-center">
+            <div className="text-muted-foreground bg-muted p-4 rounded text-center" data-testid="no-findings">
               No findings match the selected filter.
             </div>
           ) : (
