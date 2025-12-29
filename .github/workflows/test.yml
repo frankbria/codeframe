@@ -101,6 +101,8 @@ jobs:
           git config --global user.email "actions@github.com"
 
       - name: Run pytest with coverage
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           uv run pytest tests/ \
             --ignore=tests/e2e \
