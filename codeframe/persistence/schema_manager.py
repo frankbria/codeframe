@@ -329,6 +329,46 @@ class SchemaManager:
         """
         )
 
+        # Task evidence table (for evidence-based quality enforcement)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS task_evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL,
+                language TEXT NOT NULL,
+                framework TEXT,
+
+                -- Test results
+                total_tests INTEGER NOT NULL,
+                passed_tests INTEGER NOT NULL,
+                failed_tests INTEGER NOT NULL,
+                skipped_tests INTEGER NOT NULL,
+                pass_rate REAL NOT NULL,
+                coverage REAL,
+                test_output TEXT NOT NULL,
+
+                -- Skip violations
+                skip_violations_count INTEGER NOT NULL DEFAULT 0,
+                skip_violations_json TEXT,
+                skip_check_passed BOOLEAN NOT NULL,
+
+                -- Quality metrics
+                quality_metrics_json TEXT NOT NULL,
+
+                -- Verification status
+                verified BOOLEAN NOT NULL,
+                verification_errors TEXT,
+
+                -- Metadata
+                timestamp TEXT NOT NULL,
+                task_description TEXT NOT NULL,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
     def _create_memory_context_tables(self, cursor: sqlite3.Cursor) -> None:
         """Create memory and context management tables."""
         # Memory table
@@ -579,6 +619,14 @@ class SchemaManager:
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_reviews_project ON code_reviews(project_id, created_at)"
+        )
+
+        # Task evidence indexes
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_task_evidence_task ON task_evidence(task_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_task_evidence_verified ON task_evidence(verified, created_at DESC)"
         )
 
         # Token usage indexes

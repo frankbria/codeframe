@@ -120,18 +120,73 @@ Each project can override defaults in `.codeframe/enforcement.json`:
 ✅ **Completed:**
 - LanguageDetector (9 languages supported)
 - AdaptiveTestRunner (multi-language test execution)
-- Python-specific tools (scripts/)
-
-🚧 **In Progress:**
 - SkipPatternDetector (multi-language skip detection)
 - QualityTracker (generic quality metrics)
-- EvidenceVerifier (claim validation)
+- EvidenceVerifier (claim validation) ✨ **NEW**
+- WorkerAgent integration ✨ **NEW**
+- Configuration system (environment variables) ✨ **NEW**
+- Database evidence storage (audit trail) ✨ **NEW**
+- Python-specific tools (scripts/)
 
 📋 **Planned:**
-- WorkerAgent integration
-- Configuration system
-- Additional language support
-- Dashboard integration
+- Integration tests for evidence workflow
+- Additional language support (PHP, Swift, Kotlin)
+- Dashboard integration for evidence visualization
+
+## WorkerAgent Integration
+
+The EvidenceVerifier is automatically integrated into the WorkerAgent's task completion workflow:
+
+```python
+# In WorkerAgent.complete_task()
+# 1. Quality gates run and produce results
+quality_result = await quality_gates.run_all_gates(task)
+
+# 2. Evidence extracted from quality gate results
+test_result = quality_gates.get_test_results_from_gate_result(quality_result)
+skip_violations = quality_gates.get_skip_violations_from_gate_result(quality_result)
+
+# 3. Evidence collected and verified
+verifier = EvidenceVerifier(**get_evidence_config())
+evidence = verifier.collect_evidence(
+    test_result=test_result,
+    skip_violations=skip_violations,
+    language=lang_info.language,
+    agent_id=self.agent_id,
+    task_description=task.title,
+    framework=lang_info.framework,
+)
+
+# 4. Verification enforces requirements
+is_valid = verifier.verify(evidence)
+
+# 5. If invalid, create blocker with detailed report
+if not is_valid:
+    report = verifier.generate_report(evidence)
+    blocker_id = self._create_evidence_blocker(task, evidence, report)
+    # Evidence stored for audit trail
+    self.db.task_repository.save_task_evidence(task.id, evidence)
+    return {"success": False, "status": "blocked"}
+
+# 6. If valid, store evidence and complete task
+evidence_id = self.db.task_repository.save_task_evidence(task.id, evidence)
+# Mark task as completed...
+```
+
+**Configuration (via environment variables):**
+- `CODEFRAME_REQUIRE_COVERAGE=true` - Whether coverage is required
+- `CODEFRAME_MIN_COVERAGE=85.0` - Minimum coverage percentage
+- `CODEFRAME_ALLOW_SKIPPED_TESTS=false` - Whether skipped tests are allowed
+- `CODEFRAME_MIN_PASS_RATE=100.0` - Minimum test pass rate
+
+**Database Storage:**
+Evidence records are stored in the `task_evidence` table with full audit trail including:
+- Test results (passed, failed, skipped counts)
+- Coverage percentage
+- Skip violations (with file, line, pattern, context)
+- Quality metrics
+- Verification status and errors
+- Timestamps for historical tracking
 
 ## Architecture Decisions
 

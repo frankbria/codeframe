@@ -35,8 +35,12 @@ import logging
 import subprocess
 import re
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime, timezone
+
+if TYPE_CHECKING:
+    from codeframe.enforcement.adaptive_test_runner import TestResult
+    from codeframe.enforcement.skip_pattern_detector import SkipViolation
 
 from codeframe.core.models import (
     Task,
@@ -1082,3 +1086,155 @@ class QualityGates:
         logger.info(
             f"Created quality gate blocker for task {task.id} due to {len(failures)} failures"
         )
+
+    # ========================================================================
+    # Helper Methods - Evidence Extraction (for EvidenceVerifier integration)
+    # ========================================================================
+
+    @staticmethod
+    def get_test_results_from_gate_result(result: QualityGateResult) -> Optional["TestResult"]:
+        """Extract test results from quality gate result.
+
+        Parses test gate and coverage gate failures to reconstruct TestResult object
+        for EvidenceVerifier integration.
+
+        Args:
+            result: QualityGateResult from run_all_gates()
+
+        Returns:
+            TestResult object or None if no test data available
+        """
+        # Import here to avoid circular dependencies
+        from codeframe.enforcement.adaptive_test_runner import TestResult
+
+        # Find test and coverage gate failures
+        test_failures = [f for f in result.failures if f.gate == QualityGateType.TESTS]
+        coverage_failures = [f for f in result.failures if f.gate == QualityGateType.COVERAGE]
+
+        # If no test-related failures and status passed, assume all tests passed
+        if not test_failures and not coverage_failures and result.status == "passed":
+            # Return a "tests passed" result with unknown counts
+            return TestResult(
+                success=True,
+                output="All tests passed (via quality gates)",
+                total_tests=0,
+                passed_tests=0,
+                failed_tests=0,
+                skipped_tests=0,
+                pass_rate=100.0,
+                coverage=None,
+            )
+
+        # Parse test failures to extract test counts
+        total_tests = 0
+        passed_tests = 0
+        failed_tests = 0
+        skipped_tests = 0
+        test_output = ""
+
+        for failure in test_failures:
+            test_output += failure.details + "\n"
+
+            # Parse pytest output: "X passed, Y failed"
+            pytest_match = re.search(r"(\d+)\s+passed(?:,\s+(\d+)\s+failed)?", failure.details)
+            if pytest_match:
+                passed = int(pytest_match.group(1))
+                failed = int(pytest_match.group(2)) if pytest_match.group(2) else 0
+                passed_tests += passed
+                failed_tests += failed
+                total_tests = passed_tests + failed_tests
+
+            # Parse jest output: "Tests: X failed, Y passed"
+            jest_match = re.search(r"Tests:\s+(\d+)\s+failed,\s+(\d+)\s+passed", failure.details)
+            if jest_match:
+                failed = int(jest_match.group(1))
+                passed = int(jest_match.group(2))
+                passed_tests += passed
+                failed_tests += failed
+                total_tests = passed_tests + failed_tests
+
+        # Parse coverage percentage
+        coverage = None
+        for failure in coverage_failures:
+            coverage_match = re.search(r"Coverage\s+([\d.]+)%", failure.reason)
+            if coverage_match:
+                coverage = float(coverage_match.group(1))
+                test_output += failure.details + "\n"
+
+        # If we couldn't parse any test counts but have failures, set reasonable defaults
+        if total_tests == 0 and (test_failures or coverage_failures):
+            # Tests failed but we couldn't parse counts - assume at least 1 failure
+            total_tests = 1
+            failed_tests = 1
+            passed_tests = 0
+
+        # Calculate pass rate
+        pass_rate = (passed_tests / total_tests * 100.0) if total_tests > 0 else 0.0
+
+        return TestResult(
+            success=failed_tests == 0,
+            output=test_output.strip(),
+            total_tests=total_tests,
+            passed_tests=passed_tests,
+            failed_tests=failed_tests,
+            skipped_tests=skipped_tests,
+            pass_rate=pass_rate,
+            coverage=coverage,
+        )
+
+    @staticmethod
+    def get_skip_violations_from_gate_result(result: QualityGateResult) -> List["SkipViolation"]:
+        """Extract skip violations from quality gate result.
+
+        Converts SKIP_DETECTION gate failures to SkipViolation objects for
+        EvidenceVerifier integration.
+
+        Args:
+            result: QualityGateResult from run_all_gates()
+
+        Returns:
+            List of SkipViolation objects (empty if no skip violations)
+        """
+        # Import here to avoid circular dependencies
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+
+        violations = []
+
+        # Find skip detection gate failures
+        skip_failures = [f for f in result.failures if f.gate == QualityGateType.SKIP_DETECTION]
+
+        for failure in skip_failures:
+            # Parse failure details to extract file, line, pattern, context
+            # Format: "File: path/to/file.py:42\nPattern: @pytest.mark.skip\nContext: ..."
+
+            file_path = "unknown"
+            line_number = 0
+            pattern = "unknown"
+            context = ""
+
+            # Extract file and line
+            file_match = re.search(r"File:\s+(.+?):(\d+)", failure.details)
+            if file_match:
+                file_path = file_match.group(1)
+                line_number = int(file_match.group(2))
+
+            # Extract pattern
+            pattern_match = re.search(r"Pattern:\s+(.+?)(?:\n|$)", failure.details)
+            if pattern_match:
+                pattern = pattern_match.group(1).strip()
+
+            # Extract context
+            context_match = re.search(r"Context:\s+(.+?)(?:\n|$)", failure.details)
+            if context_match:
+                context = context_match.group(1).strip()
+
+            violations.append(
+                SkipViolation(
+                    file=file_path,
+                    line=line_number,
+                    pattern=pattern,
+                    context=context,
+                )
+            )
+
+        return violations

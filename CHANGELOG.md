@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Evidence-Based Quality Enforcement** - WorkerAgent integration with EvidenceVerifier
+  - Evidence verification integrated into `WorkerAgent.complete_task()` workflow
+  - Database table `task_evidence` for storing evidence records and audit trail
+  - Evidence-based blockers with detailed verification reports
+  - Configuration options for evidence requirements via environment variables
+    - `CODEFRAME_REQUIRE_COVERAGE` - Whether coverage is required (default: true)
+    - `CODEFRAME_MIN_COVERAGE` - Minimum coverage percentage (default: 85.0)
+    - `CODEFRAME_ALLOW_SKIPPED_TESTS` - Whether skipped tests are allowed (default: false)
+    - `CODEFRAME_MIN_PASS_RATE` - Minimum test pass rate (default: 100.0)
+  - Helper methods in `QualityGates` to extract test results and skip violations
+  - Evidence repository methods in `TaskRepository` for CRUD operations
+  - Full audit trail with verification status, test results, coverage, and skip violations
+
 ### Changed
 - **BREAKING**: Converted worker agents to async/await pattern (cf-48)
   - `BackendWorkerAgent.execute_task()` is now async
