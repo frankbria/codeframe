@@ -862,6 +862,7 @@ class TaskRepository(BaseRepository):
             skipped_tests=row["skipped_tests"],
             pass_rate=row["pass_rate"],
             coverage=row["coverage"],
+            duration=0.0,  # Duration not stored in evidence table
         )
 
         # Parse verification errors
