@@ -18,11 +18,17 @@ Test Coverage:
 """
 
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.lib.quality_gates import QualityGates, QualityGateResult
 from codeframe.persistence.database import Database
-from codeframe.core.models import TaskStatus, BlockerType, AgentMaturity
+from codeframe.core.models import (
+    TaskStatus,
+    BlockerType,
+    AgentMaturity,
+    QualityGateFailure,
+    Severity,
+)
 
 
 class TestEvidenceIntegration:
@@ -152,15 +158,13 @@ python_functions = test_*
         """
         # Mock quality gates to return passing result
         passing_result = QualityGateResult(
-            passed=True,
-            critical_failures=[],
+            task_id=task.id,
+            status="passed",
             failures=[],
-            warnings=[],
-            gates_run=["tests", "coverage"],
-            timestamp="2025-12-29T00:00:00"
+            execution_time_seconds=1.5
         )
 
-        with patch.object(QualityGates, 'run', return_value=passing_result):
+        with patch.object(QualityGates, 'run_all_gates', return_value=passing_result):
             # Complete task
             result = await worker_agent.complete_task(task, str(project_root))
 
@@ -199,23 +203,22 @@ python_functions = test_*
         - Both blocker and evidence created atomically
         """
         # Mock quality gates to return failing tests
+
         failing_result = QualityGateResult(
-            passed=False,
-            critical_failures=[],
+            task_id=task.id,
+            status="failed",
             failures=[
-                Mock(
+                QualityGateFailure(
                     gate="tests",
                     reason="Tests failed",
                     details="2 passed, 1 failed",
-                    severity="error"
+                    severity=Severity.ERROR
                 )
             ],
-            warnings=[],
-            gates_run=["tests"],
-            timestamp="2025-12-29T00:00:00"
+            execution_time_seconds=2.3
         )
 
-        with patch.object(QualityGates, 'run', return_value=failing_result):
+        with patch.object(QualityGates, 'run_all_gates', return_value=failing_result):
             # Complete task (should create blocker)
             result = await worker_agent.complete_task(task, str(project_root))
 
@@ -258,15 +261,13 @@ python_functions = test_*
         - Timestamp and metadata present
         """
         passing_result = QualityGateResult(
-            passed=True,
-            critical_failures=[],
+            task_id=task.id,
+            status="passed",
             failures=[],
-            warnings=[],
-            gates_run=["tests", "coverage"],
-            timestamp="2025-12-29T00:00:00"
+            execution_time_seconds=1.8
         )
 
-        with patch.object(QualityGates, 'run', return_value=passing_result):
+        with patch.object(QualityGates, 'run_all_gates', return_value=passing_result):
             result = await worker_agent.complete_task(task, str(project_root))
 
             # Get stored evidence
@@ -305,23 +306,22 @@ python_functions = test_*
         - verified flag set to False
         - Audit trail preserved for debugging
         """
+
         failing_result = QualityGateResult(
-            passed=False,
-            critical_failures=[],
+            task_id=task.id,
+            status="failed",
             failures=[
-                Mock(
+                QualityGateFailure(
                     gate="tests",
                     reason="Test failures",
                     details="1 passed, 2 failed",
-                    severity="error"
+                    severity=Severity.ERROR
                 )
             ],
-            warnings=[],
-            gates_run=["tests"],
-            timestamp="2025-12-29T00:00:00"
+            execution_time_seconds=1.2
         )
 
-        with patch.object(QualityGates, 'run', return_value=failing_result):
+        with patch.object(QualityGates, 'run_all_gates', return_value=failing_result):
             result = await worker_agent.complete_task(task, str(project_root))
 
             # Verify evidence stored despite failure
@@ -354,29 +354,28 @@ python_functions = test_*
         - Individual errors truncated to 500 chars
         - Coverage information included if available
         """
+
         failing_result = QualityGateResult(
-            passed=False,
-            critical_failures=[],
+            task_id=task.id,
+            status="failed",
             failures=[
-                Mock(
+                QualityGateFailure(
                     gate="tests",
                     reason="Test failures detected",
                     details="3 passed, 5 failed",
-                    severity="error"
+                    severity=Severity.ERROR
                 ),
-                Mock(
+                QualityGateFailure(
                     gate="coverage",
                     reason="Coverage 75.5% below minimum 85.0%",
                     details="Missing coverage in module X",
-                    severity="error"
+                    severity=Severity.ERROR
                 )
             ],
-            warnings=[],
-            gates_run=["tests", "coverage"],
-            timestamp="2025-12-29T00:00:00"
+            execution_time_seconds=3.1
         )
 
-        with patch.object(QualityGates, 'run', return_value=failing_result):
+        with patch.object(QualityGates, 'run_all_gates', return_value=failing_result):
             result = await worker_agent.complete_task(task, str(project_root))
 
             # Get blocker
@@ -419,31 +418,28 @@ python_functions = test_*
         - Task status unchanged
         - Exception propagated to caller
         """
+
         failing_result = QualityGateResult(
-            passed=False,
-            critical_failures=[],
+            task_id=task.id,
+            status="failed",
             failures=[
-                Mock(
+                QualityGateFailure(
                     gate="tests",
                     reason="Test failures",
                     details="0 passed, 1 failed",
-                    severity="error"
+                    severity=Severity.ERROR
                 )
             ],
-            warnings=[],
-            gates_run=["tests"],
-            timestamp="2025-12-29T00:00:00"
+            execution_time_seconds=0.9
         )
 
         # Mock evidence storage to raise exception after blocker creation
-        original_save = db.tasks.save_task_evidence
-
         def failing_save(*args, **kwargs):
             raise Exception("Simulated database error")
 
-        with patch.object(QualityGates, 'run', return_value=failing_result):
+        with patch.object(QualityGates, 'run_all_gates', return_value=failing_result):
             with patch.object(
-                db.tasks, 'save_task_evidence', side_effect=failing_save
+                db.task_repository, 'save_task_evidence', side_effect=failing_save
             ):
                 # Attempt to complete task (should raise exception)
                 with pytest.raises(Exception, match="Simulated database error"):
