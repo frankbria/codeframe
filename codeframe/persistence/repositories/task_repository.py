@@ -653,10 +653,10 @@ class TaskRepository(BaseRepository):
             Evidence record ID
         """
         # Import here to avoid circular dependencies
-        from codeframe.enforcement.evidence_verifier import Evidence
-        from codeframe.enforcement.adaptive_test_runner import TestResult
-        from codeframe.enforcement.skip_pattern_detector import SkipViolation
-        from codeframe.enforcement.quality_tracker import QualityMetrics
+        from codeframe.enforcement.evidence_verifier import Evidence  # noqa: F401
+        from codeframe.enforcement.adaptive_test_runner import TestResult  # noqa: F401
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation  # noqa: F401
+        from codeframe.enforcement.quality_tracker import QualityMetrics  # noqa: F401
 
         cursor = self.conn.cursor()
 
@@ -734,10 +734,10 @@ class TaskRepository(BaseRepository):
             Evidence object or None if not found
         """
         # Import here to avoid circular dependencies
-        from codeframe.enforcement.evidence_verifier import Evidence
-        from codeframe.enforcement.adaptive_test_runner import TestResult
-        from codeframe.enforcement.skip_pattern_detector import SkipViolation
-        from codeframe.enforcement.quality_tracker import QualityMetrics
+        from codeframe.enforcement.evidence_verifier import Evidence  # noqa: F401
+        from codeframe.enforcement.adaptive_test_runner import TestResult  # noqa: F401
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation  # noqa: F401
+        from codeframe.enforcement.quality_tracker import QualityMetrics  # noqa: F401
 
         cursor = self.conn.cursor()
         cursor.execute(
@@ -767,7 +767,7 @@ class TaskRepository(BaseRepository):
             List of Evidence objects ordered by created_at DESC
         """
         # Import here to avoid circular dependencies
-        from codeframe.enforcement.evidence_verifier import Evidence
+        from codeframe.enforcement.evidence_verifier import Evidence  # noqa: F401
 
         cursor = self.conn.cursor()
         cursor.execute(

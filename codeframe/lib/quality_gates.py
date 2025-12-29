@@ -1123,6 +1123,7 @@ class QualityGates:
                 skipped_tests=0,
                 pass_rate=100.0,
                 coverage=None,
+                duration=0.0,
             )
 
         # Parse test failures to extract test counts
@@ -1133,33 +1134,36 @@ class QualityGates:
         test_output = ""
 
         for failure in test_failures:
-            test_output += failure.details + "\n"
+            if failure.details:
+                test_output += failure.details + "\n"
 
-            # Parse pytest output: "X passed, Y failed"
-            pytest_match = re.search(r"(\d+)\s+passed(?:,\s+(\d+)\s+failed)?", failure.details)
-            if pytest_match:
-                passed = int(pytest_match.group(1))
-                failed = int(pytest_match.group(2)) if pytest_match.group(2) else 0
-                passed_tests += passed
-                failed_tests += failed
-                total_tests = passed_tests + failed_tests
+                # Parse pytest output: "X passed, Y failed"
+                pytest_match = re.search(r"(\d+)\s+passed(?:,\s+(\d+)\s+failed)?", failure.details)
+                if pytest_match:
+                    passed = int(pytest_match.group(1))
+                    failed = int(pytest_match.group(2)) if pytest_match.group(2) else 0
+                    passed_tests += passed
+                    failed_tests += failed
+                    total_tests = passed_tests + failed_tests
 
-            # Parse jest output: "Tests: X failed, Y passed"
-            jest_match = re.search(r"Tests:\s+(\d+)\s+failed,\s+(\d+)\s+passed", failure.details)
-            if jest_match:
-                failed = int(jest_match.group(1))
-                passed = int(jest_match.group(2))
-                passed_tests += passed
-                failed_tests += failed
-                total_tests = passed_tests + failed_tests
+                # Parse jest output: "Tests: X failed, Y passed"
+                jest_match = re.search(r"Tests:\s+(\d+)\s+failed,\s+(\d+)\s+passed", failure.details)
+                if jest_match:
+                    failed = int(jest_match.group(1))
+                    passed = int(jest_match.group(2))
+                    passed_tests += passed
+                    failed_tests += failed
+                    total_tests = passed_tests + failed_tests
 
         # Parse coverage percentage
         coverage = None
         for failure in coverage_failures:
-            coverage_match = re.search(r"Coverage\s+([\d.]+)%", failure.reason)
-            if coverage_match:
-                coverage = float(coverage_match.group(1))
-                test_output += failure.details + "\n"
+            if failure.reason:
+                coverage_match = re.search(r"Coverage\s+([\d.]+)%", failure.reason)
+                if coverage_match:
+                    coverage = float(coverage_match.group(1))
+                    if failure.details:
+                        test_output += failure.details + "\n"
 
         # If we couldn't parse any test counts but have failures, set reasonable defaults
         if total_tests == 0 and (test_failures or coverage_failures):
@@ -1180,6 +1184,7 @@ class QualityGates:
             skipped_tests=skipped_tests,
             pass_rate=pass_rate,
             coverage=coverage,
+            duration=0.0,
         )
 
     @staticmethod
@@ -1206,6 +1211,9 @@ class QualityGates:
         for failure in skip_failures:
             # Parse failure details to extract file, line, pattern, context
             # Format: "File: path/to/file.py:42\nPattern: @pytest.mark.skip\nContext: ..."
+
+            if not failure.details:
+                continue
 
             file_path = "unknown"
             line_number = 0
@@ -1234,6 +1242,8 @@ class QualityGates:
                     line=line_number,
                     pattern=pattern,
                     context=context,
+                    reason=failure.reason,
+                    severity="error",
                 )
             )
 
