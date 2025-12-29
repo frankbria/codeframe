@@ -94,10 +94,10 @@ class TestRealApiExecution:
     @pytest.mark.integration
     async def test_execute_with_haiku_model(self, agent, simple_task):
         """Test execution with Claude Haiku (faster, cheaper)."""
-        result = await agent.execute_task(simple_task, model_name="claude-haiku-4")
+        result = await agent.execute_task(simple_task, model_name="claude-3-5-haiku-20241022")
 
         assert result["status"] == "completed"
-        assert result["model"] == "claude-haiku-4"
+        assert result["model"] == "claude-3-5-haiku-20241022"
         assert result["usage"]["input_tokens"] > 0
 
     @pytest.mark.asyncio
@@ -228,8 +228,8 @@ class TestConcurrentExecution:
 
         # Execute both tasks concurrently
         results = await asyncio.gather(
-            agent1.execute_task(task1, model_name="claude-haiku-4"),
-            agent2.execute_task(task2, model_name="claude-haiku-4"),
+            agent1.execute_task(task1, model_name="claude-3-5-haiku-20241022"),
+            agent2.execute_task(task2, model_name="claude-3-5-haiku-20241022"),
         )
 
         # Both should complete successfully

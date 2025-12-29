@@ -28,13 +28,24 @@ from codeframe.enforcement.quality_tracker import QualityTracker, QualityMetrics
 logger = logging.getLogger(__name__)
 
 # Supported Claude models for execute_task
-SUPPORTED_MODELS = ["claude-sonnet-4-5", "claude-opus-4", "claude-haiku-4"]
+SUPPORTED_MODELS = [
+    "claude-sonnet-4-5",
+    "claude-opus-4",
+    "claude-haiku-4",
+    "claude-3-5-haiku-20241022",  # Actual API model name for Haiku 3.5
+    "claude-3-5-sonnet-20241022",  # Actual API model name for Sonnet 3.5
+    "claude-3-opus-20240229",      # Actual API model name for Opus 3
+]
 
 # Model pricing (USD per million tokens) - as of 2025-11
 MODEL_PRICING = {
     "claude-sonnet-4-5": {"input": 0.000003, "output": 0.000015},
     "claude-opus-4": {"input": 0.000015, "output": 0.000075},
     "claude-haiku-4": {"input": 0.0000008, "output": 0.000004},
+    # Versioned model names with same pricing as their friendly names
+    "claude-3-5-haiku-20241022": {"input": 0.0000008, "output": 0.000004},
+    "claude-3-5-sonnet-20241022": {"input": 0.000003, "output": 0.000015},
+    "claude-3-opus-20240229": {"input": 0.000015, "output": 0.000075},
 }
 
 
@@ -284,7 +295,8 @@ class WorkerAgent:
         Args:
             task: Task to execute
             model_name: Model identifier (default: uses self.model_name from __init__).
-                Supported models: claude-sonnet-4-5, claude-opus-4, claude-haiku-4
+                Supported models: claude-sonnet-4-5, claude-opus-4, claude-haiku-4,
+                claude-3-5-haiku-20241022, claude-3-5-sonnet-20241022, claude-3-opus-20240229
             max_tokens: Maximum tokens in the response (default: 4096).
                 Increase for complex code generation tasks.
 
