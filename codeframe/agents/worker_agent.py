@@ -1360,32 +1360,47 @@ class WorkerAgent:
         # Step 5: Check if gates passed
         if quality_result.passed:
             # All gates passed - store evidence and mark task as completed
+            # Use transaction to ensure atomicity
 
-            # Store evidence in database for audit trail
-            evidence_id = self.db.task_repository.save_task_evidence(task.id, evidence)
-            logger.info(f"Stored evidence {evidence_id} for task {task.id}")
+            try:
+                # Store evidence in database (deferred commit for transaction atomicity)
+                evidence_id = self.db.task_repository.save_task_evidence(
+                    task.id, evidence, commit=False
+                )
+                logger.debug(f"Prepared evidence {evidence_id} for task {task.id}")
 
-            cursor = self.db.conn.cursor()
-            cursor.execute(
-                """
-                UPDATE tasks
-                SET status = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (TaskStatus.COMPLETED.value, task.id),
-            )
-            self.db.conn.commit()
+                # Update task status
+                cursor = self.db.conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE tasks
+                    SET status = ?, completed_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (TaskStatus.COMPLETED.value, task.id),
+                )
 
-            logger.info(f"Task {task.id} completed successfully - all quality gates passed and evidence verified")
+                # Commit both operations atomically
+                self.db.conn.commit()
 
-            return {
-                "success": True,
-                "status": "completed",
-                "quality_gate_result": quality_result,
-                "evidence_verified": True,
-                "evidence_id": evidence_id,
-                "message": "Task completed successfully - all quality gates passed and evidence verified",
-            }
+                logger.info(
+                    f"Task {task.id} completed successfully - "
+                    f"all quality gates passed and evidence {evidence_id} verified"
+                )
+
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "quality_gate_result": quality_result,
+                    "evidence_verified": True,
+                    "evidence_id": evidence_id,
+                    "message": "Task completed successfully - all quality gates passed and evidence verified",
+                }
+            except Exception as e:
+                # Rollback both operations on any error to maintain consistency
+                self.db.conn.rollback()
+                logger.error(f"Failed to complete task {task.id} with evidence: {e}")
+                raise
         else:
             # Quality gates failed - task remains in_progress, blocker created
             logger.warning(
@@ -1675,15 +1690,47 @@ class WorkerAgent:
             >>> blocker_id = agent._create_evidence_blocker(task, evidence, report)
         """
         from codeframe.core.models import BlockerType
+        from codeframe.config.security import get_evidence_config
+
+        # Get evidence config for context
+        evidence_config = get_evidence_config()
 
         question_parts = [
             f"Evidence verification failed for task #{task.task_number} ({task.title}):",
             "",
-            "Verification Errors:",
+            "Test Results:",
+            f"  • Total: {evidence.test_result.total_tests}",
+            f"  • Passed: {evidence.test_result.passed_tests}",
+            f"  • Failed: {evidence.test_result.failed_tests}",
+            f"  • Skipped: {evidence.test_result.skipped_tests}",
+            f"  • Pass Rate: {evidence.test_result.pass_rate:.1f}%",
         ]
 
-        for i, error in enumerate(evidence.verification_errors, 1):
+        if evidence.test_result.coverage is not None:
+            question_parts.append(
+                f"  • Coverage: {evidence.test_result.coverage:.1f}% "
+                f"(minimum: {evidence_config['min_coverage']:.1f}%)"
+            )
+        else:
+            question_parts.append("  • Coverage: Not available")
+
+        question_parts.extend([
+            "",
+            "Verification Errors:",
+        ])
+
+        # Limit error display to prevent unbounded messages
+        MAX_ERRORS_DISPLAY = 10
+        errors_to_display = evidence.verification_errors[:MAX_ERRORS_DISPLAY]
+
+        for i, error in enumerate(errors_to_display, 1):
             question_parts.append(f"  {i}. {error}")
+
+        if len(evidence.verification_errors) > MAX_ERRORS_DISPLAY:
+            remaining = len(evidence.verification_errors) - MAX_ERRORS_DISPLAY
+            question_parts.append(
+                f"  ... and {remaining} more error(s) (see full evidence report)"
+            )
 
         question_parts.extend([
             "",

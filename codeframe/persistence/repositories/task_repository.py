@@ -642,12 +642,13 @@ class TaskRepository(BaseRepository):
 
     # Evidence Storage (Evidence-Based Quality Enforcement)
 
-    def save_task_evidence(self, task_id: int, evidence: "Evidence") -> int:
+    def save_task_evidence(self, task_id: int, evidence: "Evidence", commit: bool = True) -> int:
         """Save task evidence to database.
 
         Args:
             task_id: Task ID
             evidence: Evidence object from EvidenceVerifier
+            commit: Whether to commit immediately (default: True)
 
         Returns:
             Evidence record ID
@@ -721,7 +722,8 @@ class TaskRepository(BaseRepository):
                 evidence.task_description,
             ),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return cursor.lastrowid
 
     def get_task_evidence(self, task_id: int) -> Optional["Evidence"]:
@@ -791,6 +793,9 @@ class TaskRepository(BaseRepository):
 
         Returns:
             Evidence object
+
+        Raises:
+            ValueError: If JSON data fails validation
         """
         # Import here to avoid circular dependencies
         from codeframe.enforcement.evidence_verifier import Evidence
@@ -798,8 +803,19 @@ class TaskRepository(BaseRepository):
         from codeframe.enforcement.skip_pattern_detector import SkipViolation
         from codeframe.enforcement.quality_tracker import QualityMetrics
 
-        # Deserialize skip violations
+        # Deserialize and validate skip violations (defense in depth)
         skip_violations_data = json.loads(row["skip_violations_json"]) if row["skip_violations_json"] else []
+
+        if skip_violations_data:
+            if not isinstance(skip_violations_data, list):
+                raise ValueError("skip_violations_json must be a list")
+            for v in skip_violations_data:
+                if not isinstance(v, dict):
+                    raise ValueError("Each skip violation must be a dict")
+                required_keys = {"file", "line", "pattern", "context"}
+                if not required_keys.issubset(v.keys()):
+                    raise ValueError(f"Skip violation missing required keys: {required_keys - v.keys()}")
+
         skip_violations = [
             SkipViolation(
                 file=v["file"],
@@ -810,8 +826,20 @@ class TaskRepository(BaseRepository):
             for v in skip_violations_data
         ]
 
-        # Deserialize quality metrics
+        # Deserialize and validate quality metrics (defense in depth)
         quality_metrics_data = json.loads(row["quality_metrics_json"])
+
+        if not isinstance(quality_metrics_data, dict):
+            raise ValueError("quality_metrics_json must be a dict")
+        required_metrics_keys = {
+            "timestamp", "response_count", "test_pass_rate", "coverage_percentage",
+            "total_tests", "passed_tests", "failed_tests", "language"
+        }
+        if not required_metrics_keys.issubset(quality_metrics_data.keys()):
+            raise ValueError(
+                f"Quality metrics missing required keys: {required_metrics_keys - quality_metrics_data.keys()}"
+            )
+
         quality_metrics = QualityMetrics(
             timestamp=quality_metrics_data["timestamp"],
             response_count=quality_metrics_data["response_count"],

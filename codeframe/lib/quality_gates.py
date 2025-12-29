@@ -71,6 +71,14 @@ RISKY_FILE_PATTERNS = [
     "session",
 ]
 
+# Pre-compiled regex patterns for performance (used in evidence extraction)
+_PYTEST_OUTPUT_PATTERN = re.compile(r"(\d+)\s+passed(?:,\s+(\d+)\s+failed)?")
+_JEST_OUTPUT_PATTERN = re.compile(r"Tests:\s+(\d+)\s+failed,\s+(\d+)\s+passed")
+_COVERAGE_PATTERN = re.compile(r"Coverage\s+([\d.]+)%")
+_FILE_LINE_PATTERN = re.compile(r"File:\s+(.+?):(\d+)")
+_PATTERN_PATTERN = re.compile(r"Pattern:\s+(.+?)(?:\n|$)")
+_CONTEXT_PATTERN = re.compile(r"Context:\s+(.+?)(?:\n|$)")
+
 
 class QualityGates:
     """Quality gate orchestrator for code quality enforcement.
@@ -1138,7 +1146,7 @@ class QualityGates:
                 test_output += failure.details + "\n"
 
                 # Parse pytest output: "X passed, Y failed"
-                pytest_match = re.search(r"(\d+)\s+passed(?:,\s+(\d+)\s+failed)?", failure.details)
+                pytest_match = _PYTEST_OUTPUT_PATTERN.search(failure.details)
                 if pytest_match:
                     passed = int(pytest_match.group(1))
                     failed = int(pytest_match.group(2)) if pytest_match.group(2) else 0
@@ -1147,7 +1155,7 @@ class QualityGates:
                     total_tests = passed_tests + failed_tests
 
                 # Parse jest output: "Tests: X failed, Y passed"
-                jest_match = re.search(r"Tests:\s+(\d+)\s+failed,\s+(\d+)\s+passed", failure.details)
+                jest_match = _JEST_OUTPUT_PATTERN.search(failure.details)
                 if jest_match:
                     failed = int(jest_match.group(1))
                     passed = int(jest_match.group(2))
@@ -1159,7 +1167,7 @@ class QualityGates:
         coverage = None
         for failure in coverage_failures:
             if failure.reason:
-                coverage_match = re.search(r"Coverage\s+([\d.]+)%", failure.reason)
+                coverage_match = _COVERAGE_PATTERN.search(failure.reason)
                 if coverage_match:
                     coverage = float(coverage_match.group(1))
                     if failure.details:
@@ -1221,18 +1229,18 @@ class QualityGates:
             context = ""
 
             # Extract file and line
-            file_match = re.search(r"File:\s+(.+?):(\d+)", failure.details)
+            file_match = _FILE_LINE_PATTERN.search(failure.details)
             if file_match:
                 file_path = file_match.group(1)
                 line_number = int(file_match.group(2))
 
             # Extract pattern
-            pattern_match = re.search(r"Pattern:\s+(.+?)(?:\n|$)", failure.details)
+            pattern_match = _PATTERN_PATTERN.search(failure.details)
             if pattern_match:
                 pattern = pattern_match.group(1).strip()
 
             # Extract context
-            context_match = re.search(r"Context:\s+(.+?)(?:\n|$)", failure.details)
+            context_match = _CONTEXT_PATTERN.search(failure.details)
             if context_match:
                 context = context_match.group(1).strip()
 
