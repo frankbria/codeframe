@@ -119,15 +119,18 @@ python_functions = test_*
         issue_id = db.create_issue(issue_data)
 
         # Create task
-        task_data = {
-            "issue_id": issue_id,
-            "task_number": 1,
-            "title": "Implement add and multiply functions",
-            "description": "Create math utility functions with tests",
-            "status": "in_progress",
-            "assigned_agent": "worker_001"
-        }
-        task_id = db.create_task(task_data)
+        task_id = db.create_task_with_issue(
+            project_id=project_id,
+            issue_id=issue_id,
+            task_number=1,
+            parent_issue_number=1,
+            title="Implement add and multiply functions",
+            description="Create math utility functions with tests",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            workflow_step=1,
+            assigned_agent="worker_001"
+        )
 
         return db.get_task(task_id)
 
