@@ -11,7 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Evidence-Based Quality Enforcement** - WorkerAgent integration with EvidenceVerifier
   - Evidence verification integrated into `WorkerAgent.complete_task()` workflow
   - Database table `task_evidence` for storing evidence records and audit trail
+    - **MIGRATION REQUIRED**: Existing deployments must run SQL migration (see `codeframe/enforcement/README.md`)
+    - New installations create table automatically
   - Evidence-based blockers with detailed verification reports
+  - Atomic transactions for evidence storage with rollback on failure
+  - Input validation for evidence data (pass_rate, coverage, test counts)
+  - Regex parsing validation with logging for failures
+  - Individual error message truncation (500 chars) to prevent UI/DB overflow
   - Configuration options for evidence requirements via environment variables
     - `CODEFRAME_REQUIRE_COVERAGE` - Whether coverage is required (default: true)
     - `CODEFRAME_MIN_COVERAGE` - Minimum coverage percentage (default: 85.0)

@@ -1315,23 +1315,36 @@ class WorkerAgent:
                 f"Evidence verification failed for task {task.id}: {evidence.verification_errors}"
             )
 
-            # Generate verification report
-            report = verifier.generate_report(evidence)
+            # Use transaction to ensure atomicity of blocker creation and evidence storage
+            try:
+                # Generate verification report
+                report = verifier.generate_report(evidence)
 
-            # Create blocker with verification errors
-            blocker_id = self._create_evidence_blocker(task, evidence, report)
+                # Create blocker with verification errors
+                blocker_id = self._create_evidence_blocker(task, evidence, report)
 
-            # Store failed evidence for audit trail
-            self.db.task_repository.save_task_evidence(task.id, evidence)
+                # Store failed evidence for audit trail (deferred commit)
+                self.db.task_repository.save_task_evidence(
+                    task.id, evidence, commit=False
+                )
 
-            return {
-                "success": False,
-                "status": "blocked",
-                "quality_gate_result": quality_result,
-                "blocker_id": blocker_id,
-                "message": "Evidence verification failed. See blocker for details.",
-                "evidence_errors": evidence.verification_errors,
-            }
+                # Commit both operations atomically
+                self.db.conn.commit()
+
+                return {
+                    "success": False,
+                    "status": "blocked",
+                    "quality_gate_result": quality_result,
+                    "blocker_id": blocker_id,
+                    "message": "Evidence verification failed. See blocker for details.",
+                    "evidence_errors": evidence.verification_errors,
+                }
+            except Exception as e:
+                self.db.conn.rollback()
+                logger.error(
+                    f"Failed to store failed evidence and create blocker for task {task.id}: {e}"
+                )
+                raise
 
         logger.info(f"Evidence verified successfully for task {task.id}")
 
@@ -1722,10 +1735,17 @@ class WorkerAgent:
 
         # Limit error display to prevent unbounded messages
         MAX_ERRORS_DISPLAY = 10
+        MAX_ERROR_LENGTH = 500  # Truncate individual errors to prevent UI/DB overflow
         errors_to_display = evidence.verification_errors[:MAX_ERRORS_DISPLAY]
 
         for i, error in enumerate(errors_to_display, 1):
-            question_parts.append(f"  {i}. {error}")
+            # Truncate individual errors if they're too long
+            truncated_error = (
+                error[:MAX_ERROR_LENGTH] + "..."
+                if len(error) > MAX_ERROR_LENGTH
+                else error
+            )
+            question_parts.append(f"  {i}. {truncated_error}")
 
         if len(evidence.verification_errors) > MAX_ERRORS_DISPLAY:
             remaining = len(evidence.verification_errors) - MAX_ERRORS_DISPLAY

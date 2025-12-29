@@ -188,6 +188,64 @@ Evidence records are stored in the `task_evidence` table with full audit trail i
 - Verification status and errors
 - Timestamps for historical tracking
 
+**Database Migration:**
+
+For **new installations**, the `task_evidence` table is created automatically on first run.
+
+For **existing deployments**, you need to add the `task_evidence` table manually:
+
+```sql
+-- Add evidence storage table
+CREATE TABLE IF NOT EXISTS task_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL,
+    language TEXT NOT NULL,
+    framework TEXT,
+
+    -- Test results
+    total_tests INTEGER NOT NULL,
+    passed_tests INTEGER NOT NULL,
+    failed_tests INTEGER NOT NULL,
+    skipped_tests INTEGER NOT NULL,
+    pass_rate REAL NOT NULL,
+    coverage REAL,
+    test_output TEXT NOT NULL,
+
+    -- Skip violations
+    skip_violations_count INTEGER NOT NULL DEFAULT 0,
+    skip_violations_json TEXT,
+    skip_check_passed BOOLEAN NOT NULL,
+
+    -- Quality metrics
+    quality_metrics_json TEXT NOT NULL,
+
+    -- Verification status
+    verified BOOLEAN NOT NULL,
+    verification_errors TEXT,
+
+    -- Metadata
+    timestamp TEXT NOT NULL,
+    task_description TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add indexes for performance
+CREATE INDEX IF NOT EXISTS idx_task_evidence_task ON task_evidence(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_evidence_verified ON task_evidence(verified, created_at DESC);
+```
+
+**Verification:**
+Run this query to verify the table exists:
+```sql
+SELECT name FROM sqlite_master WHERE type='table' AND name='task_evidence';
+```
+
+If the table doesn't exist when evidence collection runs, you'll see an error like:
+```
+sqlite3.OperationalError: no such table: task_evidence
+```
+
 ## Architecture Decisions
 
 ### Why Dual-Layer?

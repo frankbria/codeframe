@@ -1141,6 +1141,7 @@ class QualityGates:
         skipped_tests = 0
         test_output = ""
 
+        parsing_failed = False
         for failure in test_failures:
             if failure.details:
                 test_output += failure.details + "\n"
@@ -1148,20 +1149,34 @@ class QualityGates:
                 # Parse pytest output: "X passed, Y failed"
                 pytest_match = _PYTEST_OUTPUT_PATTERN.search(failure.details)
                 if pytest_match:
-                    passed = int(pytest_match.group(1))
-                    failed = int(pytest_match.group(2)) if pytest_match.group(2) else 0
+                    # Validate parsed values are non-negative
+                    passed = max(0, int(pytest_match.group(1)))
+                    failed = max(0, int(pytest_match.group(2) or 0))
                     passed_tests += passed
                     failed_tests += failed
                     total_tests = passed_tests + failed_tests
+                    continue
 
                 # Parse jest output: "Tests: X failed, Y passed"
                 jest_match = _JEST_OUTPUT_PATTERN.search(failure.details)
                 if jest_match:
-                    failed = int(jest_match.group(1))
-                    passed = int(jest_match.group(2))
+                    # Validate parsed values are non-negative
+                    failed = max(0, int(jest_match.group(1)))
+                    passed = max(0, int(jest_match.group(2)))
                     passed_tests += passed
                     failed_tests += failed
                     total_tests = passed_tests + failed_tests
+                    continue
+
+                # If neither pattern matched, mark parsing as failed
+                parsing_failed = True
+
+        # Log warning if parsing failed for any test output
+        if parsing_failed and test_failures:
+            logger.warning(
+                f"Failed to parse test output from quality gate failures. "
+                f"Output preview: {test_output[:100]}..."
+            )
 
         # Parse coverage percentage
         coverage = None
@@ -1169,7 +1184,13 @@ class QualityGates:
             if failure.reason:
                 coverage_match = _COVERAGE_PATTERN.search(failure.reason)
                 if coverage_match:
-                    coverage = float(coverage_match.group(1))
+                    # Validate coverage is in valid range (0-100)
+                    parsed_coverage = float(coverage_match.group(1))
+                    coverage = max(0.0, min(100.0, parsed_coverage))
+                    if parsed_coverage != coverage:
+                        logger.warning(
+                            f"Clamped invalid coverage value {parsed_coverage} to {coverage}"
+                        )
                     if failure.details:
                         test_output += failure.details + "\n"
 

@@ -659,31 +659,62 @@ class TaskRepository(BaseRepository):
         from codeframe.enforcement.skip_pattern_detector import SkipViolation  # noqa: F401
         from codeframe.enforcement.quality_tracker import QualityMetrics  # noqa: F401
 
+        # Validate evidence data before storage
+        if not (0 <= evidence.test_result.pass_rate <= 100):
+            raise ValueError(
+                f"Invalid pass_rate: {evidence.test_result.pass_rate} (must be 0-100)"
+            )
+
+        if evidence.test_result.coverage is not None and not (
+            0 <= evidence.test_result.coverage <= 100
+        ):
+            raise ValueError(
+                f"Invalid coverage: {evidence.test_result.coverage} (must be 0-100)"
+            )
+
+        # Validate test count consistency
+        total_calculated = (
+            evidence.test_result.passed_tests
+            + evidence.test_result.failed_tests
+            + evidence.test_result.skipped_tests
+        )
+        if evidence.test_result.total_tests != total_calculated:
+            raise ValueError(
+                f"Test count mismatch: total_tests={evidence.test_result.total_tests}, "
+                f"but passed+failed+skipped={total_calculated}"
+            )
+
         cursor = self.conn.cursor()
 
-        # Serialize skip violations to JSON
-        skip_violations_json = json.dumps([
-            {
-                "file": v.file,
-                "line": v.line,
-                "pattern": v.pattern,
-                "context": v.context
-            }
-            for v in evidence.skip_violations
-        ])
+        # Serialize skip violations to JSON with error handling
+        try:
+            skip_violations_json = json.dumps([
+                {
+                    "file": v.file,
+                    "line": v.line,
+                    "pattern": v.pattern,
+                    "context": v.context
+                }
+                for v in evidence.skip_violations
+            ])
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Failed to serialize skip violations to JSON: {e}") from e
 
-        # Serialize quality metrics to JSON
-        quality_metrics_json = json.dumps({
-            "timestamp": evidence.quality_metrics.timestamp,
-            "response_count": evidence.quality_metrics.response_count,
-            "test_pass_rate": evidence.quality_metrics.test_pass_rate,
-            "coverage_percentage": evidence.quality_metrics.coverage_percentage,
-            "total_tests": evidence.quality_metrics.total_tests,
-            "passed_tests": evidence.quality_metrics.passed_tests,
-            "failed_tests": evidence.quality_metrics.failed_tests,
-            "language": evidence.quality_metrics.language,
-            "framework": evidence.quality_metrics.framework,
-        })
+        # Serialize quality metrics to JSON with error handling
+        try:
+            quality_metrics_json = json.dumps({
+                "timestamp": evidence.quality_metrics.timestamp,
+                "response_count": evidence.quality_metrics.response_count,
+                "test_pass_rate": evidence.quality_metrics.test_pass_rate,
+                "coverage_percentage": evidence.quality_metrics.coverage_percentage,
+                "total_tests": evidence.quality_metrics.total_tests,
+                "passed_tests": evidence.quality_metrics.passed_tests,
+                "failed_tests": evidence.quality_metrics.failed_tests,
+                "language": evidence.quality_metrics.language,
+                "framework": evidence.quality_metrics.framework,
+            })
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Failed to serialize quality metrics to JSON: {e}") from e
 
         # Serialize verification errors
         verification_errors = "\n".join(evidence.verification_errors) if evidence.verification_errors else None
