@@ -343,14 +343,16 @@ jobs:
 
       - name: Initialize database
         run: |
-          mkdir -p .codeframe
+          # E2E tests expect database at tests/e2e/.codeframe/state.db
+          mkdir -p tests/e2e/.codeframe
           source .venv/bin/activate
-          python -c "from codeframe.persistence.database import Database; db = Database('.codeframe/state.db'); db.initialize(); db.close()"
-          echo "✅ Database initialized"
+          python -c "from codeframe.persistence.database import Database; db = Database('tests/e2e/.codeframe/state.db'); db.initialize(); db.close()"
+          echo "✅ Database initialized at tests/e2e/.codeframe/state.db"
 
       - name: Start backend server
         env:
-          DATABASE_PATH: ${{ github.workspace }}/.codeframe/state.db
+          # Must match TEST_DB_PATH in tests/e2e/e2e-config.ts
+          DATABASE_PATH: ${{ github.workspace }}/tests/e2e/.codeframe/state.db
           WORKSPACE_ROOT: ${{ github.workspace }}
           CODEFRAME_DEPLOYMENT_MODE: self_hosted
         run: |
