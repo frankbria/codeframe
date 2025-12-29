@@ -127,11 +127,17 @@ class TaskRepository(BaseRepository):
 
         query = f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?"
 
-        cursor = self.conn.cursor()
-        cursor.execute(query, values)
-        self.conn.commit()
-
-        return cursor.rowcount
+        if self._sync_lock is not None:
+            with self._sync_lock:
+                cursor = self.conn.cursor()
+                cursor.execute(query, values)
+                self.conn.commit()
+                return cursor.rowcount
+        else:
+            cursor = self.conn.cursor()
+            cursor.execute(query, values)
+            self.conn.commit()
+            return cursor.rowcount
 
 
 

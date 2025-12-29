@@ -138,13 +138,23 @@ class ProjectRepository(BaseRepository):
         Returns:
             Project dictionary or None if not found
         """
-        cursor = self.conn.cursor()
-        if isinstance(project_identifier, int):
-            cursor.execute("SELECT * FROM projects WHERE id = ?", (project_identifier,))
+        if self._sync_lock is not None:
+            with self._sync_lock:
+                cursor = self.conn.cursor()
+                if isinstance(project_identifier, int):
+                    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_identifier,))
+                else:
+                    cursor.execute("SELECT * FROM projects WHERE name = ?", (project_identifier,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
         else:
-            cursor.execute("SELECT * FROM projects WHERE name = ?", (project_identifier,))
-        row = cursor.fetchone()
-        return dict(row) if row else None
+            cursor = self.conn.cursor()
+            if isinstance(project_identifier, int):
+                cursor.execute("SELECT * FROM projects WHERE id = ?", (project_identifier,))
+            else:
+                cursor.execute("SELECT * FROM projects WHERE name = ?", (project_identifier,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
 
 

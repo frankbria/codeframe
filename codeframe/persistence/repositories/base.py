@@ -1,6 +1,7 @@
 """Base repository class for database operations."""
 
 import sqlite3
+import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 import logging
@@ -17,13 +18,15 @@ class BaseRepository:
     Each repository handles a specific domain (projects, issues, tasks, etc.).
 
     Supports both synchronous (sqlite3) and asynchronous (aiosqlite) operations.
+    Thread-safe synchronous operations are provided via a shared lock.
     """
 
     def __init__(
         self,
         sync_conn: Optional[sqlite3.Connection] = None,
         async_conn: Optional[aiosqlite.Connection] = None,
-        database: Optional[Any] = None
+        database: Optional[Any] = None,
+        sync_lock: Optional[threading.Lock] = None
     ):
         """Initialize repository with database connections.
 
@@ -31,10 +34,12 @@ class BaseRepository:
             sync_conn: Synchronous sqlite3.Connection
             async_conn: Asynchronous aiosqlite.Connection
             database: Reference to parent Database instance (for cross-repository operations)
+            sync_lock: Threading lock for thread-safe synchronous operations
 
         Note:
             At least one connection must be provided. Both can be provided
             to support repositories with both sync and async methods.
+            If sync_conn is provided without sync_lock, operations will not be thread-safe.
         """
         if sync_conn is None and async_conn is None:
             raise ValueError("At least one connection (sync or async) must be provided")
@@ -42,9 +47,10 @@ class BaseRepository:
         self.conn = sync_conn  # For backward compatibility
         self._async_conn = async_conn
         self._database = database  # Reference to parent Database instance
+        self._sync_lock = sync_lock  # Threading lock for thread-safe sync operations
 
     def _execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
-        """Execute a query synchronously.
+        """Execute a query synchronously with thread-safe locking.
 
         Args:
             query: SQL query string
@@ -55,10 +61,19 @@ class BaseRepository:
 
         Raises:
             RuntimeError: If sync connection is not available
+
+        Note:
+            Uses threading lock if available to ensure thread-safe access
+            to the shared connection object.
         """
         if self.conn is None:
             raise RuntimeError("Sync connection not available, use async methods")
-        return self.conn.execute(query, params)
+
+        if self._sync_lock is not None:
+            with self._sync_lock:
+                return self.conn.execute(query, params)
+        else:
+            return self.conn.execute(query, params)
 
     def _fetchone(self, query: str, params: tuple = ()) -> Optional[sqlite3.Row]:
         """Fetch a single row synchronously.
@@ -87,14 +102,23 @@ class BaseRepository:
         return cursor.fetchall()
 
     def _commit(self) -> None:
-        """Commit the current transaction synchronously.
+        """Commit the current transaction synchronously with thread-safe locking.
 
         Raises:
             RuntimeError: If sync connection is not available
+
+        Note:
+            Uses threading lock if available to ensure thread-safe access
+            to the shared connection object.
         """
         if self.conn is None:
             raise RuntimeError("Sync connection not available, use async methods")
-        self.conn.commit()
+
+        if self._sync_lock is not None:
+            with self._sync_lock:
+                self.conn.commit()
+        else:
+            self.conn.commit()
 
     async def _execute_async(self, query: str, params: tuple = ()) -> aiosqlite.Cursor:
         """Execute a query asynchronously.
@@ -221,18 +245,28 @@ class BaseRepository:
         return dt.isoformat()
 
     def _get_last_insert_id(self) -> int:
-        """Get the last inserted row ID.
+        """Get the last inserted row ID with thread-safe locking.
 
         Returns:
             Last row ID
 
         Raises:
             RuntimeError: If sync connection is not available
+
+        Note:
+            Uses threading lock if available to ensure thread-safe access
+            to the shared connection object.
         """
         if self.conn is None:
             raise RuntimeError("Sync connection not available, use async methods")
-        cursor = self.conn.cursor()
-        return cursor.lastrowid
+
+        if self._sync_lock is not None:
+            with self._sync_lock:
+                cursor = self.conn.cursor()
+                return cursor.lastrowid
+        else:
+            cursor = self.conn.cursor()
+            return cursor.lastrowid
 
     async def _get_last_insert_id_async(self) -> int:
         """Get the last inserted row ID asynchronously.

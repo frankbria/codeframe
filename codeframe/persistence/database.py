@@ -6,6 +6,7 @@ The Database class now acts as a facade, delegating operations to repositories.
 
 import os
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
@@ -85,6 +86,7 @@ class Database:
         self.conn: Optional[sqlite3.Connection] = None
         self._async_conn: Optional[aiosqlite.Connection] = None
         self._async_lock = asyncio.Lock()
+        self._sync_lock = threading.Lock()  # Thread-safe access to sync connection
 
         # Initialize repositories (will be set after connections are created)
         self.projects: Optional[ProjectRepository] = None
@@ -127,23 +129,24 @@ class Database:
         """Initialize all repository instances."""
         # Pass both sync and async connections to support mixed operations
         # Also pass self (Database instance) for cross-repository operations
-        self.projects = ProjectRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.issues = IssueRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.tasks = TaskRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.agents = AgentRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.blockers = BlockerRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.memories = MemoryRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.context_items = ContextRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.checkpoints = CheckpointRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.git_branches = GitRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.test_results = TestRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.lint_results = LintRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.code_reviews = ReviewRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.quality_gates = QualityRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.token_usage = TokenRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.correction_attempts = CorrectionRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.activities = ActivityRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
-        self.audit_logs = AuditRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self)
+        # Pass sync_lock for thread-safe access to the shared connection
+        self.projects = ProjectRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.issues = IssueRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.tasks = TaskRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.agents = AgentRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.blockers = BlockerRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.memories = MemoryRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.context_items = ContextRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.checkpoints = CheckpointRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.git_branches = GitRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.test_results = TestRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.lint_results = LintRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.code_reviews = ReviewRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.quality_gates = QualityRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.token_usage = TokenRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.correction_attempts = CorrectionRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.activities = ActivityRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.audit_logs = AuditRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
 
     # Connection management methods
     def close(self) -> None:

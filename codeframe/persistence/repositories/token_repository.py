@@ -46,34 +46,65 @@ class TokenRepository(BaseRepository):
             ... )
             >>> usage_id = db.save_token_usage(usage)
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO token_usage (
-                task_id, agent_id, project_id, model_name,
-                input_tokens, output_tokens, estimated_cost_usd,
-                actual_cost_usd, call_type, timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                token_usage.task_id,
-                token_usage.agent_id,
-                token_usage.project_id,
-                token_usage.model_name,
-                token_usage.input_tokens,
-                token_usage.output_tokens,
-                token_usage.estimated_cost_usd,
-                token_usage.actual_cost_usd,
+        if self._sync_lock is not None:
+            with self._sync_lock:
+                cursor = self.conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO token_usage (
+                        task_id, agent_id, project_id, model_name,
+                        input_tokens, output_tokens, estimated_cost_usd,
+                        actual_cost_usd, call_type, timestamp
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        token_usage.task_id,
+                        token_usage.agent_id,
+                        token_usage.project_id,
+                        token_usage.model_name,
+                        token_usage.input_tokens,
+                        token_usage.output_tokens,
+                        token_usage.estimated_cost_usd,
+                        token_usage.actual_cost_usd,
+                        (
+                            token_usage.call_type.value
+                            if isinstance(token_usage.call_type, CallType)
+                            else token_usage.call_type
+                        ),
+                        token_usage.timestamp.isoformat(),
+                    ),
+                )
+                self.conn.commit()
+                return cursor.lastrowid
+        else:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO token_usage (
+                    task_id, agent_id, project_id, model_name,
+                    input_tokens, output_tokens, estimated_cost_usd,
+                    actual_cost_usd, call_type, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
-                    token_usage.call_type.value
-                    if isinstance(token_usage.call_type, CallType)
-                    else token_usage.call_type
+                    token_usage.task_id,
+                    token_usage.agent_id,
+                    token_usage.project_id,
+                    token_usage.model_name,
+                    token_usage.input_tokens,
+                    token_usage.output_tokens,
+                    token_usage.estimated_cost_usd,
+                    token_usage.actual_cost_usd,
+                    (
+                        token_usage.call_type.value
+                        if isinstance(token_usage.call_type, CallType)
+                        else token_usage.call_type
+                    ),
+                    token_usage.timestamp.isoformat(),
                 ),
-                token_usage.timestamp.isoformat(),
-            ),
-        )
-        self.conn.commit()
-        return cursor.lastrowid
+            )
+            self.conn.commit()
+            return cursor.lastrowid
 
 
 
