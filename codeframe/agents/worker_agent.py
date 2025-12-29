@@ -4,8 +4,11 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from collections import deque
+
+if TYPE_CHECKING:
+    from codeframe.enforcement.evidence_verifier import Evidence
 
 from anthropic import (
     AsyncAnthropic,
@@ -1261,10 +1264,94 @@ class WorkerAgent:
 
         quality_result = await quality_gates.run_all_gates(task)
 
-        # Step 2: Record quality metrics for tracking
+        # Step 2: Evidence Verification (Evidence-Based Quality Enforcement)
+        from codeframe.enforcement.evidence_verifier import EvidenceVerifier
+        from codeframe.enforcement.language_detector import LanguageDetector
+
+        # Detect project language
+        detector = LanguageDetector(str(project_root))
+        lang_info = detector.detect()
+
+        # Extract test results and skip violations from quality gate result
+        test_result = quality_gates.get_test_results_from_gate_result(quality_result)
+        skip_violations = quality_gates.get_skip_violations_from_gate_result(quality_result)
+
+        # Handle case where quality gates didn't run tests (no test result available)
+        if test_result is None:
+            from codeframe.enforcement.adaptive_test_runner import TestResult
+            test_result = TestResult(
+                success=True,
+                output="No tests run - quality gates passed without test execution",
+                total_tests=0,
+                passed_tests=0,
+                failed_tests=0,
+                skipped_tests=0,
+                pass_rate=100.0,
+                coverage=None,
+                duration=0.0,  # Zero seconds when no tests run
+            )
+
+        # Initialize EvidenceVerifier with configuration from environment
+        from codeframe.config.security import get_evidence_config
+        evidence_config = get_evidence_config()
+        verifier = EvidenceVerifier(**evidence_config)
+
+        # Collect evidence
+        evidence = verifier.collect_evidence(
+            test_result=test_result,
+            skip_violations=skip_violations,
+            language=lang_info.language,
+            agent_id=self.agent_id,
+            task_description=task.title,
+            framework=lang_info.framework,
+        )
+
+        # Verify evidence
+        is_valid = verifier.verify(evidence)
+
+        # If evidence verification failed, create blocker and return
+        if not is_valid:
+            logger.warning(
+                f"Evidence verification failed for task {task.id}: {evidence.verification_errors}"
+            )
+
+            # Use transaction to ensure atomicity of blocker creation and evidence storage
+            try:
+                # Generate verification report
+                report = verifier.generate_report(evidence)
+
+                # Create blocker with verification errors
+                blocker_id = self._create_evidence_blocker(task, evidence, report)
+
+                # Store failed evidence for audit trail (deferred commit)
+                self.db.task_repository.save_task_evidence(
+                    task.id, evidence, commit=False
+                )
+
+                # Commit both operations atomically
+                self.db.conn.commit()
+
+                return {
+                    "success": False,
+                    "status": "blocked",
+                    "quality_gate_result": quality_result,
+                    "blocker_id": blocker_id,
+                    "message": "Evidence verification failed. See blocker for details.",
+                    "evidence_errors": evidence.verification_errors,
+                }
+            except Exception as e:
+                self.db.conn.rollback()
+                logger.error(
+                    f"Failed to store failed evidence and create blocker for task {task.id}: {e}"
+                )
+                raise
+
+        logger.info(f"Evidence verified successfully for task {task.id}")
+
+        # Step 3: Record quality metrics for tracking
         await self._record_quality_metrics(quality_result, project_root)
 
-        # Step 3: Check for quality degradation
+        # Step 4: Check for quality degradation
         degradation_result = self._check_quality_degradation()
         if degradation_result and degradation_result.get("has_degradation"):
             # Quality has degraded significantly - create blocker
@@ -1284,28 +1371,50 @@ class WorkerAgent:
                 "degradation": degradation_result,
             }
 
-        # Step 4: Check if gates passed
+        # Step 5: Check if gates passed
         if quality_result.passed:
-            # All gates passed - mark task as completed
-            cursor = self.db.conn.cursor()
-            cursor.execute(
-                """
-                UPDATE tasks
-                SET status = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (TaskStatus.COMPLETED.value, task.id),
-            )
-            self.db.conn.commit()
+            # All gates passed - store evidence and mark task as completed
+            # Use transaction to ensure atomicity
 
-            logger.info(f"Task {task.id} completed successfully - all quality gates passed")
+            try:
+                # Store evidence in database (deferred commit for transaction atomicity)
+                evidence_id = self.db.task_repository.save_task_evidence(
+                    task.id, evidence, commit=False
+                )
+                logger.debug(f"Prepared evidence {evidence_id} for task {task.id}")
 
-            return {
-                "success": True,
-                "status": "completed",
-                "quality_gate_result": quality_result,
-                "message": "Task completed successfully - all quality gates passed",
-            }
+                # Update task status
+                cursor = self.db.conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE tasks
+                    SET status = ?, completed_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (TaskStatus.COMPLETED.value, task.id),
+                )
+
+                # Commit both operations atomically
+                self.db.conn.commit()
+
+                logger.info(
+                    f"Task {task.id} completed successfully - "
+                    f"all quality gates passed and evidence {evidence_id} verified"
+                )
+
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "quality_gate_result": quality_result,
+                    "evidence_verified": True,
+                    "evidence_id": evidence_id,
+                    "message": "Task completed successfully - all quality gates passed and evidence verified",
+                }
+            except Exception as e:
+                # Rollback both operations on any error to maintain consistency
+                self.db.conn.rollback()
+                logger.error(f"Failed to complete task {task.id} with evidence: {e}")
+                raise
         else:
             # Quality gates failed - task remains in_progress, blocker created
             logger.warning(
@@ -1578,6 +1687,101 @@ class WorkerAgent:
         )
 
         logger.info(f"Created degradation blocker {blocker_id} for task {task.id}")
+        return blocker_id
+
+    def _create_evidence_blocker(self, task: Task, evidence: "Evidence", report: str) -> int:
+        """Create a SYNC blocker for evidence verification failure.
+
+        Args:
+            task: Task that failed evidence verification
+            evidence: Evidence object with verification errors
+            report: Formatted verification report
+
+        Returns:
+            int: ID of the created blocker
+
+        Example:
+            >>> blocker_id = agent._create_evidence_blocker(task, evidence, report)
+        """
+        from codeframe.core.models import BlockerType
+        from codeframe.config.security import get_evidence_config
+
+        # Get evidence config for context
+        evidence_config = get_evidence_config()
+
+        question_parts = [
+            f"Evidence verification failed for task #{task.task_number} ({task.title}):",
+            "",
+            "Test Results:",
+            f"  • Total: {evidence.test_result.total_tests}",
+            f"  • Passed: {evidence.test_result.passed_tests}",
+            f"  • Failed: {evidence.test_result.failed_tests}",
+            f"  • Skipped: {evidence.test_result.skipped_tests}",
+            f"  • Pass Rate: {evidence.test_result.pass_rate:.1f}%",
+        ]
+
+        if evidence.test_result.coverage is not None:
+            question_parts.append(
+                f"  • Coverage: {evidence.test_result.coverage:.1f}% "
+                f"(minimum: {evidence_config['min_coverage']:.1f}%)"
+            )
+        else:
+            question_parts.append("  • Coverage: Not available")
+
+        question_parts.extend([
+            "",
+            "Verification Errors:",
+        ])
+
+        # Limit error display to prevent unbounded messages
+        MAX_ERRORS_DISPLAY = 10
+        MAX_ERROR_LENGTH = 500  # Truncate individual errors to prevent UI/DB overflow
+        errors_to_display = evidence.verification_errors[:MAX_ERRORS_DISPLAY]
+
+        for i, error in enumerate(errors_to_display, 1):
+            # Truncate individual errors if they're too long
+            truncated_error = (
+                error[:MAX_ERROR_LENGTH] + "..."
+                if len(error) > MAX_ERROR_LENGTH
+                else error
+            )
+            question_parts.append(f"  {i}. {truncated_error}")
+
+        if len(evidence.verification_errors) > MAX_ERRORS_DISPLAY:
+            remaining = len(evidence.verification_errors) - MAX_ERRORS_DISPLAY
+            question_parts.append(
+                f"  ... and {remaining} more error(s) (see full evidence report)"
+            )
+
+        question_parts.extend([
+            "",
+            "Full Verification Report:",
+            "```",
+            report,
+            "```",
+            "",
+            "Required Actions:",
+            "  1. Fix the issues listed above",
+            "  2. Ensure all tests pass with required coverage",
+            "  3. Remove any skip patterns from tests",
+            "  4. Re-run quality gates",
+            "",
+            "Type 'resolved' when all issues are fixed."
+        ])
+
+        question = "\n".join(question_parts)
+
+        project_id = task.project_id if task.project_id else self._get_project_id()
+
+        blocker_id = self.db.create_blocker(
+            agent_id=self.agent_id,
+            project_id=project_id,
+            task_id=task.id,
+            blocker_type=BlockerType.SYNC,
+            question=question,
+        )
+
+        logger.info(f"Created evidence verification blocker {blocker_id} for task {task.id}")
         return blocker_id
 
     async def should_recommend_context_reset(self, max_responses: int = 20) -> Dict[str, Any]:

@@ -120,18 +120,131 @@ Each project can override defaults in `.codeframe/enforcement.json`:
 ✅ **Completed:**
 - LanguageDetector (9 languages supported)
 - AdaptiveTestRunner (multi-language test execution)
-- Python-specific tools (scripts/)
-
-🚧 **In Progress:**
 - SkipPatternDetector (multi-language skip detection)
 - QualityTracker (generic quality metrics)
-- EvidenceVerifier (claim validation)
+- EvidenceVerifier (claim validation) ✨ **NEW**
+- WorkerAgent integration ✨ **NEW**
+- Configuration system (environment variables) ✨ **NEW**
+- Database evidence storage (audit trail) ✨ **NEW**
+- Python-specific tools (scripts/)
 
 📋 **Planned:**
-- WorkerAgent integration
-- Configuration system
-- Additional language support
-- Dashboard integration
+- Integration tests for evidence workflow
+- Additional language support (PHP, Swift, Kotlin)
+- Dashboard integration for evidence visualization
+
+## WorkerAgent Integration
+
+The EvidenceVerifier is automatically integrated into the WorkerAgent's task completion workflow:
+
+```python
+# In WorkerAgent.complete_task()
+# 1. Quality gates run and produce results
+quality_result = await quality_gates.run_all_gates(task)
+
+# 2. Evidence extracted from quality gate results
+test_result = quality_gates.get_test_results_from_gate_result(quality_result)
+skip_violations = quality_gates.get_skip_violations_from_gate_result(quality_result)
+
+# 3. Evidence collected and verified
+verifier = EvidenceVerifier(**get_evidence_config())
+evidence = verifier.collect_evidence(
+    test_result=test_result,
+    skip_violations=skip_violations,
+    language=lang_info.language,
+    agent_id=self.agent_id,
+    task_description=task.title,
+    framework=lang_info.framework,
+)
+
+# 4. Verification enforces requirements
+is_valid = verifier.verify(evidence)
+
+# 5. If invalid, create blocker with detailed report
+if not is_valid:
+    report = verifier.generate_report(evidence)
+    blocker_id = self._create_evidence_blocker(task, evidence, report)
+    # Evidence stored for audit trail
+    self.db.task_repository.save_task_evidence(task.id, evidence)
+    return {"success": False, "status": "blocked"}
+
+# 6. If valid, store evidence and complete task
+evidence_id = self.db.task_repository.save_task_evidence(task.id, evidence)
+# Mark task as completed...
+```
+
+**Configuration (via environment variables):**
+- `CODEFRAME_REQUIRE_COVERAGE=true` - Whether coverage is required
+- `CODEFRAME_MIN_COVERAGE=85.0` - Minimum coverage percentage
+- `CODEFRAME_ALLOW_SKIPPED_TESTS=false` - Whether skipped tests are allowed
+- `CODEFRAME_MIN_PASS_RATE=100.0` - Minimum test pass rate
+
+**Database Storage:**
+Evidence records are stored in the `task_evidence` table with full audit trail including:
+- Test results (passed, failed, skipped counts)
+- Coverage percentage
+- Skip violations (with file, line, pattern, context)
+- Quality metrics
+- Verification status and errors
+- Timestamps for historical tracking
+
+**Database Migration:**
+
+For **new installations**, the `task_evidence` table is created automatically on first run.
+
+For **existing deployments**, you need to add the `task_evidence` table manually:
+
+```sql
+-- Add evidence storage table
+CREATE TABLE IF NOT EXISTS task_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL,
+    language TEXT NOT NULL,
+    framework TEXT,
+
+    -- Test results
+    total_tests INTEGER NOT NULL,
+    passed_tests INTEGER NOT NULL,
+    failed_tests INTEGER NOT NULL,
+    skipped_tests INTEGER NOT NULL,
+    pass_rate REAL NOT NULL,
+    coverage REAL,
+    test_output TEXT NOT NULL,
+
+    -- Skip violations
+    skip_violations_count INTEGER NOT NULL DEFAULT 0,
+    skip_violations_json TEXT,
+    skip_check_passed BOOLEAN NOT NULL,
+
+    -- Quality metrics
+    quality_metrics_json TEXT NOT NULL,
+
+    -- Verification status
+    verified BOOLEAN NOT NULL,
+    verification_errors TEXT,
+
+    -- Metadata
+    timestamp TEXT NOT NULL,
+    task_description TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add indexes for performance
+CREATE INDEX IF NOT EXISTS idx_task_evidence_task ON task_evidence(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_evidence_verified ON task_evidence(verified, created_at DESC);
+```
+
+**Verification:**
+Run this query to verify the table exists:
+```sql
+SELECT name FROM sqlite_master WHERE type='table' AND name='task_evidence';
+```
+
+If the table doesn't exist when evidence collection runs, you'll see an error like:
+```
+sqlite3.OperationalError: no such table: task_evidence
+```
 
 ## Architecture Decisions
 

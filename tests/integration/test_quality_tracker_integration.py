@@ -126,14 +126,19 @@ class TestQualityMetricsRecording(TestQualityTrackerIntegration):
             execution_time_seconds=1.5,
         )
 
-        # Mock the quality gates run_all_gates method
+        # Mock the quality gates run_all_gates method and evidence verification
         with patch.object(
             agent, "_ensure_quality_tracker"
         ) as mock_tracker_init, patch(
             "codeframe.lib.quality_gates.QualityGates.run_all_gates",
             new_callable=AsyncMock,
-        ) as mock_gates:
+        ) as mock_gates, patch(
+            "codeframe.enforcement.evidence_verifier.EvidenceVerifier.verify"
+        ) as mock_verify:
             mock_gates.return_value = mock_result
+
+            # Mock evidence verification to always pass (not what we're testing)
+            mock_verify.return_value = True
 
             # Create a mock tracker
             mock_tracker = Mock(spec=QualityTracker)
@@ -200,8 +205,13 @@ class TestQualityDegradationDetection(TestQualityTrackerIntegration):
             new_callable=AsyncMock,
         ) as mock_gates, patch.object(
             agent, "_ensure_quality_tracker"
-        ) as mock_tracker_init:
+        ) as mock_tracker_init, patch(
+            "codeframe.enforcement.evidence_verifier.EvidenceVerifier.verify"
+        ) as mock_verify:
             mock_gates.return_value = mock_result
+
+            # Mock evidence verification to always pass (not what we're testing)
+            mock_verify.return_value = True
 
             # Create mock tracker that returns degradation
             mock_tracker = Mock(spec=QualityTracker)

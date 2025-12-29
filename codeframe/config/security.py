@@ -258,3 +258,23 @@ def set_security_config(config: SecurityConfig) -> None:
         f"mode={config.deployment_mode.value}, "
         f"enforcement={config.policy.enforcement_level.value}"
     )
+
+
+def get_evidence_config() -> dict:
+    """Get evidence verification configuration from environment.
+
+    Environment Variables:
+        CODEFRAME_REQUIRE_COVERAGE: Whether coverage is required (default: true)
+        CODEFRAME_MIN_COVERAGE: Minimum coverage percentage (default: 85.0)
+        CODEFRAME_ALLOW_SKIPPED_TESTS: Whether skipped tests are allowed (default: false)
+        CODEFRAME_MIN_PASS_RATE: Minimum test pass rate percentage (default: 100.0)
+
+    Returns:
+        dict with evidence configuration parameters
+    """
+    return {
+        "require_coverage": os.getenv("CODEFRAME_REQUIRE_COVERAGE", "true").lower() == "true",
+        "min_coverage": float(os.getenv("CODEFRAME_MIN_COVERAGE", "85.0")),
+        "allow_skipped_tests": os.getenv("CODEFRAME_ALLOW_SKIPPED_TESTS", "false").lower() == "true",
+        "min_pass_rate": float(os.getenv("CODEFRAME_MIN_PASS_RATE", "100.0")),
+    }

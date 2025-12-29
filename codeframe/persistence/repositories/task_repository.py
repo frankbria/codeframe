@@ -16,6 +16,12 @@ from codeframe.core.models import (
 )
 from codeframe.persistence.repositories.base import BaseRepository
 
+# Evidence imports (lazily imported to avoid circular dependencies)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from codeframe.enforcement.evidence_verifier import Evidence
+
 logger = logging.getLogger(__name__)
 
 # Whitelist of allowed task fields for updates (prevents SQL injection)
@@ -633,6 +639,284 @@ class TaskRepository(BaseRepository):
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_task(row) for row in rows]
+
+    # Evidence Storage (Evidence-Based Quality Enforcement)
+
+    def save_task_evidence(self, task_id: int, evidence: "Evidence", commit: bool = True) -> int:
+        """Save task evidence to database.
+
+        Args:
+            task_id: Task ID
+            evidence: Evidence object from EvidenceVerifier
+            commit: Whether to commit immediately (default: True)
+
+        Returns:
+            Evidence record ID
+        """
+        # Import here to avoid circular dependencies
+        from codeframe.enforcement.evidence_verifier import Evidence  # noqa: F401
+        from codeframe.enforcement.adaptive_test_runner import TestResult  # noqa: F401
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation  # noqa: F401
+        from codeframe.enforcement.quality_tracker import QualityMetrics  # noqa: F401
+
+        # Validate evidence data before storage
+        if not (0 <= evidence.test_result.pass_rate <= 100):
+            raise ValueError(
+                f"Invalid pass_rate: {evidence.test_result.pass_rate} (must be 0-100)"
+            )
+
+        if evidence.test_result.coverage is not None and not (
+            0 <= evidence.test_result.coverage <= 100
+        ):
+            raise ValueError(
+                f"Invalid coverage: {evidence.test_result.coverage} (must be 0-100)"
+            )
+
+        # Validate test count consistency
+        total_calculated = (
+            evidence.test_result.passed_tests
+            + evidence.test_result.failed_tests
+            + evidence.test_result.skipped_tests
+        )
+        if evidence.test_result.total_tests != total_calculated:
+            raise ValueError(
+                f"Test count mismatch: total_tests={evidence.test_result.total_tests}, "
+                f"but passed+failed+skipped={total_calculated}"
+            )
+
+        cursor = self.conn.cursor()
+
+        # Serialize skip violations to JSON with error handling
+        try:
+            skip_violations_json = json.dumps([
+                {
+                    "file": v.file,
+                    "line": v.line,
+                    "pattern": v.pattern,
+                    "context": v.context
+                }
+                for v in evidence.skip_violations
+            ])
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Failed to serialize skip violations to JSON: {e}") from e
+
+        # Serialize quality metrics to JSON with error handling
+        try:
+            quality_metrics_json = json.dumps({
+                "timestamp": evidence.quality_metrics.timestamp,
+                "response_count": evidence.quality_metrics.response_count,
+                "test_pass_rate": evidence.quality_metrics.test_pass_rate,
+                "coverage_percentage": evidence.quality_metrics.coverage_percentage,
+                "total_tests": evidence.quality_metrics.total_tests,
+                "passed_tests": evidence.quality_metrics.passed_tests,
+                "failed_tests": evidence.quality_metrics.failed_tests,
+                "language": evidence.quality_metrics.language,
+                "framework": evidence.quality_metrics.framework,
+            })
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Failed to serialize quality metrics to JSON: {e}") from e
+
+        # Serialize verification errors
+        verification_errors = "\n".join(evidence.verification_errors) if evidence.verification_errors else None
+
+        cursor.execute(
+            """
+            INSERT INTO task_evidence (
+                task_id, agent_id, language, framework,
+                total_tests, passed_tests, failed_tests, skipped_tests,
+                pass_rate, coverage, test_output,
+                skip_violations_count, skip_violations_json, skip_check_passed,
+                quality_metrics_json,
+                verified, verification_errors,
+                timestamp, task_description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                task_id,
+                evidence.agent_id,
+                evidence.language,
+                evidence.framework,
+                evidence.test_result.total_tests,
+                evidence.test_result.passed_tests,
+                evidence.test_result.failed_tests,
+                evidence.test_result.skipped_tests,
+                evidence.test_result.pass_rate,
+                evidence.test_result.coverage,
+                evidence.test_output,
+                len(evidence.skip_violations),
+                skip_violations_json,
+                evidence.skip_check_passed,
+                quality_metrics_json,
+                evidence.verified,
+                verification_errors,
+                evidence.timestamp,
+                evidence.task_description,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return cursor.lastrowid
+
+    def get_task_evidence(self, task_id: int) -> Optional["Evidence"]:
+        """Get latest evidence for a task.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            Evidence object or None if not found
+        """
+        # Import here to avoid circular dependencies
+        from codeframe.enforcement.evidence_verifier import Evidence  # noqa: F401
+        from codeframe.enforcement.adaptive_test_runner import TestResult  # noqa: F401
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation  # noqa: F401
+        from codeframe.enforcement.quality_tracker import QualityMetrics  # noqa: F401
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM task_evidence
+            WHERE task_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (task_id,),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            return None
+
+        return self._row_to_evidence(row)
+
+    def get_task_evidence_history(self, task_id: int, limit: int = 10) -> List["Evidence"]:
+        """Get evidence history for a task (for audit trail).
+
+        Args:
+            task_id: Task ID
+            limit: Maximum number of records to return
+
+        Returns:
+            List of Evidence objects ordered by created_at DESC
+        """
+        # Import here to avoid circular dependencies
+        from codeframe.enforcement.evidence_verifier import Evidence  # noqa: F401
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM task_evidence
+            WHERE task_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (task_id, limit),
+        )
+        rows = cursor.fetchall()
+
+        return [self._row_to_evidence(row) for row in rows]
+
+    def _row_to_evidence(self, row: sqlite3.Row) -> "Evidence":
+        """Convert database row to Evidence object.
+
+        Args:
+            row: SQLite Row from task_evidence table
+
+        Returns:
+            Evidence object
+
+        Raises:
+            ValueError: If JSON data fails validation
+        """
+        # Import here to avoid circular dependencies
+        from codeframe.enforcement.evidence_verifier import Evidence
+        from codeframe.enforcement.adaptive_test_runner import TestResult
+        from codeframe.enforcement.skip_pattern_detector import SkipViolation
+        from codeframe.enforcement.quality_tracker import QualityMetrics
+
+        # Deserialize and validate skip violations (defense in depth)
+        skip_violations_data = json.loads(row["skip_violations_json"]) if row["skip_violations_json"] else []
+
+        if skip_violations_data:
+            if not isinstance(skip_violations_data, list):
+                raise ValueError("skip_violations_json must be a list")
+            for v in skip_violations_data:
+                if not isinstance(v, dict):
+                    raise ValueError("Each skip violation must be a dict")
+                required_keys = {"file", "line", "pattern", "context"}
+                if not required_keys.issubset(v.keys()):
+                    raise ValueError(f"Skip violation missing required keys: {required_keys - v.keys()}")
+
+        skip_violations = [
+            SkipViolation(
+                file=v["file"],
+                line=v["line"],
+                pattern=v["pattern"],
+                context=v["context"]
+            )
+            for v in skip_violations_data
+        ]
+
+        # Deserialize and validate quality metrics (defense in depth)
+        quality_metrics_data = json.loads(row["quality_metrics_json"])
+
+        if not isinstance(quality_metrics_data, dict):
+            raise ValueError("quality_metrics_json must be a dict")
+        required_metrics_keys = {
+            "timestamp", "response_count", "test_pass_rate", "coverage_percentage",
+            "total_tests", "passed_tests", "failed_tests", "language"
+        }
+        if not required_metrics_keys.issubset(quality_metrics_data.keys()):
+            raise ValueError(
+                f"Quality metrics missing required keys: {required_metrics_keys - quality_metrics_data.keys()}"
+            )
+
+        quality_metrics = QualityMetrics(
+            timestamp=quality_metrics_data["timestamp"],
+            response_count=quality_metrics_data["response_count"],
+            test_pass_rate=quality_metrics_data["test_pass_rate"],
+            coverage_percentage=quality_metrics_data["coverage_percentage"],
+            total_tests=quality_metrics_data["total_tests"],
+            passed_tests=quality_metrics_data["passed_tests"],
+            failed_tests=quality_metrics_data["failed_tests"],
+            language=quality_metrics_data["language"],
+            framework=quality_metrics_data.get("framework"),
+        )
+
+        # Reconstruct test result
+        test_result = TestResult(
+            success=row["pass_rate"] == 100.0,
+            output=row["test_output"],
+            total_tests=row["total_tests"],
+            passed_tests=row["passed_tests"],
+            failed_tests=row["failed_tests"],
+            skipped_tests=row["skipped_tests"],
+            pass_rate=row["pass_rate"],
+            coverage=row["coverage"],
+            duration=0.0,  # Duration not stored in evidence table
+        )
+
+        # Parse verification errors
+        verification_errors = (
+            row["verification_errors"].split("\n")
+            if row["verification_errors"]
+            else []
+        )
+
+        return Evidence(
+            test_result=test_result,
+            test_output=row["test_output"],
+            skip_violations=skip_violations,
+            skip_check_passed=bool(row["skip_check_passed"]),
+            quality_metrics=quality_metrics,
+            timestamp=row["timestamp"],
+            language=row["language"],
+            framework=row["framework"],
+            agent_id=row["agent_id"],
+            task_description=row["task_description"],
+            verified=bool(row["verified"]),
+            verification_errors=verification_errors if verification_errors else None,
+        )
 
     # Code Review CRUD operations (Sprint 10: 015-review-polish)
 
