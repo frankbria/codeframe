@@ -18,12 +18,11 @@ Test Coverage:
 """
 
 import pytest
-from pathlib import Path
-from unittest.mock import patch, Mock, AsyncMock, MagicMock
+from unittest.mock import patch, Mock
 from codeframe.agents.worker_agent import WorkerAgent
 from codeframe.lib.quality_gates import QualityGates, QualityGateResult
 from codeframe.persistence.database import Database
-from codeframe.core.models import Task, TaskStatus, BlockerType, AgentMaturity
+from codeframe.core.models import TaskStatus, BlockerType, AgentMaturity
 
 
 class TestEvidenceIntegration:
