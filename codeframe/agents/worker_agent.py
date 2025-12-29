@@ -1288,6 +1288,7 @@ class WorkerAgent:
                 skipped_tests=0,
                 pass_rate=100.0,
                 coverage=None,
+                duration=0.0,  # Zero seconds when no tests run
             )
 
         # Initialize EvidenceVerifier with configuration from environment
