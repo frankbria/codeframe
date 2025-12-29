@@ -168,10 +168,11 @@ test.describe('Dashboard - Sprint 10 Features', () => {
 
     // Make panel visible if it's in a tab or collapsed
     if (!(await reviewPanel.isVisible())) {
-      const reviewTab = page.locator('[data-testid="review-tab"]');
-      await reviewTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-      if (await reviewTab.isVisible()) {
-        await reviewTab.click();
+      // Review panel is in the Overview tab
+      const overviewTab = page.locator('[data-testid="overview-tab"]');
+      await overviewTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+      if (await overviewTab.isVisible()) {
+        await overviewTab.click();
         // Wait for panel to become visible after tab switch
         await reviewPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       }
@@ -203,10 +204,11 @@ test.describe('Dashboard - Sprint 10 Features', () => {
 
     // Make panel visible if needed
     if (!(await qualityGatesPanel.isVisible())) {
-      const qualityTab = page.locator('[data-testid="quality-tab"]');
-      await qualityTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-      if (await qualityTab.isVisible()) {
-        await qualityTab.click();
+      // Quality gates panel is in the Overview tab
+      const overviewTab = page.locator('[data-testid="overview-tab"]');
+      await overviewTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+      if (await overviewTab.isVisible()) {
+        await overviewTab.click();
         // Wait for panel to become visible after tab switch
         await qualityGatesPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
       }
