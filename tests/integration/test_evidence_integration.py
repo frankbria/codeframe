@@ -112,7 +112,9 @@ python_functions = test_*
             "title": "Test Issue",
             "description": "Integration test issue",
             "labels": ["test"],
-            "status": "open"
+            "status": "pending",
+            "priority": 0,
+            "workflow_step": 1
         }
         issue_id = db.create_issue(issue_data)
 
@@ -127,7 +129,7 @@ python_functions = test_*
         }
         task_id = db.create_task(task_data)
 
-        return db.get_task_by_id(task_id)
+        return db.get_task(task_id)
 
     @pytest.fixture
     def worker_agent(self, db):
@@ -174,7 +176,7 @@ python_functions = test_*
             assert "evidence_id" in result
 
             # Verify task status updated
-            updated_task = db.tasks.get_by_id(task.id)
+            updated_task = db.get_task(task.id)
             assert updated_task.status == TaskStatus.COMPLETED
 
             # Verify evidence stored
@@ -229,7 +231,7 @@ python_functions = test_*
             assert "evidence_errors" in result
 
             # Verify task still in progress
-            updated_task = db.tasks.get_by_id(task.id)
+            updated_task = db.get_task(task.id)
             assert updated_task.status == TaskStatus.IN_PROGRESS
 
             # Verify failed evidence stored
@@ -454,5 +456,5 @@ python_functions = test_*
                 assert len(blockers) == 0
 
                 # Verify task status unchanged
-                updated_task = db.tasks.get_by_id(task.id)
+                updated_task = db.get_task(task.id)
                 assert updated_task.status == TaskStatus.IN_PROGRESS

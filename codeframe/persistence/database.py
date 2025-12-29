@@ -148,6 +148,17 @@ class Database:
         self.activities = ActivityRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.audit_logs = AuditRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
 
+    # Backward compatibility properties (maintain old *_repository naming)
+    @property
+    def task_repository(self) -> TaskRepository:
+        """Backward compatibility: Access tasks repository."""
+        return self.tasks
+
+    @property
+    def blocker_repository(self) -> BlockerRepository:
+        """Backward compatibility: Access blockers repository."""
+        return self.blockers
+
     # Connection management methods
     def close(self) -> None:
         """Close database connection (sync only)."""
