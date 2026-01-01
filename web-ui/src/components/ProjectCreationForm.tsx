@@ -165,6 +165,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={validateName}
+            data-testid="project-name-input"
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground bg-background ${
               errors.name ? 'border-destructive' : 'border-input'
             }`}
@@ -173,7 +174,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             maxLength={100}
           />
           {errors.name && (
-            <p className="mt-1 text-sm text-destructive">{errors.name}</p>
+            <p className="mt-1 text-sm text-destructive" data-testid="form-error">{errors.name}</p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
             Lowercase letters, numbers, hyphens, and underscores only (min 3 chars)
@@ -190,6 +191,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={validateDescription}
+            data-testid="project-description-input"
             className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground bg-background ${
               errors.description ? 'border-destructive' : 'border-input'
             }`}
@@ -199,7 +201,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             maxLength={500}
           />
           {errors.description && (
-            <p className="mt-1 text-sm text-destructive">{errors.description}</p>
+            <p className="mt-1 text-sm text-destructive" data-testid="form-error">{errors.description}</p>
           )}
           {/* US2: Character Counter */}
           <p className="mt-1 text-xs text-muted-foreground">
@@ -211,6 +213,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
         <button
           type="submit"
           disabled={!isFormValid}
+          data-testid="create-project-submit"
           className="w-full bg-primary text-primary-foreground py-2 px-4 rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:bg-muted disabled:cursor-not-allowed transition-colors"
         >
           {isSubmitting ? 'Creating...' : 'Create Project & Start Discovery'}
@@ -224,7 +227,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
 
       {/* US3: Error Message Display */}
       {errors.submit && (
-        <div className="mt-4 p-3 bg-destructive/10 border border-destructive rounded-md">
+        <div className="mt-4 p-3 bg-destructive/10 border border-destructive rounded-md" data-testid="form-error">
           <p className="text-destructive text-sm">
             <span className="mr-2">⚠️</span>
             Error: {errors.submit}

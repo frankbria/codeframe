@@ -182,7 +182,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
             </div>
 
             {discovery.current_question && (
-              <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary">
+              <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary" data-testid="discovery-question">
                 <div className="text-xs font-medium text-primary uppercase mb-1">
                   Current Question ({discovery.current_question.category})
                 </div>
@@ -199,6 +199,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                   value={answer}
                   onChange={(e) => setAnswer(e.target.value)}
                   onKeyDown={handleKeyPress}
+                  data-testid="discovery-answer-input"
                   placeholder="Type your answer here... (Ctrl+Enter to submit)"
                   rows={6}
                   maxLength={5000}
@@ -222,6 +223,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                     type="button"
                     onClick={submitAnswer}
                     disabled={isSubmitting || !answer.trim()}
+                    data-testid="submit-answer-button"
                     className={`py-2 px-6 rounded-lg font-semibold transition-colors ${
                       isSubmitting || !answer.trim()
                         ? 'bg-muted cursor-not-allowed text-muted-foreground'

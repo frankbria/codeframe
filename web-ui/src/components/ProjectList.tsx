@@ -76,6 +76,7 @@ export default function ProjectList() {
         <h2 className="text-2xl font-bold text-foreground">Your Projects</h2>
         <button
           onClick={() => setShowForm(true)}
+          data-testid="create-project-button"
           className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
         >
           Create New Project
@@ -108,7 +109,7 @@ export default function ProjectList() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="project-list">
           {projects.map((project) => (
             <div
               key={project.id}
