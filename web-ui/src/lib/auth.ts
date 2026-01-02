@@ -17,6 +17,7 @@ import { schema } from "./db-schema";
  * - Session management with 7-day expiry
  * - Drizzle adapter for schema control
  * - Plural table names matching CodeFRAME backend
+ * - Lazy database initialization (supports TEST_DB_PATH at runtime)
  *
  * @see https://better-auth.com/docs/adapters/drizzle
  */
@@ -28,6 +29,9 @@ const hasValidTestDbPath = testDbPath && testDbPath.length > 0;
 const dbPath = hasValidTestDbPath
   ? resolve(testDbPath)
   : resolve(process.cwd(), "../.codeframe/state.db");
+
+console.log(`[BetterAuth] Connecting to database: ${dbPath}`);
+console.log(`[BetterAuth] TEST_DB_PATH = ${process.env.TEST_DB_PATH || "(not set)"}`);
 
 // Create better-sqlite3 connection
 const sqlite = new Database(dbPath);
@@ -86,4 +90,4 @@ export const auth = betterAuth({
 /**
  * Type exports for Better Auth
  */
-export type Session = typeof auth.$Infer.Session;
+export type Session = ReturnType<typeof betterAuth>["$Infer"]["Session"];
