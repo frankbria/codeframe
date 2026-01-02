@@ -164,11 +164,14 @@ python migrate_to_accounts_table.py /path/to/database.db
 
 **BetterAuth Login Integration**: Schema fixed, but login still timing out
 
-**Latest Update (2026-01-02 16:00)**:
+**Latest Update (2026-01-02 17:30)**:
 - ✅ Fixed critical schema mismatch: accounts.id changed from INTEGER to TEXT
 - ✅ Added BetterAuth-required OAuth fields (id_token, access_token_expires_at, etc.)
 - ✅ Database schema now 100% matches BetterAuth requirements
-- ✘ Login timeouts persist despite schema fixes
+- ✅ Fixed INVALID password hash in seed script (root cause #1)
+- ✅ Verified Python/Node.js bcrypt ARE fully compatible (NOT a cross-platform issue)
+- ✅ Added BetterAuth debug logging for investigation
+- ✘ Login timeouts persist despite all fixes - indicates deeper issue
 
 **Current Symptoms**:
 - ✅ Login page renders correctly
@@ -178,27 +181,46 @@ python migrate_to_accounts_table.py /path/to/database.db
 - ✘ Timeout occurs whether password is correct or incorrect
 
 **Analysis**:
-The pattern suggests BetterAuth successfully queries the database and finds the user/account, but then hangs during password verification or session creation. Possible causes:
 
-1. **Password Hashing Mismatch**:
-   - We're storing bcrypt hashes from Python (bcrypt.hashpw)
-   - BetterAuth may use a different bcrypt implementation
-   - May need to verify hash format compatibility
+1. **✅ SOLVED: Invalid Password Hash**
+   - Original hash in seed script was CORRUPTED/INVALID
+   - Failed verification in both Python AND Node.js
+   - Likely corrupted during copy/paste when originally generated
+   - **Fix**: Generated fresh valid hash, verified cross-platform
+   - **Testing**:
+     ```bash
+     # Python verification
+     python3 -c "import bcrypt; print(bcrypt.checkpw(...))"  # ✅ Works
 
-2. **Async Database Operations**:
-   - BetterAuth might be waiting for a promise that never resolves
-   - Drizzle adapter async query handling issue
+     # Node.js bcrypt verification
+     bcrypt.compare('testpassword123', hash)  # ✅ Works
 
-3. **Session Creation Blocking**:
-   - Session table write might be failing
-   - BetterAuth retrying session creation indefinitely
+     # Node.js bcryptjs verification
+     bcryptjs.compare('testpassword123', hash)  # ✅ Works
+     ```
+
+2. **✅ CONFIRMED: Python/Node.js bcrypt ARE Compatible**
+   - Created test script: `web-ui/test-bcrypt-compat.js`
+   - Tested hash cross-verification extensively
+   - **Conclusion**: NO cross-platform compatibility issue
+   - Both implementations use same $2b$12$ format correctly
+
+3. **❌ REMAINING ISSUE: Still Times Out with Valid Hash**
+   The pattern suggests BetterAuth successfully queries the database and finds the user/account, but then hangs during password verification or session creation. Remaining possible causes:
+
+   - **Async Database Operations**: BetterAuth might be waiting for a promise that never resolves
+   - **Drizzle Adapter Issue**: Query handling or transaction management problem
+   - **Session Creation Blocking**: Session table write might be failing silently
+   - **BetterAuth Internal Bug**: Version 1.4.7 might have a specific bug with our setup
 
 **Investigation Needed**:
-- [ ] Test BetterAuth sign-up flow (creates new account with BetterAuth's hash)
-- [ ] Compare bcrypt hash format: Python vs BetterAuth JavaScript
-- [ ] Enable BetterAuth debug logging to see where it hangs
-- [ ] Test direct API call to /api/auth/sign-in with curl
-- [ ] Check if sessions table writes are succeeding
+- [ ] Review BetterAuth debug logs (now enabled)
+- [ ] Test BetterAuth sign-up flow (bypasses our seeded data entirely)
+- [ ] Test direct API call with curl to /api/auth/sign-in
+- [ ] Check Next.js server console for BetterAuth errors
+- [ ] Verify database path resolution in production build vs dev mode
+- [ ] Test with minimal BetterAuth config (remove optional settings)
+- [ ] Check BetterAuth GitHub issues for similar timeout problems
 
 **Schema Fixes Applied**:
 ```sql
