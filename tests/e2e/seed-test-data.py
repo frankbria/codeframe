@@ -57,8 +57,9 @@ def seed_test_data(db_path: str, project_id: int):
 
         # BetterAuth-compatible schema: password stored in accounts table
         # Hash: bcrypt hash of 'testpassword123'
-        # Generated with: python -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"
-        test_user_password_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYb9K0rJ5n6"
+        # Generated with: python3 -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"
+        # Verified compatible with both Python bcrypt and Node.js bcrypt
+        test_user_password_hash = "$2b$12$kEseisCIdS6HuYDCll3YyOCHQVo.dcr71jfF2i8sRuMJRCNosWgEu"
 
         # Create user record (BetterAuth compatible - no password here)
         cursor.execute(

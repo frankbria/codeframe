@@ -43,6 +43,12 @@ export const auth = betterAuth({
     usePlural: true,
   }),
 
+  // Enable debug logging to diagnose authentication issues
+  logger: {
+    level: "debug",
+    disabled: false,
+  },
+
   // Email and password authentication
   emailAndPassword: {
     enabled: true,

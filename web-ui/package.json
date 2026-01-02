@@ -47,6 +47,8 @@
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "autoprefixer": "^10.4.17",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "eslint": "^8.56.0",
     "eslint-config-next": "^14.1.0",
     "jest": "^30.2.0",
