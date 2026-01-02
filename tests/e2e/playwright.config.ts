@@ -93,8 +93,9 @@ export default defineConfig({
         },
         // Frontend Next.js production server (on port 3001 to avoid conflicts)
         // Note: reuseExistingServer is false to ensure TEST_DB_PATH is picked up
+        // Note: NEXT_PUBLIC_APP_URL is set to match FRONTEND_URL for BetterAuth client
         {
-          command: `cd ../../web-ui && rm -rf .next && TEST_DB_PATH=${TEST_DB_PATH} PORT=3001 npm run build && TEST_DB_PATH=${TEST_DB_PATH} PORT=3001 npm start`,
+          command: `cd ../../web-ui && rm -rf .next && TEST_DB_PATH=${TEST_DB_PATH} NEXT_PUBLIC_APP_URL=${FRONTEND_URL} PORT=3001 npm run build && TEST_DB_PATH=${TEST_DB_PATH} NEXT_PUBLIC_APP_URL=${FRONTEND_URL} PORT=3001 npm start`,
           url: FRONTEND_URL,
           reuseExistingServer: false,
           timeout: 120000,
