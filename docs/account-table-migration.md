@@ -162,26 +162,66 @@ python migrate_to_accounts_table.py /path/to/database.db
 
 ### 🔧 In Progress
 
-**BetterAuth Login Integration**: E2E tests show login attempts timing out
+**BetterAuth Login Integration**: Schema fixed, but login still timing out
 
-**Symptoms**:
+**Latest Update (2026-01-02 16:00)**:
+- ✅ Fixed critical schema mismatch: accounts.id changed from INTEGER to TEXT
+- ✅ Added BetterAuth-required OAuth fields (id_token, access_token_expires_at, etc.)
+- ✅ Database schema now 100% matches BetterAuth requirements
+- ✘ Login timeouts persist despite schema fixes
+
+**Current Symptoms**:
 - ✅ Login page renders correctly
 - ✅ Form validation works (empty fields, invalid email format)
-- ✘ Login with valid credentials times out after 10-30s
-- ✘ Password verification never completes
+- ✅ Invalid email (user doesn't exist) → Fast error response
+- ✘ Valid email + any password → Timeout after 10-30s
+- ✘ Timeout occurs whether password is correct or incorrect
 
-**Possible Causes**:
-1. **BetterAuth Configuration**: May need additional config for email/password provider
-2. **Database Path**: Frontend might be connecting to wrong database in test environment
-3. **Password Hashing**: BetterAuth might use different hashing than our bcrypt passwords
-4. **Schema Mismatch**: Subtle difference between our schema and what BetterAuth expects
+**Analysis**:
+The pattern suggests BetterAuth successfully queries the database and finds the user/account, but then hangs during password verification or session creation. Possible causes:
+
+1. **Password Hashing Mismatch**:
+   - We're storing bcrypt hashes from Python (bcrypt.hashpw)
+   - BetterAuth may use a different bcrypt implementation
+   - May need to verify hash format compatibility
+
+2. **Async Database Operations**:
+   - BetterAuth might be waiting for a promise that never resolves
+   - Drizzle adapter async query handling issue
+
+3. **Session Creation Blocking**:
+   - Session table write might be failing
+   - BetterAuth retrying session creation indefinitely
 
 **Investigation Needed**:
-- [ ] Verify BetterAuth's expected accounts table schema
-- [ ] Check BetterAuth logs for authentication errors
-- [ ] Confirm TEST_DB_PATH environment variable is used correctly
-- [ ] Verify bcrypt password hashing compatibility with BetterAuth
-- [ ] Test BetterAuth sign-up flow (creates new account) vs sign-in (existing account)
+- [ ] Test BetterAuth sign-up flow (creates new account with BetterAuth's hash)
+- [ ] Compare bcrypt hash format: Python vs BetterAuth JavaScript
+- [ ] Enable BetterAuth debug logging to see where it hangs
+- [ ] Test direct API call to /api/auth/sign-in with curl
+- [ ] Check if sessions table writes are succeeding
+
+**Schema Fixes Applied**:
+```sql
+-- OLD (broke BetterAuth)
+CREATE TABLE accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,  -- ❌ Wrong type
+    ...
+);
+
+-- NEW (BetterAuth compatible)
+CREATE TABLE accounts (
+    id TEXT PRIMARY KEY,                    -- ✅ Correct
+    ...
+    id_token TEXT,                          -- ✅ Added
+    access_token_expires_at TIMESTAMP,      -- ✅ Added
+    refresh_token_expires_at TIMESTAMP,     -- ✅ Added
+    scope TEXT,                              -- ✅ Added
+);
+```
+
+Sources:
+- [BetterAuth Drizzle Adapter Schema](https://www.better-auth.com/docs/adapters/drizzle)
+- [BetterAuth User & Accounts Docs](https://www.better-auth.com/docs/concepts/users-accounts)
 
 ## Rollback Plan
 
