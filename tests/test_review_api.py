@@ -93,8 +93,8 @@ def auth_token(db, user_id):
     expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
     db.conn.execute(
         """
-        INSERT OR REPLACE INTO sessions (token, user_id, expires_at)
-        VALUES (?, ?, ?)
+        INSERT OR REPLACE INTO sessions (id, token, user_id, expires_at)
+        VALUES ('test-review-session-1', ?, ?, ?)
         """,
         (token, user_id, expires_at)
     )
