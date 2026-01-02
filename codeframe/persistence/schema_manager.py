@@ -113,6 +113,13 @@ class SchemaManager:
         """
         )
 
+        # Create index on user_id for faster login lookups
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)
+        """
+        )
+
         # Sessions table (BetterAuth compatible)
         cursor.execute(
             """

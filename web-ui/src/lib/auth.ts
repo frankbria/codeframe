@@ -82,9 +82,9 @@ export const auth = betterAuth({
 
   // Trust proxy headers (for deployment behind reverse proxy)
   trustedOrigins: [
-    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-    "http://localhost:3000",
-  ],
+    process.env.NEXT_PUBLIC_APP_URL,
+    ...(process.env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : []),
+  ].filter(Boolean),
 });
 
 /**
