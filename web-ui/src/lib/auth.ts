@@ -84,7 +84,7 @@ export const auth = betterAuth({
   trustedOrigins: [
     process.env.NEXT_PUBLIC_APP_URL,
     ...(process.env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : []),
-  ].filter(Boolean),
+  ].filter((origin): origin is string => Boolean(origin)),
 });
 
 /**

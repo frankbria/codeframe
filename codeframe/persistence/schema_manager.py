@@ -136,6 +136,19 @@ class SchemaManager:
         """
         )
 
+        # Verification table (BetterAuth compatible)
+        # Used for email verification tokens when requireEmailVerification is enabled
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS verification (
+                id TEXT PRIMARY KEY,
+                identifier TEXT NOT NULL,
+                value TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL
+            )
+        """
+        )
+
     def _create_project_tables(self, cursor: sqlite3.Cursor) -> None:
         """Create project and project_users tables."""
         # Projects table

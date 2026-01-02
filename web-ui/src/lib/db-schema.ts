@@ -89,6 +89,20 @@ export const sessions = sqliteTable("sessions", {
 });
 
 /**
+ * Verification table - stores email verification tokens (BetterAuth compatible)
+ *
+ * Used when requireEmailVerification is enabled. Currently not required
+ * (requireEmailVerification: false in auth.ts), but included proactively
+ * for future email verification features.
+ */
+export const verification = sqliteTable("verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
+/**
  * Drizzle database schema export
  * Used by BetterAuth drizzleAdapter
  */
@@ -96,4 +110,5 @@ export const schema = {
   users,
   accounts,
   sessions,
+  verification,
 };

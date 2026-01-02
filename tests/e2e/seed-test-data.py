@@ -9,6 +9,13 @@ import sys
 import json
 from datetime import datetime, timedelta
 
+try:
+    import bcrypt
+except ImportError:
+    print("⚠️  WARNING: bcrypt not installed - password hash validation disabled")
+    print("   Install with: pip install bcrypt")
+    bcrypt = None
+
 # E2E test root directory - derived from script location for reliability
 # This avoids assumptions about db_path structure
 E2E_TEST_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -60,6 +67,17 @@ def seed_test_data(db_path: str, project_id: int):
         # Generated with: python3 -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"
         # Verified compatible with both Python bcrypt and Node.js bcrypt
         test_user_password_hash = "$2b$12$kEseisCIdS6HuYDCll3YyOCHQVo.dcr71jfF2i8sRuMJRCNosWgEu"
+
+        # Verify hash is valid before seeding
+        if bcrypt is not None:
+            try:
+                assert bcrypt.checkpw(
+                    b"testpassword123", test_user_password_hash.encode()
+                ), "Password hash verification failed"
+                print("   ✅ Password hash verified")
+            except Exception as e:
+                print(f"   ❌ Password hash verification failed: {e}")
+                raise
 
         # Create user record (BetterAuth compatible - no password here)
         cursor.execute(
