@@ -266,6 +266,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
             <div className="flex gap-2">
               <button
                 onClick={() => setShowPRD(true)}
+                data-testid="prd-generated"
                 className="px-4 py-2 border border-border rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
               >
                 View PRD

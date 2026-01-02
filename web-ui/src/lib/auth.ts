@@ -18,7 +18,10 @@ import { resolve } from "path";
 export const auth = betterAuth({
   database: {
     // SQLite database URL pointing to CodeFRAME state database
-    url: `file:${resolve(process.cwd(), "../.codeframe/state.db")}`,
+    // Use TEST_DB_PATH for E2E tests, otherwise use production database
+    url: process.env.TEST_DB_PATH
+      ? `file:${resolve(process.env.TEST_DB_PATH)}`
+      : `file:${resolve(process.cwd(), "../.codeframe/state.db")}`,
     type: "sqlite",
   },
 

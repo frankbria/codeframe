@@ -41,11 +41,14 @@ export default function Navigation() {
               <div className="text-sm text-muted-foreground">Loading...</div>
             ) : session ? (
               <>
-                <span className="text-sm text-foreground">
-                  {session.user.name || session.user.email}
-                </span>
+                <div data-testid="user-menu">
+                  <span className="text-sm text-foreground">
+                    {session.user.name || session.user.email}
+                  </span>
+                </div>
                 <button
                   onClick={handleLogout}
+                  data-testid="logout-button"
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
                 >
                   Logout

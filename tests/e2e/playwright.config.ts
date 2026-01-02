@@ -37,7 +37,7 @@ export default defineConfig({
   /* Shared settings for all the projects below */
   use: {
     /* Base URL to use in actions like `await page.goto('/')` */
-    baseURL: process.env.FRONTEND_URL || 'http://localhost:3000',
+    baseURL: FRONTEND_URL,
 
     /* Collect trace when retrying the failed test */
     trace: 'on-first-retry',
@@ -91,9 +91,9 @@ export default defineConfig({
           reuseExistingServer: !process.env.CI,
           timeout: 120000,
         },
-        // Frontend Next.js dev server
+        // Frontend Next.js production server (on port 3001 to avoid conflicts)
         {
-          command: 'cd ../../web-ui && npm run dev',
+          command: `cd ../../web-ui && TEST_DB_PATH=${TEST_DB_PATH} PORT=3001 npm run build && TEST_DB_PATH=${TEST_DB_PATH} PORT=3001 npm start`,
           url: FRONTEND_URL,
           reuseExistingServer: !process.env.CI,
           timeout: 120000,
