@@ -69,29 +69,59 @@ class SchemaManager:
         self._ensure_default_admin_user()
 
     def _create_auth_tables(self, cursor: sqlite3.Cursor) -> None:
-        """Create authentication and authorization tables."""
-        # Users table
+        """Create authentication and authorization tables.
+
+        Uses BetterAuth-compatible schema:
+        - users: Core user information (no password)
+        - accounts: Authentication credentials (password, OAuth tokens)
+        - sessions: Active user sessions
+        """
+        # Users table (BetterAuth compatible)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
                 name TEXT,
+                email_verified INTEGER DEFAULT 0,
+                image TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """
         )
 
-        # Sessions table
+        # Accounts table (BetterAuth compatible - stores passwords and OAuth)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                account_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                password TEXT,
+                access_token TEXT,
+                refresh_token TEXT,
+                expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, provider_id)
+            )
+        """
+        )
+
+        # Sessions table (BetterAuth compatible)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
-                token TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY,
+                token TEXT UNIQUE NOT NULL,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """
         )
@@ -682,15 +712,34 @@ class SchemaManager:
         Creates admin user with id=1 if it doesn't exist. This is used
         when AUTH_REQUIRED=false to provide a default user for development.
 
+        Uses BetterAuth-compatible schema:
+        - Creates user record without password
+        - Creates account record with empty password (for development)
+
         Uses INSERT OR IGNORE to avoid conflicts with test fixtures.
         """
         cursor = self.conn.cursor()
+
+        # Create user record (BetterAuth compatible - no password)
         cursor.execute(
             """
-            INSERT OR IGNORE INTO users (id, email, password_hash, name)
-            VALUES (1, 'admin@localhost', '', 'Admin User')
+            INSERT OR IGNORE INTO users (id, email, name, email_verified)
+            VALUES (1, 'admin@localhost', 'Admin User', 1)
             """
         )
-        if cursor.rowcount > 0:
-            logger.info("Created default admin user (id=1, email='admin@localhost')")
+        user_created = cursor.rowcount > 0
+
+        # Create account record for credential-based auth (email/password)
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO accounts (user_id, account_id, provider_id, password)
+            VALUES (1, 'admin@localhost', 'credential', '')
+            """
+        )
+
+        if user_created:
+            logger.info(
+                "Created default admin user (id=1, email='admin@localhost') with account"
+            )
+
         self.conn.commit()
