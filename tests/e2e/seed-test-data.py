@@ -87,12 +87,7 @@ def seed_test_data(db_path: str, project_id: int):
 
         print("✅ Seeded test user (email: test@example.com)")
         print(f"   Session token: {session_token[:20]}...")
-
-        # Export session token for tests to use via output file
-        # Write to a file that global-setup.ts can read
-        token_file = os.path.join(os.path.dirname(db_path), "test-session-token.txt")
-        with open(token_file, "w") as f:
-            f.write(session_token)
+        print("   Note: E2E tests will use real login flow via BetterAuth")
 
         # ========================================
         # 1. Seed Agents (5)

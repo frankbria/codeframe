@@ -15,15 +15,23 @@ import { resolve } from "path";
  *
  * @see https://better-auth.com/docs/installation
  */
+// Validate TEST_DB_PATH environment variable (used for E2E tests)
+const testDbPath = process.env.TEST_DB_PATH?.trim();
+const hasValidTestDbPath = testDbPath && testDbPath.length > 0;
+
 export const auth = betterAuth({
   database: {
     // SQLite database URL pointing to CodeFRAME state database
     // Use TEST_DB_PATH for E2E tests, otherwise use production database
-    url: process.env.TEST_DB_PATH
-      ? `file:${resolve(process.env.TEST_DB_PATH)}`
+    url: hasValidTestDbPath
+      ? `file:${resolve(testDbPath)}`
       : `file:${resolve(process.cwd(), "../.codeframe/state.db")}`,
     type: "sqlite",
   },
+
+  // Use plural table names to match CodeFRAME's existing schema
+  // This aligns BetterAuth with the `users` and `sessions` tables
+  usePlural: true,
 
   // Email and password authentication
   emailAndPassword: {

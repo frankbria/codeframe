@@ -117,45 +117,20 @@ function seedDatabaseDirectly(projectId: number): void {
 }
 
 /**
- * Load test user session token created during database seeding.
- * The session token is created directly in the database by seed-test-data.py.
- *
- * @throws {Error} If session token file cannot be loaded (authentication is required)
+ * Store test user credentials for E2E tests to use with loginUser() helper.
+ * These credentials match the test user seeded by seed-test-data.py.
  */
-function loadTestUserSession(): string {
-  console.log('\n👤 Loading test user session...');
+function storeTestUserCredentials(): void {
+  console.log('\n👤 Storing test user credentials for E2E tests...');
 
-  // Read session token from file created by seed-test-data.py
-  const tokenFile = path.join(path.dirname(TEST_DB_PATH), 'test-session-token.txt');
+  // Store credentials for tests to use with loginUser() helper
+  process.env.E2E_TEST_USER_EMAIL = 'test@example.com';
+  process.env.E2E_TEST_USER_PASSWORD = 'testpassword123';
 
-  if (!fs.existsSync(tokenFile)) {
-    throw new Error(
-      `Session token file not found: ${tokenFile}\n` +
-      `Test user authentication setup failed. Ensure seed-test-data.py ran successfully.`
-    );
-  }
-
-  try {
-    const sessionToken = fs.readFileSync(tokenFile, 'utf-8').trim();
-
-    if (!sessionToken) {
-      throw new Error('Session token file is empty');
-    }
-
-    console.log('✅ Test user session loaded');
-    console.log(`   Email: test@example.com`);
-    console.log(`   Password: testpassword123`);
-    console.log(`   Session token: ${sessionToken.substring(0, 20)}...`);
-
-    // Store credentials for tests to use
-    process.env.E2E_TEST_USER_EMAIL = 'test@example.com';
-    process.env.E2E_TEST_USER_PASSWORD = 'testpassword123';
-    process.env.E2E_TEST_SESSION_TOKEN = sessionToken;
-
-    return sessionToken;
-  } catch (error) {
-    throw new Error(`Failed to load test user session: ${error}`);
-  }
+  console.log('✅ Test user credentials stored');
+  console.log(`   Email: test@example.com`);
+  console.log(`   Password: testpassword123`);
+  console.log('   Note: Tests will use real login flow via BetterAuth');
 }
 
 async function globalSetup(config: FullConfig) {
@@ -245,10 +220,11 @@ async function globalSetup(config: FullConfig) {
     seedDatabaseDirectly(projectId);
 
     // ========================================
-    // 3. Load test user session token
+    // 3. Store test user credentials
     // ========================================
-    // The session token was created during database seeding
-    loadTestUserSession();
+    // Store credentials for E2E tests to use with loginUser() helper
+    // Tests will perform real login via BetterAuth UI
+    storeTestUserCredentials();
 
     console.log('\n✅ E2E test environment ready!');
     console.log(`   Project ID: ${projectId}`);
