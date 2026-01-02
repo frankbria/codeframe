@@ -67,10 +67,18 @@ def user_id(db):
 
     db.conn.execute(
         """
-        INSERT OR REPLACE INTO users (id, email, password_hash, name, created_at)
-        VALUES (1, 'test@example.com', 'hashed_password', 'Test User', ?)
+        INSERT OR REPLACE INTO users (id, email, name, created_at)
+        VALUES (1, 'test@example.com', 'Test User', ?)
         """,
         (datetime.now(timezone.utc).isoformat(),)
+    )
+
+    # Create account record for credential-based auth (BetterAuth schema)
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
+        VALUES ('test-review-account-1', 1, 'test@example.com', 'credential', 'hashed_password')
+        """
     )
     db.conn.commit()
     return 1

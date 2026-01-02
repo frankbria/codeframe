@@ -95,8 +95,16 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
         # Insert or replace default admin user
         cursor.execute(
             """
-            INSERT OR REPLACE INTO users (id, email, password_hash, name)
-            VALUES (1, 'admin@localhost', 'not-used-in-tests', 'Admin User')
+            INSERT OR REPLACE INTO users (id, email, name)
+            VALUES (1, 'admin@localhost', 'Admin User')
+            """
+        )
+
+        # Create account record for credential-based auth (BetterAuth schema)
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
+            VALUES ('admin-account-test-1', 1, 'admin@localhost', 'credential', 'not-used-in-tests')
             """
         )
         db.conn.commit()

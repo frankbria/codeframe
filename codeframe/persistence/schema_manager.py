@@ -732,15 +732,29 @@ class SchemaManager:
     def _ensure_default_admin_user(self) -> None:
         """Ensure default admin user exists in database.
 
-        Creates admin user with id=1 if it doesn't exist. This is used
+        Creates admin user with id=1 if it doesn't exist. This is ONLY used
         when AUTH_REQUIRED=false to provide a default user for development.
+
+        SECURITY: In production (AUTH_REQUIRED=true), no admin account is
+        created. Users must authenticate via BetterAuth.
 
         Uses BetterAuth-compatible schema:
         - Creates user record without password
-        - Creates account record with empty password (for development)
+        - Creates account record with NULL password (cannot be used for login)
 
         Uses INSERT OR IGNORE to avoid conflicts with test fixtures.
         """
+        import os
+
+        # SECURITY: Only create admin account in development mode
+        auth_required = os.getenv("AUTH_REQUIRED", "false").lower() == "true"
+        if auth_required:
+            logger.debug(
+                "Skipping admin user creation (AUTH_REQUIRED=true). "
+                "Users must authenticate via BetterAuth."
+            )
+            return
+
         cursor = self.conn.cursor()
 
         # Create user record (BetterAuth compatible - no password)
@@ -752,18 +766,21 @@ class SchemaManager:
         )
         user_created = cursor.rowcount > 0
 
-        # Create account record for credential-based auth (email/password)
+        # Create account record with NULL password (cannot be used for login)
         # BetterAuth generates UUID-style IDs - use a deterministic ID for admin
+        # SECURITY: Password is NULL, not empty string, to prevent login attempts
         cursor.execute(
             """
             INSERT OR IGNORE INTO accounts (id, user_id, account_id, provider_id, password)
-            VALUES ('admin-account-credential-1', 1, 'admin@localhost', 'credential', '')
+            VALUES ('admin-account-credential-1', 1, 'admin@localhost', 'credential', NULL)
             """
         )
 
         if user_created:
-            logger.info(
-                "Created default admin user (id=1, email='admin@localhost') with account"
+            logger.warning(
+                "⚠️  DEVELOPMENT MODE: Created default admin user (id=1, email='admin@localhost'). "
+                "This account has NULL password and cannot be used for login. "
+                "Set AUTH_REQUIRED=true for production."
             )
 
         self.conn.commit()

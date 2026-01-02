@@ -23,10 +23,20 @@ def db(tmp_path):
     # Create test users (use INSERT OR REPLACE to avoid conflicts)
     db.conn.execute(
         """
-        INSERT OR REPLACE INTO users (id, email, password_hash, name)
+        INSERT OR REPLACE INTO users (id, email, name)
         VALUES
-            (1, 'alice@example.com', 'hashed', 'Alice'),
-            (2, 'bob@example.com', 'hashed', 'Bob')
+            (1, 'alice@example.com', 'Alice'),
+            (2, 'bob@example.com', 'Bob')
+        """
+    )
+
+    # Create account records for credential-based auth (BetterAuth schema)
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
+        VALUES
+            ('alice-account-1', 1, 'alice@example.com', 'credential', 'hashed'),
+            ('bob-account-2', 2, 'bob@example.com', 'credential', 'hashed')
         """
     )
 
@@ -58,8 +68,8 @@ def alice_token(db):
     expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
     db.conn.execute(
         """
-        INSERT INTO sessions (token, user_id, expires_at)
-        VALUES ('alice_token_123', 1, ?)
+        INSERT INTO sessions (id, token, user_id, expires_at)
+        VALUES ('alice-session-1', 'alice_token_123', 1, ?)
         """,
         (expires_at,)
     )
@@ -73,8 +83,8 @@ def bob_token(db):
     expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
     db.conn.execute(
         """
-        INSERT INTO sessions (token, user_id, expires_at)
-        VALUES ('bob_token_456', 2, ?)
+        INSERT INTO sessions (id, token, user_id, expires_at)
+        VALUES ('bob-session-2', 'bob_token_456', 2, ?)
         """,
         (expires_at,)
     )
