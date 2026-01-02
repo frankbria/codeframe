@@ -9,26 +9,21 @@
  * Note: Discovery appears to start automatically when a project is created,
  * so these tests focus on the discovery question interaction and PRD generation.
  *
- * NOTE: Currently uses auth bypass (setTestUserSession) instead of loginUser()
- * due to BetterAuth/CodeFRAME integration issue. See GitHub issue #158.
- * Once auth is aligned, replace setTestUserSession() with loginUser().
+ * Uses unified BetterAuth authentication system aligned with CodeFRAME's
+ * existing `users` and `sessions` tables (plural naming).
  */
 
 import { test, expect } from '@playwright/test';
-import { createTestProject, answerDiscoveryQuestion } from './test-utils';
-import { setTestUserSession } from './auth-bypass';
+import { createTestProject, answerDiscoveryQuestion, loginUser } from './test-utils';
 
 test.describe('Start Agent Flow', () => {
-  // Set session cookie to bypass login (temporary until auth alignment)
+  // Login using real authentication flow
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
-    await setTestUserSession(page);
+    await loginUser(page);
   });
 
-  // TODO (Issue #158): These tests are currently skipped because the dashboard doesn't load
-  // due to BetterAuth/CodeFRAME auth mismatch. Once auth is aligned, remove .skip() from all tests.
-
-  test.skip('should start Socratic discovery from dashboard', async ({ page }) => {
+  test('should start Socratic discovery from dashboard', async ({ page }) => {
     // Create a project (already authenticated via beforeEach)
     const projectId = await createTestProject(page);
 
@@ -45,7 +40,7 @@ test.describe('Start Agent Flow', () => {
     await expect(page.getByTestId('submit-answer-button')).toBeVisible();
   });
 
-  test.skip('should answer discovery questions and generate PRD', async ({ page }) => {
+  test('should answer discovery questions and generate PRD', async ({ page }) => {
     // Create a project (already authenticated via beforeEach)
     const projectId = await createTestProject(page);
 
@@ -80,7 +75,7 @@ test.describe('Start Agent Flow', () => {
     await expect(page.getByTestId('prd-generated')).toBeVisible({ timeout: 15000 });
   });
 
-  test.skip('should show agent status panel after project creation', async ({ page }) => {
+  test('should show agent status panel after project creation', async ({ page }) => {
     // Create a project (already authenticated via beforeEach)
     const projectId = await createTestProject(page);
 

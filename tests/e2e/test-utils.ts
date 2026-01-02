@@ -139,6 +139,23 @@ export async function answerDiscoveryQuestion(
   // Click submit button
   await page.getByTestId('submit-answer-button').click();
 
-  // Wait for either next question or completion (with timeout)
-  await page.waitForTimeout(2000);
+  // Wait for submission to complete by detecting state changes
+  // Strategy: Wait for either button text to change back from "Submitting..."
+  // or for input to change (next question) or disappear (discovery completed)
+  try {
+    // Wait for the button to show "Submitting..." first (confirms click registered)
+    await page.getByTestId('submit-answer-button').getByText('Submitting...').waitFor({
+      state: 'visible',
+      timeout: 2000
+    });
+
+    // Then wait for it to return to "Submit Answer" (submission complete)
+    await page.getByTestId('submit-answer-button').getByText('Submit Answer').waitFor({
+      state: 'visible',
+      timeout: 10000
+    });
+  } catch {
+    // If button disappeared entirely, discovery is likely completed
+    // This is a valid end state, so we continue
+  }
 }

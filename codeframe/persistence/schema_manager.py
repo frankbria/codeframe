@@ -69,29 +69,82 @@ class SchemaManager:
         self._ensure_default_admin_user()
 
     def _create_auth_tables(self, cursor: sqlite3.Cursor) -> None:
-        """Create authentication and authorization tables."""
-        # Users table
+        """Create authentication and authorization tables.
+
+        Uses BetterAuth-compatible schema:
+        - users: Core user information (no password)
+        - accounts: Authentication credentials (password, OAuth tokens)
+        - sessions: Active user sessions
+        """
+        # Users table (BetterAuth compatible)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
                 name TEXT,
+                email_verified INTEGER DEFAULT 0,
+                image TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """
         )
 
-        # Sessions table
+        # Accounts table (BetterAuth compatible - stores passwords and OAuth)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                account_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                password TEXT,
+                access_token TEXT,
+                refresh_token TEXT,
+                id_token TEXT,
+                access_token_expires_at TIMESTAMP,
+                refresh_token_expires_at TIMESTAMP,
+                scope TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, provider_id)
+            )
+        """
+        )
+
+        # Create index on user_id for faster login lookups
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)
+        """
+        )
+
+        # Sessions table (BetterAuth compatible)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
-                token TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY,
+                token TEXT UNIQUE NOT NULL,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ip_address TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        # Verification table (BetterAuth compatible)
+        # Used for email verification tokens when requireEmailVerification is enabled
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS verification (
+                id TEXT PRIMARY KEY,
+                identifier TEXT NOT NULL,
+                value TEXT NOT NULL,
+                expires_at TIMESTAMP NOT NULL
             )
         """
         )
@@ -679,18 +732,55 @@ class SchemaManager:
     def _ensure_default_admin_user(self) -> None:
         """Ensure default admin user exists in database.
 
-        Creates admin user with id=1 if it doesn't exist. This is used
+        Creates admin user with id=1 if it doesn't exist. This is ONLY used
         when AUTH_REQUIRED=false to provide a default user for development.
+
+        SECURITY: In production (AUTH_REQUIRED=true), no admin account is
+        created. Users must authenticate via BetterAuth.
+
+        Uses BetterAuth-compatible schema:
+        - Creates user record without password
+        - Creates account record with NULL password (cannot be used for login)
 
         Uses INSERT OR IGNORE to avoid conflicts with test fixtures.
         """
+        import os
+
+        # SECURITY: Only create admin account in development mode
+        auth_required = os.getenv("AUTH_REQUIRED", "false").lower() == "true"
+        if auth_required:
+            logger.debug(
+                "Skipping admin user creation (AUTH_REQUIRED=true). "
+                "Users must authenticate via BetterAuth."
+            )
+            return
+
         cursor = self.conn.cursor()
+
+        # Create user record (BetterAuth compatible - no password)
         cursor.execute(
             """
-            INSERT OR IGNORE INTO users (id, email, password_hash, name)
-            VALUES (1, 'admin@localhost', '', 'Admin User')
+            INSERT OR IGNORE INTO users (id, email, name, email_verified)
+            VALUES (1, 'admin@localhost', 'Admin User', 1)
             """
         )
-        if cursor.rowcount > 0:
-            logger.info("Created default admin user (id=1, email='admin@localhost')")
+        user_created = cursor.rowcount > 0
+
+        # Create account record with NULL password (cannot be used for login)
+        # BetterAuth generates UUID-style IDs - use a deterministic ID for admin
+        # SECURITY: Password is NULL, not empty string, to prevent login attempts
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO accounts (id, user_id, account_id, provider_id, password)
+            VALUES ('admin-account-credential-1', 1, 'admin@localhost', 'credential', NULL)
+            """
+        )
+
+        if user_created:
+            logger.warning(
+                "⚠️  DEVELOPMENT MODE: Created default admin user (id=1, email='admin@localhost'). "
+                "This account has NULL password and cannot be used for login. "
+                "Set AUTH_REQUIRED=true for production."
+            )
+
         self.conn.commit()

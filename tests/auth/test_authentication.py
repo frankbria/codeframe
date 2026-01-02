@@ -27,8 +27,16 @@ def db(tmp_path):
     # Create test user (use INSERT OR REPLACE to handle default admin user from initialize())
     db.conn.execute(
         """
-        INSERT OR REPLACE INTO users (id, email, password_hash, name)
-        VALUES (1, 'test@example.com', 'hashed_password', 'Test User')
+        INSERT OR REPLACE INTO users (id, email, name)
+        VALUES (1, 'test@example.com', 'Test User')
+        """
+    )
+
+    # Create account record for credential-based auth (BetterAuth schema)
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
+        VALUES ('test-account-1', 1, 'test@example.com', 'credential', 'hashed_password')
         """
     )
     db.conn.commit()
@@ -63,12 +71,12 @@ class TestGetCurrentUser:
     @pytest.mark.asyncio
     async def test_valid_token_returns_user(self, db, mock_request, mock_credentials):
         """Test that valid token returns user model."""
-        # Create valid session
+        # Create valid session (BetterAuth schema requires id TEXT PRIMARY KEY)
         expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
         db.conn.execute(
             """
-            INSERT INTO sessions (token, user_id, expires_at)
-            VALUES ('valid_token_123', 1, ?)
+            INSERT INTO sessions (id, token, user_id, expires_at)
+            VALUES ('session-id-1', 'valid_token_123', 1, ?)
             """,
             (expires_at,)
         )
@@ -101,8 +109,8 @@ class TestGetCurrentUser:
         expires_at = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         db.conn.execute(
             """
-            INSERT INTO sessions (token, user_id, expires_at)
-            VALUES ('expired_token_456', 1, ?)
+            INSERT INTO sessions (id, token, user_id, expires_at)
+            VALUES ('session-id-2', 'expired_token_456', 1, ?)
             """,
             (expires_at,)
         )
@@ -155,8 +163,8 @@ class TestGetCurrentUser:
         expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
         db.conn.execute(
             """
-            INSERT INTO sessions (token, user_id, expires_at)
-            VALUES ('token_with_proxy', 1, ?)
+            INSERT INTO sessions (id, token, user_id, expires_at)
+            VALUES ('session-id-3', 'token_with_proxy', 1, ?)
             """,
             (expires_at,)
         )
@@ -187,8 +195,8 @@ class TestGetCurrentUserOptional:
         expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
         db.conn.execute(
             """
-            INSERT INTO sessions (token, user_id, expires_at)
-            VALUES ('optional_valid_token', 1, ?)
+            INSERT INTO sessions (id, token, user_id, expires_at)
+            VALUES ('session-id-4', 'optional_valid_token', 1, ?)
             """,
             (expires_at,)
         )
@@ -239,8 +247,8 @@ class TestAuthorization:
         # Create project owned by user 2
         db.conn.execute(
             """
-            INSERT OR REPLACE INTO users (id, email, password_hash)
-            VALUES (2, 'owner@example.com', 'hashed')
+            INSERT OR REPLACE INTO users (id, email)
+            VALUES (2, 'owner@example.com')
             """
         )
         db.conn.execute(
@@ -264,8 +272,8 @@ class TestAuthorization:
         """Test that viewer has read-only access."""
         db.conn.execute(
             """
-            INSERT OR REPLACE INTO users (id, email, password_hash)
-            VALUES (3, 'owner2@example.com', 'hashed')
+            INSERT OR REPLACE INTO users (id, email)
+            VALUES (3, 'owner2@example.com')
             """
         )
         db.conn.execute(
@@ -288,8 +296,8 @@ class TestAuthorization:
         """Test that non-member is denied access."""
         db.conn.execute(
             """
-            INSERT OR REPLACE INTO users (id, email, password_hash)
-            VALUES (4, 'other@example.com', 'hashed')
+            INSERT OR REPLACE INTO users (id, email)
+            VALUES (4, 'other@example.com')
             """
         )
         db.conn.execute(
@@ -314,8 +322,8 @@ class TestSessionCleanup:
         # Create expired session
         db.conn.execute(
             """
-            INSERT INTO sessions (token, user_id, expires_at)
-            VALUES ('expired_session', 1, ?)
+            INSERT INTO sessions (id, token, user_id, expires_at)
+            VALUES ('session-id-5', 'expired_session', 1, ?)
             """,
             ((now - timedelta(days=1)).isoformat(),)
         )
@@ -323,8 +331,8 @@ class TestSessionCleanup:
         # Create valid session
         db.conn.execute(
             """
-            INSERT INTO sessions (token, user_id, expires_at)
-            VALUES ('valid_session', 1, ?)
+            INSERT INTO sessions (id, token, user_id, expires_at)
+            VALUES ('session-id-6', 'valid_session', 1, ?)
             """,
             ((now + timedelta(days=7)).isoformat(),)
         )

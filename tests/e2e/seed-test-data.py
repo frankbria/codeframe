@@ -9,9 +9,24 @@ import sys
 import json
 from datetime import datetime, timedelta
 
+try:
+    import bcrypt
+except ImportError:
+    print("⚠️  WARNING: bcrypt not installed - password hash validation disabled")
+    print("   Install with: pip install bcrypt")
+    bcrypt = None
+
 # E2E test root directory - derived from script location for reliability
 # This avoids assumptions about db_path structure
 E2E_TEST_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# SECURITY: Prevent seeding test credentials in production
+if os.getenv("CODEFRAME_ENV") == "production":
+    raise RuntimeError(
+        "🚨 SECURITY: Cannot seed test data in production environment.\n"
+        "   Test credentials include hardcoded passwords and predictable session tokens.\n"
+        "   Set CODEFRAME_ENV to 'development' or 'test' for E2E testing."
+    )
 
 # Table name constants to prevent typos and improve maintainability
 TABLE_AGENTS = "agents"
@@ -54,45 +69,76 @@ def seed_test_data(db_path: str, project_id: int):
         # - Test session token: hardcoded, predictable value
         # - Only safe for local E2E testing where AUTH_REQUIRED=false
         print("👤 Seeding test user...")
-        # Hash: bcrypt hash of 'testpassword123'
-        # Generated with: python -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"
-        test_user_password_hash = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYb9K0rJ5n6"
 
+        # BetterAuth-compatible schema: password stored in accounts table
+        # Hash: bcrypt hash of 'testpassword123'
+        # Generated with: python3 -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"
+        # Verified compatible with both Python bcrypt and Node.js bcrypt
+        test_user_password_hash = "$2b$12$kEseisCIdS6HuYDCll3YyOCHQVo.dcr71jfF2i8sRuMJRCNosWgEu"
+
+        # Verify hash is valid before seeding
+        if bcrypt is not None:
+            try:
+                assert bcrypt.checkpw(
+                    b"testpassword123", test_user_password_hash.encode()
+                ), "Password hash verification failed"
+                print("   ✅ Password hash verified")
+            except Exception as e:
+                print(f"   ❌ Password hash verification failed: {e}")
+                raise
+
+        # Create user record (BetterAuth compatible - no password here)
         cursor.execute(
             """
-            INSERT OR REPLACE INTO users (id, email, password_hash, name, created_at, updated_at)
+            INSERT OR REPLACE INTO users (id, email, name, email_verified, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 1,
                 "test@example.com",
-                test_user_password_hash,
                 "E2E Test User",
+                1,  # email_verified=true for testing
+                now_ts,
+                now_ts,
+            ),
+        )
+
+        # Create account record for credential-based auth (email/password)
+        # BetterAuth generates UUID-style IDs for accounts
+        account_id_value = "test-account-credential-1"
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                account_id_value,
+                1,
+                "test@example.com",
+                "credential",
+                test_user_password_hash,
                 now_ts,
                 now_ts,
             ),
         )
 
         # Create a session for the test user (expires in 7 days)
+        # BetterAuth uses session.id as primary key
+        session_id = "test-session-id-1234567890"
         session_token = "test-session-token-12345678901234567890"
         expires_at = (now + timedelta(days=7)).isoformat()
 
         cursor.execute(
             """
-            INSERT OR REPLACE INTO sessions (token, user_id, expires_at, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT OR REPLACE INTO sessions (id, token, user_id, expires_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (session_token, 1, expires_at, now_ts),
+            (session_id, session_token, 1, expires_at, now_ts, now_ts),
         )
 
         print("✅ Seeded test user (email: test@example.com)")
         print(f"   Session token: {session_token[:20]}...")
-
-        # Export session token for tests to use via output file
-        # Write to a file that global-setup.ts can read
-        token_file = os.path.join(os.path.dirname(db_path), "test-session-token.txt")
-        with open(token_file, "w") as f:
-            f.write(session_token)
+        print("   Note: E2E tests will use real login flow via BetterAuth")
 
         # ========================================
         # 1. Seed Agents (5)

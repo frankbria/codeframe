@@ -2,7 +2,7 @@
  * E2E Tests: Complete User Journey
  *
  * Tests the full end-to-end workflow from authentication to agent execution:
- * 1. Authenticate (currently via session bypass)
+ * 1. Authenticate using unified BetterAuth system
  * 2. Create a new project
  * 3. Start Socratic discovery
  * 4. Answer discovery questions
@@ -10,26 +10,21 @@
  * 6. Verify agent execution begins
  * 7. Verify dashboard panels are accessible
  *
- * NOTE: Currently uses auth bypass (setTestUserSession) instead of loginUser()
- * due to BetterAuth/CodeFRAME integration issue. See GitHub issue #158.
- * Once auth is aligned, replace setTestUserSession() with loginUser().
+ * Uses unified BetterAuth authentication system aligned with CodeFRAME's
+ * existing `users` and `sessions` tables (plural naming).
  */
 
 import { test, expect } from '@playwright/test';
-import { answerDiscoveryQuestion } from './test-utils';
-import { setTestUserSession } from './auth-bypass';
+import { answerDiscoveryQuestion, loginUser } from './test-utils';
 
 test.describe('Complete User Journey', () => {
-  // Set session cookie to bypass login (temporary until auth alignment)
+  // Login using real authentication flow
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
-    await setTestUserSession(page);
+    await loginUser(page);
   });
 
-  // TODO (Issue #158): This test is currently skipped because the dashboard doesn't load
-  // due to BetterAuth/CodeFRAME auth mismatch. Once auth is aligned, remove .skip() from this test.
-
-  test.skip('should complete full workflow from authentication to agent execution', async ({ page }) => {
+  test('should complete full workflow from authentication to agent execution', async ({ page }) => {
     // Step 1: Verify authentication (via session cookie set in beforeEach)
     // Navigate to root to verify we're authenticated
     await page.goto('/');

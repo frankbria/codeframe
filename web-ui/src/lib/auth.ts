@@ -1,28 +1,56 @@
 import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { resolve } from "path";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { schema } from "./db-schema";
 
 /**
- * Better Auth server configuration
+ * Better Auth server configuration with Drizzle adapter
  *
- * This configures Better Auth with SQLite database backend pointing to the
- * CodeFRAME state database. Authentication tables (users, sessions) are
- * created automatically by Better Auth.
+ * This configures Better Auth to use CodeFRAME's existing SQLite database
+ * with the Drizzle ORM adapter. The adapter enables proper support for
+ * plural table names (users, sessions) via usePlural: true.
  *
  * Features:
  * - Email/password authentication
  * - Session management with 7-day expiry
- * - SQLite database URL for persistence
+ * - Drizzle adapter for schema control
+ * - Plural table names matching CodeFRAME backend
+ * - Lazy database initialization (supports TEST_DB_PATH at runtime)
  *
- * @see https://better-auth.com/docs/installation
+ * @see https://better-auth.com/docs/adapters/drizzle
  */
+
+// Determine database path (test vs production)
+const testDbPath = process.env.TEST_DB_PATH?.trim();
+const hasValidTestDbPath = testDbPath && testDbPath.length > 0;
+
+const dbPath = hasValidTestDbPath
+  ? resolve(testDbPath)
+  : resolve(process.cwd(), "../.codeframe/state.db");
+
+console.log(`[BetterAuth] Connecting to database: ${dbPath}`);
+console.log(`[BetterAuth] TEST_DB_PATH = ${process.env.TEST_DB_PATH || "(not set)"}`);
+
+// Create better-sqlite3 connection
+const sqlite = new Database(dbPath);
+
+// Create Drizzle database instance with CodeFRAME schema
+const db = drizzle(sqlite, { schema });
+
 export const auth = betterAuth({
-  database: {
-    // SQLite database URL pointing to CodeFRAME state database
-    // Use TEST_DB_PATH for E2E tests, otherwise use production database
-    url: process.env.TEST_DB_PATH
-      ? `file:${resolve(process.env.TEST_DB_PATH)}`
-      : `file:${resolve(process.cwd(), "../.codeframe/state.db")}`,
-    type: "sqlite",
+  database: drizzleAdapter(db, {
+    provider: "sqlite",
+    // Use plural table names to match CodeFRAME's existing schema
+    // This tells Drizzle to use "users" and "sessions" instead of "user" and "session"
+    usePlural: true,
+  }),
+
+  // Enable debug logging to diagnose authentication issues
+  logger: {
+    level: "debug",
+    disabled: false,
   },
 
   // Email and password authentication
@@ -42,6 +70,11 @@ export const auth = betterAuth({
     // Update session expiry on each request
     updateAge: 60 * 60 * 24, // Update if session is older than 1 day
 
+    // Require re-authentication for sensitive operations after 15 minutes
+    // This protects against session hijacking by limiting the window
+    // where a stolen session token remains fully privileged
+    freshAge: 60 * 15, // 15 minutes in seconds
+
     // Cookie configuration
     cookieCache: {
       enabled: true,
@@ -54,12 +87,12 @@ export const auth = betterAuth({
 
   // Trust proxy headers (for deployment behind reverse proxy)
   trustedOrigins: [
-    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-    "http://localhost:3000",
-  ],
+    process.env.NEXT_PUBLIC_APP_URL,
+    ...(process.env.NODE_ENV === 'development' ? ['http://localhost:3000', 'http://localhost:3001'] : []),
+  ].filter((origin): origin is string => Boolean(origin)),
 });
 
 /**
  * Type exports for Better Auth
  */
-export type Session = typeof auth.$Infer.Session;
+export type Session = ReturnType<typeof betterAuth>["$Infer"]["Session"];

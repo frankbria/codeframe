@@ -174,7 +174,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             maxLength={100}
           />
           {errors.name && (
-            <p className="mt-1 text-sm text-destructive" data-testid="form-error">{errors.name}</p>
+            <p className="mt-1 text-sm text-destructive" data-testid="form-error-name">{errors.name}</p>
           )}
           <p className="mt-1 text-xs text-muted-foreground">
             Lowercase letters, numbers, hyphens, and underscores only (min 3 chars)
@@ -201,7 +201,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
             maxLength={500}
           />
           {errors.description && (
-            <p className="mt-1 text-sm text-destructive" data-testid="form-error">{errors.description}</p>
+            <p className="mt-1 text-sm text-destructive" data-testid="form-error-description">{errors.description}</p>
           )}
           {/* US2: Character Counter */}
           <p className="mt-1 text-xs text-muted-foreground">
@@ -227,7 +227,7 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
 
       {/* US3: Error Message Display */}
       {errors.submit && (
-        <div className="mt-4 p-3 bg-destructive/10 border border-destructive rounded-md" data-testid="form-error">
+        <div className="mt-4 p-3 bg-destructive/10 border border-destructive rounded-md" data-testid="form-error-submit">
           <p className="text-destructive text-sm">
             <span className="mr-2">⚠️</span>
             Error: {errors.submit}

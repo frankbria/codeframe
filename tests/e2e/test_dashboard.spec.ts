@@ -9,7 +9,7 @@
  */
 
 import { test, expect, Page } from '@playwright/test';
-import { withOptionalWarning } from './test-utils';
+import { withOptionalWarning, loginUser } from './test-utils';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
@@ -74,22 +74,10 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   test.beforeEach(async ({ page: testPage }) => {
     page = testPage;
 
-    // Set auth cookie if available from global setup
-    const sessionToken = process.env.E2E_TEST_SESSION_TOKEN;
-    if (sessionToken) {
-      await page.context().addCookies([{
-        name: 'better-auth.session_token',
-        value: sessionToken,
-        domain: 'localhost',
-        path: '/',
-        httpOnly: true,
-        secure: false,
-        sameSite: 'Lax'
-      }]);
-      console.log('✅ Auth cookie set for test');
-    } else {
-      console.warn('⚠️  No session token available - test may fail if auth is required');
-    }
+    // Login using real authentication flow
+    // This validates the unified BetterAuth system
+    await loginUser(page);
+    console.log('✅ Logged in successfully using BetterAuth');
 
     // Navigate to dashboard for test project
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);

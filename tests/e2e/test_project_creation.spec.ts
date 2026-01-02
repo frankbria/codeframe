@@ -6,19 +6,18 @@
  * - Creating a new project via UI
  * - Form validation for required fields
  *
- * NOTE: Currently uses auth bypass (setTestUserSession) instead of loginUser()
- * due to BetterAuth/CodeFRAME integration issue. See GitHub issue #158.
- * Once auth is aligned, replace setTestUserSession() with loginUser().
+ * Uses unified BetterAuth authentication system aligned with CodeFRAME's
+ * existing `users` and `sessions` tables (plural naming).
  */
 
 import { test, expect } from '@playwright/test';
-import { setTestUserSession } from './auth-bypass';
+import { loginUser } from './test-utils';
 
 test.describe('Project Creation Flow', () => {
-  // Set session cookie to bypass login (temporary until auth alignment)
+  // Login using real authentication flow
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
-    await setTestUserSession(page);
+    await loginUser(page);
   });
 
   test('should display root page with create project form', async ({ page }) => {
@@ -54,13 +53,11 @@ test.describe('Project Creation Flow', () => {
     // Assert redirect to project dashboard (proves project was created successfully)
     await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 10000 });
 
-    // TODO (Issue #158): Dashboard doesn't fully load due to BetterAuth/CodeFRAME auth mismatch
-    // The project IS created successfully (verified by redirect to /projects/N)
-    // Once auth is aligned, uncomment these assertions:
-    // await expect(page.getByTestId('dashboard-header')).toBeVisible({ timeout: 20000 });
-    // await expect(page.locator('h1')).toContainText(projectName);
+    // Verify dashboard loads successfully with the new project
+    await expect(page.getByTestId('dashboard-header')).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('h1')).toContainText(projectName);
 
-    // For now, verify project creation via API
+    // Extract project ID from URL for verification
     const currentUrl = page.url();
     const projectId = currentUrl.match(/\/projects\/(\d+)/)?.[1];
     expect(projectId).toBeTruthy();
@@ -89,13 +86,13 @@ test.describe('Project Creation Flow', () => {
     await page.getByTestId('project-name-input').blur();
 
     // Wait for validation error to appear
-    await page.waitForSelector('[data-testid="form-error"]', {
+    await page.waitForSelector('[data-testid="form-error-name"]', {
       state: 'visible',
       timeout: 3000
     });
 
     // Assert form error is shown
-    const errorElement = page.getByTestId('form-error').first();
+    const errorElement = page.getByTestId('form-error-name');
     await expect(errorElement).toBeVisible();
     await expect(errorElement).toContainText(/at least 3 characters|project name/i);
 
