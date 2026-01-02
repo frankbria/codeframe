@@ -70,14 +70,17 @@ def migrate_database(db_path: str) -> None:
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 account_id TEXT NOT NULL,
                 provider_id TEXT NOT NULL,
                 password TEXT,
                 access_token TEXT,
                 refresh_token TEXT,
-                expires_at TIMESTAMP,
+                id_token TEXT,
+                access_token_expires_at TIMESTAMP,
+                refresh_token_expires_at TIMESTAMP,
+                scope TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, provider_id)
@@ -91,12 +94,14 @@ def migrate_database(db_path: str) -> None:
         for user in users:
             # Skip users with empty password_hash (like admin@localhost in dev mode)
             if user["password_hash"]:
+                # Generate a deterministic ID for the account
+                account_id_val = f"migrated-account-{user['id']}-credential"
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO accounts (user_id, account_id, provider_id, password)
-                    VALUES (?, ?, 'credential', ?)
+                    INSERT OR IGNORE INTO accounts (id, user_id, account_id, provider_id, password)
+                    VALUES (?, ?, ?, 'credential', ?)
                     """,
-                    (user["id"], user["email"], user["password_hash"]),
+                    (account_id_val, user["id"], user["email"], user["password_hash"]),
                 )
                 migrated += 1
 

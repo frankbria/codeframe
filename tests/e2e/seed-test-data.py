@@ -77,12 +77,15 @@ def seed_test_data(db_path: str, project_id: int):
         )
 
         # Create account record for credential-based auth (email/password)
+        # BetterAuth generates UUID-style IDs for accounts
+        account_id_value = "test-account-credential-1"
         cursor.execute(
             """
-            INSERT OR REPLACE INTO accounts (user_id, account_id, provider_id, password, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                account_id_value,
                 1,
                 "test@example.com",
                 "credential",

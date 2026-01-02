@@ -44,11 +44,15 @@ export const users = sqliteTable("users", {
  * - Email/password credentials (provider_id='credential')
  * - OAuth tokens (provider_id='google', 'github', etc.)
  *
+ * Schema matches BetterAuth requirements exactly:
+ * - id: TEXT primary key (BetterAuth generates UUIDs)
+ * - OAuth fields: idToken, accessTokenExpiresAt, refreshTokenExpiresAt, scope
+ *
  * Schema matches backend table in:
  * codeframe/persistence/schema_manager.py (_create_auth_tables)
  */
 export const accounts = sqliteTable("accounts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+  id: text("id").primaryKey(),
   userId: integer("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
@@ -57,7 +61,10 @@ export const accounts = sqliteTable("accounts", {
   password: text("password"),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
-  expiresAt: text("expires_at"),
+  idToken: text("id_token"),
+  accessTokenExpiresAt: text("access_token_expires_at"),
+  refreshTokenExpiresAt: text("refresh_token_expires_at"),
+  scope: text("scope"),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });

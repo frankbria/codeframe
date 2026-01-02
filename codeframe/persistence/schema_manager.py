@@ -95,14 +95,17 @@ class SchemaManager:
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 account_id TEXT NOT NULL,
                 provider_id TEXT NOT NULL,
                 password TEXT,
                 access_token TEXT,
                 refresh_token TEXT,
-                expires_at TIMESTAMP,
+                id_token TEXT,
+                access_token_expires_at TIMESTAMP,
+                refresh_token_expires_at TIMESTAMP,
+                scope TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, provider_id)
@@ -730,10 +733,11 @@ class SchemaManager:
         user_created = cursor.rowcount > 0
 
         # Create account record for credential-based auth (email/password)
+        # BetterAuth generates UUID-style IDs - use a deterministic ID for admin
         cursor.execute(
             """
-            INSERT OR IGNORE INTO accounts (user_id, account_id, provider_id, password)
-            VALUES (1, 'admin@localhost', 'credential', '')
+            INSERT OR IGNORE INTO accounts (id, user_id, account_id, provider_id, password)
+            VALUES ('admin-account-credential-1', 1, 'admin@localhost', 'credential', '')
             """
         )
 
