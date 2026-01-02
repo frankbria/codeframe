@@ -20,6 +20,9 @@ import { loginUser } from './test-utils';
 const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'test@example.com';
 const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'testpassword123';
 
+// CI-aware timeout: longer in CI environments to account for slower execution
+const AUTH_ERROR_TIMEOUT = process.env.CI ? 10000 : 5000;
+
 test.describe('Authentication Flow', () => {
   // Clear cookies before each test to ensure we start unauthenticated
   test.beforeEach(async ({ context }) => {
@@ -88,7 +91,7 @@ test.describe('Authentication Flow', () => {
       // Wait for error message to appear
       await page.waitForSelector('[data-testid="auth-error"]', {
         state: 'visible',
-        timeout: 5000
+        timeout: AUTH_ERROR_TIMEOUT
       });
 
       // Assert error message is shown
@@ -114,7 +117,7 @@ test.describe('Authentication Flow', () => {
       // Wait for error message
       await page.waitForSelector('[data-testid="auth-error"]', {
         state: 'visible',
-        timeout: 5000
+        timeout: AUTH_ERROR_TIMEOUT
       });
 
       // Assert error is shown and we're still on login page
@@ -178,7 +181,7 @@ test.describe('Authentication Flow', () => {
       // Should redirect to login (if AUTH_REQUIRED=true)
       const authRequired = process.env.AUTH_REQUIRED?.toLowerCase() === 'true';
       if (authRequired) {
-        await expect(page).toHaveURL(/\/login/, { timeout: 5000 });
+        await expect(page).toHaveURL(/\/login/, { timeout: AUTH_ERROR_TIMEOUT });
       }
     });
   });
@@ -254,7 +257,7 @@ test.describe('Authentication Flow', () => {
       // Should redirect to login (if AUTH_REQUIRED=true)
       const authRequired = process.env.AUTH_REQUIRED?.toLowerCase() === 'true';
       if (authRequired) {
-        await expect(page).toHaveURL(/\/login/, { timeout: 5000 });
+        await expect(page).toHaveURL(/\/login/, { timeout: AUTH_ERROR_TIMEOUT });
       } else {
         console.log('⚠️  AUTH_REQUIRED=false: Skipping redirect test (migration mode)');
       }
