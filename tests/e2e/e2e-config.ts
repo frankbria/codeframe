@@ -10,5 +10,5 @@ export const TEST_DB_PATH = path.join(__dirname, '.codeframe', 'state.db');
 // Backend URL for API calls
 export const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
 
-// Frontend URL for browser tests
-export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+// Frontend URL for browser tests (using 3001 to avoid conflicts with other services)
+export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';

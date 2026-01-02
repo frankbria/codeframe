@@ -96,8 +96,9 @@ export async function createTestProject(
   // Navigate to root page
   await page.goto('/');
 
-  // Click create project button
-  await page.getByTestId('create-project-button').click();
+  // The root page shows the ProjectCreationForm directly (no button to click)
+  // Wait for form to be visible
+  await page.getByTestId('project-name-input').waitFor({ state: 'visible' });
 
   // Fill project name and description
   await page.getByTestId('project-name-input').fill(projectName);
