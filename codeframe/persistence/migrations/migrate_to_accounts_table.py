@@ -27,6 +27,28 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+# SECURITY: Whitelist of allowed table names to prevent SQL injection
+# Even though current code uses hardcoded table names, this serves as
+# defensive programming if the code is refactored to accept parameters
+ALLOWED_TABLES = {"users", "accounts", "sessions", "agents", "tasks", "projects"}
+
+
+def validate_table_name(table_name: str) -> None:
+    """
+    Validate table name against whitelist.
+
+    Args:
+        table_name: Table name to validate
+
+    Raises:
+        ValueError: If table name is not in whitelist
+    """
+    if table_name not in ALLOWED_TABLES:
+        raise ValueError(
+            f"Invalid table name: {table_name}. "
+            f"Allowed tables: {', '.join(sorted(ALLOWED_TABLES))}"
+        )
+
 
 def migrate_database(db_path: str) -> None:
     """

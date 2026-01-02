@@ -70,6 +70,11 @@ export const auth = betterAuth({
     // Update session expiry on each request
     updateAge: 60 * 60 * 24, // Update if session is older than 1 day
 
+    // Require re-authentication for sensitive operations after 15 minutes
+    // This protects against session hijacking by limiting the window
+    // where a stolen session token remains fully privileged
+    freshAge: 60 * 15, // 15 minutes in seconds
+
     // Cookie configuration
     cookieCache: {
       enabled: true,

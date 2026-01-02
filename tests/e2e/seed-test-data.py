@@ -20,6 +20,14 @@ except ImportError:
 # This avoids assumptions about db_path structure
 E2E_TEST_ROOT = os.path.dirname(os.path.abspath(__file__))
 
+# SECURITY: Prevent seeding test credentials in production
+if os.getenv("CODEFRAME_ENV") == "production":
+    raise RuntimeError(
+        "🚨 SECURITY: Cannot seed test data in production environment.\n"
+        "   Test credentials include hardcoded passwords and predictable session tokens.\n"
+        "   Set CODEFRAME_ENV to 'development' or 'test' for E2E testing."
+    )
+
 # Table name constants to prevent typos and improve maintainability
 TABLE_AGENTS = "agents"
 TABLE_PROJECT_AGENTS = "project_agents"
