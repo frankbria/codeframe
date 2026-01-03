@@ -54,8 +54,29 @@ def reset_auth_engine():
 
     Call this when DATABASE_PATH environment variable changes
     (e.g., in tests that use temporary databases).
+
+    Also disposes of the engine to close all connections.
     """
     global _engine, _async_session_maker, _current_database_path
+
+    # Dispose of engine to close all connections
+    if _engine is not None:
+        import asyncio
+        try:
+            # Try to dispose synchronously if possible
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Can't await in running loop, schedule for later
+                asyncio.ensure_future(_engine.dispose())
+            else:
+                loop.run_until_complete(_engine.dispose())
+        except RuntimeError:
+            # No event loop available, create one temporarily
+            asyncio.run(_engine.dispose())
+        except Exception:
+            # Ignore disposal errors during cleanup
+            pass
+
     _engine = None
     _async_session_maker = None
     _current_database_path = None

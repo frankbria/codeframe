@@ -88,6 +88,12 @@ def test_client_with_db(temp_db_path, tmp_path):
     5. Create test user and add authentication headers
     6. Use TestClient which triggers lifespan initialization
     """
+    # Import from root tests/conftest.py (not tests/ui/conftest.py)
+    import sys
+    from pathlib import Path
+    tests_root = Path(__file__).parent.parent
+    if str(tests_root) not in sys.path:
+        sys.path.insert(0, str(tests_root))
     from conftest import create_test_jwt_token, setup_test_user
 
     # Save original values

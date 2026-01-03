@@ -221,3 +221,16 @@ def pytest_runtest_setup(item):
     if "requires_api_key" in [marker.name for marker in item.iter_markers()]:
         if not os.getenv("ANTHROPIC_API_KEY") and not os.getenv("OPENAI_API_KEY"):
             pytest.skip("Requires real API key (not available in environment)")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Clean up after all tests complete.
+
+    This ensures any cached database engines are closed properly
+    to prevent hanging on exit.
+    """
+    try:
+        from codeframe.auth.manager import reset_auth_engine
+        reset_auth_engine()
+    except ImportError:
+        pass  # Module not available, nothing to clean up
