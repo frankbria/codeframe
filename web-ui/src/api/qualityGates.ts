@@ -4,6 +4,7 @@
  * Part of Sprint 10 Phase 3 (Quality Gates Frontend)
  */
 
+import { authFetch } from '@/lib/api-client';
 import type {
   QualityGateStatus,
   TriggerQualityGatesRequest,
@@ -33,25 +34,15 @@ export async function fetchQualityGateStatus(
     url.searchParams.append('project_id', projectId.toString());
   }
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (response.status === 404) {
-    return null; // No quality gate status exists yet
+  try {
+    return await authFetch<QualityGateStatus>(url.toString());
+  } catch (error) {
+    // Return null for 404 (no quality gate status exists yet)
+    if (error instanceof Error && error.message.includes('404')) {
+      return null;
+    }
+    throw error;
   }
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch quality gate status: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -64,23 +55,11 @@ export async function fetchQualityGateStatus(
 export async function triggerQualityGates(
   request: TriggerQualityGatesRequest
 ): Promise<TriggerQualityGatesResponse> {
-  const response = await fetch(
+  return authFetch<TriggerQualityGatesResponse>(
     `${API_BASE_URL}/api/tasks/${request.task_id}/quality-gates`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ force: request.force || false }),
+      body: { force: request.force || false },
     }
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to trigger quality gates: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }

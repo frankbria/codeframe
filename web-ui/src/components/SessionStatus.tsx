@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { authFetch } from '@/lib/api-client';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 interface SessionState {
   last_session: {
@@ -28,13 +31,9 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
     const fetchSession = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(`/api/projects/${projectId}/session`);
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch session state');
-        }
-
-        const data = await response.json();
+        const data = await authFetch<SessionState>(
+          `${API_BASE_URL}/api/projects/${projectId}/session`
+        );
         setSession(data);
         setError(null);
       } catch (err) {

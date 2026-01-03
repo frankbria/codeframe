@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { signUp } from "@/lib/auth-client";
 
 /**
  * Signup form component
  *
- * Provides user registration with email/password using Better Auth.
+ * Provides user registration with email/password using FastAPI Users.
  * Validates password strength and displays errors.
  */
 export default function SignupForm() {
   const router = useRouter();
+  const { register } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,20 +57,15 @@ export default function SignupForm() {
     setIsLoading(true);
 
     try {
-      const result = await signUp({
-        name,
-        email,
-        password,
-      });
-
-      if (result.error) {
-        setError(result.error.message || "Signup failed. Please try again.");
+      await register(email, password, name);
+      // Redirect to dashboard on successful signup
+      router.push("/");
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message || "Signup failed. Please try again.");
       } else {
-        // Redirect to dashboard on successful signup
-        router.push("/");
+        setError("Network error. Please try again.");
       }
-    } catch (_err) {
-      setError("Network error. Please try again.");
     } finally {
       setIsLoading(false);
     }

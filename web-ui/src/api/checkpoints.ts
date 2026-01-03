@@ -3,6 +3,7 @@
  * Handles all checkpoint CRUD operations
  */
 
+import { authFetch } from '@/lib/api-client';
 import type {
   Checkpoint,
   CreateCheckpointRequest,
@@ -16,19 +17,9 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
  * List all checkpoints for a project
  */
 export async function listCheckpoints(projectId: number): Promise<Checkpoint[]> {
-  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/checkpoints`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to list checkpoints' }));
-    throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
+  return authFetch<Checkpoint[]>(
+    `${API_BASE_URL}/api/projects/${projectId}/checkpoints`
+  );
 }
 
 /**
@@ -38,20 +29,13 @@ export async function createCheckpoint(
   projectId: number,
   request: CreateCheckpointRequest
 ): Promise<Checkpoint> {
-  const response = await fetch(`${API_BASE_URL}/api/projects/${projectId}/checkpoints`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to create checkpoint' }));
-    throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
+  return authFetch<Checkpoint>(
+    `${API_BASE_URL}/api/projects/${projectId}/checkpoints`,
+    {
+      method: 'POST',
+      body: request,
+    }
+  );
 }
 
 /**
@@ -61,22 +45,9 @@ export async function getCheckpoint(
   projectId: number,
   checkpointId: number
 ): Promise<Checkpoint> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/projects/${projectId}/checkpoints/${checkpointId}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<Checkpoint>(
+    `${API_BASE_URL}/api/projects/${projectId}/checkpoints/${checkpointId}`
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to get checkpoint' }));
-    throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 /**
@@ -86,22 +57,10 @@ export async function deleteCheckpoint(
   projectId: number,
   checkpointId: number
 ): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(
+  return authFetch<{ success: boolean; message: string }>(
     `${API_BASE_URL}/api/projects/${projectId}/checkpoints/${checkpointId}`,
-    {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+    { method: 'DELETE' }
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to delete checkpoint' }));
-    throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 /**
@@ -112,23 +71,13 @@ export async function restoreCheckpoint(
   checkpointId: number,
   confirmRestore: boolean
 ): Promise<RestoreCheckpointResponse> {
-  const response = await fetch(
+  return authFetch<RestoreCheckpointResponse>(
     `${API_BASE_URL}/api/projects/${projectId}/checkpoints/${checkpointId}/restore`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ confirm_restore: confirmRestore }),
+      body: { confirm_restore: confirmRestore },
     }
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to restore checkpoint' }));
-    throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
 }
 
 /**
@@ -139,21 +88,8 @@ export async function getCheckpointDiff(
   checkpointId: number,
   signal?: AbortSignal
 ): Promise<CheckpointDiff> {
-  const response = await fetch(
+  return authFetch<CheckpointDiff>(
     `${API_BASE_URL}/api/projects/${projectId}/checkpoints/${checkpointId}/diff`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      signal,
-    }
+    { signal }
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Failed to get checkpoint diff' }));
-    throw new Error(error.detail || `HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
 }

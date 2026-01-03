@@ -12,7 +12,7 @@ import { Profiler, ProfilerOnRenderCallback } from 'react';
 import Dashboard from '@/components/Dashboard';
 import { AgentStateProvider } from '@/components/AgentStateProvider';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 
 interface ProjectPageProps {
   params: {

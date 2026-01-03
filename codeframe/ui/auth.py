@@ -1,3 +1,15 @@
+"""DEPRECATED: This module is deprecated in favor of codeframe.auth.
+
+This module provided Better-Auth session validation. It has been replaced
+by fastapi-users with JWT authentication in codeframe.auth.
+
+Migration path:
+- Replace: from codeframe.ui.auth import get_current_user
+- With: from codeframe.auth import get_current_user
+
+This file will be removed in a future release.
+"""
+
 """Authentication and authorization for FastAPI endpoints.
 
 This module provides authentication dependency functions for verifying

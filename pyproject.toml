@@ -51,6 +51,9 @@ dependencies = [
     "pytest-asyncio>=1.2.0",
     "pytest-json-report>=1.5.0",
     "hypothesis>=6.148.0",
+    "fastapi-users[sqlalchemy]>=13.0.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
 ]
 
 [project.optional-dependencies]

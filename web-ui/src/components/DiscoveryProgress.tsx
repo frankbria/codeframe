@@ -7,9 +7,12 @@
 
 import { useEffect, useState, memo } from 'react';
 import { projectsApi } from '@/lib/api';
+import { authFetch } from '@/lib/api-client';
 import type { DiscoveryProgressResponse } from '@/types/api';
 import ProgressBar from './ProgressBar';
 import PhaseIndicator from './PhaseIndicator';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 interface DiscoveryProgressProps {
   projectId: number;
@@ -46,23 +49,14 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
     setSuccessMessage(null);
 
     try {
-      // T038: POST request to backend
-      const response = await fetch(`/api/projects/${projectId}/discovery/answer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ answer: trimmedAnswer }),
-      });
-
-      // T040: Error handling
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        throw new Error(errorData.detail || `Server error: ${response.status}`);
-      }
-
-      // T039: Parse response
-      const _data = await response.json();
+      // T038: POST request to backend with authentication
+      await authFetch(
+        `${API_BASE_URL}/api/projects/${projectId}/discovery/answer`,
+        {
+          method: 'POST',
+          body: { answer: trimmedAnswer },
+        }
+      );
 
       // Success - show message and refresh
       setSuccessMessage('Answer submitted! Loading next question...');

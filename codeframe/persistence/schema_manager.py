@@ -69,26 +69,23 @@ class SchemaManager:
         self._ensure_default_admin_user()
 
     def _create_auth_tables(self, cursor: sqlite3.Cursor) -> None:
-        """Create authentication and authorization tables.
-
-        Uses BetterAuth-compatible schema:
-        - users: Core user information (no password)
-        - accounts: Authentication credentials (password, OAuth tokens)
-        - sessions: Active user sessions
-        """
-        # Users table (BetterAuth compatible)
+        """Create authentication tables (fastapi-users compatible)."""
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
                 name TEXT,
+                hashed_password TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                is_superuser INTEGER DEFAULT 0,
+                is_verified INTEGER DEFAULT 0,
                 email_verified INTEGER DEFAULT 0,
                 image TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """
+            """
         )
 
         # Accounts table (BetterAuth compatible - stores passwords and OAuth)

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useSession, signOut } from "@/lib/auth-client";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Navigation bar component
@@ -14,7 +14,7 @@ import { useSession, signOut } from "@/lib/auth-client";
 export default function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session, isPending } = useSession();
+  const { user, isLoading, logout } = useAuth();
 
   // Don't show navigation on login/signup pages
   if (pathname === "/login" || pathname === "/signup") {
@@ -22,7 +22,7 @@ export default function Navigation() {
   }
 
   const handleLogout = async () => {
-    await signOut();
+    await logout();
     router.push("/login");
   };
 
@@ -37,13 +37,13 @@ export default function Navigation() {
           </div>
 
           <div className="flex items-center space-x-4">
-            {isPending ? (
+            {isLoading ? (
               <div className="text-sm text-muted-foreground">Loading...</div>
-            ) : session ? (
+            ) : user ? (
               <>
                 <div data-testid="user-menu">
                   <span className="text-sm text-foreground">
-                    {session.user.name || session.user.email}
+                    {user.name || user.email}
                   </span>
                 </div>
                 <button

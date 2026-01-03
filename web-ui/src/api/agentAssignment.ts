@@ -8,6 +8,7 @@
  * Date: 2025-12-03
  */
 
+import { authFetch } from '@/lib/api-client';
 import type {
   AgentAssignmentRequest,
   AgentRoleUpdateRequest,
@@ -45,21 +46,7 @@ export async function getAgentsForProject(
     params.toString() ? `?${params.toString()}` : ''
   }`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.detail || `Failed to fetch agents for project ${projectId}`
-    );
-  }
-
-  return response.json();
+  return authFetch<AgentAssignment[]>(url);
 }
 
 /**
@@ -74,25 +61,13 @@ export async function assignAgentToProject(
   projectId: number,
   request: AgentAssignmentRequest
 ): Promise<AssignmentCreatedResponse> {
-  const response = await fetch(
+  return authFetch<AssignmentCreatedResponse>(
     `${API_BASE_URL}/api/projects/${projectId}/agents`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
+      body: request,
     }
   );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.detail || `Failed to assign agent to project ${projectId}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -106,23 +81,10 @@ export async function unassignAgentFromProject(
   projectId: number,
   agentId: string
 ): Promise<void> {
-  const response = await fetch(
+  await authFetch<void>(
     `${API_BASE_URL}/api/projects/${projectId}/agents/${agentId}`,
-    {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+    { method: 'DELETE' }
   );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.detail ||
-        `Failed to unassign agent ${agentId} from project ${projectId}`
-    );
-  }
 }
 
 /**
@@ -139,26 +101,13 @@ export async function updateAgentRole(
   agentId: string,
   request: AgentRoleUpdateRequest
 ): Promise<AgentAssignment> {
-  const response = await fetch(
+  return authFetch<AgentAssignment>(
     `${API_BASE_URL}/api/projects/${projectId}/agents/${agentId}/role`,
     {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
+      body: request,
     }
   );
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.detail ||
-        `Failed to update role for agent ${agentId} on project ${projectId}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -182,19 +131,5 @@ export async function getProjectsForAgent(
     params.toString() ? `?${params.toString()}` : ''
   }`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.detail || `Failed to fetch projects for agent ${agentId}`
-    );
-  }
-
-  return response.json();
+  return authFetch<ProjectAssignment[]>(url);
 }
