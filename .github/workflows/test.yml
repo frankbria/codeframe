@@ -100,7 +100,13 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
+      - name: Install codeframe package
+        run: |
+          uv pip install -e .
+          echo "✅ Package installed in editable mode"
+
       - name: Run pytest with coverage
+        timeout-minutes: 15
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
