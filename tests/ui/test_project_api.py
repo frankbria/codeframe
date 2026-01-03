@@ -1,37 +1,14 @@
 """Tests for project API endpoints."""
 
-import jwt
 import pytest
 import os
 import tempfile
 import shutil
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from fastapi.testclient import TestClient
 from codeframe.persistence.database import Database
 
-
-def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
-    """Create a JWT token for testing.
-
-    Args:
-        user_id: User ID to include in the token
-        secret: JWT secret (uses default from auth manager if not provided)
-
-    Returns:
-        JWT token string
-    """
-    from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
-
-    if secret is None:
-        secret = SECRET
-
-    payload = {
-        "sub": str(user_id),
-        "aud": ["fastapi-users:auth"],
-        "exp": datetime.now(timezone.utc) + timedelta(seconds=JWT_LIFETIME_SECONDS),
-    }
-    return jwt.encode(payload, secret, algorithm="HS256")
+from conftest import create_test_jwt_token
 
 
 @pytest.fixture

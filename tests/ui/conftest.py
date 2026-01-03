@@ -5,6 +5,7 @@ This module provides test fixtures for running WebSocket tests with a real
 FastAPI server instead of TestClient's mocked WebSocket connections.
 """
 
+import jwt
 import os
 import secrets
 import signal
@@ -21,6 +22,29 @@ import requests
 import shutil
 
 from codeframe.persistence.database import Database
+
+
+def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
+    """Create a JWT token for testing.
+
+    Args:
+        user_id: User ID to include in the token
+        secret: JWT secret (uses default from auth manager if not provided)
+
+    Returns:
+        JWT token string
+    """
+    from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
+
+    if secret is None:
+        secret = SECRET
+
+    payload = {
+        "sub": str(user_id),
+        "aud": ["fastapi-users:auth"],
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=JWT_LIFETIME_SECONDS),
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 
 def find_free_port() -> int:
