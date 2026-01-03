@@ -141,14 +141,13 @@ function storeTestUserCredentials(): void {
 function seedTestUser(): void {
   console.log('\n👤 Seeding test user for authentication...');
 
-  try {
-    const db = new Database(TEST_DB_PATH);
+  const db = new Database(TEST_DB_PATH);
 
+  try {
     // Check if user already exists
     const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get('test@example.com');
     if (existingUser) {
       console.log('✅ Test user already exists (email: test@example.com)');
-      db.close();
       return;
     }
 
@@ -181,10 +180,11 @@ function seedTestUser(): void {
     );
 
     console.log('✅ Test user created (email: test@example.com, password: Testpassword123)');
-    db.close();
   } catch (error) {
     console.error('❌ Failed to seed test user:', error);
     throw error;
+  } finally {
+    db.close();
   }
 }
 
