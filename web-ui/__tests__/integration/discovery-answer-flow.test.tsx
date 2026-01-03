@@ -3,10 +3,18 @@
  * Tests complete user workflows end-to-end
  */
 
+// Mock the api-client module BEFORE imports
+jest.mock('@/lib/api-client', () => ({
+  authFetch: jest.fn(),
+}));
+
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import DiscoveryProgress from '@/components/DiscoveryProgress';
 import { projectsApi } from '@/lib/api';
+import { authFetch } from '@/lib/api-client';
 import type { DiscoveryProgressResponse } from '@/types/api';
+
+const mockAuthFetch = authFetch as jest.MockedFunction<typeof authFetch>;
 
 // Mock the API
 jest.mock('@/lib/api', () => ({
@@ -36,6 +44,7 @@ jest.mock('@/components/PhaseIndicator', () => {
 describe('Discovery Answer Flow - Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAuthFetch.mockReset();
     jest.useFakeTimers();
   });
 
@@ -84,20 +93,14 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: initialData });
 
       // Mock successful submit
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'Who are your target users?',
-              is_complete: false,
-              current_index: 1,
-              total_questions: 20,
-              progress_percentage: 5.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'Who are your target users?',
+        is_complete: false,
+        current_index: 1,
+        total_questions: 20,
+        progress_percentage: 5.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -228,12 +231,7 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       // Mock initial load
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: questions[0].data });
 
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ success: true }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValue({ success: true });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -316,16 +314,9 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       });
 
       // STEP 1: Attempt to submit with API error
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: false,
-          status: 400,
-          json: () =>
-            Promise.resolve({
-              detail: 'Project is not in discovery phase',
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Project is not in discovery phase')
+      );
 
       const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
       const originalAnswer = 'React, TypeScript, Node.js';
@@ -360,20 +351,14 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       expect(screen.getByText(/project is not in discovery phase/i)).toBeInTheDocument();
 
       // STEP 4: Retry submission with successful response
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'What is your timeline?',
-              is_complete: false,
-              current_index: 6,
-              total_questions: 20,
-              progress_percentage: 30.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'What is your timeline?',
+        is_complete: false,
+        current_index: 6,
+        total_questions: 20,
+        progress_percentage: 30.0,
+      });
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: updatedData });
 
@@ -447,9 +432,7 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       });
 
       // Simulate network error
-      global.fetch = jest.fn(() =>
-        Promise.reject(new Error('Network error'))
-      ) as jest.Mock;
+      mockAuthFetch.mockRejectedValueOnce(new Error('Network error'));
 
       const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
       const answer = 'Subscription model';
@@ -468,20 +451,14 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       expect(textarea.value).toBe(answer);
 
       // Retry with success
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'Who are your competitors?',
-              is_complete: false,
-              current_index: 11,
-              total_questions: 20,
-              progress_percentage: 55.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'Who are your competitors?',
+        is_complete: false,
+        current_index: 11,
+        total_questions: 20,
+        progress_percentage: 55.0,
+      });
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: updatedData });
 

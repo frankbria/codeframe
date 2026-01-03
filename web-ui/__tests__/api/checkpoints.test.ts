@@ -8,6 +8,11 @@
  * Part of Sprint 10 Phase 4 - Checkpoint System (Frontend)
  */
 
+// Mock the api-client module BEFORE imports
+jest.mock('../../src/lib/api-client', () => ({
+  authFetch: jest.fn(),
+}));
+
 import {
   listCheckpoints,
   createCheckpoint,
@@ -16,6 +21,7 @@ import {
   restoreCheckpoint,
   getCheckpointDiff,
 } from '../../src/api/checkpoints';
+import { authFetch } from '../../src/lib/api-client';
 import type {
   Checkpoint,
   CreateCheckpointRequest,
@@ -23,10 +29,7 @@ import type {
   CheckpointDiff,
 } from '../../src/types/checkpoints';
 
-// Mock fetch
-global.fetch = jest.fn();
-
-const API_BASE_URL = 'http://localhost:8080';
+const mockAuthFetch = authFetch as jest.MockedFunction<typeof authFetch>;
 
 describe('Checkpoints API Client', () => {
   const mockCheckpoint: Checkpoint = {
@@ -53,40 +56,27 @@ describe('Checkpoints API Client', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (global.fetch as jest.Mock).mockClear();
   });
 
   describe('listCheckpoints', () => {
     it('test_list_checkpoints_success', async () => {
       // ARRANGE
       const mockCheckpoints = [mockCheckpoint];
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCheckpoints,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockCheckpoints);
 
       // ACT
       const result = await listCheckpoints(123);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/checkpoints`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/projects/123/checkpoints'
       );
       expect(result).toEqual(mockCheckpoints);
     });
 
     it('test_list_checkpoints_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: async () => ({ detail: 'Database connection failed' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 500 Database connection failed'));
 
       // ACT & ASSERT
       await expect(listCheckpoints(123)).rejects.toThrow('Database connection failed');
@@ -94,7 +84,7 @@ describe('Checkpoints API Client', () => {
 
     it('test_list_checkpoints_network_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
+      mockAuthFetch.mockRejectedValueOnce(new Error('Network error'));
 
       // ACT & ASSERT
       await expect(listCheckpoints(123)).rejects.toThrow('Network error');
@@ -110,21 +100,17 @@ describe('Checkpoints API Client', () => {
         trigger: 'manual',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCheckpoint,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockCheckpoint);
 
       // ACT
       const result = await createCheckpoint(123, request);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/checkpoints`,
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/projects/123/checkpoints',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(request),
+          body: request,
         }
       );
       expect(result).toEqual(mockCheckpoint);
@@ -136,69 +122,43 @@ describe('Checkpoints API Client', () => {
         name: 'New Checkpoint',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        statusText: 'Bad Request',
-        json: async () => ({ detail: 'Invalid checkpoint name' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 400 Invalid checkpoint name'));
 
       // ACT & ASSERT
       await expect(createCheckpoint(123, request)).rejects.toThrow('Invalid checkpoint name');
     });
 
-    it('test_create_checkpoint_json_parse_error', async () => {
+    it('test_create_checkpoint_server_error', async () => {
       // ARRANGE
       const request: CreateCheckpointRequest = {
         name: 'New Checkpoint',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: async () => {
-          throw new Error('Invalid JSON');
-        },
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 500 Internal Server Error'));
 
       // ACT & ASSERT
-      await expect(createCheckpoint(123, request)).rejects.toThrow(
-        'Failed to create checkpoint'
-      );
+      await expect(createCheckpoint(123, request)).rejects.toThrow('Internal Server Error');
     });
   });
 
   describe('getCheckpoint', () => {
     it('test_get_checkpoint_success', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCheckpoint,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockCheckpoint);
 
       // ACT
       const result = await getCheckpoint(123, 1);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/checkpoints/1`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/projects/123/checkpoints/1'
       );
       expect(result).toEqual(mockCheckpoint);
     });
 
     it('test_get_checkpoint_not_found', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        json: async () => ({ detail: 'Checkpoint not found' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 404 Checkpoint not found'));
 
       // ACT & ASSERT
       await expect(getCheckpoint(123, 999)).rejects.toThrow('Checkpoint not found');
@@ -213,33 +173,22 @@ describe('Checkpoints API Client', () => {
         message: 'Checkpoint deleted successfully',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockResponse);
 
       // ACT
       const result = await deleteCheckpoint(123, 1);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/checkpoints/1`,
-        {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/projects/123/checkpoints/1',
+        { method: 'DELETE' }
       );
       expect(result).toEqual(mockResponse);
     });
 
     it('test_delete_checkpoint_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        statusText: 'Forbidden',
-        json: async () => ({ detail: 'Permission denied' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 403 Permission denied'));
 
       // ACT & ASSERT
       await expect(deleteCheckpoint(123, 1)).rejects.toThrow('Permission denied');
@@ -256,21 +205,17 @@ describe('Checkpoints API Client', () => {
         message: 'Checkpoint restored successfully',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockResponse,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockResponse);
 
       // ACT
       const result = await restoreCheckpoint(123, 1, true);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/checkpoints/1/restore`,
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/projects/123/checkpoints/1/restore',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirm_restore: true }),
+          body: { confirm_restore: true },
         }
       );
       expect(result).toEqual(mockResponse);
@@ -278,12 +223,7 @@ describe('Checkpoints API Client', () => {
 
     it('test_restore_checkpoint_not_confirmed', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        statusText: 'Bad Request',
-        json: async () => ({ detail: 'Confirmation required' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 400 Confirmation required'));
 
       // ACT & ASSERT
       await expect(restoreCheckpoint(123, 1, false)).rejects.toThrow('Confirmation required');
@@ -291,12 +231,7 @@ describe('Checkpoints API Client', () => {
 
     it('test_restore_checkpoint_conflict', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 409,
-        statusText: 'Conflict',
-        json: async () => ({ detail: 'Git conflict detected' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 409 Git conflict detected'));
 
       // ACT & ASSERT
       await expect(restoreCheckpoint(123, 1, true)).rejects.toThrow('Git conflict detected');
@@ -313,33 +248,45 @@ describe('Checkpoints API Client', () => {
         diff: 'diff --git a/file.py b/file.py\n...',
       };
 
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockDiff,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockDiff);
 
       // ACT
       const result = await getCheckpointDiff(123, 1);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/checkpoints/1/diff`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/projects/123/checkpoints/1/diff',
+        { signal: undefined }
+      );
+      expect(result).toEqual(mockDiff);
+    });
+
+    it('test_get_checkpoint_diff_with_signal', async () => {
+      // ARRANGE
+      const mockDiff: CheckpointDiff = {
+        files_changed: 5,
+        insertions: 120,
+        deletions: 45,
+        diff: 'diff --git a/file.py b/file.py\n...',
+      };
+      const abortController = new AbortController();
+
+      mockAuthFetch.mockResolvedValueOnce(mockDiff);
+
+      // ACT
+      const result = await getCheckpointDiff(123, 1, abortController.signal);
+
+      // ASSERT
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/projects/123/checkpoints/1/diff',
+        { signal: abortController.signal }
       );
       expect(result).toEqual(mockDiff);
     });
 
     it('test_get_checkpoint_diff_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        json: async () => ({ detail: 'Checkpoint not found' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 404 Checkpoint not found'));
 
       // ACT & ASSERT
       await expect(getCheckpointDiff(123, 999)).rejects.toThrow('Checkpoint not found');
@@ -347,12 +294,7 @@ describe('Checkpoints API Client', () => {
 
     it('test_get_checkpoint_diff_git_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: async () => ({ detail: 'Git command failed' }),
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Request failed: 500 Git command failed'));
 
       // ACT & ASSERT
       await expect(getCheckpointDiff(123, 1)).rejects.toThrow('Git command failed');
@@ -360,39 +302,17 @@ describe('Checkpoints API Client', () => {
   });
 
   describe('Error handling edge cases', () => {
-    it('test_handles_empty_error_response', async () => {
+    it('test_handles_not_authenticated', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        json: async () => ({}), // Empty error object
-      });
+      mockAuthFetch.mockRejectedValueOnce(new Error('Not authenticated'));
 
       // ACT & ASSERT
-      await expect(listCheckpoints(123)).rejects.toThrow('HTTP 500: Internal Server Error');
-    });
-
-    it('test_handles_malformed_error_response', async () => {
-      // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        statusText: 'Bad Request',
-        json: async () => {
-          throw new Error('Malformed JSON');
-        },
-      });
-
-      // ACT & ASSERT
-      await expect(listCheckpoints(123)).rejects.toThrow('Failed to list checkpoints');
+      await expect(listCheckpoints(123)).rejects.toThrow('Not authenticated');
     });
 
     it('test_handles_network_timeout', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockImplementation(
-        () => new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100))
-      );
+      mockAuthFetch.mockRejectedValueOnce(new Error('Timeout'));
 
       // ACT & ASSERT
       await expect(listCheckpoints(123)).rejects.toThrow('Timeout');
