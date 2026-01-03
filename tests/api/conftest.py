@@ -99,6 +99,10 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     # Set test API key for discovery endpoints
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
 
+    # Reset auth engine to pick up new DATABASE_PATH
+    from codeframe.auth.manager import reset_auth_engine
+    reset_auth_engine()
+
     # Reload server module to pick up environment changes
     # This happens ONCE per test class instead of per test
     from codeframe.ui import server
@@ -168,6 +172,9 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
             os.environ[var] = original_env[var]
         elif var in os.environ:
             os.environ.pop(var)
+
+    # Reset auth engine so next test class gets fresh engine with correct DB path
+    reset_auth_engine()
 
 
 @pytest.fixture(autouse=True)

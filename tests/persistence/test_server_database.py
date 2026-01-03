@@ -153,8 +153,13 @@ class TestServerDatabaseAccess:
         """Test that database is accessible from API endpoints."""
         # ARRANGE
         import os
+        from conftest import create_test_jwt_token, setup_test_user
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
+
+        # Reset auth engine to pick up new DATABASE_PATH
+        from codeframe.auth.manager import reset_auth_engine
+        reset_auth_engine()
 
         from codeframe.ui import server
         from importlib import reload
@@ -165,9 +170,16 @@ class TestServerDatabaseAccess:
 
         # ACT & ASSERT: Endpoint should be able to access database
         with TestClient(app) as client:
-            # Create a test project in database
+            # Create test user for authentication
             db = app.state.db
-            db.create_project("test-project", "Test Project project")
+            setup_test_user(db, user_id=1)
+
+            # Create a test project in database
+            db.create_project("test-project", "Test Project project", user_id=1)
+
+            # Add authentication header
+            auth_token = create_test_jwt_token(user_id=1)
+            client.headers["Authorization"] = f"Bearer {auth_token}"
 
             response = client.get("/api/projects")
             assert response.status_code == 200

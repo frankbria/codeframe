@@ -34,25 +34,49 @@ if SECRET == DEFAULT_SECRET:
         "DO NOT USE IN PRODUCTION! Set AUTH_SECRET environment variable."
     )
 
-# Database path from environment (same as main database)
-DATABASE_PATH = os.getenv(
-    "DATABASE_PATH",
-    os.path.join(os.getcwd(), ".codeframe", "state.db")
-)
-
 # Create async SQLAlchemy engine for auth
 # Uses aiosqlite driver for async SQLite access
 _engine = None
 _async_session_maker = None
+_current_database_path = None
+
+
+def _get_database_path() -> str:
+    """Get the current database path from environment."""
+    return os.getenv(
+        "DATABASE_PATH",
+        os.path.join(os.getcwd(), ".codeframe", "state.db")
+    )
+
+
+def reset_auth_engine():
+    """Reset the async SQLAlchemy engine.
+
+    Call this when DATABASE_PATH environment variable changes
+    (e.g., in tests that use temporary databases).
+    """
+    global _engine, _async_session_maker, _current_database_path
+    _engine = None
+    _async_session_maker = None
+    _current_database_path = None
 
 
 def get_engine():
     """Get or create the async SQLAlchemy engine."""
-    global _engine
+    global _engine, _current_database_path
+
+    # Get current database path
+    database_path = _get_database_path()
+
+    # If path changed, reset engine
+    if _current_database_path is not None and _current_database_path != database_path:
+        reset_auth_engine()
+
     if _engine is None:
         # Use aiosqlite for async SQLite support
-        database_url = f"sqlite+aiosqlite:///{DATABASE_PATH}"
+        database_url = f"sqlite+aiosqlite:///{database_path}"
         _engine = create_async_engine(database_url, echo=False)
+        _current_database_path = database_path
     return _engine
 
 
