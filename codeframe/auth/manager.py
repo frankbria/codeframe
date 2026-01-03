@@ -18,17 +18,21 @@ from codeframe.auth.models import User
 logger = logging.getLogger(__name__)
 
 # Get configuration from environment
-_DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
-SECRET = os.getenv("AUTH_SECRET", _DEFAULT_SECRET)
+DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
+SECRET = os.getenv("AUTH_SECRET", DEFAULT_SECRET)
+
+# JWT configuration constants
+# These must match the JWTStrategy defaults from FastAPI Users
+JWT_ALGORITHM = "HS256"
+JWT_AUDIENCE = ["fastapi-users:auth"]
+JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
 
 # Warn if using default secret (but allow for development)
-if SECRET == _DEFAULT_SECRET:
+if SECRET == DEFAULT_SECRET:
     logger.warning(
         "⚠️  AUTH_SECRET not set - using default value. "
         "DO NOT USE IN PRODUCTION! Set AUTH_SECRET environment variable."
     )
-
-JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
 
 # Database path from environment (same as main database)
 DATABASE_PATH = os.getenv(

@@ -44,17 +44,25 @@ async def get_current_user(
     # Validate JWT token
     try:
         import jwt as pyjwt
-        from codeframe.auth.manager import SECRET, get_async_session_maker
+        from codeframe.auth.manager import (
+            SECRET,
+            JWT_ALGORITHM,
+            JWT_AUDIENCE,
+            get_async_session_maker,
+        )
         from sqlalchemy import select
 
         # Decode JWT token directly using PyJWT
-        # This avoids the need for a user_manager instance
+        # Note: We use direct PyJWT decoding instead of JWTStrategy.read_token()
+        # because read_token() requires a user_manager instance, which would
+        # create a circular dependency. The JWT constants are centralized in
+        # auth.manager to ensure consistency with the JWTStrategy configuration.
         try:
             payload = pyjwt.decode(
                 credentials.credentials,
                 SECRET,
-                algorithms=["HS256"],
-                audience=["fastapi-users:auth"],
+                algorithms=[JWT_ALGORITHM],
+                audience=JWT_AUDIENCE,
             )
             user_id_str = payload.get("sub")
             if not user_id_str:

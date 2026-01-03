@@ -121,9 +121,39 @@ async def _cleanup_expired_sessions_task(db: Database):
             logger.error(f"Error during cleanup task: {e}", exc_info=True)
 
 
+def _validate_security_config():
+    """Validate security configuration at startup.
+
+    Raises:
+        RuntimeError: If security configuration is invalid for the deployment mode
+    """
+    from codeframe.auth.manager import SECRET, DEFAULT_SECRET
+
+    deployment_mode = get_deployment_mode()
+
+    # In hosted mode, fail fast if using default JWT secret
+    if deployment_mode == DeploymentMode.HOSTED and SECRET == DEFAULT_SECRET:
+        raise RuntimeError(
+            "🚨 SECURITY: AUTH_SECRET must be set in hosted/production mode. "
+            "Using the default secret compromises all JWT tokens. "
+            "Set the AUTH_SECRET environment variable to a secure random value."
+        )
+
+    # Log security status
+    if SECRET == DEFAULT_SECRET:
+        logger.warning(
+            "⚠️  Running with default AUTH_SECRET - acceptable for self-hosted development only"
+        )
+    else:
+        logger.info("🔐 AUTH_SECRET configured (custom secret in use)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
+    # Validate security configuration before starting
+    _validate_security_config()
+
     # Startup: Initialize database
     # If DATABASE_PATH is not set, use default relative to WORKSPACE_ROOT
     db_path_str = os.environ.get("DATABASE_PATH")
