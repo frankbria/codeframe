@@ -75,8 +75,8 @@ export async function loginUser(
   // Click login button
   await page.getByTestId('login-button').click();
 
-  // Wait for redirect to root page or projects page
-  await page.waitForURL(/^\/(projects)?$/);
+  // Wait for redirect to root page or projects page (URL includes full host)
+  await page.waitForURL(/\/(projects)?$/);
 }
 
 /**
@@ -107,8 +107,8 @@ export async function registerUser(
   // Click signup button
   await page.getByTestId('signup-button').click();
 
-  // Wait for redirect to root page (auto-login after registration)
-  await page.waitForURL(/^\/(projects)?$/);
+  // Wait for redirect to root page (auto-login after registration, URL includes full host)
+  await page.waitForURL(/\/(projects)?$/);
 }
 
 /**

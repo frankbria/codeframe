@@ -46,8 +46,8 @@ test.describe('Authentication Flow', () => {
       // Submit form
       await page.getByTestId('signup-button').click();
 
-      // Should redirect to home after auto-login
-      await expect(page).toHaveURL(/^\/(projects)?$/, { timeout: 10000 });
+      // Should redirect to home after auto-login (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 10000 });
 
       // Verify user is logged in (user menu visible)
       await expect(page.getByTestId('user-menu')).toBeVisible();
@@ -117,8 +117,8 @@ test.describe('Authentication Flow', () => {
       // Click login button
       await page.getByTestId('login-button').click();
 
-      // Assert redirect to root or projects page
-      await expect(page).toHaveURL(/^\/(projects)?$/, { timeout: 10000 });
+      // Assert redirect to root or projects page (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 10000 });
 
       // Assert user menu is visible (logged in state)
       await expect(page.getByTestId('user-menu')).toBeVisible();
@@ -133,8 +133,8 @@ test.describe('Authentication Flow', () => {
       // Use helper function
       await loginUser(page, TEST_USER_EMAIL, TEST_USER_PASSWORD);
 
-      // Verify we're authenticated
-      await expect(page).toHaveURL(/^\/(projects)?$/);
+      // Verify we're authenticated (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/);
       await expect(page.getByTestId('user-menu')).toBeVisible();
     });
   });
@@ -342,8 +342,8 @@ test.describe('Authentication Flow', () => {
       await page.getByTestId('password-input').fill(TEST_USER_PASSWORD);
       await page.getByTestId('login-button').click();
 
-      // Wait for redirect
-      await expect(page).toHaveURL(/^\/(projects)?$/, { timeout: 10000 });
+      // Wait for redirect (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 10000 });
 
       // Verify FastAPI auth endpoint was called
       const loginCall = apiCalls.find(url => url.includes('/auth/jwt/login'));

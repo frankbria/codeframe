@@ -2,25 +2,25 @@
 from fastapi import APIRouter
 
 from codeframe.auth.schemas import UserCreate, UserRead, UserUpdate
-from codeframe.auth.users import auth_backend, fastapi_users
+from codeframe.auth.manager import auth_backend, fastapi_users
 
 router = APIRouter()
 
-# Authentication routes (login, logout)
+# Authentication routes (login, logout) - JWT endpoints at /auth/jwt/*
 router.include_router(
     fastapi_users.get_auth_router(auth_backend),
-    prefix="/auth",
+    prefix="/auth/jwt",
     tags=["auth"],
 )
 
-# Registration route
+# Registration route at /auth/register
 router.include_router(
     fastapi_users.get_register_router(UserRead, UserCreate),
     prefix="/auth",
     tags=["auth"],
 )
 
-# User management routes (get me, update me)
+# User management routes (get me, update me) at /users/*
 router.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix="/users",

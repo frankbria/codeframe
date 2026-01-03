@@ -1,6 +1,7 @@
 """User manager and authentication backends."""
 import os
-from typing import Optional
+from typing import AsyncGenerator, Optional
+
 from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, IntegerIDMixin, FastAPIUsers
 from fastapi_users.authentication import (
@@ -9,18 +10,51 @@ from fastapi_users.authentication import (
     JWTStrategy,
 )
 from fastapi_users.db import SQLAlchemyUserDatabase
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from codeframe.auth.models import User
-from codeframe.persistence.database import Database
+from codeframe.auth.models import User, Base
 
 # Get configuration from environment
 SECRET = os.getenv("AUTH_SECRET", "CHANGE-ME-IN-PRODUCTION")
 JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
 
+# Database path from environment (same as main database)
+DATABASE_PATH = os.getenv(
+    "DATABASE_PATH",
+    os.path.join(os.getcwd(), ".codeframe", "state.db")
+)
+
+# Create async SQLAlchemy engine for auth
+# Uses aiosqlite driver for async SQLite access
+_engine = None
+_async_session_maker = None
+
+
+def get_engine():
+    """Get or create the async SQLAlchemy engine."""
+    global _engine
+    if _engine is None:
+        # Use aiosqlite for async SQLite support
+        database_url = f"sqlite+aiosqlite:///{DATABASE_PATH}"
+        _engine = create_async_engine(database_url, echo=False)
+    return _engine
+
+
+def get_async_session_maker():
+    """Get or create the async session maker."""
+    global _async_session_maker
+    if _async_session_maker is None:
+        _async_session_maker = async_sessionmaker(
+            get_engine(),
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+    return _async_session_maker
+
+
 class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
     """User manager for CodeFRAME."""
-    
+
     reset_password_token_secret = SECRET
     verification_token_secret = SECRET
 
@@ -34,32 +68,32 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
         """Called after successful login."""
         print(f"User {user.id} ({user.email}) logged in.")
 
-async def get_async_session(request: Request) -> AsyncSession:
-    """Get async database session from app state."""
-    db: Database = request.app.state.db
-    async_conn = await db._get_async_conn()
-    # Create async session from connection
-    from sqlalchemy.ext.asyncio import AsyncSession
-    session = AsyncSession(bind=async_conn)
-    try:
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """Get async database session for auth."""
+    async_session_maker = get_async_session_maker()
+    async with async_session_maker() as session:
         yield session
-    finally:
-        await session.close()
+
 
 async def get_user_db(session: AsyncSession = Depends(get_async_session)):
     """Get user database adapter."""
     yield SQLAlchemyUserDatabase(session, User)
 
+
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):
     """Get user manager."""
     yield UserManager(user_db)
 
+
 # JWT Bearer token transport
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
+
 
 def get_jwt_strategy() -> JWTStrategy:
     """JWT strategy for authentication."""
     return JWTStrategy(secret=SECRET, lifetime_seconds=JWT_LIFETIME_SECONDS)
+
 
 # Authentication backend
 auth_backend = AuthenticationBackend(

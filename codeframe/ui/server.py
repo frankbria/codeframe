@@ -32,10 +32,8 @@ from codeframe.ui.routers import (
     session,
     tasks,
     websocket,
-    auth
 )
-from codeframe.auth.manager import fastapi_users, auth_backend
-from codeframe.auth.schemas import UserRead, UserCreate, UserUpdate
+from codeframe.auth import router as auth_router
 
 # ============================================================================
 # Configuration and Setup
@@ -223,6 +221,7 @@ else:
     # Fallback to development defaults if not configured
     allowed_origins = [
         "http://localhost:3000",  # Next.js dev server
+        "http://localhost:3001",  # Next.js E2E test server
         "http://localhost:5173",  # Vite dev server
     ]
 
@@ -335,26 +334,7 @@ app.include_router(review.router)
 app.include_router(session.router)
 app.include_router(tasks.router)
 app.include_router(websocket.router)
-app.include_router(auth.router)
-
-# Mount authentication routes
-app.include_router(
-    fastapi_users.get_auth_router(auth_backend),
-    prefix='/auth/jwt",
-    tags=["auth"],
-)
-
-app.include_router(
-    fastapi_users.get_register_router(UserRead, Usercreate),
-    prefix='/auth",
-    tags=["auth"],
-)
-
-app.include_router(
-    fastapi_users.get_users_router(UserRead, UserUpdate),
-    prefix="/users",
-    tags=["users"],
-)
+app.include_router(auth_router.router)
 
 
 # ============================================================================

@@ -748,35 +748,29 @@ class SchemaManager:
         if auth_required:
             logger.debug(
                 "Skipping admin user creation (AUTH_REQUIRED=true). "
-                "Users must authenticate via BetterAuth."
+                "Users must register via the auth system."
             )
             return
 
         cursor = self.conn.cursor()
 
-        # Create user record (BetterAuth compatible - no password)
+        # Create user record (FastAPI Users compatible)
+        # hashed_password uses a placeholder that cannot match any bcrypt hash
         cursor.execute(
             """
-            INSERT OR IGNORE INTO users (id, email, name, email_verified)
-            VALUES (1, 'admin@localhost', 'Admin User', 1)
+            INSERT OR IGNORE INTO users (
+                id, email, name, hashed_password,
+                is_active, is_superuser, is_verified, email_verified
+            )
+            VALUES (1, 'admin@localhost', 'Admin User', '!DISABLED!', 1, 1, 1, 1)
             """
         )
         user_created = cursor.rowcount > 0
 
-        # Create account record with NULL password (cannot be used for login)
-        # BetterAuth generates UUID-style IDs - use a deterministic ID for admin
-        # SECURITY: Password is NULL, not empty string, to prevent login attempts
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO accounts (id, user_id, account_id, provider_id, password)
-            VALUES ('admin-account-credential-1', 1, 'admin@localhost', 'credential', NULL)
-            """
-        )
-
         if user_created:
             logger.warning(
                 "⚠️  DEVELOPMENT MODE: Created default admin user (id=1, email='admin@localhost'). "
-                "This account has NULL password and cannot be used for login. "
+                "This account has a disabled password and cannot be used for login. "
                 "Set AUTH_REQUIRED=true for production."
             )
 
