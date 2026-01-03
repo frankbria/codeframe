@@ -11,7 +11,6 @@ import socket
 import subprocess
 import tempfile
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -80,20 +79,14 @@ def running_server():
     db = Database(db_path)
     db.initialize()
 
-    # Create test user (user_id=1)
+    # Create test user (user_id=1) - FastAPI Users schema
     db.conn.execute(
         """
-        INSERT OR REPLACE INTO users (id, email, name, created_at)
-        VALUES (1, 'test@example.com', 'Test User', ?)
-        """,
-        (datetime.now(timezone.utc).isoformat(),)
-    )
-
-    # Create account record for credential-based auth (BetterAuth schema)
-    db.conn.execute(
-        """
-        INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
-        VALUES ('test-ui-account-1', 1, 'test@example.com', 'credential', 'hashed_password')
+        INSERT OR REPLACE INTO users (
+            id, email, name, hashed_password,
+            is_active, is_superuser, is_verified, email_verified
+        )
+        VALUES (1, 'test@example.com', 'Test User', '!DISABLED!', 1, 0, 1, 1)
         """
     )
     db.conn.commit()

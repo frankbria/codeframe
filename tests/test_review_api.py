@@ -62,22 +62,14 @@ def client(db):
 
 @pytest.fixture
 def user_id(db):
-    """Create a test user."""
-    from datetime import datetime, timezone
-
+    """Create a test user (FastAPI Users schema)."""
     db.conn.execute(
         """
-        INSERT OR REPLACE INTO users (id, email, name, created_at)
-        VALUES (1, 'test@example.com', 'Test User', ?)
-        """,
-        (datetime.now(timezone.utc).isoformat(),)
-    )
-
-    # Create account record for credential-based auth (BetterAuth schema)
-    db.conn.execute(
-        """
-        INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
-        VALUES ('test-review-account-1', 1, 'test@example.com', 'credential', 'hashed_password')
+        INSERT OR REPLACE INTO users (
+            id, email, name, hashed_password,
+            is_active, is_superuser, is_verified, email_verified
+        )
+        VALUES (1, 'test@example.com', 'Test User', '!DISABLED!', 1, 0, 1, 1)
         """
     )
     db.conn.commit()
@@ -86,20 +78,17 @@ def user_id(db):
 
 @pytest.fixture
 def auth_token(db, user_id):
-    """Create a test authentication token."""
+    """Create a JWT authentication token for FastAPI Users."""
+    import jwt
     from datetime import datetime, timezone, timedelta
+    from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
 
-    token = 'test_token_12345'
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
-    db.conn.execute(
-        """
-        INSERT OR REPLACE INTO sessions (id, token, user_id, expires_at)
-        VALUES ('test-review-session-1', ?, ?, ?)
-        """,
-        (token, user_id, expires_at)
-    )
-    db.conn.commit()
-    return token
+    payload = {
+        "sub": str(user_id),
+        "aud": ["fastapi-users:auth"],
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=JWT_LIFETIME_SECONDS),
+    }
+    return jwt.encode(payload, SECRET, algorithm="HS256")
 
 
 @pytest.fixture
