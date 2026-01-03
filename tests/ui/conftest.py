@@ -215,17 +215,22 @@ def running_server():
                 pgid = os.getpgid(process.pid)
                 os.killpg(pgid, signal.SIGTERM)
 
-                # Wait for graceful shutdown
+                # Wait for graceful shutdown and drain pipes
+                # IMPORTANT: communicate() drains stdout/stderr pipes to prevent
+                # Python's internal reader threads from hanging
                 try:
-                    process.wait(timeout=3)
+                    process.communicate(timeout=3)
                 except subprocess.TimeoutExpired:
                     # Force kill if graceful shutdown failed
                     os.killpg(pgid, signal.SIGKILL)
-                    process.wait()
+                    process.communicate()  # Still drain pipes after force kill
 
             except (ProcessLookupError, PermissionError, OSError):
-                # Process already dead or no permission
-                pass
+                # Process already dead or no permission - still close pipes
+                if process.stdout:
+                    process.stdout.close()
+                if process.stderr:
+                    process.stderr.close()
 
             # Fallback: ensure no uvicorn processes remain on test port
             try:
