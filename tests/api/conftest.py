@@ -4,8 +4,10 @@ This conftest provides class-scoped fixtures to optimize API test performance
 by reducing the number of server reloads from per-test to per-test-class.
 """
 
+import jwt
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Generator
 import pytest
@@ -38,9 +40,32 @@ def class_temp_db_path(class_temp_dir: Path) -> Path:
     return class_temp_dir / "test.db"
 
 
+def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
+    """Create a JWT token for test authentication.
+
+    Args:
+        user_id: User ID to encode in token
+        secret: JWT secret (uses default if not provided)
+
+    Returns:
+        JWT token string
+    """
+    from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
+
+    if secret is None:
+        secret = SECRET
+
+    payload = {
+        "sub": str(user_id),  # User ID as string
+        "aud": ["fastapi-users:auth"],
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=JWT_LIFETIME_SECONDS),
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+
+
 @pytest.fixture(scope="class")
 def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
-    """Provide a class-scoped TestClient for API tests.
+    """Provide a class-scoped TestClient for API tests with authentication.
 
     This fixture sets up the environment and reloads the FastAPI server once per test class
     instead of once per test, reducing test execution time from ~10 minutes to ~1 minute.
@@ -51,14 +76,13 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
         class_temp_db_path: Class-scoped temporary database path
 
     Yields:
-        Configured TestClient instance for making API requests
+        Configured TestClient instance with authentication headers for making API requests
     """
     # Capture original environment state for cleanup
     env_vars_to_restore = [
         "DATABASE_PATH",
         "WORKSPACE_ROOT",
         "ANTHROPIC_API_KEY",
-        "AUTH_REQUIRED",
     ]
     original_env = {}
     for var in env_vars_to_restore:
@@ -75,9 +99,6 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     # Set test API key for discovery endpoints
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
 
-    # Disable authentication for tests (default admin user behavior)
-    os.environ["AUTH_REQUIRED"] = "false"
-
     # Reload server module to pick up environment changes
     # This happens ONCE per test class instead of per test
     from codeframe.ui import server
@@ -87,8 +108,7 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
 
     # Create and yield TestClient
     with TestClient(server.app) as client:
-        # Ensure default admin user exists (id=1) to match get_current_user behavior
-        # when AUTH_REQUIRED=false (see codeframe/auth/dependencies.py)
+        # Ensure default admin user exists (id=1) for test authentication
         db = server.app.state.db
         cursor = db.conn.cursor()
 
@@ -104,6 +124,12 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
             """
         )
         db.conn.commit()
+
+        # Create JWT token for test authentication
+        test_token = create_test_jwt_token(user_id=1)
+
+        # Add authentication header to all requests
+        client.headers["Authorization"] = f"Bearer {test_token}"
 
         # Patch Database.create_project to inject user_id=1 when not provided
         original_create_project = db.create_project
