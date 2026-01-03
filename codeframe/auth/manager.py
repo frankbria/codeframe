@@ -1,4 +1,5 @@
 """User manager and authentication backends."""
+import logging
 import os
 from typing import AsyncGenerator, Optional
 
@@ -14,8 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from codeframe.auth.models import User
 
+logger = logging.getLogger(__name__)
+
 # Get configuration from environment
-SECRET = os.getenv("AUTH_SECRET", "CHANGE-ME-IN-PRODUCTION")
+_DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
+SECRET = os.getenv("AUTH_SECRET", _DEFAULT_SECRET)
+
+# Warn if using default secret (but allow for development)
+if SECRET == _DEFAULT_SECRET:
+    logger.warning(
+        "⚠️  AUTH_SECRET not set - using default value. "
+        "DO NOT USE IN PRODUCTION! Set AUTH_SECRET environment variable."
+    )
+
 JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
 
 # Database path from environment (same as main database)

@@ -1,4 +1,5 @@
 """Authentication dependencies for route handlers."""
+import logging
 import os
 from typing import Optional
 
@@ -6,6 +7,8 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from codeframe.auth.models import User
+
+logger = logging.getLogger(__name__)
 
 # Security scheme for extracting Bearer tokens
 security = HTTPBearer(auto_error=False)
@@ -90,11 +93,14 @@ async def get_current_user(
     except HTTPException:
         raise
     except Exception as e:
+        # Log full error server-side for debugging
+        logger.error(f"Authentication error: {str(e)}", exc_info=True)
         if not auth_required:
             return await _get_default_admin_user()
+        # Return generic message to client (avoid leaking implementation details)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication error: {str(e)}",
+            detail="Authentication failed",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

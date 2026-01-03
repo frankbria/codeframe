@@ -39,6 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const { access_token } = await apiLogin(email, password);
+    // Validate token before storing
+    if (!access_token || typeof access_token !== 'string') {
+      throw new Error('Invalid response from server');
+    }
     localStorage.setItem('auth_token', access_token);
     setToken(access_token);
     const userData = await getCurrentUser(access_token);
