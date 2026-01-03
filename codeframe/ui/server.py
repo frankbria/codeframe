@@ -78,37 +78,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-def _validate_auth_config():
-    """Validate authentication configuration at startup.
-
-    Prevents accidental production deployment with authentication disabled.
-
-    Raises:
-        RuntimeError: If AUTH_REQUIRED=false in production environment
-    """
-    auth_required = os.getenv("AUTH_REQUIRED", "false").lower() == "true"
-    deployment_mode = get_deployment_mode()
-
-    # In production (hosted mode), authentication must be enabled
-    if deployment_mode == DeploymentMode.HOSTED and not auth_required:
-        raise RuntimeError(
-            "CRITICAL: AUTH_REQUIRED must be 'true' in production (DEPLOYMENT_MODE=hosted). "
-            "Running with AUTH_REQUIRED=false grants all requests admin access (user_id=1). "
-            "Set AUTH_REQUIRED=true to enable authentication."
-        )
-
-    # Log authentication status on startup
-    logger = logging.getLogger(__name__)
-    if auth_required:
-        logger.info("🔒 Authentication: ENABLED (AUTH_REQUIRED=true)")
-    else:
-        logger.warning(
-            "⚠️  Authentication: DISABLED (AUTH_REQUIRED=false) - "
-            "All requests default to admin user (user_id=1). "
-            "Set AUTH_REQUIRED=true for production."
-        )
-
-
 async def _cleanup_expired_sessions_task(db: Database):
     """Background task to periodically clean up expired sessions and old audit logs.
 
@@ -138,6 +107,7 @@ async def _cleanup_expired_sessions_task(db: Database):
 
             # Clean up old audit logs periodically (less frequently)
             import time
+
             current_time = time.time()
             if current_time - last_audit_cleanup >= audit_cleanup_interval:
                 deleted_logs = await db.cleanup_old_audit_logs(retention_days=audit_retention_days)
@@ -151,9 +121,39 @@ async def _cleanup_expired_sessions_task(db: Database):
             logger.error(f"Error during cleanup task: {e}", exc_info=True)
 
 
+def _validate_security_config():
+    """Validate security configuration at startup.
+
+    Raises:
+        RuntimeError: If security configuration is invalid for the deployment mode
+    """
+    from codeframe.auth.manager import SECRET, DEFAULT_SECRET
+
+    deployment_mode = get_deployment_mode()
+
+    # In hosted mode, fail fast if using default JWT secret
+    if deployment_mode == DeploymentMode.HOSTED and SECRET == DEFAULT_SECRET:
+        raise RuntimeError(
+            "🚨 SECURITY: AUTH_SECRET must be set in hosted/production mode. "
+            "Using the default secret compromises all JWT tokens. "
+            "Set the AUTH_SECRET environment variable to a secure random value."
+        )
+
+    # Log security status
+    if SECRET == DEFAULT_SECRET:
+        logger.warning(
+            "⚠️  Running with default AUTH_SECRET - acceptable for self-hosted development only"
+        )
+    else:
+        logger.info("🔐 AUTH_SECRET configured (custom secret in use)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
+    # Validate security configuration before starting
+    _validate_security_config()
+
     # Startup: Initialize database
     # If DATABASE_PATH is not set, use default relative to WORKSPACE_ROOT
     db_path_str = os.environ.get("DATABASE_PATH")
@@ -175,8 +175,8 @@ async def lifespan(app: FastAPI):
     workspace_root = Path(workspace_root_str)
     app.state.workspace_manager = WorkspaceManager(workspace_root)
 
-    # Validate authentication configuration
-    _validate_auth_config()
+    # Log that authentication is now always required
+    logger.info("🔒 Authentication: ENABLED (always required)")
 
     # Start background session cleanup task
     cleanup_task = asyncio.create_task(_cleanup_expired_sessions_task(app.state.db))

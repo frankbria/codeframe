@@ -41,7 +41,7 @@ class TestFullSubscriptionWorkflow:
     @pytest.mark.asyncio
     async def test_connect_and_subscribe_single_project(self, running_server, ws_url):
         """Test connecting and subscribing to a single project."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Send subscribe message
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
 
@@ -51,9 +51,9 @@ class TestFullSubscriptionWorkflow:
             assert data["project_id"] == 1
 
     @pytest.mark.asyncio
-    async def test_receive_filtered_broadcast_after_subscribe(self, running_server, ws_url):
+    async def test_receive_filtered_broadcast_after_subscribe(self, running_server, ws_url, server_url):
         """Test that client receives broadcasts for subscribed project."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
             data = json.loads(await websocket.recv())  # subscription confirmation
@@ -61,7 +61,7 @@ class TestFullSubscriptionWorkflow:
 
             # Trigger broadcast via test API endpoint
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "task_status_changed", "task_id": 42, "status": "completed"},
                 project_id=1
             )
@@ -73,9 +73,9 @@ class TestFullSubscriptionWorkflow:
             assert data["status"] == "completed"
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_stops_receiving_messages(self, running_server, ws_url):
+    async def test_unsubscribe_stops_receiving_messages(self, running_server, ws_url, server_url):
         """Test that client stops receiving messages after unsubscribe."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
             await websocket.recv()  # confirmation
@@ -87,7 +87,7 @@ class TestFullSubscriptionWorkflow:
             assert unsubscribe_response["project_id"] == 1
 
             # Broadcast to project 1 should NOT be received
-            await trigger_broadcast(running_server, 
+            await trigger_broadcast(server_url,
                 {"type": "task_status_changed", "task_id": 99, "status": "failed"},
                 project_id=1
             )
@@ -102,10 +102,10 @@ class TestFullSubscriptionWorkflow:
                 pass
 
     @pytest.mark.asyncio
-    async def test_disconnect_cleanup(self, running_server, ws_url):
+    async def test_disconnect_cleanup(self, running_server, ws_url, server_url):
         """Test that disconnect properly cleans up subscriptions."""
         # Create first WebSocket connection
-        websocket1 = await websockets.connect(f"{ws_url}/ws")
+        websocket1 = await websockets.connect(ws_url)
 
         try:
             # Subscribe to projects
@@ -117,7 +117,7 @@ class TestFullSubscriptionWorkflow:
 
             # Verify subscriptions work by receiving a broadcast
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_message", "data": "before_disconnect"},
                 project_id=1
             )
@@ -131,13 +131,13 @@ class TestFullSubscriptionWorkflow:
             await asyncio.sleep(0.2)
 
             # Create second connection and subscribe to same project
-            websocket2 = await websockets.connect(f"{ws_url}/ws")
+            websocket2 = await websockets.connect(ws_url)
             await websocket2.send(json.dumps({"type": "subscribe", "project_id": 1}))
             await websocket2.recv()
 
             # Trigger broadcast - only websocket2 should receive it
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_message", "data": "after_disconnect"},
                 project_id=1
             )
@@ -157,12 +157,12 @@ class TestMultiClientScenario:
     """Test multi-client scenarios with independent subscriptions."""
 
     @pytest.mark.asyncio
-    async def test_three_clients_with_independent_subscriptions(self, running_server, ws_url):
+    async def test_three_clients_with_independent_subscriptions(self, running_server, ws_url, server_url):
         """Test 3 clients with different project subscriptions."""
         # Create 3 WebSocket connections
-        ws1 = await websockets.connect(f"{ws_url}/ws")
-        ws2 = await websockets.connect(f"{ws_url}/ws")
-        ws3 = await websockets.connect(f"{ws_url}/ws")
+        ws1 = await websockets.connect(ws_url)
+        ws2 = await websockets.connect(ws_url)
+        ws3 = await websockets.connect(ws_url)
 
         try:
             # Client 1: subscribe to project 1
@@ -180,7 +180,7 @@ class TestMultiClientScenario:
             await ws3.recv()
 
             # Broadcast to project 1
-            await trigger_broadcast(running_server, 
+            await trigger_broadcast(server_url,
                 {"type": "task_status_changed", "project_id": 1, "task_id": 101},
                 project_id=1
             )
@@ -196,7 +196,7 @@ class TestMultiClientScenario:
             assert data3["task_id"] == 101
 
             # Broadcast to project 2
-            await trigger_broadcast(running_server, 
+            await trigger_broadcast(server_url,
                 {"type": "task_status_changed", "project_id": 2, "task_id": 202},
                 project_id=2
             )
@@ -218,10 +218,10 @@ class TestMultiClientScenario:
             await ws3.close()
 
     @pytest.mark.asyncio
-    async def test_broadcast_isolation_between_projects(self, running_server, ws_url):
+    async def test_broadcast_isolation_between_projects(self, running_server, ws_url, server_url):
         """Test that broadcasts to one project don't leak to other project subscribers."""
-        ws1 = await websockets.connect(f"{ws_url}/ws")
-        ws2 = await websockets.connect(f"{ws_url}/ws")
+        ws1 = await websockets.connect(ws_url)
+        ws2 = await websockets.connect(ws_url)
 
         try:
             # Client 1: subscribe to project 1 only
@@ -233,7 +233,7 @@ class TestMultiClientScenario:
             await ws2.recv()
 
             # Broadcast to project 1
-            await trigger_broadcast(running_server, 
+            await trigger_broadcast(server_url,
                 {"type": "test_result", "project_id": 1, "status": "passed"},
                 project_id=1
             )
@@ -258,9 +258,9 @@ class TestSubscribeUnsubscribeFlow:
     """Test subscribe/unsubscribe flow and message filtering."""
 
     @pytest.mark.asyncio
-    async def test_subscribe_to_multiple_projects_sequentially(self, running_server, ws_url):
+    async def test_subscribe_to_multiple_projects_sequentially(self, running_server, ws_url, server_url):
         """Test subscribing to multiple projects one after another."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
             resp1 = json.loads(await websocket.recv())
@@ -279,7 +279,7 @@ class TestSubscribeUnsubscribeFlow:
             # Verify all subscriptions are active by triggering broadcasts
             # and confirming client receives messages from all projects
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_msg", "project_id": 1},
                 project_id=1
             )
@@ -287,7 +287,7 @@ class TestSubscribeUnsubscribeFlow:
             assert msg1["project_id"] == 1
 
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_msg", "project_id": 2},
                 project_id=2
             )
@@ -295,7 +295,7 @@ class TestSubscribeUnsubscribeFlow:
             assert msg2["project_id"] == 2
 
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_msg", "project_id": 3},
                 project_id=3
             )
@@ -303,9 +303,9 @@ class TestSubscribeUnsubscribeFlow:
             assert msg3["project_id"] == 3
 
     @pytest.mark.asyncio
-    async def test_resubscribe_to_same_project(self, running_server, ws_url):
+    async def test_resubscribe_to_same_project(self, running_server, ws_url, server_url):
         """Test that resubscribing to same project doesn't cause issues."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
             resp1 = json.loads(await websocket.recv())
@@ -320,7 +320,7 @@ class TestSubscribeUnsubscribeFlow:
 
             # Verify subscription still works by triggering a broadcast
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_msg", "data": "test"},
                 project_id=1
             )
@@ -329,9 +329,9 @@ class TestSubscribeUnsubscribeFlow:
             assert msg["data"] == "test"
 
     @pytest.mark.asyncio
-    async def test_unsubscribe_then_resubscribe(self, running_server, ws_url):
+    async def test_unsubscribe_then_resubscribe(self, running_server, ws_url, server_url):
         """Test unsubscribing and then resubscribing to project."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
             resp1 = json.loads(await websocket.recv())
@@ -349,7 +349,7 @@ class TestSubscribeUnsubscribeFlow:
 
             # Verify subscription is active by triggering a broadcast
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_msg", "data": "resubscribed"},
                 project_id=1
             )
@@ -362,10 +362,10 @@ class TestDisconnectCleanup:
     """Test disconnect cleanup and subscription removal."""
 
     @pytest.mark.asyncio
-    async def test_disconnect_removes_all_subscriptions(self, running_server, ws_url):
+    async def test_disconnect_removes_all_subscriptions(self, running_server, ws_url, server_url):
         """Test that disconnect removes all subscriptions for a client."""
         # Create connection
-        websocket = await websockets.connect(f"{ws_url}/ws")
+        websocket = await websockets.connect(ws_url)
 
         # Subscribe to multiple projects
         for project_id in [1, 2, 3]:
@@ -375,7 +375,7 @@ class TestDisconnectCleanup:
 
         # Verify subscriptions work before disconnect
         await trigger_broadcast(
-            running_server,
+            server_url,
             {"type": "test_msg", "data": "before_disconnect"},
             project_id=1
         )
@@ -387,11 +387,11 @@ class TestDisconnectCleanup:
         await asyncio.sleep(0.2)  # Give server time to process disconnect
 
         # Create new connection (without subscribing)
-        websocket2 = await websockets.connect(f"{ws_url}/ws")
+        websocket2 = await websockets.connect(ws_url)
         try:
             # Trigger broadcast - new connection shouldn't receive it (not subscribed)
             await trigger_broadcast(
-                running_server,
+                server_url,
                 {"type": "test_msg", "data": "after_disconnect"},
                 project_id=1
             )
@@ -406,13 +406,13 @@ class TestDisconnectCleanup:
             await websocket2.close()
 
     @pytest.mark.asyncio
-    async def test_disconnect_during_subscription_cleanup(self, running_server, ws_url):
+    async def test_disconnect_during_subscription_cleanup(self, running_server, ws_url, server_url):
         """Test that disconnect properly cleans up even with active subscriptions."""
         websocket_refs = []
 
         # Create multiple connections with subscriptions
         for i in range(3):
-            ws = await websockets.connect(f"{ws_url}/ws")
+            ws = await websockets.connect(ws_url)
             websocket_refs.append(ws)
 
             # Subscribe to project 1
@@ -422,7 +422,7 @@ class TestDisconnectCleanup:
 
         # Trigger broadcast - all 3 should receive
         await trigger_broadcast(
-            running_server,
+            server_url,
             {"type": "test_msg", "data": "all_connected"},
             project_id=1
         )
@@ -438,7 +438,7 @@ class TestDisconnectCleanup:
 
         # Trigger broadcast - only 2 remaining should receive
         await trigger_broadcast(
-            running_server,
+            server_url,
             {"type": "test_msg", "data": "two_remaining"},
             project_id=1
         )
@@ -456,7 +456,7 @@ class TestDisconnectCleanup:
 
         # Trigger broadcast - no one should receive
         await trigger_broadcast(
-            running_server,
+            server_url,
             {"type": "test_msg", "data": "all_disconnected"},
             project_id=1
         )
@@ -467,16 +467,16 @@ class TestBackwardCompatibility:
     """Test backward compatibility with unfiltered broadcasts."""
 
     @pytest.mark.asyncio
-    async def test_broadcast_without_project_id_reaches_all_clients(self, running_server, ws_url):
+    async def test_broadcast_without_project_id_reaches_all_clients(self, running_server, ws_url, server_url):
         """Test that broadcasts without project_id reach all connected clients."""
-        ws1 = await websockets.connect(f"{ws_url}/ws")
-        ws2 = await websockets.connect(f"{ws_url}/ws")
+        ws1 = await websockets.connect(ws_url)
+        ws2 = await websockets.connect(ws_url)
 
         try:
             # Don't subscribe - just connected
 
             # Broadcast WITHOUT project_id (backward compatible)
-            await trigger_broadcast(running_server, 
+            await trigger_broadcast(server_url,
                 {"type": "agent_started", "agent_id": "lead-1"}
                 # Note: no project_id parameter
             )
@@ -493,19 +493,19 @@ class TestBackwardCompatibility:
             await ws2.close()
 
     @pytest.mark.asyncio
-    async def test_mixed_subscription_and_unsubscribed_clients(self, running_server, ws_url):
+    async def test_mixed_subscription_and_unsubscribed_clients(self, running_server, ws_url, server_url):
         """Test mix of subscribed and unsubscribed clients with broadcasts."""
         # Client 1: subscribed to project 1
-        ws1 = await websockets.connect(f"{ws_url}/ws")
+        ws1 = await websockets.connect(ws_url)
         await ws1.send(json.dumps({"type": "subscribe", "project_id": 1}))
         await ws1.recv()
 
         # Client 2: not subscribed to anything
-        ws2 = await websockets.connect(f"{ws_url}/ws")
+        ws2 = await websockets.connect(ws_url)
 
         try:
             # Broadcast to project 1 (filtered)
-            await trigger_broadcast(running_server, 
+            await trigger_broadcast(server_url,
                 {"type": "task_status_changed", "task_id": 42},
                 project_id=1
             )
@@ -522,7 +522,7 @@ class TestBackwardCompatibility:
                 pass
 
             # Now broadcast to ALL (no project_id)
-            await trigger_broadcast(running_server, 
+            await trigger_broadcast(server_url,
                 {"type": "agent_status_changed", "agent_id": "worker-1"}
                 # No project_id
             )
@@ -545,7 +545,7 @@ class TestInvalidMessageHandling:
     @pytest.mark.asyncio
     async def test_subscribe_with_invalid_project_id_string(self, running_server, ws_url):
         """Test error handling when project_id is string instead of int."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Send subscribe with string project_id
             await websocket.send(json.dumps({"type": "subscribe", "project_id": "invalid"}))
 
@@ -557,7 +557,7 @@ class TestInvalidMessageHandling:
     @pytest.mark.asyncio
     async def test_subscribe_with_null_project_id(self, running_server, ws_url):
         """Test error handling when project_id is null."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Send subscribe with null project_id
             await websocket.send(json.dumps({"type": "subscribe", "project_id": None}))
 
@@ -568,7 +568,7 @@ class TestInvalidMessageHandling:
     @pytest.mark.asyncio
     async def test_subscribe_with_missing_project_id(self, running_server, ws_url):
         """Test error handling when project_id is missing."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Send subscribe without project_id
             await websocket.send(json.dumps({"type": "subscribe"}))
 
@@ -579,7 +579,7 @@ class TestInvalidMessageHandling:
     @pytest.mark.asyncio
     async def test_malformed_json_handling(self, running_server, ws_url):
         """Test error handling for malformed JSON."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Send malformed JSON
             await websocket.send("{ invalid json")
 
@@ -591,7 +591,7 @@ class TestInvalidMessageHandling:
     @pytest.mark.asyncio
     async def test_invalid_message_type(self, running_server, ws_url):
         """Test handling of unknown message types."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Send message with unknown type
             await websocket.send(json.dumps({"type": "unknown_type", "data": "something"}))
 
@@ -758,7 +758,7 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_rapid_subscribe_unsubscribe(self, running_server, ws_url):
         """Test rapid subscribe/unsubscribe operations."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Rapidly subscribe and unsubscribe
             for i in range(10):
                 await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
@@ -772,30 +772,23 @@ class TestEdgeCases:
             assert response["type"] == "pong"
 
     @pytest.mark.asyncio
-    async def test_large_project_id(self, running_server, ws_url):
-        """Test with very large project IDs."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+    async def test_large_project_id(self, running_server, ws_url, server_url):
+        """Test that subscribing to non-existent project returns access denied."""
+        async with websockets.connect(ws_url) as websocket:
             large_id = 999999999
 
-            # Subscribe to large project ID
+            # Subscribe to large project ID that doesn't exist
             await websocket.send(json.dumps({"type": "subscribe", "project_id": large_id}))
             response = json.loads(await websocket.recv())
-            assert response["project_id"] == large_id
 
-            # Broadcast to large project ID
-            await trigger_broadcast(running_server, 
-                {"type": "test", "data": "test"},
-                project_id=large_id
-            )
-
-            # Should receive
-            data = json.loads(await websocket.recv())
-            assert data["type"] == "test"
+            # Should get access denied error (project doesn't exist)
+            assert response["type"] == "error"
+            assert "access denied" in response.get("error", "").lower()
 
     @pytest.mark.asyncio
     async def test_zero_project_id_rejected(self, running_server, ws_url):
         """Test that project_id of 0 is rejected."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Try to subscribe to project 0
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 0}))
             response = json.loads(await websocket.recv())
@@ -806,7 +799,7 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_negative_project_id_rejected(self, running_server, ws_url):
         """Test that negative project IDs are rejected."""
-        async with websockets.connect(f"{ws_url}/ws") as websocket:
+        async with websockets.connect(ws_url) as websocket:
             # Try to subscribe to negative project ID
             await websocket.send(json.dumps({"type": "subscribe", "project_id": -1}))
 

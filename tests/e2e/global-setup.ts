@@ -2,11 +2,12 @@
  * Global setup for Playwright E2E tests.
  * Creates a test project and seeds comprehensive test data before running tests.
  */
-import { chromium, FullConfig } from '@playwright/test';
+import { chromium, FullConfig, APIRequestContext } from '@playwright/test';
 import { spawnSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { TEST_DB_PATH, BACKEND_URL } from './e2e-config';
+import Database from 'better-sqlite3';
 
 /**
  * Clean up test environment to ensure fresh state.
@@ -133,6 +134,91 @@ function storeTestUserCredentials(): void {
   console.log('   Note: Tests will use real login flow via FastAPI Users JWT');
 }
 
+/**
+ * Seed test user directly into SQLite database.
+ * Must be called BEFORE any API calls since authentication is now always required.
+ */
+function seedTestUser(): void {
+  console.log('\n👤 Seeding test user for authentication...');
+
+  const db = new Database(TEST_DB_PATH);
+
+  try {
+    // Check if user already exists
+    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get('test@example.com');
+    if (existingUser) {
+      console.log('✅ Test user already exists (email: test@example.com)');
+      return;
+    }
+
+    // Use fixed reference timestamp for reproducible test data
+    const now = new Date('2025-01-15T10:00:00Z').toISOString();
+
+    // FastAPI Users compatible password hash (argon2id hash of 'Testpassword123')
+    // Generated with: uv run python -c "from fastapi_users.password import PasswordHelper; print(PasswordHelper().hash('Testpassword123'))"
+    const testUserPasswordHash = '$argon2id$v=19$m=65536,t=3,p=4$AxoKRsvvZWnspMuG1EU8dg$8wybn5xP5s7mVC67TjepMx0ulIKAspzicdScIZtJ/MY';
+
+    // Insert test user
+    db.prepare(`
+      INSERT OR REPLACE INTO users (
+        id, email, name, hashed_password,
+        is_active, is_superuser, is_verified, email_verified,
+        created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      1,
+      'test@example.com',
+      'E2E Test User',
+      testUserPasswordHash,
+      1,  // is_active
+      0,  // is_superuser
+      1,  // is_verified
+      1,  // email_verified
+      now,
+      now
+    );
+
+    console.log('✅ Test user created (email: test@example.com, password: Testpassword123)');
+  } catch (error) {
+    console.error('❌ Failed to seed test user:', error);
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Login to the backend and get a JWT token for authenticated API calls.
+ * Returns the access token for use in Authorization header.
+ */
+async function loginAndGetToken(request: APIRequestContext): Promise<string> {
+  console.log('\n🔐 Logging in to get JWT token...');
+
+  // FastAPI Users JWT login endpoint uses form data (OAuth2 password flow)
+  const response = await request.post(`${BACKEND_URL}/auth/jwt/login`, {
+    form: {
+      username: 'test@example.com',
+      password: 'Testpassword123'
+    }
+  });
+
+  if (!response.ok()) {
+    const errorText = await response.text();
+    throw new Error(`Failed to login: ${response.status()} ${response.statusText()} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const token = data.access_token;
+
+  if (!token) {
+    throw new Error('Login response did not contain access_token');
+  }
+
+  console.log('✅ Login successful, JWT token obtained');
+  return token;
+}
+
 async function globalSetup(config: FullConfig) {
   console.log('🔧 Setting up E2E test environment...');
 
@@ -148,6 +234,9 @@ async function globalSetup(config: FullConfig) {
   // 3. We do NOT delete the database file (would cause "readonly database" errors)
   initializeTestDatabase();
 
+  // Seed test user BEFORE any API calls (authentication is always required)
+  seedTestUser();
+
   // Launch browser for API calls
   const browser = await chromium.launch();
   const context = await browser.newContext();
@@ -155,9 +244,21 @@ async function globalSetup(config: FullConfig) {
 
   try {
     // ========================================
-    // 1. Create or reuse test project
+    // 1. Login to get JWT token for authenticated API calls
     // ========================================
-    const projectsResponse = await page.request.get(`${BACKEND_URL}/api/projects`);
+    const authToken = await loginAndGetToken(page.request);
+
+    // Create headers with authentication
+    const authHeaders = {
+      'Authorization': `Bearer ${authToken}`
+    };
+
+    // ========================================
+    // 2. Create or reuse test project (with authentication)
+    // ========================================
+    const projectsResponse = await page.request.get(`${BACKEND_URL}/api/projects`, {
+      headers: authHeaders
+    });
     let projectId: number;
 
     if (projectsResponse.ok()) {
@@ -176,6 +277,7 @@ async function globalSetup(config: FullConfig) {
         // No projects exist, create one
         console.log('📦 Creating test project...');
         const createResponse = await page.request.post(`${BACKEND_URL}/api/projects`, {
+          headers: authHeaders,
           data: {
             name: 'e2e-test-project',
             description: 'Test project for Playwright E2E tests'
@@ -186,7 +288,9 @@ async function globalSetup(config: FullConfig) {
           // If creation fails (e.g., workspace exists), try to fetch projects again
           // The workspace might exist from a previous run with a different database
           console.warn(`⚠️  Project creation failed: ${createResponse.statusText()}`);
-          const retryResponse = await page.request.get(`${BACKEND_URL}/api/projects`);
+          const retryResponse = await page.request.get(`${BACKEND_URL}/api/projects`, {
+            headers: authHeaders
+          });
           if (retryResponse.ok()) {
             const retryData = await retryResponse.json();
             const retryProjects = retryData.projects || [];
@@ -212,18 +316,18 @@ async function globalSetup(config: FullConfig) {
     }
 
     // ========================================
-    // 2. Seed test data directly into database
+    // 3. Seed test data directly into database
     // ========================================
     // Use Python script to seed directly into SQLite instead of API calls
     // (many create endpoints don't exist)
-    // Note: This now includes checkpoint seeding and test user creation
+    // Note: Test user was already seeded before login, this seeds project data
     seedDatabaseDirectly(projectId);
 
     // ========================================
-    // 3. Store test user credentials
+    // 4. Store test user credentials
     // ========================================
     // Store credentials for E2E tests to use with loginUser() helper
-    // Tests will perform real login via BetterAuth UI
+    // Tests will perform real login via FastAPI Users JWT
     storeTestUserCredentials();
 
     console.log('\n✅ E2E test environment ready!');

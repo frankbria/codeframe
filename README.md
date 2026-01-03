@@ -142,9 +142,6 @@ uv sync
 # Set up environment
 export ANTHROPIC_API_KEY="your-api-key-here"
 
-# Optional: Enable authentication (default: false for development)
-export AUTH_REQUIRED=false  # Set to 'true' for production
-
 # Set up frontend
 cd web-ui
 npm install
@@ -239,9 +236,6 @@ curl -X POST http://localhost:8080/api/projects/1/checkpoints/5/restore
 ```bash
 # Required
 ANTHROPIC_API_KEY=sk-ant-...           # Anthropic API key
-
-# Optional - Authentication
-AUTH_REQUIRED=false                    # Enable authentication (default: false for development)
 
 # Optional - Database
 DATABASE_PATH=./codeframe.db           # SQLite database path (default: in-memory)

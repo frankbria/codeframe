@@ -88,30 +88,22 @@ class TestProjectEndpointsAuthorization:
 
     def test_get_project_owner_has_access(self, client, alice_token):
         """Test that project owner can access their project."""
-        response = client.get(
-            "/api/projects/1",
-            headers={"Authorization": f"Bearer {alice_token}"}
-        )
+        response = client.get("/api/projects/1", headers={"Authorization": f"Bearer {alice_token}"})
         assert response.status_code == 200
         assert response.json()["id"] == 1
 
     @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_get_project_non_owner_denied(self, client, bob_token):
         """Test that non-owner cannot access project."""
-        response = client.get(
-            "/api/projects/1",
-            headers={"Authorization": f"Bearer {bob_token}"}
-        )
+        response = client.get("/api/projects/1", headers={"Authorization": f"Bearer {bob_token}"})
         assert response.status_code == 403
         assert response.json()["detail"] == "Access denied"
 
     def test_get_project_no_token_unauthorized(self, client):
-        """Test that request without token returns 401 (or 200 if AUTH_REQUIRED=false)."""
+        """Test that request without token returns 401 Unauthorized."""
         response = client.get("/api/projects/1")
-        # Note: Behavior depends on AUTH_REQUIRED setting
-        # With AUTH_REQUIRED=true, should return 401
-        # With AUTH_REQUIRED=false, might allow access (200)
-        assert response.status_code in [200, 401, 403]
+        # Authentication is always required - expect 401 Unauthorized
+        assert response.status_code == 401
 
 
 class TestTaskEndpointsAuthorization:
@@ -124,12 +116,7 @@ class TestTaskEndpointsAuthorization:
         response = client.post(
             "/api/tasks",
             headers={"Authorization": f"Bearer {alice_token}"},
-            json={
-                "project_id": 1,
-                "title": "Test Task",
-                "description": "Test",
-                "priority": 3
-            }
+            json={"project_id": 1, "title": "Test Task", "description": "Test", "priority": 3},
         )
         assert response.status_code in [200, 201]
 
@@ -141,8 +128,8 @@ class TestTaskEndpointsAuthorization:
                 "project_id": 1,
                 "title": "Unauthorized Task",
                 "description": "Test",
-                "priority": 3
-            }
+                "priority": 3,
+            },
         )
         assert response.status_code == 403
 
@@ -155,15 +142,13 @@ class TestMetricsEndpointsAuthorization:
         """Test that metrics endpoints enforce project access."""
         # Alice can access her project metrics
         response = client.get(
-            "/api/projects/1/metrics/costs",
-            headers={"Authorization": f"Bearer {alice_token}"}
+            "/api/projects/1/metrics/costs", headers={"Authorization": f"Bearer {alice_token}"}
         )
         assert response.status_code == 200
 
         # Bob cannot access Alice's project metrics
         response = client.get(
-            "/api/projects/1/metrics/costs",
-            headers={"Authorization": f"Bearer {bob_token}"}
+            "/api/projects/1/metrics/costs", headers={"Authorization": f"Bearer {bob_token}"}
         )
         assert response.status_code == 403
 
@@ -204,8 +189,7 @@ class TestCrossProjectDataLeak:
 
         # Alice should only see metrics for her project
         response = client.get(
-            "/api/agents/test_agent/metrics",
-            headers={"Authorization": f"Bearer {alice_token}"}
+            "/api/agents/test_agent/metrics", headers={"Authorization": f"Bearer {alice_token}"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -233,8 +217,7 @@ class TestExceptionHandling:
 
         # Bob tries to access Alice's task review status
         response = client.get(
-            "/api/tasks/1/review-status",
-            headers={"Authorization": f"Bearer {bob_token}"}
+            "/api/tasks/1/review-status", headers={"Authorization": f"Bearer {bob_token}"}
         )
 
         # Should return 403, not 500

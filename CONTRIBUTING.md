@@ -21,7 +21,6 @@ uv sync
 
 # Set up environment variables
 export ANTHROPIC_API_KEY="your-api-key-here"
-export AUTH_REQUIRED=false  # Optional, for local development
 
 # Set up frontend (if working on UI)
 cd web-ui
@@ -54,18 +53,13 @@ Add new architecture documentation when introducing cross-cutting patterns or da
 
 ## Authentication & Security
 
-CodeFRAME uses Better Auth for authentication and implements comprehensive authorization checks.
+CodeFRAME uses FastAPI Users for authentication and implements comprehensive authorization checks.
 
-### Working with Authentication
+### Authentication Requirements
 
-**Development Mode** (AUTH_REQUIRED=false):
-- Authentication is optional
-- Requests without tokens receive default admin user (id=1)
-- Useful for local development and testing
+Authentication is **always required** for all API endpoints. All requests must include a valid JWT Bearer token in the Authorization header. Requests without valid tokens receive 401 Unauthorized.
 
-**Production Mode** (AUTH_REQUIRED=true):
-- Authentication is required for all endpoints
-- Requests without valid tokens receive 401 Unauthorized
+For testing, test fixtures automatically create JWT tokens. See `tests/api/conftest.py` for examples.
 
 ### Adding Protected Endpoints
 

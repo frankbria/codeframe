@@ -241,11 +241,8 @@ test.describe('Authentication Flow', () => {
       // Try to access protected route
       await page.goto('/projects/1');
 
-      // Should redirect to login (if AUTH_REQUIRED=true)
-      const authRequired = process.env.AUTH_REQUIRED?.toLowerCase() === 'true';
-      if (authRequired) {
-        await expect(page).toHaveURL(/\/login/, { timeout: AUTH_ERROR_TIMEOUT });
-      }
+      // Should redirect to login - authentication is always required
+      await expect(page).toHaveURL(/\/login/, { timeout: AUTH_ERROR_TIMEOUT });
     });
   });
 
@@ -315,13 +312,8 @@ test.describe('Authentication Flow', () => {
       // Try to access protected route
       await page.goto('/projects/1');
 
-      // Should redirect to login (if AUTH_REQUIRED=true)
-      const authRequired = process.env.AUTH_REQUIRED?.toLowerCase() === 'true';
-      if (authRequired) {
-        await expect(page).toHaveURL(/\/login/, { timeout: AUTH_ERROR_TIMEOUT });
-      } else {
-        console.log('⚠️  AUTH_REQUIRED=false: Skipping redirect test (migration mode)');
-      }
+      // Should redirect to login - authentication is always required
+      await expect(page).toHaveURL(/\/login/, { timeout: AUTH_ERROR_TIMEOUT });
     });
   });
 

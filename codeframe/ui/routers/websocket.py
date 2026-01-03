@@ -8,7 +8,6 @@ Endpoints:
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
@@ -84,56 +83,48 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
         - blocker_created: New blockers
     """
     # Authentication: Extract and validate token from query parameters
-    auth_required = os.getenv("AUTH_REQUIRED", "false").lower() == "true"
-    user_id = None  # Will be set if authenticated
+    # Authentication is always required for WebSocket connections
+    token = websocket.query_params.get("token")
 
-    if auth_required:
-        # Get token from query parameter
-        token = websocket.query_params.get("token")
+    if not token:
+        # No token provided - reject connection
+        await websocket.close(code=1008, reason="Authentication required: missing token")
+        return
 
-        if not token:
-            # Authentication required but no token provided
-            await websocket.close(code=1008, reason="Authentication required: missing token")
-            return
+    # Validate token against sessions table
+    cursor = db.conn.execute(
+        """
+        SELECT s.user_id, s.expires_at
+        FROM sessions s
+        WHERE s.token = ?
+        """,
+        (token,),
+    )
+    row = cursor.fetchone()
 
-        # Validate token against sessions table
-        cursor = db.conn.execute(
-            """
-            SELECT s.user_id, s.expires_at
-            FROM sessions s
-            WHERE s.token = ?
-            """,
-            (token,),
-        )
-        row = cursor.fetchone()
+    if not row:
+        # Invalid token
+        await websocket.close(code=1008, reason="Invalid authentication token")
+        return
 
-        if not row:
-            # Invalid token
-            await websocket.close(code=1008, reason="Invalid authentication token")
-            return
+    user_id, expires_at_str = row
 
-        user_id, expires_at_str = row
+    # Check if session has expired
+    try:
+        expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+    except (ValueError, AttributeError, TypeError):
+        # Invalid timestamp format - reject connection
+        await websocket.close(code=1008, reason="Invalid session data")
+        return
 
-        # Check if session has expired
-        try:
-            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-        except (ValueError, AttributeError, TypeError):
-            # Invalid timestamp format - reject connection
-            await websocket.close(code=1008, reason="Invalid session data")
-            return
+    if expires_at < datetime.now(timezone.utc):
+        # Expired token - delete session and reject connection
+        db.conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        db.conn.commit()
+        await websocket.close(code=1008, reason="Session expired")
+        return
 
-        if expires_at < datetime.now(timezone.utc):
-            # Expired token - delete session and reject connection
-            db.conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-            db.conn.commit()
-            await websocket.close(code=1008, reason="Session expired")
-            return
-
-        logger.info(f"WebSocket authenticated: user_id={user_id}")
-    else:
-        # AUTH_REQUIRED=false: Allow unauthenticated connections (development mode)
-        user_id = 1  # Default admin user
-        logger.warning("WebSocket connection allowed without authentication (AUTH_REQUIRED=false)")
+    logger.info(f"WebSocket authenticated: user_id={user_id}")
 
     # Accept WebSocket connection after successful authentication
     # Note: user_id is captured in closure and used for authorization checks below
@@ -166,54 +157,51 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
                 # Validate project_id is present
                 if project_id is None:
                     logger.warning("Subscribe message missing project_id")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "Subscribe message requires project_id"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "error": "Subscribe message requires project_id"}
+                    )
                     continue
 
                 # Validate project_id is an integer
                 if not isinstance(project_id, int):
                     logger.warning(f"Invalid project_id type: {type(project_id).__name__}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": f"project_id must be an integer, got {type(project_id).__name__}"
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "error": f"project_id must be an integer, got {type(project_id).__name__}",
+                        }
+                    )
                     continue
 
                 # Validate project_id is positive
                 if project_id <= 0:
                     logger.warning(f"Invalid project_id: {project_id}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "project_id must be a positive integer"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "error": "project_id must be a positive integer"}
+                    )
                     continue
 
                 # Authorization check: Verify user has access to project
-                # Skip check when AUTH_REQUIRED=false (development/testing mode)
-                if auth_required and user_id and not db.user_has_project_access(user_id, project_id):
+                if not db.user_has_project_access(user_id, project_id):
                     logger.warning(f"User {user_id} denied access to project {project_id}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "Access denied: you do not have permission to access this project"
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "error": "Access denied: you do not have permission to access this project",
+                        }
+                    )
                     continue
 
                 # Track subscription
                 try:
                     await manager.subscription_manager.subscribe(websocket, project_id)
                     logger.info(f"WebSocket (user_id={user_id}) subscribed to project {project_id}")
-                    await websocket.send_json({
-                        "type": "subscribed",
-                        "project_id": project_id
-                    })
+                    await websocket.send_json({"type": "subscribed", "project_id": project_id})
                 except Exception as e:
                     logger.error(f"Error subscribing to project {project_id}: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "Failed to subscribe to project"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "error": "Failed to subscribe to project"}
+                    )
             elif message.get("type") == "unsubscribe":
                 # Unsubscribe from specific project updates
                 project_id = message.get("project_id")
@@ -221,44 +209,40 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
                 # Validate project_id is present
                 if project_id is None:
                     logger.warning("Unsubscribe message missing project_id")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "Unsubscribe message requires project_id"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "error": "Unsubscribe message requires project_id"}
+                    )
                     continue
 
                 # Validate project_id is an integer
                 if not isinstance(project_id, int):
                     logger.warning(f"Invalid project_id type: {type(project_id).__name__}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": f"project_id must be an integer, got {type(project_id).__name__}"
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "error": f"project_id must be an integer, got {type(project_id).__name__}",
+                        }
+                    )
                     continue
 
                 # Validate project_id is positive
                 if project_id <= 0:
                     logger.warning(f"Invalid project_id: {project_id}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "project_id must be a positive integer"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "error": "project_id must be a positive integer"}
+                    )
                     continue
 
                 # Remove subscription
                 try:
                     await manager.subscription_manager.unsubscribe(websocket, project_id)
                     logger.info(f"WebSocket unsubscribed from project {project_id}")
-                    await websocket.send_json({
-                        "type": "unsubscribed",
-                        "project_id": project_id
-                    })
+                    await websocket.send_json({"type": "unsubscribed", "project_id": project_id})
                 except Exception as e:
                     logger.error(f"Error unsubscribing from project {project_id}: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "Failed to unsubscribe from project"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "error": "Failed to unsubscribe from project"}
+                    )
 
     except WebSocketDisconnect:
         # Normal client disconnect - no error logging needed
