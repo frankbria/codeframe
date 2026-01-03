@@ -9,10 +9,10 @@ Cross-user authorization (Bob accessing Alice's resources) depends on
 endpoint-level authorization checks, which may not be fully implemented.
 """
 
+import jwt
 import pytest
 from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
-from fastapi_users.authentication import JWTStrategy
 
 from codeframe.persistence.database import Database
 from codeframe.ui.server import app
@@ -64,12 +64,6 @@ def client(db):
 @pytest.fixture
 def alice_token():
     """Create JWT token for Alice (user_id=1)."""
-    jwt_strategy = JWTStrategy(secret=SECRET, lifetime_seconds=JWT_LIFETIME_SECONDS)
-    # JWTStrategy.write_token expects a user object with an id attribute
-    # We'll create the token directly using the user_id
-    import jwt
-    from datetime import datetime, timezone, timedelta
-
     payload = {
         "sub": "1",  # User ID as string
         "aud": ["fastapi-users:auth"],
@@ -81,9 +75,6 @@ def alice_token():
 @pytest.fixture
 def bob_token():
     """Create JWT token for Bob (user_id=2)."""
-    import jwt
-    from datetime import datetime, timezone, timedelta
-
     payload = {
         "sub": "2",  # User ID as string
         "aud": ["fastapi-users:auth"],
