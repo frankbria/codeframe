@@ -78,14 +78,18 @@ def temp_db_for_lifecycle(tmp_path):
 
 @pytest.fixture
 def test_client_with_db(temp_db_path, tmp_path):
-    """Create test client with properly initialized database.
+    """Create test client with properly initialized database and authentication.
 
     Follows the pattern from test_project_creation_api.py:
     1. Set DATABASE_PATH environment variable
     2. Set WORKSPACE_ROOT to temporary directory to avoid collisions
-    3. Reload server module to pick up new env vars
-    4. Use TestClient which triggers lifespan initialization
+    3. Reset auth engine to pick up new DATABASE_PATH
+    4. Reload server module to pick up new env vars
+    5. Create test user and add authentication headers
+    6. Use TestClient which triggers lifespan initialization
     """
+    from conftest import create_test_jwt_token, setup_test_user
+
     # Save original values
     original_db_path = os.environ.get("DATABASE_PATH")
     original_workspace_root = os.environ.get("WORKSPACE_ROOT")
@@ -97,6 +101,10 @@ def test_client_with_db(temp_db_path, tmp_path):
     workspace_root = tmp_path / "workspaces"
     os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
+    # Reset auth engine to pick up new DATABASE_PATH
+    from codeframe.auth.manager import reset_auth_engine
+    reset_auth_engine()
+
     # Reload server to pick up new DATABASE_PATH and WORKSPACE_ROOT
     from codeframe.ui import server
 
@@ -104,6 +112,14 @@ def test_client_with_db(temp_db_path, tmp_path):
 
     # TestClient will trigger lifespan which initializes app.state.db
     with TestClient(server.app) as client:
+        # Create test user for authentication
+        db = server.app.state.db
+        setup_test_user(db, user_id=1)
+
+        # Add authentication header
+        auth_token = create_test_jwt_token(user_id=1)
+        client.headers["Authorization"] = f"Bearer {auth_token}"
+
         yield client
 
     # Restore original values
@@ -116,6 +132,9 @@ def test_client_with_db(temp_db_path, tmp_path):
         os.environ["WORKSPACE_ROOT"] = original_workspace_root
     else:
         os.environ.pop("WORKSPACE_ROOT", None)
+
+    # Reset auth engine for next test
+    reset_auth_engine()
 
 
 @pytest.fixture
