@@ -20,23 +20,16 @@ def db(tmp_path):
     db = Database(db_path)
     db.initialize()
 
-    # Create test users (use INSERT OR REPLACE to avoid conflicts)
+    # Create test users (FastAPI Users schema)
     db.conn.execute(
         """
-        INSERT OR REPLACE INTO users (id, email, name)
+        INSERT OR REPLACE INTO users (
+            id, email, name, hashed_password,
+            is_active, is_superuser, is_verified, email_verified
+        )
         VALUES
-            (1, 'alice@example.com', 'Alice'),
-            (2, 'bob@example.com', 'Bob')
-        """
-    )
-
-    # Create account records for credential-based auth (BetterAuth schema)
-    db.conn.execute(
-        """
-        INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
-        VALUES
-            ('alice-account-1', 1, 'alice@example.com', 'credential', 'hashed'),
-            ('bob-account-2', 2, 'bob@example.com', 'credential', 'hashed')
+            (1, 'alice@example.com', 'Alice', '!DISABLED!', 1, 0, 1, 1),
+            (2, 'bob@example.com', 'Bob', '!DISABLED!', 1, 0, 1, 1)
         """
     )
 
