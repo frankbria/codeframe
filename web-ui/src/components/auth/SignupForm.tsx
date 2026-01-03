@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { signUp } from "@/lib/auth-client";
 
 /**
  * Signup form component
  *
- * Provides user registration with email/password using Better Auth.
+ * Provides user registration with email/password using FastAPI Users.
  * Validates password strength and displays errors.
  */
 export default function SignupForm() {
   const router = useRouter();
+  const { register } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,20 +57,15 @@ export default function SignupForm() {
     setIsLoading(true);
 
     try {
-      const result = await signUp({
-        name,
-        email,
-        password,
-      });
-
-      if (result.error) {
-        setError(result.error.message || "Signup failed. Please try again.");
+      await register(email, password, name);
+      // Redirect to dashboard on successful signup
+      router.push("/");
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message || "Signup failed. Please try again.");
       } else {
-        // Redirect to dashboard on successful signup
-        router.push("/");
+        setError("Network error. Please try again.");
       }
-    } catch (_err) {
-      setError("Network error. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -87,9 +83,9 @@ export default function SignupForm() {
         </p>
       </div>
 
-      <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+      <form className="mt-8 space-y-6" onSubmit={handleSubmit} data-testid="signup-form">
         {error && (
-          <div className="rounded-md bg-destructive/10 p-4">
+          <div className="rounded-md bg-destructive/10 p-4" data-testid="auth-error">
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
@@ -105,6 +101,7 @@ export default function SignupForm() {
               type="text"
               autoComplete="name"
               required
+              data-testid="name-input"
               className="relative block w-full appearance-none rounded-md border border-input px-3 py-2 text-foreground placeholder-muted-foreground focus:z-10 focus:border-primary focus:outline-none focus:ring-ring sm:text-sm"
               placeholder="Full name"
               value={name}
@@ -122,6 +119,7 @@ export default function SignupForm() {
               type="email"
               autoComplete="email"
               required
+              data-testid="email-input"
               className="relative block w-full appearance-none rounded-md border border-input px-3 py-2 text-foreground placeholder-muted-foreground focus:z-10 focus:border-primary focus:outline-none focus:ring-ring sm:text-sm"
               placeholder="Email address"
               value={email}
@@ -139,6 +137,7 @@ export default function SignupForm() {
               type="password"
               autoComplete="new-password"
               required
+              data-testid="password-input"
               className="relative block w-full appearance-none rounded-md border border-input px-3 py-2 text-foreground placeholder-muted-foreground focus:z-10 focus:border-primary focus:outline-none focus:ring-ring sm:text-sm"
               placeholder="Password"
               value={password}
@@ -156,6 +155,7 @@ export default function SignupForm() {
               type="password"
               autoComplete="new-password"
               required
+              data-testid="confirm-password-input"
               className="relative block w-full appearance-none rounded-md border border-input px-3 py-2 text-foreground placeholder-muted-foreground focus:z-10 focus:border-primary focus:outline-none focus:ring-ring sm:text-sm"
               placeholder="Confirm password"
               value={confirmPassword}
@@ -178,6 +178,7 @@ export default function SignupForm() {
           <button
             type="submit"
             disabled={isLoading}
+            data-testid="signup-button"
             className="group relative flex w-full justify-center rounded-md border border-transparent bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? "Creating account..." : "Create account"}

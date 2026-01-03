@@ -88,23 +88,19 @@ def api_client(class_temp_db_path: Path) -> Generator[TestClient, None, None]:
     # Create and yield TestClient
     with TestClient(server.app) as client:
         # Ensure default admin user exists (id=1) to match get_current_user behavior
-        # when AUTH_REQUIRED=false (see codeframe/ui/auth.py:98)
+        # when AUTH_REQUIRED=false (see codeframe/auth/dependencies.py)
         db = server.app.state.db
         cursor = db.conn.cursor()
 
-        # Insert or replace default admin user
+        # Insert or replace default admin user (FastAPI Users schema)
+        # hashed_password uses a placeholder that cannot match any bcrypt hash
         cursor.execute(
             """
-            INSERT OR REPLACE INTO users (id, email, name)
-            VALUES (1, 'admin@localhost', 'Admin User')
-            """
-        )
-
-        # Create account record for credential-based auth (BetterAuth schema)
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password)
-            VALUES ('admin-account-test-1', 1, 'admin@localhost', 'credential', 'not-used-in-tests')
+            INSERT OR REPLACE INTO users (
+                id, email, name, hashed_password,
+                is_active, is_superuser, is_verified, email_verified
+            )
+            VALUES (1, 'admin@localhost', 'Admin User', '!DISABLED!', 1, 1, 1, 1)
             """
         )
         db.conn.commit()

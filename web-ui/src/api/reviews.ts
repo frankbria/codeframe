@@ -4,6 +4,7 @@
  * Tasks: T038
  */
 
+import { authFetch } from '@/lib/api-client';
 import type { CodeReview, ReviewResult, Severity } from '../types/reviews';
 
 /**
@@ -32,21 +33,7 @@ export async function getTaskReviews(
     params.toString() ? `?${params.toString()}` : ''
   }`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch task reviews: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
+  return authFetch<ReviewResult>(url);
 }
 
 /**
@@ -57,23 +44,13 @@ export async function getTaskReviews(
  * @throws Error if request fails
  */
 export async function triggerReview(taskId: number): Promise<void> {
-  const response = await fetch(
+  await authFetch<void>(
     `${API_BASE_URL}/api/agents/review/analyze`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ task_id: taskId }),
+      body: { task_id: taskId },
     }
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to trigger review: ${response.status} ${errorText}`
-    );
-  }
 }
 
 /**
@@ -84,22 +61,7 @@ export async function triggerReview(taskId: number): Promise<void> {
  * @throws Error if request fails
  */
 export async function getReview(reviewId: number): Promise<CodeReview> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/reviews/${reviewId}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<CodeReview>(
+    `${API_BASE_URL}/api/reviews/${reviewId}`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch review: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }

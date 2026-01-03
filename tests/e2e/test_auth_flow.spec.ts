@@ -1,37 +1,102 @@
 /**
  * E2E Authentication Flow Tests
  *
- * Tests the unified BetterAuth authentication system, verifying:
+ * Tests the JWT authentication system using FastAPI Users, verifying:
+ * - Registration with valid credentials
  * - Login with valid/invalid credentials
  * - Logout functionality
- * - Session persistence across reloads and navigation
+ * - Session persistence via localStorage JWT token
  * - Protected route access
  * - Redirect behavior for unauthenticated users
- * - BetterAuth API integration
- * - Database integration (plural table names)
- *
- * These tests validate that BetterAuth correctly uses CodeFRAME's
- * existing `users` and `sessions` tables with plural naming.
  */
 
 import { test, expect } from '@playwright/test';
-import { loginUser } from './test-utils';
+import { loginUser, registerUser, isAuthenticated, clearAuth, getAuthToken } from './test-utils';
 
 const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'test@example.com';
-const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'testpassword123';
+const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'Testpassword123';
 
 // CI-aware timeout: longer in CI environments to account for slower execution
 const AUTH_ERROR_TIMEOUT = process.env.CI ? 10000 : 5000;
 
 test.describe('Authentication Flow', () => {
-  // Clear cookies before each test to ensure we start unauthenticated
-  test.beforeEach(async ({ context }) => {
-    await context.clearCookies();
+  // Clear localStorage before each test to ensure we start unauthenticated
+  test.beforeEach(async ({ page }) => {
+    // Navigate to any page to access localStorage
+    await page.goto('/login');
+    await clearAuth(page);
+  });
+
+  test.describe('Registration', () => {
+    test('user can register and auto-login', async ({ page }) => {
+      // Generate unique email for this test
+      const uniqueEmail = `test-${Date.now()}@example.com`;
+      const password = 'SecurePassword123';
+      const name = 'Test User';
+
+      // Navigate to signup page
+      await page.goto('/signup');
+
+      // Fill registration form
+      await page.getByTestId('name-input').fill(name);
+      await page.getByTestId('email-input').fill(uniqueEmail);
+      await page.getByTestId('password-input').fill(password);
+      await page.getByTestId('confirm-password-input').fill(password);
+
+      // Submit form
+      await page.getByTestId('signup-button').click();
+
+      // Should redirect to home after auto-login (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 10000 });
+
+      // Verify user is logged in (user menu visible)
+      await expect(page.getByTestId('user-menu')).toBeVisible();
+
+      // Verify JWT token was stored
+      const authenticated = await isAuthenticated(page);
+      expect(authenticated).toBe(true);
+    });
+
+    test('should show error for weak password', async ({ page }) => {
+      await page.goto('/signup');
+
+      // Fill form with weak password
+      await page.getByTestId('name-input').fill('Test User');
+      await page.getByTestId('email-input').fill('weak@example.com');
+      await page.getByTestId('password-input').fill('weak');
+      await page.getByTestId('confirm-password-input').fill('weak');
+
+      // Submit form
+      await page.getByTestId('signup-button').click();
+
+      // Should show validation error
+      await expect(page.getByTestId('auth-error')).toBeVisible({ timeout: AUTH_ERROR_TIMEOUT });
+      await expect(page.getByTestId('auth-error')).toContainText(/password/i);
+
+      // Should still be on signup page
+      await expect(page).toHaveURL(/\/signup/);
+    });
+
+    test('should show error for mismatched passwords', async ({ page }) => {
+      await page.goto('/signup');
+
+      // Fill form with mismatched passwords
+      await page.getByTestId('name-input').fill('Test User');
+      await page.getByTestId('email-input').fill('mismatch@example.com');
+      await page.getByTestId('password-input').fill('SecurePassword123');
+      await page.getByTestId('confirm-password-input').fill('DifferentPassword123');
+
+      // Submit form
+      await page.getByTestId('signup-button').click();
+
+      // Should show error
+      await expect(page.getByTestId('auth-error')).toBeVisible({ timeout: AUTH_ERROR_TIMEOUT });
+      await expect(page.getByTestId('auth-error')).toContainText(/match/i);
+    });
   });
 
   test.describe('Login Page', () => {
     test('should render login page with all form elements', async ({ page }) => {
-      // Navigate to login page
       await page.goto('/login');
 
       // Assert login form elements are visible
@@ -43,7 +108,6 @@ test.describe('Authentication Flow', () => {
 
   test.describe('Login Success', () => {
     test('should login successfully with valid credentials', async ({ page }) => {
-      // Navigate to login page
       await page.goto('/login');
 
       // Fill in credentials
@@ -53,32 +117,30 @@ test.describe('Authentication Flow', () => {
       // Click login button
       await page.getByTestId('login-button').click();
 
-      // Assert redirect to root or projects page
-      await expect(page).toHaveURL(/^\/(projects)?$/, { timeout: 10000 });
+      // Assert redirect to root or projects page (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 10000 });
 
       // Assert user menu is visible (logged in state)
       await expect(page.getByTestId('user-menu')).toBeVisible();
 
-      // Verify session cookie was set by BetterAuth
-      const cookies = await page.context().cookies();
-      const sessionCookie = cookies.find(c => c.name === 'better-auth.session_token');
-      expect(sessionCookie).toBeDefined();
-      expect(sessionCookie?.value).toBeTruthy();
+      // Verify JWT token was stored in localStorage
+      const token = await getAuthToken(page);
+      expect(token).toBeTruthy();
+      expect(token?.length).toBeGreaterThan(0);
     });
 
     test('should use loginUser helper for quick authentication', async ({ page }) => {
       // Use helper function
       await loginUser(page, TEST_USER_EMAIL, TEST_USER_PASSWORD);
 
-      // Verify we're authenticated
-      await expect(page).toHaveURL(/^\/(projects)?$/);
+      // Verify we're authenticated (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/);
       await expect(page.getByTestId('user-menu')).toBeVisible();
     });
   });
 
   test.describe('Login Failures', () => {
     test('should show error with invalid password', async ({ page }) => {
-      // Navigate to login page
       await page.goto('/login');
 
       // Fill in valid email but wrong password
@@ -104,7 +166,6 @@ test.describe('Authentication Flow', () => {
     });
 
     test('should show error with invalid email', async ({ page }) => {
-      // Navigate to login page
       await page.goto('/login');
 
       // Fill in nonexistent email
@@ -126,7 +187,6 @@ test.describe('Authentication Flow', () => {
     });
 
     test('should handle empty form submission', async ({ page }) => {
-      // Navigate to login page
       await page.goto('/login');
 
       // Click login button without filling fields
@@ -135,7 +195,7 @@ test.describe('Authentication Flow', () => {
       // Wait for validation
       await page.waitForTimeout(500);
 
-      // Form should still be visible (not submitted)
+      // Form should still be visible (not submitted due to HTML5 validation)
       await expect(page.getByTestId('email-input')).toBeVisible();
       await expect(page.getByTestId('password-input')).toBeVisible();
 
@@ -146,11 +206,15 @@ test.describe('Authentication Flow', () => {
 
   test.describe('Logout', () => {
     test('should logout successfully', async ({ page }) => {
-      // Login using helper function
+      // Login first
       await loginUser(page, TEST_USER_EMAIL, TEST_USER_PASSWORD);
 
       // Assert we're logged in
       await expect(page.getByTestId('user-menu')).toBeVisible();
+
+      // Verify token exists before logout
+      const tokenBefore = await getAuthToken(page);
+      expect(tokenBefore).toBeTruthy();
 
       // Click logout button
       await page.getByTestId('logout-button').click();
@@ -161,10 +225,9 @@ test.describe('Authentication Flow', () => {
       // Assert login form is visible (logged out state)
       await expect(page.getByTestId('email-input')).toBeVisible();
 
-      // Verify session cookie was removed
-      const cookies = await page.context().cookies();
-      const sessionCookie = cookies.find(c => c.name === 'better-auth.session_token');
-      expect(sessionCookie).toBeUndefined();
+      // Verify token was removed from localStorage
+      const tokenAfter = await getAuthToken(page);
+      expect(tokenAfter).toBeNull();
     });
 
     test('should not access protected routes after logout', async ({ page }) => {
@@ -191,10 +254,9 @@ test.describe('Authentication Flow', () => {
       // Login
       await loginUser(page, TEST_USER_EMAIL, TEST_USER_PASSWORD);
 
-      // Get session cookie before reload
-      const cookiesBefore = await page.context().cookies();
-      const sessionBefore = cookiesBefore.find(c => c.name === 'better-auth.session_token');
-      expect(sessionBefore).toBeDefined();
+      // Get token before reload
+      const tokenBefore = await getAuthToken(page);
+      expect(tokenBefore).toBeTruthy();
 
       // Reload the page
       await page.reload();
@@ -205,11 +267,10 @@ test.describe('Authentication Flow', () => {
       // Verify we're still authenticated (not redirected to login)
       expect(page.url()).not.toContain('/login');
 
-      // Verify session cookie is still present
-      const cookiesAfter = await page.context().cookies();
-      const sessionAfter = cookiesAfter.find(c => c.name === 'better-auth.session_token');
-      expect(sessionAfter).toBeDefined();
-      expect(sessionAfter?.value).toBe(sessionBefore?.value);
+      // Verify token is still present
+      const tokenAfter = await getAuthToken(page);
+      expect(tokenAfter).toBeTruthy();
+      expect(tokenAfter).toBe(tokenBefore);
     });
 
     test('should persist session across navigation', async ({ page }) => {
@@ -227,9 +288,8 @@ test.describe('Authentication Flow', () => {
       });
 
       // Verify we're still authenticated
-      const cookies = await page.context().cookies();
-      const sessionCookie = cookies.find(c => c.name === 'better-auth.session_token');
-      expect(sessionCookie).toBeDefined();
+      const authenticated = await isAuthenticated(page);
+      expect(authenticated).toBe(true);
     });
   });
 
@@ -247,9 +307,10 @@ test.describe('Authentication Flow', () => {
       expect(page.url()).not.toContain('/login');
     });
 
-    test('should redirect to login when accessing protected routes unauthenticated', async ({ page }) => {
+    test('protected route redirects to login when unauthenticated', async ({ page }) => {
       // Ensure we're not authenticated
-      await page.context().clearCookies();
+      await page.goto('/login');
+      await clearAuth(page);
 
       // Try to access protected route
       await page.goto('/projects/1');
@@ -264,17 +325,16 @@ test.describe('Authentication Flow', () => {
     });
   });
 
-  test.describe('BetterAuth API Integration', () => {
-    test('should call BetterAuth sign-in API on login', async ({ page }) => {
+  test.describe('API Integration', () => {
+    test('should call FastAPI auth endpoint on login', async ({ page }) => {
       // Set up request monitoring
       const apiCalls: string[] = [];
       page.on('request', request => {
-        if (request.url().includes('/api/auth/')) {
+        if (request.url().includes('/auth/')) {
           apiCalls.push(request.url());
         }
       });
 
-      // Navigate to login page
       await page.goto('/login');
 
       // Fill credentials and submit
@@ -282,35 +342,35 @@ test.describe('Authentication Flow', () => {
       await page.getByTestId('password-input').fill(TEST_USER_PASSWORD);
       await page.getByTestId('login-button').click();
 
-      // Wait for redirect
-      await expect(page).toHaveURL(/^\/(projects)?$/, { timeout: 10000 });
+      // Wait for redirect (URL includes full host)
+      await expect(page).toHaveURL(/\/(projects)?$/, { timeout: 10000 });
 
-      // Verify BetterAuth sign-in API was called
-      const signInCall = apiCalls.find(url => url.includes('/api/auth/sign-in'));
-      expect(signInCall).toBeDefined();
+      // Verify FastAPI auth endpoint was called
+      const loginCall = apiCalls.find(url => url.includes('/auth/jwt/login'));
+      expect(loginCall).toBeDefined();
     });
-  });
 
-  test.describe('Database Integration', () => {
-    test('should create session in CodeFRAME sessions table', async ({ page, request }) => {
+    test('should include JWT token in API requests after login', async ({ page, request }) => {
       // Login via UI
       await loginUser(page, TEST_USER_EMAIL, TEST_USER_PASSWORD);
 
-      // Get session cookie
-      const cookies = await page.context().cookies();
-      const sessionCookie = cookies.find(c => c.name === 'better-auth.session_token');
-      expect(sessionCookie).toBeDefined();
+      // Get the JWT token
+      const token = await getAuthToken(page);
+      expect(token).toBeTruthy();
 
-      // Verify backend can validate the session
+      // Verify backend accepts the token
       const backendUrl = process.env.BACKEND_URL || 'http://localhost:8080';
-      const response = await request.get(`${backendUrl}/api/projects`, {
+      const response = await request.get(`${backendUrl}/users/me`, {
         headers: {
-          Authorization: `Bearer ${sessionCookie?.value}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
-      // Backend should accept the session token (validates DB integration)
+      // Backend should accept the JWT token
       expect(response.ok()).toBeTruthy();
+
+      const userData = await response.json();
+      expect(userData.email).toBe(TEST_USER_EMAIL);
     });
   });
 });

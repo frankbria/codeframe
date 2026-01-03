@@ -4,6 +4,7 @@
  * Part of 007-context-management Phase 7 (US5 - Context Visualization)
  */
 
+import { authFetch } from '@/lib/api-client';
 import type {
   ContextStats,
   ContextItem,
@@ -28,24 +29,9 @@ export async function fetchContextStats(
   agentId: string,
   projectId: number
 ): Promise<ContextStats> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/agents/${agentId}/context/stats?project_id=${projectId}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<ContextStats>(
+    `${API_BASE_URL}/api/agents/${agentId}/context/stats?project_id=${projectId}`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch context stats: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -73,24 +59,9 @@ export async function fetchContextItems(
     params.append('tier', tier);
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}/api/agents/${agentId}/context/items?${params.toString()}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<ContextItem[]>(
+    `${API_BASE_URL}/api/agents/${agentId}/context/items?${params.toString()}`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch context items: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -115,24 +86,10 @@ export async function triggerFlashSave(
     params.append('force', 'true');
   }
 
-  const response = await fetch(
+  return authFetch<FlashSaveResponse>(
     `${API_BASE_URL}/api/agents/${agentId}/flash-save?${params.toString()}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+    { method: 'POST' }
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to trigger flash save: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -147,22 +104,7 @@ export async function listCheckpoints(
   agentId: string,
   limit: number = 10
 ): Promise<CheckpointMetadata[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/agents/${agentId}/flash-save/checkpoints?limit=${limit}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<CheckpointMetadata[]>(
+    `${API_BASE_URL}/api/agents/${agentId}/flash-save/checkpoints?limit=${limit}`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to list checkpoints: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }

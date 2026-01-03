@@ -54,6 +54,8 @@ export async function withOptionalWarning<T>(
 /**
  * Login a user via the login page UI
  *
+ * Uses JWT authentication - token is stored in localStorage after successful login.
+ *
  * @param page - Playwright page object
  * @param email - User email (defaults to test user)
  * @param password - User password (defaults to test password)
@@ -61,7 +63,7 @@ export async function withOptionalWarning<T>(
 export async function loginUser(
   page: Page,
   email = 'test@example.com',
-  password = 'testpassword123'
+  password = 'Testpassword123'
 ): Promise<void> {
   // Navigate to login page
   await page.goto('/login');
@@ -73,8 +75,70 @@ export async function loginUser(
   // Click login button
   await page.getByTestId('login-button').click();
 
-  // Wait for redirect to root page or projects page
-  await page.waitForURL(/^\/(projects)?$/);
+  // Wait for redirect to root page or projects page (URL includes full host)
+  await page.waitForURL(/\/(projects)?$/);
+}
+
+/**
+ * Register a new user via the signup page UI
+ *
+ * Uses JWT authentication - token is stored in localStorage after successful registration.
+ *
+ * @param page - Playwright page object
+ * @param name - User's full name
+ * @param email - User email
+ * @param password - User password (must meet strength requirements)
+ */
+export async function registerUser(
+  page: Page,
+  name: string,
+  email: string,
+  password: string
+): Promise<void> {
+  // Navigate to signup page
+  await page.goto('/signup');
+
+  // Fill in registration form
+  await page.getByTestId('name-input').fill(name);
+  await page.getByTestId('email-input').fill(email);
+  await page.getByTestId('password-input').fill(password);
+  await page.getByTestId('confirm-password-input').fill(password);
+
+  // Click signup button
+  await page.getByTestId('signup-button').click();
+
+  // Wait for redirect to root page (auto-login after registration, URL includes full host)
+  await page.waitForURL(/\/(projects)?$/);
+}
+
+/**
+ * Check if user is authenticated by checking localStorage for auth token
+ *
+ * @param page - Playwright page object
+ * @returns true if auth_token exists in localStorage
+ */
+export async function isAuthenticated(page: Page): Promise<boolean> {
+  const token = await page.evaluate(() => localStorage.getItem('auth_token'));
+  return token !== null && token.length > 0;
+}
+
+/**
+ * Clear authentication state
+ *
+ * @param page - Playwright page object
+ */
+export async function clearAuth(page: Page): Promise<void> {
+  await page.evaluate(() => localStorage.removeItem('auth_token'));
+}
+
+/**
+ * Get the auth token from localStorage
+ *
+ * @param page - Playwright page object
+ * @returns The JWT token or null if not authenticated
+ */
+export async function getAuthToken(page: Page): Promise<string | null> {
+  return await page.evaluate(() => localStorage.getItem('auth_token'));
 }
 
 /**

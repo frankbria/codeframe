@@ -11,7 +11,8 @@ from fastapi.responses import JSONResponse
 
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
-from codeframe.ui.auth import get_current_user, User
+from codeframe.auth.dependencies import get_current_user
+from codeframe.auth.models import User
 from codeframe.ui.shared import manager
 from codeframe.core.models import ContextItemResponse
 from codeframe.lib.context_manager import ContextManager

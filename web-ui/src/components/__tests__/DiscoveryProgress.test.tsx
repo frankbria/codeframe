@@ -15,6 +15,14 @@ jest.mock('@/lib/api', () => ({
   },
 }));
 
+// Mock the authenticated fetch
+jest.mock('@/lib/api-client', () => ({
+  authFetch: jest.fn(),
+}));
+
+import { authFetch } from '@/lib/api-client';
+const mockAuthFetch = authFetch as jest.MockedFunction<typeof authFetch>;
+
 // Mock child components
 jest.mock('../ProgressBar', () => {
   return function MockProgressBar({ percentage, label }: { percentage: number; label?: string }) {
@@ -37,6 +45,7 @@ describe('DiscoveryProgress Component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    mockAuthFetch.mockReset();
   });
 
   afterEach(() => {
@@ -680,21 +689,15 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
 
-      // Mock fetch for the submit API call
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'Next question',
-              is_complete: false,
-              current_index: 3,
-              total_questions: 20,
-              progress_percentage: 15.0,
-            }),
-        })
-      ) as jest.Mock;
+      // Mock authFetch for the submit API call
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'Next question',
+        is_complete: false,
+        current_index: 3,
+        total_questions: 20,
+        progress_percentage: 15.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -714,23 +717,20 @@ describe('DiscoveryProgress Component', () => {
         charCode: 13,
       });
 
-      // Verify fetch was called (submission triggered)
+      // Verify authFetch was called (submission triggered)
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalledWith(
-          '/api/projects/1/discovery/answer',
-          expect.objectContaining({
+        expect(mockAuthFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/projects/1/discovery/answer'),
+          {
             method: 'POST',
-            headers: expect.objectContaining({
-              'Content-Type': 'application/json',
-            }),
-            body: JSON.stringify({ answer: 'Valid answer for keyboard shortcut test' }),
-          })
+            body: { answer: 'Valid answer for keyboard shortcut test' },
+          }
         );
       });
 
       // Should NOT submit with Enter alone (without Ctrl)
       fireEvent.change(textarea, { target: { value: 'Another answer' } });
-      (global.fetch as jest.Mock).mockClear();
+      mockAuthFetch.mockClear();
 
       fireEvent.keyDown(textarea, {
         key: 'Enter',
@@ -740,7 +740,7 @@ describe('DiscoveryProgress Component', () => {
       });
 
       // Fetch should NOT be called (no submission)
-      expect(global.fetch).not.toHaveBeenCalled();
+      expect(mockAuthFetch).not.toHaveBeenCalled();
     });
 
     it('should not submit with Ctrl+Enter if answer is empty', async () => {
@@ -762,7 +762,7 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
 
-      global.fetch = jest.fn() as jest.Mock;
+      // No API call expected for this test
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -781,7 +781,7 @@ describe('DiscoveryProgress Component', () => {
       });
 
       // Fetch should NOT be called (empty answer)
-      expect(global.fetch).not.toHaveBeenCalled();
+      expect(mockAuthFetch).not.toHaveBeenCalled();
     });
   });
 
@@ -810,20 +810,14 @@ describe('DiscoveryProgress Component', () => {
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
 
       // Mock successful submit response
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'What tech stack are you planning to use?',
-              is_complete: false,
-              current_index: 3,
-              total_questions: 20,
-              progress_percentage: 15.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'What tech stack are you planning to use?',
+        is_complete: false,
+        current_index: 3,
+        total_questions: 20,
+        progress_percentage: 15.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -880,15 +874,9 @@ describe('DiscoveryProgress Component', () => {
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
 
       // Mock failed submit response
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: false,
-          json: () =>
-            Promise.resolve({
-              detail: 'Answer must be between 1 and 5000 characters',
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Request failed: 400 Answer must be between 1 and 5000 characters')
+      );
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -906,7 +894,7 @@ describe('DiscoveryProgress Component', () => {
 
       // Wait for error handling
       await waitFor(() => {
-        expect(global.fetch).toHaveBeenCalled();
+        expect(mockAuthFetch).toHaveBeenCalled();
       });
 
       // Success message should NOT appear
@@ -1042,16 +1030,9 @@ describe('DiscoveryProgress Component', () => {
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
 
       // Mock API error response
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: false,
-          status: 400,
-          json: () =>
-            Promise.resolve({
-              detail: 'Project is not in discovery phase',
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Request failed: 400 Project is not in discovery phase')
+      );
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -1107,9 +1088,7 @@ describe('DiscoveryProgress Component', () => {
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
 
       // Mock network error
-      global.fetch = jest.fn(() =>
-        Promise.reject(new Error('Network error'))
-      ) as jest.Mock;
+      mockAuthFetch.mockRejectedValueOnce(new Error('Network error'));
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -1180,20 +1159,14 @@ describe('DiscoveryProgress Component', () => {
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: initialData });
 
       // Mock successful submit response
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'What tech stack are you planning to use?',
-              is_complete: false,
-              current_index: 3,
-              total_questions: 20,
-              progress_percentage: 15.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'What tech stack are you planning to use?',
+        is_complete: false,
+        current_index: 3,
+        total_questions: 20,
+        progress_percentage: 15.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -1275,20 +1248,14 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: initialData });
 
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'Question 6',
-              is_complete: false,
-              current_index: 5,
-              total_questions: 20,
-              progress_percentage: 25.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'Question 6',
+        is_complete: false,
+        current_index: 5,
+        total_questions: 20,
+        progress_percentage: 25.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -1357,20 +1324,14 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: initialData });
 
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'What tech stack are you planning to use?',
-              is_complete: false,
-              current_index: 3,
-              total_questions: 20,
-              progress_percentage: 15.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'What tech stack are you planning to use?',
+        is_complete: false,
+        current_index: 3,
+        total_questions: 20,
+        progress_percentage: 15.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -1443,20 +1404,14 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: initialData });
 
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'Question 12: How will you monetize?',
-              is_complete: false,
-              current_index: 11,
-              total_questions: 20,
-              progress_percentage: 55.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'Question 12: How will you monetize?',
+        is_complete: false,
+        current_index: 11,
+        total_questions: 20,
+        progress_percentage: 55.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -1528,20 +1483,14 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: initialData });
 
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: 'What are the biggest risks?',
-              is_complete: false,
-              current_index: 18,
-              total_questions: 20,
-              progress_percentage: 90.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: 'What are the biggest risks?',
+        is_complete: false,
+        current_index: 18,
+        total_questions: 20,
+        progress_percentage: 90.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -1611,20 +1560,14 @@ describe('DiscoveryProgress Component', () => {
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValueOnce({ data: initialData });
 
-      global.fetch = jest.fn(() =>
-        Promise.resolve({
-          ok: true,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              next_question: null, // No more questions
-              is_complete: true,
-              current_index: 20,
-              total_questions: 20,
-              progress_percentage: 100.0,
-            }),
-        })
-      ) as jest.Mock;
+      mockAuthFetch.mockResolvedValueOnce({
+        success: true,
+        next_question: null, // No more questions
+        is_complete: true,
+        current_index: 20,
+        total_questions: 20,
+        progress_percentage: 100.0,
+      });
 
       render(<DiscoveryProgress projectId={1} />);
 

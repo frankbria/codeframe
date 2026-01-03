@@ -12,7 +12,7 @@ import ProjectCreationForm from '../ProjectCreationForm';
 // Create mock functions
 const mockPost = jest.fn();
 
-// Mock axios
+// Mock axios with interceptors support
 jest.mock('axios', () => {
   const mockAxiosInstance = {
     get: jest.fn(),
@@ -21,6 +21,16 @@ jest.mock('axios', () => {
     put: jest.fn(),
     delete: jest.fn(),
     patch: jest.fn(),
+    interceptors: {
+      request: {
+        use: jest.fn(),
+        eject: jest.fn(),
+      },
+      response: {
+        use: jest.fn(),
+        eject: jest.fn(),
+      },
+    },
   };
 
   return {

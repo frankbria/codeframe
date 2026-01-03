@@ -70,75 +70,52 @@ def seed_test_data(db_path: str, project_id: int):
         # - Only safe for local E2E testing where AUTH_REQUIRED=false
         print("👤 Seeding test user...")
 
-        # BetterAuth-compatible schema: password stored in accounts table
-        # Hash: bcrypt hash of 'testpassword123'
-        # Generated with: python3 -c "import bcrypt; print(bcrypt.hashpw(b'testpassword123', bcrypt.gensalt()).decode())"
-        # Verified compatible with both Python bcrypt and Node.js bcrypt
-        test_user_password_hash = "$2b$12$kEseisCIdS6HuYDCll3YyOCHQVo.dcr71jfF2i8sRuMJRCNosWgEu"
+        # FastAPI Users schema: password stored in users table as hashed_password
+        # Uses argon2id algorithm (FastAPI Users default via PasswordHelper)
+        # Hash: argon2id hash of 'Testpassword123' (matches TEST_USER_PASSWORD in test-utils.ts)
+        # Generated with: uv run python -c "from fastapi_users.password import PasswordHelper; print(PasswordHelper().hash('Testpassword123'))"
+        test_user_password_hash = "$argon2id$v=19$m=65536,t=3,p=4$AxoKRsvvZWnspMuG1EU8dg$8wybn5xP5s7mVC67TjepMx0ulIKAspzicdScIZtJ/MY"
 
-        # Verify hash is valid before seeding
-        if bcrypt is not None:
-            try:
-                assert bcrypt.checkpw(
-                    b"testpassword123", test_user_password_hash.encode()
-                ), "Password hash verification failed"
-                print("   ✅ Password hash verified")
-            except Exception as e:
-                print(f"   ❌ Password hash verification failed: {e}")
-                raise
+        # Verify hash is valid before seeding using FastAPI Users password helper
+        try:
+            from fastapi_users.password import PasswordHelper
+            helper = PasswordHelper()
+            verified, _ = helper.verify_and_update("Testpassword123", test_user_password_hash)
+            assert verified, "Password hash verification failed"
+            print("   ✅ Password hash verified (argon2id)")
+        except ImportError:
+            # FastAPI Users not available in this context, skip verification
+            print("   ⚠️  Skipping password verification (fastapi-users not available)")
+        except Exception as e:
+            print(f"   ❌ Password hash verification failed: {e}")
+            raise
 
-        # Create user record (BetterAuth compatible - no password here)
+        # Create user record (FastAPI Users compatible - password in users table)
         cursor.execute(
             """
-            INSERT OR REPLACE INTO users (id, email, name, email_verified, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO users (
+                id, email, name, hashed_password,
+                is_active, is_superuser, is_verified, email_verified,
+                created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 1,
                 "test@example.com",
                 "E2E Test User",
-                1,  # email_verified=true for testing
-                now_ts,
-                now_ts,
-            ),
-        )
-
-        # Create account record for credential-based auth (email/password)
-        # BetterAuth generates UUID-style IDs for accounts
-        account_id_value = "test-account-credential-1"
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO accounts (id, user_id, account_id, provider_id, password, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                account_id_value,
-                1,
-                "test@example.com",
-                "credential",
                 test_user_password_hash,
+                1,  # is_active
+                0,  # is_superuser
+                1,  # is_verified
+                1,  # email_verified
                 now_ts,
                 now_ts,
             ),
         )
 
-        # Create a session for the test user (expires in 7 days)
-        # BetterAuth uses session.id as primary key
-        session_id = "test-session-id-1234567890"
-        session_token = "test-session-token-12345678901234567890"
-        expires_at = (now + timedelta(days=7)).isoformat()
-
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO sessions (id, token, user_id, expires_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (session_id, session_token, 1, expires_at, now_ts, now_ts),
-        )
-
-        print("✅ Seeded test user (email: test@example.com)")
-        print(f"   Session token: {session_token[:20]}...")
-        print("   Note: E2E tests will use real login flow via BetterAuth")
+        print("✅ Seeded test user (email: test@example.com, password: Testpassword123)")
+        print("   Note: E2E tests will use real login flow via FastAPI Users JWT")
 
         # ========================================
         # 1. Seed Agents (5)

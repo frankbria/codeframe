@@ -125,12 +125,12 @@ function storeTestUserCredentials(): void {
 
   // Store credentials for tests to use with loginUser() helper
   process.env.E2E_TEST_USER_EMAIL = 'test@example.com';
-  process.env.E2E_TEST_USER_PASSWORD = 'testpassword123';
+  process.env.E2E_TEST_USER_PASSWORD = 'Testpassword123';
 
   console.log('✅ Test user credentials stored');
   console.log(`   Email: test@example.com`);
-  console.log(`   Password: testpassword123`);
-  console.log('   Note: Tests will use real login flow via BetterAuth');
+  console.log(`   Password: Testpassword123`);
+  console.log('   Note: Tests will use real login flow via FastAPI Users JWT');
 }
 
 async function globalSetup(config: FullConfig) {

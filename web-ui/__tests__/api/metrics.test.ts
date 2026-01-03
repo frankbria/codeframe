@@ -8,6 +8,11 @@
  * Part of 015-review-polish Phase 5 (Sprint 10 - Metrics & Cost Tracking)
  */
 
+// Mock the api-client module BEFORE imports
+jest.mock('../../src/lib/api-client', () => ({
+  authFetch: jest.fn(),
+}));
+
 import {
   getProjectTokens,
   getProjectCosts,
@@ -15,6 +20,7 @@ import {
   getTokenUsageTimeSeries,
   queryTokenUsage,
 } from '../../src/api/metrics';
+import { authFetch } from '../../src/lib/api-client';
 import type {
   TokenUsage,
   CostBreakdown,
@@ -22,8 +28,7 @@ import type {
   TokenUsageTimeSeries,
 } from '../../src/types/metrics';
 
-// Mock fetch
-global.fetch = jest.fn();
+const mockAuthFetch = authFetch as jest.MockedFunction<typeof authFetch>;
 
 const API_BASE_URL = 'http://localhost:8080';
 
@@ -112,28 +117,20 @@ describe('Metrics API Client', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (global.fetch as jest.Mock).mockClear();
   });
 
   describe('getProjectTokens', () => {
     it('test_get_project_tokens_success', async () => {
       // ARRANGE
       const mockTokens = [mockTokenUsage];
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockTokens,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockTokens);
 
       // ACT
       const result = await getProjectTokens(123);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/metrics/tokens?limit=100`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/projects/123/metrics/tokens?limit=100`
       );
       expect(result).toEqual(mockTokens);
     });
@@ -141,10 +138,7 @@ describe('Metrics API Client', () => {
     it('test_get_project_tokens_with_date_range', async () => {
       // ARRANGE
       const mockTokens = [mockTokenUsage];
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockTokens,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockTokens);
 
       // ACT
       const result = await getProjectTokens(
@@ -155,35 +149,27 @@ describe('Metrics API Client', () => {
       );
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/metrics/tokens?start_date=2025-11-20T00%3A00%3A00Z&end_date=2025-11-23T23%3A59%3A59Z&limit=50`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/projects/123/metrics/tokens?start_date=2025-11-20T00%3A00%3A00Z&end_date=2025-11-23T23%3A59%3A59Z&limit=50`
       );
       expect(result).toEqual(mockTokens);
     });
 
     it('test_get_project_tokens_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        text: async () => 'Project not found',
-      });
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Request failed: 404 Project not found')
+      );
 
       // ACT & ASSERT
       await expect(getProjectTokens(123)).rejects.toThrow(
-        'Failed to fetch project tokens: 404 Project not found'
+        'Project not found'
       );
     });
 
     it('test_get_project_tokens_network_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockRejectedValueOnce(
-        new Error('Network error')
-      );
+      mockAuthFetch.mockRejectedValueOnce(new Error('Network error'));
 
       // ACT & ASSERT
       await expect(getProjectTokens(123)).rejects.toThrow('Network error');
@@ -193,36 +179,27 @@ describe('Metrics API Client', () => {
   describe('getProjectCosts', () => {
     it('test_get_project_costs_success', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCostBreakdown,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockCostBreakdown);
 
       // ACT
       const result = await getProjectCosts(123);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/metrics/costs`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/projects/123/metrics/costs`
       );
       expect(result).toEqual(mockCostBreakdown);
     });
 
     it('test_get_project_costs_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: async () => 'Internal server error',
-      });
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Request failed: 500 Internal server error')
+      );
 
       // ACT & ASSERT
       await expect(getProjectCosts(123)).rejects.toThrow(
-        'Failed to fetch project costs: 500 Internal server error'
+        'Internal server error'
       );
     });
   });
@@ -230,57 +207,41 @@ describe('Metrics API Client', () => {
   describe('getAgentMetrics', () => {
     it('test_get_agent_metrics_success', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockAgentMetrics,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockAgentMetrics);
 
       // ACT
       const result = await getAgentMetrics('backend-001', 123);
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/agents/backend-001/metrics?project_id=123`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/agents/backend-001/metrics?project_id=123`
       );
       expect(result).toEqual(mockAgentMetrics);
     });
 
     it('test_get_agent_metrics_without_project_id', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockAgentMetrics,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockAgentMetrics);
 
       // ACT
       const result = await getAgentMetrics('backend-001');
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/agents/backend-001/metrics`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/agents/backend-001/metrics`
       );
       expect(result).toEqual(mockAgentMetrics);
     });
 
     it('test_get_agent_metrics_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        text: async () => 'Agent not found',
-      });
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Request failed: 404 Agent not found')
+      );
 
       // ACT & ASSERT
       await expect(getAgentMetrics('backend-001')).rejects.toThrow(
-        'Failed to fetch agent metrics: 404 Agent not found'
+        'Agent not found'
       );
     });
   });
@@ -288,10 +249,7 @@ describe('Metrics API Client', () => {
   describe('getTokenUsageTimeSeries', () => {
     it('test_get_token_usage_time_series_success', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockTimeSeries,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockTimeSeries);
 
       // ACT
       const result = await getTokenUsageTimeSeries(
@@ -302,22 +260,15 @@ describe('Metrics API Client', () => {
       );
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/projects/123/metrics/tokens/timeseries?start_date=2025-11-20T00%3A00%3A00Z&end_date=2025-11-23T23%3A59%3A59Z&interval=day`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/projects/123/metrics/tokens/timeseries?start_date=2025-11-20T00%3A00%3A00Z&end_date=2025-11-23T23%3A59%3A59Z&interval=day`
       );
       expect(result).toEqual(mockTimeSeries);
     });
 
     it('test_get_token_usage_time_series_default_interval', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockTimeSeries,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockTimeSeries);
 
       // ACT
       const result = await getTokenUsageTimeSeries(
@@ -327,20 +278,17 @@ describe('Metrics API Client', () => {
       );
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('interval=day'),
-        expect.any(Object)
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        expect.stringContaining('interval=day')
       );
       expect(result).toEqual(mockTimeSeries);
     });
 
     it('test_get_token_usage_time_series_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        text: async () => 'Invalid date range',
-      });
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Request failed: 400 Invalid date range')
+      );
 
       // ACT & ASSERT
       await expect(
@@ -349,9 +297,7 @@ describe('Metrics API Client', () => {
           '2025-11-20T00:00:00Z',
           '2025-11-23T23:59:59Z'
         )
-      ).rejects.toThrow(
-        'Failed to fetch token usage time series: 400 Invalid date range'
-      );
+      ).rejects.toThrow('Invalid date range');
     });
   });
 
@@ -359,10 +305,7 @@ describe('Metrics API Client', () => {
     it('test_query_token_usage_all_params', async () => {
       // ARRANGE
       const mockTokens = [mockTokenUsage];
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockTokens,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockTokens);
 
       // ACT
       const result = await queryTokenUsage({
@@ -375,12 +318,8 @@ describe('Metrics API Client', () => {
       });
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/metrics/tokens?project_id=123&agent_id=backend-001&start_date=2025-11-20T00%3A00%3A00Z&end_date=2025-11-23T23%3A59%3A59Z&call_type=task_execution&limit=50`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/metrics/tokens?project_id=123&agent_id=backend-001&start_date=2025-11-20T00%3A00%3A00Z&end_date=2025-11-23T23%3A59%3A59Z&call_type=task_execution&limit=50`
       );
       expect(result).toEqual(mockTokens);
     });
@@ -388,10 +327,7 @@ describe('Metrics API Client', () => {
     it('test_query_token_usage_minimal_params', async () => {
       // ARRANGE
       const mockTokens = [mockTokenUsage];
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockTokens,
-      });
+      mockAuthFetch.mockResolvedValueOnce(mockTokens);
 
       // ACT
       const result = await queryTokenUsage({
@@ -399,30 +335,40 @@ describe('Metrics API Client', () => {
       });
 
       // ASSERT
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${API_BASE_URL}/api/metrics/tokens?project_id=123`,
-        {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        }
+      expect(mockAuthFetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/api/metrics/tokens?project_id=123`
       );
       expect(result).toEqual(mockTokens);
     });
 
     it('test_query_token_usage_error', async () => {
       // ARRANGE
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 422,
-        text: async () => 'Invalid query parameters',
-      });
+      mockAuthFetch.mockRejectedValueOnce(
+        new Error('Request failed: 422 Invalid query parameters')
+      );
 
       // ACT & ASSERT
-      await expect(
-        queryTokenUsage({ project_id: 123 })
-      ).rejects.toThrow(
-        'Failed to query token usage: 422 Invalid query parameters'
+      await expect(queryTokenUsage({ project_id: 123 })).rejects.toThrow(
+        'Invalid query parameters'
       );
+    });
+  });
+
+  describe('Error handling edge cases', () => {
+    it('test_handles_not_authenticated', async () => {
+      // ARRANGE
+      mockAuthFetch.mockRejectedValueOnce(new Error('Not authenticated'));
+
+      // ACT & ASSERT
+      await expect(getProjectTokens(123)).rejects.toThrow('Not authenticated');
+    });
+
+    it('test_handles_network_timeout', async () => {
+      // ARRANGE
+      mockAuthFetch.mockRejectedValueOnce(new Error('Timeout'));
+
+      // ACT & ASSERT
+      await expect(getProjectCosts(123)).rejects.toThrow('Timeout');
     });
   });
 });

@@ -20,7 +20,7 @@ from codeframe.core.session_manager import SessionManager
 from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
 from codeframe.ui.dependencies import get_db, get_workspace_manager
-from codeframe.ui.auth import get_current_user, User
+from codeframe.auth import get_current_user, User
 from codeframe.ui.models import (
     ProjectCreateRequest,
     ProjectResponse,

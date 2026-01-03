@@ -33,7 +33,7 @@ from codeframe.ui.routers import (
     tasks,
     websocket,
 )
-
+from codeframe.auth import router as auth_router
 
 # ============================================================================
 # Configuration and Setup
@@ -221,6 +221,7 @@ else:
     # Fallback to development defaults if not configured
     allowed_origins = [
         "http://localhost:3000",  # Next.js dev server
+        "http://localhost:3001",  # Next.js E2E test server
         "http://localhost:5173",  # Vite dev server
     ]
 
@@ -333,6 +334,7 @@ app.include_router(review.router)
 app.include_router(session.router)
 app.include_router(tasks.router)
 app.include_router(websocket.router)
+app.include_router(auth_router.router)
 
 
 # ============================================================================

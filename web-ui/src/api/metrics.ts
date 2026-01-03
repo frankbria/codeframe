@@ -4,6 +4,7 @@
  * Part of 015-review-polish Phase 5 (Sprint 10 - Metrics & Cost Tracking)
  */
 
+import { authFetch } from '@/lib/api-client';
 import type {
   TokenUsage,
   CostBreakdown,
@@ -49,21 +50,7 @@ export async function getProjectTokens(
     params.toString() ? `?${params.toString()}` : ''
   }`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch project tokens: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
+  return authFetch<TokenUsage[]>(url);
 }
 
 /**
@@ -76,24 +63,9 @@ export async function getProjectTokens(
 export async function getProjectCosts(
   projectId: number
 ): Promise<CostBreakdown> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/projects/${projectId}/metrics/costs`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<CostBreakdown>(
+    `${API_BASE_URL}/api/projects/${projectId}/metrics/costs`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch project costs: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -118,21 +90,7 @@ export async function getAgentMetrics(
     params.toString() ? `?${params.toString()}` : ''
   }`;
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch agent metrics: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
+  return authFetch<AgentMetrics>(url);
 }
 
 /**
@@ -157,24 +115,9 @@ export async function getTokenUsageTimeSeries(
     interval,
   });
 
-  const response = await fetch(
-    `${API_BASE_URL}/api/projects/${projectId}/metrics/tokens/timeseries?${params.toString()}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<TokenUsageTimeSeries[]>(
+    `${API_BASE_URL}/api/projects/${projectId}/metrics/tokens/timeseries?${params.toString()}`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch token usage time series: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -213,22 +156,7 @@ export async function queryTokenUsage(
     searchParams.append('limit', params.limit.toString());
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}/api/metrics/tokens?${searchParams.toString()}`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<TokenUsage[]>(
+    `${API_BASE_URL}/api/metrics/tokens?${searchParams.toString()}`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to query token usage: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }

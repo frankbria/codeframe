@@ -4,6 +4,7 @@
  * Part of Sprint 9 Phase 3 (Review Agent API/UI Integration)
  */
 
+import { authFetch } from '@/lib/api-client';
 import type {
   ReviewReport,
   ReviewStatusResponse,
@@ -28,25 +29,13 @@ export async function triggerReview(
   agentId: string,
   request: ReviewRequest
 ): Promise<ReviewReport> {
-  const response = await fetch(
+  return authFetch<ReviewReport>(
     `${API_BASE_URL}/api/agents/${agentId}/review`,
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
+      body: request,
     }
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to trigger review: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -59,24 +48,9 @@ export async function triggerReview(
 export async function fetchReviewStatus(
   taskId: number
 ): Promise<ReviewStatusResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/tasks/${taskId}/review-status`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<ReviewStatusResponse>(
+    `${API_BASE_URL}/api/tasks/${taskId}/review-status`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch review status: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }
 
 /**
@@ -89,22 +63,7 @@ export async function fetchReviewStatus(
 export async function fetchReviewStats(
   projectId: number
 ): Promise<ReviewStats> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/projects/${projectId}/review-stats`,
-    {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    }
+  return authFetch<ReviewStats>(
+    `${API_BASE_URL}/api/projects/${projectId}/review-stats`
   );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Failed to fetch review stats: ${response.status} ${errorText}`
-    );
-  }
-
-  return response.json();
 }

@@ -1,42 +1,28 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { signIn } from "@/lib/auth-client";
+import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-/**
- * Login form component
- *
- * Provides email/password login functionality using Better Auth.
- * Displays validation errors and redirects to dashboard on success.
- */
-export default function LoginForm() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+export function LoginForm() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError('');
     setIsLoading(true);
 
     try {
-      const result = await signIn({
-        email,
-        password,
-      });
-
-      if (result.error) {
-        setError(result.error.message || "Login failed. Please check your credentials.");
-      } else {
-        // Redirect to dashboard on successful login
-        router.push("/");
-      }
-    } catch (_err) {
-      setError("Network error. Please try again.");
+      await login(email, password);
+      router.push('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsLoading(false);
     }
@@ -45,11 +31,11 @@ export default function LoginForm() {
   return (
     <div className="w-full max-w-md space-y-8">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-foreground">Sign in to CodeFRAME</h2>
+        <h2 className="text-3xl font-bold text-foreground">Sign in to your account</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Or{" "}
-          <Link href="/signup" className="font-medium text-primary hover:text-primary/90">
-            create a new account
+          Don&apos;t have an account?{' '}
+          <Link href="/signup" className="font-medium text-primary hover:text-primary/80">
+            Sign up
           </Link>
         </p>
       </div>
@@ -107,7 +93,7 @@ export default function LoginForm() {
             data-testid="login-button"
             className="group relative flex w-full justify-center rounded-md border border-transparent bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? "Signing in..." : "Sign in"}
+            {isLoading ? 'Signing in...' : 'Sign in'}
           </button>
         </div>
       </form>

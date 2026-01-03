@@ -16,6 +16,17 @@ const api = axios.create({
   },
 });
 
+// Add auth token to all requests
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
 export const projectsApi = {
   list: () => api.get<{ projects: Project[] }>('/api/projects'),
   createProject: (name: string, description: string) =>
