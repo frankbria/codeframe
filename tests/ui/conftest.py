@@ -219,13 +219,19 @@ def running_server():
 
 @pytest.fixture
 def ws_url(running_server):
-    """Convert HTTP server URL to WebSocket URL with authentication token.
+    """Get the complete WebSocket URL with path and authentication token.
+
+    Returns the full WebSocket URL ready to use for connection.
 
     Args:
         running_server: Tuple of (Server URL, Session token)
 
     Returns:
-        str: WebSocket URL with auth token (e.g., "ws://localhost:8080/ws?token=...")
+        str: Complete WebSocket URL (e.g., "ws://localhost:8080/ws?token=...")
+
+    Example usage in tests:
+        async with websockets.connect(ws_url) as websocket:
+            ...
     """
     server_url, session_token = running_server
     base_ws_url = server_url.replace("http://", "ws://")

@@ -10,6 +10,7 @@ Tests ensure that the WebSocket router correctly handles:
 
 import pytest
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.testclient import TestClient
@@ -19,12 +20,15 @@ from codeframe.ui.routers.websocket import router, websocket_endpoint
 
 @pytest.fixture
 def mock_websocket():
-    """Create a mock WebSocket connection."""
+    """Create a mock WebSocket connection with authentication token."""
     ws = AsyncMock(spec=WebSocket)
     ws.accept = AsyncMock()
     ws.send_json = AsyncMock()
     ws.receive_text = AsyncMock()
     ws.close = AsyncMock()
+    # Mock query_params for authentication token
+    ws.query_params = MagicMock()
+    ws.query_params.get = MagicMock(return_value="test-session-token")
     return ws
 
 
@@ -42,10 +46,21 @@ def mock_manager():
 
 @pytest.fixture
 def mock_db():
-    """Create a mock Database."""
+    """Create a mock Database with session authentication support."""
     db = MagicMock()
     # Mock user_has_project_access to always return True (user has access to all projects)
     db.user_has_project_access = MagicMock(return_value=True)
+
+    # Mock database connection for session token validation
+    # WebSocket auth queries sessions table: SELECT user_id, expires_at FROM sessions WHERE token = ?
+    mock_cursor = MagicMock()
+    # Return valid session: user_id=1, expires_at=future timestamp
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    mock_cursor.fetchone = MagicMock(return_value=(1, expires_at))
+    db.conn = MagicMock()
+    db.conn.execute = MagicMock(return_value=mock_cursor)
+    db.conn.commit = MagicMock()
+
     return db
 
 
