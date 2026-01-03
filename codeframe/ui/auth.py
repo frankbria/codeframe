@@ -9,16 +9,6 @@ Migration path:
 
 This file will be removed in a future release.
 """
-
-"""Authentication and authorization for FastAPI endpoints.
-
-This module provides authentication dependency functions for verifying
-user sessions and extracting user information from Better Auth tokens.
-
-All authentication is handled through Better Auth, with sessions stored
-in the SQLite database (users, sessions tables).
-"""
-
 import os
 from datetime import datetime, timezone
 from typing import Optional

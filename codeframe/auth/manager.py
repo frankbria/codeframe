@@ -12,7 +12,7 @@ from fastapi_users.authentication import (
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from codeframe.auth.models import User, Base
+from codeframe.auth.models import User
 
 # Get configuration from environment
 SECRET = os.getenv("AUTH_SECRET", "CHANGE-ME-IN-PRODUCTION")
