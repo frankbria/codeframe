@@ -22,7 +22,18 @@ from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
 @pytest.fixture
 def db(tmp_path):
     """Create test database."""
+    import os
+    from codeframe.auth.manager import reset_auth_engine
+
     db_path = tmp_path / "test_integration.db"
+
+    # Set DATABASE_PATH so auth engine uses the same database
+    original_db_path = os.environ.get("DATABASE_PATH")
+    os.environ["DATABASE_PATH"] = str(db_path)
+
+    # Reset auth engine to pick up new DATABASE_PATH
+    reset_auth_engine()
+
     db = Database(db_path)
     db.initialize()
 
@@ -52,6 +63,15 @@ def db(tmp_path):
     db.conn.commit()
     yield db
     db.close()
+
+    # Restore original DATABASE_PATH
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    elif "DATABASE_PATH" in os.environ:
+        del os.environ["DATABASE_PATH"]
+
+    # Reset auth engine for next test
+    reset_auth_engine()
 
 
 @pytest.fixture

@@ -153,7 +153,7 @@ class TestServerDatabaseAccess:
         """Test that database is accessible from API endpoints."""
         # ARRANGE
         import os
-        from conftest import create_test_jwt_token, setup_test_user
+        from tests.helpers import create_test_jwt_token, setup_test_user
 
         os.environ["DATABASE_PATH"] = str(temp_db_path)
 
