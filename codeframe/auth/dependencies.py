@@ -106,7 +106,12 @@ async def get_current_user(
 
 
 async def _get_default_admin_user() -> User:
-    """Get or create a default admin user for development mode."""
+    """Get or create a default admin user for development mode.
+
+    Note: This creates a mock user object that may not exist in the database.
+    This is only safe when AUTH_REQUIRED=false (development mode) and should
+    not be used for write operations that require foreign key constraints.
+    """
     from codeframe.auth.manager import get_async_session_maker
     from sqlalchemy import select
 
@@ -119,10 +124,13 @@ async def _get_default_admin_user() -> User:
             admin_user = result.scalar_one_or_none()
             if admin_user:
                 return admin_user
-    except Exception:
-        pass
+    except Exception as e:
+        # Log database errors for debugging (don't silently swallow)
+        logger.warning(f"Could not fetch admin user from DB: {e}")
 
-    # Fallback: create a minimal User object
+    # Fallback: create a minimal User object for development mode
+    # WARNING: This user may not exist in DB - use only for read operations
+    logger.debug("Using fallback mock admin user (not in database)")
     mock_user = User()
     mock_user.id = 1
     mock_user.email = "admin@localhost"

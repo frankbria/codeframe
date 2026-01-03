@@ -72,13 +72,17 @@ class UserManager(IntegerIDMixin, BaseUserManager[User, int]):
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         """Called after successful registration."""
-        print(f"User {user.id} ({user.email}) registered.")
+        logger.info(
+            "User registered",
+            extra={"user_id": user.id, "email": user.email}
+        )
 
     async def on_after_login(
         self, user: User, request: Optional[Request] = None, response=None
     ):
         """Called after successful login."""
-        print(f"User {user.id} ({user.email}) logged in.")
+        # Only log user_id on login (avoid excessive email logging)
+        logger.info("User logged in", extra={"user_id": user.id})
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
