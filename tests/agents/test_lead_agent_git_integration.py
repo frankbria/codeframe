@@ -51,6 +51,13 @@ def test_db():
 
     yield db
 
+    # Close async connection if it was opened (prevents hanging)
+    if db._async_conn:
+        import asyncio
+        try:
+            asyncio.get_event_loop().run_until_complete(db.close_async())
+        except RuntimeError:
+            asyncio.run(db.close_async())
     db.close()
     db_path.unlink()
 
