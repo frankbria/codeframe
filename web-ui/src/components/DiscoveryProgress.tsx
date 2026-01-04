@@ -28,8 +28,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   // Feature: 012-discovery-answer-ui - Answer submission state (T014)
   const [answer, setAnswer] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Start Discovery state
   const [isStarting, setIsStarting] = useState(false);
@@ -52,7 +52,6 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
     // Start submission
     setIsSubmitting(true);
     setSubmissionError(null);
-    setSuccessMessage(null);
 
     try {
       // T038: POST request to backend with authentication
@@ -64,16 +63,15 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         }
       );
 
-      // Success - show message and refresh
-      setSuccessMessage('Answer submitted! Loading next question...');
+      // Success - immediately show loading state for next question
+      setIsSubmitting(false);
+      setIsLoadingNextQuestion(true);
       setAnswer(''); // Clear textarea
       setSubmissionError(null);
 
-      // Refresh discovery state after 1 second
-      setTimeout(() => {
-        fetchProgress();
-        setSuccessMessage(null);
-      }, 1000);
+      // Fetch next question immediately
+      await fetchProgress();
+      setIsLoadingNextQuestion(false);
 
     } catch (error) {
       // T040: Handle network and API errors
@@ -84,8 +82,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         setSubmissionError('Failed to submit answer. Please check your connection.');
       }
       // Keep answer in textarea for retry
-    } finally {
       setIsSubmitting(false);
+      setIsLoadingNextQuestion(false);
     }
   };
 
@@ -237,7 +235,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
               Answered: {discovery.answered_count} / {discovery.total_required}
             </div>
 
-            {discovery.current_question && (
+            {/* Loading state for next question */}
+            {isLoadingNextQuestion && (
+              <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary" data-testid="loading-next-question">
+                <div className="flex items-center justify-center gap-3 py-4">
+                  <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="text-sm text-primary font-medium">Generating next question...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Current question (hidden while loading next) */}
+            {discovery.current_question && !isLoadingNextQuestion && (
               <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary" data-testid="discovery-question">
                 <div className="text-xs font-medium text-primary uppercase mb-1">
                   Current Question ({discovery.current_question.category})
@@ -249,7 +261,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
             )}
 
             {/* Feature: 012-discovery-answer-ui - Answer Input (T015, T016) */}
-            {discovery.current_question && (
+            {discovery.current_question && !isLoadingNextQuestion && (
               <div className="mt-4">
                 <textarea
                   value={answer}
@@ -280,26 +292,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                     onClick={submitAnswer}
                     disabled={isSubmitting || !answer.trim()}
                     data-testid="submit-answer-button"
-                    className={`py-2 px-6 rounded-lg font-semibold transition-colors ${
+                    className={`py-2 px-6 rounded-lg font-semibold transition-colors flex items-center gap-2 ${
                       isSubmitting || !answer.trim()
                         ? 'bg-muted cursor-not-allowed text-muted-foreground'
                         : 'bg-primary hover:bg-primary/90 text-primary-foreground'
                     }`}
                   >
+                    {isSubmitting && (
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
                     {isSubmitting ? 'Submitting...' : 'Submit Answer'}
                   </button>
                 </div>
-
-                {/* Feature: 012-discovery-answer-ui - Success Message (US6, T091) */}
-                {successMessage && (
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm"
-                  >
-                    {successMessage}
-                  </div>
-                )}
 
                 {/* Feature: 012-discovery-answer-ui - Error Message (US7, T091) */}
                 {submissionError && (
