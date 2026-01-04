@@ -1,9 +1,9 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-Sprint%2010%20Complete%20%28MVP%29-brightgreen)
+![Status](https://img.shields.io/badge/status-Sprint%2011%20In%20Progress-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-550%2B%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1200%2B%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 
 > AI coding agents that work autonomously while you sleep. Check in like a coworker, answer questions when needed, ship features continuously.
@@ -45,7 +45,30 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ---
 
-## What's New (Updated: 2025-12-03)
+## What's New (Updated: 2026-01-03)
+
+### 🔐 Authentication System Overhaul (Sprint 11)
+
+**FastAPI Users Migration** - Complete auth system redesign for production security.
+
+#### Authentication Changes (2026-01-02)
+- **Migration**: BetterAuth → FastAPI Users with JWT tokens
+- **Mandatory Auth**: Authentication is now required (no bypass mode)
+- **WebSocket Auth**: Connections require `?token=TOKEN` query parameter
+- **Session Management**: Secure session tokens with SQLite-backed storage
+
+#### Auto-Start Discovery & UI Improvements (2026-01-03)
+- **Auto-Start Discovery**: Project discovery now starts automatically after creation
+- **Start Discovery Button**: Manual trigger for users to start/restart discovery
+- **Dashboard Tabs**: Dedicated tabs for Tasks, Quality Gates, and Metrics (#169)
+- **Environment Variables**: Fixed `NEXT_PUBLIC_*` build-time configuration
+
+#### Bug Fixes
+- Fixed WebSocket connections failing without auth token (code 1008)
+- Fixed API URL defaulting to wrong localhost port in `agentAssignment.ts`
+- Improved error handling for discovery start failures
+
+---
 
 ### 🎉 Sprint 10 Complete: MVP COMPLETE!
 
@@ -339,10 +362,10 @@ uv run pytest --cov=codeframe --cov-report=html
 
 ### Test Statistics
 
-- **Total Tests**: 550+
-  - Unit tests: ~400
-  - Integration tests: ~100
-  - E2E tests: 47 (10 backend + 37 Playwright)
+- **Total Tests**: 1200+
+  - Unit tests: ~800 (Python + TypeScript)
+  - Integration tests: ~350
+  - E2E tests: 47+ (10 backend + 37 Playwright)
 - **Coverage**: 88%+
 - **Pass Rate**: 100%
 
