@@ -82,9 +82,16 @@ async def start_project_agent(
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if api_key:
             try:
-                # Create temporary LeadAgent to check discovery status
-                temp_agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
-                discovery_status = temp_agent.get_discovery_status()
+                # First check if agent already exists in running_agents to avoid duplicate instantiation
+                existing_agent = running_agents.get(project_id)
+                if existing_agent:
+                    # Reuse existing agent for status check
+                    discovery_status = existing_agent.get_discovery_status()
+                else:
+                    # Create temporary agent only for status check (will be replaced by start_agent if needed)
+                    temp_agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+                    discovery_status = temp_agent.get_discovery_status()
+
                 discovery_state = discovery_status.get("state", "idle")
 
                 if discovery_state == "idle":
