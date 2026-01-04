@@ -189,14 +189,19 @@ class TestStartAgentEndpoint:
         assert "not found" in response.json()["detail"].lower()
 
     def test_start_agent_endpoint_handles_already_running(
-        self, test_client_with_db, sample_project
+        self, test_client_with_db, sample_project, monkeypatch
     ):
         """Test that start endpoint is idempotent for already running projects.
 
         Requirement: cf-10.2 - Idempotent behavior for already running agents
+
+        Updated for fix/start-discovery: Returns 200 only when discovery is
+        already in progress (not idle). When discovery is idle, endpoint
+        should start discovery regardless of project status.
         """
         # ARRANGE
         project_id = sample_project["id"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
 
         # Update project status to RUNNING - get db from reloaded server
         from codeframe.ui import server
@@ -204,10 +209,22 @@ class TestStartAgentEndpoint:
         db = server.app.state.db
         db.update_project(project_id, {"status": ProjectStatus.RUNNING})
 
+        # Mock LeadAgent's get_discovery_status to return discovering state
+        # (discovery already in progress - so "already running" is correct)
+        mock_agent = Mock()
+        mock_agent.get_discovery_status.return_value = {
+            "state": "discovering",
+            "answered_count": 1,
+            "total_required": 5,
+            "progress_percentage": 20.0,
+            "answers": {"q1": "answer1"},
+        }
+
         # ACT
         with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
             mock_start_agent.return_value = AsyncMock()
-            response = test_client_with_db.post(f"/api/projects/{project_id}/start")
+            with patch("codeframe.ui.routers.agents.LeadAgent", return_value=mock_agent):
+                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
 
         # ASSERT
         assert response.status_code == 200  # Already running
@@ -578,3 +595,174 @@ class TestAgentLifecycleErrorHandling:
         # ASSERT - Agent still created despite broadcast failure
         project = temp_db_for_lifecycle.get_project(project_id)
         assert project["status"] == ProjectStatus.RUNNING.value
+
+
+@pytest.mark.unit
+class TestStartEndpointDiscoveryState:
+    """Test /start endpoint behavior based on discovery state.
+
+    Fix for issue: When project is "running" but discovery is "idle", the
+    "Start Discovery" button should still work. The /start endpoint should
+    check discovery state, not just project status.
+    """
+
+    def test_start_endpoint_starts_discovery_when_project_running_but_discovery_idle(
+        self, test_client_with_db, sample_project, monkeypatch
+    ):
+        """Test that start endpoint proceeds when project is running but discovery is idle.
+
+        Scenario:
+        - Project status: "running"
+        - Discovery state: "idle" (no discovery started)
+        - Expected: 202 Accepted (start discovery)
+        """
+        # ARRANGE
+        project_id = sample_project["id"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+
+        # Update project status to RUNNING but keep discovery idle
+        from codeframe.ui import server
+
+        db = server.app.state.db
+        db.update_project(project_id, {"status": ProjectStatus.RUNNING})
+
+        # Mock LeadAgent's get_discovery_status to return idle state
+        mock_agent = Mock()
+        mock_agent.get_discovery_status.return_value = {
+            "state": "idle",
+            "answered_count": 0,
+            "answers": {},
+        }
+
+        # ACT
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
+            mock_start_agent.return_value = AsyncMock()
+            with patch("codeframe.ui.routers.agents.LeadAgent", return_value=mock_agent):
+                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
+
+        # ASSERT - Should return 202 Accepted, not 200 "already running"
+        assert response.status_code == 202
+        assert "starting" in response.json()["message"].lower() or "start" in response.json()["message"].lower()
+        # start_agent should have been called to initiate discovery
+        mock_start_agent.assert_called_once()
+
+    def test_start_endpoint_returns_already_running_when_discovery_active(
+        self, test_client_with_db, sample_project, monkeypatch
+    ):
+        """Test that start endpoint returns 200 when discovery is already in progress.
+
+        Scenario:
+        - Project status: "running"
+        - Discovery state: "discovering" (discovery already active)
+        - Expected: 200 OK with "already running" message
+        """
+        # ARRANGE
+        project_id = sample_project["id"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+
+        # Update project status to RUNNING
+        from codeframe.ui import server
+
+        db = server.app.state.db
+        db.update_project(project_id, {"status": ProjectStatus.RUNNING})
+
+        # Mock LeadAgent's get_discovery_status to return discovering state
+        mock_agent = Mock()
+        mock_agent.get_discovery_status.return_value = {
+            "state": "discovering",
+            "answered_count": 2,
+            "total_required": 5,
+            "progress_percentage": 40.0,
+            "answers": {"q1": "answer1", "q2": "answer2"},
+        }
+
+        # ACT
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
+            with patch("codeframe.ui.routers.agents.LeadAgent", return_value=mock_agent):
+                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
+
+        # ASSERT - Should return 200 OK with already running message
+        assert response.status_code == 200
+        response_data = response.json()
+        assert "running" in response_data.get("status", "").lower() or "running" in response_data.get("message", "").lower()
+        # start_agent should NOT have been called
+        mock_start_agent.assert_not_called()
+
+    def test_start_endpoint_handles_discovery_completed(
+        self, test_client_with_db, sample_project, monkeypatch
+    ):
+        """Test that start endpoint returns appropriate response when discovery is completed.
+
+        Scenario:
+        - Project status: "running"
+        - Discovery state: "completed"
+        - Expected: 200 OK with "discovery completed" or "already running" message
+        """
+        # ARRANGE
+        project_id = sample_project["id"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+
+        # Update project status to RUNNING
+        from codeframe.ui import server
+
+        db = server.app.state.db
+        db.update_project(project_id, {"status": ProjectStatus.RUNNING})
+
+        # Mock LeadAgent's get_discovery_status to return completed state
+        mock_agent = Mock()
+        mock_agent.get_discovery_status.return_value = {
+            "state": "completed",
+            "answered_count": 5,
+            "total_required": 5,
+            "progress_percentage": 100.0,
+            "answers": {"q1": "a1", "q2": "a2", "q3": "a3", "q4": "a4", "q5": "a5"},
+        }
+
+        # ACT
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
+            with patch("codeframe.ui.routers.agents.LeadAgent", return_value=mock_agent):
+                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
+
+        # ASSERT - Should return 200 OK
+        assert response.status_code == 200
+        response_data = response.json()
+        # Either "completed" or "running" message is acceptable
+        message = response_data.get("message", "").lower()
+        status = response_data.get("status", "").lower()
+        assert "complet" in message or "running" in message or "complet" in status or "running" in status
+        # start_agent should NOT have been called since discovery is already done
+        mock_start_agent.assert_not_called()
+
+    def test_start_endpoint_handles_discovery_status_check_failure(
+        self, test_client_with_db, sample_project, monkeypatch
+    ):
+        """Test that start endpoint proceeds when discovery status check fails.
+
+        Scenario:
+        - Project status: "running"
+        - Discovery status check: raises exception (e.g., database error)
+        - Expected: 202 Accepted (fall back to normal start flow)
+        """
+        # ARRANGE
+        project_id = sample_project["id"]
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-api-key")
+
+        # Update project status to RUNNING
+        from codeframe.ui import server
+
+        db = server.app.state.db
+        db.update_project(project_id, {"status": ProjectStatus.RUNNING})
+
+        # Mock LeadAgent to raise exception when checking discovery status
+        mock_agent = Mock()
+        mock_agent.get_discovery_status.side_effect = Exception("Database error")
+
+        # ACT
+        with patch("codeframe.ui.routers.agents.start_agent") as mock_start_agent:
+            mock_start_agent.return_value = AsyncMock()
+            with patch("codeframe.ui.routers.agents.LeadAgent", return_value=mock_agent):
+                response = test_client_with_db.post(f"/api/projects/{project_id}/start")
+
+        # ASSERT - Should return 202 and proceed with start (fallback behavior)
+        assert response.status_code == 202
+        mock_start_agent.assert_called_once()

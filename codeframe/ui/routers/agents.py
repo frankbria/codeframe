@@ -20,6 +20,7 @@ from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
 from codeframe.ui.shared import running_agents, start_agent
 from codeframe.ui.services.agent_service import AgentService
+from codeframe.agents.lead_agent import LeadAgent
 from codeframe.ui.models import (
     AgentAssignmentRequest,
     AgentRoleUpdateRequest,
@@ -44,6 +45,9 @@ async def start_project_agent(
     """Start Lead Agent for a project (cf-10.2).
 
     Returns 202 Accepted immediately and starts agent in background.
+    Checks discovery state when project is already running - if discovery
+    is "idle", starts discovery; if "discovering" or "completed", returns
+    appropriate status.
 
     Args:
         project_id: Project ID to start agent for
@@ -52,10 +56,11 @@ async def start_project_agent(
         current_user: Authenticated user
 
     Returns:
-        202 Accepted with message
-        200 OK if already running
-        404 Not Found if project doesn't exist
-        403 Forbidden if user lacks project access
+        202 Accepted: Starting discovery (even if project status is "running" but discovery is "idle")
+        200 OK: Discovery already in progress or completed
+        404 Not Found: Project doesn't exist
+        403 Forbidden: User lacks project access
+        500 Internal Server Error: API key not configured
 
     Raises:
         HTTPException: 403 if unauthorized, 404 if project not found, 500 if API key not configured
@@ -70,12 +75,47 @@ async def start_project_agent(
     if not db.user_has_project_access(current_user.id, project_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # cf-10.2: Handle idempotent behavior - already running
+    # cf-10.2: Handle idempotent behavior - check discovery state if already running
     if project["status"] == ProjectStatus.RUNNING.value:
-        return JSONResponse(
-            status_code=200,
-            content={"message": f"Project {project_id} is already running", "status": "running"},
-        )
+        # Check discovery state before returning "already running"
+        # If discovery is idle, we should still start discovery
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if api_key:
+            try:
+                # Create temporary LeadAgent to check discovery status
+                temp_agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+                discovery_status = temp_agent.get_discovery_status()
+                discovery_state = discovery_status.get("state", "idle")
+
+                if discovery_state == "idle":
+                    # Discovery not started - proceed to start discovery
+                    logger.info(f"Project {project_id} is running but discovery is idle - starting discovery")
+                    background_tasks.add_task(start_agent, project_id, db, running_agents, api_key)
+                    return {"message": f"Starting discovery for project {project_id}", "status": "starting"}
+                elif discovery_state == "discovering":
+                    # Discovery already in progress
+                    return JSONResponse(
+                        status_code=200,
+                        content={"message": f"Project {project_id} discovery already in progress", "status": "running"},
+                    )
+                elif discovery_state == "completed":
+                    # Discovery completed
+                    return JSONResponse(
+                        status_code=200,
+                        content={"message": f"Project {project_id} discovery already completed", "status": "completed"},
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to check discovery status for project {project_id}: {e}")
+                # Fall back to normal start flow on error - try to start discovery
+                # This is safer than blocking since start_agent handles duplicates gracefully
+                background_tasks.add_task(start_agent, project_id, db, running_agents, api_key)
+                return {"message": f"Starting discovery for project {project_id}", "status": "starting"}
+        else:
+            # No API key available - can't check discovery status or start
+            return JSONResponse(
+                status_code=200,
+                content={"message": f"Project {project_id} is already running", "status": "running"},
+            )
 
     # cf-10.2: Get API key from environment
     api_key = os.environ.get("ANTHROPIC_API_KEY")

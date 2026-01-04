@@ -445,6 +445,65 @@ describe('DiscoveryProgress Component', () => {
       });
     });
 
+    it('should handle "already running" response gracefully', async () => {
+      // This tests the case where backend returns "already running" but discovery started
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      const discoveringData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+          current_question: {
+            id: 'q1',
+            question: 'What is your project about?',
+            category: 'overview',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock)
+        .mockResolvedValueOnce({ data: idleData })
+        .mockResolvedValueOnce({ data: discoveringData });
+
+      // Mock startProject to return "already running" response (not an error)
+      mockStartProject.mockResolvedValueOnce({ data: { status: 'running', message: 'Already running' } });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('start-discovery-button')).toBeInTheDocument();
+      });
+
+      const button = screen.getByTestId('start-discovery-button');
+      fireEvent.click(button);
+
+      // Should not show error since it's not actually an error
+      await waitFor(() => {
+        expect(mockStartProject).toHaveBeenCalledWith(1);
+      });
+
+      // Wait for the refresh to happen
+      jest.advanceTimersByTime(1000);
+
+      // Should still try to refresh and transition
+      await waitFor(() => {
+        expect(projectsApi.getDiscoveryProgress).toHaveBeenCalledTimes(2);
+      });
+    });
+
     it('should transition to discovering state after successful start', async () => {
       // Use real timers for this test since it involves complex async interactions
       jest.useRealTimers();
