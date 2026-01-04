@@ -4,7 +4,19 @@
 
 import type { WebSocketMessage } from '@/types';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+
+/**
+ * Get the WebSocket URL with authentication token
+ * The backend requires token as a query parameter for authentication
+ */
+function getAuthenticatedWsUrl(): string {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  if (token) {
+    return `${WS_BASE_URL}?token=${encodeURIComponent(token)}`;
+  }
+  return WS_BASE_URL;
+}
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
@@ -24,7 +36,8 @@ export class WebSocketClient {
       return;
     }
 
-    this.ws = new WebSocket(WS_URL);
+    const wsUrl = getAuthenticatedWsUrl();
+    this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       console.log('WebSocket connected');
