@@ -17,9 +17,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
  * List all checkpoints for a project
  */
 export async function listCheckpoints(projectId: number): Promise<Checkpoint[]> {
-  return authFetch<Checkpoint[]>(
+  const response = await authFetch<{ checkpoints: Checkpoint[] }>(
     `${API_BASE_URL}/api/projects/${projectId}/checkpoints`
   );
+  return response.checkpoints ?? [];
 }
 
 /**

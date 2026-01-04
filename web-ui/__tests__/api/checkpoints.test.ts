@@ -62,7 +62,8 @@ describe('Checkpoints API Client', () => {
     it('test_list_checkpoints_success', async () => {
       // ARRANGE
       const mockCheckpoints = [mockCheckpoint];
-      mockAuthFetch.mockResolvedValueOnce(mockCheckpoints);
+      // API returns wrapped response: { checkpoints: [...] }
+      mockAuthFetch.mockResolvedValueOnce({ checkpoints: mockCheckpoints });
 
       // ACT
       const result = await listCheckpoints(123);
@@ -72,6 +73,17 @@ describe('Checkpoints API Client', () => {
         'http://localhost:8080/api/projects/123/checkpoints'
       );
       expect(result).toEqual(mockCheckpoints);
+    });
+
+    it('test_list_checkpoints_empty_project', async () => {
+      // ARRANGE - Backend returns empty checkpoints array for new projects
+      mockAuthFetch.mockResolvedValueOnce({ checkpoints: [] });
+
+      // ACT
+      const result = await listCheckpoints(123);
+
+      // ASSERT
+      expect(result).toEqual([]);
     });
 
     it('test_list_checkpoints_error', async () => {
