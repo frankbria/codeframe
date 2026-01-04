@@ -9,7 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { loginUser } from './test-utils';
+import { loginUser, createTestProject } from './test-utils';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
@@ -226,5 +226,119 @@ test.describe('Checkpoint UI Workflow', () => {
       // Dialog should have warning
       await expect(confirmDialog.locator('[data-testid="delete-warning"]')).toBeVisible();
     }
+  });
+});
+
+/**
+ * Tests for newly created projects (empty checkpoint list).
+ * These tests verify the fix for the ".sort is not a function" error
+ * that occurred when viewing checkpoints on projects with no checkpoints.
+ */
+test.describe('Checkpoint UI - New Project (Empty State)', () => {
+  test('should display empty state without errors for new project', async ({ page }) => {
+    // Collect console errors during test
+    const consoleErrors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') {
+        consoleErrors.push(msg.text());
+      }
+    });
+
+    // Login and create a fresh project
+    await loginUser(page);
+    const projectId = await createTestProject(
+      page,
+      `checkpoint-test-${Date.now()}`,
+      'Test project for checkpoint empty state'
+    );
+
+    // Navigate to project dashboard
+    await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
+    await page.waitForLoadState('networkidle');
+
+    // Navigate to checkpoint tab
+    const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
+    await checkpointTab.waitFor({ state: 'visible', timeout: 10000 });
+    await checkpointTab.click();
+
+    // Wait for checkpoint panel to load
+    const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
+    await checkpointPanel.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Wait for API response
+    await page.waitForResponse(
+      (response) => response.url().includes('/checkpoints') && response.status() === 200,
+      { timeout: 10000 }
+    );
+
+    // Give time for any JS errors to surface
+    await page.waitForTimeout(500);
+
+    // Verify empty state is displayed correctly
+    const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
+    await expect(emptyState).toBeVisible({ timeout: 5000 });
+
+    // Verify create button is still functional
+    const createButton = page.locator('[data-testid="create-checkpoint-button"]');
+    await expect(createButton).toBeVisible();
+
+    // Critical: Verify no JavaScript errors occurred (especially ".sort is not a function")
+    const sortErrors = consoleErrors.filter(
+      (err) => err.includes('sort is not a function') || err.includes('is not a function')
+    );
+    expect(sortErrors).toHaveLength(0);
+  });
+
+  test('should successfully create first checkpoint on new project', async ({ page }) => {
+    // Login and create a fresh project
+    await loginUser(page);
+    const projectId = await createTestProject(
+      page,
+      `checkpoint-create-test-${Date.now()}`,
+      'Test project for creating first checkpoint'
+    );
+
+    // Navigate to project dashboard
+    await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
+    await page.waitForLoadState('networkidle');
+
+    // Navigate to checkpoint tab
+    const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
+    await checkpointTab.waitFor({ state: 'visible', timeout: 10000 });
+    await checkpointTab.click();
+
+    // Wait for checkpoint panel
+    const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
+    await checkpointPanel.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Wait for empty state to appear (confirms API call succeeded)
+    const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
+    await emptyState.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Click create checkpoint button
+    const createButton = page.locator('[data-testid="create-checkpoint-button"]');
+    await createButton.click();
+
+    // Fill in checkpoint details
+    const modal = page.locator('[data-testid="create-checkpoint-modal"]');
+    await modal.waitFor({ state: 'visible', timeout: 5000 });
+
+    const checkpointName = `First Checkpoint ${Date.now()}`;
+    await modal.locator('[data-testid="checkpoint-name-input"]').fill(checkpointName);
+    await modal.locator('[data-testid="checkpoint-description-input"]').fill('First checkpoint for new project');
+
+    // Submit
+    await modal.locator('[data-testid="checkpoint-save-button"]').click();
+
+    // Verify checkpoint was created - empty state should disappear
+    await expect(emptyState).not.toBeVisible({ timeout: 10000 });
+
+    // New checkpoint should be visible
+    const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
+    await expect(checkpointItems).toHaveCount(1, { timeout: 10000 });
+
+    // Verify the checkpoint name is displayed
+    const firstCheckpoint = checkpointItems.first();
+    await expect(firstCheckpoint.locator('[data-testid="checkpoint-name"]')).toContainText(checkpointName);
   });
 });
