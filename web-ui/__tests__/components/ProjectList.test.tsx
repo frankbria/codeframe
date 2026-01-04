@@ -153,6 +153,46 @@ describe('ProjectList', () => {
         expect(screen.getByText(/Create your first project/i)).toBeInTheDocument();
       });
     });
+
+    it('shows get started button in empty state', async () => {
+      (api.projectsApi.list as jest.Mock).mockResolvedValue({
+        data: { projects: [] },
+      });
+
+      renderWithSWR(<ProjectList />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('empty-state-create-button')).toBeInTheDocument();
+      });
+    });
+
+    it('clicking get started button shows creation form', async () => {
+      (api.projectsApi.list as jest.Mock).mockResolvedValue({
+        data: { projects: [] },
+      });
+
+      renderWithSWR(<ProjectList />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('empty-state-create-button')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTestId('empty-state-create-button'));
+
+      expect(screen.getByTestId('project-creation-form')).toBeInTheDocument();
+    });
+
+    it('shows decorative icon in empty state', async () => {
+      (api.projectsApi.list as jest.Mock).mockResolvedValue({
+        data: { projects: [] },
+      });
+
+      renderWithSWR(<ProjectList />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('empty-state-icon')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('Project Grid', () => {

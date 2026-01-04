@@ -173,6 +173,55 @@ test.describe('Project Navigation Flow', () => {
     await expect(page.getByTestId('dashboard-header')).toBeVisible({ timeout: 10000 });
   });
 
+  test('should navigate back to project list using back link', async ({ page }) => {
+    // First create a project
+    await page.goto('/');
+
+    // Click create project button
+    await page.getByTestId('create-project-button').click();
+
+    // Fill and submit project
+    const projectName = `back-nav-test-${Date.now()}`;
+    await page.getByTestId('project-name-input').fill(projectName);
+    await page.getByTestId('project-description-input').fill('Test project for back navigation');
+    await page.getByTestId('create-project-submit').click();
+
+    // Wait for redirect to dashboard
+    await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 10000 });
+    await expect(page.getByTestId('dashboard-header')).toBeVisible({ timeout: 10000 });
+
+    // Click the "Back to Projects" link
+    await page.getByTestId('back-to-projects').click();
+
+    // Assert navigated back to project list
+    await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
+    await expect(page.getByRole('heading', { level: 1, name: /Your Projects/i })).toBeVisible();
+  });
+
+  test('should show CodeFRAME logo linking to project list', async ({ page }) => {
+    // Navigate to project list
+    await page.goto('/');
+
+    // Click create project button
+    await page.getByTestId('create-project-button').click();
+
+    // Create a project
+    const projectName = `logo-nav-test-${Date.now()}`;
+    await page.getByTestId('project-name-input').fill(projectName);
+    await page.getByTestId('project-description-input').fill('Test project');
+    await page.getByTestId('create-project-submit').click();
+
+    // Wait for dashboard
+    await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 10000 });
+
+    // Click the CodeFRAME logo in navigation
+    await page.getByRole('link', { name: /CodeFRAME/i }).click();
+
+    // Assert navigated back to project list
+    await expect(page).toHaveURL(/\/$/, { timeout: 5000 });
+    await expect(page.getByRole('heading', { level: 1, name: /Your Projects/i })).toBeVisible();
+  });
+
   test('should show empty state when no projects exist', async ({ page }) => {
     // This test may be flaky if other tests leave projects behind
     // It's primarily for documentation purposes

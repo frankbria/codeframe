@@ -148,11 +148,45 @@ export default function ProjectList() {
 
       {/* Projects Grid or Empty State */}
       {projects.length === 0 ? (
-        <div className="flex items-center justify-center min-h-[300px] bg-muted rounded-lg border-2 border-dashed border-border">
-          <div className="text-center">
-            <p className="text-muted-foreground text-lg">
-              No projects yet. Create your first project!
+        <div className="flex items-center justify-center min-h-[400px] bg-muted rounded-lg border-2 border-dashed border-border">
+          <div className="text-center px-6 py-8">
+            {/* Decorative icon */}
+            <div
+              data-testid="empty-state-icon"
+              className="mx-auto w-16 h-16 mb-6 rounded-full bg-primary/10 flex items-center justify-center"
+            >
+              <svg
+                className="w-8 h-8 text-primary"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
+            </div>
+
+            {/* Message */}
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              No projects yet
+            </h3>
+            <p className="text-muted-foreground text-base mb-6 max-w-sm">
+              Create your first project and let AI coding agents work autonomously while you sleep.
             </p>
+
+            {/* CTA Button */}
+            <button
+              onClick={() => setShowForm(true)}
+              data-testid="empty-state-create-button"
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium"
+            >
+              Get Started
+            </button>
           </div>
         </div>
       ) : (
