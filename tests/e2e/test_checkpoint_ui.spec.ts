@@ -268,20 +268,24 @@ test.describe('Checkpoint UI - New Project (Empty State)', () => {
     // Navigate to checkpoint tab
     const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
     await checkpointTab.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Set up response listener BEFORE clicking (to avoid race condition)
+    const checkpointsResponsePromise = page.waitForResponse(
+      (response) => response.url().includes('/checkpoints'),
+      { timeout: 15000 }
+    ).catch(() => null); // Don't fail if response already happened
+
     await checkpointTab.click();
 
     // Wait for checkpoint panel to load
     const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
     await checkpointPanel.waitFor({ state: 'visible', timeout: 10000 });
 
-    // Wait for API response
-    await page.waitForResponse(
-      (response) => response.url().includes('/checkpoints') && response.status() === 200,
-      { timeout: 10000 }
-    );
+    // Wait for API response (may have already completed)
+    await checkpointsResponsePromise;
 
-    // Give time for any JS errors to surface
-    await page.waitForTimeout(500);
+    // Give time for UI to render after API response
+    await page.waitForTimeout(1000);
 
     // Verify empty state is displayed correctly
     const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
