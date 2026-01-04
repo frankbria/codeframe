@@ -36,13 +36,20 @@ export default function ProjectList() {
   const [loadingMessage, setLoadingMessage] = useState('Creating your project...');
 
   // Fetch projects using SWR
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading, mutate } = useSWR(
     '/projects',
     () => projectsApi.list().then((res) => res.data.projects)
   );
 
   const handleProjectClick = (projectId: number) => {
     router.push(`/projects/${projectId}`);
+  };
+
+  const handleProjectKeyDown = (e: React.KeyboardEvent, projectId: number) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleProjectClick(projectId);
+    }
   };
 
   /**
@@ -65,6 +72,9 @@ export default function ProjectList() {
   /**
    * Start discovery and redirect to Dashboard after successful project creation
    * Called by ProjectCreationForm when project is created
+   *
+   * Always refreshes project list to ensure consistency, even if discovery fails.
+   * User is navigated to project dashboard regardless of discovery outcome.
    */
   const handleProjectCreated = async (projectId: number) => {
     // Update loading message to show discovery phase
@@ -76,9 +86,17 @@ export default function ProjectList() {
     } catch (error) {
       // Log error but still navigate - user can manually start if needed
       console.error('Failed to auto-start project discovery:', error);
+    } finally {
+      // Always refresh project list to ensure data consistency
+      // This runs whether discovery succeeds or fails
+      try {
+        await mutate();
+      } catch {
+        // Silently handle mutate errors - navigation will still occur
+      }
+      setIsCreating(false);
     }
 
-    setIsCreating(false);
     // Navigate to the project dashboard
     router.push(`/projects/${projectId}`);
   };
@@ -194,8 +212,12 @@ export default function ProjectList() {
           {projects.map((project) => (
             <div
               key={project.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Open project ${project.name}, status: ${project.status}, phase: ${project.phase}`}
               onClick={() => handleProjectClick(project.id)}
-              className="bg-card rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+              onKeyDown={(e) => handleProjectKeyDown(e, project.id)}
+              className="bg-card rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             >
               <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
               <div className="mt-2 space-y-1 text-sm text-foreground">

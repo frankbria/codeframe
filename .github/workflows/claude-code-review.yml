@@ -64,7 +64,7 @@ jobs:
 
             There's no need to repeat information unless it is critical and not
             being reflected in comments or code. Be aware of your prior reviews and that the new file information
-            may be changes because of previous reviews.
+            may reflect changes because of previous reviews.
 
             Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
 
