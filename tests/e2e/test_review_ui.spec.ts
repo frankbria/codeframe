@@ -32,10 +32,17 @@ test.describe('Review Findings UI', () => {
     // Wait for dashboard to render - agent panel is last to render
     await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
 
-    // Review panel is visible on Overview tab (no separate review tab exists)
+    // Navigate to Tasks tab where review findings now live (Sprint 10 Refactor)
+    const tasksTab = page.locator('[data-testid="tasks-tab"]');
+    await tasksTab.waitFor({ state: 'visible', timeout: 10000 });
+    await tasksTab.click();
+
+    // Wait for review findings panel to be visible
+    await page.locator('[data-testid="review-findings-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
   });
 
   test('should display review findings panel', async ({ page }) => {
+    // Already on Tasks tab from beforeEach (Sprint 10 Refactor)
     const reviewPanel = page.locator('[data-testid="review-findings-panel"]');
 
     // Wait for panel to exist and be visible
@@ -43,17 +50,6 @@ test.describe('Review Findings UI', () => {
 
     // Scroll panel into view
     await reviewPanel.scrollIntoViewIfNeeded().catch(() => {});
-
-    // If not visible, panel might be in a different tab or section
-    if (!(await reviewPanel.isVisible())) {
-      // Try clicking overview tab if it exists
-      const overviewTab = page.getByRole('tab', { name: 'Overview' });
-      if (await overviewTab.isVisible()) {
-        await overviewTab.click();
-        // Wait for review panel to become visible after tab switch
-        await reviewPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-      }
-    }
 
     await reviewPanel.waitFor({ state: 'visible', timeout: 10000 });
     await expect(reviewPanel).toBeVisible();

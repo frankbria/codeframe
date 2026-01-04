@@ -121,17 +121,21 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     await agentPanel.waitFor({ state: 'visible', timeout: 10000 });
     await expect(agentPanel).toBeVisible();
 
-    // Verify Overview tab panels exist (these are in the default 'overview' tab)
-    const overviewPanels = [
-      'review-findings-panel',
-      'metrics-panel'
-    ];
+    // Navigate to Tasks tab and verify review-findings-panel (Sprint 10 Refactor)
+    const tasksTab = page.locator('[data-testid="tasks-tab"]');
+    await tasksTab.waitFor({ state: 'visible', timeout: 10000 });
+    await tasksTab.click();
+    const reviewPanel = page.locator('[data-testid="review-findings-panel"]');
+    await reviewPanel.waitFor({ state: 'attached', timeout: 10000 });
+    await expect(reviewPanel).toBeAttached();
 
-    for (const panelId of overviewPanels) {
-      const panel = page.locator(`[data-testid="${panelId}"]`);
-      await panel.scrollIntoViewIfNeeded().catch(() => {});
-      await expect(panel).toBeAttached();
-    }
+    // Navigate to Metrics tab and verify metrics-panel (Sprint 10 Refactor)
+    const metricsTab = page.locator('[data-testid="metrics-tab"]');
+    await metricsTab.waitFor({ state: 'visible', timeout: 10000 });
+    await metricsTab.click();
+    const metricsPanel = page.locator('[data-testid="metrics-panel"]');
+    await metricsPanel.waitFor({ state: 'attached', timeout: 10000 });
+    await expect(metricsPanel).toBeAttached();
 
     // Verify Checkpoints tab panel exists by clicking the tab first
     // (React conditionally renders tab panels, so we must activate the tab)
@@ -145,7 +149,11 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   });
 
   test('should display review findings panel', async () => {
-    // Navigate to or expand review findings section
+    // Navigate to Tasks tab where review findings panel now lives (Sprint 10 Refactor)
+    const tasksTab = page.locator('[data-testid="tasks-tab"]');
+    await tasksTab.waitFor({ state: 'visible', timeout: 10000 });
+    await tasksTab.click();
+
     const reviewPanel = page.locator('[data-testid="review-findings-panel"]');
 
     // Wait for panel to exist in DOM
@@ -153,18 +161,6 @@ test.describe('Dashboard - Sprint 10 Features', () => {
 
     // Scroll into view
     await reviewPanel.scrollIntoViewIfNeeded().catch(() => {});
-
-    // Make panel visible if it's in a tab or collapsed
-    if (!(await reviewPanel.isVisible())) {
-      // Review panel is in the Overview tab
-      const overviewTab = page.locator('[data-testid="overview-tab"]');
-      await overviewTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-      if (await overviewTab.isVisible()) {
-        await overviewTab.click();
-        // Wait for panel to become visible after tab switch
-        await reviewPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-      }
-    }
 
     await reviewPanel.waitFor({ state: 'visible', timeout: 10000 });
     await expect(reviewPanel).toBeVisible();
@@ -181,26 +177,15 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   });
 
   test('should display quality gates panel', async () => {
-    // Navigate to quality gates section
+    // Navigate to Quality Gates tab (Sprint 10 Refactor)
+    const qualityGatesTab = page.locator('[data-testid="quality-gates-tab"]');
+    await qualityGatesTab.waitFor({ state: 'visible', timeout: 10000 });
+    await qualityGatesTab.click();
+
     const qualityGatesPanel = page.locator('[data-testid="quality-gates-panel"]');
 
     // Wait for panel to exist
     await qualityGatesPanel.waitFor({ state: 'attached', timeout: 15000 });
-
-    // Scroll into view
-    await qualityGatesPanel.scrollIntoViewIfNeeded().catch(() => {});
-
-    // Make panel visible if needed
-    if (!(await qualityGatesPanel.isVisible())) {
-      // Quality gates panel is in the Overview tab
-      const overviewTab = page.locator('[data-testid="overview-tab"]');
-      await overviewTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-      if (await overviewTab.isVisible()) {
-        await overviewTab.click();
-        // Wait for panel to become visible after tab switch
-        await qualityGatesPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-      }
-    }
 
     await qualityGatesPanel.waitFor({ state: 'visible', timeout: 10000 });
     await expect(qualityGatesPanel).toBeVisible();
@@ -239,12 +224,12 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   });
 
   test('should display metrics and cost tracking panel', async () => {
-    // Metrics panel is in the Overview tab (which is the default active tab)
-    // No tab navigation needed - just scroll to it
-    const metricsPanel = page.locator('[data-testid="metrics-panel"]');
+    // Navigate to Metrics tab (Sprint 10 Refactor)
+    const metricsTab = page.locator('[data-testid="metrics-tab"]');
+    await metricsTab.waitFor({ state: 'visible', timeout: 10000 });
+    await metricsTab.click();
 
-    // Scroll panel into view
-    await metricsPanel.scrollIntoViewIfNeeded().catch(() => {});
+    const metricsPanel = page.locator('[data-testid="metrics-panel"]');
 
     // Wait for panel to be visible
     await metricsPanel.waitFor({ state: 'visible', timeout: 15000 });
@@ -345,6 +330,11 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   });
 
   test('should display task progress and statistics', async () => {
+    // Navigate to Tasks tab where task statistics now live (Sprint 10 Refactor)
+    const tasksTab = page.locator('[data-testid="tasks-tab"]');
+    await tasksTab.waitFor({ state: 'visible', timeout: 10000 });
+    await tasksTab.click();
+
     // Check for task statistics
     const stats = ['total-tasks', 'completed-tasks', 'blocked-tasks', 'in-progress-tasks'];
 

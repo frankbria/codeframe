@@ -289,7 +289,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
         </div>
       </header>
 
-      {/* Tab Navigation (T009 - Feature 013) */}
+      {/* Tab Navigation (T009 - Feature 013, Sprint 10 Refactor) */}
       <div className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="-mb-px flex space-x-8" role="tablist" aria-label="Dashboard tabs" data-testid="nav-menu">
@@ -309,17 +309,31 @@ export default function Dashboard({ projectId }: DashboardProps) {
             </button>
             <button
               role="tab"
-              aria-selected={activeTab === 'context'}
-              aria-controls="context-panel"
-              onClick={() => setActiveTab('context')}
-              data-testid="context-tab"
+              aria-selected={activeTab === 'tasks'}
+              aria-controls="tasks-panel"
+              onClick={() => setActiveTab('tasks')}
+              data-testid="tasks-tab"
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === 'context'
+                activeTab === 'tasks'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
-              Context
+              Tasks
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === 'quality-gates'}
+              aria-controls="quality-gates-panel"
+              onClick={() => setActiveTab('quality-gates')}
+              data-testid="quality-gates-tab"
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'quality-gates'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              Quality Gates
             </button>
             <button
               role="tab"
@@ -334,6 +348,34 @@ export default function Dashboard({ projectId }: DashboardProps) {
               }`}
             >
               Checkpoints
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === 'metrics'}
+              aria-controls="metrics-panel"
+              onClick={() => setActiveTab('metrics')}
+              data-testid="metrics-tab"
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'metrics'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              Metrics
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === 'context'}
+              aria-controls="context-panel"
+              onClick={() => setActiveTab('context')}
+              data-testid="context-tab"
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'context'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              Context
             </button>
           </nav>
         </div>
@@ -412,25 +454,6 @@ export default function Dashboard({ projectId }: DashboardProps) {
               )}
             </div>
 
-            {/* Task Statistics Section */}
-            <div className="bg-card rounded-lg shadow p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">📊 Task Statistics</h2>
-              <TaskStats />
-            </div>
-
-            {/* Issues & Tasks Section (cf-26) */}
-            <div className="bg-card rounded-lg shadow p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">🎯 Issues & Tasks</h2>
-                {issuesData && (
-                  <span className="text-sm text-muted-foreground">
-                    {issuesData.total_issues} issues, {issuesData.total_tasks} tasks
-                  </span>
-                )}
-              </div>
-              <TaskTreeView issues={issuesData?.issues || []} />
-            </div>
-
             {/* Agents Section - Multi-Agent Per Project Architecture */}
             <div className="bg-card rounded-lg shadow p-6 mb-6" data-testid="agent-status-panel">
               <h2 className="text-lg font-semibold mb-4">🤖 Multi-Agent Team</h2>
@@ -471,68 +494,6 @@ export default function Dashboard({ projectId }: DashboardProps) {
               </div>
             )}
 
-            {/* Blockers Section (T020, 049-human-in-loop) */}
-            <div className="mb-6">
-              <BlockerPanel
-                blockers={(blockersData || []) as unknown as Blocker[]}
-                onBlockerClick={(blocker) => setSelectedBlocker(blocker)}
-              />
-            </div>
-
-            {/* Review Results Section (T065, Sprint 9 Phase 3) */}
-            {selectedTaskForReview && (
-              <div className="mb-6">
-                <ReviewResultsPanel
-                  taskId={selectedTaskForReview}
-                  onClose={() => setSelectedTaskForReview(null)}
-                />
-              </div>
-            )}
-
-            {/* Lint Quality Trend (T124, Sprint 9 Phase 5) */}
-            <div className="mb-6">
-              <LintTrendChart
-                projectId={projectId}
-                days={7}
-                refreshInterval={30000}
-              />
-            </div>
-
-            {/* Sprint 10 Feature Panels */}
-
-            {/* Review Findings Panel (T065, Sprint 10) */}
-            <div className="mb-6" data-testid="review-findings-panel">
-              <div className="bg-card rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold mb-4">🔍 Code Review Findings</h2>
-                <ReviewSummary reviewResult={reviewData} loading={reviewLoading} />
-              </div>
-            </div>
-
-            {/* Quality Gates Panel (Sprint 10) - Error boundary protected */}
-            {showQualityGatesPanel && (
-              <ErrorBoundary
-                key={qualityGatesPanelKey}
-                fallback={qualityGatesFallback}
-                onError={handleQualityGatesError}
-              >
-                <div className="mb-6" data-testid="quality-gates-panel">
-                  <div className="bg-card rounded-lg shadow p-6">
-                    <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
-                    <QualityGatesPanel projectId={projectId} tasks={tasks} />
-                  </div>
-                </div>
-              </ErrorBoundary>
-            )}
-
-
-            {/* Metrics Panel (Sprint 10) */}
-            <div className="mb-6" data-testid="metrics-panel">
-              <div className="bg-card rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold mb-4">📊 Cost & Token Metrics</h2>
-                <CostDashboard projectId={projectId} />
-              </div>
-            </div>
-
             {/* Recent Activity */}
             <div className="bg-card rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold mb-4">📝 Recent Activity</h2>
@@ -562,6 +523,105 @@ export default function Dashboard({ projectId }: DashboardProps) {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tasks Tab Panel (Sprint 10 Refactor) */}
+        {activeTab === 'tasks' && (
+          <div role="tabpanel" id="tasks-panel" aria-labelledby="tasks-tab" data-testid="tasks-panel">
+            {/* Task Statistics Section */}
+            <div className="bg-card rounded-lg shadow p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-4">📊 Task Statistics</h2>
+              <TaskStats />
+            </div>
+
+            {/* Issues & Tasks Section (cf-26) */}
+            <div className="bg-card rounded-lg shadow p-6 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">🎯 Issues & Tasks</h2>
+                {issuesData && (
+                  <span className="text-sm text-muted-foreground">
+                    {issuesData.total_issues} issues, {issuesData.total_tasks} tasks
+                  </span>
+                )}
+              </div>
+              <TaskTreeView issues={issuesData?.issues || []} />
+            </div>
+
+            {/* Blockers Section (T020, 049-human-in-loop) */}
+            <div className="mb-6">
+              <BlockerPanel
+                blockers={(blockersData || []) as unknown as Blocker[]}
+                onBlockerClick={(blocker) => setSelectedBlocker(blocker)}
+              />
+            </div>
+
+            {/* Review Results Section (T065, Sprint 9 Phase 3) */}
+            {selectedTaskForReview && (
+              <div className="mb-6">
+                <ReviewResultsPanel
+                  taskId={selectedTaskForReview}
+                  onClose={() => setSelectedTaskForReview(null)}
+                />
+              </div>
+            )}
+
+            {/* Lint Quality Trend (T124, Sprint 9 Phase 5) */}
+            <div className="mb-6">
+              <LintTrendChart
+                projectId={projectId}
+                days={7}
+                refreshInterval={30000}
+              />
+            </div>
+
+            {/* Review Findings Panel (T065, Sprint 10) */}
+            <div className="mb-6" data-testid="review-findings-panel">
+              <div className="bg-card rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold mb-4">🔍 Code Review Findings</h2>
+                <ReviewSummary reviewResult={reviewData} loading={reviewLoading} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quality Gates Tab Panel (Sprint 10 Refactor) */}
+        {activeTab === 'quality-gates' && (
+          <div role="tabpanel" id="quality-gates-panel" aria-labelledby="quality-gates-tab" data-testid="quality-gates-panel">
+            {showQualityGatesPanel ? (
+              <ErrorBoundary
+                key={qualityGatesPanelKey}
+                fallback={qualityGatesFallback}
+                onError={handleQualityGatesError}
+              >
+                <div className="bg-card rounded-lg shadow p-6">
+                  <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
+                  <QualityGatesPanel projectId={projectId} tasks={tasks} />
+                </div>
+              </ErrorBoundary>
+            ) : (
+              <div className="bg-card rounded-lg shadow p-6">
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-lg mb-2">Quality Gates Panel Hidden</p>
+                  <button
+                    onClick={() => setShowQualityGatesPanel(true)}
+                    className="text-primary hover:underline"
+                  >
+                    Click to show
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Metrics Tab Panel (Sprint 10 Refactor) */}
+        {activeTab === 'metrics' && (
+          <div role="tabpanel" id="metrics-panel" aria-labelledby="metrics-tab" data-testid="metrics-panel">
+            <div className="bg-card rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold mb-4">📊 Cost & Token Metrics</h2>
+              <CostDashboard projectId={projectId} />
             </div>
           </div>
         )}
