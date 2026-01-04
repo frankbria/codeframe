@@ -389,17 +389,20 @@ jobs:
 
       - name: Start frontend dev server
         working-directory: web-ui
+        env:
+          PORT: 3001
+          NEXT_PUBLIC_API_URL: http://localhost:8080
         run: |
           npm run dev > /tmp/frontend.log 2>&1 &
           echo "FRONTEND_PID=$!" >> $GITHUB_ENV
-          echo "Frontend started with PID: $!"
+          echo "Frontend started with PID: $! on port 3001"
 
       - name: Wait for frontend to be ready
         run: |
-          echo "Waiting for frontend to start..."
+          echo "Waiting for frontend to start on port 3001..."
           for i in {1..60}; do
-            if curl -s http://localhost:3000 > /dev/null; then
-              echo "✅ Frontend is ready!"
+            if curl -s http://localhost:3001 > /dev/null; then
+              echo "✅ Frontend is ready on port 3001!"
               break
             fi
             echo "Attempt $i/60: Frontend not ready yet..."
