@@ -123,8 +123,9 @@ test.describe('Start Agent Flow', () => {
       await startButton.click();
 
       // Verify button shows loading state or discovery starts
+      // Use .first() to avoid strict mode violation when multiple elements match
       await expect(
-        startButton.or(page.locator('text=/Starting|Loading next question/i'))
+        startButton.or(page.locator('text=/Starting|Loading next question/i')).first()
       ).toBeVisible({ timeout: 5000 });
 
       // Wait for discovery to actually start (question appears or progress updates)
