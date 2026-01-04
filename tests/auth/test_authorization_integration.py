@@ -112,7 +112,6 @@ class TestProjectEndpointsAuthorization:
         assert response.status_code == 200
         assert response.json()["id"] == 1
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_get_project_non_owner_denied(self, client, bob_token):
         """Test that non-owner cannot access project."""
         response = client.get("/api/projects/1", headers={"Authorization": f"Bearer {bob_token}"})
@@ -129,7 +128,6 @@ class TestProjectEndpointsAuthorization:
 class TestTaskEndpointsAuthorization:
     """Test authorization on /api/tasks endpoints."""
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_create_task_requires_project_access(self, client, alice_token, bob_token, db):
         """Test that creating task requires access to project."""
         # Alice can create task in her project
@@ -157,7 +155,6 @@ class TestTaskEndpointsAuthorization:
 class TestMetricsEndpointsAuthorization:
     """Test authorization on /api/projects/{id}/metrics endpoints."""
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_get_project_costs_requires_access(self, client, alice_token, bob_token):
         """Test that metrics endpoints enforce project access."""
         # Alice can access her project metrics
@@ -223,7 +220,6 @@ class TestCrossProjectDataLeak:
 class TestExceptionHandling:
     """Test that authorization exceptions aren't masked by generic handlers."""
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_review_status_403_not_masked(self, client, bob_token, db):
         """Test that 403 from review endpoints isn't converted to 500."""
         # Create task in Alice's project
