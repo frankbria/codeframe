@@ -32,10 +32,13 @@ test.describe('Metrics Dashboard UI', () => {
     // Wait for dashboard to render - agent panel is one of the last to render
     await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
 
-    // Metrics panel is in the Overview tab (which is active by default)
-    // No tab navigation needed - just scroll to it and wait for it to be visible
+    // Navigate to Metrics tab (Sprint 10 Refactor - metrics now on dedicated tab)
+    const metricsTab = page.locator('[data-testid="metrics-tab"]');
+    await metricsTab.waitFor({ state: 'visible', timeout: 10000 });
+    await metricsTab.click();
+
+    // Wait for metrics panel to be visible
     const metricsPanel = page.locator('[data-testid="metrics-panel"]');
-    await metricsPanel.scrollIntoViewIfNeeded().catch(() => {});
     await metricsPanel.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
 
     // Wait for metrics API to load
