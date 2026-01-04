@@ -144,6 +144,9 @@ export async function getAuthToken(page: Page): Promise<string | null> {
 /**
  * Create a new project via the UI
  *
+ * The flow is: login -> project list page -> click "Create New Project" button ->
+ * fill form -> submit -> navigate to dashboard
+ *
  * @param page - Playwright page object
  * @param name - Project name (defaults to unique timestamped name)
  * @param description - Project description
@@ -157,10 +160,12 @@ export async function createTestProject(
   // Generate unique project name if not provided
   const projectName = name || `test-project-${Date.now()}`;
 
-  // Navigate to root page
+  // Navigate to root page (project list)
   await page.goto('/');
 
-  // The root page shows the ProjectCreationForm directly (no button to click)
+  // Click the "Create New Project" button to show the form
+  await page.getByTestId('create-project-button').click();
+
   // Wait for form to be visible
   await page.getByTestId('project-name-input').waitFor({ state: 'visible' });
 
@@ -172,7 +177,41 @@ export async function createTestProject(
   await page.getByTestId('create-project-submit').click();
 
   // Wait for redirect to project dashboard
-  await page.waitForURL(/\/projects\/\d+/);
+  await page.waitForURL(/\/projects\/\d+/, { timeout: 10000 });
+
+  // Extract project ID from URL
+  const url = page.url();
+  const match = url.match(/\/projects\/(\d+)/);
+  if (!match) {
+    throw new Error('Failed to extract project ID from URL');
+  }
+
+  return match[1];
+}
+
+/**
+ * Navigate to an existing project from the project list
+ *
+ * @param page - Playwright page object
+ * @param projectName - Name of the project to navigate to
+ * @returns Project ID extracted from URL
+ */
+export async function navigateToProject(
+  page: Page,
+  projectName: string
+): Promise<string> {
+  // Navigate to root page (project list)
+  await page.goto('/');
+
+  // Wait for project list to load
+  await page.getByTestId('project-list').waitFor({ state: 'visible', timeout: 5000 });
+
+  // Find and click the project card
+  const projectCard = page.locator(`text=${projectName}`).first();
+  await projectCard.click();
+
+  // Wait for navigation to project dashboard
+  await page.waitForURL(/\/projects\/\d+/, { timeout: 5000 });
 
   // Extract project ID from URL
   const url = page.url();

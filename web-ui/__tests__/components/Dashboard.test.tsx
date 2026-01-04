@@ -1158,4 +1158,48 @@ describe('Dashboard with AgentStateProvider', () => {
       // (Manual test: trigger error, check console for expected log format)
     });
   });
+
+  /**
+   * Feature: Back to Projects Navigation
+   * Allows users to navigate back to the project list from the dashboard
+   */
+  describe('Back to Projects Navigation', () => {
+    /**
+     * Test: Dashboard header contains "Back to Projects" link
+     */
+    it('renders "Back to Projects" link in dashboard header', async () => {
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Should have a back to projects link
+      const backLink = screen.getByTestId('back-to-projects');
+      expect(backLink).toBeInTheDocument();
+      expect(backLink).toHaveAttribute('href', '/');
+    });
+
+    /**
+     * Test: Back link has appropriate text/icon
+     */
+    it('shows back arrow or text for navigation', async () => {
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Should show "Back to Projects" or similar text
+      expect(screen.getByText(/Projects/i)).toBeInTheDocument();
+    });
+  });
 });

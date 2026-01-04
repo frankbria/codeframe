@@ -5,6 +5,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import useSWR from 'swr';
 import { projectsApi, blockersApi } from '@/lib/api';
 import { getTaskReviews } from '@/api/reviews';
@@ -239,6 +240,15 @@ export default function Dashboard({ projectId }: DashboardProps) {
         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between" data-testid="project-selector">
             <div>
+              {/* Back to Projects navigation */}
+              <Link
+                href="/"
+                data-testid="back-to-projects"
+                className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-1"
+              >
+                <span className="mr-1">←</span>
+                <span>Projects</span>
+              </Link>
               <h1 className="text-2xl font-bold text-foreground">
                 CodeFRAME - {projectData.name}
               </h1>

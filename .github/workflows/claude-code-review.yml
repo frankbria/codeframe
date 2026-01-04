@@ -57,6 +57,15 @@ jobs:
             - Security concerns
             - Test coverage
 
+            NOTE: review the other comments on the pull request - including yours.
+            If you are reviewing changes or enhancements beyond the first creation of the pull request,
+            make sure your comments are consistent with your previous reviews, or are 
+            referring to them in a consistent way.
+
+            There's no need to repeat information unless it is critical and not
+            being reflected in comments or code. Be aware of your prior reviews and that the new file information
+            may reflect changes because of previous reviews.
+
             Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.

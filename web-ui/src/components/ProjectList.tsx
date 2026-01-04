@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
+import { Add01Icon } from '@hugeicons/react';
 import { projectsApi } from '@/lib/api';
 import ProjectCreationForm from '@/components/ProjectCreationForm';
+import { Spinner } from '@/components/Spinner';
 
 /**
  * Formats an ISO date string to a readable format
@@ -31,6 +33,8 @@ const formatDate = (dateString: string): string => {
 export default function ProjectList() {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Creating your project...');
 
   // Fetch projects using SWR
   const { data, error, isLoading, mutate } = useSWR(
@@ -42,11 +46,60 @@ export default function ProjectList() {
     router.push(`/projects/${projectId}`);
   };
 
-  const handleProjectCreated = (_projectId: number) => {
-    // Hide form
-    setShowForm(false);
-    // Refresh project list
-    mutate();
+  const handleProjectKeyDown = (e: React.KeyboardEvent, projectId: number) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleProjectClick(projectId);
+    }
+  };
+
+  /**
+   * Called by ProjectCreationForm before API request
+   * Shows loading spinner during creation
+   */
+  const handleSubmit = () => {
+    setLoadingMessage('Creating your project...');
+    setIsCreating(true);
+  };
+
+  /**
+   * Called by ProjectCreationForm if API request fails
+   * Hides loading spinner on error
+   */
+  const handleError = () => {
+    setIsCreating(false);
+  };
+
+  /**
+   * Start discovery and redirect to Dashboard after successful project creation
+   * Called by ProjectCreationForm when project is created
+   *
+   * Always refreshes project list to ensure consistency, even if discovery fails.
+   * User is navigated to project dashboard regardless of discovery outcome.
+   */
+  const handleProjectCreated = async (projectId: number) => {
+    // Update loading message to show discovery phase
+    setLoadingMessage('Starting discovery...');
+
+    try {
+      // Start the project to initiate discovery process
+      await projectsApi.startProject(projectId);
+    } catch (error) {
+      // Log error but still navigate - user can manually start if needed
+      console.error('Failed to auto-start project discovery:', error);
+    } finally {
+      // Always refresh project list to ensure data consistency
+      // This runs whether discovery succeeds or fails
+      try {
+        await mutate();
+      } catch {
+        // Silently handle mutate errors - navigation will still occur
+      }
+      setIsCreating(false);
+    }
+
+    // Navigate to the project dashboard
+    router.push(`/projects/${projectId}`);
   };
 
   // Loading state
@@ -83,29 +136,64 @@ export default function ProjectList() {
         </button>
       </div>
 
-      {/* Project Creation Form */}
+      {/* Project Creation Form or Loading Spinner */}
       {showForm && (
         <div className="bg-muted rounded-lg p-6 border border-border">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-foreground">Create New Project</h3>
-            <button
-              onClick={() => setShowForm(false)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              ✕
-            </button>
-          </div>
-          <ProjectCreationForm onSuccess={handleProjectCreated} />
+          {isCreating ? (
+            <div className="text-center py-8">
+              <Spinner size="lg" />
+              <p className="mt-4 text-muted-foreground">{loadingMessage}</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-foreground">Create New Project</h3>
+                <button
+                  onClick={() => setShowForm(false)}
+                  aria-label="Close create project form"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  ✕
+                </button>
+              </div>
+              <ProjectCreationForm
+                onSuccess={handleProjectCreated}
+                onSubmit={handleSubmit}
+                onError={handleError}
+              />
+            </>
+          )}
         </div>
       )}
 
       {/* Projects Grid or Empty State */}
       {projects.length === 0 ? (
-        <div className="flex items-center justify-center min-h-[300px] bg-muted rounded-lg border-2 border-dashed border-border">
-          <div className="text-center">
-            <p className="text-muted-foreground text-lg">
-              No projects yet. Create your first project!
+        <div className="flex items-center justify-center min-h-[400px] bg-muted rounded-lg border-2 border-dashed border-border">
+          <div className="text-center px-6 py-8">
+            {/* Decorative icon */}
+            <div
+              data-testid="empty-state-icon"
+              className="mx-auto w-16 h-16 mb-6 rounded-full bg-primary/10 flex items-center justify-center"
+            >
+              <Add01Icon className="w-8 h-8 text-primary" aria-hidden="true" />
+            </div>
+
+            {/* Message */}
+            <h3 className="text-xl font-semibold text-foreground mb-2">
+              No projects yet
+            </h3>
+            <p className="text-muted-foreground text-base mb-6 max-w-sm">
+              Create your first project and let AI coding agents work autonomously while you sleep.
             </p>
+
+            {/* CTA Button */}
+            <button
+              onClick={() => setShowForm(true)}
+              data-testid="empty-state-create-button"
+              className="px-6 py-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium"
+            >
+              Get Started
+            </button>
           </div>
         </div>
       ) : (
@@ -113,8 +201,12 @@ export default function ProjectList() {
           {projects.map((project) => (
             <div
               key={project.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Open project ${project.name}, status: ${project.status}, phase: ${project.phase}`}
               onClick={() => handleProjectClick(project.id)}
-              className="bg-card rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow"
+              onKeyDown={(e) => handleProjectKeyDown(e, project.id)}
+              className="bg-card rounded-lg shadow p-6 cursor-pointer hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             >
               <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
               <div className="mt-2 space-y-1 text-sm text-foreground">
