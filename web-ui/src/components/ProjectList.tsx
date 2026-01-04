@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
 import { projectsApi } from '@/lib/api';
 import ProjectCreationForm from '@/components/ProjectCreationForm';
+import { Spinner } from '@/components/Spinner';
 
 /**
  * Formats an ISO date string to a readable format
@@ -31,9 +32,11 @@ const formatDate = (dateString: string): string => {
 export default function ProjectList() {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Creating your project...');
 
   // Fetch projects using SWR
-  const { data, error, isLoading, mutate } = useSWR(
+  const { data, error, isLoading } = useSWR(
     '/projects',
     () => projectsApi.list().then((res) => res.data.projects)
   );
@@ -42,11 +45,42 @@ export default function ProjectList() {
     router.push(`/projects/${projectId}`);
   };
 
-  const handleProjectCreated = (_projectId: number) => {
-    // Hide form
-    setShowForm(false);
-    // Refresh project list
-    mutate();
+  /**
+   * Called by ProjectCreationForm before API request
+   * Shows loading spinner during creation
+   */
+  const handleSubmit = () => {
+    setLoadingMessage('Creating your project...');
+    setIsCreating(true);
+  };
+
+  /**
+   * Called by ProjectCreationForm if API request fails
+   * Hides loading spinner on error
+   */
+  const handleError = () => {
+    setIsCreating(false);
+  };
+
+  /**
+   * Start discovery and redirect to Dashboard after successful project creation
+   * Called by ProjectCreationForm when project is created
+   */
+  const handleProjectCreated = async (projectId: number) => {
+    // Update loading message to show discovery phase
+    setLoadingMessage('Starting discovery...');
+
+    try {
+      // Start the project to initiate discovery process
+      await projectsApi.startProject(projectId);
+    } catch (error) {
+      // Log error but still navigate - user can manually start if needed
+      console.error('Failed to auto-start project discovery:', error);
+    }
+
+    setIsCreating(false);
+    // Navigate to the project dashboard
+    router.push(`/projects/${projectId}`);
   };
 
   // Loading state
@@ -83,19 +117,32 @@ export default function ProjectList() {
         </button>
       </div>
 
-      {/* Project Creation Form */}
+      {/* Project Creation Form or Loading Spinner */}
       {showForm && (
         <div className="bg-muted rounded-lg p-6 border border-border">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-foreground">Create New Project</h3>
-            <button
-              onClick={() => setShowForm(false)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              ✕
-            </button>
-          </div>
-          <ProjectCreationForm onSuccess={handleProjectCreated} />
+          {isCreating ? (
+            <div className="text-center py-8">
+              <Spinner size="lg" />
+              <p className="mt-4 text-muted-foreground">{loadingMessage}</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-foreground">Create New Project</h3>
+                <button
+                  onClick={() => setShowForm(false)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  ✕
+                </button>
+              </div>
+              <ProjectCreationForm
+                onSuccess={handleProjectCreated}
+                onSubmit={handleSubmit}
+                onError={handleError}
+              />
+            </>
+          )}
         </div>
       )}
 
