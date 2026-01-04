@@ -59,6 +59,13 @@ jest.mock('@/components/Spinner', () => ({
   ),
 }));
 
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => ({
+  Add01Icon: ({ className, 'aria-hidden': ariaHidden }: { className?: string; 'aria-hidden'?: boolean }) => (
+    <svg data-testid="add-icon" className={className} aria-hidden={ariaHidden} />
+  ),
+}));
+
 // Helper to render with fresh SWR cache
 const renderWithSWR = (component: React.ReactElement) => {
   return render(

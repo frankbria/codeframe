@@ -51,6 +51,13 @@ jest.mock('@/components/Spinner', () => ({
   ),
 }));
 
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => ({
+  Add01Icon: ({ className }: { className?: string }) => (
+    <svg data-testid="add-icon" className={className} />
+  ),
+}));
+
 // Helper to render with SWR wrapper
 const renderWithSWR = (component: React.ReactElement) => {
   return render(

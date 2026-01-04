@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 import { useRouter } from 'next/navigation';
+import { Add01Icon } from '@hugeicons/react';
 import { projectsApi } from '@/lib/api';
 import ProjectCreationForm from '@/components/ProjectCreationForm';
 import { Spinner } from '@/components/Spinner';
@@ -174,20 +175,7 @@ export default function ProjectList() {
               data-testid="empty-state-icon"
               className="mx-auto w-16 h-16 mb-6 rounded-full bg-primary/10 flex items-center justify-center"
             >
-              <svg
-                className="w-8 h-8 text-primary"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                />
-              </svg>
+              <Add01Icon className="w-8 h-8 text-primary" aria-hidden="true" />
             </div>
 
             {/* Message */}
