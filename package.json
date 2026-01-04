@@ -1,0 +1,9 @@
+{
+  "name": "codeframe-root",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Root package for PM2 ecosystem config dependencies",
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}

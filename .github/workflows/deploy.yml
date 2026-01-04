@@ -162,6 +162,10 @@ jobs:
             npm run build
             cd ..
 
+            # Install root dependencies (dotenv for ecosystem config)
+            echo "📦 Installing PM2 config dependencies..."
+            npm install
+
             # Ensure logs directory exists
             mkdir -p logs
 
@@ -172,26 +176,26 @@ jobs:
               exit 1
             fi
 
-            CONFIG_FILE="ecosystem.staging.config.js"
+            # PM2 process names from GitHub secrets (expanded by runner)
             BACKEND_NAME="${BACKEND_NAME}"
             FRONTEND_NAME="${FRONTEND_NAME}"
 
-            echo "Debug: BACKEND_NAME='${BACKEND_NAME}'"
-            echo "Debug: FRONTEND_NAME='${FRONTEND_NAME}'"
+            echo "Debug: BACKEND_NAME='\${BACKEND_NAME}'"
+            echo "Debug: FRONTEND_NAME='\${FRONTEND_NAME}'"
 
             # Function to check if a PM2 process is online
             is_process_online() {
-              pm2 describe "$1" 2>/dev/null | grep -q "online"
+              pm2 describe "\$1" 2>/dev/null | grep -q "online"
             }
 
             # Restart both frontend and backend via config file
-            if is_process_online "${BACKEND_NAME}" && is_process_online "${FRONTEND_NAME}"; then
+            if is_process_online "\${BACKEND_NAME}" && is_process_online "\${FRONTEND_NAME}"; then
               echo "♻️  Restarting PM2 services..."
-              pm2 restart "${BACKEND_NAME}" --update-env
-              pm2 restart "${FRONTEND_NAME}" --update-env
+              pm2 restart "\${BACKEND_NAME}" --update-env
+              pm2 restart "\${FRONTEND_NAME}" --update-env
             else
               echo "🚀 Starting PM2 services from config..."
-              pm2 start "${CONFIG_FILE}"
+              pm2 start ecosystem.staging.config.js
             fi
 
             pm2 save
@@ -458,6 +462,10 @@ jobs:
             npm run build
             cd ..
 
+            # Install root dependencies (dotenv for ecosystem config)
+            echo "📦 Installing PM2 config dependencies..."
+            npm install
+
             # Run database migrations if any
             echo "🗃️ Running database migrations..."
             # Add migration command here if needed
@@ -472,31 +480,31 @@ jobs:
               exit 1
             fi
 
-            CONFIG_FILE="ecosystem.production.config.js"
+            # PM2 process names from GitHub secrets (expanded by runner)
             BACKEND_NAME="${BACKEND_NAME_PROD}"
             FRONTEND_NAME="${FRONTEND_NAME_PROD}"
 
             # Function to check if a PM2 process is online
             is_process_online() {
-              pm2 describe "$1" 2>/dev/null | grep -q "online"
+              pm2 describe "\$1" 2>/dev/null | grep -q "online"
             }
 
             # Handle backend process
-            if is_process_online "${BACKEND_NAME}"; then
-              echo "♻️  Restarting ${BACKEND_NAME}..."
-              pm2 restart "${BACKEND_NAME}"
+            if is_process_online "\${BACKEND_NAME}"; then
+              echo "♻️  Restarting \${BACKEND_NAME}..."
+              pm2 restart "\${BACKEND_NAME}"
             else
-              echo "🚀 Starting ${BACKEND_NAME}..."
-              pm2 start "${CONFIG_FILE}" --only "${BACKEND_NAME}"
+              echo "🚀 Starting \${BACKEND_NAME}..."
+              pm2 start ecosystem.production.config.js --only "\${BACKEND_NAME}"
             fi
 
             # Handle frontend process
-            if is_process_online "${FRONTEND_NAME}"; then
-              echo "♻️  Restarting ${FRONTEND_NAME}..."
-              pm2 restart "${FRONTEND_NAME}"
+            if is_process_online "\${FRONTEND_NAME}"; then
+              echo "♻️  Restarting \${FRONTEND_NAME}..."
+              pm2 restart "\${FRONTEND_NAME}"
             else
-              echo "🚀 Starting ${FRONTEND_NAME}..."
-              pm2 start "${CONFIG_FILE}" --only "${FRONTEND_NAME}"
+              echo "🚀 Starting \${FRONTEND_NAME}..."
+              pm2 start ecosystem.production.config.js --only "\${FRONTEND_NAME}"
             fi
 
             pm2 save
