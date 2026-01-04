@@ -9,9 +9,11 @@ import { projectsApi } from '@/lib/api';
 import type { DiscoveryProgressResponse } from '@/types/api';
 
 // Mock the API
+const mockStartProject = jest.fn();
 jest.mock('@/lib/api', () => ({
   projectsApi: {
     getDiscoveryProgress: jest.fn(),
+    startProject: (...args: unknown[]) => mockStartProject(...args),
   },
 }));
 
@@ -46,6 +48,7 @@ describe('DiscoveryProgress Component', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     mockAuthFetch.mockReset();
+    mockStartProject.mockReset();
   });
 
   afterEach(() => {
@@ -306,6 +309,198 @@ describe('DiscoveryProgress Component', () => {
       await waitFor(() => {
         expect(screen.getByText(/not started/i)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('Start Discovery Button', () => {
+    it('should show Start Discovery button when idle', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        const button = screen.getByTestId('start-discovery-button');
+        expect(button).toBeInTheDocument();
+        expect(button).toHaveTextContent('Start Discovery');
+      });
+    });
+
+    it('should call startProject when button is clicked', async () => {
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      const discoveringData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+          current_question: {
+            id: 'q1',
+            question: 'What is your project about?',
+            category: 'overview',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock)
+        .mockResolvedValueOnce({ data: idleData })
+        .mockResolvedValueOnce({ data: discoveringData });
+
+      mockStartProject.mockResolvedValueOnce({ data: { status: 'starting' } });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('start-discovery-button')).toBeInTheDocument();
+      });
+
+      const button = screen.getByTestId('start-discovery-button');
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(mockStartProject).toHaveBeenCalledWith(1);
+      });
+    });
+
+    it('should show loading state while starting', async () => {
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: idleData });
+
+      // Make startProject never resolve to test loading state
+      mockStartProject.mockImplementation(() => new Promise(() => {}));
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('start-discovery-button')).toBeInTheDocument();
+      });
+
+      const button = screen.getByTestId('start-discovery-button');
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(button).toHaveTextContent('Starting...');
+        expect(button).toBeDisabled();
+      });
+    });
+
+    it('should show error message when startProject fails', async () => {
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: idleData });
+      mockStartProject.mockRejectedValueOnce(new Error('Failed to start'));
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('start-discovery-button')).toBeInTheDocument();
+      });
+
+      const button = screen.getByTestId('start-discovery-button');
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(/failed to start discovery/i);
+      });
+    });
+
+    it('should transition to discovering state after successful start', async () => {
+      // Use real timers for this test since it involves complex async interactions
+      jest.useRealTimers();
+
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      const discoveringData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+          current_question: {
+            id: 'q1',
+            question: 'What is your project about?',
+            category: 'overview',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock)
+        .mockResolvedValueOnce({ data: idleData })
+        .mockResolvedValueOnce({ data: discoveringData });
+
+      mockStartProject.mockResolvedValueOnce({ data: { status: 'starting' } });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('start-discovery-button')).toBeInTheDocument();
+      });
+
+      const button = screen.getByTestId('start-discovery-button');
+      fireEvent.click(button);
+
+      // Wait for the transition to complete (includes 1s delay + API call)
+      await waitFor(() => {
+        // Button should be gone (no longer idle)
+        expect(screen.queryByTestId('start-discovery-button')).not.toBeInTheDocument();
+        // First question should appear
+        expect(screen.getByText(/what is your project about/i)).toBeInTheDocument();
+      }, { timeout: 3000 });
+
+      // Restore fake timers for other tests
+      jest.useFakeTimers();
     });
   });
 

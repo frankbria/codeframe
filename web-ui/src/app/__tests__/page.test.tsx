@@ -40,9 +40,18 @@ jest.mock('@/components/Spinner', () => {
   };
 });
 
+// Mock projectsApi
+const mockStartProject = jest.fn().mockResolvedValue({ data: { status: 'started' } });
+jest.mock('@/lib/api', () => ({
+  projectsApi: {
+    startProject: (...args: unknown[]) => mockStartProject(...args),
+  },
+}));
+
 describe('HomePage', () => {
   beforeEach(() => {
     mockPush.mockClear();
+    mockStartProject.mockClear();
     (useRouter as jest.Mock).mockReturnValue({
       push: mockPush,
     });
@@ -140,6 +149,36 @@ describe('HomePage', () => {
       const successButton = screen.getByText('Trigger onSuccess');
       await user.click(successButton);
 
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith('/projects/123');
+      });
+    });
+
+    test('calls startProject with project ID on successful creation', async () => {
+      const user = userEvent.setup();
+      render(<HomePage />);
+
+      // Trigger onSuccess with project ID 123
+      const successButton = screen.getByText('Trigger onSuccess');
+      await user.click(successButton);
+
+      await waitFor(() => {
+        expect(mockStartProject).toHaveBeenCalledWith(123);
+      });
+    });
+
+    test('redirects even if startProject fails', async () => {
+      // Simulate startProject failure
+      mockStartProject.mockRejectedValueOnce(new Error('Start failed'));
+
+      const user = userEvent.setup();
+      render(<HomePage />);
+
+      // Trigger onSuccess with project ID 123
+      const successButton = screen.getByText('Trigger onSuccess');
+      await user.click(successButton);
+
+      // Should still redirect despite error
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith('/projects/123');
       });

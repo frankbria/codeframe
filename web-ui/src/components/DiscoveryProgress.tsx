@@ -29,6 +29,10 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Start Discovery state
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
     // Guard: Prevent duplicate concurrent submissions
@@ -103,6 +107,27 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       console.error('Error fetching discovery progress:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Start discovery for idle projects
+  const handleStartDiscovery = async () => {
+    if (isStarting) return;
+
+    setIsStarting(true);
+    setStartError(null);
+
+    try {
+      await projectsApi.startProject(projectId);
+      // Wait a moment for the backend to initialize discovery
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Refresh to get the updated state
+      await fetchProgress();
+    } catch (err) {
+      console.error('Failed to start discovery:', err);
+      setStartError('Failed to start discovery. Please try again.');
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -272,8 +297,30 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
         {/* Idle/Not Started State */}
         {isIdle && (
-          <div className="text-sm text-muted-foreground italic">
-            Discovery not started
+          <div className="space-y-3">
+            <div className="text-sm text-muted-foreground italic">
+              Discovery not started
+            </div>
+            <button
+              onClick={handleStartDiscovery}
+              disabled={isStarting}
+              data-testid="start-discovery-button"
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                isStarting
+                  ? 'bg-muted cursor-not-allowed text-muted-foreground'
+                  : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+              }`}
+            >
+              {isStarting ? 'Starting...' : 'Start Discovery'}
+            </button>
+            {startError && (
+              <div
+                role="alert"
+                className="p-3 bg-destructive/10 border border-destructive rounded-lg text-destructive text-sm"
+              >
+                {startError}
+              </div>
+            )}
           </div>
         )}
       </div>

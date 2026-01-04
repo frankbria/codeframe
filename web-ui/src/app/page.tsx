@@ -4,7 +4,7 @@
  * Sprint: 9.5 - Critical UX Fixes
  *
  * Displays welcome message and ProjectCreationForm at root route.
- * Automatically redirects to Dashboard after successful project creation.
+ * Automatically starts discovery and redirects to Dashboard after project creation.
  */
 
 'use client';
@@ -13,16 +13,29 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ProjectCreationForm from '@/components/ProjectCreationForm';
 import { Spinner } from '@/components/Spinner';
+import { projectsApi } from '@/lib/api';
 
 export default function HomePage() {
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Creating your project...');
 
   /**
-   * US4: Redirect to Dashboard after successful project creation
+   * US4: Start discovery and redirect to Dashboard after successful project creation
    * Called by ProjectCreationForm when project is created
    */
-  const handleProjectCreated = (projectId: number) => {
+  const handleProjectCreated = async (projectId: number) => {
+    // Update loading message to show discovery phase
+    setLoadingMessage('Starting discovery...');
+
+    try {
+      // Start the project to initiate discovery process
+      await projectsApi.startProject(projectId);
+    } catch (error) {
+      // Log error but still navigate - user can manually start if needed
+      console.error('Failed to auto-start project discovery:', error);
+    }
+
     setIsCreating(false);
     router.push(`/projects/${projectId}`);
   };
@@ -32,6 +45,7 @@ export default function HomePage() {
    * Called by ProjectCreationForm before API request
    */
   const handleSubmit = () => {
+    setLoadingMessage('Creating your project...');
     setIsCreating(true);
   };
 
@@ -60,7 +74,7 @@ export default function HomePage() {
         {isCreating ? (
           <div className="text-center">
             <Spinner size="lg" />
-            <p className="mt-4 text-gray-600">Creating your project...</p>
+            <p className="mt-4 text-gray-600">{loadingMessage}</p>
           </div>
         ) : (
           <ProjectCreationForm
