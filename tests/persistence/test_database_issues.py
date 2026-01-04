@@ -17,14 +17,36 @@ from codeframe.persistence.database import Database
 from codeframe.core.models import TaskStatus, Issue
 
 
+@pytest.fixture
+def db(temp_db_path):
+    """Create and initialize database with proper async cleanup.
+
+    This fixture replaces the inline Database creation pattern
+    to ensure async connections are properly closed and prevent
+    pytest from hanging during teardown.
+    """
+    database = Database(temp_db_path)
+    database.initialize()
+
+    yield database
+
+    # Close async connection if it was opened (prevents hanging)
+    if database._async_conn:
+        import asyncio
+
+        try:
+            asyncio.get_event_loop().run_until_complete(database.close_async())
+        except RuntimeError:
+            asyncio.run(database.close_async())
+    database.close()
+
+
 @pytest.mark.unit
 class TestIssuesTableCreation:
     """Test Issues table schema creation and migration."""
 
-    def test_issues_table_created(self, temp_db_path):
+    def test_issues_table_created(self, db):
         """Test that Issues table is created with correct schema."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         # Verify issues table exists
         cursor = db.conn.cursor()
@@ -32,10 +54,8 @@ class TestIssuesTableCreation:
         result = cursor.fetchone()
         assert result is not None, "Issues table was not created"
 
-    def test_issues_table_columns(self, temp_db_path):
+    def test_issues_table_columns(self, db):
         """Test that Issues table has all required columns."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         cursor = db.conn.cursor()
         cursor.execute("PRAGMA table_info(issues)")
@@ -53,10 +73,8 @@ class TestIssuesTableCreation:
         assert "created_at" in columns
         assert "completed_at" in columns
 
-    def test_tasks_table_enhanced_columns(self, temp_db_path):
+    def test_tasks_table_enhanced_columns(self, db):
         """Test that Tasks table has new columns for Issue relationship."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         cursor = db.conn.cursor()
         cursor.execute("PRAGMA table_info(tasks)")
@@ -68,10 +86,8 @@ class TestIssuesTableCreation:
         assert "parent_issue_number" in columns
         assert "can_parallelize" in columns
 
-    def test_issues_indexes_created(self, temp_db_path):
+    def test_issues_indexes_created(self, db):
         """Test that proper indexes are created for Issues."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         cursor = db.conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
@@ -90,10 +106,8 @@ class TestIssuesTableCreation:
 class TestIssueCRUD:
     """Test Issue CRUD operations."""
 
-    def test_create_issue_minimal(self, temp_db_path):
+    def test_create_issue_minimal(self, db):
         """Test creating an issue with minimal required fields."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
 
@@ -111,10 +125,8 @@ class TestIssueCRUD:
         assert isinstance(issue_id, int)
         assert issue_id > 0
 
-    def test_create_issue_full(self, temp_db_path):
+    def test_create_issue_full(self, db):
         """Test creating an issue with all fields."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
 
@@ -139,10 +151,8 @@ class TestIssueCRUD:
         assert saved_issue.priority == 0
         assert saved_issue.workflow_step == 5
 
-    def test_get_issue_by_id(self, temp_db_path):
+    def test_get_issue_by_id(self, db):
         """Test retrieving an issue by ID."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue = Issue(
@@ -168,18 +178,14 @@ class TestIssueCRUD:
         assert issue.priority == 2
         assert issue.created_at is not None
 
-    def test_get_nonexistent_issue_returns_none(self, temp_db_path):
+    def test_get_nonexistent_issue_returns_none(self, db):
         """Test that getting non-existent issue returns None."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         issue = db.get_issue(99999)
         assert issue is None
 
-    def test_list_issues_by_project(self, temp_db_path):
+    def test_list_issues_by_project(self, db):
         """Test listing all issues for a project."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
 
@@ -224,20 +230,16 @@ class TestIssueCRUD:
         assert "1.2" in issue_numbers
         assert "2.1" in issue_numbers
 
-    def test_list_issues_empty_project(self, temp_db_path):
+    def test_list_issues_empty_project(self, db):
         """Test listing issues for project with no issues."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issues = db.list_issues(project_id)
 
         assert issues == []
 
-    def test_list_issues_filters_by_project(self, temp_db_path):
+    def test_list_issues_filters_by_project(self, db):
         """Test that list_issues only returns issues for specified project."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project1_id = db.create_project("project1", "Project1 project")
         project2_id = db.create_project("project2", "Project2 project")
@@ -270,10 +272,8 @@ class TestIssueCRUD:
         assert len(issues) == 1
         assert issues[0].title == "Project 1 Issue"
 
-    def test_update_issue_status(self, temp_db_path):
+    def test_update_issue_status(self, db):
         """Test updating issue status."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -294,10 +294,8 @@ class TestIssueCRUD:
         issue = db.get_issue(issue_id)
         assert issue.status == TaskStatus.IN_PROGRESS
 
-    def test_update_issue_multiple_fields(self, temp_db_path):
+    def test_update_issue_multiple_fields(self, db):
         """Test updating multiple issue fields at once."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -331,10 +329,8 @@ class TestIssueCRUD:
         assert issue.priority == 0
         assert issue.workflow_step == 10
 
-    def test_update_issue_with_completed_timestamp(self, temp_db_path):
+    def test_update_issue_with_completed_timestamp(self, db):
         """Test that completing an issue sets completed_at timestamp."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -357,10 +353,8 @@ class TestIssueCRUD:
         issue = db.get_issue(issue_id)
         assert issue.completed_at is not None
 
-    def test_update_nonexistent_issue(self, temp_db_path):
+    def test_update_nonexistent_issue(self, db):
         """Test that updating non-existent issue returns 0."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         result = db.update_issue(99999, {"status": "completed"})
         assert result == 0  # 0 rows affected
@@ -370,10 +364,8 @@ class TestIssueCRUD:
 class TestTaskIssueRelationship:
     """Test Task-Issue relationship and enhanced task operations."""
 
-    def test_create_task_with_issue_id(self, temp_db_path):
+    def test_create_task_with_issue_id(self, db):
         """Test creating a task linked to an issue."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -405,10 +397,8 @@ class TestTaskIssueRelationship:
         assert task_id > 0
 
     @pytest.mark.asyncio
-    async def test_get_tasks_by_issue(self, temp_db_path):
+    async def test_get_tasks_by_issue(self, db):
         """Test retrieving all tasks for an issue."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -470,10 +460,8 @@ class TestTaskIssueRelationship:
         assert "1.5.3" in task_numbers
 
     @pytest.mark.asyncio
-    async def test_get_tasks_by_issue_empty(self, temp_db_path):
+    async def test_get_tasks_by_issue_empty(self, db):
         """Test getting tasks for issue with no tasks."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -490,10 +478,8 @@ class TestTaskIssueRelationship:
         tasks = await db.get_tasks_by_issue(issue_id)
         assert tasks == []
 
-    def test_task_can_parallelize_flag(self, temp_db_path):
+    def test_task_can_parallelize_flag(self, db):
         """Test that can_parallelize flag is stored correctly."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -527,10 +513,8 @@ class TestTaskIssueRelationship:
         result = cursor.fetchone()
         assert result[0] == 1  # SQLite stores boolean as 1/0
 
-    def test_get_tasks_by_parent_issue_number(self, temp_db_path):
+    def test_get_tasks_by_parent_issue_number(self, db):
         """Test querying tasks by parent_issue_number."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -564,10 +548,8 @@ class TestTaskIssueRelationship:
 class TestIssueConstraints:
     """Test data integrity constraints for Issues."""
 
-    def test_unique_issue_number_per_project(self, temp_db_path):
+    def test_unique_issue_number_per_project(self, db):
         """Test that issue_number must be unique within a project."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
 
@@ -596,10 +578,8 @@ class TestIssueConstraints:
                 )
             )
 
-    def test_same_issue_number_different_projects_allowed(self, temp_db_path):
+    def test_same_issue_number_different_projects_allowed(self, db):
         """Test that same issue_number is allowed in different projects."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project1_id = db.create_project("project1", "Project1 project")
         project2_id = db.create_project("project2", "Project2 project")
@@ -628,10 +608,8 @@ class TestIssueConstraints:
 
         assert issue1_id != issue2_id
 
-    def test_issue_status_constraint(self, temp_db_path):
+    def test_issue_status_constraint(self, db):
         """Test that issue status must be valid."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
 
@@ -645,10 +623,8 @@ class TestIssueConstraints:
                 (project_id, "1.1", "Test", "INVALID_STATUS", 1),
             )
 
-    def test_issue_priority_constraint(self, temp_db_path):
+    def test_issue_priority_constraint(self, db):
         """Test that issue priority must be between 0 and 4."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         cursor = db.conn.cursor()
@@ -660,10 +636,8 @@ class TestIssueConstraints:
                 (project_id, "1.1", "Test", "pending", 10),  # Invalid priority
             )
 
-    def test_issue_foreign_key_to_project(self, temp_db_path):
+    def test_issue_foreign_key_to_project(self, db):
         """Test foreign key relationship from issue to project."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         # Enable foreign keys
         db.conn.execute("PRAGMA foreign_keys = ON")
@@ -682,10 +656,8 @@ class TestIssueConstraints:
             # Foreign keys enforced - good!
             pass
 
-    def test_task_foreign_key_to_issue(self, temp_db_path):
+    def test_task_foreign_key_to_issue(self, db):
         """Test foreign key relationship from task to issue."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         # Enable foreign keys
         db.conn.execute("PRAGMA foreign_keys = ON")
@@ -711,10 +683,8 @@ class TestIssueConstraints:
 class TestIssueTaskQueries:
     """Test complex queries involving Issues and Tasks."""
 
-    def test_get_issue_with_task_counts(self, temp_db_path):
+    def test_get_issue_with_task_counts(self, db):
         """Test getting issue with count of associated tasks."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -749,10 +719,8 @@ class TestIssueTaskQueries:
         assert issue_with_counts.id == issue_id
         assert issue_with_counts.task_count == 3
 
-    def test_get_issue_completion_status(self, temp_db_path):
+    def test_get_issue_completion_status(self, db):
         """Test calculating issue completion based on task statuses."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -802,10 +770,8 @@ class TestIssueTaskQueries:
         assert completion["completed_tasks"] == 2
         assert completion["completion_percentage"] == pytest.approx(66.67, rel=0.1)
 
-    def test_list_issues_with_progress(self, temp_db_path):
+    def test_list_issues_with_progress(self, db):
         """Test listing issues with their progress metrics."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
 
@@ -853,10 +819,8 @@ class TestIssueTaskIntegration:
     """Integration tests for Issue-Task workflow."""
 
     @pytest.mark.asyncio
-    async def test_complete_issue_workflow(self, temp_db_path):
+    async def test_complete_issue_workflow(self, db):
         """Test complete workflow from issue creation to completion."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         # 1. Create project
         project_id = db.create_project("my-app", "My App project")
@@ -926,10 +890,8 @@ class TestIssueTaskIntegration:
         tasks = await db.get_tasks_by_issue(issue_id)
         assert all(t.status == TaskStatus.COMPLETED for t in tasks)
 
-    def test_parallel_task_execution(self, temp_db_path):
+    def test_parallel_task_execution(self, db):
         """Test workflow with parallelizable tasks."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
         issue_id = db.create_issue(
@@ -993,10 +955,8 @@ class TestIssueTaskIntegration:
         assert len(parallel_tasks) == 2
 
     @pytest.mark.asyncio
-    async def test_hierarchical_numbering_consistency(self, temp_db_path):
+    async def test_hierarchical_numbering_consistency(self, db):
         """Test that hierarchical numbering is consistent."""
-        db = Database(temp_db_path)
-        db.initialize()
 
         project_id = db.create_project("test-project", "Test Project project")
 

@@ -5,12 +5,15 @@ This module provides test fixtures for running WebSocket tests with a real
 FastAPI server instead of TestClient's mocked WebSocket connections.
 """
 
+import jwt
 import os
+import secrets
 import signal
 import socket
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +22,29 @@ import requests
 import shutil
 
 from codeframe.persistence.database import Database
+
+
+def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
+    """Create a JWT token for testing.
+
+    Args:
+        user_id: User ID to include in the token
+        secret: JWT secret (uses default from auth manager if not provided)
+
+    Returns:
+        JWT token string
+    """
+    from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
+
+    if secret is None:
+        secret = SECRET
+
+    payload = {
+        "sub": str(user_id),
+        "aud": ["fastapi-users:auth"],
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=JWT_LIFETIME_SECONDS),
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 
 def find_free_port() -> int:
@@ -53,6 +79,32 @@ def wait_for_server(url: str, timeout: float = 10.0) -> bool:
     return False
 
 
+def create_test_session_token(db: Database, user_id: int = 1) -> str:
+    """Create a session token for WebSocket authentication.
+
+    Args:
+        db: Database instance
+        user_id: User ID for the session
+
+    Returns:
+        Session token string
+    """
+    token = secrets.token_urlsafe(32)
+    session_id = f"test-session-{secrets.token_hex(8)}"
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+    db.conn.execute(
+        """
+        INSERT INTO sessions (id, token, user_id, expires_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (session_id, token, user_id, expires_at),
+    )
+    db.conn.commit()
+
+    return token
+
+
 @pytest.fixture(scope="module")
 def running_server():
     """Start a real FastAPI server for WebSocket testing.
@@ -60,14 +112,14 @@ def running_server():
     This fixture:
     - Creates temporary database and workspace directories
     - Sets up test environment variables
-    - Initializes database with test user and project
+    - Initializes database with test user, project, and session token
     - Starts server in a subprocess using codeframe serve command
     - Waits for server to be ready
-    - Yields server URL
+    - Yields tuple of (server_url, session_token)
     - Cleans up on teardown
 
     Yields:
-        str: Server URL (e.g., "http://localhost:8080")
+        tuple: (Server URL, Session token for WebSocket auth)
     """
     # Create temporary directories
     temp_dir = Path(tempfile.mkdtemp())
@@ -91,6 +143,9 @@ def running_server():
     )
     db.conn.commit()
 
+    # Create session token for WebSocket authentication
+    session_token = create_test_session_token(db, user_id=1)
+
     # Create test projects (project_id=1, 2, 3)
     for project_id in [1, 2, 3]:
         try:
@@ -98,7 +153,7 @@ def running_server():
                 name=f"Test Project {project_id}",
                 description=f"Test project {project_id} for WebSocket tests",
                 workspace_path=str(workspace_root / str(project_id)),
-                user_id=1
+                user_id=1,
             )
             db.conn.commit()
         except Exception:
@@ -116,7 +171,6 @@ def running_server():
     env = os.environ.copy()
     env["DATABASE_PATH"] = str(db_path)
     env["WORKSPACE_ROOT"] = str(workspace_root)
-    env["AUTH_REQUIRED"] = "false"
 
     # Start server in subprocess
     process: Optional[subprocess.Popen] = None
@@ -151,7 +205,7 @@ def running_server():
         if not server_started:
             raise RuntimeError(f"Server failed to start within 15 seconds at {server_url}")
 
-        yield server_url
+        yield (server_url, session_token)
 
     finally:
         # Clean up: terminate entire process group (parent + all children)
@@ -161,17 +215,22 @@ def running_server():
                 pgid = os.getpgid(process.pid)
                 os.killpg(pgid, signal.SIGTERM)
 
-                # Wait for graceful shutdown
+                # Wait for graceful shutdown and drain pipes
+                # IMPORTANT: communicate() drains stdout/stderr pipes to prevent
+                # Python's internal reader threads from hanging
                 try:
-                    process.wait(timeout=3)
+                    process.communicate(timeout=3)
                 except subprocess.TimeoutExpired:
                     # Force kill if graceful shutdown failed
                     os.killpg(pgid, signal.SIGKILL)
-                    process.wait()
+                    process.communicate()  # Still drain pipes after force kill
 
             except (ProcessLookupError, PermissionError, OSError):
-                # Process already dead or no permission
-                pass
+                # Process already dead or no permission - still close pipes
+                if process.stdout:
+                    process.stdout.close()
+                if process.stderr:
+                    process.stderr.close()
 
             # Fallback: ensure no uvicorn processes remain on test port
             try:
@@ -189,12 +248,48 @@ def running_server():
 
 @pytest.fixture
 def ws_url(running_server):
-    """Convert HTTP server URL to WebSocket URL.
+    """Get the complete WebSocket URL with path and authentication token.
+
+    Returns the full WebSocket URL ready to use for connection.
 
     Args:
-        running_server: Server URL fixture (e.g., "http://localhost:8080")
+        running_server: Tuple of (Server URL, Session token)
 
     Returns:
-        str: WebSocket URL (e.g., "ws://localhost:8080")
+        str: Complete WebSocket URL (e.g., "ws://localhost:8080/ws?token=...")
+
+    Example usage in tests:
+        async with websockets.connect(ws_url) as websocket:
+            ...
     """
-    return running_server.replace("http://", "ws://")
+    server_url, session_token = running_server
+    base_ws_url = server_url.replace("http://", "ws://")
+    return f"{base_ws_url}/ws?token={session_token}"
+
+
+@pytest.fixture
+def session_token(running_server):
+    """Get the session token for authenticated requests.
+
+    Args:
+        running_server: Tuple of (Server URL, Session token)
+
+    Returns:
+        str: Session token
+    """
+    _, token = running_server
+    return token
+
+
+@pytest.fixture
+def server_url(running_server):
+    """Get the HTTP server URL.
+
+    Args:
+        running_server: Tuple of (Server URL, Session token)
+
+    Returns:
+        str: Server URL (e.g., "http://localhost:8080")
+    """
+    url, _ = running_server
+    return url

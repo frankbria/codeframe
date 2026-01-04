@@ -18,37 +18,86 @@ from codeframe.auth.models import User
 logger = logging.getLogger(__name__)
 
 # Get configuration from environment
-_DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
-SECRET = os.getenv("AUTH_SECRET", _DEFAULT_SECRET)
+DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION"
+SECRET = os.getenv("AUTH_SECRET", DEFAULT_SECRET)
+
+# JWT configuration constants
+# These must match the JWTStrategy defaults from FastAPI Users
+JWT_ALGORITHM = "HS256"
+JWT_AUDIENCE = ["fastapi-users:auth"]
+JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
 
 # Warn if using default secret (but allow for development)
-if SECRET == _DEFAULT_SECRET:
+if SECRET == DEFAULT_SECRET:
     logger.warning(
         "⚠️  AUTH_SECRET not set - using default value. "
         "DO NOT USE IN PRODUCTION! Set AUTH_SECRET environment variable."
     )
 
-JWT_LIFETIME_SECONDS = int(os.getenv("JWT_LIFETIME_SECONDS", "604800"))  # 7 days
-
-# Database path from environment (same as main database)
-DATABASE_PATH = os.getenv(
-    "DATABASE_PATH",
-    os.path.join(os.getcwd(), ".codeframe", "state.db")
-)
-
 # Create async SQLAlchemy engine for auth
 # Uses aiosqlite driver for async SQLite access
 _engine = None
 _async_session_maker = None
+_current_database_path = None
+
+
+def _get_database_path() -> str:
+    """Get the current database path from environment."""
+    return os.getenv(
+        "DATABASE_PATH",
+        os.path.join(os.getcwd(), ".codeframe", "state.db")
+    )
+
+
+def reset_auth_engine():
+    """Reset the async SQLAlchemy engine.
+
+    Call this when DATABASE_PATH environment variable changes
+    (e.g., in tests that use temporary databases).
+
+    Also disposes of the engine to close all connections.
+    """
+    global _engine, _async_session_maker, _current_database_path
+
+    # Dispose of engine to close all connections
+    if _engine is not None:
+        import asyncio
+        try:
+            # Try to dispose synchronously if possible
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Can't await in running loop, schedule for later
+                asyncio.ensure_future(_engine.dispose())
+            else:
+                loop.run_until_complete(_engine.dispose())
+        except RuntimeError:
+            # No event loop available, create one temporarily
+            asyncio.run(_engine.dispose())
+        except Exception:
+            # Ignore disposal errors during cleanup
+            pass
+
+    _engine = None
+    _async_session_maker = None
+    _current_database_path = None
 
 
 def get_engine():
     """Get or create the async SQLAlchemy engine."""
-    global _engine
+    global _engine, _current_database_path
+
+    # Get current database path
+    database_path = _get_database_path()
+
+    # If path changed, reset engine
+    if _current_database_path is not None and _current_database_path != database_path:
+        reset_auth_engine()
+
     if _engine is None:
         # Use aiosqlite for async SQLite support
-        database_url = f"sqlite+aiosqlite:///{DATABASE_PATH}"
+        database_url = f"sqlite+aiosqlite:///{database_path}"
         _engine = create_async_engine(database_url, echo=False)
+        _current_database_path = database_path
     return _engine
 
 

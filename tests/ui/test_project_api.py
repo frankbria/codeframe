@@ -8,10 +8,12 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from codeframe.persistence.database import Database
 
+from conftest import create_test_jwt_token
+
 
 @pytest.fixture
 def test_client():
-    """Create test client with temporary database."""
+    """Create test client with temporary database and authentication."""
     temp_dir = Path(tempfile.mkdtemp())
     db_path = temp_dir / "test.db"
     workspace_root = temp_dir / "workspaces"
@@ -35,12 +37,26 @@ def test_client():
     db.initialize()
     server.app.state.db = db
 
+    # Create test user (user_id=1)
+    db.conn.execute(
+        """
+        INSERT OR REPLACE INTO users (
+            id, email, name, hashed_password,
+            is_active, is_superuser, is_verified, email_verified
+        )
+        VALUES (1, 'test@example.com', 'Test User', '!DISABLED!', 1, 0, 1, 1)
+        """
+    )
+    db.conn.commit()
+
     # Initialize workspace manager
     from codeframe.workspace import WorkspaceManager
 
     server.app.state.workspace_manager = WorkspaceManager(workspace_root)
 
-    client = TestClient(server.app)
+    # Create test client with authentication headers
+    auth_token = create_test_jwt_token(user_id=1)
+    client = TestClient(server.app, headers={"Authorization": f"Bearer {auth_token}"})
 
     yield client
 

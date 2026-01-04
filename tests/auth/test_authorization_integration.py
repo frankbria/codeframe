@@ -22,7 +22,18 @@ from codeframe.auth.manager import SECRET, JWT_LIFETIME_SECONDS
 @pytest.fixture
 def db(tmp_path):
     """Create test database."""
+    import os
+    from codeframe.auth.manager import reset_auth_engine
+
     db_path = tmp_path / "test_integration.db"
+
+    # Set DATABASE_PATH so auth engine uses the same database
+    original_db_path = os.environ.get("DATABASE_PATH")
+    os.environ["DATABASE_PATH"] = str(db_path)
+
+    # Reset auth engine to pick up new DATABASE_PATH
+    reset_auth_engine()
+
     db = Database(db_path)
     db.initialize()
 
@@ -52,6 +63,15 @@ def db(tmp_path):
     db.conn.commit()
     yield db
     db.close()
+
+    # Restore original DATABASE_PATH
+    if original_db_path is not None:
+        os.environ["DATABASE_PATH"] = original_db_path
+    elif "DATABASE_PATH" in os.environ:
+        del os.environ["DATABASE_PATH"]
+
+    # Reset auth engine for next test
+    reset_auth_engine()
 
 
 @pytest.fixture
@@ -88,48 +108,33 @@ class TestProjectEndpointsAuthorization:
 
     def test_get_project_owner_has_access(self, client, alice_token):
         """Test that project owner can access their project."""
-        response = client.get(
-            "/api/projects/1",
-            headers={"Authorization": f"Bearer {alice_token}"}
-        )
+        response = client.get("/api/projects/1", headers={"Authorization": f"Bearer {alice_token}"})
         assert response.status_code == 200
         assert response.json()["id"] == 1
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_get_project_non_owner_denied(self, client, bob_token):
         """Test that non-owner cannot access project."""
-        response = client.get(
-            "/api/projects/1",
-            headers={"Authorization": f"Bearer {bob_token}"}
-        )
+        response = client.get("/api/projects/1", headers={"Authorization": f"Bearer {bob_token}"})
         assert response.status_code == 403
         assert response.json()["detail"] == "Access denied"
 
     def test_get_project_no_token_unauthorized(self, client):
-        """Test that request without token returns 401 (or 200 if AUTH_REQUIRED=false)."""
+        """Test that request without token returns 401 Unauthorized."""
         response = client.get("/api/projects/1")
-        # Note: Behavior depends on AUTH_REQUIRED setting
-        # With AUTH_REQUIRED=true, should return 401
-        # With AUTH_REQUIRED=false, might allow access (200)
-        assert response.status_code in [200, 401, 403]
+        # Authentication is always required - expect 401 Unauthorized
+        assert response.status_code == 401
 
 
 class TestTaskEndpointsAuthorization:
     """Test authorization on /api/tasks endpoints."""
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_create_task_requires_project_access(self, client, alice_token, bob_token, db):
         """Test that creating task requires access to project."""
         # Alice can create task in her project
         response = client.post(
             "/api/tasks",
             headers={"Authorization": f"Bearer {alice_token}"},
-            json={
-                "project_id": 1,
-                "title": "Test Task",
-                "description": "Test",
-                "priority": 3
-            }
+            json={"project_id": 1, "title": "Test Task", "description": "Test", "priority": 3},
         )
         assert response.status_code in [200, 201]
 
@@ -141,8 +146,8 @@ class TestTaskEndpointsAuthorization:
                 "project_id": 1,
                 "title": "Unauthorized Task",
                 "description": "Test",
-                "priority": 3
-            }
+                "priority": 3,
+            },
         )
         assert response.status_code == 403
 
@@ -150,20 +155,17 @@ class TestTaskEndpointsAuthorization:
 class TestMetricsEndpointsAuthorization:
     """Test authorization on /api/projects/{id}/metrics endpoints."""
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_get_project_costs_requires_access(self, client, alice_token, bob_token):
         """Test that metrics endpoints enforce project access."""
         # Alice can access her project metrics
         response = client.get(
-            "/api/projects/1/metrics/costs",
-            headers={"Authorization": f"Bearer {alice_token}"}
+            "/api/projects/1/metrics/costs", headers={"Authorization": f"Bearer {alice_token}"}
         )
         assert response.status_code == 200
 
         # Bob cannot access Alice's project metrics
         response = client.get(
-            "/api/projects/1/metrics/costs",
-            headers={"Authorization": f"Bearer {bob_token}"}
+            "/api/projects/1/metrics/costs", headers={"Authorization": f"Bearer {bob_token}"}
         )
         assert response.status_code == 403
 
@@ -204,8 +206,7 @@ class TestCrossProjectDataLeak:
 
         # Alice should only see metrics for her project
         response = client.get(
-            "/api/agents/test_agent/metrics",
-            headers={"Authorization": f"Bearer {alice_token}"}
+            "/api/agents/test_agent/metrics", headers={"Authorization": f"Bearer {alice_token}"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -219,7 +220,6 @@ class TestCrossProjectDataLeak:
 class TestExceptionHandling:
     """Test that authorization exceptions aren't masked by generic handlers."""
 
-    @pytest.mark.xfail(reason="Project-level authorization not yet implemented")
     def test_review_status_403_not_masked(self, client, bob_token, db):
         """Test that 403 from review endpoints isn't converted to 500."""
         # Create task in Alice's project
@@ -233,8 +233,7 @@ class TestExceptionHandling:
 
         # Bob tries to access Alice's task review status
         response = client.get(
-            "/api/tasks/1/review-status",
-            headers={"Authorization": f"Bearer {bob_token}"}
+            "/api/tasks/1/review-status", headers={"Authorization": f"Bearer {bob_token}"}
         )
 
         # Should return 403, not 500

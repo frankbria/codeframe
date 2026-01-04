@@ -30,15 +30,7 @@ CodeFRAME implements comprehensive authentication and authorization to address O
 
 #### Security Configuration
 
-**Development** (authentication optional):
-```bash
-export AUTH_REQUIRED=false
-```
-
-**Production** (authentication required):
-```bash
-export AUTH_REQUIRED=true
-```
+Authentication is **always required**. All API endpoints require valid JWT Bearer tokens.
 
 **See Also**: [docs/authentication.md](docs/authentication.md) for complete authentication guide.
 

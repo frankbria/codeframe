@@ -620,14 +620,10 @@ class SchemaManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_blockers_agent_status ON blockers(agent_id, status)"
         )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_blockers_task_id ON blockers(task_id)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_task_id ON blockers(task_id)")
 
         # Lint results indexes
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_lint_results_task ON lint_results(task_id)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_lint_results_task ON lint_results(task_id)")
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_lint_results_created ON lint_results(created_at DESC)"
         )
@@ -643,9 +639,7 @@ class SchemaManager:
         )
 
         # Test results indexes
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_test_results_task ON test_results(task_id)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_test_results_task ON test_results(task_id)")
 
         # Correction attempts indexes
         cursor.execute(
@@ -661,9 +655,7 @@ class SchemaManager:
         )
 
         # Code reviews indexes
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_reviews_task ON code_reviews(task_id)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviews_task ON code_reviews(task_id)")
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_reviews_severity ON code_reviews(severity, created_at)"
         )
@@ -686,9 +678,7 @@ class SchemaManager:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_token_usage_project ON token_usage(project_id, timestamp)"
         )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_token_usage_task ON token_usage(task_id)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_task ON token_usage(task_id)")
 
         # Checkpoints indexes
         cursor.execute(
@@ -707,51 +697,29 @@ class SchemaManager:
         )
 
         # Authentication indexes
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)")
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_project_users_user_id ON project_users(user_id)"
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_project_users_user_project ON project_users(user_id, project_id)"
         )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)"
-        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id)")
 
     def _ensure_default_admin_user(self) -> None:
-        """Ensure default admin user exists in database.
+        """Ensure default admin user exists in database for initial setup.
 
-        Creates admin user with id=1 if it doesn't exist. This is ONLY used
-        when AUTH_REQUIRED=false to provide a default user for development.
+        Creates admin user with id=1 if it doesn't exist. This provides
+        a bootstrap user for test fixtures and initial database setup.
 
-        SECURITY: In production (AUTH_REQUIRED=true), no admin account is
-        created. Users must authenticate via BetterAuth.
-
-        Uses BetterAuth-compatible schema:
-        - Creates user record without password
-        - Creates account record with NULL password (cannot be used for login)
+        SECURITY: The admin user has a disabled password placeholder
+        that cannot match any bcrypt hash, so it cannot be used for
+        direct login. Users must register through the auth system.
 
         Uses INSERT OR IGNORE to avoid conflicts with test fixtures.
         """
-        import os
-
-        # SECURITY: Only create admin account in development mode
-        auth_required = os.getenv("AUTH_REQUIRED", "false").lower() == "true"
-        if auth_required:
-            logger.debug(
-                "Skipping admin user creation (AUTH_REQUIRED=true). "
-                "Users must register via the auth system."
-            )
-            return
-
         cursor = self.conn.cursor()
 
         # Create user record (FastAPI Users compatible)
@@ -768,10 +736,9 @@ class SchemaManager:
         user_created = cursor.rowcount > 0
 
         if user_created:
-            logger.warning(
-                "⚠️  DEVELOPMENT MODE: Created default admin user (id=1, email='admin@localhost'). "
-                "This account has a disabled password and cannot be used for login. "
-                "Set AUTH_REQUIRED=true for production."
+            logger.debug(
+                "Created default admin user (id=1) for test fixtures. "
+                "This account has a disabled password and cannot be used for login."
             )
 
         self.conn.commit()

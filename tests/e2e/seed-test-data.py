@@ -3,6 +3,7 @@
 Seed test data directly into the SQLite database for Playwright E2E tests.
 This script is called by global-setup.ts to populate test data.
 """
+
 import os
 import sqlite3
 import sys
@@ -39,9 +40,7 @@ TABLE_CHECKPOINTS = "checkpoints"
 
 def table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
     """Check if a table exists in the database."""
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,)
-    )
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
     return cursor.fetchone() is not None
 
 
@@ -63,11 +62,10 @@ def seed_test_data(db_path: str, project_id: int):
         # 0. Seed Test User (for authentication)
         # ========================================
         # ⚠️  SECURITY WARNING: Test credentials only
-        # This seeding creates a test user with a KNOWN password and session token.
+        # This seeding creates a test user with a KNOWN password.
         # NEVER use these credentials in production environments!
-        # - Test password: 'testpassword123' (bcrypt hashed)
-        # - Test session token: hardcoded, predictable value
-        # - Only safe for local E2E testing where AUTH_REQUIRED=false
+        # - Test password: 'Testpassword123' (argon2id hashed)
+        # - Only safe for local E2E testing
         print("👤 Seeding test user...")
 
         # FastAPI Users schema: password stored in users table as hashed_password
@@ -79,6 +77,7 @@ def seed_test_data(db_path: str, project_id: int):
         # Verify hash is valid before seeding using FastAPI Users password helper
         try:
             from fastapi_users.password import PasswordHelper
+
             helper = PasswordHelper()
             verified, _ = helper.verify_and_update("Testpassword123", test_user_password_hash)
             assert verified, "Password hash verification failed"
@@ -207,7 +206,9 @@ def seed_test_data(db_path: str, project_id: int):
             print(f"⚠️  Warning: {TABLE_PROJECT_AGENTS} table doesn't exist, skipping assignments")
         else:
             # Clear existing assignments for project
-            cursor.execute(f"DELETE FROM {TABLE_PROJECT_AGENTS} WHERE project_id = ?", (project_id,))
+            cursor.execute(
+                f"DELETE FROM {TABLE_PROJECT_AGENTS} WHERE project_id = ?", (project_id,)
+            )
 
             # Assign all 5 agents to the project
             assignments = [
@@ -514,7 +515,9 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert task {task[0]}: {e}")
 
-            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_TASKS} WHERE project_id = ?", (project_id,))
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_TASKS} WHERE project_id = ?", (project_id,)
+            )
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/10 tasks")
 
@@ -728,7 +731,9 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert token usage record {record[0]}: {e}")
 
-            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_TOKEN_USAGE} WHERE project_id = ?", (project_id,))
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_TOKEN_USAGE} WHERE project_id = ?", (project_id,)
+            )
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/15 token usage records")
 
@@ -942,7 +947,9 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to insert code review finding: {e}")
 
-            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_CODE_REVIEWS} WHERE project_id = ?", (project_id,))
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_CODE_REVIEWS} WHERE project_id = ?", (project_id,)
+            )
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/7 code review findings")
 
@@ -1111,7 +1118,9 @@ def seed_test_data(db_path: str, project_id: int):
                 except sqlite3.Error as e:
                     print(f"⚠️  Failed to upsert checkpoint {checkpoint[0]}: {e}")
 
-            cursor.execute(f"SELECT COUNT(*) FROM {TABLE_CHECKPOINTS} WHERE project_id = ?", (project_id,))
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_CHECKPOINTS} WHERE project_id = ?", (project_id,)
+            )
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/3 checkpoints with files")
 

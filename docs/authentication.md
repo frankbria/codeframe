@@ -25,11 +25,10 @@ CodeFRAME implements a layered security architecture:
 ### Key Features
 
 - ✅ **Email/Password Authentication**: Secure user registration and login
-- ✅ **Session Management**: 7-day sessions with automatic expiry and cleanup
+- ✅ **Session Management**: JWT tokens with configurable lifetime
 - ✅ **Project Ownership**: Automatic owner assignment on project creation
 - ✅ **Role-Based Access**: Owner, collaborator, and viewer roles
 - ✅ **Audit Logging**: Comprehensive logging of auth/authz events
-- ✅ **Backward Compatibility**: Optional authentication during migration period
 
 ---
 
@@ -417,32 +416,19 @@ cursor.execute(
 
 ---
 
-## Migration Guide
+## Setup Guide
 
-### Enabling Authentication
+### Initial Setup
 
-Authentication is controlled by the `AUTH_REQUIRED` environment variable:
-
-```bash
-# Development (authentication optional, default admin user)
-export AUTH_REQUIRED=false
-
-# Production (authentication required)
-export AUTH_REQUIRED=true
-```
-
-### Migration Steps
-
-1. **Deploy Backend with AUTH_REQUIRED=false**:
+1. **Deploy Backend**:
    ```bash
-   export AUTH_REQUIRED=false
    uv run uvicorn codeframe.ui.server:app --reload
    ```
 
-2. **Deploy Frontend with Better Auth**:
+2. **Deploy Frontend**:
    ```bash
    cd web-ui
-   npm install better-auth@1.4.7
+   npm install
    npm run dev
    ```
 
@@ -451,29 +437,10 @@ export AUTH_REQUIRED=true
    - Create admin account with email/password
    - Verify email (if email verification enabled)
 
-4. **Migrate Existing Projects**:
-   ```sql
-   -- Assign all existing projects to admin user
-   UPDATE projects SET user_id = 1 WHERE user_id IS NULL;
-   ```
-
-5. **Enable Authentication**:
-   ```bash
-   export AUTH_REQUIRED=true
-   # Restart backend
-   ```
-
-6. **Test Authentication**:
+4. **Test Authentication**:
    - Log in at `/login`
    - Verify you can access your projects
-   - Verify unauthorized users get 403 errors
-
-### Backward Compatibility
-
-During the migration period (`AUTH_REQUIRED=false`):
-- Requests without tokens receive a default admin user (id=1, email=admin@localhost)
-- Requests with tokens are validated normally
-- This allows gradual migration without breaking existing workflows
+   - Verify unauthorized users get 401 errors
 
 ---
 
@@ -651,7 +618,7 @@ async def test_protected_endpoint_without_auth(client):
 **"Missing authentication token" error**:
 - Ensure `Authorization: Bearer <token>` header is included
 - Check that token is valid and not expired
-- Verify AUTH_REQUIRED environment variable is set correctly
+- Authentication is always required for all API endpoints
 
 **"Access denied" error (403)**:
 - Verify user has access to the project
