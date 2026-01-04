@@ -7,11 +7,14 @@
  */
 
 import { test } from '@playwright/test';
+import { loginUser } from './test-utils';
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
 
 test('capture browser console errors', async ({ page }) => {
+  // Login first to access protected routes
+  await loginUser(page);
   const consoleMessages: string[] = [];
   const errors: string[] = [];
 

@@ -11,7 +11,7 @@
 import { test, expect, Page } from '@playwright/test';
 import { withOptionalWarning, loginUser } from './test-utils';
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8080';
 const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
 

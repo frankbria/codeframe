@@ -9,12 +9,16 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginUser } from './test-utils';
 
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
 
 test.describe('Review Findings UI', () => {
   test.beforeEach(async ({ page }) => {
+    // Login using real authentication flow
+    await loginUser(page);
+
     // Navigate to dashboard for test project
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
