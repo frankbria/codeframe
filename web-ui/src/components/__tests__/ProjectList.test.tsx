@@ -14,25 +14,28 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/lib/api', () => ({
   projectsApi: {
     list: jest.fn(),
+    startProject: jest.fn(),
   },
 }));
 
 // Mock ProjectCreationForm component
 jest.mock('@/components/ProjectCreationForm', () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return function MockProjectCreationForm({ onSuccess }: { onSuccess: (project: any) => void }) {
+  return function MockProjectCreationForm({
+    onSuccess,
+    onSubmit,
+  }: {
+    onSuccess: (projectId: number) => void;
+    onSubmit?: () => void;
+    onError?: () => void;
+  }) {
     return (
       <div data-testid="project-creation-form">
         <button
-          onClick={() =>
-            onSuccess({
-              id: 3,
-              name: 'New Project',
-              status: 'init',
-              phase: 'discovery',
-              created_at: '2025-01-16T10:00:00Z',
-            })
-          }
+          onClick={() => {
+            onSubmit?.();
+            // Simulate async success after a brief delay
+            setTimeout(() => onSuccess(3), 50);
+          }}
         >
           Submit Form
         </button>
@@ -40,6 +43,13 @@ jest.mock('@/components/ProjectCreationForm', () => {
     );
   };
 });
+
+// Mock Spinner component
+jest.mock('@/components/Spinner', () => ({
+  Spinner: ({ size }: { size: string }) => (
+    <div data-testid="spinner" data-size={size}>Loading...</div>
+  ),
+}));
 
 // Helper to render with SWR wrapper
 const renderWithSWR = (component: React.ReactElement) => {
@@ -58,6 +68,7 @@ describe('ProjectList', () => {
     (useRouter as jest.Mock).mockReturnValue({
       push: mockPush,
     });
+    (projectsApi.startProject as jest.Mock).mockResolvedValue({});
   });
 
   test('shows loading state while fetching projects', () => {
@@ -146,10 +157,11 @@ describe('ProjectList', () => {
     renderWithSWR(<ProjectList />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/No projects yet. Create your first project!/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/No projects yet/i)).toBeInTheDocument();
     });
+
+    // Also check for the CTA text
+    expect(screen.getByText(/Create your first project/i)).toBeInTheDocument();
   });
 
   test('shows "Create New Project" button', async () => {
@@ -160,7 +172,7 @@ describe('ProjectList', () => {
     renderWithSWR(<ProjectList />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Create New Project/i)).toBeInTheDocument();
+      expect(screen.getByTestId('create-project-button')).toBeInTheDocument();
     });
   });
 
@@ -172,16 +184,16 @@ describe('ProjectList', () => {
     renderWithSWR(<ProjectList />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Create New Project/i)).toBeInTheDocument();
+      expect(screen.getByTestId('create-project-button')).toBeInTheDocument();
     });
 
-    const createButton = screen.getByText(/Create New Project/i);
+    const createButton = screen.getByTestId('create-project-button');
     await userEvent.click(createButton);
 
     expect(screen.getByTestId('project-creation-form')).toBeInTheDocument();
   });
 
-  test('hides form after project is created', async () => {
+  test('navigates to project dashboard after creation', async () => {
     (projectsApi.list as jest.Mock).mockResolvedValue({
       data: { projects: [] },
     });
@@ -189,11 +201,11 @@ describe('ProjectList', () => {
     renderWithSWR(<ProjectList />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Create New Project/i)).toBeInTheDocument();
+      expect(screen.getByTestId('create-project-button')).toBeInTheDocument();
     });
 
     // Show form
-    const createButton = screen.getByText(/Create New Project/i);
+    const createButton = screen.getByTestId('create-project-button');
     await userEvent.click(createButton);
 
     expect(screen.getByTestId('project-creation-form')).toBeInTheDocument();
@@ -202,57 +214,34 @@ describe('ProjectList', () => {
     const submitButton = screen.getByText('Submit Form');
     await userEvent.click(submitButton);
 
-    // Form should be hidden
-    expect(screen.queryByTestId('project-creation-form')).not.toBeInTheDocument();
+    // Should navigate to project dashboard
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/projects/3');
+    });
   });
 
-  test('refreshes project list after creating new project', async () => {
-    const initialProjects = [
-      {
-        id: 1,
-        name: 'Existing Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-15T10:00:00Z',
-      },
-    ];
-
-    const updatedProjects = [
-      ...initialProjects,
-      {
-        id: 3,
-        name: 'New Project',
-        status: 'init',
-        phase: 'discovery',
-        created_at: '2025-01-16T10:00:00Z',
-      },
-    ];
-
-    // First call returns initial projects
-    (projectsApi.list as jest.Mock)
-      .mockResolvedValueOnce({ data: { projects: initialProjects } })
-      .mockResolvedValueOnce({ data: { projects: updatedProjects } });
+  test('starts discovery after project creation', async () => {
+    (projectsApi.list as jest.Mock).mockResolvedValue({
+      data: { projects: [] },
+    });
 
     renderWithSWR(<ProjectList />);
 
     await waitFor(() => {
-      expect(screen.getByText('Existing Project')).toBeInTheDocument();
+      expect(screen.getByTestId('create-project-button')).toBeInTheDocument();
     });
 
     // Show form and submit
-    const createButton = screen.getByText(/Create New Project/i);
+    const createButton = screen.getByTestId('create-project-button');
     await userEvent.click(createButton);
 
     const submitButton = screen.getByText('Submit Form');
     await userEvent.click(submitButton);
 
-    // Wait for the list to refresh
+    // Should call startProject
     await waitFor(() => {
-      expect(screen.getByText('New Project')).toBeInTheDocument();
+      expect(projectsApi.startProject).toHaveBeenCalledWith(3);
     });
-
-    // Verify list was refreshed (second call to projectsApi.list)
-    expect(projectsApi.list).toHaveBeenCalledTimes(2);
   });
 
   test('shows error state if fetch fails', async () => {
@@ -266,7 +255,7 @@ describe('ProjectList', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Failed to load projects. Please try again./i)
+        screen.getByText(/Failed to load projects/i)
       ).toBeInTheDocument();
     });
 
