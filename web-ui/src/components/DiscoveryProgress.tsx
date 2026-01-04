@@ -37,6 +37,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
   // PRD Generation state
   const [isGeneratingPRD, setIsGeneratingPRD] = useState(false);
+  const [prdCompleted, setPrdCompleted] = useState(false);
+  const [prdError, setPrdError] = useState<string | null>(null);
 
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
@@ -178,6 +180,26 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       if (message.type === 'discovery_completed') {
         setIsGeneratingPRD(true);
         fetchProgress();
+      }
+
+      // Handle PRD generation events
+      if (message.type === 'prd_generation_started') {
+        setIsGeneratingPRD(true);
+        setPrdCompleted(false);
+        setPrdError(null);
+      }
+
+      if (message.type === 'prd_generation_completed') {
+        setIsGeneratingPRD(false);
+        setPrdCompleted(true);
+        setPrdError(null);
+        fetchProgress(); // Refresh to get updated phase
+      }
+
+      if (message.type === 'prd_generation_failed') {
+        setIsGeneratingPRD(false);
+        setPrdCompleted(false);
+        setPrdError(message.data?.error || 'PRD generation failed');
       }
     };
 
@@ -356,7 +378,13 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
             </div>
 
             {/* PRD Generation Status */}
-            <div className="p-4 bg-primary/10 rounded-lg border border-primary">
+            <div className={`p-4 rounded-lg border ${
+              prdCompleted
+                ? 'bg-green-50 border-green-200'
+                : prdError
+                  ? 'bg-destructive/10 border-destructive'
+                  : 'bg-primary/10 border-primary'
+            }`}>
               <div className="flex items-center gap-3">
                 {isGeneratingPRD ? (
                   <>
@@ -369,12 +397,31 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                       <div className="text-xs text-muted-foreground mt-1">The Lead Agent is analyzing your answers and creating a detailed PRD</div>
                     </div>
                   </>
+                ) : prdCompleted ? (
+                  <>
+                    <span className="text-green-600 text-lg">✓</span>
+                    <div>
+                      <div className="text-sm font-medium text-green-800">PRD Generated Successfully</div>
+                      <div className="text-xs text-green-700 mt-1">Your Project Requirements Document is ready. View it in the Documents section.</div>
+                    </div>
+                  </>
+                ) : prdError ? (
+                  <>
+                    <span className="text-destructive text-lg">✗</span>
+                    <div>
+                      <div className="text-sm font-medium text-destructive">PRD Generation Failed</div>
+                      <div className="text-xs text-destructive/80 mt-1">{prdError}</div>
+                    </div>
+                  </>
                 ) : (
                   <>
-                    <span className="text-primary text-lg">📄</span>
+                    <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
                     <div>
-                      <div className="text-sm font-medium text-primary">Ready for PRD Generation</div>
-                      <div className="text-xs text-muted-foreground mt-1">The Lead Agent will generate a Project Requirements Document based on your answers</div>
+                      <div className="text-sm font-medium text-primary">Starting PRD Generation...</div>
+                      <div className="text-xs text-muted-foreground mt-1">The Lead Agent is preparing to generate your Project Requirements Document</div>
                     </div>
                   </>
                 )}

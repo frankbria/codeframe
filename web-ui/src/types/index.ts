@@ -100,9 +100,12 @@ export type WebSocketMessageType =
   | 'pong'
   | 'subscribe'
   | 'subscribed'
-  | 'discovery_starting'   // Immediate feedback when Start Discovery clicked
-  | 'discovery_completed'  // Discovery finished, PRD generation starting
-  | 'agent_created'        // Sprint 4
+  | 'discovery_starting'       // Immediate feedback when Start Discovery clicked
+  | 'discovery_completed'      // Discovery finished, PRD generation starting
+  | 'prd_generation_started'   // PRD generation has begun
+  | 'prd_generation_completed' // PRD generation finished
+  | 'prd_generation_failed'    // PRD generation failed
+  | 'agent_created'            // Sprint 4
   | 'agent_retired'        // Sprint 4
   | 'task_assigned'        // Sprint 4
   | 'task_blocked'         // Sprint 4

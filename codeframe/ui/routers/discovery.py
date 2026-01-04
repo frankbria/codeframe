@@ -8,7 +8,7 @@ import os
 import logging
 from typing import Dict, Any
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 
 from codeframe.persistence.database import Database
 from codeframe.core.models import DiscoveryAnswer, DiscoveryAnswerResponse
@@ -24,10 +24,70 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects/{project_id}/discovery", tags=["discovery"])
 
 
+async def generate_prd_background(project_id: int, db: Database, api_key: str):
+    """Background task to generate PRD after discovery completes.
+
+    Args:
+        project_id: Project ID
+        db: Database instance
+        api_key: API key for Claude
+    """
+    import asyncio
+
+    try:
+        logger.info(f"Starting PRD generation for project {project_id}")
+
+        # Broadcast that PRD generation is starting
+        await manager.broadcast(
+            {
+                "type": "prd_generation_started",
+                "project_id": project_id,
+                "status": "generating",
+            },
+            project_id=project_id,
+        )
+
+        # Create agent and generate PRD (run in thread since it's sync)
+        agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+        prd_content = await asyncio.to_thread(agent.generate_prd)
+
+        logger.info(f"PRD generated successfully for project {project_id}")
+
+        # Broadcast PRD generation complete
+        await manager.broadcast(
+            {
+                "type": "prd_generation_completed",
+                "project_id": project_id,
+                "status": "completed",
+                "prd_preview": prd_content[:200] if prd_content else "",
+            },
+            project_id=project_id,
+        )
+
+        # Update project phase to planning
+        await asyncio.to_thread(
+            db.update_project, project_id, {"phase": "planning"}
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate PRD for project {project_id}: {e}")
+        # Broadcast error
+        await manager.broadcast(
+            {
+                "type": "prd_generation_failed",
+                "project_id": project_id,
+                "status": "failed",
+                "error": str(e),
+            },
+            project_id=project_id,
+        )
+
+
 @router.post("/answer")
 async def submit_discovery_answer(
     project_id: int,
     answer_data: DiscoveryAnswer,
+    background_tasks: BackgroundTasks,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DiscoveryAnswerResponse:
@@ -137,6 +197,10 @@ async def submit_discovery_answer(
                 project_id=project_id,
                 total_answers=answered_count,
                 next_phase="prd_generation",
+            )
+            # Trigger PRD generation in background
+            background_tasks.add_task(
+                generate_prd_background, project_id, db, api_key
             )
         else:
             await broadcast_discovery_question_presented(
