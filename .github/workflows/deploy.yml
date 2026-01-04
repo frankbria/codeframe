@@ -132,6 +132,8 @@ jobs:
         env:
           BACKEND_NAME: ${{ secrets.PM2_BACKEND_NAME }}
           FRONTEND_NAME: ${{ secrets.PM2_FRONTEND_NAME }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
+          NEXT_PUBLIC_WS_URL: ${{ secrets.WS_URL }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
@@ -155,10 +157,14 @@ jobs:
             source .venv/bin/activate
             uv sync
 
-            # Frontend setup
+            # Frontend setup - export NEXT_PUBLIC vars at build time
             echo "📦 Building frontend..."
             cd web-ui
             npm ci
+            # NEXT_PUBLIC vars must be set at build time for Next.js
+            export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
+            export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
+            echo "Building with NEXT_PUBLIC_API_URL=\${NEXT_PUBLIC_API_URL}"
             npm run build
             cd ..
 
@@ -424,6 +430,8 @@ jobs:
         env:
           BACKEND_NAME_PROD: ${{ secrets.PM2_BACKEND_NAME }}
           FRONTEND_NAME_PROD: ${{ secrets.PM2_FRONTEND_NAME }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
+          NEXT_PUBLIC_WS_URL: ${{ secrets.WS_URL }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} "bash -s" << ENDSSH
             set -e
@@ -455,10 +463,14 @@ jobs:
             source .venv/bin/activate
             uv sync --no-dev
 
-            # Frontend setup (production build)
+            # Frontend setup (production build) - export NEXT_PUBLIC vars at build time
             echo "📦 Building frontend for production..."
             cd web-ui
             npm ci
+            # NEXT_PUBLIC vars must be set at build time for Next.js
+            export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
+            export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
+            echo "Building with NEXT_PUBLIC_API_URL=\${NEXT_PUBLIC_API_URL}"
             npm run build
             cd ..
 
