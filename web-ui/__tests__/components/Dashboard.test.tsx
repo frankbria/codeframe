@@ -544,6 +544,10 @@ describe('Dashboard with AgentStateProvider', () => {
         expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
       });
 
+      // Navigate to Tasks tab where BlockerPanel now lives (Sprint 10 Refactor)
+      const tasksTab = screen.getByTestId('tasks-tab');
+      fireEvent.click(tasksTab);
+
       // Then wait for blocker to appear
       await waitFor(
         () => {
@@ -569,6 +573,10 @@ describe('Dashboard with AgentStateProvider', () => {
       await waitFor(() => {
         expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
       });
+
+      // Navigate to Tasks tab where BlockerPanel now lives (Sprint 10 Refactor)
+      const tasksTab = screen.getByTestId('tasks-tab');
+      fireEvent.click(tasksTab);
 
       // Should show empty state
       await waitFor(() => {
@@ -1034,6 +1042,10 @@ describe('Dashboard with AgentStateProvider', () => {
         expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
       });
 
+      // Navigate to Quality Gates tab (Sprint 10 Refactor)
+      const qualityGatesTab = screen.getByTestId('quality-gates-tab');
+      fireEvent.click(qualityGatesTab);
+
       // Verify Quality Gates Panel is wrapped in error boundary
       // The panel should be present in normal operation
       const qualityGatesPanel = screen.getByTestId('quality-gates-panel');
@@ -1082,6 +1094,10 @@ describe('Dashboard with AgentStateProvider', () => {
       await waitFor(() => {
         expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
       });
+
+      // Navigate to Quality Gates tab (Sprint 10 Refactor)
+      const qualityGatesTab = screen.getByTestId('quality-gates-tab');
+      fireEvent.click(qualityGatesTab);
 
       // Verify Quality Gates Panel is shown by default
       const qualityGatesPanel = screen.getByTestId('quality-gates-panel');

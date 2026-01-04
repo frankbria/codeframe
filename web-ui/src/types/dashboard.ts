@@ -3,7 +3,7 @@
  * Feature: 013-context-panel-integration
  */
 
-export type DashboardTab = 'overview' | 'context' | 'checkpoints';
+export type DashboardTab = 'overview' | 'tasks' | 'quality-gates' | 'checkpoints' | 'metrics' | 'context';
 
 export interface DashboardState {
   activeTab: DashboardTab;
