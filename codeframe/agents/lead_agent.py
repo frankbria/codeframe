@@ -256,6 +256,7 @@ class LeadAgent:
             # Initialize default state
             self._discovery_state = "idle"
             self._current_question_id: Optional[str] = None
+            self._current_question_text: Optional[str] = None
             self._discovery_answers: Dict[str, str] = {}
 
             # Filter and restore discovery state
@@ -265,6 +266,8 @@ class LeadAgent:
                     self._discovery_state = memory["value"]
                 elif memory["key"] == "current_question_id":
                     self._current_question_id = memory["value"]
+                elif memory["key"] == "current_question_text":
+                    self._current_question_text = memory["value"]
 
             # Filter and load discovery answers
             answer_memories = [m for m in all_memories if m["category"] == "discovery_answers"]
@@ -312,32 +315,114 @@ class LeadAgent:
         except Exception as e:
             logger.error(f"Failed to save discovery state: {e}")
 
-    def start_discovery(self) -> str:
+    def start_discovery(self, project_description: Optional[str] = None) -> str:
         """
         Begin Socratic requirements discovery.
 
-        Transitions state from 'idle' to 'discovering' and asks the first question.
+        Transitions state from 'idle' to 'discovering' and generates an intelligent
+        first question based on the project context.
+
+        Args:
+            project_description: Optional project description from project creation.
+                Provided as context to help the AI ask relevant questions.
 
         Returns:
-            First discovery question
+            First discovery question (AI-generated based on context)
         """
         # Update state to discovering
         self._discovery_state = "discovering"
         self._save_discovery_state()
 
-        # Get first question
-        next_question = self.discovery_framework.get_next_question(self._discovery_answers)
+        # Store project description as context for discovery
+        if project_description and project_description.strip():
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_context",
+                key="project_description",
+                value=project_description.strip(),
+            )
+            logger.info(f"Stored project description as discovery context ({len(project_description)} chars)")
 
-        if next_question:
-            self._current_question_id = next_question["id"]
+        # Get all discovery questions to show what we need to cover
+        all_questions = self.discovery_framework.generate_questions()
+        required_topics = [q["category"] for q in all_questions if q["importance"] == "required"]
+
+        # Build discovery prompt with context
+        discovery_prompt = self._build_discovery_start_prompt(
+            project_description, required_topics
+        )
+
+        # Use Claude to generate an intelligent first question
+        try:
+            response = self.chat(discovery_prompt)
+
+            # Set first question ID based on what we're likely asking about
+            # This tracks progress through the discovery framework
+            self._current_question_id = "ai_question"  # AI-generated question
+            self._current_question_text = response  # Store the actual question text
             self._save_discovery_state()
 
-            logger.info(f"Started discovery, first question: {next_question['id']}")
-            return next_question["text"]
+            # Also save the AI question to database for progress endpoint access
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="current_question_text",
+                value=response,
+            )
+
+            logger.info(f"Started discovery with AI-generated question")
+            return response
+
+        except Exception as e:
+            logger.error(f"Failed to generate AI question, falling back to default: {e}")
+            # Fallback to first question from framework
+            next_question = self.discovery_framework.get_next_question(self._discovery_answers)
+            if next_question:
+                self._current_question_id = next_question["id"]
+                self._save_discovery_state()
+                return next_question["text"]
+            return "What would you like to build?"
+
+    def _build_discovery_start_prompt(
+        self, project_description: Optional[str], required_topics: list
+    ) -> str:
+        """Build the prompt for starting discovery with context.
+
+        Args:
+            project_description: User-provided project description
+            required_topics: List of topic categories we need to cover
+
+        Returns:
+            Prompt string for Claude
+        """
+        prompt = """You are a helpful AI assistant gathering requirements for a software project.
+
+Your goal is to understand:
+- The problem being solved
+- Who the users are
+- Core features needed
+- Technical constraints
+- Preferred tech stack
+
+"""
+        if project_description:
+            prompt += f"""The user has provided this initial description:
+---
+{project_description}
+---
+
+Based on this description, ask ONE focused follow-up question to clarify the most important missing detail. Don't ask about something already explained in the description.
+"""
         else:
-            # No questions available (shouldn't happen)
-            logger.warning("No questions available to start discovery")
-            return "Discovery framework initialized but no questions available."
+            prompt += """The user hasn't provided a project description yet.
+
+Ask ONE clear question to understand what they want to build and what problem it solves.
+"""
+
+        prompt += """
+Keep your question concise and conversational. Don't number it or add preamble - just ask the question directly."""
+
+        return prompt
 
     def process_discovery_answer(self, answer: str) -> str:
         """
@@ -431,9 +516,19 @@ class LeadAgent:
             status["remaining_count"] = total_required - len(self._discovery_answers)
 
             # Find current question details
-            current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
-            if current_q:
-                status["current_question"] = current_q
+            # Check if this is an AI-generated question first
+            if self._current_question_id == "ai_question" and self._current_question_text:
+                status["current_question"] = {
+                    "id": "ai_question",
+                    "category": "discovery",
+                    "text": self._current_question_text,
+                    "importance": "required",
+                }
+            else:
+                # Look up from framework
+                current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
+                if current_q:
+                    status["current_question"] = current_q
 
         # Add progress indicators if completed (100% progress)
         if self._discovery_state == "completed":

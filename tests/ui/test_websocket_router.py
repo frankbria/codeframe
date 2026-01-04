@@ -10,7 +10,7 @@ Tests ensure that the WebSocket router correctly handles:
 
 import pytest
 import json
-from datetime import datetime, timedelta, timezone
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.testclient import TestClient
@@ -26,9 +26,9 @@ def mock_websocket():
     ws.send_json = AsyncMock()
     ws.receive_text = AsyncMock()
     ws.close = AsyncMock()
-    # Mock query_params for authentication token
+    # Mock query_params for JWT authentication token
     ws.query_params = MagicMock()
-    ws.query_params.get = MagicMock(return_value="test-session-token")
+    ws.query_params.get = MagicMock(return_value="test-jwt-token")
     return ws
 
 
@@ -46,22 +46,56 @@ def mock_manager():
 
 @pytest.fixture
 def mock_db():
-    """Create a mock Database with session authentication support."""
+    """Create a mock Database for project access checks."""
     db = MagicMock()
     # Mock user_has_project_access to always return True (user has access to all projects)
     db.user_has_project_access = MagicMock(return_value=True)
-
-    # Mock database connection for session token validation
-    # WebSocket auth queries sessions table: SELECT user_id, expires_at FROM sessions WHERE token = ?
-    mock_cursor = MagicMock()
-    # Return valid session: user_id=1, expires_at=future timestamp
-    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-    mock_cursor.fetchone = MagicMock(return_value=(1, expires_at))
-    db.conn = MagicMock()
-    db.conn.execute = MagicMock(return_value=mock_cursor)
-    db.conn.commit = MagicMock()
-
     return db
+
+
+@pytest.fixture
+def mock_jwt_auth():
+    """Create mock JWT authentication that returns a valid user."""
+    # Mock user object
+    mock_user = MagicMock()
+    mock_user.id = 1
+    mock_user.is_active = True
+
+    # Mock SQLAlchemy session result
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none = MagicMock(return_value=mock_user)
+
+    # Mock async session
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    # Create async context manager for session
+    @asynccontextmanager
+    async def mock_session_context():
+        yield mock_session
+
+    # Mock session maker that returns fresh context manager each time
+    def mock_session_maker():
+        return mock_session_context()
+
+    return {
+        "jwt_payload": {"sub": "1", "aud": "fastapi-users:auth"},
+        "session_maker": mock_session_maker,
+        "user": mock_user,
+    }
+
+
+@pytest.fixture(autouse=True)
+def apply_jwt_auth_patches(mock_jwt_auth):
+    """Auto-applied fixture that patches JWT auth for all WebSocket tests."""
+    with patch(
+        "codeframe.ui.routers.websocket.pyjwt.decode",
+        return_value=mock_jwt_auth["jwt_payload"],
+    ), patch(
+        "codeframe.ui.routers.websocket.get_async_session_maker",
+        return_value=mock_jwt_auth["session_maker"],
+    ):
+        yield
 
 
 class TestSubscribeHandler:

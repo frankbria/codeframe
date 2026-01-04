@@ -5,10 +5,12 @@
 
 'use client';
 
-import { useEffect, useState, memo } from 'react';
+import { useEffect, useState, memo, useCallback } from 'react';
 import { projectsApi } from '@/lib/api';
 import { authFetch } from '@/lib/api-client';
+import { getWebSocketClient } from '@/lib/websocket';
 import type { DiscoveryProgressResponse } from '@/types/api';
+import type { WebSocketMessage } from '@/types';
 import ProgressBar from './ProgressBar';
 import PhaseIndicator from './PhaseIndicator';
 
@@ -97,7 +99,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   };
 
   // Fetch discovery progress
-  const fetchProgress = async () => {
+  const fetchProgress = useCallback(async () => {
     try {
       const response = await projectsApi.getDiscoveryProgress(projectId);
       setData(response.data);
@@ -107,8 +109,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       console.error('Error fetching discovery progress:', err);
     } finally {
       setLoading(false);
+      setIsStarting(false);
     }
-  };
+  }, [projectId]);
 
   // Start discovery for idle projects
   const handleStartDiscovery = async () => {
@@ -119,23 +122,57 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
     try {
       await projectsApi.startProject(projectId);
-      // Wait a moment for the backend to initialize discovery
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // Refresh to get the updated state
-      await fetchProgress();
+      // WebSocket "discovery_starting" message will trigger refresh
+      // Poll after 2 seconds as fallback in case WebSocket is slow
+      setTimeout(() => {
+        fetchProgress();
+      }, 2000);
     } catch (err) {
       console.error('Failed to start discovery:', err);
       setStartError('Failed to start discovery. Please try again.');
-    } finally {
       setIsStarting(false);
     }
+    // Note: isStarting is cleared by fetchProgress() when data arrives
   };
 
   // Initial fetch
   useEffect(() => {
     fetchProgress();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [fetchProgress]);
+
+  // WebSocket listener for immediate feedback
+  useEffect(() => {
+    const wsClient = getWebSocketClient();
+
+    const handleMessage = (message: WebSocketMessage) => {
+      // Only handle messages for this project
+      if ('project_id' in message && message.project_id !== projectId) {
+        return;
+      }
+
+      // Handle discovery_starting - shows immediate feedback when Start Discovery is clicked
+      if (message.type === 'discovery_starting') {
+        setIsStarting(true);
+        // Fetch latest progress after a short delay
+        setTimeout(() => fetchProgress(), 500);
+      }
+
+      // Handle agent_started - refresh to get current discovery state
+      if (message.type === 'agent_started') {
+        fetchProgress();
+      }
+
+      // Handle status_update - may indicate discovery state change
+      if (message.type === 'status_update') {
+        fetchProgress();
+      }
+    };
+
+    const unsubscribe = wsClient.onMessage(handleMessage);
+    return () => {
+      unsubscribe();
+    };
+  }, [projectId, fetchProgress]);
 
   // Auto-refresh only during discovery
   useEffect(() => {

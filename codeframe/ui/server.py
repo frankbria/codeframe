@@ -151,6 +151,10 @@ def _validate_security_config():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan - startup and shutdown."""
+    # Load environment variables from .env file
+    from codeframe.core.config import load_environment
+    load_environment()
+
     # Validate security configuration before starting
     _validate_security_config()
 

@@ -33,6 +33,8 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if authentication not provided or invalid
     """
+    logger.debug(f"get_current_user called, credentials present: {credentials is not None}")
+
     # Authentication is always required
     if not credentials or not credentials.credentials:
         raise HTTPException(

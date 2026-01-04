@@ -8,6 +8,7 @@ This module provides API endpoints for:
 
 import logging
 import os
+import time
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
@@ -18,7 +19,7 @@ from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
 from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
-from codeframe.ui.shared import running_agents, start_agent
+from codeframe.ui.shared import running_agents, start_agent, manager
 from codeframe.ui.services.agent_service import AgentService
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.ui.models import (
@@ -67,7 +68,6 @@ async def start_project_agent(
     """
     # cf-10.2: Check if project exists
     project = db.get_project(project_id)
-
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
@@ -97,6 +97,16 @@ async def start_project_agent(
                 if discovery_state == "idle":
                     # Discovery not started - proceed to start discovery
                     logger.info(f"Project {project_id} is running but discovery is idle - starting discovery")
+                    # Broadcast immediate feedback before background task starts
+                    await manager.broadcast(
+                        {
+                            "type": "discovery_starting",
+                            "project_id": project_id,
+                            "status": "starting",
+                            "timestamp": time.time(),
+                        },
+                        project_id=project_id
+                    )
                     background_tasks.add_task(start_agent, project_id, db, running_agents, api_key)
                     return {"message": f"Starting discovery for project {project_id}", "status": "starting"}
                 elif discovery_state == "discovering":
@@ -128,6 +138,17 @@ async def start_project_agent(
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
+
+    # Broadcast immediate feedback before background task starts
+    await manager.broadcast(
+        {
+            "type": "discovery_starting",
+            "project_id": project_id,
+            "status": "starting",
+            "timestamp": time.time(),
+        },
+        project_id=project_id
+    )
 
     # cf-10.2: Start agent in background task (non-blocking)
     background_tasks.add_task(start_agent, project_id, db, running_agents, api_key)

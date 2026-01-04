@@ -234,7 +234,16 @@ async def get_discovery_progress(
             # Add state-specific fields
             if status["state"] == "discovering":
                 discovery_data["remaining_count"] = status["remaining_count"]
-                discovery_data["current_question"] = status.get("current_question")
+                # Map backend "text" field to frontend "question" field
+                raw_question = status.get("current_question")
+                if raw_question:
+                    discovery_data["current_question"] = {
+                        "id": raw_question.get("id", ""),
+                        "question": raw_question.get("text", ""),  # Map text -> question
+                        "category": raw_question.get("category", ""),
+                    }
+                else:
+                    discovery_data["current_question"] = None
 
             if status["state"] == "completed":
                 discovery_data["structured_data"] = status.get("structured_data")

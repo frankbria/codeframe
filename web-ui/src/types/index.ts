@@ -100,6 +100,7 @@ export type WebSocketMessageType =
   | 'pong'
   | 'subscribe'
   | 'subscribed'
+  | 'discovery_starting' // Immediate feedback when Start Discovery clicked
   | 'agent_created'      // Sprint 4
   | 'agent_retired'      // Sprint 4
   | 'task_assigned'      // Sprint 4
