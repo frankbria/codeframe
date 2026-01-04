@@ -4,7 +4,7 @@
  * Tests navigation bar including logo link, auth states, and visibility rules.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { usePathname, useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -164,6 +164,11 @@ describe('Navigation', () => {
       fireEvent.click(screen.getByTestId('logout-button'));
 
       expect(mockLogout).toHaveBeenCalled();
+
+      // Wait for async logout handler to complete and verify redirect
+      await waitFor(() => {
+        expect(mockRouter.push).toHaveBeenCalledWith('/login');
+      });
     });
   });
 
