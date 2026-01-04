@@ -35,6 +35,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
+  // PRD Generation state
+  const [isGeneratingPRD, setIsGeneratingPRD] = useState(false);
+
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
     // Guard: Prevent duplicate concurrent submissions
@@ -70,8 +73,14 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       setSubmissionError(null);
 
       // Fetch next question immediately
-      await fetchProgress();
+      const response = await projectsApi.getDiscoveryProgress(projectId);
+      setData(response.data);
       setIsLoadingNextQuestion(false);
+
+      // Check if discovery just completed
+      if (response.data.discovery?.state === 'completed') {
+        setIsGeneratingPRD(true);
+      }
 
     } catch (error) {
       // T040: Handle network and API errors
@@ -162,6 +171,12 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
       // Handle status_update - may indicate discovery state change
       if (message.type === 'status_update') {
+        fetchProgress();
+      }
+
+      // Handle discovery_completed - show PRD generation status
+      if (message.type === 'discovery_completed') {
+        setIsGeneratingPRD(true);
         fetchProgress();
       }
     };
@@ -331,11 +346,40 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
         {/* Completed State */}
         {isCompleted && (
-          <div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg border border-green-200">
-            <span className="text-green-600 text-lg">✓</span>
-            <span className="text-sm font-medium text-green-800">
-              Discovery Complete
-            </span>
+          <div className="space-y-4">
+            {/* Discovery Complete Banner */}
+            <div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg border border-green-200">
+              <span className="text-green-600 text-lg">✓</span>
+              <span className="text-sm font-medium text-green-800">
+                Discovery Complete — All questions answered
+              </span>
+            </div>
+
+            {/* PRD Generation Status */}
+            <div className="p-4 bg-primary/10 rounded-lg border border-primary">
+              <div className="flex items-center gap-3">
+                {isGeneratingPRD ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <div>
+                      <div className="text-sm font-medium text-primary">Generating Project Requirements Document...</div>
+                      <div className="text-xs text-muted-foreground mt-1">The Lead Agent is analyzing your answers and creating a detailed PRD</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-primary text-lg">📄</span>
+                    <div>
+                      <div className="text-sm font-medium text-primary">Ready for PRD Generation</div>
+                      <div className="text-xs text-muted-foreground mt-1">The Lead Agent will generate a Project Requirements Document based on your answers</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

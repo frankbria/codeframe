@@ -100,12 +100,13 @@ export type WebSocketMessageType =
   | 'pong'
   | 'subscribe'
   | 'subscribed'
-  | 'discovery_starting' // Immediate feedback when Start Discovery clicked
-  | 'agent_created'      // Sprint 4
-  | 'agent_retired'      // Sprint 4
-  | 'task_assigned'      // Sprint 4
-  | 'task_blocked'       // Sprint 4
-  | 'task_unblocked';    // Sprint 4
+  | 'discovery_starting'   // Immediate feedback when Start Discovery clicked
+  | 'discovery_completed'  // Discovery finished, PRD generation starting
+  | 'agent_created'        // Sprint 4
+  | 'agent_retired'        // Sprint 4
+  | 'task_assigned'        // Sprint 4
+  | 'task_blocked'         // Sprint 4
+  | 'task_unblocked';      // Sprint 4
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
@@ -170,6 +171,10 @@ export interface WebSocketMessage {
   blocked_by?: number[];         // task_blocked
   blocked_count?: number;        // task_blocked
   unblocked_by?: number;         // task_unblocked
+
+  // Discovery completion fields
+  total_answers?: number;        // discovery_completed
+  next_phase?: string;           // discovery_completed
 }
 
 /**
