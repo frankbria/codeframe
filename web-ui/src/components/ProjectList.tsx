@@ -149,6 +149,7 @@ export default function ProjectList() {
                 <h3 className="text-lg font-semibold text-foreground">Create New Project</h3>
                 <button
                   onClick={() => setShowForm(false)}
+                  aria-label="Close create project form"
                   className="text-muted-foreground hover:text-foreground"
                 >
                   ✕
