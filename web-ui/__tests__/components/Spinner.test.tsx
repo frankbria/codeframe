@@ -1,12 +1,12 @@
 /**
  * Tests for Spinner Component
  * Feature: 011-project-creation-flow (User Story 5)
- * Sprint: 9.5 - Critical UX Fixes
+ * Migrated from src/components/__tests__/Spinner.test.tsx
  */
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { Spinner } from '../Spinner';
+import { Spinner } from '@/components/Spinner';
 
 describe('Spinner', () => {
   test('renders with default medium size', () => {

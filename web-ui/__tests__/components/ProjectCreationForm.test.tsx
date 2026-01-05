@@ -1,13 +1,13 @@
 /**
  * Tests for ProjectCreationForm Component
  * Feature: 011-project-creation-flow
- * Sprint: 9.5 - Critical UX Fixes
+ * Migrated from src/components/__tests__/ProjectCreationForm.test.tsx
  */
 
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ProjectCreationForm from '../ProjectCreationForm';
+import ProjectCreationForm from '@/components/ProjectCreationForm';
 
 // Create mock functions
 const mockPost = jest.fn();

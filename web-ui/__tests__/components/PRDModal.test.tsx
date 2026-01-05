@@ -1,11 +1,11 @@
 /**
  * Tests for PRDModal Component
- * TDD: RED phase - These tests should fail initially
+ * Migrated from src/components/PRDModal.test.tsx
  */
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import PRDModal from './PRDModal';
+import PRDModal from '@/components/PRDModal';
 import type { PRDResponse } from '@/types/api';
 
 describe('PRDModal', () => {
