@@ -103,6 +103,7 @@ export type WebSocketMessageType =
   | 'discovery_starting'       // Immediate feedback when Start Discovery clicked
   | 'discovery_completed'      // Discovery finished, PRD generation starting
   | 'prd_generation_started'   // PRD generation has begun
+  | 'prd_generation_progress'  // PRD generation progress update (stage, message, progress_pct)
   | 'prd_generation_completed' // PRD generation finished
   | 'prd_generation_failed'    // PRD generation failed
   | 'agent_created'            // Sprint 4
@@ -178,6 +179,12 @@ export interface WebSocketMessage {
   // Discovery completion fields
   total_answers?: number;        // discovery_completed
   next_phase?: string;           // discovery_completed
+
+  // PRD generation progress fields
+  stage?: string;                // prd_generation_progress (gathering_data, calling_llm, saving)
+  // message is already defined above for activity_update
+  progress_pct?: number;         // prd_generation_progress (0-100)
+  prd_preview?: string;          // prd_generation_completed
 }
 
 /**

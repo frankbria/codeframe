@@ -27,6 +27,13 @@ router = APIRouter(prefix="/api/projects/{project_id}/discovery", tags=["discove
 async def generate_prd_background(project_id: int, db: Database, api_key: str):
     """Background task to generate PRD after discovery completes.
 
+    Broadcasts progress at each stage:
+    1. prd_generation_started - Initial notification
+    2. prd_generation_progress (gathering_data) - Collecting discovery answers
+    3. prd_generation_progress (calling_llm) - Sending to Claude API
+    4. prd_generation_progress (saving) - Saving PRD to database/file
+    5. prd_generation_completed - Final notification
+
     Args:
         project_id: Project ID
         db: Database instance
@@ -34,10 +41,23 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
     """
     import asyncio
 
+    async def broadcast_progress(stage: str, message: str, progress_pct: int = 0):
+        """Helper to broadcast progress updates."""
+        await manager.broadcast(
+            {
+                "type": "prd_generation_progress",
+                "project_id": project_id,
+                "stage": stage,
+                "message": message,
+                "progress_pct": progress_pct,
+            },
+            project_id=project_id,
+        )
+
     try:
         logger.info(f"Starting PRD generation for project {project_id}")
 
-        # Broadcast that PRD generation is starting
+        # Stage 1: Starting
         await manager.broadcast(
             {
                 "type": "prd_generation_started",
@@ -47,13 +67,37 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
             project_id=project_id,
         )
 
-        # Create agent and generate PRD (run in thread since it's sync)
+        # Stage 2: Gathering discovery data
+        await broadcast_progress(
+            "gathering_data",
+            "Gathering discovery answers...",
+            10
+        )
         agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+
+        # Stage 3: Building prompt and calling LLM
+        await broadcast_progress(
+            "calling_llm",
+            "Generating PRD with AI...",
+            30
+        )
         prd_content = await asyncio.to_thread(agent.generate_prd)
 
         logger.info(f"PRD generated successfully for project {project_id}")
 
-        # Broadcast PRD generation complete
+        # Stage 4: Saving PRD
+        await broadcast_progress(
+            "saving",
+            "Saving PRD document...",
+            80
+        )
+
+        # Update project phase to planning
+        await asyncio.to_thread(
+            db.update_project, project_id, {"phase": "planning"}
+        )
+
+        # Stage 5: Complete
         await manager.broadcast(
             {
                 "type": "prd_generation_completed",
@@ -62,11 +106,6 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
                 "prd_preview": prd_content[:200] if prd_content else "",
             },
             project_id=project_id,
-        )
-
-        # Update project phase to planning
-        await asyncio.to_thread(
-            db.update_project, project_id, {"phase": "planning"}
         )
 
     except Exception as e:

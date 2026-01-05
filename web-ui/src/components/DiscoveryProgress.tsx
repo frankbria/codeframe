@@ -39,6 +39,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const [isGeneratingPRD, setIsGeneratingPRD] = useState(false);
   const [prdCompleted, setPrdCompleted] = useState(false);
   const [prdError, setPrdError] = useState<string | null>(null);
+  const [prdStage, setPrdStage] = useState<string>('');
+  const [prdMessage, setPrdMessage] = useState<string>('');
+  const [prdProgressPct, setPrdProgressPct] = useState<number>(0);
 
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
@@ -187,19 +190,39 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         setIsGeneratingPRD(true);
         setPrdCompleted(false);
         setPrdError(null);
+        setPrdStage('starting');
+        setPrdMessage('Initializing PRD generation...');
+        setPrdProgressPct(0);
+      }
+
+      // Handle PRD generation progress updates
+      if (message.type === 'prd_generation_progress') {
+        setIsGeneratingPRD(true);
+        setPrdStage(message.stage || '');
+        setPrdMessage(message.message || '');
+        setPrdProgressPct(message.progress_pct || 0);
       }
 
       if (message.type === 'prd_generation_completed') {
         setIsGeneratingPRD(false);
         setPrdCompleted(true);
         setPrdError(null);
+        setPrdStage('completed');
+        setPrdMessage('PRD generated successfully');
+        setPrdProgressPct(100);
         fetchProgress(); // Refresh to get updated phase
       }
 
       if (message.type === 'prd_generation_failed') {
         setIsGeneratingPRD(false);
         setPrdCompleted(false);
-        setPrdError(message.data?.error || 'PRD generation failed');
+        // Extract error from data or use default message
+        const errorMsg = message.data?.error ||
+          (message as { error?: string }).error ||
+          'PRD generation failed';
+        setPrdError(errorMsg);
+        setPrdStage('failed');
+        setPrdProgressPct(0);
       }
     };
 
@@ -384,22 +407,39 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                 : prdError
                   ? 'bg-destructive/10 border-destructive'
                   : 'bg-primary/10 border-primary'
-            }`}>
+            }`} data-testid="prd-generation-status">
               <div className="flex items-center gap-3">
                 {isGeneratingPRD ? (
                   <>
-                    <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <div>
-                      <div className="text-sm font-medium text-primary">Generating Project Requirements Document...</div>
-                      <div className="text-xs text-muted-foreground mt-1">The Lead Agent is analyzing your answers and creating a detailed PRD</div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-primary">
+                        {prdMessage || 'Generating Project Requirements Document...'}
+                      </div>
+                      {/* Progress bar for PRD generation */}
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                          <span className="capitalize">{prdStage.replace('_', ' ') || 'Starting'}</span>
+                          <span>{prdProgressPct}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary transition-all duration-500 ease-out"
+                            style={{ width: `${prdProgressPct}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-2">
+                        The Lead Agent is analyzing your answers and creating a detailed PRD
+                      </div>
                     </div>
                   </>
                 ) : prdCompleted ? (
                   <>
-                    <span className="text-green-600 text-lg">✓</span>
+                    <span className="text-green-600 text-lg flex-shrink-0">✓</span>
                     <div>
                       <div className="text-sm font-medium text-green-800">PRD Generated Successfully</div>
                       <div className="text-xs text-green-700 mt-1">Your Project Requirements Document is ready. View it in the Documents section.</div>
@@ -407,7 +447,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                   </>
                 ) : prdError ? (
                   <>
-                    <span className="text-destructive text-lg">✗</span>
+                    <span className="text-destructive text-lg flex-shrink-0">✗</span>
                     <div>
                       <div className="text-sm font-medium text-destructive">PRD Generation Failed</div>
                       <div className="text-xs text-destructive/80 mt-1">{prdError}</div>
@@ -415,7 +455,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                   </>
                 ) : (
                   <>
-                    <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
