@@ -17,7 +17,6 @@ Usage:
 
 import json
 import logging
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -128,7 +127,7 @@ def assign(
             data={"agent_id": agent_id, "role": role},
         )
 
-        console.print(f"[green]✓ Agent assigned successfully[/green]")
+        console.print("[green]✓ Agent assigned successfully[/green]")
         console.print(f"\n[bold]Agent ID:[/bold] {result.get('agent_id')}")
         console.print(f"[bold]Project:[/bold] {project_id}")
         console.print(f"[bold]Role:[/bold] {result.get('role')}")
@@ -184,7 +183,7 @@ def remove(
 
     except APIError as e:
         if e.status_code == 404:
-            console.print(f"[red]Error:[/red] Agent or project not found")
+            console.print("[red]Error:[/red] Agent or project not found")
         else:
             console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -271,7 +270,7 @@ def role(
             data={"role": new_role},
         )
 
-        console.print(f"[green]✓ Agent role updated[/green]")
+        console.print("[green]✓ Agent role updated[/green]")
         console.print(f"\n[bold]Agent:[/bold] {result.get('agent_id')}")
         console.print(f"[bold]New Role:[/bold] {result.get('role')}")
 
@@ -281,7 +280,7 @@ def role(
 
     except APIError as e:
         if e.status_code == 404:
-            console.print(f"[red]Error:[/red] Agent or project not found")
+            console.print("[red]Error:[/red] Agent or project not found")
         else:
             console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)

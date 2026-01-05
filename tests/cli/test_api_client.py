@@ -6,7 +6,6 @@ TDD approach: Write tests first, then implement.
 import json
 import os
 from unittest.mock import patch, MagicMock
-from typing import Any
 
 import pytest
 import requests

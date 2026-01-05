@@ -160,7 +160,7 @@ def create(
 
         result = client.post("/api/tasks", data=data)
 
-        console.print(f"[green]✓ Task created successfully[/green]")
+        console.print("[green]✓ Task created successfully[/green]")
         console.print(f"\n[bold]ID:[/bold] {result.get('id')}")
         console.print(f"[bold]Title:[/bold] {result.get('title')}")
         console.print(f"[bold]Status:[/bold] {result.get('status')}")
@@ -261,7 +261,7 @@ def update(
 
         result = client.patch(f"/api/tasks/{task_id}", data=data)
 
-        console.print(f"[green]✓ Task updated successfully[/green]")
+        console.print("[green]✓ Task updated successfully[/green]")
         console.print(f"\n[bold]ID:[/bold] {result.get('id')}")
         if status:
             console.print(f"[bold]Status:[/bold] {result.get('status')}")

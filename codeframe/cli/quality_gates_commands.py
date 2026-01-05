@@ -136,7 +136,7 @@ def run(
 
         result = client.post(f"/api/tasks/{task_id}/quality-gates", data=data)
 
-        console.print(f"[green]✓ Quality gate check started[/green]")
+        console.print("[green]✓ Quality gate check started[/green]")
         if result.get("message"):
             console.print(result["message"])
 

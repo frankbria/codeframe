@@ -6,7 +6,6 @@ TDD approach: Write tests first, then implement.
 import json
 from unittest.mock import patch, MagicMock
 
-import pytest
 from typer.testing import CliRunner
 
 from codeframe.cli.session_commands import session_app

@@ -5,11 +5,9 @@ TDD approach: Write tests first, then implement.
 
 import json
 import os
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
 from codeframe.cli.auth import (
     get_credentials_path,

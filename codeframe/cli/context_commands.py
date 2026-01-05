@@ -71,7 +71,7 @@ def get(
 
         tiers = result.get("tiers", {})
         if tiers:
-            console.print(f"\n[bold]Tier Distribution:[/bold]")
+            console.print("\n[bold]Tier Distribution:[/bold]")
             console.print(f"  🔴 Hot:  {tiers.get('hot', 0)} items")
             console.print(f"  🟠 Warm: {tiers.get('warm', 0)} items")
             console.print(f"  🔵 Cold: {tiers.get('cold', 0)} items")
@@ -118,7 +118,7 @@ def stats(
         console.print(f"[bold]Total Tokens:[/bold] {result.get('total_tokens', 0):,}")
 
         # Tier breakdown
-        console.print(f"\n[bold]Tier Breakdown:[/bold]")
+        console.print("\n[bold]Tier Breakdown:[/bold]")
         table = Table(show_header=True)
         table.add_column("Tier", style="cyan")
         table.add_column("Items", justify="right")
@@ -164,7 +164,7 @@ def flash_save(
 
         result = client.post(f"/api/agents/{agent_id}/flash-save")
 
-        console.print(f"[green]✓ Context checkpoint created[/green]")
+        console.print("[green]✓ Context checkpoint created[/green]")
         console.print(f"\n[bold]Checkpoint ID:[/bold] {result.get('checkpoint_id')}")
         console.print(f"[bold]Timestamp:[/bold] {result.get('timestamp')}")
 

@@ -143,7 +143,7 @@ def stats(
 
         console.print(f"[bold]Total Reviews:[/bold] {total}")
         console.print(f"[bold]Average Score:[/bold] {avg_score}")
-        console.print(f"\n[bold]By Status:[/bold]")
+        console.print("\n[bold]By Status:[/bold]")
         console.print(f"  ✅ Approved: {approved}")
         console.print(f"  🔄 Changes Requested: {changes}")
         console.print(f"  ❌ Rejected: {rejected}")
@@ -207,7 +207,7 @@ def findings(
         if has_blocking:
             console.print("[red]⚠ Has blocking findings (critical/high)[/red]")
 
-        console.print(f"\n[bold]By Severity:[/bold]")
+        console.print("\n[bold]By Severity:[/bold]")
         for sev, count in severity_counts.items():
             if count > 0:
                 console.print(f"  {severity_emoji(sev)} {sev.capitalize()}: {count}")
@@ -290,7 +290,7 @@ def list_reviews(
         if has_blocking:
             console.print("[red]⚠ Has blocking findings (critical/high)[/red]")
 
-        console.print(f"\n[bold]By Severity:[/bold]")
+        console.print("\n[bold]By Severity:[/bold]")
         for sev, count in severity_counts.items():
             if count > 0:
                 console.print(f"  {severity_emoji(sev)} {sev.capitalize()}: {count}")

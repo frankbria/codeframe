@@ -181,8 +181,6 @@ class APIClient:
         url = self._make_url(endpoint)
         headers = self._get_headers()
 
-        last_exception = None
-
         for attempt in range(self.max_retries):
             try:
                 response = requests.request(
@@ -195,7 +193,6 @@ class APIClient:
                 return self._handle_response(response)
 
             except requests.ConnectionError as e:
-                last_exception = e
                 logger.warning(f"Connection error (attempt {attempt + 1}/{self.max_retries}): {e}")
 
                 if attempt < self.max_retries - 1:
@@ -205,7 +202,6 @@ class APIClient:
                 continue
 
             except requests.Timeout as e:
-                last_exception = e
                 logger.warning(f"Request timeout (attempt {attempt + 1}/{self.max_retries}): {e}")
 
                 if attempt < self.max_retries - 1:

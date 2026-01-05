@@ -101,7 +101,7 @@ def list_blockers(
         console.print(table)
 
         if pending > 0:
-            console.print(f"\n[cyan]Resolve pending blockers:[/cyan] codeframe blockers resolve <id> \"your answer\"")
+            console.print("\n[cyan]Resolve pending blockers:[/cyan] codeframe blockers resolve <id> \"your answer\"")
 
     except AuthenticationError as e:
         console.print(f"[red]Authentication error:[/red] {e}")
@@ -190,7 +190,7 @@ def resolve(
 
         result = client.post(f"/api/blockers/{blocker_id}/resolve", data={"answer": answer})
 
-        console.print(f"[green]✓ Blocker resolved successfully[/green]")
+        console.print("[green]✓ Blocker resolved successfully[/green]")
         console.print(f"\n[bold]Blocker ID:[/bold] {result.get('blocker_id')}")
         console.print(f"[bold]Status:[/bold] {result.get('status')}")
         console.print(f"[bold]Resolved at:[/bold] {result.get('resolved_at')}")
@@ -201,7 +201,7 @@ def resolve(
 
     except APIError as e:
         if e.status_code == 409:
-            console.print(f"[yellow]Blocker already resolved.[/yellow]")
+            console.print("[yellow]Blocker already resolved.[/yellow]")
             console.print("This blocker was resolved previously.")
         elif e.status_code == 404:
             console.print(f"[red]Error:[/red] Blocker {blocker_id} not found")

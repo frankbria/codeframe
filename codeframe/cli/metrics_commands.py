@@ -80,7 +80,7 @@ def tokens(
         # By agent breakdown
         by_agent = result.get("by_agent", [])
         if by_agent:
-            console.print(f"\n[bold]By Agent:[/bold]")
+            console.print("\n[bold]By Agent:[/bold]")
             table = Table(show_header=True)
             table.add_column("Agent", style="cyan")
             table.add_column("Tokens", justify="right")
@@ -142,7 +142,7 @@ def costs(
         # By day breakdown
         by_day = result.get("by_day", [])
         if by_day:
-            console.print(f"\n[bold]Daily Breakdown:[/bold]")
+            console.print("\n[bold]Daily Breakdown:[/bold]")
             table = Table(show_header=True)
             table.add_column("Date", style="cyan")
             table.add_column("Cost", justify="right")

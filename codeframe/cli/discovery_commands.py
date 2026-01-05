@@ -20,7 +20,6 @@ import logging
 
 import typer
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.panel import Panel
 
 from codeframe.cli.api_client import APIClient, APIError, AuthenticationError
@@ -73,7 +72,7 @@ def start(
 
     except APIError as e:
         if e.status_code == 409:
-            console.print(f"[yellow]Discovery already in progress.[/yellow]")
+            console.print("[yellow]Discovery already in progress.[/yellow]")
             console.print(f"Check status: codeframe discovery progress {project_id}")
         else:
             console.print(f"[red]Error:[/red] {e}")
@@ -115,7 +114,7 @@ def progress(
 
         if discovery is None:
             # Idle state - discovery not started
-            console.print(f"\n[yellow]Discovery not started.[/yellow]")
+            console.print("\n[yellow]Discovery not started.[/yellow]")
             console.print(f"Start with: codeframe discovery start {project_id}")
             return
 
@@ -150,7 +149,7 @@ def progress(
                 console.print(f"\n[cyan]Answer:[/cyan] codeframe discovery answer {project_id} \"your answer here\"")
 
         elif state == "completed":
-            console.print(f"\n[green]✓ Discovery completed![/green]")
+            console.print("\n[green]✓ Discovery completed![/green]")
             console.print(f"[cyan]Generate PRD:[/cyan] codeframe discovery generate-prd {project_id}")
 
     except AuthenticationError as e:
@@ -193,17 +192,17 @@ def answer(
         current_idx = result.get("current_index", 0)
         total = result.get("total_questions", 0)
 
-        console.print(f"[green]✓ Answer submitted[/green]")
+        console.print("[green]✓ Answer submitted[/green]")
         console.print(f"[bold]Progress:[/bold] {progress_pct:.0f}% ({current_idx}/{total})")
 
         if is_complete:
-            console.print(f"\n[green]✓ Discovery completed![/green]")
+            console.print("\n[green]✓ Discovery completed![/green]")
             console.print("PRD generation starting automatically...")
             console.print(f"Or trigger manually: codeframe discovery generate-prd {project_id}")
         else:
             next_question = result.get("next_question")
             if next_question:
-                console.print(f"\n[bold]Next Question:[/bold]")
+                console.print("\n[bold]Next Question:[/bold]")
                 console.print(Panel(next_question))
                 console.print(f"\n[cyan]Answer:[/cyan] codeframe discovery answer {project_id} \"your answer\"")
 
@@ -215,7 +214,7 @@ def answer(
         if e.status_code == 400:
             detail = e.detail or str(e)
             if "not active" in detail.lower():
-                console.print(f"[red]Error:[/red] Discovery is not active.")
+                console.print("[red]Error:[/red] Discovery is not active.")
                 console.print(f"Start discovery first: codeframe discovery start {project_id}")
             else:
                 console.print(f"[red]Error:[/red] {detail}")
@@ -257,7 +256,7 @@ def restart(
 
         result = client.post(f"/api/projects/{project_id}/discovery/restart")
 
-        console.print(f"[green]✓ Discovery has been reset[/green]")
+        console.print("[green]✓ Discovery has been reset[/green]")
         if result.get("message"):
             console.print(result["message"])
         console.print(f"\n[cyan]Start again:[/cyan] codeframe discovery start {project_id}")
@@ -270,7 +269,7 @@ def restart(
         if e.status_code == 400:
             detail = e.detail or str(e)
             if "completed" in detail.lower():
-                console.print(f"[yellow]Discovery is already completed.[/yellow]")
+                console.print("[yellow]Discovery is already completed.[/yellow]")
                 console.print("Completed discovery cannot be restarted.")
             else:
                 console.print(f"[red]Error:[/red] {detail}")
@@ -313,7 +312,7 @@ def generate_prd(
         if e.status_code == 400:
             detail = e.detail or str(e)
             if "complete" in detail.lower():
-                console.print(f"[yellow]Discovery must be completed first.[/yellow]")
+                console.print("[yellow]Discovery must be completed first.[/yellow]")
                 console.print(f"Check progress: codeframe discovery progress {project_id}")
             else:
                 console.print(f"[red]Error:[/red] {detail}")

@@ -145,7 +145,7 @@ def create(
 
         result = client.post("/api/projects", data=data)
 
-        console.print(f"[green]✓ Project created successfully[/green]")
+        console.print("[green]✓ Project created successfully[/green]")
         console.print(f"\n[bold]ID:[/bold] {result.get('id')}")
         console.print(f"[bold]Name:[/bold] {result.get('name')}")
         console.print(f"[bold]Status:[/bold] {result.get('status')}")
@@ -161,7 +161,7 @@ def create(
 
     except APIError as e:
         if e.status_code == 409:
-            console.print(f"[red]Error:[/red] A project with this name already exists")
+            console.print("[red]Error:[/red] A project with this name already exists")
         else:
             console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -350,7 +350,7 @@ def activity(
             console.print("[yellow]No recent activity.[/yellow]")
             return
 
-        console.print(f"\n[bold]Recent Activity[/bold]\n")
+        console.print("\n[bold]Recent Activity[/bold]\n")
 
         for item in activities:
             timestamp = item.get("timestamp", "")[:19].replace("T", " ")
@@ -388,7 +388,7 @@ def start(
 
         result = client.post(f"/api/projects/{project_id}/start")
 
-        console.print(f"[green]✓ Project started successfully[/green]")
+        console.print("[green]✓ Project started successfully[/green]")
         if result.get("message"):
             console.print(result["message"])
 
@@ -419,7 +419,7 @@ def pause(
 
         result = client.post(f"/api/projects/{project_id}/pause")
 
-        console.print(f"[green]✓ Project paused[/green]")
+        console.print("[green]✓ Project paused[/green]")
         if result.get("message"):
             console.print(result["message"])
 
@@ -450,7 +450,7 @@ def resume(
 
         result = client.post(f"/api/projects/{project_id}/resume")
 
-        console.print(f"[green]✓ Project resumed[/green]")
+        console.print("[green]✓ Project resumed[/green]")
         if result.get("message"):
             console.print(result["message"])
 

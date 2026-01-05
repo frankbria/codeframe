@@ -132,7 +132,7 @@ def create(
 
         result = client.post(f"/api/projects/{project_id}/checkpoints", data=data)
 
-        console.print(f"[green]✓ Checkpoint created successfully[/green]")
+        console.print("[green]✓ Checkpoint created successfully[/green]")
         console.print(f"\n[bold]ID:[/bold] {result.get('id')}")
         console.print(f"[bold]Name:[/bold] {result.get('name')}")
         console.print(f"[bold]Commit:[/bold] {result.get('git_commit', '')[:7]}")
@@ -196,7 +196,7 @@ def get(
 
     except APIError as e:
         if e.status_code == 404:
-            console.print(f"[red]Error:[/red] Checkpoint not found")
+            console.print("[red]Error:[/red] Checkpoint not found")
         else:
             console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
@@ -269,7 +269,7 @@ def restore(
 
         if confirm:
             # Actual restore
-            console.print(f"[green]✓ Project restored to checkpoint successfully[/green]")
+            console.print("[green]✓ Project restored to checkpoint successfully[/green]")
             console.print(f"\n[bold]Checkpoint:[/bold] {result.get('checkpoint_name')}")
             console.print(f"[bold]Git Commit:[/bold] {result.get('git_commit')}")
             if result.get("items_restored"):
@@ -325,7 +325,7 @@ def diff(
         ins = result.get("insertions", 0)
         dels = result.get("deletions", 0)
 
-        console.print(f"\n[bold]Changes since checkpoint:[/bold]")
+        console.print("\n[bold]Changes since checkpoint:[/bold]")
         console.print(f"  [cyan]{files}[/cyan] files changed")
         console.print(f"  [green]+{ins}[/green] insertions")
         console.print(f"  [red]-{dels}[/red] deletions")

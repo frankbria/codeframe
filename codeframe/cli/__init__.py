@@ -293,23 +293,24 @@ def version():
 # Import and register command groups (sub-applications)
 # Phase 1: Core workflows - auth, projects, blockers, checkpoints, discovery
 # Phase 2: Agent & task management - agents, tasks, quality-gates, metrics, session, context
+# NOTE: These imports must come after app definition (E402 intentional)
 # =============================================================================
 
 # Phase 1 imports
-from codeframe.cli.auth_commands import auth_app
-from codeframe.cli.project_commands import projects_app
-from codeframe.cli.blocker_commands import blockers_app
-from codeframe.cli.checkpoint_commands import checkpoints_app
-from codeframe.cli.discovery_commands import discovery_app
+from codeframe.cli.auth_commands import auth_app  # noqa: E402
+from codeframe.cli.project_commands import projects_app  # noqa: E402
+from codeframe.cli.blocker_commands import blockers_app  # noqa: E402
+from codeframe.cli.checkpoint_commands import checkpoints_app  # noqa: E402
+from codeframe.cli.discovery_commands import discovery_app  # noqa: E402
 
 # Phase 2 imports
-from codeframe.cli.agents_commands import agents_app
-from codeframe.cli.tasks_commands import tasks_app
-from codeframe.cli.quality_gates_commands import quality_gates_app
-from codeframe.cli.metrics_commands import metrics_app
-from codeframe.cli.session_commands import session_app
-from codeframe.cli.context_commands import context_app
-from codeframe.cli.review_commands import review_app
+from codeframe.cli.agents_commands import agents_app  # noqa: E402
+from codeframe.cli.tasks_commands import tasks_app  # noqa: E402
+from codeframe.cli.quality_gates_commands import quality_gates_app  # noqa: E402
+from codeframe.cli.metrics_commands import metrics_app  # noqa: E402
+from codeframe.cli.session_commands import session_app  # noqa: E402
+from codeframe.cli.context_commands import context_app  # noqa: E402
+from codeframe.cli.review_commands import review_app  # noqa: E402
 
 # Register Phase 1 command groups
 app.add_typer(auth_app, name="auth", help="Authentication (login, logout, register)")

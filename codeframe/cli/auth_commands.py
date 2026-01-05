@@ -20,7 +20,7 @@ import requests
 import typer
 from rich.console import Console
 
-from codeframe.cli.auth import store_token, clear_token, get_token, is_authenticated
+from codeframe.cli.auth import store_token, clear_token, is_authenticated
 from codeframe.cli.api_client import APIClient, AuthenticationError, get_api_base_url
 
 logger = logging.getLogger(__name__)
