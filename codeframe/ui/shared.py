@@ -273,15 +273,16 @@ async def start_agent(
     - Saves greeting message to database
     - Broadcasts status updates via WebSocket
 
-    Raises:
-        ValueError: If agent is already running for this project
+    Returns early (no error) if agent is already running - this is idempotent behavior.
     """
     # Acquire lock before checking/creating agent to prevent race conditions
     async with shared_state._agents_lock:
         # Check if agent already exists in shared_state
         existing_agent = shared_state._running_agents.get(project_id)
         if existing_agent is not None:
-            raise ValueError(f"Agent already running for project {project_id}")
+            # This is expected idempotent behavior, not an error
+            logger.info(f"Agent already running for project {project_id} - skipping start")
+            return
 
         # Create Lead Agent instance (only after checking no existing agent)
         agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
@@ -297,8 +298,59 @@ async def start_agent(
 
     # Lock released - now safe to do I/O operations
     try:
-        # Update project status to RUNNING (non-blocking)
-        await asyncio.to_thread(db.update_project, project_id, {"status": ProjectStatus.RUNNING})
+        # Get project description to pre-populate discovery context
+        project = await asyncio.to_thread(db.get_project, project_id)
+        project_description = project.get("description", "") if project else ""
+
+        # Start the Socratic discovery process
+        # This transitions discovery state from "idle" to "discovering"
+        # and generates the first question for the user
+        # If project_description is provided, it gives context for generating a relevant first question
+        try:
+            first_question = await asyncio.to_thread(
+                agent.start_discovery, project_description
+            )
+            logger.info(f"Discovery started for project {project_id}: {first_question[:50]}...")
+
+            # Broadcast discovery_question_ready when first question is available
+            try:
+                await manager.broadcast(
+                    {
+                        "type": "discovery_question_ready",
+                        "project_id": project_id,
+                        "question_text": first_question,
+                        "question_index": 0,
+                        "timestamp": time.time(),
+                    },
+                    project_id=project_id
+                )
+            except Exception as broadcast_err:
+                logger.warning(f"Failed to broadcast discovery_question_ready: {broadcast_err}")
+                # Continue even if broadcast fails
+
+        except Exception as e:
+            logger.error(f"Failed to start discovery for project {project_id}: {e}")
+            # Broadcast error so frontend can show appropriate UI
+            try:
+                await manager.broadcast(
+                    {
+                        "type": "discovery_error",
+                        "project_id": project_id,
+                        "error": str(e),
+                        "message": "Failed to start discovery. Click 'Start Discovery' to retry.",
+                        "timestamp": time.time(),
+                    },
+                    project_id=project_id
+                )
+            except Exception as broadcast_err:
+                logger.warning(f"Failed to broadcast discovery_error: {broadcast_err}")
+            # Continue with agent startup even if discovery fails
+            # User can manually trigger discovery later
+
+        # Update project status to RUNNING and phase to discovery (non-blocking)
+        await asyncio.to_thread(
+            db.update_project, project_id, {"status": ProjectStatus.RUNNING, "phase": "discovery"}
+        )
 
         # Broadcast agent_started message
         try:

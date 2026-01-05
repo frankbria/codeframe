@@ -100,11 +100,19 @@ export type WebSocketMessageType =
   | 'pong'
   | 'subscribe'
   | 'subscribed'
-  | 'agent_created'      // Sprint 4
-  | 'agent_retired'      // Sprint 4
-  | 'task_assigned'      // Sprint 4
-  | 'task_blocked'       // Sprint 4
-  | 'task_unblocked';    // Sprint 4
+  | 'discovery_starting'       // Immediate feedback when Start Discovery clicked
+  | 'discovery_question_ready' // First question is available after starting discovery
+  | 'discovery_reset'          // Discovery was reset to idle state
+  | 'discovery_completed'      // Discovery finished, PRD generation starting
+  | 'prd_generation_started'   // PRD generation has begun
+  | 'prd_generation_progress'  // PRD generation progress update (stage, message, progress_pct)
+  | 'prd_generation_completed' // PRD generation finished
+  | 'prd_generation_failed'    // PRD generation failed
+  | 'agent_created'            // Sprint 4
+  | 'agent_retired'        // Sprint 4
+  | 'task_assigned'        // Sprint 4
+  | 'task_blocked'         // Sprint 4
+  | 'task_unblocked';      // Sprint 4
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
@@ -169,6 +177,16 @@ export interface WebSocketMessage {
   blocked_by?: number[];         // task_blocked
   blocked_count?: number;        // task_blocked
   unblocked_by?: number;         // task_unblocked
+
+  // Discovery completion fields
+  total_answers?: number;        // discovery_completed
+  next_phase?: string;           // discovery_completed
+
+  // PRD generation progress fields
+  stage?: string;                // prd_generation_progress (gathering_data, calling_llm, saving)
+  // message is already defined above for activity_update
+  progress_pct?: number;         // prd_generation_progress (0-100)
+  prd_preview?: string;          // prd_generation_completed
 }
 
 /**

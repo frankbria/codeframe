@@ -143,8 +143,9 @@ def running_server():
     )
     db.conn.commit()
 
-    # Create session token for WebSocket authentication
-    session_token = create_test_session_token(db, user_id=1)
+    # Create JWT token for WebSocket authentication
+    # Note: WebSocket uses JWT tokens (same as HTTP endpoints) since FastAPI Users migration
+    session_token = create_test_jwt_token(user_id=1)
 
     # Create test projects (project_id=1, 2, 3)
     for project_id in [1, 2, 3]:

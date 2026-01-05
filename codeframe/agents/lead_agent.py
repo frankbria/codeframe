@@ -256,6 +256,7 @@ class LeadAgent:
             # Initialize default state
             self._discovery_state = "idle"
             self._current_question_id: Optional[str] = None
+            self._current_question_text: Optional[str] = None
             self._discovery_answers: Dict[str, str] = {}
 
             # Filter and restore discovery state
@@ -265,6 +266,8 @@ class LeadAgent:
                     self._discovery_state = memory["value"]
                 elif memory["key"] == "current_question_id":
                     self._current_question_id = memory["value"]
+                elif memory["key"] == "current_question_text":
+                    self._current_question_text = memory["value"]
 
             # Filter and load discovery answers
             answer_memories = [m for m in all_memories if m["category"] == "discovery_answers"]
@@ -307,37 +310,190 @@ class LeadAgent:
                     value=self._current_question_id,
                 )
 
+            # Save current question text if exists (needed for fallback path)
+            if self._current_question_text:
+                self.db.create_memory(
+                    project_id=self.project_id,
+                    category="discovery_state",
+                    key="current_question_text",
+                    value=self._current_question_text,
+                )
+
             logger.debug(f"Saved discovery state: {self._discovery_state}")
 
         except Exception as e:
             logger.error(f"Failed to save discovery state: {e}")
 
-    def start_discovery(self) -> str:
+    def reset_discovery(self) -> None:
+        """Reset discovery state to idle, clearing any stuck state.
+
+        This method should be called when discovery is in a stuck state
+        (e.g., state is 'discovering' but no question is available).
+        It clears all discovery state from memory and resets to idle,
+        allowing the user to start fresh.
+
+        Note: This does NOT clear previously answered questions - those are
+        preserved in case the user wants to continue with existing answers.
+        """
+        logger.info(f"Resetting discovery state for project {self.project_id}")
+
+        # Reset in-memory state
+        self._discovery_state = "idle"
+        self._current_question_id = None
+        self._current_question_text = None
+
+        # Update state in database
+        try:
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="state",
+                value="idle",
+            )
+            # Clear current question from database
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="current_question_id",
+                value="",
+            )
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="current_question_text",
+                value="",
+            )
+            logger.info(f"Discovery reset to idle for project {self.project_id}")
+        except Exception as e:
+            logger.error(f"Failed to reset discovery state: {e}")
+            raise
+
+    def start_discovery(self, project_description: Optional[str] = None) -> str:
         """
         Begin Socratic requirements discovery.
 
-        Transitions state from 'idle' to 'discovering' and asks the first question.
+        Transitions state from 'idle' to 'discovering' and generates an intelligent
+        first question based on the project context.
+
+        Args:
+            project_description: Optional project description from project creation.
+                Provided as context to help the AI ask relevant questions.
 
         Returns:
-            First discovery question
+            First discovery question (AI-generated based on context)
         """
         # Update state to discovering
         self._discovery_state = "discovering"
         self._save_discovery_state()
 
-        # Get first question
-        next_question = self.discovery_framework.get_next_question(self._discovery_answers)
+        # Store project description as context for discovery
+        if project_description and project_description.strip():
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_context",
+                key="project_description",
+                value=project_description.strip(),
+            )
+            logger.info(f"Stored project description as discovery context ({len(project_description)} chars)")
 
-        if next_question:
-            self._current_question_id = next_question["id"]
-            self._save_discovery_state()
+        # Get all discovery questions to show what we need to cover
+        all_questions = self.discovery_framework.generate_questions()
+        required_topics = [q["category"] for q in all_questions if q["importance"] == "required"]
 
-            logger.info(f"Started discovery, first question: {next_question['id']}")
-            return next_question["text"]
+        # Build discovery prompt with context
+        discovery_prompt = self._build_discovery_start_prompt(
+            project_description, required_topics
+        )
+
+        # Use Claude to generate an intelligent first question
+        # Note: Use provider directly to avoid persisting prompt/response to conversation history
+        try:
+            conversation = [
+                {
+                    "role": "user",
+                    "content": discovery_prompt,
+                }
+            ]
+
+            response = self.provider.send_message(conversation)
+            question_text = response["content"]
+
+            # Log token usage
+            usage = response["usage"]
+            logger.info(
+                f"Discovery question generation - Input: {usage['input_tokens']}, "
+                f"Output: {usage['output_tokens']} tokens"
+            )
+
+            # Use distinct ID for AI-generated questions (not a framework ID)
+            # The answer will be mapped to the appropriate framework question in process_discovery_answer()
+            self._current_question_id = "ai_generated"
+            self._current_question_text = question_text  # Store the actual question text
+            self._save_discovery_state()  # Persists state, question_id, and question_text
+
+            logger.info("Started discovery with AI-generated question")
+            return question_text
+
+        except Exception as e:
+            logger.error(f"Failed to generate AI question, falling back to default: {e}")
+            # Fallback to first question from framework
+            next_question = self.discovery_framework.get_next_question(self._discovery_answers)
+            if next_question:
+                self._current_question_id = next_question["id"]
+                self._current_question_text = next_question["text"]
+                self._save_discovery_state()
+                return next_question["text"]
+
+            # Final fallback: use a default question with proper state tracking
+            # Use distinct ID - answer will be mapped to framework question in process_discovery_answer()
+            default_question = "What would you like to build? Please describe the main problem you're trying to solve."
+            self._current_question_id = "default_generated"
+            self._current_question_text = default_question
+            self._save_discovery_state()  # Persists state, question_id, and question_text
+
+            logger.info("Using default discovery question as final fallback")
+            return default_question
+
+    def _build_discovery_start_prompt(
+        self, project_description: Optional[str], required_topics: list
+    ) -> str:
+        """Build the prompt for starting discovery with context.
+
+        Args:
+            project_description: User-provided project description
+            required_topics: List of topic categories we need to cover
+
+        Returns:
+            Prompt string for Claude
+        """
+        prompt = """You are a helpful AI assistant gathering requirements for a software project.
+
+Your goal is to understand:
+- The problem being solved
+- Who the users are
+- Core features needed
+- Technical constraints
+- Preferred tech stack
+
+"""
+        if project_description:
+            prompt += f"""The user has provided this initial description:
+---
+{project_description}
+---
+
+Based on this description, ask ONE focused follow-up question to clarify the most important missing detail. Don't ask about something already explained in the description.
+"""
         else:
-            # No questions available (shouldn't happen)
-            logger.warning("No questions available to start discovery")
-            return "Discovery framework initialized but no questions available."
+            prompt += """The user hasn't provided a project description yet.
+
+Ask ONE clear question to understand what they want to build and what problem it solves.
+"""
+
+        prompt += """
+Keep your question concise and conversational. Don't number it or add preamble - just ask the question directly."""
+
+        return prompt
 
     def process_discovery_answer(self, answer: str) -> str:
         """
@@ -355,20 +511,34 @@ class LeadAgent:
             logger.warning(f"process_discovery_answer called in state: {self._discovery_state}")
             return "Discovery is not active. Call start_discovery() first."
 
-        # Save current answer
-        if self._current_question_id:
-            self._discovery_answers[self._current_question_id] = answer
-            self.answer_capture.capture_answer(self._current_question_id, answer)
+        # Determine the target question ID for storing this answer
+        # AI-generated and default questions map to the first unanswered framework question
+        target_question_id = self._current_question_id
+        if self._current_question_id in ("ai_generated", "default_generated"):
+            # Map to the first unanswered framework question
+            next_framework_question = self.discovery_framework.get_next_question(self._discovery_answers)
+            if next_framework_question:
+                target_question_id = next_framework_question["id"]
+                logger.info(f"Mapping {self._current_question_id} answer to framework question {target_question_id}")
+            else:
+                # Edge case: no framework questions available (shouldn't happen normally)
+                target_question_id = "problem_1"
+                logger.warning(f"No framework question available, defaulting to {target_question_id}")
+
+        # Save answer under the target framework question ID
+        if target_question_id:
+            self._discovery_answers[target_question_id] = answer
+            self.answer_capture.capture_answer(target_question_id, answer)
 
             # Persist to database
             self.db.create_memory(
                 project_id=self.project_id,
                 category="discovery_answers",
-                key=self._current_question_id,
+                key=target_question_id,
                 value=answer,
             )
 
-            logger.info(f"Captured answer for {self._current_question_id}")
+            logger.info(f"Captured answer for {target_question_id}")
 
         # Check if discovery is complete
         if self.discovery_framework.is_discovery_complete(self._discovery_answers):
@@ -413,8 +583,9 @@ class LeadAgent:
             "answers": self._discovery_answers.copy(),
         }
 
-        # Add progress indicators and current question if in discovering state
-        if self._discovery_state == "discovering" and self._current_question_id:
+        # Add progress indicators if in discovering state
+        # Note: We calculate progress even if current_question_id is None to handle edge cases
+        if self._discovery_state == "discovering":
             # Get all questions to calculate progress
             questions = self.discovery_framework.generate_questions()
             total_required = len([q for q in questions if q["importance"] == "required"])
@@ -430,10 +601,41 @@ class LeadAgent:
             status["total_required"] = total_required
             status["remaining_count"] = total_required - len(self._discovery_answers)
 
-            # Find current question details
-            current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
-            if current_q:
-                status["current_question"] = current_q
+            # Add current question if available
+            if self._current_question_id:
+                # Handle AI-generated or default questions (distinct from framework IDs)
+                if self._current_question_id in ("ai_generated", "default_generated"):
+                    # These questions have custom text stored separately
+                    # They map to framework questions when answered, but display their custom text
+                    status["current_question"] = {
+                        "id": self._current_question_id,
+                        "category": "problem",  # AI questions typically start with problem domain
+                        "text": self._current_question_text or "What would you like to build?",
+                        "importance": "required",
+                    }
+                else:
+                    # Look up from framework
+                    current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
+                    if current_q:
+                        status["current_question"] = current_q.copy()
+                        # Override text if we have stored custom text
+                        if self._current_question_text:
+                            status["current_question"]["text"] = self._current_question_text
+                    elif self._current_question_text:
+                        # Fallback for unknown question IDs with stored text
+                        status["current_question"] = {
+                            "id": self._current_question_id,
+                            "category": "discovery",
+                            "text": self._current_question_text,
+                            "importance": "required",
+                        }
+
+            # Detect stuck state: discovering but no current question
+            # This can happen if start_discovery() failed partially
+            if not self._current_question_id or "current_question" not in status:
+                status["needs_recovery"] = True
+                status["recovery_reason"] = "Discovery started but no question available"
+                logger.warning(f"Project {self.project_id}: Discovery in stuck state - no current question")
 
         # Add progress indicators if completed (100% progress)
         if self._discovery_state == "completed":

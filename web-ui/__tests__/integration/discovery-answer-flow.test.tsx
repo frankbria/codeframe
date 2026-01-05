@@ -8,6 +8,13 @@ jest.mock('@/lib/api-client', () => ({
   authFetch: jest.fn(),
 }));
 
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => ({
+  Cancel01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="cancel-icon" />,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="checkmark-icon" />,
+  Alert02Icon: ({ className }: { className?: string }) => <span className={className} data-testid="alert-icon" />,
+}));
+
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import DiscoveryProgress from '@/components/DiscoveryProgress';
 import { projectsApi } from '@/lib/api';
@@ -162,8 +169,12 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       expect(screen.getByText('5%')).toBeInTheDocument();
       expect(screen.getByText(/answered.*1.*20/i)).toBeInTheDocument();
 
-      // Verify success message is dismissed
-      expect(screen.queryByText(/answer submitted/i)).not.toBeInTheDocument();
+      // Verify success message is dismissed (auto-dismiss after 1 second)
+      // Advance timer and wait for React to process the state update
+      jest.advanceTimersByTime(1000);
+      await waitFor(() => {
+        expect(screen.queryByText(/answer submitted/i)).not.toBeInTheDocument();
+      });
 
       // Verify textarea is re-enabled and empty
       expect(textarea).not.toBeDisabled();

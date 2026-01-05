@@ -8,13 +8,21 @@ Endpoints:
 
 import json
 import logging
-from datetime import datetime, timezone
 
+import jwt as pyjwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from sqlalchemy import select
 
 from codeframe.ui.shared import manager
 from codeframe.ui.dependencies import get_db_websocket
 from codeframe.persistence.database import Database
+from codeframe.auth.manager import (
+    SECRET,
+    JWT_ALGORITHM,
+    JWT_AUDIENCE,
+    get_async_session_maker,
+)
+from codeframe.auth.models import User
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -46,9 +54,9 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
     Supports ping/pong heartbeat and project subscription messages.
 
     Authentication:
-        - Requires token as query parameter: ws://host/ws?token=YOUR_SESSION_TOKEN
-        - Token is validated against sessions table on connection
-        - User ID is extracted and stored with WebSocket connection
+        - Requires token as query parameter: ws://host/ws?token=YOUR_JWT_TOKEN
+        - JWT token is validated and decoded on connection
+        - User ID is extracted from JWT claims and stored with WebSocket connection
         - Project access is checked on subscribe/unsubscribe messages
 
     Args:
@@ -82,7 +90,7 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
         - task_completed: Task completions
         - blocker_created: New blockers
     """
-    # Authentication: Extract and validate token from query parameters
+    # Authentication: Extract and validate JWT token from query parameters
     # Authentication is always required for WebSocket connections
     token = websocket.query_params.get("token")
 
@@ -91,37 +99,44 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
         await websocket.close(code=1008, reason="Authentication required: missing token")
         return
 
-    # Validate token against sessions table
-    cursor = db.conn.execute(
-        """
-        SELECT s.user_id, s.expires_at
-        FROM sessions s
-        WHERE s.token = ?
-        """,
-        (token,),
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        # Invalid token
+    # Validate JWT token (same logic as HTTP auth in auth/dependencies.py)
+    try:
+        payload = pyjwt.decode(
+            token,
+            SECRET,
+            algorithms=[JWT_ALGORITHM],
+            audience=JWT_AUDIENCE,
+        )
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            await websocket.close(code=1008, reason="Invalid token: missing subject")
+            return
+        user_id = int(user_id_str)
+    except pyjwt.ExpiredSignatureError:
+        await websocket.close(code=1008, reason="Token expired")
+        return
+    except (pyjwt.InvalidTokenError, ValueError) as e:
+        logger.debug(f"WebSocket JWT decode error: {e}")
         await websocket.close(code=1008, reason="Invalid authentication token")
         return
 
-    user_id, expires_at_str = row
-
-    # Check if session has expired
+    # Verify user exists and is active
     try:
-        expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-    except (ValueError, AttributeError, TypeError):
-        # Invalid timestamp format - reject connection
-        await websocket.close(code=1008, reason="Invalid session data")
-        return
+        async_session_maker = get_async_session_maker()
+        async with async_session_maker() as session:
+            result = await session.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
 
-    if expires_at < datetime.now(timezone.utc):
-        # Expired token - delete session and reject connection
-        db.conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
-        db.conn.commit()
-        await websocket.close(code=1008, reason="Session expired")
+            if user is None:
+                await websocket.close(code=1008, reason="User not found")
+                return
+
+            if not user.is_active:
+                await websocket.close(code=1008, reason="User is inactive")
+                return
+    except Exception as e:
+        logger.error(f"WebSocket user lookup error: {e}")
+        await websocket.close(code=1008, reason="Authentication failed")
         return
 
     logger.info(f"WebSocket authenticated: user_id={user_id}")

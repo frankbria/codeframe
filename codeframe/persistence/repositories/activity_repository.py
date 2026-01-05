@@ -84,7 +84,7 @@ class ActivityRepository(BaseRepository):
             """
             SELECT value, created_at, updated_at
             FROM memory
-            WHERE project_id = ? AND category = 'prd' AND key = 'prd_content'
+            WHERE project_id = ? AND category = 'prd' AND key = 'content'
             """,
             (project_id,),
         )

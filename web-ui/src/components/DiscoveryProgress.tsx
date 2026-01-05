@@ -5,12 +5,15 @@
 
 'use client';
 
-import { useEffect, useState, memo } from 'react';
+import { useEffect, useState, memo, useCallback, useRef } from 'react';
 import { projectsApi } from '@/lib/api';
 import { authFetch } from '@/lib/api-client';
+import { getWebSocketClient } from '@/lib/websocket';
 import type { DiscoveryProgressResponse } from '@/types/api';
+import type { WebSocketMessage } from '@/types';
 import ProgressBar from './ProgressBar';
 import PhaseIndicator from './PhaseIndicator';
+import { Cancel01Icon, CheckmarkCircle01Icon, Alert02Icon } from '@hugeicons/react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -26,12 +29,34 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   // Feature: 012-discovery-answer-ui - Answer submission state (T014)
   const [answer, setAnswer] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   // Start Discovery state
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+
+  // PRD Generation state
+  const [isGeneratingPRD, setIsGeneratingPRD] = useState(false);
+  const [prdCompleted, setPrdCompleted] = useState(false);
+  const [prdError, setPrdError] = useState<string | null>(null);
+  const [prdStage, setPrdStage] = useState<string>('');
+  const [prdMessage, setPrdMessage] = useState<string>('');
+  const [prdProgressPct, setPrdProgressPct] = useState<number>(0);
+
+  // Timeout/Stuck state detection
+  const [waitingForQuestionStart, setWaitingForQuestionStart] = useState<number | null>(null);
+  const [isStuck, setIsStuck] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const STUCK_TIMEOUT_MS = 30000; // 30 seconds without a question = stuck
+
+  // Ref to track if we should clear isStarting on next fetch
+  const clearIsStartingOnFetch = useRef(false);
+
+  // PRD retry state
+  const [isRetryingPrd, setIsRetryingPrd] = useState(false);
 
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
@@ -50,7 +75,6 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
     // Start submission
     setIsSubmitting(true);
     setSubmissionError(null);
-    setSuccessMessage(null);
 
     try {
       // T038: POST request to backend with authentication
@@ -62,19 +86,37 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         }
       );
 
-      // Success - show message and refresh
-      setSuccessMessage('Answer submitted! Loading next question...');
+      // Success - show success message and loading state for next question
+      setIsSubmitting(false);
+      setIsLoadingNextQuestion(true);
       setAnswer(''); // Clear textarea
       setSubmissionError(null);
+      setShowSuccessMessage(true);
 
-      // Refresh discovery state after 1 second
+      // Auto-dismiss success message after 1 second
       setTimeout(() => {
-        fetchProgress();
-        setSuccessMessage(null);
+        setShowSuccessMessage(false);
       }, 1000);
 
+      // Fetch next question immediately (separate try-catch for fetch failure)
+      try {
+        const response = await projectsApi.getDiscoveryProgress(projectId);
+        setData(response.data);
+
+        // Check if discovery just completed
+        if (response.data.discovery?.state === 'completed') {
+          setIsGeneratingPRD(true);
+        }
+      } catch (fetchError) {
+        // Answer was submitted successfully, but refresh failed
+        console.warn('Failed to fetch updated progress after answer submission:', fetchError);
+        // Don't show error - answer was submitted. User can manually refresh.
+      } finally {
+        setIsLoadingNextQuestion(false);
+      }
+
     } catch (error) {
-      // T040: Handle network and API errors
+      // T040: Handle network and API errors - this is a submission failure
       console.error('Failed to submit answer:', error);
       if (error instanceof Error) {
         setSubmissionError(error.message);
@@ -82,8 +124,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         setSubmissionError('Failed to submit answer. Please check your connection.');
       }
       // Keep answer in textarea for retry
-    } finally {
       setIsSubmitting(false);
+      setIsLoadingNextQuestion(false);
     }
   };
 
@@ -97,7 +139,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   };
 
   // Fetch discovery progress
-  const fetchProgress = async () => {
+  const fetchProgress = useCallback(async () => {
     try {
       const response = await projectsApi.getDiscoveryProgress(projectId);
       setData(response.data);
@@ -107,8 +149,13 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       console.error('Error fetching discovery progress:', err);
     } finally {
       setLoading(false);
+      // Only clear isStarting if this fetch was triggered by handleStartDiscovery
+      if (clearIsStartingOnFetch.current) {
+        setIsStarting(false);
+        clearIsStartingOnFetch.current = false;
+      }
     }
-  };
+  }, [projectId]);
 
   // Start discovery for idle projects
   const handleStartDiscovery = async () => {
@@ -119,23 +166,204 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
     try {
       await projectsApi.startProject(projectId);
-      // Wait a moment for the backend to initialize discovery
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // Refresh to get the updated state
-      await fetchProgress();
+      // WebSocket "discovery_starting" message will trigger refresh
+      // Poll after 2 seconds as fallback in case WebSocket is slow
+      clearIsStartingOnFetch.current = true;
+      setTimeout(() => {
+        fetchProgress();
+      }, 2000);
     } catch (err) {
       console.error('Failed to start discovery:', err);
       setStartError('Failed to start discovery. Please try again.');
-    } finally {
       setIsStarting(false);
+    }
+    // Note: isStarting is cleared by fetchProgress() when data arrives (via clearIsStartingOnFetch ref)
+  };
+
+  // Restart discovery when stuck
+  const handleRestartDiscovery = async () => {
+    if (isRestarting) return;
+
+    setIsRestarting(true);
+    setRestartError(null);
+    setIsStuck(false);
+
+    try {
+      await projectsApi.restartDiscovery(projectId);
+      // This resets state to idle, so the Start Discovery button will appear
+      setWaitingForQuestionStart(null);
+      fetchProgress();
+    } catch (err) {
+      console.error('Failed to restart discovery:', err);
+      setRestartError('Failed to restart discovery. Please try again.');
+      setIsRestarting(false);
+    }
+  };
+
+  // Retry PRD generation when it fails
+  const handleRetryPrdGeneration = async () => {
+    if (isRetryingPrd || isGeneratingPRD) return;
+
+    setIsRetryingPrd(true);
+    setPrdError(null);
+
+    try {
+      await projectsApi.retryPrdGeneration(projectId);
+      // The WebSocket message will update the UI
+      setIsGeneratingPRD(true);
+      setPrdStage('starting');
+      setPrdMessage('Retrying PRD generation...');
+      setPrdProgressPct(0);
+    } catch (err) {
+      console.error('Failed to retry PRD generation:', err);
+      if (err instanceof Error) {
+        setPrdError(`Failed to retry: ${err.message}`);
+      } else {
+        setPrdError('Failed to retry PRD generation. Please try again.');
+      }
+    } finally {
+      setIsRetryingPrd(false);
     }
   };
 
   // Initial fetch
   useEffect(() => {
     fetchProgress();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [fetchProgress]);
+
+  // Timeout detection for stuck discovery state
+  useEffect(() => {
+    const isDiscovering = data?.discovery?.state === 'discovering';
+    const hasQuestion = !!data?.discovery?.current_question;
+
+    // If we're discovering but have no question, start tracking timeout
+    if (isDiscovering && !hasQuestion && !isLoadingNextQuestion) {
+      if (!waitingForQuestionStart) {
+        setWaitingForQuestionStart(Date.now());
+      }
+    } else {
+      // Reset when we have a question or leave discovering state
+      setWaitingForQuestionStart(null);
+      setIsStuck(false);
+      setIsRestarting(false);
+    }
+  }, [data?.discovery?.state, data?.discovery?.current_question, isLoadingNextQuestion, waitingForQuestionStart]);
+
+  // Check for stuck state periodically
+  useEffect(() => {
+    if (!waitingForQuestionStart) return;
+
+    const checkStuck = () => {
+      const elapsed = Date.now() - waitingForQuestionStart;
+      if (elapsed >= STUCK_TIMEOUT_MS && !isStuck) {
+        setIsStuck(true);
+      }
+    };
+
+    // Check immediately and then every 5 seconds
+    checkStuck();
+    const intervalId = setInterval(checkStuck, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [waitingForQuestionStart, isStuck, STUCK_TIMEOUT_MS]);
+
+  // WebSocket listener for immediate feedback
+  useEffect(() => {
+    const wsClient = getWebSocketClient();
+
+    const handleMessage = (message: WebSocketMessage) => {
+      // Only handle messages for this project
+      if ('project_id' in message && message.project_id !== projectId) {
+        return;
+      }
+
+      // Handle discovery_starting - shows immediate feedback when Start Discovery is clicked
+      if (message.type === 'discovery_starting') {
+        setIsStarting(true);
+        // Fetch latest progress after a short delay
+        setTimeout(() => fetchProgress(), 500);
+      }
+
+      // Handle agent_started - refresh to get current discovery state
+      if (message.type === 'agent_started') {
+        fetchProgress();
+      }
+
+      // Handle status_update - may indicate discovery state change
+      if (message.type === 'status_update') {
+        fetchProgress();
+      }
+
+      // Handle discovery_completed - show PRD generation status
+      if (message.type === 'discovery_completed') {
+        setIsGeneratingPRD(true);
+        fetchProgress();
+      }
+
+      // Handle PRD generation events
+      if (message.type === 'prd_generation_started') {
+        setIsGeneratingPRD(true);
+        setPrdCompleted(false);
+        setPrdError(null);
+        setPrdStage('starting');
+        setPrdMessage('Initializing PRD generation...');
+        setPrdProgressPct(0);
+      }
+
+      // Handle PRD generation progress updates
+      if (message.type === 'prd_generation_progress') {
+        setIsGeneratingPRD(true);
+        setPrdStage(message.stage || '');
+        setPrdMessage(message.message || '');
+        setPrdProgressPct(message.progress_pct || 0);
+      }
+
+      if (message.type === 'prd_generation_completed') {
+        setIsGeneratingPRD(false);
+        setPrdCompleted(true);
+        setPrdError(null);
+        setPrdStage('completed');
+        setPrdMessage('PRD generated successfully');
+        setPrdProgressPct(100);
+        fetchProgress(); // Refresh to get updated phase
+      }
+
+      if (message.type === 'prd_generation_failed') {
+        setIsGeneratingPRD(false);
+        setPrdCompleted(false);
+        // Extract error from data or use default message
+        const errorMsg = message.data?.error ||
+          (message as { error?: string }).error ||
+          'PRD generation failed';
+        setPrdError(errorMsg);
+        setPrdStage('failed');
+        setPrdProgressPct(0);
+      }
+
+      // Handle discovery reset - refresh to show idle state
+      if (message.type === 'discovery_reset') {
+        setIsStuck(false);
+        setIsRestarting(false);
+        setWaitingForQuestionStart(null);
+        fetchProgress();
+      }
+
+      // Handle discovery_question_ready - first question is available
+      if (message.type === 'discovery_question_ready') {
+        // Clear any stuck/waiting state
+        setIsStuck(false);
+        setWaitingForQuestionStart(null);
+        setIsStarting(false);
+        // Refresh to get the question data
+        fetchProgress();
+      }
+    };
+
+    const unsubscribe = wsClient.onMessage(handleMessage);
+    return () => {
+      unsubscribe();
+    };
+  }, [projectId, fetchProgress]);
 
   // Auto-refresh only during discovery
   useEffect(() => {
@@ -187,6 +415,13 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       </div>
 
       <div className="space-y-4">
+        {/* Success message after answer submission - show in any state */}
+        {showSuccessMessage && (
+          <div className="mt-4 p-3 rounded-lg border bg-success/10 border-success text-success" data-testid="success-message">
+            Answer submitted! Loading next question...
+          </div>
+        )}
+
         {/* Discovering State */}
         {isDiscovering && discovery && (
           <>
@@ -200,7 +435,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
               Answered: {discovery.answered_count} / {discovery.total_required}
             </div>
 
-            {discovery.current_question && (
+            {/* Loading state for next question */}
+            {isLoadingNextQuestion && (
+              <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary" data-testid="loading-next-question">
+                <div className="flex items-center justify-center gap-3 py-4">
+                  <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="text-sm text-primary font-medium">Generating next question...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Current question (hidden while loading next) */}
+            {discovery.current_question && !isLoadingNextQuestion && (
               <div className="mt-4 p-4 bg-primary/10 rounded-lg border border-primary" data-testid="discovery-question">
                 <div className="text-xs font-medium text-primary uppercase mb-1">
                   Current Question ({discovery.current_question.category})
@@ -211,8 +460,63 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
               </div>
             )}
 
+            {/* No question available - show loading/waiting state or stuck state */}
+            {!discovery.current_question && !isLoadingNextQuestion && (
+              <div
+                className={`mt-4 p-4 rounded-lg border ${
+                  isStuck ? 'bg-warning/10 border-warning' : 'bg-primary/10 border-primary'
+                }`}
+                data-testid={isStuck ? 'discovery-stuck' : 'waiting-for-question'}
+              >
+                {isStuck ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Alert02Icon className="h-5 w-5 text-warning flex-shrink-0" aria-hidden="true" />
+                      <span className="text-sm font-medium text-foreground">
+                        Discovery appears to be stuck
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      The discovery process has been waiting for a question for too long.
+                      This can happen if there was a network error or the AI service is unavailable.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleRestartDiscovery}
+                        disabled={isRestarting}
+                        data-testid="restart-discovery-button"
+                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                          isRestarting
+                            ? 'bg-muted cursor-not-allowed text-muted-foreground'
+                            : 'bg-warning hover:bg-warning/90 text-warning-foreground'
+                        }`}
+                      >
+                        {isRestarting ? 'Restarting...' : 'Restart Discovery'}
+                      </button>
+                    </div>
+                    {restartError && (
+                      <div
+                        role="alert"
+                        className="p-2 bg-destructive/10 border border-destructive rounded text-destructive text-xs"
+                      >
+                        {restartError}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-3 py-4">
+                    <svg className="animate-spin h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-sm text-primary font-medium">Preparing discovery questions...</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Feature: 012-discovery-answer-ui - Answer Input (T015, T016) */}
-            {discovery.current_question && (
+            {discovery.current_question && !isLoadingNextQuestion && (
               <div className="mt-4">
                 <textarea
                   value={answer}
@@ -243,26 +547,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                     onClick={submitAnswer}
                     disabled={isSubmitting || !answer.trim()}
                     data-testid="submit-answer-button"
-                    className={`py-2 px-6 rounded-lg font-semibold transition-colors ${
+                    className={`py-2 px-6 rounded-lg font-semibold transition-colors flex items-center gap-2 ${
                       isSubmitting || !answer.trim()
                         ? 'bg-muted cursor-not-allowed text-muted-foreground'
                         : 'bg-primary hover:bg-primary/90 text-primary-foreground'
                     }`}
                   >
+                    {isSubmitting && (
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
                     {isSubmitting ? 'Submitting...' : 'Submit Answer'}
                   </button>
                 </div>
-
-                {/* Feature: 012-discovery-answer-ui - Success Message (US6, T091) */}
-                {successMessage && (
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm"
-                  >
-                    {successMessage}
-                  </div>
-                )}
 
                 {/* Feature: 012-discovery-answer-ui - Error Message (US7, T091) */}
                 {submissionError && (
@@ -287,11 +586,94 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
 
         {/* Completed State */}
         {isCompleted && (
-          <div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg border border-green-200">
-            <span className="text-green-600 text-lg">✓</span>
-            <span className="text-sm font-medium text-green-800">
-              Discovery Complete
-            </span>
+          <div className="space-y-4">
+            {/* Discovery Complete Banner */}
+            <div className="flex items-center gap-2 p-4 bg-success/10 rounded-lg border border-success">
+              <CheckmarkCircle01Icon className="h-5 w-5 text-success flex-shrink-0" aria-hidden="true" />
+              <span className="text-sm font-medium text-foreground">
+                Discovery Complete — All questions answered
+              </span>
+            </div>
+
+            {/* PRD Generation Status */}
+            <div className={`p-4 rounded-lg border ${
+              prdCompleted
+                ? 'bg-success/10 border-success'
+                : prdError
+                  ? 'bg-destructive/10 border-destructive'
+                  : 'bg-primary/10 border-primary'
+            }`} data-testid="prd-generation-status">
+              <div className="flex items-center gap-3">
+                {isGeneratingPRD ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-primary">
+                        {prdMessage || 'Generating Project Requirements Document...'}
+                      </div>
+                      {/* Progress bar for PRD generation */}
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                          <span className="capitalize">{prdStage.replace('_', ' ') || 'Starting'}</span>
+                          <span>{prdProgressPct}%</span>
+                        </div>
+                        <div className="h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary transition-all duration-500 ease-out"
+                            style={{ width: `${prdProgressPct}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-2">
+                        The Lead Agent is analyzing your answers and creating a detailed PRD
+                      </div>
+                    </div>
+                  </>
+                ) : prdCompleted ? (
+                  <>
+                    <CheckmarkCircle01Icon className="text-success h-5 w-5 flex-shrink-0" aria-hidden="true" />
+                    <div>
+                      <div className="text-sm font-medium text-foreground">PRD Generated Successfully</div>
+                      <div className="text-xs text-muted-foreground mt-1">Your Project Requirements Document is ready. View it in the Documents section.</div>
+                    </div>
+                  </>
+                ) : prdError ? (
+                  <>
+                    <Cancel01Icon className="text-destructive h-5 w-5 flex-shrink-0" aria-hidden="true" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-destructive">PRD Generation Failed</div>
+                      <div className="text-xs text-destructive/80 mt-1">{prdError}</div>
+                      <button
+                        onClick={handleRetryPrdGeneration}
+                        disabled={isRetryingPrd}
+                        data-testid="retry-prd-button"
+                        className={`mt-3 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                          isRetryingPrd
+                            ? 'bg-muted cursor-not-allowed text-muted-foreground'
+                            : 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+                        }`}
+                      >
+                        {isRetryingPrd ? 'Retrying...' : 'Retry PRD Generation'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <div>
+                      <div className="text-sm font-medium text-primary">Starting PRD Generation...</div>
+                      <div className="text-xs text-muted-foreground mt-1">The Lead Agent is preparing to generate your Project Requirements Document</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
