@@ -1,6 +1,7 @@
 /**
  * Tests for API client methods
  * Following TDD methodology - tests written BEFORE implementation
+ * Migrated from src/lib/__tests__/api.test.ts
  */
 
 import type { ProjectResponse, StartProjectResponse } from '@/types';
@@ -40,7 +41,7 @@ jest.mock('axios', () => {
 });
 
 // Now import the API module after mocking axios
-import { projectsApi, blockersApi } from '../api';
+import { projectsApi, blockersApi } from '@/lib/api';
 
 beforeEach(() => {
   jest.clearAllMocks();

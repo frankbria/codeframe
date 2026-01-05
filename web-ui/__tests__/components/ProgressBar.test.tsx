@@ -1,10 +1,10 @@
 /**
  * Tests for ProgressBar Component (cf-17.2)
- * TDD RED Phase - Write tests first
+ * Migrated from src/components/__tests__/ProgressBar.test.tsx
  */
 
 import { render, screen } from '@testing-library/react';
-import ProgressBar from '../ProgressBar';
+import ProgressBar from '@/components/ProgressBar';
 
 describe('ProgressBar Component', () => {
   describe('Rendering and Width', () => {

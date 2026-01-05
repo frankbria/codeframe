@@ -1,10 +1,10 @@
 /**
  * Tests for DiscoveryProgress Component (cf-17.2)
- * TDD RED Phase - Write tests first
+ * Migrated from src/components/__tests__/DiscoveryProgress.test.tsx
  */
 
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import DiscoveryProgress from '../DiscoveryProgress';
+import DiscoveryProgress from '@/components/DiscoveryProgress';
 import { projectsApi } from '@/lib/api';
 import type { DiscoveryProgressResponse } from '@/types/api';
 
@@ -33,7 +33,7 @@ import { authFetch } from '@/lib/api-client';
 const mockAuthFetch = authFetch as jest.MockedFunction<typeof authFetch>;
 
 // Mock child components
-jest.mock('../ProgressBar', () => {
+jest.mock('@/components/ProgressBar', () => {
   return function MockProgressBar({ percentage, label }: { percentage: number; label?: string }) {
     return (
       <div data-testid="mock-progress-bar">
@@ -44,7 +44,7 @@ jest.mock('../ProgressBar', () => {
   };
 });
 
-jest.mock('../PhaseIndicator', () => {
+jest.mock('@/components/PhaseIndicator', () => {
   return function MockPhaseIndicator({ phase }: { phase: string }) {
     return <span data-testid="mock-phase-indicator">{phase}</span>;
   };

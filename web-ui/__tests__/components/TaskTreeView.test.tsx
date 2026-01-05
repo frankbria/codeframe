@@ -1,15 +1,15 @@
 /**
  * Tests for TaskTreeView Component
- * TDD: RED phase - These tests should fail initially
+ * Migrated from src/components/TaskTreeView.test.tsx
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import TaskTreeView from './TaskTreeView';
+import TaskTreeView from '@/components/TaskTreeView';
 import type { Issue, Task } from '@/types/api';
 
 // Mock QualityGateStatus component to avoid async issues in tests
-jest.mock('./quality-gates/QualityGateStatus', () => {
+jest.mock('@/components/quality-gates/QualityGateStatus', () => {
   return function QualityGateStatus() {
     return 'Quality Gate Status Mock';
   };
@@ -208,7 +208,7 @@ describe('TaskTreeView', () => {
       // Use getAllByText since task numbers appear multiple times
       const task001Elements = screen.getAllByText(/T-001/i);
       expect(task001Elements.length).toBeGreaterThan(0);
-      
+
       const task002Elements = screen.getAllByText(/T-002/i);
       expect(task002Elements.length).toBeGreaterThan(0);
     });

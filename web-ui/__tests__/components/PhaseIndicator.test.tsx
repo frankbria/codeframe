@@ -1,10 +1,10 @@
 /**
  * Tests for PhaseIndicator Component (cf-17.2)
- * TDD RED Phase - Write tests first
+ * Migrated from src/components/__tests__/PhaseIndicator.test.tsx
  */
 
 import { render, screen } from '@testing-library/react';
-import PhaseIndicator from '../PhaseIndicator';
+import PhaseIndicator from '@/components/PhaseIndicator';
 
 describe('PhaseIndicator Component', () => {
   describe('Phase Text Display', () => {
