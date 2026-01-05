@@ -11,7 +11,16 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { loginUser, registerUser, isAuthenticated, clearAuth, getAuthToken } from './test-utils';
+import {
+  loginUser,
+  registerUser,
+  isAuthenticated,
+  clearAuth,
+  getAuthToken,
+  setupErrorMonitoring,
+  assertNoNetworkErrors,
+  ErrorMonitor
+} from './test-utils';
 
 const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'test@example.com';
 const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'Testpassword123';
@@ -22,9 +31,37 @@ const AUTH_ERROR_TIMEOUT = process.env.CI ? 10000 : 5000;
 test.describe('Authentication Flow', () => {
   // Clear localStorage before each test to ensure we start unauthenticated
   test.beforeEach(async ({ page }) => {
+    // Setup error monitoring
+    const errorMonitor = setupErrorMonitoring(page);
+    (page as any).__errorMonitor = errorMonitor;
+
     // Navigate to any page to access localStorage
     await page.goto('/login');
     await clearAuth(page);
+  });
+
+  // Verify no critical network errors occurred during each test
+  test.afterEach(async ({ page }) => {
+    const errorMonitor = (page as any).__errorMonitor as ErrorMonitor | undefined;
+    if (errorMonitor) {
+      // Check for network errors (but allow expected auth failures from invalid credential tests)
+      const criticalErrors = errorMonitor.networkErrors.filter(e =>
+        !e.includes('401') && // Expected for invalid credentials
+        !e.includes('403') && // Expected for unauthorized access
+        !e.includes('Invalid credentials') // Expected error message
+      );
+
+      if (criticalErrors.length > 0 || errorMonitor.failedRequests.length > 0) {
+        console.error('🔴 Unexpected network errors:', {
+          criticalErrors,
+          failedRequests: errorMonitor.failedRequests
+        });
+        assertNoNetworkErrors({
+          ...errorMonitor,
+          networkErrors: criticalErrors
+        }, 'Auth flow test');
+      }
+    }
   });
 
   test.describe('Registration', () => {

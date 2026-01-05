@@ -68,6 +68,109 @@ jobs:
         run: npm run type-check
 
   # ============================================
+  # Static Analysis - Check for Hardcoded URLs
+  # ============================================
+  check-hardcoded-urls:
+    name: Check for Hardcoded URLs
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for hardcoded localhost URLs in frontend
+        run: |
+          echo "🔍 Checking for hardcoded localhost URLs..."
+
+          # Check for hardcoded localhost:800X patterns (excluding env var fallbacks)
+          # We allow: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+          HARDCODED=$(grep -rn "localhost:800" web-ui/src \
+            --include="*.ts" \
+            --include="*.tsx" \
+            --include="*.js" \
+            --include="*.jsx" \
+            | grep -v "process.env.NEXT_PUBLIC" \
+            | grep -v "|| 'http" \
+            | grep -v "|| \"http" \
+            | grep -v "// " \
+            | grep -v "/\*" \
+            | grep -v "\.test\." \
+            | grep -v "\.spec\." \
+            || true)
+
+          if [ -n "$HARDCODED" ]; then
+            echo "❌ Found hardcoded localhost URLs:"
+            echo "$HARDCODED"
+            echo ""
+            echo "💡 Fix: Use process.env.NEXT_PUBLIC_API_URL instead"
+            echo "   Example: const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';"
+            exit 1
+          fi
+
+          echo "✅ No hardcoded localhost URLs found"
+
+      - name: Check for Vite-style env vars in Next.js code
+        run: |
+          echo "🔍 Checking for Vite-style environment variables..."
+
+          # Check for window.VITE_ or import.meta.env patterns
+          VITE_VARS=$(grep -rn "window\.VITE_\|import\.meta\.env" web-ui/src \
+            --include="*.ts" \
+            --include="*.tsx" \
+            --include="*.js" \
+            --include="*.jsx" \
+            | grep -v "// " \
+            | grep -v "/\*" \
+            || true)
+
+          if [ -n "$VITE_VARS" ]; then
+            echo "❌ Found Vite-style environment variables in Next.js code:"
+            echo "$VITE_VARS"
+            echo ""
+            echo "💡 Fix: Use process.env.NEXT_PUBLIC_* for Next.js"
+            echo "   Next.js uses NEXT_PUBLIC_ prefix for client-side env vars"
+            exit 1
+          fi
+
+          echo "✅ No Vite-style environment variables found"
+
+      - name: Verify API files use consistent env vars
+        run: |
+          echo "🔍 Verifying API files use process.env.NEXT_PUBLIC_API_URL..."
+
+          # Find files with potential API calls (excluding node_modules, .next, tests)
+          ISSUES=""
+
+          # Check common API-related files for hardcoded URLs
+          for file in $(find web-ui/src -type f \( -name "*.ts" -o -name "*.tsx" \) \
+            -not -path "*/.next/*" \
+            -not -path "*/node_modules/*"); do
+
+            # Skip test files
+            if [[ $file == *".test."* ]] || [[ $file == *".spec."* ]]; then
+              continue
+            fi
+
+            # Check if file has fetch or axios calls with hardcoded localhost
+            if grep -q "fetch.*localhost\|axios.*localhost" "$file" 2>/dev/null; then
+              if ! grep -q "process.env.NEXT_PUBLIC" "$file" 2>/dev/null; then
+                ISSUES="${ISSUES}\n  - ${file}: Contains localhost URL without env var reference"
+              fi
+            fi
+          done
+
+          if [ -n "$ISSUES" ]; then
+            echo "❌ API files with potential issues:"
+            echo -e "$ISSUES"
+            echo ""
+            echo "💡 These files appear to use localhost URLs without environment variable configuration"
+            exit 1
+          fi
+
+          echo "✅ All API files properly configured"
+
+  # ============================================
   # Backend Unit Tests (After Code Quality)
   # ============================================
   backend-tests:
@@ -675,7 +778,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, code-quality]
+    needs: [backend-tests, frontend-tests, code-quality, check-hardcoded-urls]
     if: always()
 
     steps:
@@ -683,17 +786,21 @@ jobs:
         run: |
           echo "## Test Suite Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Code Quality: ${{ needs.code-quality.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Backend Tests: ${{ needs.backend-tests.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Frontend Tests: ${{ needs.frontend-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Hardcoded URLs | ${{ needs.check-hardcoded-urls.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Tests | ${{ needs.backend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.code-quality.result }}" == "failure" ] || \
+             [ "${{ needs.check-hardcoded-urls.result }}" == "failure" ] || \
              [ "${{ needs.backend-tests.result }}" == "failure" ] || \
              [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ Some tests failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
+            echo "❌ Some checks failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
             exit 1
           else
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+            echo "✅ All checks passed!" >> $GITHUB_STEP_SUMMARY
           fi

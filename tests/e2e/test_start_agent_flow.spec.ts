@@ -18,13 +18,38 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { createTestProject, answerDiscoveryQuestion, loginUser } from './test-utils';
+import {
+  createTestProject,
+  answerDiscoveryQuestion,
+  loginUser,
+  setupErrorMonitoring,
+  assertNoNetworkErrors,
+  ErrorMonitor
+} from './test-utils';
 
 test.describe('Start Agent Flow', () => {
   // Login using real authentication flow
   test.beforeEach(async ({ context, page }) => {
+    // Setup error monitoring
+    const errorMonitor = setupErrorMonitoring(page);
+    (page as any).__errorMonitor = errorMonitor;
+
     await context.clearCookies();
     await loginUser(page);
+  });
+
+  // Verify no network errors occurred during each test
+  test.afterEach(async ({ page }) => {
+    const errorMonitor = (page as any).__errorMonitor as ErrorMonitor | undefined;
+    if (errorMonitor) {
+      if (errorMonitor.networkErrors.length > 0 || errorMonitor.failedRequests.length > 0) {
+        console.error('🔴 Network errors detected:', {
+          networkErrors: errorMonitor.networkErrors,
+          failedRequests: errorMonitor.failedRequests
+        });
+        assertNoNetworkErrors(errorMonitor, 'Start agent flow test');
+      }
+    }
   });
 
   test.skip('should start Socratic discovery from dashboard', async ({ page }) => {

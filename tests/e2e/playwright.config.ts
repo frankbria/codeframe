@@ -50,6 +50,14 @@ export default defineConfig({
 
     /* Maximum time each action such as `click()` can take */
     actionTimeout: 10000,
+
+    /* Don't ignore HTTPS errors - catch certificate issues */
+    ignoreHTTPSErrors: false,
+
+    /* Enable strict mode in CI to catch selector ambiguity issues */
+    ...(process.env.CI && {
+      strictSelectors: true,
+    }),
   },
 
   /* Configure projects for major browsers */

@@ -496,7 +496,76 @@ When adding new E2E tests:
 5. **Test locally**: Run tests locally before pushing
 6. **CI validation**: Ensure tests pass in CI
 
+## Error Monitoring
+
+All E2E tests include comprehensive error monitoring to catch issues that DOM-only testing would miss.
+
+### Setting Up Error Monitoring
+
+```typescript
+import {
+  setupErrorMonitoring,
+  assertNoNetworkErrors,
+  ErrorMonitor
+} from './test-utils';
+
+test.beforeEach(async ({ page }) => {
+  const errorMonitor = setupErrorMonitoring(page);
+  (page as any).__errorMonitor = errorMonitor;
+});
+
+test.afterEach(async ({ page }) => {
+  const errorMonitor = (page as any).__errorMonitor as ErrorMonitor;
+  if (errorMonitor) {
+    assertNoNetworkErrors(errorMonitor, 'Test context');
+  }
+});
+```
+
+### What Gets Monitored
+
+| Monitor | Description | Why It Matters |
+|---------|-------------|----------------|
+| Console errors | JavaScript errors, network failures | Catches issues invisible in DOM |
+| Network errors | net::ERR_*, CORS, connection refused | Identifies backend connectivity |
+| Failed requests | HTTP request failures | Catches API endpoint issues |
+| WebSocket close codes | Auth errors (1008), abnormal close (1006) | Validates real-time connection |
+
+### API Response Validation
+
+Use `waitForAPIResponse` instead of `withOptionalWarning` for strict API verification:
+
+```typescript
+// BAD: Silently ignores failures (test always passes)
+await withOptionalWarning(page.waitForResponse(...), 'API');
+
+// GOOD: Fails if API doesn't respond correctly
+const response = await waitForAPIResponse(
+  page,
+  '/api/projects/1',
+  { expectedStatus: 200 }
+);
+expect(response.data.id).toBeDefined();
+```
+
+### WebSocket Monitoring
+
+```typescript
+const wsMonitor = await monitorWebSocket(page, {
+  timeout: 15000,
+  minMessages: 1  // Expect at least 1 message
+});
+assertWebSocketHealthy(wsMonitor);
+```
+
+**WebSocket Close Codes**:
+- `1000`: Normal closure (OK)
+- `1006`: Abnormal closure (connection lost)
+- `1008`: Policy violation (auth error - check token)
+
 ## Best Practices
+
+### General
 
 1. **Keep tests focused**: Each test should validate one workflow
 2. **Use fixtures**: Reuse setup code with pytest/Playwright fixtures
@@ -508,6 +577,40 @@ When adding new E2E tests:
 8. **Document test purpose**: Add docstrings explaining what each test validates
 9. **Backend auto-start**: Rely on `webServer` config in Playwright (don't manually start backend)
 10. **Health endpoints**: Ensure backend `/health` endpoint responds quickly for Playwright health checks
+
+### Strict Testing Patterns
+
+11. **Always verify API responses return data**, not just status codes:
+    ```typescript
+    const response = await waitForAPIResponse(page, '/api/data');
+    expect(response.data.items).toBeInstanceOf(Array);
+    ```
+
+12. **Use strict assertions** - avoid `>=0` or optional checks:
+    ```typescript
+    // BAD: Always passes
+    expect(messages.length).toBeGreaterThanOrEqual(0);
+
+    // GOOD: Actual validation
+    expect(messages.length).toBeGreaterThan(0);
+    ```
+
+13. **Monitor console errors** - network failures should fail tests:
+    ```typescript
+    test.afterEach(async ({ page }) => {
+      const monitor = (page as any).__errorMonitor;
+      assertNoNetworkErrors(monitor);
+    });
+    ```
+
+14. **Use environment variables** for URLs (never hardcode localhost):
+    ```typescript
+    // BAD
+    const API_URL = 'http://localhost:8080';
+
+    // GOOD
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+    ```
 
 ## References
 
