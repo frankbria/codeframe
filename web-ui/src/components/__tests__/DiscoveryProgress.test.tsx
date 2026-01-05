@@ -8,6 +8,13 @@ import DiscoveryProgress from '../DiscoveryProgress';
 import { projectsApi } from '@/lib/api';
 import type { DiscoveryProgressResponse } from '@/types/api';
 
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => ({
+  Cancel01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="cancel-icon" />,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="checkmark-icon" />,
+  Alert02Icon: ({ className }: { className?: string }) => <span className={className} data-testid="alert-icon" />,
+}));
+
 // Mock the API
 const mockStartProject = jest.fn();
 jest.mock('@/lib/api', () => ({
@@ -1093,9 +1100,10 @@ describe('DiscoveryProgress Component', () => {
         expect(successMessage).toBeInTheDocument();
 
         // Verify success message styling (message div has all the classes)
-        expect(successMessage).toHaveClass('bg-green-50');
-        expect(successMessage).toHaveClass('border-green-200');
-        expect(successMessage).toHaveClass('text-green-800');
+        // Using semantic color tokens: bg-success/10, border-success, text-success
+        expect(successMessage).toHaveClass('bg-success/10');
+        expect(successMessage).toHaveClass('border-success');
+        expect(successMessage).toHaveClass('text-success');
         expect(successMessage).toHaveClass('p-3');
         expect(successMessage).toHaveClass('rounded-lg');
       });

@@ -13,7 +13,7 @@ import type { DiscoveryProgressResponse } from '@/types/api';
 import type { WebSocketMessage } from '@/types';
 import ProgressBar from './ProgressBar';
 import PhaseIndicator from './PhaseIndicator';
-import { Cancel01Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
+import { Cancel01Icon, CheckmarkCircle01Icon, Alert02Icon } from '@hugeicons/react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -417,7 +417,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       <div className="space-y-4">
         {/* Success message after answer submission - show in any state */}
         {showSuccessMessage && (
-          <div className="mt-4 p-3 rounded-lg border bg-green-50 border-green-200 text-green-800" data-testid="success-message">
+          <div className="mt-4 p-3 rounded-lg border bg-success/10 border-success text-success" data-testid="success-message">
             Answer submitted! Loading next question...
           </div>
         )}
@@ -464,19 +464,19 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
             {!discovery.current_question && !isLoadingNextQuestion && (
               <div
                 className={`mt-4 p-4 rounded-lg border ${
-                  isStuck ? 'bg-amber-50 border-amber-300' : 'bg-primary/10 border-primary'
+                  isStuck ? 'bg-warning/10 border-warning' : 'bg-primary/10 border-primary'
                 }`}
                 data-testid={isStuck ? 'discovery-stuck' : 'waiting-for-question'}
               >
                 {isStuck ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-amber-600 text-lg">⚠️</span>
-                      <span className="text-sm font-medium text-amber-800">
+                      <Alert02Icon className="h-5 w-5 text-warning flex-shrink-0" aria-hidden="true" />
+                      <span className="text-sm font-medium text-foreground">
                         Discovery appears to be stuck
                       </span>
                     </div>
-                    <p className="text-xs text-amber-700">
+                    <p className="text-xs text-muted-foreground">
                       The discovery process has been waiting for a question for too long.
                       This can happen if there was a network error or the AI service is unavailable.
                     </p>
@@ -488,7 +488,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                         className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                           isRestarting
                             ? 'bg-muted cursor-not-allowed text-muted-foreground'
-                            : 'bg-amber-600 hover:bg-amber-700 text-white'
+                            : 'bg-warning hover:bg-warning/90 text-warning-foreground'
                         }`}
                       >
                         {isRestarting ? 'Restarting...' : 'Restart Discovery'}
@@ -588,9 +588,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         {isCompleted && (
           <div className="space-y-4">
             {/* Discovery Complete Banner */}
-            <div className="flex items-center gap-2 p-4 bg-green-50 rounded-lg border border-green-200">
-              <span className="text-green-600 text-lg">✓</span>
-              <span className="text-sm font-medium text-green-800">
+            <div className="flex items-center gap-2 p-4 bg-success/10 rounded-lg border border-success">
+              <CheckmarkCircle01Icon className="h-5 w-5 text-success flex-shrink-0" aria-hidden="true" />
+              <span className="text-sm font-medium text-foreground">
                 Discovery Complete — All questions answered
               </span>
             </div>
@@ -598,7 +598,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
             {/* PRD Generation Status */}
             <div className={`p-4 rounded-lg border ${
               prdCompleted
-                ? 'bg-green-50 border-green-200'
+                ? 'bg-success/10 border-success'
                 : prdError
                   ? 'bg-destructive/10 border-destructive'
                   : 'bg-primary/10 border-primary'
@@ -634,10 +634,10 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
                   </>
                 ) : prdCompleted ? (
                   <>
-                    <CheckmarkCircle01Icon className="text-green-600 h-5 w-5 flex-shrink-0" aria-hidden="true" />
+                    <CheckmarkCircle01Icon className="text-success h-5 w-5 flex-shrink-0" aria-hidden="true" />
                     <div>
-                      <div className="text-sm font-medium text-green-800">PRD Generated Successfully</div>
-                      <div className="text-xs text-green-700 mt-1">Your Project Requirements Document is ready. View it in the Documents section.</div>
+                      <div className="text-sm font-medium text-foreground">PRD Generated Successfully</div>
+                      <div className="text-xs text-muted-foreground mt-1">Your Project Requirements Document is ready. View it in the Documents section.</div>
                     </div>
                   </>
                 ) : prdError ? (

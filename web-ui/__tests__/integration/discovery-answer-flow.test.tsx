@@ -8,6 +8,13 @@ jest.mock('@/lib/api-client', () => ({
   authFetch: jest.fn(),
 }));
 
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => ({
+  Cancel01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="cancel-icon" />,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="checkmark-icon" />,
+  Alert02Icon: ({ className }: { className?: string }) => <span className={className} data-testid="alert-icon" />,
+}));
+
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import DiscoveryProgress from '@/components/DiscoveryProgress';
 import { projectsApi } from '@/lib/api';

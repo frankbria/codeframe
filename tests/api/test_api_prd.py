@@ -47,9 +47,9 @@ Users need better task tracking.
 - Track progress
 """
 
-    # Store PRD in memory table
+    # Store PRD in memory table (key="content" matches repository query)
     get_app().state.db.create_memory(
-        project_id=project_id, category="prd", key="prd_content", value=prd_content
+        project_id=project_id, category="prd", key="content", value=prd_content
     )
 
     # Store metadata
@@ -209,10 +209,10 @@ class TestPRDEndpointEdgeCases:
             name="Large PRD Project", description="Large PRD Project project"
         )
 
-        # Create large PRD content (>100KB)
+        # Create large PRD content (>100KB) - key="content" matches repository query
         large_content = "# PRD\n\n" + ("Lorem ipsum dolor sit amet. " * 10000)
         get_app().state.db.create_memory(
-            project_id=project_id, category="prd", key="prd_content", value=large_content
+            project_id=project_id, category="prd", key="content", value=large_content
         )
 
         generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
