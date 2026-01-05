@@ -305,14 +305,45 @@ async def start_agent(
         # Start the Socratic discovery process
         # This transitions discovery state from "idle" to "discovering"
         # and generates the first question for the user
-        # If project_description is provided, it pre-populates the first answer
+        # If project_description is provided, it gives context for generating a relevant first question
         try:
             first_question = await asyncio.to_thread(
                 agent.start_discovery, project_description
             )
             logger.info(f"Discovery started for project {project_id}: {first_question[:50]}...")
+
+            # Broadcast discovery_question_ready when first question is available
+            try:
+                await manager.broadcast(
+                    {
+                        "type": "discovery_question_ready",
+                        "project_id": project_id,
+                        "question_text": first_question,
+                        "question_index": 0,
+                        "timestamp": time.time(),
+                    },
+                    project_id=project_id
+                )
+            except Exception as broadcast_err:
+                logger.warning(f"Failed to broadcast discovery_question_ready: {broadcast_err}")
+                # Continue even if broadcast fails
+
         except Exception as e:
             logger.error(f"Failed to start discovery for project {project_id}: {e}")
+            # Broadcast error so frontend can show appropriate UI
+            try:
+                await manager.broadcast(
+                    {
+                        "type": "discovery_error",
+                        "project_id": project_id,
+                        "error": str(e),
+                        "message": "Failed to start discovery. Click 'Start Discovery' to retry.",
+                        "timestamp": time.time(),
+                    },
+                    project_id=project_id
+                )
+            except Exception as broadcast_err:
+                logger.warning(f"Failed to broadcast discovery_error: {broadcast_err}")
             # Continue with agent startup even if discovery fails
             # User can manually trigger discovery later
 

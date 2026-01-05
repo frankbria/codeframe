@@ -54,9 +54,9 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
     Supports ping/pong heartbeat and project subscription messages.
 
     Authentication:
-        - Requires token as query parameter: ws://host/ws?token=YOUR_SESSION_TOKEN
-        - Token is validated against sessions table on connection
-        - User ID is extracted and stored with WebSocket connection
+        - Requires token as query parameter: ws://host/ws?token=YOUR_JWT_TOKEN
+        - JWT token is validated and decoded on connection
+        - User ID is extracted from JWT claims and stored with WebSocket connection
         - Project access is checked on subscribe/unsubscribe messages
 
     Args:

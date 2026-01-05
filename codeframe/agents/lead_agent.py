@@ -310,10 +310,63 @@ class LeadAgent:
                     value=self._current_question_id,
                 )
 
+            # Save current question text if exists (needed for fallback path)
+            if self._current_question_text:
+                self.db.create_memory(
+                    project_id=self.project_id,
+                    category="discovery_state",
+                    key="current_question_text",
+                    value=self._current_question_text,
+                )
+
             logger.debug(f"Saved discovery state: {self._discovery_state}")
 
         except Exception as e:
             logger.error(f"Failed to save discovery state: {e}")
+
+    def reset_discovery(self) -> None:
+        """Reset discovery state to idle, clearing any stuck state.
+
+        This method should be called when discovery is in a stuck state
+        (e.g., state is 'discovering' but no question is available).
+        It clears all discovery state from memory and resets to idle,
+        allowing the user to start fresh.
+
+        Note: This does NOT clear previously answered questions - those are
+        preserved in case the user wants to continue with existing answers.
+        """
+        logger.info(f"Resetting discovery state for project {self.project_id}")
+
+        # Reset in-memory state
+        self._discovery_state = "idle"
+        self._current_question_id = None
+        self._current_question_text = None
+
+        # Update state in database
+        try:
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="state",
+                value="idle",
+            )
+            # Clear current question from database
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="current_question_id",
+                value="",
+            )
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="current_question_text",
+                value="",
+            )
+            logger.info(f"Discovery reset to idle for project {self.project_id}")
+        except Exception as e:
+            logger.error(f"Failed to reset discovery state: {e}")
+            raise
 
     def start_discovery(self, project_description: Optional[str] = None) -> str:
         """
@@ -353,25 +406,33 @@ class LeadAgent:
         )
 
         # Use Claude to generate an intelligent first question
+        # Note: Use provider directly to avoid persisting prompt/response to conversation history
         try:
-            response = self.chat(discovery_prompt)
+            conversation = [
+                {
+                    "role": "user",
+                    "content": discovery_prompt,
+                }
+            ]
+
+            response = self.provider.send_message(conversation)
+            question_text = response["content"]
+
+            # Log token usage
+            usage = response["usage"]
+            logger.info(
+                f"Discovery question generation - Input: {usage['input_tokens']}, "
+                f"Output: {usage['output_tokens']} tokens"
+            )
 
             # Set first question ID based on what we're likely asking about
             # This tracks progress through the discovery framework
             self._current_question_id = "ai_question"  # AI-generated question
-            self._current_question_text = response  # Store the actual question text
-            self._save_discovery_state()
+            self._current_question_text = question_text  # Store the actual question text
+            self._save_discovery_state()  # Persists state, question_id, and question_text
 
-            # Also save the AI question to database for progress endpoint access
-            self.db.create_memory(
-                project_id=self.project_id,
-                category="discovery_state",
-                key="current_question_text",
-                value=response,
-            )
-
-            logger.info(f"Started discovery with AI-generated question")
-            return response
+            logger.info("Started discovery with AI-generated question")
+            return question_text
 
         except Exception as e:
             logger.error(f"Failed to generate AI question, falling back to default: {e}")
@@ -379,9 +440,18 @@ class LeadAgent:
             next_question = self.discovery_framework.get_next_question(self._discovery_answers)
             if next_question:
                 self._current_question_id = next_question["id"]
+                self._current_question_text = next_question["text"]
                 self._save_discovery_state()
                 return next_question["text"]
-            return "What would you like to build?"
+
+            # Final fallback: use a default question with proper state tracking
+            default_question = "What would you like to build? Please describe the main problem you're trying to solve."
+            self._current_question_id = "default_question"
+            self._current_question_text = default_question
+            self._save_discovery_state()  # Persists state, question_id, and question_text
+
+            logger.info("Using default discovery question as final fallback")
+            return default_question
 
     def _build_discovery_start_prompt(
         self, project_description: Optional[str], required_topics: list
@@ -518,10 +588,10 @@ Keep your question concise and conversational. Don't number it or add preamble -
 
             # Add current question if available
             if self._current_question_id:
-                # Check if this is an AI-generated question first
-                if self._current_question_id == "ai_question" and self._current_question_text:
+                # Check if this is an AI-generated or default question first
+                if self._current_question_id in ("ai_question", "default_question") and self._current_question_text:
                     status["current_question"] = {
-                        "id": "ai_question",
+                        "id": self._current_question_id,
                         "category": "discovery",
                         "text": self._current_question_text,
                         "importance": "required",
@@ -531,6 +601,16 @@ Keep your question concise and conversational. Don't number it or add preamble -
                     current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
                     if current_q:
                         status["current_question"] = current_q
+
+            # Detect stuck state: discovering but no current question
+            # This can happen if start_discovery() failed partially
+            if not self._current_question_id or (
+                self._current_question_id not in ("ai_question", "default_question")
+                and "current_question" not in status
+            ):
+                status["needs_recovery"] = True
+                status["recovery_reason"] = "Discovery started but no question available"
+                logger.warning(f"Project {self.project_id}: Discovery in stuck state - no current question")
 
         # Add progress indicators if completed (100% progress)
         if self._discovery_state == "completed":

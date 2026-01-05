@@ -63,6 +63,7 @@ artifacts/
 /logs/
 .pm2/
 node_modules/
+server.log
 
 # Git worktrees
 .worktrees/

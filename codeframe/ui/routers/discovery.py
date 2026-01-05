@@ -81,7 +81,25 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
             "Generating PRD with AI...",
             30
         )
-        prd_content = await asyncio.to_thread(agent.generate_prd)
+        # Timeout after 120 seconds to prevent indefinite hangs
+        PRD_GENERATION_TIMEOUT = 120  # seconds
+        try:
+            prd_content = await asyncio.wait_for(
+                asyncio.to_thread(agent.generate_prd),
+                timeout=PRD_GENERATION_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"PRD generation timed out after {PRD_GENERATION_TIMEOUT}s for project {project_id}")
+            await manager.broadcast(
+                {
+                    "type": "prd_generation_failed",
+                    "project_id": project_id,
+                    "status": "failed",
+                    "error": f"PRD generation timed out after {PRD_GENERATION_TIMEOUT} seconds. Please try again.",
+                },
+                project_id=project_id,
+            )
+            return  # Exit background task
 
         logger.info(f"PRD generated successfully for project {project_id}")
 
@@ -361,3 +379,164 @@ async def get_discovery_progress(
         raise HTTPException(
             status_code=500, detail=f"Error retrieving discovery progress: {str(e)}"
         )
+
+
+@router.post("/restart")
+async def restart_discovery(
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Restart discovery when stuck in an invalid state.
+
+    This endpoint resets discovery state to 'idle', allowing the user to
+    start discovery fresh. Use this when discovery is stuck (e.g., state is
+    'discovering' but no question is available).
+
+    Args:
+        project_id: Project ID
+        db: Database instance (injected)
+        current_user: Authenticated user (injected)
+
+    Returns:
+        Success message with new state
+
+    Raises:
+        HTTPException:
+            - 400: Discovery cannot be restarted (e.g., already completed)
+            - 403: User lacks project access
+            - 404: Project not found
+    """
+    # Check if project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Check project phase - only allow restart during discovery phase
+    if project.get("phase") not in ("discovery", None):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot restart discovery in {project.get('phase')} phase. "
+            "Discovery can only be restarted during the discovery phase.",
+        )
+
+    # Initialize LeadAgent to get current state and reset
+    try:
+        agent = LeadAgent(project_id=project_id, db=db, api_key="dummy-key-for-reset")
+        status = agent.get_discovery_status()
+
+        # Don't allow restart if discovery is completed
+        if status["state"] == "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Discovery is already completed. Cannot restart completed discovery.",
+            )
+
+        # Reset discovery state
+        agent.reset_discovery()
+
+        # Broadcast discovery reset event
+        await manager.broadcast(
+            {
+                "type": "discovery_reset",
+                "project_id": project_id,
+                "message": "Discovery has been reset. Click 'Start Discovery' to begin again.",
+            },
+            project_id=project_id,
+        )
+
+        logger.info(f"Discovery reset for project {project_id} by user {current_user.id}")
+
+        return {
+            "success": True,
+            "message": "Discovery has been reset. You can now start discovery again.",
+            "state": "idle",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to restart discovery for project {project_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to restart discovery: {str(e)}"
+        )
+
+
+@router.post("/generate-prd")
+async def retry_prd_generation(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Retry PRD generation for a project with completed discovery.
+
+    This endpoint allows retrying PRD generation if it previously failed,
+    or manually triggering it if it wasn't started automatically.
+
+    Args:
+        project_id: Project ID
+        background_tasks: FastAPI background tasks
+        db: Database instance (injected)
+        current_user: Authenticated user (injected)
+
+    Returns:
+        Success message indicating PRD generation has started
+
+    Raises:
+        HTTPException:
+            - 400: Discovery not completed, or PRD already exists
+            - 403: User lacks project access
+            - 404: Project not found
+            - 500: API key not configured
+    """
+    # Check if project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Verify API key is available
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY environment variable is not set.",
+        )
+
+    # Check discovery state - must be completed
+    try:
+        agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+        status = agent.get_discovery_status()
+
+        if status["state"] != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Discovery must be completed before generating PRD. "
+                f"Current state: {status['state']}",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to check discovery status for project {project_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to check discovery status: {str(e)}"
+        )
+
+    # Start PRD generation in background
+    background_tasks.add_task(generate_prd_background, project_id, db, api_key)
+
+    logger.info(f"PRD generation started for project {project_id} by user {current_user.id}")
+
+    return {
+        "success": True,
+        "message": "PRD generation has been started. Watch for WebSocket updates.",
+    }

@@ -101,6 +101,8 @@ export type WebSocketMessageType =
   | 'subscribe'
   | 'subscribed'
   | 'discovery_starting'       // Immediate feedback when Start Discovery clicked
+  | 'discovery_question_ready' // First question is available after starting discovery
+  | 'discovery_reset'          // Discovery was reset to idle state
   | 'discovery_completed'      // Discovery finished, PRD generation starting
   | 'prd_generation_started'   // PRD generation has begun
   | 'prd_generation_progress'  // PRD generation progress update (stage, message, progress_pct)

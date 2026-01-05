@@ -51,6 +51,14 @@ export const projectsApi = {
     }),
   getDiscoveryProgress: (projectId: number | string) =>
     api.get<DiscoveryProgressResponse>(`/api/projects/${projectId}/discovery/progress`),
+  restartDiscovery: (projectId: number | string) =>
+    api.post<{ success: boolean; message: string; state: string }>(
+      `/api/projects/${projectId}/discovery/restart`
+    ),
+  retryPrdGeneration: (projectId: number | string) =>
+    api.post<{ success: boolean; message: string }>(
+      `/api/projects/${projectId}/discovery/generate-prd`
+    ),
 };
 
 export const agentsApi = {
