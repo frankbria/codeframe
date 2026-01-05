@@ -165,13 +165,18 @@ def config(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(deprecated=True, hidden=True)
 def checkpoint(
     action: str = typer.Argument("create", help="Action: create or list"),
     message: Optional[str] = typer.Option(None, help="Checkpoint message"),
 ):
-    """Manage checkpoints."""
-    console.print(f"Checkpoint {action} - [yellow]Not implemented yet[/yellow]")
+    """Deprecated: Use 'codeframe checkpoints' instead."""
+    console.print("[yellow]⚠ Deprecated:[/yellow] The 'checkpoint' command has been replaced.")
+    console.print("Please use: [bold]codeframe checkpoints <command>[/bold]")
+    console.print("\nAvailable commands:")
+    console.print("  codeframe checkpoints list <project_id>")
+    console.print("  codeframe checkpoints create <project_id>")
+    console.print("  codeframe checkpoints restore <checkpoint_id>")
 
 
 # Note: agents command group is now in agents_commands.py (Phase 2)
