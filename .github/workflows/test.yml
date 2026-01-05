@@ -84,7 +84,7 @@ jobs:
           echo "🔍 Checking for hardcoded localhost URLs..."
 
           # Check for hardcoded localhost URLs with common ports (3000-9999)
-          # We ONLY allow: process.env.NEXT_PUBLIC_* || 'http://localhost:...'
+          # We ONLY allow: process.env.NEXT_PUBLIC_* || 'http://localhost:...' (or ws://, wss://, https://)
           # We reject: 'http://localhost:...' (without env var)
           # We reject: 'http://localhost:...' || process.env.NEXT_PUBLIC_* (reversed)
           HARDCODED=$(grep -rn -E "localhost:[0-9]{2,5}" web-ui/src \
@@ -96,7 +96,7 @@ jobs:
             | grep -v "\.spec\." \
             | grep -v "// " \
             | grep -v "/\*" \
-            | grep -vE "process\.env\.NEXT_PUBLIC_[A-Z0-9_]+\s*\|\|\s*['\"]http" \
+            | grep -vE "process\.env\.NEXT_PUBLIC_[A-Z0-9_]+\s*\|\|\s*['\"](https?|wss?)://" \
             || true)
 
           if [ -n "$HARDCODED" ]; then
