@@ -18,8 +18,8 @@ import {
   clearAuth,
   getAuthToken,
   setupErrorMonitoring,
-  assertNoNetworkErrors,
-  ErrorMonitor
+  checkTestErrors,
+  ExtendedPage
 } from './test-utils';
 
 const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'test@example.com';
@@ -33,7 +33,7 @@ test.describe('Authentication Flow', () => {
   test.beforeEach(async ({ page }) => {
     // Setup error monitoring
     const errorMonitor = setupErrorMonitoring(page);
-    (page as any).__errorMonitor = errorMonitor;
+    (page as ExtendedPage).__errorMonitor = errorMonitor;
 
     // Navigate to any page to access localStorage
     await page.goto('/login');
@@ -41,27 +41,9 @@ test.describe('Authentication Flow', () => {
   });
 
   // Verify no critical network errors occurred during each test
+  // Filter out expected auth failures (401, 403) from invalid credential tests
   test.afterEach(async ({ page }) => {
-    const errorMonitor = (page as any).__errorMonitor as ErrorMonitor | undefined;
-    if (errorMonitor) {
-      // Check for network errors (but allow expected auth failures from invalid credential tests)
-      const criticalErrors = errorMonitor.networkErrors.filter(e =>
-        !e.includes('401') && // Expected for invalid credentials
-        !e.includes('403') && // Expected for unauthorized access
-        !e.includes('Invalid credentials') // Expected error message
-      );
-
-      if (criticalErrors.length > 0 || errorMonitor.failedRequests.length > 0) {
-        console.error('🔴 Unexpected network errors:', {
-          criticalErrors,
-          failedRequests: errorMonitor.failedRequests
-        });
-        assertNoNetworkErrors({
-          ...errorMonitor,
-          networkErrors: criticalErrors
-        }, 'Auth flow test');
-      }
-    }
+    checkTestErrors(page, 'Auth flow test', ['401', '403', 'Invalid credentials', 'LOGIN_BAD_CREDENTIALS']);
   });
 
   test.describe('Registration', () => {

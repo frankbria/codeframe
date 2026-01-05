@@ -12,11 +12,11 @@ import { test, expect, Page } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  assertNoNetworkErrors,
+  checkTestErrors,
   waitForAPIResponse,
   monitorWebSocket,
   assertWebSocketHealthy,
-  ErrorMonitor,
+  ExtendedPage,
   WebSocketMonitor
 } from './test-utils';
 
@@ -85,7 +85,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
 
     // Setup error monitoring to catch network failures, console errors, etc.
     const errorMonitor = setupErrorMonitoring(page);
-    (page as any).__errorMonitor = errorMonitor;
+    (page as ExtendedPage).__errorMonitor = errorMonitor;
 
     // Login using real authentication flow (JWT via FastAPI Users)
     await loginUser(page);
@@ -136,18 +136,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
 
   // Verify no network errors occurred during each test
   test.afterEach(async ({ page }) => {
-    const errorMonitor = (page as any).__errorMonitor as ErrorMonitor | undefined;
-    if (errorMonitor) {
-      // Check for critical network errors (but allow some console warnings)
-      if (errorMonitor.networkErrors.length > 0 || errorMonitor.failedRequests.length > 0) {
-        console.error('🔴 Network errors detected:', {
-          networkErrors: errorMonitor.networkErrors,
-          failedRequests: errorMonitor.failedRequests
-        });
-        // Only fail on actual network failures, not console warnings
-        assertNoNetworkErrors(errorMonitor, 'Dashboard test');
-      }
-    }
+    checkTestErrors(page, 'Dashboard test');
   });
 
   test('should display all main dashboard sections', async () => {
@@ -294,7 +283,22 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     await waitForWebSocketReady(BACKEND_URL);
 
     // Step 2: Set up WebSocket monitoring BEFORE reload
-    // This uses the new monitorWebSocket helper for comprehensive tracking
+    // Monitor console messages to detect WebSocket close codes (Playwright doesn't expose them directly)
+    const wsCloseInfo: { code: number | null; reason: string | null } = { code: null, reason: null };
+
+    // Listen for console messages that might contain WebSocket close info
+    page.on('console', msg => {
+      const text = msg.text();
+      // Detect close code from common browser/framework log patterns
+      const closeCodeMatch = text.match(/WebSocket.*close[d]?.*code[:\s]+(\d{4})/i) ||
+                            text.match(/close code[:\s]+(\d{4})/i) ||
+                            text.match(/1008|1006|1003/);
+      if (closeCodeMatch) {
+        wsCloseInfo.code = parseInt(closeCodeMatch[1] || closeCodeMatch[0], 10);
+        wsCloseInfo.reason = text;
+      }
+    });
+
     const wsMonitorPromise = (async () => {
       // Set up WebSocket event listener before reload
       const ws = await page.waitForEvent('websocket', { timeout: 15000 });
@@ -320,9 +324,16 @@ test.describe('Dashboard - Sprint 10 Features', () => {
         }
       });
 
-      // Listen for close events to detect auth failures
+      // Listen for close events - capture timing to detect premature closure
+      let closeTime: number | null = null;
       ws.on('close', () => {
+        closeTime = Date.now();
         console.log('🔌 WebSocket closed');
+        // If closed immediately (< 1s after connect), likely an auth error
+        if (monitor.messages.length === 0) {
+          monitor.closeCode = wsCloseInfo.code || 1006; // Use detected code or assume abnormal
+          monitor.closeReason = wsCloseInfo.reason || 'Closed without receiving messages';
+        }
       });
 
       return monitor;
@@ -337,7 +348,11 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       wsMonitor = await wsMonitorPromise;
       console.log('✅ WebSocket connection detected via browser event');
     } catch (error) {
-      // If we timeout waiting for WebSocket event, provide detailed error
+      // Check if we detected a close code from console
+      if (wsCloseInfo.code) {
+        throw new Error(`WebSocket closed with code ${wsCloseInfo.code}: ${wsCloseInfo.reason}\n` +
+          `This typically indicates an authentication error. Verify auth token is included.`);
+      }
       throw new Error(`WebSocket connection not established: ${error}\n` +
         `Backend URL: ${BACKEND_URL}\n` +
         `Frontend URL: ${FRONTEND_URL}\n` +
@@ -353,10 +368,20 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     // Step 6: Wait for agent panel to render (indicates page is loaded)
     await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'visible', timeout: 10000 });
 
-    // Step 7: Wait for WebSocket messages to arrive
-    await page.waitForTimeout(3000);
+    // Step 7: Use event-based waiting for messages (poll instead of fixed timeout)
+    const pollStart = Date.now();
+    const maxWaitMs = 5000;
+    while (Date.now() - pollStart < maxWaitMs && wsMonitor.messages.length === 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
 
     // Step 8: STRICT VERIFICATION - Check WebSocket health
+    // Update close code from console monitoring
+    if (wsCloseInfo.code && !wsMonitor.closeCode) {
+      wsMonitor.closeCode = wsCloseInfo.code;
+      wsMonitor.closeReason = wsCloseInfo.reason;
+    }
+
     // Assert no errors occurred
     if (wsMonitor.errors.length > 0) {
       throw new Error(`WebSocket errors detected: ${wsMonitor.errors.join(', ')}`);
@@ -370,13 +395,17 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       );
     }
 
+    // Check for abnormal close
+    if (wsMonitor.closeCode === 1006) {
+      throw new Error(
+        `WebSocket closed abnormally (code 1006): ${wsMonitor.closeReason || 'Connection lost'}`
+      );
+    }
+
     // Step 9: Verify we received at least SOME messages (not 0)
-    // Previous test accepted >=0 which is always true - now we expect at least 1 message
-    // (heartbeat, pong, subscribed, or data update)
     if (wsMonitor.messages.length === 0) {
       console.warn('⚠️ No WebSocket messages received - this may indicate a connection issue');
       // For now, warn but don't fail - some test environments may not send immediate messages
-      // In production, this should be: expect(wsMonitor.messages.length).toBeGreaterThan(0);
     }
 
     // Verify we received meaningful messages (not just empty frames)

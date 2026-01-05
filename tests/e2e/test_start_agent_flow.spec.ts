@@ -23,8 +23,8 @@ import {
   answerDiscoveryQuestion,
   loginUser,
   setupErrorMonitoring,
-  assertNoNetworkErrors,
-  ErrorMonitor
+  checkTestErrors,
+  ExtendedPage
 } from './test-utils';
 
 test.describe('Start Agent Flow', () => {
@@ -32,7 +32,7 @@ test.describe('Start Agent Flow', () => {
   test.beforeEach(async ({ context, page }) => {
     // Setup error monitoring
     const errorMonitor = setupErrorMonitoring(page);
-    (page as any).__errorMonitor = errorMonitor;
+    (page as ExtendedPage).__errorMonitor = errorMonitor;
 
     await context.clearCookies();
     await loginUser(page);
@@ -40,16 +40,7 @@ test.describe('Start Agent Flow', () => {
 
   // Verify no network errors occurred during each test
   test.afterEach(async ({ page }) => {
-    const errorMonitor = (page as any).__errorMonitor as ErrorMonitor | undefined;
-    if (errorMonitor) {
-      if (errorMonitor.networkErrors.length > 0 || errorMonitor.failedRequests.length > 0) {
-        console.error('🔴 Network errors detected:', {
-          networkErrors: errorMonitor.networkErrors,
-          failedRequests: errorMonitor.failedRequests
-        });
-        assertNoNetworkErrors(errorMonitor, 'Start agent flow test');
-      }
-    }
+    checkTestErrors(page, 'Start agent flow test');
   });
 
   test.skip('should start Socratic discovery from dashboard', async ({ page }) => {
