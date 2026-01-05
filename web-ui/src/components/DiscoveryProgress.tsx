@@ -31,6 +31,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingNextQuestion, setIsLoadingNextQuestion] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   // Start Discovery state
   const [isStarting, setIsStarting] = useState(false);
@@ -85,11 +86,17 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         }
       );
 
-      // Success - immediately show loading state for next question
+      // Success - show success message and loading state for next question
       setIsSubmitting(false);
       setIsLoadingNextQuestion(true);
       setAnswer(''); // Clear textarea
       setSubmissionError(null);
+      setShowSuccessMessage(true);
+
+      // Auto-dismiss success message after 1 second
+      setTimeout(() => {
+        setShowSuccessMessage(false);
+      }, 1000);
 
       // Fetch next question immediately (separate try-catch for fetch failure)
       try {
@@ -408,6 +415,13 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
       </div>
 
       <div className="space-y-4">
+        {/* Success message after answer submission - show in any state */}
+        {showSuccessMessage && (
+          <div className="mt-4 p-3 rounded-lg border bg-green-50 border-green-200 text-green-800" data-testid="success-message">
+            Answer submitted! Loading next question...
+          </div>
+        )}
+
         {/* Discovering State */}
         {isDiscovering && discovery && (
           <>

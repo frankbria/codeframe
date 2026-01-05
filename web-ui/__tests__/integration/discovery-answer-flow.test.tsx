@@ -162,8 +162,12 @@ describe('Discovery Answer Flow - Integration Tests', () => {
       expect(screen.getByText('5%')).toBeInTheDocument();
       expect(screen.getByText(/answered.*1.*20/i)).toBeInTheDocument();
 
-      // Verify success message is dismissed
-      expect(screen.queryByText(/answer submitted/i)).not.toBeInTheDocument();
+      // Verify success message is dismissed (auto-dismiss after 1 second)
+      // Advance timer and wait for React to process the state update
+      jest.advanceTimersByTime(1000);
+      await waitFor(() => {
+        expect(screen.queryByText(/answer submitted/i)).not.toBeInTheDocument();
+      });
 
       // Verify textarea is re-enabled and empty
       expect(textarea).not.toBeDisabled();

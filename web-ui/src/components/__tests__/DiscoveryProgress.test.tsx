@@ -495,8 +495,8 @@ describe('DiscoveryProgress Component', () => {
         expect(mockStartProject).toHaveBeenCalledWith(1);
       });
 
-      // Wait for the refresh to happen
-      jest.advanceTimersByTime(1000);
+      // Wait for the 2 second fallback refresh timeout to happen
+      jest.advanceTimersByTime(2000);
 
       // Should still try to refresh and transition
       await waitFor(() => {
