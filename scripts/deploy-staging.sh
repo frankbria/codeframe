@@ -136,6 +136,8 @@ npm install dotenv
 cd web-ui
 echo "Installing Node.js dependencies (this may take a minute)..."
 npm ci --production=false
+echo "Running security audit..."
+npm audit --audit-level=critical
 cd ..
 echo -e "${GREEN}✓ Node.js dependencies installed${NC}"
 

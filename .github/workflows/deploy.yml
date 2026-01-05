@@ -161,6 +161,8 @@ jobs:
             echo "📦 Building frontend..."
             cd web-ui
             npm ci
+            echo "🔒 Running security audit..."
+            npm audit --audit-level=critical
             # NEXT_PUBLIC vars must be set at build time for Next.js
             export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
             export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
@@ -467,6 +469,8 @@ jobs:
             echo "📦 Building frontend for production..."
             cd web-ui
             npm ci
+            echo "🔒 Running security audit..."
+            npm audit --audit-level=critical
             # NEXT_PUBLIC vars must be set at build time for Next.js
             export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}"
             export NEXT_PUBLIC_WS_URL="${NEXT_PUBLIC_WS_URL}"
