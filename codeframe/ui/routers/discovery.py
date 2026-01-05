@@ -327,16 +327,17 @@ async def get_discovery_progress(
             discovery_data = None
         else:
             # Build discovery response, excluding sensitive fields
+            # Use .get() with defaults to handle edge cases where keys may not exist
             discovery_data = {
                 "state": status["state"],
-                "progress_percentage": status["progress_percentage"],
-                "answered_count": status["answered_count"],
-                "total_required": status["total_required"],
+                "progress_percentage": status.get("progress_percentage", 0.0),
+                "answered_count": status.get("answered_count", 0),
+                "total_required": status.get("total_required", 0),
             }
 
             # Add state-specific fields
             if status["state"] == "discovering":
-                discovery_data["remaining_count"] = status["remaining_count"]
+                discovery_data["remaining_count"] = status.get("remaining_count", 0)
                 # Map backend "text" field to frontend "question" field
                 raw_question = status.get("current_question")
                 if raw_question:
