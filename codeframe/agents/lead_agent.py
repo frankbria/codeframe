@@ -498,8 +498,9 @@ Keep your question concise and conversational. Don't number it or add preamble -
             "answers": self._discovery_answers.copy(),
         }
 
-        # Add progress indicators and current question if in discovering state
-        if self._discovery_state == "discovering" and self._current_question_id:
+        # Add progress indicators if in discovering state
+        # Note: We calculate progress even if current_question_id is None to handle edge cases
+        if self._discovery_state == "discovering":
             # Get all questions to calculate progress
             questions = self.discovery_framework.generate_questions()
             total_required = len([q for q in questions if q["importance"] == "required"])
@@ -515,20 +516,21 @@ Keep your question concise and conversational. Don't number it or add preamble -
             status["total_required"] = total_required
             status["remaining_count"] = total_required - len(self._discovery_answers)
 
-            # Find current question details
-            # Check if this is an AI-generated question first
-            if self._current_question_id == "ai_question" and self._current_question_text:
-                status["current_question"] = {
-                    "id": "ai_question",
-                    "category": "discovery",
-                    "text": self._current_question_text,
-                    "importance": "required",
-                }
-            else:
-                # Look up from framework
-                current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
-                if current_q:
-                    status["current_question"] = current_q
+            # Add current question if available
+            if self._current_question_id:
+                # Check if this is an AI-generated question first
+                if self._current_question_id == "ai_question" and self._current_question_text:
+                    status["current_question"] = {
+                        "id": "ai_question",
+                        "category": "discovery",
+                        "text": self._current_question_text,
+                        "importance": "required",
+                    }
+                else:
+                    # Look up from framework
+                    current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
+                    if current_q:
+                        status["current_question"] = current_q
 
         # Add progress indicators if completed (100% progress)
         if self._discovery_state == "completed":
