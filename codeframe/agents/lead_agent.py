@@ -425,9 +425,9 @@ class LeadAgent:
                 f"Output: {usage['output_tokens']} tokens"
             )
 
-            # Set first question ID based on what we're likely asking about
-            # This tracks progress through the discovery framework
-            self._current_question_id = "ai_question"  # AI-generated question
+            # Use distinct ID for AI-generated questions (not a framework ID)
+            # The answer will be mapped to the appropriate framework question in process_discovery_answer()
+            self._current_question_id = "ai_generated"
             self._current_question_text = question_text  # Store the actual question text
             self._save_discovery_state()  # Persists state, question_id, and question_text
 
@@ -445,8 +445,9 @@ class LeadAgent:
                 return next_question["text"]
 
             # Final fallback: use a default question with proper state tracking
+            # Use distinct ID - answer will be mapped to framework question in process_discovery_answer()
             default_question = "What would you like to build? Please describe the main problem you're trying to solve."
-            self._current_question_id = "default_question"
+            self._current_question_id = "default_generated"
             self._current_question_text = default_question
             self._save_discovery_state()  # Persists state, question_id, and question_text
 
@@ -510,20 +511,34 @@ Keep your question concise and conversational. Don't number it or add preamble -
             logger.warning(f"process_discovery_answer called in state: {self._discovery_state}")
             return "Discovery is not active. Call start_discovery() first."
 
-        # Save current answer
-        if self._current_question_id:
-            self._discovery_answers[self._current_question_id] = answer
-            self.answer_capture.capture_answer(self._current_question_id, answer)
+        # Determine the target question ID for storing this answer
+        # AI-generated and default questions map to the first unanswered framework question
+        target_question_id = self._current_question_id
+        if self._current_question_id in ("ai_generated", "default_generated"):
+            # Map to the first unanswered framework question
+            next_framework_question = self.discovery_framework.get_next_question(self._discovery_answers)
+            if next_framework_question:
+                target_question_id = next_framework_question["id"]
+                logger.info(f"Mapping {self._current_question_id} answer to framework question {target_question_id}")
+            else:
+                # Edge case: no framework questions available (shouldn't happen normally)
+                target_question_id = "problem_1"
+                logger.warning(f"No framework question available, defaulting to {target_question_id}")
+
+        # Save answer under the target framework question ID
+        if target_question_id:
+            self._discovery_answers[target_question_id] = answer
+            self.answer_capture.capture_answer(target_question_id, answer)
 
             # Persist to database
             self.db.create_memory(
                 project_id=self.project_id,
                 category="discovery_answers",
-                key=self._current_question_id,
+                key=target_question_id,
                 value=answer,
             )
 
-            logger.info(f"Captured answer for {self._current_question_id}")
+            logger.info(f"Captured answer for {target_question_id}")
 
         # Check if discovery is complete
         if self.discovery_framework.is_discovery_complete(self._discovery_answers):
@@ -588,26 +603,36 @@ Keep your question concise and conversational. Don't number it or add preamble -
 
             # Add current question if available
             if self._current_question_id:
-                # Check if this is an AI-generated or default question first
-                if self._current_question_id in ("ai_question", "default_question") and self._current_question_text:
+                # Handle AI-generated or default questions (distinct from framework IDs)
+                if self._current_question_id in ("ai_generated", "default_generated"):
+                    # These questions have custom text stored separately
+                    # They map to framework questions when answered, but display their custom text
                     status["current_question"] = {
                         "id": self._current_question_id,
-                        "category": "discovery",
-                        "text": self._current_question_text,
+                        "category": "problem",  # AI questions typically start with problem domain
+                        "text": self._current_question_text or "What would you like to build?",
                         "importance": "required",
                     }
                 else:
                     # Look up from framework
                     current_q = next((q for q in questions if q["id"] == self._current_question_id), None)
                     if current_q:
-                        status["current_question"] = current_q
+                        status["current_question"] = current_q.copy()
+                        # Override text if we have stored custom text
+                        if self._current_question_text:
+                            status["current_question"]["text"] = self._current_question_text
+                    elif self._current_question_text:
+                        # Fallback for unknown question IDs with stored text
+                        status["current_question"] = {
+                            "id": self._current_question_id,
+                            "category": "discovery",
+                            "text": self._current_question_text,
+                            "importance": "required",
+                        }
 
             # Detect stuck state: discovering but no current question
             # This can happen if start_discovery() failed partially
-            if not self._current_question_id or (
-                self._current_question_id not in ("ai_question", "default_question")
-                and "current_question" not in status
-            ):
+            if not self._current_question_id or "current_question" not in status:
                 status["needs_recovery"] = True
                 status["recovery_reason"] = "Discovery started but no question available"
                 logger.warning(f"Project {self.project_id}: Discovery in stuck state - no current question")
