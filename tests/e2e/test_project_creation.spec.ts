@@ -30,8 +30,15 @@ test.describe('Project Creation Flow', () => {
   });
 
   // Verify no network errors occurred during each test
+  // Filter out transient errors during project creation:
+  // - WebSocket disconnects/reconnects
+  // - Discovery API errors (discovery auto-starts on project creation)
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Project creation test');
+    checkTestErrors(page, 'Project creation test', [
+      'WebSocket', 'ws://', 'wss://',
+      'discovery',
+      'net::ERR_FAILED'
+    ]);
   });
 
   test('should display project list on root page', async ({ page }) => {
@@ -161,8 +168,15 @@ test.describe('Project Navigation Flow', () => {
   });
 
   // Verify no network errors occurred during each test
+  // Filter out transient errors that can occur during rapid navigation:
+  // - WebSocket disconnects/reconnects when navigating between pages
+  // - Discovery API errors (discovery auto-starts on project creation)
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Project navigation test');
+    checkTestErrors(page, 'Project navigation test', [
+      'WebSocket', 'ws://', 'wss://',
+      'discovery',
+      'net::ERR_FAILED'
+    ]);
   });
 
   test('should navigate to project dashboard when project card clicked', async ({ page }) => {

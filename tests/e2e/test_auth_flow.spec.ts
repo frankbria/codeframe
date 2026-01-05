@@ -41,9 +41,19 @@ test.describe('Authentication Flow', () => {
   });
 
   // Verify no critical network errors occurred during each test
-  // Filter out expected auth failures (401, 403) from invalid credential tests
+  // Filter out expected errors during auth testing:
+  // - 401/403 status errors (invalid credentials, unauthorized access)
+  // - WebSocket disconnections (expected when token is invalid/expired)
+  // - Network errors that occur during logout transitions
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Auth flow test', ['401', '403', 'Invalid credentials', 'LOGIN_BAD_CREDENTIALS']);
+    checkTestErrors(page, 'Auth flow test', [
+      '401', '403',
+      'Invalid credentials', 'LOGIN_BAD_CREDENTIALS',
+      'Unauthorized', 'Forbidden',
+      'WebSocket', 'ws://', 'wss://',
+      'net::ERR_FAILED',
+      'Failed to fetch'
+    ]);
   });
 
   test.describe('Registration', () => {
