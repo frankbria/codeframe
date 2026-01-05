@@ -10,6 +10,7 @@
  */
 
 import type { Page, WebSocket } from '@playwright/test';
+import { BACKEND_URL } from './e2e-config';
 
 // ============================================================================
 // TYPE EXTENSIONS
@@ -561,20 +562,26 @@ export async function getAuthToken(page: Page): Promise<string | null> {
 }
 
 /**
- * Create a new project via the UI
+ * Create a new project via the UI and start discovery
  *
  * The flow is: login -> project list page -> click "Create New Project" button ->
- * fill form -> submit -> navigate to dashboard
+ * fill form -> submit -> navigate to dashboard -> start discovery
+ *
+ * Note: Project creation and discovery start are separate operations:
+ * - POST /api/projects creates the project record
+ * - POST /api/projects/{id}/start initializes the LeadAgent and begins discovery
  *
  * @param page - Playwright page object
  * @param name - Project name (defaults to unique timestamped name)
  * @param description - Project description
+ * @param startDiscovery - Whether to start discovery after creation (default: true)
  * @returns Project ID extracted from URL
  */
 export async function createTestProject(
   page: Page,
   name?: string,
-  description = 'Test project created via E2E test'
+  description = 'Test project created via E2E test',
+  startDiscovery = true
 ): Promise<string> {
   // Generate unique project name if not provided
   const projectName = name || `test-project-${Date.now()}`;
@@ -605,7 +612,36 @@ export async function createTestProject(
     throw new Error('Failed to extract project ID from URL');
   }
 
-  return match[1];
+  const projectId = match[1];
+
+  // Start discovery process if requested
+  if (startDiscovery) {
+    const authToken = await getAuthToken(page);
+    if (!authToken) {
+      throw new Error('No auth token available to start discovery');
+    }
+
+    // Call the start endpoint to initialize LeadAgent and begin discovery
+    const startResponse = await page.request.post(
+      `${BACKEND_URL}/api/projects/${projectId}/start`,
+      {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!startResponse.ok()) {
+      const errorText = await startResponse.text();
+      throw new Error(`Failed to start discovery: ${startResponse.status()} - ${errorText}`);
+    }
+
+    // Wait for discovery to initialize (first question should appear)
+    await page.waitForTimeout(2000);
+  }
+
+  return projectId;
 }
 
 /**
