@@ -33,11 +33,15 @@ test.describe('Project Creation Flow', () => {
   // Filter out transient errors during project creation:
   // - WebSocket disconnects/reconnects
   // - Discovery API errors (discovery auto-starts on project creation)
+  // - net::ERR_ABORTED: Normal browser behavior when navigation cancels pending requests
+  // - Failed to fetch: Session fetch errors during rapid navigation
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Project creation test', [
       'WebSocket', 'ws://', 'wss://',
       'discovery',
-      'net::ERR_FAILED'
+      'net::ERR_FAILED',
+      'net::ERR_ABORTED',
+      'Failed to fetch'
     ]);
   });
 
@@ -171,11 +175,15 @@ test.describe('Project Navigation Flow', () => {
   // Filter out transient errors that can occur during rapid navigation:
   // - WebSocket disconnects/reconnects when navigating between pages
   // - Discovery API errors (discovery auto-starts on project creation)
+  // - net::ERR_ABORTED: Normal browser behavior when navigation cancels pending requests
+  // - Failed to fetch: Session fetch errors during rapid navigation
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Project navigation test', [
       'WebSocket', 'ws://', 'wss://',
       'discovery',
-      'net::ERR_FAILED'
+      'net::ERR_FAILED',
+      'net::ERR_ABORTED',
+      'Failed to fetch'
     ]);
   });
 

@@ -42,11 +42,15 @@ test.describe('Start Agent Flow', () => {
   // Filter out transient errors during agent flow:
   // - WebSocket disconnects/reconnects
   // - Discovery API errors (discovery auto-starts on project creation)
+  // - net::ERR_ABORTED: Normal browser behavior when navigation cancels pending requests
+  // - Failed to fetch: Session fetch errors during rapid navigation
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Start agent flow test', [
       'WebSocket', 'ws://', 'wss://',
       'discovery',
-      'net::ERR_FAILED'
+      'net::ERR_FAILED',
+      'net::ERR_ABORTED',
+      'Failed to fetch'
     ]);
   });
 

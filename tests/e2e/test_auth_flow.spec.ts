@@ -45,6 +45,8 @@ test.describe('Authentication Flow', () => {
   // - 401/403 status errors (invalid credentials, unauthorized access)
   // - WebSocket disconnections (expected when token is invalid/expired)
   // - Network errors that occur during logout transitions
+  // - net::ERR_ABORTED: Normal browser behavior when requests are cancelled during navigation
+  //   (e.g., Next.js RSC prefetches like ?_rsc=, chunk loading during route changes)
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Auth flow test', [
       '401', '403',
@@ -52,6 +54,7 @@ test.describe('Authentication Flow', () => {
       'Unauthorized', 'Forbidden',
       'WebSocket', 'ws://', 'wss://',
       'net::ERR_FAILED',
+      'net::ERR_ABORTED',
       'Failed to fetch'
     ]);
   });
