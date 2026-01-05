@@ -19,10 +19,10 @@ import json
 import logging
 
 import typer
-from rich.console import Console
 from rich.table import Table
 
 from codeframe.cli.api_client import APIClient, APIError, AuthenticationError
+from codeframe.cli.helpers import console, require_auth, format_date
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +31,6 @@ agents_app = typer.Typer(
     help="Agent management commands",
     no_args_is_help=True,
 )
-console = Console()
-
-
-def require_auth(client: APIClient):
-    """Check if client is authenticated, exit with error if not."""
-    if not client.token:
-        console.print("[yellow]Not logged in.[/yellow]")
-        console.print("Please log in: codeframe auth login")
-        raise typer.Exit(1)
 
 
 @agents_app.command("list")
@@ -85,7 +76,7 @@ def list_agents(
                 agent.get("agent_id", ""),
                 agent.get("role", ""),
                 f"[{status_style}]{agent.get('status', '')}[/{status_style}]",
-                agent.get("assigned_at", "")[:10] if agent.get("assigned_at") else "",
+                format_date(agent.get("assigned_at")),
             )
 
         console.print(table)
@@ -230,7 +221,7 @@ def status(
                 str(proj.get("project_id", "")),
                 proj.get("project_name", ""),
                 proj.get("role", ""),
-                proj.get("assigned_at", "")[:10] if proj.get("assigned_at") else "",
+                format_date(proj.get("assigned_at")),
             )
 
         console.print(table)

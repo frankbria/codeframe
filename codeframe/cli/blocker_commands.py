@@ -18,11 +18,11 @@ import logging
 from typing import Optional
 
 import typer
-from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 
 from codeframe.cli.api_client import APIClient, APIError, AuthenticationError
+from codeframe.cli.helpers import console, require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +31,6 @@ blockers_app = typer.Typer(
     help="Blocker management (human-in-the-loop)",
     no_args_is_help=True,
 )
-console = Console()
-
-
-def require_auth(client: APIClient):
-    """Check if client is authenticated, exit with error if not."""
-    if not client.token:
-        console.print("[yellow]Not logged in.[/yellow]")
-        console.print("Please log in: codeframe auth login")
-        raise typer.Exit(1)
 
 
 @blockers_app.command("list")

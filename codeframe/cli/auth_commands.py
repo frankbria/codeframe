@@ -18,10 +18,10 @@ from typing import Optional
 
 import requests
 import typer
-from rich.console import Console
 
 from codeframe.cli.auth import store_token, clear_token, is_authenticated
 from codeframe.cli.api_client import APIClient, AuthenticationError, get_api_base_url
+from codeframe.cli.helpers import console
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,6 @@ auth_app = typer.Typer(
     help="Authentication commands",
     no_args_is_help=True,
 )
-console = Console()
 
 
 @auth_app.command()

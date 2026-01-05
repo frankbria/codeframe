@@ -105,9 +105,9 @@ def status(
         proj = Project(project_dir)
         status = proj.get_status()
 
-        console.print(f"\n[bold]Project:[/bold] {status['project_name']}")
+        console.print(f"\n[bold]Project:[/bold] {status['name']}")
         console.print(f"[bold]Status:[/bold] {status['status']}")
-        console.print(f"[bold]Progress:[/bold] {status['completion_percentage']}%")
+        console.print(f"[bold]Progress:[/bold] {status['progress_pct']}%")
         console.print()
 
     except Exception as e:
