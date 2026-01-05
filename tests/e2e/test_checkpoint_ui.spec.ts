@@ -252,12 +252,13 @@ test.describe('Checkpoint UI - New Project (Empty State)', () => {
       }
     });
 
-    // Login and create a fresh project
+    // Login and create a fresh project (without starting discovery - UI-only test)
     await loginUser(page);
     const projectId = await createTestProject(
       page,
       `checkpoint-test-${Date.now()}`,
-      'Test project for checkpoint empty state'
+      'Test project for checkpoint empty state',
+      false  // Don't start discovery - this test only checks checkpoint UI
     );
 
     // Navigate to project dashboard

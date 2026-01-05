@@ -1124,6 +1124,74 @@ def seed_test_data(db_path: str, project_id: int):
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/3 checkpoints with files")
 
+        # ========================================
+        # 7. Seed Discovery State for E2E Tests
+        # ========================================
+        # This enables discovery UI tests to verify the discovery question display
+        # without requiring live Claude API calls. The memory table stores the
+        # discovery state that LeadAgent._load_discovery_state() reads.
+        print("🔍 Seeding discovery state...")
+
+        TABLE_MEMORY = "memory"
+
+        if not table_exists(cursor, TABLE_MEMORY):
+            print(f"⚠️  Warning: {TABLE_MEMORY} table doesn't exist, skipping discovery state")
+        else:
+            # Clear existing discovery state for this project (idempotent)
+            cursor.execute(
+                f"DELETE FROM {TABLE_MEMORY} WHERE project_id = ? AND category = 'discovery_state'",
+                (project_id,),
+            )
+
+            # Seed discovery in "discovering" state with first question ready
+            # Using problem_1 which is the first required question in DiscoveryQuestionFramework
+            # (see codeframe/discovery/questions.py)
+            discovery_entries = [
+                (project_id, "discovery_state", "state", "discovering", now_ts, now_ts),
+                (project_id, "discovery_state", "current_question_id", "problem_1", now_ts, now_ts),
+                (
+                    project_id,
+                    "discovery_state",
+                    "current_question_text",
+                    "What problem does this application solve?",
+                    now_ts,
+                    now_ts,
+                ),
+            ]
+
+            for entry in discovery_entries:
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO memory (project_id, category, key, value, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        entry,
+                    )
+                except sqlite3.Error as e:
+                    print(f"⚠️  Failed to insert discovery state entry: {e}")
+
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {TABLE_MEMORY} WHERE project_id = ? AND category = 'discovery_state'",
+                (project_id,),
+            )
+            count = cursor.fetchone()[0]
+            print(f"✅ Seeded {count}/3 discovery state entries for project {project_id}")
+
+        # ========================================
+        # 8. Update Project Phase for Discovery Tests
+        # ========================================
+        # Set project to 'discovery' phase so discovery UI renders correctly
+        print("📋 Setting project phase to 'discovery'...")
+        try:
+            cursor.execute(
+                "UPDATE projects SET phase = 'discovery' WHERE id = ?",
+                (project_id,),
+            )
+            print(f"✅ Set project {project_id} phase to 'discovery'")
+        except sqlite3.Error as e:
+            print(f"⚠️  Failed to update project phase: {e}")
+
         # Commit all changes
         conn.commit()
         print(f"\n✅ Test data seeding complete for project {project_id}!")

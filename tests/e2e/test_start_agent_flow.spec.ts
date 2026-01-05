@@ -2,19 +2,16 @@
  * E2E Tests: Start Agent Flow
  *
  * Tests the agent execution flow including:
- * - Starting Socratic discovery from dashboard
- * - Answering discovery questions and generating PRD
+ * - Displaying Socratic discovery questions (uses seeded data)
+ * - Answering discovery questions and generating PRD (requires ANTHROPIC_API_KEY)
  * - Executing tasks after discovery completion
  *
- * Note: Discovery appears to start automatically when a project is created,
- * so these tests focus on the discovery question interaction and PRD generation.
+ * Test Data Strategy:
+ * - Discovery question display tests use pre-seeded data from seed-test-data.py
+ * - Tests requiring Claude API calls are conditional on ANTHROPIC_API_KEY presence
+ * - Runs locally with API key, skips gracefully in CI
  *
  * Uses FastAPI backend auth (JWT tokens) for authentication.
- *
- * NOTE: Tests that depend on discovery-question are SKIPPED because they
- * require the Socratic discovery feature to auto-start when a project is
- * created. The backend does not auto-populate discovery questions for test
- * projects.
  */
 
 import { test, expect } from '@playwright/test';
@@ -26,6 +23,10 @@ import {
   checkTestErrors,
   ExtendedPage
 } from './test-utils';
+
+// Check if API key is available for tests that require Claude API calls
+const HAS_API_KEY = !!process.env.ANTHROPIC_API_KEY;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 
 test.describe('Start Agent Flow', () => {
   // Login using real authentication flow
@@ -54,14 +55,15 @@ test.describe('Start Agent Flow', () => {
     ]);
   });
 
-  test.skip('should start Socratic discovery from dashboard', async ({ page }) => {
-    // Create a project (already authenticated via beforeEach)
-    const projectId = await createTestProject(page);
+  test('should display Socratic discovery question from seeded data', async ({ page }) => {
+    // Use seeded project with discovery already in progress
+    // (seed-test-data.py populates memory table with discovery_state)
+    const projectId = process.env.E2E_TEST_PROJECT_ID || '1';
 
-    // Navigate to project dashboard (should already be there after creation)
-    await page.goto(`/projects/${projectId}`);
+    // Navigate to project dashboard
+    await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
 
-    // Assert discovery question is visible (discovery starts automatically)
+    // Assert discovery question is visible (seeded: "What problem does this application solve?")
     await expect(page.getByTestId('discovery-question')).toBeVisible({ timeout: 10000 });
 
     // Assert discovery answer input is visible
@@ -69,51 +71,56 @@ test.describe('Start Agent Flow', () => {
 
     // Assert submit button is visible
     await expect(page.getByTestId('submit-answer-button')).toBeVisible();
+
+    // Verify the question content matches seeded data
+    const questionText = await page.getByTestId('discovery-question').textContent();
+    expect(questionText).toContain('What problem does this application solve?');
   });
 
-  test.skip('should answer discovery questions and generate PRD', async ({ page }) => {
-    // Create a project (already authenticated via beforeEach)
-    const projectId = await createTestProject(page);
+  test(HAS_API_KEY ? 'should answer discovery questions and generate PRD' : 'skip: requires ANTHROPIC_API_KEY',
+    async ({ page }) => {
+      // This test requires Claude API calls - skip in CI, run locally with API key
+      test.skip(!HAS_API_KEY, 'Requires ANTHROPIC_API_KEY for Claude API calls');
 
-    // Navigate to project dashboard
-    await page.goto(`/projects/${projectId}`);
+      // Create a project (already authenticated via beforeEach)
+      // createTestProject already navigates to dashboard and starts discovery
+      await createTestProject(page);
 
-    // Wait for first discovery question
-    await page.getByTestId('discovery-question').waitFor({ state: 'visible', timeout: 10000 });
+      // Wait for first discovery question (may take time for Claude API to respond)
+      await page.getByTestId('discovery-question').waitFor({ state: 'visible', timeout: 20000 });
 
-    // Answer 3 discovery questions
-    for (let i = 0; i < 3; i++) {
-      // Check if discovery question is still visible
-      const questionVisible = await page.getByTestId('discovery-question').isVisible().catch(() => false);
+      // Answer 3 discovery questions
+      for (let i = 0; i < 3; i++) {
+        // Check if discovery question is still visible
+        const questionVisible = await page.getByTestId('discovery-question').isVisible().catch(() => false);
 
-      if (!questionVisible) {
-        // Discovery might be complete
-        break;
+        if (!questionVisible) {
+          // Discovery might be complete
+          break;
+        }
+
+        // Answer the question
+        await answerDiscoveryQuestion(
+          page,
+          `Test answer ${i + 1} - This is a comprehensive response to help generate the PRD.`
+        );
+
+        // Wait for next question or completion
+        await page.waitForTimeout(3000);
       }
 
-      // Answer the question
-      await answerDiscoveryQuestion(
-        page,
-        `Test answer ${i + 1} - This is a comprehensive response to help generate the PRD.`
-      );
-
-      // Wait for next question or completion
-      await page.waitForTimeout(3000);
+      // Check if PRD has been generated (View PRD button should be visible)
+      // Note: PRD generation may take longer, so we use a generous timeout
+      await expect(page.getByTestId('prd-generated')).toBeVisible({ timeout: 15000 });
     }
-
-    // Check if PRD has been generated (View PRD button should be visible)
-    // Note: PRD generation may take longer, so we use a generous timeout
-    await expect(page.getByTestId('prd-generated')).toBeVisible({ timeout: 15000 });
-  });
+  );
 
   test('should show agent status panel after project creation', async ({ page }) => {
-    // Create a project (already authenticated via beforeEach)
-    const projectId = await createTestProject(page);
+    // Create a project without starting discovery (UI-only test)
+    // Pass startDiscovery=false since we only need to verify the agent panel exists
+    await createTestProject(page, undefined, undefined, false);
 
-    // Navigate to project dashboard
-    await page.goto(`/projects/${projectId}`);
-
-    // Assert agent status panel is visible
+    // Assert agent status panel is visible (we're already on the dashboard)
     await expect(page.getByTestId('agent-status-panel')).toBeVisible({ timeout: 10000 });
 
     // Note: Agent execution appears to be triggered automatically by the backend
@@ -121,82 +128,89 @@ test.describe('Start Agent Flow', () => {
     // rather than clicking a "start execution" button which doesn't exist in the current UI.
   });
 
-  test('should start discovery when project is running but discovery not started', async ({ page }) => {
-    // This test verifies the fix for issue: when project is "running" but discovery
-    // is "idle", clicking "Start Discovery" button should initiate discovery.
+  test(HAS_API_KEY ? 'should start discovery when project is running but discovery not started' : 'skip: start discovery test requires ANTHROPIC_API_KEY',
+    async ({ page }) => {
+      // This test verifies the fix for issue: when project is "running" but discovery
+      // is "idle", clicking "Start Discovery" button should initiate discovery.
+      test.skip(!HAS_API_KEY, 'Requires ANTHROPIC_API_KEY for Claude API calls');
 
-    // Create a project (already authenticated via beforeEach)
-    const projectId = await createTestProject(page);
+      // Create a project (already authenticated via beforeEach)
+      const projectId = await createTestProject(page);
 
-    // Navigate to project dashboard
-    await page.goto(`/projects/${projectId}`);
+      // Navigate to project dashboard
+      await page.goto(`/projects/${projectId}`);
 
-    // Wait for either:
-    // 1. Start Discovery button (if discovery is idle)
-    // 2. Discovery question (if discovery has started)
-    // 3. Discovery progress section
-    const discoverySection = page.getByTestId('discovery-progress').or(
-      page.getByRole('region', { name: /discovery progress/i })
-    );
+      // Wait for either:
+      // 1. Start Discovery button (if discovery is idle)
+      // 2. Discovery question (if discovery has started)
+      // 3. Discovery progress section
+      const discoverySection = page.getByTestId('discovery-progress').or(
+        page.getByRole('region', { name: /discovery progress/i })
+      );
 
-    await expect(discoverySection).toBeVisible({ timeout: 10000 });
+      await expect(discoverySection).toBeVisible({ timeout: 10000 });
 
-    // Check if Start Discovery button is visible (discovery idle state)
-    const startButton = page.getByTestId('start-discovery-button');
-    const startButtonVisible = await startButton.isVisible().catch(() => false);
+      // Check if Start Discovery button is visible (discovery idle state)
+      const startButton = page.getByTestId('start-discovery-button');
+      const startButtonVisible = await startButton.isVisible().catch(() => false);
 
-    if (startButtonVisible) {
-      // Click Start Discovery button
-      await startButton.click();
+      if (startButtonVisible) {
+        // Click Start Discovery button
+        await startButton.click();
 
-      // Verify button shows loading state or discovery starts
-      // Use .first() to avoid strict mode violation when multiple elements match
-      await expect(
-        startButton.or(page.locator('text=/Starting|Loading next question/i')).first()
-      ).toBeVisible({ timeout: 5000 });
+        // Verify button shows loading state or discovery starts
+        // Use .first() to avoid strict mode violation when multiple elements match
+        await expect(
+          startButton.or(page.locator('text=/Starting|Loading next question/i')).first()
+        ).toBeVisible({ timeout: 5000 });
 
-      // Wait for discovery to actually start (question appears or progress updates)
-      await page.waitForTimeout(2000);
+        // Wait for discovery to actually start (question appears or progress updates)
+        await page.waitForTimeout(2000);
+      }
+
+      // At this point, discovery should be started (either auto or via button)
+      // Verify that we see either:
+      // - Discovery question input
+      // - Discovery in progress indicator
+      // - Discovery complete message
+      const discoveryActive = page.locator('[data-testid="discovery-answer-input"]')
+        .or(page.locator('text=/discovery complete/i'))
+        .or(page.locator('text=/not started/i'));
+
+      // Give some time for the state to update
+      await page.waitForTimeout(1000);
+
+      // The test passes if discovery section is visible and properly initialized
+      await expect(discoverySection).toBeVisible();
     }
+  );
 
-    // At this point, discovery should be started (either auto or via button)
-    // Verify that we see either:
-    // - Discovery question input
-    // - Discovery in progress indicator
-    // - Discovery complete message
-    const discoveryActive = page.locator('[data-testid="discovery-answer-input"]')
-      .or(page.locator('text=/discovery complete/i'))
-      .or(page.locator('text=/not started/i'));
+  test(HAS_API_KEY ? 'should handle discovery already in progress gracefully' : 'skip: discovery in progress test requires ANTHROPIC_API_KEY',
+    async ({ page }) => {
+      test.skip(!HAS_API_KEY, 'Requires ANTHROPIC_API_KEY for Claude API calls');
 
-    // Give some time for the state to update
-    await page.waitForTimeout(1000);
+      // Create a project
+      const projectId = await createTestProject(page);
 
-    // The test passes if discovery section is visible and properly initialized
-    await expect(discoverySection).toBeVisible();
-  });
+      // Navigate to project dashboard
+      await page.goto(`/projects/${projectId}`);
 
-  test('should handle discovery already in progress gracefully', async ({ page }) => {
-    // Create a project
-    const projectId = await createTestProject(page);
+      // Wait for discovery section
+      await page.getByRole('region', { name: /discovery progress/i })
+        .or(page.getByTestId('discovery-progress'))
+        .waitFor({ state: 'visible', timeout: 10000 });
 
-    // Navigate to project dashboard
-    await page.goto(`/projects/${projectId}`);
+      // If discovery is already running, verify no error is shown
+      // and the progress is displayed correctly
+      const errorAlert = page.getByRole('alert');
+      const hasError = await errorAlert.isVisible().catch(() => false);
 
-    // Wait for discovery section
-    await page.getByRole('region', { name: /discovery progress/i })
-      .or(page.getByTestId('discovery-progress'))
-      .waitFor({ state: 'visible', timeout: 10000 });
-
-    // If discovery is already running, verify no error is shown
-    // and the progress is displayed correctly
-    const errorAlert = page.getByRole('alert');
-    const hasError = await errorAlert.isVisible().catch(() => false);
-
-    // Should not show any error on initial load
-    if (hasError) {
-      const errorText = await errorAlert.textContent();
-      // "Failed to start discovery" is an error we want to catch
-      expect(errorText).not.toContain('Failed to start discovery');
+      // Should not show any error on initial load
+      if (hasError) {
+        const errorText = await errorAlert.textContent();
+        // "Failed to start discovery" is an error we want to catch
+        expect(errorText).not.toContain('Failed to start discovery');
+      }
     }
-  });
+  );
 });

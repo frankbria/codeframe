@@ -387,11 +387,13 @@ class LeadAgent:
         self._save_discovery_state()
 
         # Store project description as context for discovery
+        # Note: Use 'discovery_state' category (allowed by schema CHECK constraint)
+        # instead of 'discovery_context' which is not in the allowed list
         if project_description and project_description.strip():
             self.db.create_memory(
                 project_id=self.project_id,
-                category="discovery_context",
-                key="project_description",
+                category="discovery_state",
+                key="context_project_description",
                 value=project_description.strip(),
             )
             logger.info(f"Stored project description as discovery context ({len(project_description)} chars)")
