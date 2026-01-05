@@ -1,8 +1,427 @@
 /**
  * Test utilities for E2E tests
+ *
+ * This module provides:
+ * - Error monitoring: Catch console errors, network failures, and failed requests
+ * - API response validation: Verify responses return expected status and data
+ * - WebSocket monitoring: Track connection health and message flow
+ * - Authentication helpers: Login, register, and manage auth state
+ * - Project utilities: Create and navigate projects
  */
 
-import type { Page } from '@playwright/test';
+import type { Page, WebSocket } from '@playwright/test';
+
+// ============================================================================
+// TYPE EXTENSIONS
+// ============================================================================
+
+/**
+ * Extended Page interface with error monitoring support
+ *
+ * Usage: Cast page to ExtendedPage when accessing __errorMonitor
+ * const monitor = (page as ExtendedPage).__errorMonitor;
+ */
+export interface ExtendedPage extends Page {
+  __errorMonitor?: ErrorMonitor;
+}
+
+// ============================================================================
+// ERROR MONITORING
+// ============================================================================
+
+/**
+ * Monitor for tracking errors during test execution
+ */
+export interface ErrorMonitor {
+  /** Console errors captured */
+  errors: string[];
+  /** Console warnings captured */
+  warnings: string[];
+  /** Network-specific errors (net::ERR_*, Failed to fetch, etc.) */
+  networkErrors: string[];
+  /** Failed HTTP requests with URL and error details */
+  failedRequests: Array<{ url: string; error: string }>;
+}
+
+/**
+ * Set up comprehensive error monitoring on a page
+ *
+ * Captures:
+ * - Console errors and warnings
+ * - Network-specific errors (CORS, connection refused, etc.)
+ * - Failed HTTP requests
+ *
+ * @param page - Playwright page object
+ * @returns ErrorMonitor object to track errors throughout test
+ *
+ * @example
+ * test.beforeEach(async ({ page }) => {
+ *   const monitor = setupErrorMonitoring(page);
+ *   (page as any).__errorMonitor = monitor;
+ * });
+ */
+export function setupErrorMonitoring(page: Page): ErrorMonitor {
+  const monitor: ErrorMonitor = {
+    errors: [],
+    warnings: [],
+    networkErrors: [],
+    failedRequests: []
+  };
+
+  // Monitor console errors
+  page.on('console', msg => {
+    if (msg.type() === 'error') {
+      const text = msg.text();
+      monitor.errors.push(text);
+
+      // Track network-specific errors for easier diagnosis
+      if (
+        text.includes('net::ERR_') ||
+        text.includes('Failed to fetch') ||
+        text.includes('WebSocket') ||
+        text.includes('NetworkError') ||
+        text.includes('CORS') ||
+        text.includes('Connection refused')
+      ) {
+        monitor.networkErrors.push(text);
+      }
+    } else if (msg.type() === 'warning') {
+      monitor.warnings.push(msg.text());
+    }
+  });
+
+  // Monitor failed HTTP requests
+  page.on('requestfailed', request => {
+    const failure = request.failure();
+    monitor.failedRequests.push({
+      url: request.url(),
+      error: failure?.errorText || 'Unknown error'
+    });
+  });
+
+  return monitor;
+}
+
+/**
+ * Assert no network errors occurred during test execution
+ *
+ * @param monitor - ErrorMonitor from setupErrorMonitoring
+ * @param context - Optional test context for error messages
+ * @throws Error if network errors or failed requests were captured
+ *
+ * @example
+ * test.afterEach(async ({ page }) => {
+ *   const monitor = (page as ExtendedPage).__errorMonitor;
+ *   assertNoNetworkErrors(monitor, 'Dashboard test');
+ * });
+ */
+export function assertNoNetworkErrors(monitor: ErrorMonitor, context?: string): void {
+  const prefix = context ? `[${context}] ` : '';
+
+  if (monitor.networkErrors.length > 0) {
+    throw new Error(
+      `${prefix}Network errors detected:\n${monitor.networkErrors.join('\n')}`
+    );
+  }
+
+  if (monitor.failedRequests.length > 0) {
+    const failures = monitor.failedRequests
+      .map(f => `  - ${f.url}: ${f.error}`)
+      .join('\n');
+    throw new Error(
+      `${prefix}Failed requests detected:\n${failures}`
+    );
+  }
+}
+
+/**
+ * Filter out expected errors from an ErrorMonitor
+ *
+ * Use this to exclude expected errors (e.g., auth failures in login tests)
+ * before calling assertNoNetworkErrors.
+ *
+ * @param monitor - ErrorMonitor to filter
+ * @param excludePatterns - Array of patterns to exclude (strings or RegExps)
+ * @returns New ErrorMonitor with filtered errors
+ *
+ * @example
+ * // In auth tests, filter out expected 401 errors
+ * const filtered = filterExpectedErrors(monitor, ['401', '403', 'Invalid credentials']);
+ * assertNoNetworkErrors(filtered, 'Auth test');
+ */
+export function filterExpectedErrors(
+  monitor: ErrorMonitor,
+  excludePatterns: (string | RegExp)[]
+): ErrorMonitor {
+  const matchesPattern = (text: string) =>
+    excludePatterns.some(pattern =>
+      typeof pattern === 'string'
+        ? text.includes(pattern)
+        : pattern.test(text)
+    );
+
+  return {
+    errors: monitor.errors.filter(e => !matchesPattern(e)),
+    warnings: monitor.warnings,
+    networkErrors: monitor.networkErrors.filter(e => !matchesPattern(e)),
+    failedRequests: monitor.failedRequests.filter(f => !matchesPattern(f.url) && !matchesPattern(f.error))
+  };
+}
+
+/**
+ * Standard afterEach handler for error monitoring
+ *
+ * Provides a consistent pattern for checking errors at the end of tests.
+ * Use filterPatterns to exclude expected errors (e.g., auth failures in login tests).
+ *
+ * @param page - Playwright page object (cast to ExtendedPage internally)
+ * @param context - Test context name for error messages
+ * @param filterPatterns - Optional patterns to exclude from error checking
+ *
+ * @example
+ * test.afterEach(async ({ page }) => {
+ *   await checkTestErrors(page, 'Dashboard test');
+ * });
+ *
+ * // With filtering for auth tests
+ * test.afterEach(async ({ page }) => {
+ *   await checkTestErrors(page, 'Auth test', ['401', '403']);
+ * });
+ */
+export function checkTestErrors(
+  page: Page,
+  context: string,
+  filterPatterns?: (string | RegExp)[]
+): void {
+  const extPage = page as ExtendedPage;
+  const monitor = extPage.__errorMonitor;
+
+  if (!monitor) {
+    return; // No monitor set up, skip check
+  }
+
+  const filteredMonitor = filterPatterns
+    ? filterExpectedErrors(monitor, filterPatterns)
+    : monitor;
+
+  // Only check if there are actual errors
+  if (filteredMonitor.networkErrors.length > 0 || filteredMonitor.failedRequests.length > 0) {
+    console.error(`🔴 [${context}] Network errors detected:`, {
+      networkErrors: filteredMonitor.networkErrors,
+      failedRequests: filteredMonitor.failedRequests
+    });
+    assertNoNetworkErrors(filteredMonitor, context);
+  }
+}
+
+// ============================================================================
+// API RESPONSE VALIDATION
+// ============================================================================
+
+/**
+ * Wait for an API response and validate its status and data
+ *
+ * Unlike `withOptionalWarning`, this function FAILS if the API doesn't respond
+ * correctly, ensuring tests actually validate API functionality.
+ *
+ * @param page - Playwright page object
+ * @param urlPattern - URL pattern to match (string or RegExp)
+ * @param options - Validation options
+ * @returns Response status and parsed JSON data
+ * @throws Error if response doesn't match expectations
+ *
+ * @example
+ * const response = await waitForAPIResponse(
+ *   page,
+ *   '/api/projects/1',
+ *   { expectedStatus: 200, timeout: 10000 }
+ * );
+ * expect(response.data.id).toBeDefined();
+ */
+export async function waitForAPIResponse(
+  page: Page,
+  urlPattern: string | RegExp,
+  options: { timeout?: number; expectedStatus?: number } = {}
+): Promise<{ status: number; data: any }> {
+  const timeout = options.timeout || 10000;
+  const expectedStatus = options.expectedStatus || 200;
+
+  const response = await page.waitForResponse(
+    r => {
+      const url = r.url();
+      if (typeof urlPattern === 'string') {
+        return url.includes(urlPattern);
+      }
+      return urlPattern.test(url);
+    },
+    { timeout }
+  );
+
+  const status = response.status();
+  if (status !== expectedStatus) {
+    throw new Error(
+      `API response status ${status} does not match expected ${expectedStatus} for ${response.url()}`
+    );
+  }
+
+  const data = await response.json().catch(() => null);
+  if (data === null) {
+    throw new Error(`API response has no valid JSON data for ${response.url()}`);
+  }
+
+  return { status, data };
+}
+
+// ============================================================================
+// WEBSOCKET MONITORING
+// ============================================================================
+
+/**
+ * Monitor for tracking WebSocket connection health
+ */
+export interface WebSocketMonitor {
+  /** Whether the WebSocket successfully connected */
+  connected: boolean;
+  /** WebSocket close code (1000 = normal, 1008 = policy violation/auth error) */
+  closeCode: number | null;
+  /** WebSocket close reason message */
+  closeReason: string | null;
+  /** Messages received from the WebSocket */
+  messages: string[];
+  /** Errors encountered during WebSocket communication */
+  errors: string[];
+}
+
+/**
+ * Monitor WebSocket connection and messages
+ *
+ * Uses event-based waiting with polling instead of fixed timeouts to avoid
+ * race conditions in CI environments.
+ *
+ * @param page - Playwright page object
+ * @param options - Monitoring options
+ * @returns WebSocketMonitor with connection status and messages
+ * @throws Error if WebSocket fails to connect or doesn't receive expected messages
+ *
+ * @example
+ * const wsMonitor = await monitorWebSocket(page, {
+ *   timeout: 15000,
+ *   minMessages: 1
+ * });
+ * assertWebSocketHealthy(wsMonitor);
+ */
+export async function monitorWebSocket(
+  page: Page,
+  options: { timeout?: number; minMessages?: number; pollInterval?: number } = {}
+): Promise<WebSocketMonitor> {
+  const timeout = options.timeout || 10000;
+  const minMessages = options.minMessages || 1;
+  const pollInterval = options.pollInterval || 100;
+
+  const monitor: WebSocketMonitor = {
+    connected: false,
+    closeCode: null,
+    closeReason: null,
+    messages: [],
+    errors: []
+  };
+
+  try {
+    const ws = await page.waitForEvent('websocket', { timeout });
+    monitor.connected = true;
+
+    // Listen for messages
+    ws.on('framereceived', frame => {
+      try {
+        const payload = frame.payload.toString();
+        if (payload) {
+          monitor.messages.push(payload);
+        }
+      } catch (e) {
+        monitor.errors.push(`Failed to parse frame: ${e}`);
+      }
+    });
+
+    // Listen for close events - capture the WebSocket for close code extraction
+    // Note: Playwright's WebSocket doesn't expose close code directly,
+    // but we can detect abnormal closes via the 'close' event timing
+    let wsClosed = false;
+    ws.on('close', () => {
+      wsClosed = true;
+      // If closed before receiving expected messages, likely an error
+      if (monitor.messages.length < minMessages && monitor.closeCode === null) {
+        monitor.closeCode = 1006; // Abnormal closure
+      }
+    });
+
+    // Event-based waiting: poll until we have enough messages or timeout
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+      // Check if we have enough messages
+      if (monitor.messages.length >= minMessages) {
+        return monitor;
+      }
+
+      // Check if WebSocket closed prematurely
+      if (wsClosed) {
+        break;
+      }
+
+      // Poll at interval
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    // Final check after timeout
+    if (monitor.messages.length < minMessages) {
+      throw new Error(
+        `Expected at least ${minMessages} WebSocket messages, got ${monitor.messages.length}` +
+        (wsClosed ? ' (WebSocket closed prematurely)' : ' (timeout)')
+      );
+    }
+
+    return monitor;
+  } catch (error) {
+    monitor.errors.push(`WebSocket connection failed: ${error}`);
+    throw error;
+  }
+}
+
+/**
+ * Assert WebSocket connection is healthy
+ *
+ * @param monitor - WebSocketMonitor from monitorWebSocket
+ * @throws Error if WebSocket had connection issues
+ *
+ * @example
+ * const wsMonitor = await monitorWebSocket(page);
+ * assertWebSocketHealthy(wsMonitor);
+ */
+export function assertWebSocketHealthy(monitor: WebSocketMonitor): void {
+  if (!monitor.connected) {
+    throw new Error('WebSocket never connected');
+  }
+
+  if (monitor.errors.length > 0) {
+    throw new Error(`WebSocket errors: ${monitor.errors.join(', ')}`);
+  }
+
+  // Check for specific error close codes
+  if (monitor.closeCode === 1008) {
+    throw new Error('WebSocket closed with policy violation (code 1008) - likely auth error');
+  }
+
+  if (monitor.closeCode === 1003) {
+    throw new Error('WebSocket closed with unsupported data error (code 1003)');
+  }
+
+  if (monitor.closeCode === 1006) {
+    throw new Error('WebSocket closed abnormally (code 1006) - connection lost');
+  }
+}
+
+// ============================================================================
+// LEGACY HELPERS (Deprecated - use error monitoring instead)
+// ============================================================================
 
 /**
  * Log optional operation warnings (for operations that are expected to fail sometimes)

@@ -18,13 +18,40 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { createTestProject, answerDiscoveryQuestion, loginUser } from './test-utils';
+import {
+  createTestProject,
+  answerDiscoveryQuestion,
+  loginUser,
+  setupErrorMonitoring,
+  checkTestErrors,
+  ExtendedPage
+} from './test-utils';
 
 test.describe('Start Agent Flow', () => {
   // Login using real authentication flow
   test.beforeEach(async ({ context, page }) => {
+    // Setup error monitoring
+    const errorMonitor = setupErrorMonitoring(page);
+    (page as ExtendedPage).__errorMonitor = errorMonitor;
+
     await context.clearCookies();
     await loginUser(page);
+  });
+
+  // Verify no network errors occurred during each test
+  // Filter out transient errors during agent flow:
+  // - WebSocket disconnects/reconnects
+  // - Discovery API errors (discovery auto-starts on project creation)
+  // - net::ERR_ABORTED: Normal browser behavior when navigation cancels pending requests
+  // - Failed to fetch: Session fetch errors during rapid navigation
+  test.afterEach(async ({ page }) => {
+    checkTestErrors(page, 'Start agent flow test', [
+      'WebSocket', 'ws://', 'wss://',
+      'discovery',
+      'net::ERR_FAILED',
+      'net::ERR_ABORTED',
+      'Failed to fetch'
+    ]);
   });
 
   test.skip('should start Socratic discovery from dashboard', async ({ page }) => {

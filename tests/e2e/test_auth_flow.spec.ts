@@ -11,7 +11,16 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { loginUser, registerUser, isAuthenticated, clearAuth, getAuthToken } from './test-utils';
+import {
+  loginUser,
+  registerUser,
+  isAuthenticated,
+  clearAuth,
+  getAuthToken,
+  setupErrorMonitoring,
+  checkTestErrors,
+  ExtendedPage
+} from './test-utils';
 
 const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'test@example.com';
 const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'Testpassword123';
@@ -22,9 +31,32 @@ const AUTH_ERROR_TIMEOUT = process.env.CI ? 10000 : 5000;
 test.describe('Authentication Flow', () => {
   // Clear localStorage before each test to ensure we start unauthenticated
   test.beforeEach(async ({ page }) => {
+    // Setup error monitoring
+    const errorMonitor = setupErrorMonitoring(page);
+    (page as ExtendedPage).__errorMonitor = errorMonitor;
+
     // Navigate to any page to access localStorage
     await page.goto('/login');
     await clearAuth(page);
+  });
+
+  // Verify no critical network errors occurred during each test
+  // Filter out expected errors during auth testing:
+  // - 401/403 status errors (invalid credentials, unauthorized access)
+  // - WebSocket disconnections (expected when token is invalid/expired)
+  // - Network errors that occur during logout transitions
+  // - net::ERR_ABORTED: Normal browser behavior when requests are cancelled during navigation
+  //   (e.g., Next.js RSC prefetches like ?_rsc=, chunk loading during route changes)
+  test.afterEach(async ({ page }) => {
+    checkTestErrors(page, 'Auth flow test', [
+      '401', '403',
+      'Invalid credentials', 'LOGIN_BAD_CREDENTIALS',
+      'Unauthorized', 'Forbidden',
+      'WebSocket', 'ws://', 'wss://',
+      'net::ERR_FAILED',
+      'net::ERR_ABORTED',
+      'Failed to fetch'
+    ]);
   });
 
   test.describe('Registration', () => {
