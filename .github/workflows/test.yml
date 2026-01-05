@@ -83,20 +83,20 @@ jobs:
         run: |
           echo "🔍 Checking for hardcoded localhost URLs..."
 
-          # Check for hardcoded localhost:800X patterns (excluding env var fallbacks)
-          # We allow: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
-          HARDCODED=$(grep -rn "localhost:800" web-ui/src \
+          # Check for hardcoded localhost URLs with common ports (3000-9999)
+          # We ONLY allow: process.env.NEXT_PUBLIC_* || 'http://localhost:...'
+          # We reject: 'http://localhost:...' (without env var)
+          # We reject: 'http://localhost:...' || process.env.NEXT_PUBLIC_* (reversed)
+          HARDCODED=$(grep -rn -E "localhost:[0-9]{2,5}" web-ui/src \
             --include="*.ts" \
             --include="*.tsx" \
             --include="*.js" \
             --include="*.jsx" \
-            | grep -v "process.env.NEXT_PUBLIC" \
-            | grep -v "|| 'http" \
-            | grep -v "|| \"http" \
-            | grep -v "// " \
-            | grep -v "/\*" \
             | grep -v "\.test\." \
             | grep -v "\.spec\." \
+            | grep -v "// " \
+            | grep -v "/\*" \
+            | grep -vE "process\.env\.NEXT_PUBLIC_[A-Z0-9_]+\s*\|\|\s*['\"]http" \
             || true)
 
           if [ -n "$HARDCODED" ]; then
@@ -105,6 +105,7 @@ jobs:
             echo ""
             echo "💡 Fix: Use process.env.NEXT_PUBLIC_API_URL instead"
             echo "   Example: const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';"
+            echo "   Note: The env var MUST come BEFORE the fallback (not reversed)"
             exit 1
           fi
 
@@ -139,7 +140,13 @@ jobs:
         run: |
           echo "🔍 Verifying API files use process.env.NEXT_PUBLIC_API_URL..."
 
-          # Find files with potential API calls (excluding node_modules, .next, tests)
+          # This check is a heuristic to catch files making API calls to localhost
+          # without using environment variables. The primary hardcoded URL check above
+          # is more precise; this is a secondary sanity check.
+          #
+          # Note: Files that have BOTH a fetch/axios localhost call AND a process.env
+          # reference somewhere in the file are considered OK. This may miss edge cases
+          # where the env var is for something unrelated to the localhost URL.
           ISSUES=""
 
           # Check common API-related files for hardcoded URLs
@@ -153,7 +160,8 @@ jobs:
             fi
 
             # Check if file has fetch or axios calls with hardcoded localhost
-            if grep -q "fetch.*localhost\|axios.*localhost" "$file" 2>/dev/null; then
+            # AND does not have any NEXT_PUBLIC env var reference
+            if grep -qE "fetch\(.*localhost|axios.*localhost" "$file" 2>/dev/null; then
               if ! grep -q "process.env.NEXT_PUBLIC" "$file" 2>/dev/null; then
                 ISSUES="${ISSUES}\n  - ${file}: Contains localhost URL without env var reference"
               fi
@@ -161,14 +169,16 @@ jobs:
           done
 
           if [ -n "$ISSUES" ]; then
-            echo "❌ API files with potential issues:"
+            echo "⚠️ API files with potential issues (heuristic check):"
             echo -e "$ISSUES"
             echo ""
             echo "💡 These files appear to use localhost URLs without environment variable configuration"
-            exit 1
+            echo "   This is a heuristic check - verify manually if these are intentional."
+            # Changed from exit 1 to warning - the primary check above is more reliable
+            # exit 1
+          else
+            echo "✅ All API files properly configured"
           fi
-
-          echo "✅ All API files properly configured"
 
   # ============================================
   # Backend Unit Tests (After Code Quality)
