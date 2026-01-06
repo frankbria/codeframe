@@ -694,3 +694,210 @@ class TestDiscoveryEndToEndFlow:
         assert len(chat_response) > 0
         # Discovery should still be marked as completed
         assert agent.get_discovery_status()["state"] == "completed"
+
+
+@pytest.mark.integration
+class TestDiscoveryQuestionProgression:
+    """Test that discovery questions progress correctly and don't repeat (Issue: fix-discovery-questions)."""
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_question_text_changes_after_each_answer(self, mock_provider_class, temp_db_path):
+        """Test that the question TEXT changes after each answer (not just the ID).
+
+        This was the root cause of the bug where the same question was displayed 5 times.
+        The fix ensures _current_question_text is updated when moving to the next question.
+        """
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project project")
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # Collect all question texts shown to user
+        shown_questions = []
+
+        # ACT - Answer 5 questions and collect question texts
+        for i in range(5):
+            status = agent.get_discovery_status()
+            current_question = status.get("current_question", {})
+            question_text = current_question.get("text", "")
+            shown_questions.append(question_text)
+
+            agent.process_discovery_answer(f"Valid answer {i+1} with enough content")
+
+        # ASSERT - All 5 questions should be different
+        assert len(shown_questions) == 5
+        assert len(set(shown_questions)) == 5, (
+            f"Expected 5 unique questions but got {len(set(shown_questions))}. "
+            f"Questions shown: {shown_questions}"
+        )
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_question_id_and_text_match_after_answer(self, mock_provider_class, temp_db_path):
+        """Test that question ID and text are consistent after processing an answer.
+
+        Verifies that _current_question_text is updated to match the framework question
+        when transitioning from AI-generated question to framework questions.
+        """
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project project")
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # ACT - Answer first question
+        agent.process_discovery_answer("This is my problem description with sufficient detail")
+        status = agent.get_discovery_status()
+
+        # ASSERT - After first answer, should be on "users_1" question
+        current_question = status.get("current_question", {})
+        question_id = current_question.get("id", "")
+        question_text = current_question.get("text", "")
+
+        # The text should match the framework question for "users_1"
+        framework = DiscoveryQuestionFramework()
+        questions = framework.generate_questions()
+        users_1 = next(q for q in questions if q["id"] == "users_1")
+
+        assert question_id == "users_1", f"Expected users_1 but got {question_id}"
+        assert question_text == users_1["text"], (
+            f"Question text mismatch. Expected '{users_1['text']}' but got '{question_text}'"
+        )
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_all_framework_questions_shown_in_order(self, mock_provider_class, temp_db_path):
+        """Test that all 5 required framework questions are shown in correct order."""
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project project")
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # Get expected framework question IDs in order
+        framework = DiscoveryQuestionFramework()
+        questions = framework.generate_questions()
+        required_ids = [q["id"] for q in questions if q["importance"] == "required"]
+
+        # Collect actual question IDs shown
+        shown_ids = []
+
+        # ACT - Answer 5 questions
+        for i in range(5):
+            status = agent.get_discovery_status()
+            current_question = status.get("current_question", {})
+            shown_ids.append(current_question.get("id", ""))
+
+            agent.process_discovery_answer(f"Valid answer {i+1} for question")
+
+        # ASSERT - Should see all 5 required questions in order
+        assert shown_ids == required_ids, (
+            f"Question order mismatch. Expected {required_ids} but got {shown_ids}"
+        )
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_question_text_persists_across_agent_restart(self, mock_provider_class, temp_db_path):
+        """Test that question text is correctly restored when LeadAgent is recreated.
+
+        This tests the full flow: answering a question, then creating a new LeadAgent
+        instance (simulating a server restart) and verifying the next question is correct.
+        """
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test Project project")
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        # First agent instance - start discovery and answer first question
+        agent1 = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent1.start_discovery()
+        agent1.process_discovery_answer("First answer with sufficient detail")
+
+        # Get the expected next question from framework
+        framework = DiscoveryQuestionFramework()
+        questions = framework.generate_questions()
+        users_1 = next(q for q in questions if q["id"] == "users_1")
+
+        # ACT - Create new agent instance (simulating server restart)
+        agent2 = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        status = agent2.get_discovery_status()
+
+        # ASSERT - New agent should show the correct next question
+        current_question = status.get("current_question", {})
+        assert current_question.get("id") == "users_1", (
+            f"Expected users_1 but got {current_question.get('id')}"
+        )
+        assert current_question.get("text") == users_1["text"], (
+            f"Question text mismatch after restart. "
+            f"Expected '{users_1['text']}' but got '{current_question.get('text')}'"
+        )
+
+    @patch("codeframe.agents.lead_agent.AnthropicProvider")
+    def test_no_duplicate_questions_full_discovery_flow(self, mock_provider_class, temp_db_path):
+        """Test that no duplicate questions are shown during complete discovery flow.
+
+        This is a comprehensive test that simulates the exact user experience:
+        going through all 5 questions and verifying no duplicates.
+        """
+        # ARRANGE
+        db = Database(temp_db_path)
+        db.initialize()
+        project_id = db.create_project("test-project", "Test description")
+
+        mock_provider = Mock()
+        mock_provider_class.return_value = mock_provider
+
+        agent = LeadAgent(project_id=project_id, db=db, api_key="sk-ant-test-key")
+        agent.start_discovery()
+
+        # Collect all questions seen
+        all_questions = []
+
+        # ACT - Go through entire discovery flow
+        while True:
+            status = agent.get_discovery_status()
+
+            if status["state"] == "completed":
+                break
+
+            current_question = status.get("current_question", {})
+            question_text = current_question.get("text", "")
+            question_id = current_question.get("id", "")
+
+            # Check for duplicate
+            for prev_q in all_questions:
+                if prev_q["text"] == question_text:
+                    pytest.fail(
+                        f"Duplicate question detected! "
+                        f"Question '{question_text}' (ID: {question_id}) was already shown "
+                        f"(previous ID: {prev_q['id']})"
+                    )
+
+            all_questions.append({"id": question_id, "text": question_text})
+            agent.process_discovery_answer(f"Answer for {question_id} with detail")
+
+        # ASSERT - Should have asked 5 unique questions
+        assert len(all_questions) == 5, f"Expected 5 questions but got {len(all_questions)}"
+
+        # Double-check uniqueness of both IDs and texts
+        unique_ids = set(q["id"] for q in all_questions)
+        unique_texts = set(q["text"] for q in all_questions)
+
+        assert len(unique_ids) == 5, f"Expected 5 unique IDs but got {len(unique_ids)}"
+        assert len(unique_texts) == 5, f"Expected 5 unique texts but got {len(unique_texts)}"
