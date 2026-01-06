@@ -19,9 +19,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 interface DiscoveryProgressProps {
   projectId: number;
+  onViewPRD?: () => void;
 }
 
-const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: DiscoveryProgressProps) {
+const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD }: DiscoveryProgressProps) {
   const [data, setData] = useState<DiscoveryProgressResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
   const [prdStage, setPrdStage] = useState<string>('');
   const [prdMessage, setPrdMessage] = useState<string>('');
   const [prdProgressPct, setPrdProgressPct] = useState<number>(0);
+
+  // Section minimization state
+  const [isSectionMinimized, setIsSectionMinimized] = useState(false);
 
   // Timeout/Stuck state detection
   const [waitingForQuestionStart, setWaitingForQuestionStart] = useState<number | null>(null);
@@ -380,6 +384,16 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
+  // Auto-minimize section after PRD completion
+  useEffect(() => {
+    if (prdCompleted) {
+      const timer = setTimeout(() => {
+        setIsSectionMinimized(true);
+      }, 3000); // Minimize after 3 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [prdCompleted]);
+
   // Loading state
   if (loading) {
     return (
@@ -587,93 +601,167 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId }: Discove
         {/* Completed State */}
         {isCompleted && (
           <div className="space-y-4">
-            {/* Discovery Complete Banner */}
-            <div className="flex items-center gap-2 p-4 bg-success/10 rounded-lg border border-success">
-              <CheckmarkCircle01Icon className="h-5 w-5 text-success flex-shrink-0" aria-hidden="true" />
-              <span className="text-sm font-medium text-foreground">
-                Discovery Complete — All questions answered
-              </span>
-            </div>
-
-            {/* PRD Generation Status */}
-            <div className={`p-4 rounded-lg border ${
-              prdCompleted
-                ? 'bg-success/10 border-success'
-                : prdError
-                  ? 'bg-destructive/10 border-destructive'
-                  : 'bg-primary/10 border-primary'
-            }`} data-testid="prd-generation-status">
-              <div className="flex items-center gap-3">
-                {isGeneratingPRD ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-primary">
-                        {prdMessage || 'Generating Project Requirements Document...'}
-                      </div>
-                      {/* Progress bar for PRD generation */}
-                      <div className="mt-2">
-                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                          <span className="capitalize">{prdStage.replace('_', ' ') || 'Starting'}</span>
-                          <span>{prdProgressPct}%</span>
-                        </div>
-                        <div className="h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary transition-all duration-500 ease-out"
-                            style={{ width: `${prdProgressPct}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-2">
-                        The Lead Agent is analyzing your answers and creating a detailed PRD
-                      </div>
-                    </div>
-                  </>
-                ) : prdCompleted ? (
-                  <>
-                    <CheckmarkCircle01Icon className="text-success h-5 w-5 flex-shrink-0" aria-hidden="true" />
+            {/* Minimized View */}
+            {isSectionMinimized && prdCompleted ? (
+              <div className="p-4 bg-success/10 rounded-lg border border-success" data-testid="prd-minimized-view">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CheckmarkCircle01Icon className="h-5 w-5 text-success flex-shrink-0" aria-hidden="true" />
                     <div>
-                      <div className="text-sm font-medium text-foreground">PRD Generated Successfully</div>
-                      <div className="text-xs text-muted-foreground mt-1">Your Project Requirements Document is ready. View it in the Documents section.</div>
+                      <div className="text-sm font-medium text-foreground">Discovery Complete</div>
+                      <div className="text-xs text-muted-foreground">PRD Generated</div>
                     </div>
-                  </>
-                ) : prdError ? (
-                  <>
-                    <Cancel01Icon className="text-destructive h-5 w-5 flex-shrink-0" aria-hidden="true" />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-destructive">PRD Generation Failed</div>
-                      <div className="text-xs text-destructive/80 mt-1">{prdError}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {onViewPRD && (
                       <button
-                        onClick={handleRetryPrdGeneration}
-                        disabled={isRetryingPrd}
-                        data-testid="retry-prd-button"
-                        className={`mt-3 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
-                          isRetryingPrd
-                            ? 'bg-muted cursor-not-allowed text-muted-foreground'
-                            : 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
-                        }`}
+                        onClick={onViewPRD}
+                        data-testid="view-prd-button-minimized"
+                        className="px-4 py-2 rounded-lg font-medium text-sm bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
                       >
-                        {isRetryingPrd ? 'Retrying...' : 'Retry PRD Generation'}
+                        View PRD
                       </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <div>
-                      <div className="text-sm font-medium text-primary">Starting PRD Generation...</div>
-                      <div className="text-xs text-muted-foreground mt-1">The Lead Agent is preparing to generate your Project Requirements Document</div>
-                    </div>
-                  </>
-                )}
+                    )}
+                    <button
+                      onClick={() => setIsSectionMinimized(false)}
+                      data-testid="expand-discovery-button"
+                      className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      aria-label="Expand discovery details"
+                    >
+                      Expand
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Discovery Complete Banner */}
+                <div className="flex items-center justify-between p-4 bg-success/10 rounded-lg border border-success">
+                  <div className="flex items-center gap-2">
+                    <CheckmarkCircle01Icon className="h-5 w-5 text-success flex-shrink-0" aria-hidden="true" />
+                    <span className="text-sm font-medium text-foreground">
+                      Discovery Complete — All questions answered
+                    </span>
+                  </div>
+                  {prdCompleted && (
+                    <button
+                      onClick={() => setIsSectionMinimized(true)}
+                      data-testid="minimize-discovery-button"
+                      className="px-3 py-1 rounded text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      aria-label="Minimize discovery section"
+                    >
+                      Minimize
+                    </button>
+                  )}
+                </div>
+
+                {/* PRD Generation Status */}
+                <div className={`p-4 rounded-lg border ${
+                  prdCompleted
+                    ? 'bg-success/10 border-success'
+                    : prdError
+                      ? 'bg-destructive/10 border-destructive'
+                      : 'bg-primary/10 border-primary'
+                }`} data-testid="prd-generation-status">
+                  <div className="flex items-center gap-3">
+                    {isGeneratingPRD ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-primary">
+                            {prdMessage || 'Generating Project Requirements Document...'}
+                          </div>
+                          {/* Progress bar for PRD generation */}
+                          <div className="mt-2">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                              <span className="capitalize">{prdStage.replace('_', ' ') || 'Starting'}</span>
+                              <span>{prdProgressPct}%</span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary transition-all duration-500 ease-out"
+                                style={{ width: `${prdProgressPct}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-2">
+                            The Lead Agent is analyzing your answers and creating a detailed PRD
+                          </div>
+                        </div>
+                      </>
+                    ) : prdCompleted ? (
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3">
+                          <CheckmarkCircle01Icon className="text-success h-5 w-5 flex-shrink-0" aria-hidden="true" />
+                          <div>
+                            <div className="text-sm font-medium text-foreground">PRD Generated Successfully</div>
+                            <div className="text-xs text-muted-foreground mt-1">Your Project Requirements Document is ready</div>
+                          </div>
+                        </div>
+                        {onViewPRD && (
+                          <button
+                            onClick={onViewPRD}
+                            data-testid="view-prd-button"
+                            className="px-4 py-2 rounded-lg font-medium text-sm bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
+                          >
+                            View PRD
+                          </button>
+                        )}
+                      </div>
+                    ) : prdError ? (
+                      <>
+                        <Cancel01Icon className="text-destructive h-5 w-5 flex-shrink-0" aria-hidden="true" />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-destructive">PRD Generation Failed</div>
+                          <div className="text-xs text-destructive/80 mt-1">{prdError}</div>
+                          <button
+                            onClick={handleRetryPrdGeneration}
+                            disabled={isRetryingPrd}
+                            data-testid="retry-prd-button"
+                            className={`mt-3 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                              isRetryingPrd
+                                ? 'bg-muted cursor-not-allowed text-muted-foreground'
+                                : 'bg-destructive hover:bg-destructive/90 text-destructive-foreground'
+                            }`}
+                          >
+                            {isRetryingPrd ? 'Retrying...' : 'Retry PRD Generation'}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <div>
+                          <div className="text-sm font-medium text-primary">Starting PRD Generation...</div>
+                          <div className="text-xs text-muted-foreground mt-1">The Lead Agent is preparing to generate your Project Requirements Document</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Task Creation Phase Indicator - shown when PRD is complete */}
+                {prdCompleted && phase === 'planning' && (
+                  <div className="p-4 bg-secondary/50 rounded-lg border border-border" data-testid="next-phase-indicator">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
+                        <span className="text-primary text-lg" aria-hidden="true">→</span>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-foreground">Next: Task Creation</div>
+                        <div className="text-xs text-muted-foreground mt-1">The system will now break down your requirements into actionable tasks</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 

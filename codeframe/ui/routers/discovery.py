@@ -121,6 +121,7 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
                 "type": "prd_generation_completed",
                 "project_id": project_id,
                 "status": "completed",
+                "progress_pct": 100,
                 "prd_preview": prd_content[:200] if prd_content else "",
             },
             project_id=project_id,
