@@ -554,6 +554,9 @@ Keep your question concise and conversational. Don't number it or add preamble -
 
         if next_question:
             self._current_question_id = next_question["id"]
+            # CRITICAL: Update the question text to the next question's text
+            # Without this, the old AI-generated question text would be displayed
+            self._current_question_text = next_question["text"]
             self._save_discovery_state()
             return next_question["text"]
         else:
