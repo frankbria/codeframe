@@ -142,12 +142,38 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
     }
   };
 
-  // Fetch discovery progress
-  const fetchProgress = useCallback(async () => {
+  // Fetch discovery progress and initialize PRD state from API
+  const fetchProgress = useCallback(async (initializePrdState = false) => {
     try {
       const response = await projectsApi.getDiscoveryProgress(projectId);
       setData(response.data);
       setError(null);
+
+      // If discovery is completed, check PRD status to properly initialize UI state
+      // This prevents the spinner from reappearing when revisiting the Overview tab
+      if (initializePrdState && response.data.discovery?.state === 'completed') {
+        try {
+          const prdResponse = await projectsApi.getPRD(projectId);
+          const prdStatus = prdResponse.data?.status;
+
+          if (prdStatus === 'available') {
+            setPrdCompleted(true);
+            setIsGeneratingPRD(false);
+            setPrdError(null);
+            setPrdStage('completed');
+            setPrdMessage('PRD generated successfully');
+            setPrdProgressPct(100);
+          } else if (prdStatus === 'generating') {
+            setIsGeneratingPRD(true);
+            setPrdCompleted(false);
+            setPrdError(null);
+          }
+          // If 'not_found', leave default state (isGeneratingPRD=false, prdCompleted=false)
+        } catch (prdErr) {
+          // PRD fetch failed, leave in default state
+          console.warn('Failed to fetch PRD status during initialization:', prdErr);
+        }
+      }
     } catch (err) {
       setError('Failed to load discovery progress');
       console.error('Error fetching discovery progress:', err);
@@ -230,9 +256,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
     }
   };
 
-  // Initial fetch
+  // Initial fetch - initialize PRD state from API to prevent spinner reappearing on tab revisit
   useEffect(() => {
-    fetchProgress();
+    fetchProgress(true);  // Pass true to initialize PRD state on mount
   }, [fetchProgress]);
 
   // Timeout detection for stuck discovery state
@@ -623,6 +649,18 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                       </button>
                     )}
                     <button
+                      onClick={handleRestartDiscovery}
+                      disabled={isRestarting}
+                      data-testid="restart-discovery-minimized-button"
+                      className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                        isRestarting
+                          ? 'cursor-not-allowed text-muted-foreground'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {isRestarting ? 'Restarting...' : 'Restart'}
+                    </button>
+                    <button
                       onClick={() => setIsSectionMinimized(false)}
                       data-testid="expand-discovery-button"
                       className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -701,15 +739,29 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                             <div className="text-xs text-muted-foreground mt-1">Your Project Requirements Document is ready</div>
                           </div>
                         </div>
-                        {onViewPRD && (
+                        <div className="flex items-center gap-2">
+                          {onViewPRD && (
+                            <button
+                              onClick={onViewPRD}
+                              data-testid="view-prd-button"
+                              className="px-4 py-2 rounded-lg font-medium text-sm bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
+                            >
+                              View PRD
+                            </button>
+                          )}
                           <button
-                            onClick={onViewPRD}
-                            data-testid="view-prd-button"
-                            className="px-4 py-2 rounded-lg font-medium text-sm bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
+                            onClick={handleRestartDiscovery}
+                            disabled={isRestarting}
+                            data-testid="restart-discovery-completed-button"
+                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                              isRestarting
+                                ? 'bg-muted cursor-not-allowed text-muted-foreground'
+                                : 'border border-border bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                            }`}
                           >
-                            View PRD
+                            {isRestarting ? 'Restarting...' : 'Restart Discovery'}
                           </button>
-                        )}
+                        </div>
                       </div>
                     ) : prdError ? (
                       <>

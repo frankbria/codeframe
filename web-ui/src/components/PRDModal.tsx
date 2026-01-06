@@ -13,9 +13,10 @@ interface PRDModalProps {
   isOpen: boolean;
   onClose: () => void;
   prdData: PRDResponse | null;
+  onRetry?: () => void;  // Optional callback to retry fetching PRD data
 }
 
-const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalProps) {
+const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData, onRetry }: PRDModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -94,7 +95,19 @@ const PRDModal = memo(function PRDModal({ isOpen, onClose, prdData }: PRDModalPr
       return (
         <div className="text-center py-12 text-muted-foreground">
           <p className="text-lg font-medium mb-2">PRD Not Found</p>
-          <p className="text-sm">No Product Requirements Document has been generated for this project yet.</p>
+          <p className="text-sm mb-4">
+            No Product Requirements Document has been generated for this project yet.
+            {onRetry && ' If PRD generation recently completed, try refreshing.'}
+          </p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              data-testid="prd-retry-button"
+              className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              Refresh PRD Status
+            </button>
+          )}
         </div>
       );
     }

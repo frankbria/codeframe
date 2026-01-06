@@ -143,7 +143,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
   );
 
   // Fetch PRD data (cf-26)
-  const { data: prdData } = useSWR<PRDResponse>(
+  const { data: prdData, mutate: mutatePRD } = useSWR<PRDResponse>(
     `/projects/${projectId}/prd`,
     () => projectsApi.getPRD(projectId).then((res) => res.data),
     { shouldRetryOnError: false }
@@ -221,6 +221,30 @@ export default function Dashboard({ projectId }: DashboardProps) {
       unsubscribe();
     };
   }, [mutateBlockers]);
+
+  // WebSocket handler for PRD generation events (PRD button synchronization fix)
+  useEffect(() => {
+    const ws = getWebSocketClient();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handlePRDEvent = (message: any) => {
+      // Only handle PRD events for this project
+      if (message.project_id !== projectId) {
+        return;
+      }
+
+      // When PRD generation completes, invalidate SWR cache to sync both View PRD buttons
+      if (message.type === 'prd_generation_completed') {
+        mutatePRD();
+      }
+    };
+
+    const unsubscribe = ws.onMessage(handlePRDEvent);
+
+    return () => {
+      unsubscribe();
+    };
+  }, [projectId, mutatePRD]);
 
   if (!projectData) {
     return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
@@ -712,6 +736,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
         isOpen={showPRD}
         onClose={() => setShowPRD(false)}
         prdData={prdData || null}
+        onRetry={() => mutatePRD()}
       />
 
       {/* Blocker Resolution Modal (T025, 049-human-in-loop) */}
