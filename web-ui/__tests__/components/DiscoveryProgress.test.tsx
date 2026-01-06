@@ -3,7 +3,7 @@
  * Migrated from src/components/__tests__/DiscoveryProgress.test.tsx
  */
 
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import DiscoveryProgress from '@/components/DiscoveryProgress';
 import { projectsApi } from '@/lib/api';
 import type { DiscoveryProgressResponse } from '@/types/api';
@@ -17,11 +17,40 @@ jest.mock('@hugeicons/react', () => ({
 
 // Mock the API
 const mockStartProject = jest.fn();
+const mockRestartDiscovery = jest.fn();
+const mockRetryPrdGeneration = jest.fn();
 jest.mock('@/lib/api', () => ({
   projectsApi: {
     getDiscoveryProgress: jest.fn(),
     startProject: (...args: unknown[]) => mockStartProject(...args),
+    restartDiscovery: (...args: unknown[]) => mockRestartDiscovery(...args),
+    retryPrdGeneration: (...args: unknown[]) => mockRetryPrdGeneration(...args),
   },
+}));
+
+// Mock WebSocket client
+type MessageHandler = (message: Record<string, unknown>) => void;
+const mockMessageHandlers: MessageHandler[] = [];
+const mockWsClient = {
+  onMessage: jest.fn((handler: MessageHandler) => {
+    mockMessageHandlers.push(handler);
+    return () => {
+      const index = mockMessageHandlers.indexOf(handler);
+      if (index > -1) mockMessageHandlers.splice(index, 1);
+    };
+  }),
+  connect: jest.fn(),
+  disconnect: jest.fn(),
+  subscribe: jest.fn(),
+};
+
+// Helper to simulate WebSocket messages
+const simulateWsMessage = (message: Record<string, unknown>) => {
+  mockMessageHandlers.forEach(handler => handler(message));
+};
+
+jest.mock('@/lib/websocket', () => ({
+  getWebSocketClient: () => mockWsClient,
 }));
 
 // Mock the authenticated fetch
@@ -56,6 +85,10 @@ describe('DiscoveryProgress Component', () => {
     jest.useFakeTimers();
     mockAuthFetch.mockReset();
     mockStartProject.mockReset();
+    mockRestartDiscovery.mockReset();
+    mockRetryPrdGeneration.mockReset();
+    // Clear WebSocket message handlers
+    mockMessageHandlers.length = 0;
   });
 
   afterEach(() => {
@@ -1886,6 +1919,1121 @@ describe('DiscoveryProgress Component', () => {
       // Note: Progress bar is not shown when completed (from existing tests)
       // Just verify completion message is present
       expect(screen.getByText(/discovery complete/i)).toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // PRD Progress Tracking Tests
+  // ============================================================================
+
+  describe('PRD Generation Progress Tracking', () => {
+    it('should show View PRD button when prdCompleted is true', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      const mockOnViewPRD = jest.fn();
+      render(<DiscoveryProgress projectId={1} onViewPRD={mockOnViewPRD} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate prd_generation_completed WebSocket message to trigger prdCompleted state
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('view-prd-button')).toBeInTheDocument();
+      });
+    });
+
+    it('should call onViewPRD callback when View PRD button is clicked', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      const mockOnViewPRD = jest.fn();
+      render(<DiscoveryProgress projectId={1} onViewPRD={mockOnViewPRD} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate prd_generation_completed WebSocket message
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('view-prd-button')).toBeInTheDocument();
+      });
+
+      // Click the View PRD button
+      fireEvent.click(screen.getByTestId('view-prd-button'));
+
+      expect(mockOnViewPRD).toHaveBeenCalledTimes(1);
+    });
+
+    it('should show minimize button when PRD is completed', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate prd_generation_completed WebSocket message
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('minimize-discovery-button')).toBeInTheDocument();
+      });
+    });
+
+    it('should show task creation phase indicator when PRD is complete and phase is planning', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate prd_generation_completed WebSocket message
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('next-phase-indicator')).toBeInTheDocument();
+        expect(screen.getByText(/next.*task creation/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should show PRD generation status section when discovery is completed', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        const prdStatus = screen.getByTestId('prd-generation-status');
+        expect(prdStatus).toBeInTheDocument();
+      });
+    });
+
+    it('should display PRD progress percentage during generation', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate prd_generation_started to initialize PRD generation state
+      simulateWsMessage({ type: 'prd_generation_started', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/initializing/i)).toBeInTheDocument();
+      });
+
+      // Simulate progress at 10%
+      simulateWsMessage({
+        type: 'prd_generation_progress',
+        project_id: 1,
+        stage: 'analyzing',
+        message: 'Analyzing project requirements...',
+        progress_pct: 10,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('10%')).toBeInTheDocument();
+      });
+
+      // Simulate progress at 30%
+      simulateWsMessage({
+        type: 'prd_generation_progress',
+        project_id: 1,
+        stage: 'structuring',
+        message: 'Structuring document...',
+        progress_pct: 30,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('30%')).toBeInTheDocument();
+      });
+
+      // Simulate progress at 80%
+      simulateWsMessage({
+        type: 'prd_generation_progress',
+        project_id: 1,
+        stage: 'generating',
+        message: 'Generating PRD content...',
+        progress_pct: 80,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('80%')).toBeInTheDocument();
+      });
+
+      // Simulate completion at 100%
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generated successfully/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  // ============================================================================
+  // WebSocket Message Handlers Tests
+  // ============================================================================
+
+  describe('WebSocket Message Handlers', () => {
+    it('should handle discovery_starting message', async () => {
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      const discoveringData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+          current_question: {
+            id: 'q1',
+            question: 'What is your project about?',
+            category: 'overview',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock)
+        .mockResolvedValueOnce({ data: idleData })
+        .mockResolvedValueOnce({ data: discoveringData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('start-discovery-button')).toBeInTheDocument();
+      });
+
+      // Simulate WebSocket discovery_starting message
+      simulateWsMessage({ type: 'discovery_starting', project_id: 1 });
+
+      // Should trigger a refresh
+      jest.advanceTimersByTime(500);
+
+      await waitFor(() => {
+        expect(projectsApi.getDiscoveryProgress).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it('should handle prd_generation_started message', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate WebSocket prd_generation_started message
+      simulateWsMessage({ type: 'prd_generation_started', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/initializing prd generation/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should handle prd_generation_progress message with progress updates', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate WebSocket prd_generation_progress message
+      simulateWsMessage({
+        type: 'prd_generation_progress',
+        project_id: 1,
+        stage: 'analyzing',
+        message: 'Analyzing requirements...',
+        progress_pct: 30,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/analyzing requirements/i)).toBeInTheDocument();
+        expect(screen.getByText('30%')).toBeInTheDocument();
+      });
+    });
+
+    it('should handle prd_generation_completed message', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      const mockOnViewPRD = jest.fn();
+      render(<DiscoveryProgress projectId={1} onViewPRD={mockOnViewPRD} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate WebSocket prd_generation_completed message
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generated successfully/i)).toBeInTheDocument();
+      });
+
+      // View PRD button should appear
+      const viewPrdButton = screen.getByTestId('view-prd-button');
+      expect(viewPrdButton).toBeInTheDocument();
+
+      // Click View PRD button
+      fireEvent.click(viewPrdButton);
+      expect(mockOnViewPRD).toHaveBeenCalled();
+    });
+
+    it('should handle prd_generation_failed message', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate WebSocket prd_generation_failed message
+      simulateWsMessage({
+        type: 'prd_generation_failed',
+        project_id: 1,
+        data: { error: 'API rate limit exceeded' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generation failed/i)).toBeInTheDocument();
+        expect(screen.getByText(/api rate limit exceeded/i)).toBeInTheDocument();
+      });
+
+      // Retry button should appear
+      expect(screen.getByTestId('retry-prd-button')).toBeInTheDocument();
+    });
+
+    it('should handle discovery_reset message', async () => {
+      const discoveringData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 50,
+          answered_count: 5,
+          total_required: 10,
+        },
+      };
+
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock)
+        .mockResolvedValueOnce({ data: discoveringData })
+        .mockResolvedValueOnce({ data: idleData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/answered/i)).toBeInTheDocument();
+      });
+
+      // Simulate WebSocket discovery_reset message
+      simulateWsMessage({ type: 'discovery_reset', project_id: 1 });
+
+      await waitFor(() => {
+        expect(projectsApi.getDiscoveryProgress).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it('should handle discovery_question_ready message', async () => {
+      const discoveringNoQuestion: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      const discoveringWithQuestion: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+          current_question: {
+            id: 'q1',
+            question: 'What is your project about?',
+            category: 'overview',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock)
+        .mockResolvedValueOnce({ data: discoveringNoQuestion })
+        .mockResolvedValueOnce({ data: discoveringWithQuestion });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('waiting-for-question')).toBeInTheDocument();
+      });
+
+      // Simulate WebSocket discovery_question_ready message
+      simulateWsMessage({ type: 'discovery_question_ready', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/what is your project about/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should ignore WebSocket messages for different projects', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 50,
+          answered_count: 5,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/answered/i)).toBeInTheDocument();
+      });
+
+      const initialCallCount = (projectsApi.getDiscoveryProgress as jest.Mock).mock.calls.length;
+
+      // Simulate WebSocket message for different project
+      simulateWsMessage({ type: 'discovery_reset', project_id: 999 });
+
+      // Should not trigger a refresh for the wrong project
+      await waitFor(() => {
+        expect(projectsApi.getDiscoveryProgress).toHaveBeenCalledTimes(initialCallCount);
+      });
+    });
+  });
+
+  // ============================================================================
+  // Stuck State Detection and Restart Discovery Tests
+  // ============================================================================
+
+  describe('Stuck State Detection', () => {
+    it('should detect stuck state after 30 seconds without question', async () => {
+      const discoveringNoQuestion: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+          // No current_question
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: discoveringNoQuestion });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('waiting-for-question')).toBeInTheDocument();
+      });
+
+      // Advance time past the stuck timeout (30 seconds)
+      jest.advanceTimersByTime(35000);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('discovery-stuck')).toBeInTheDocument();
+        expect(screen.getByText(/discovery appears to be stuck/i)).toBeInTheDocument();
+      });
+
+      // Restart button should appear
+      expect(screen.getByTestId('restart-discovery-button')).toBeInTheDocument();
+    });
+
+    it('should call restartDiscovery when restart button is clicked', async () => {
+      const discoveringNoQuestion: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      const idleData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'idle',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock)
+        .mockResolvedValueOnce({ data: discoveringNoQuestion })
+        .mockResolvedValueOnce({ data: idleData });
+
+      mockRestartDiscovery.mockResolvedValueOnce({ data: { status: 'reset' } });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('waiting-for-question')).toBeInTheDocument();
+      });
+
+      // Advance time past the stuck timeout
+      jest.advanceTimersByTime(35000);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('restart-discovery-button')).toBeInTheDocument();
+      });
+
+      // Click restart button
+      const restartButton = screen.getByTestId('restart-discovery-button');
+      fireEvent.click(restartButton);
+
+      await waitFor(() => {
+        expect(mockRestartDiscovery).toHaveBeenCalledWith(1);
+      });
+    });
+
+    it('should show restart error when restartDiscovery fails', async () => {
+      const discoveringNoQuestion: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: discoveringNoQuestion });
+      mockRestartDiscovery.mockRejectedValueOnce(new Error('Server error'));
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('waiting-for-question')).toBeInTheDocument();
+      });
+
+      // Advance time past the stuck timeout
+      jest.advanceTimersByTime(35000);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('restart-discovery-button')).toBeInTheDocument();
+      });
+
+      // Click restart button
+      const restartButton = screen.getByTestId('restart-discovery-button');
+      fireEvent.click(restartButton);
+
+      await waitFor(() => {
+        expect(screen.getByText(/failed to restart discovery/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should call restartDiscovery when restart button is clicked in stuck state', async () => {
+      const discoveringNoQuestion: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 0,
+          answered_count: 0,
+          total_required: 10,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: discoveringNoQuestion });
+      // Return a promise that resolves slowly
+      let resolveRestart: () => void;
+      mockRestartDiscovery.mockImplementation(() => new Promise((resolve) => {
+        resolveRestart = resolve as () => void;
+      }));
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('waiting-for-question')).toBeInTheDocument();
+      });
+
+      // Advance time past the stuck timeout
+      await act(async () => {
+        jest.advanceTimersByTime(35000);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('restart-discovery-button')).toBeInTheDocument();
+      });
+
+      // Click restart button
+      const restartButton = screen.getByTestId('restart-discovery-button');
+      await act(async () => {
+        fireEvent.click(restartButton);
+      });
+
+      // Verify the function was called
+      expect(mockRestartDiscovery).toHaveBeenCalledWith(1);
+
+      // Resolve the promise to clean up
+      await act(async () => {
+        resolveRestart!();
+      });
+    });
+  });
+
+  // ============================================================================
+  // PRD Error State and Retry Tests
+  // ============================================================================
+
+  describe('PRD Error State and Retry', () => {
+    it('should call retryPrdGeneration when retry button is clicked', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+      mockRetryPrdGeneration.mockResolvedValueOnce({ data: { status: 'started' } });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD generation failure
+      simulateWsMessage({
+        type: 'prd_generation_failed',
+        project_id: 1,
+        data: { error: 'Connection timeout' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('retry-prd-button')).toBeInTheDocument();
+      });
+
+      // Click retry button
+      const retryButton = screen.getByTestId('retry-prd-button');
+      fireEvent.click(retryButton);
+
+      await waitFor(() => {
+        expect(mockRetryPrdGeneration).toHaveBeenCalledWith(1);
+      });
+    });
+
+    it('should show error when retryPrdGeneration fails', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+      mockRetryPrdGeneration.mockRejectedValueOnce(new Error('Service unavailable'));
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD generation failure
+      simulateWsMessage({
+        type: 'prd_generation_failed',
+        project_id: 1,
+        data: { error: 'Initial failure' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('retry-prd-button')).toBeInTheDocument();
+      });
+
+      // Click retry button
+      const retryButton = screen.getByTestId('retry-prd-button');
+      fireEvent.click(retryButton);
+
+      await waitFor(() => {
+        expect(screen.getByText(/failed to retry.*service unavailable/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should transition to loading state when retry button is clicked', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+      // Return a promise that resolves slowly to give us time to check the loading state
+      let resolveRetry: () => void;
+      mockRetryPrdGeneration.mockImplementation(() => new Promise((resolve) => {
+        resolveRetry = resolve as () => void;
+      }));
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD generation failure
+      simulateWsMessage({
+        type: 'prd_generation_failed',
+        project_id: 1,
+        data: { error: 'Initial failure' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('retry-prd-button')).toBeInTheDocument();
+      });
+
+      // Click retry button - wrap in act to allow state update to propagate
+      const retryButton = screen.getByTestId('retry-prd-button');
+      await act(async () => {
+        fireEvent.click(retryButton);
+      });
+
+      // Verify the function was called
+      expect(mockRetryPrdGeneration).toHaveBeenCalledWith(1);
+
+      // After clicking retry, the error state is cleared and loading state appears
+      // The retry button disappears and is replaced by a loading spinner with message
+      await waitFor(() => {
+        // Retry button should no longer be visible (error was cleared)
+        expect(screen.queryByTestId('retry-prd-button')).not.toBeInTheDocument();
+        // Loading state should appear (shows "Starting PRD Generation..." until API resolves)
+        expect(screen.getByText(/starting prd generation/i)).toBeInTheDocument();
+      });
+
+      // Resolve the promise to clean up
+      await act(async () => {
+        resolveRetry!();
+      });
+    });
+  });
+
+  // ============================================================================
+  // Minimized View Tests
+  // ============================================================================
+
+  describe('Minimized View', () => {
+    it('should auto-minimize section 3 seconds after PRD completion', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      const mockOnViewPRD = jest.fn();
+      render(<DiscoveryProgress projectId={1} onViewPRD={mockOnViewPRD} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD completion
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generated successfully/i)).toBeInTheDocument();
+      });
+
+      // Advance time by 3 seconds to trigger auto-minimize (wrap in act for React state updates)
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-minimized-view')).toBeInTheDocument();
+      });
+    });
+
+    it('should show View PRD button in minimized view', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      const mockOnViewPRD = jest.fn();
+      render(<DiscoveryProgress projectId={1} onViewPRD={mockOnViewPRD} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD completion
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generated successfully/i)).toBeInTheDocument();
+      });
+
+      // Wait for auto-minimize (wrap in act for React state updates)
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-minimized-view')).toBeInTheDocument();
+      });
+
+      // Click View PRD button in minimized view
+      const viewPrdButton = screen.getByTestId('view-prd-button-minimized');
+      fireEvent.click(viewPrdButton);
+
+      expect(mockOnViewPRD).toHaveBeenCalled();
+    });
+
+    it('should expand minimized view when Expand button is clicked', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD completion
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generated successfully/i)).toBeInTheDocument();
+      });
+
+      // Wait for auto-minimize (wrap in act for React state updates)
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-minimized-view')).toBeInTheDocument();
+      });
+
+      // Click Expand button
+      const expandButton = screen.getByTestId('expand-discovery-button');
+      fireEvent.click(expandButton);
+
+      await waitFor(() => {
+        // Should no longer be minimized
+        expect(screen.queryByTestId('prd-minimized-view')).not.toBeInTheDocument();
+        // Full view should be shown
+        expect(screen.getByText(/discovery complete/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should show Minimize button when PRD is complete and not minimized', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD completion (but don't wait for auto-minimize)
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generated successfully/i)).toBeInTheDocument();
+      });
+
+      // Minimize button should appear
+      const minimizeButton = screen.getByTestId('minimize-discovery-button');
+      expect(minimizeButton).toBeInTheDocument();
+
+      // Click Minimize button
+      fireEvent.click(minimizeButton);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-minimized-view')).toBeInTheDocument();
+      });
+    });
+  });
+
+  // ============================================================================
+  // Next Phase Indicator Tests
+  // ============================================================================
+
+  describe('Next Phase Indicator', () => {
+    it('should show task creation phase indicator when PRD is complete and phase is planning', async () => {
+      const completedData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 20,
+          total_required: 20,
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
+      });
+
+      // Simulate PRD completion
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('next-phase-indicator')).toBeInTheDocument();
+        expect(screen.getByText(/next.*task creation/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  // ============================================================================
+  // Duplicate Submission Prevention Tests
+  // ============================================================================
+
+  describe('Duplicate Submission Prevention', () => {
+    it('should prevent duplicate submissions while already submitting', async () => {
+      const mockData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'discovery',
+        discovery: {
+          state: 'discovering',
+          progress_percentage: 10,
+          answered_count: 2,
+          total_required: 20,
+          current_question: {
+            id: 'q1',
+            category: 'problem',
+            question: 'What problem does your project solve?',
+          },
+        },
+      };
+
+      (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockData });
+
+      // Make authFetch take a long time
+      mockAuthFetch.mockImplementation(() => new Promise(() => {}));
+
+      render(<DiscoveryProgress projectId={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/type your answer here/i)).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(/type your answer here/i) as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: 'Valid answer' } });
+
+      const submitButton = screen.getByRole('button', { name: /submit answer/i });
+
+      // Click submit multiple times rapidly
+      fireEvent.click(submitButton);
+      fireEvent.click(submitButton);
+      fireEvent.click(submitButton);
+
+      // Should only call once
+      await waitFor(() => {
+        expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });
