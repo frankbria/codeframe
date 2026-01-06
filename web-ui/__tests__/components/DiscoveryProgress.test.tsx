@@ -2089,8 +2089,58 @@ describe('DiscoveryProgress Component', () => {
         expect(screen.getByTestId('prd-generation-status')).toBeInTheDocument();
       });
 
-      // The component will show progress percentage (0%, 10%, 30%, 80%, 100%)
-      // based on WebSocket messages during PRD generation
+      // Simulate prd_generation_started to initialize PRD generation state
+      simulateWsMessage({ type: 'prd_generation_started', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/initializing/i)).toBeInTheDocument();
+      });
+
+      // Simulate progress at 10%
+      simulateWsMessage({
+        type: 'prd_generation_progress',
+        project_id: 1,
+        stage: 'analyzing',
+        message: 'Analyzing project requirements...',
+        progress_pct: 10,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('10%')).toBeInTheDocument();
+      });
+
+      // Simulate progress at 30%
+      simulateWsMessage({
+        type: 'prd_generation_progress',
+        project_id: 1,
+        stage: 'structuring',
+        message: 'Structuring document...',
+        progress_pct: 30,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('30%')).toBeInTheDocument();
+      });
+
+      // Simulate progress at 80%
+      simulateWsMessage({
+        type: 'prd_generation_progress',
+        project_id: 1,
+        stage: 'generating',
+        message: 'Generating PRD content...',
+        progress_pct: 80,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('80%')).toBeInTheDocument();
+      });
+
+      // Simulate completion at 100%
+      simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+
+      await waitFor(() => {
+        expect(screen.getByText(/prd generated successfully/i)).toBeInTheDocument();
+      });
     });
   });
 
@@ -2666,7 +2716,7 @@ describe('DiscoveryProgress Component', () => {
       });
     });
 
-    it('should disable retry button during retry attempt', async () => {
+    it('should transition to loading state when retry button is clicked', async () => {
       const completedData: DiscoveryProgressResponse = {
         project_id: 1,
         phase: 'planning',
@@ -2702,7 +2752,7 @@ describe('DiscoveryProgress Component', () => {
         expect(screen.getByTestId('retry-prd-button')).toBeInTheDocument();
       });
 
-      // Click retry button
+      // Click retry button - wrap in act to allow state update to propagate
       const retryButton = screen.getByTestId('retry-prd-button');
       await act(async () => {
         fireEvent.click(retryButton);
@@ -2710,6 +2760,15 @@ describe('DiscoveryProgress Component', () => {
 
       // Verify the function was called
       expect(mockRetryPrdGeneration).toHaveBeenCalledWith(1);
+
+      // After clicking retry, the error state is cleared and loading state appears
+      // The retry button disappears and is replaced by a loading spinner with message
+      await waitFor(() => {
+        // Retry button should no longer be visible (error was cleared)
+        expect(screen.queryByTestId('retry-prd-button')).not.toBeInTheDocument();
+        // Loading state should appear (shows "Starting PRD Generation..." until API resolves)
+        expect(screen.getByText(/starting prd generation/i)).toBeInTheDocument();
+      });
 
       // Resolve the promise to clean up
       await act(async () => {
