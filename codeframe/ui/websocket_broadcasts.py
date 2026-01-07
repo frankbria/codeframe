@@ -784,3 +784,163 @@ async def broadcast_discovery_completed(
         logger.debug(f"Broadcast discovery_completed: {total_answers} answers")
     except Exception as e:
         logger.error(f"Failed to broadcast discovery completion: {e}")
+
+
+# ============================================================================
+# Planning Phase Automation Broadcasts (Feature: 016-planning-phase-automation)
+# ============================================================================
+
+
+async def broadcast_planning_started(manager, project_id: int) -> None:
+    """
+    Broadcast when planning automation begins after PRD completion.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+    """
+    message = {
+        "type": "planning_started",
+        "project_id": project_id,
+        "status": "in_progress",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast planning_started for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast planning started: {e}")
+
+
+async def broadcast_issues_generated(
+    manager, project_id: int, issue_count: int
+) -> None:
+    """
+    Broadcast when issues have been generated from PRD.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        issue_count: Number of issues generated
+    """
+    message = {
+        "type": "issues_generated",
+        "project_id": project_id,
+        "issue_count": issue_count,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast issues_generated: {issue_count} issues for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast issues generated: {e}")
+
+
+async def broadcast_tasks_decomposed(
+    manager, project_id: int, task_count: int
+) -> None:
+    """
+    Broadcast when tasks have been decomposed from issues.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        task_count: Number of tasks created
+    """
+    message = {
+        "type": "tasks_decomposed",
+        "project_id": project_id,
+        "task_count": task_count,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast tasks_decomposed: {task_count} tasks for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast tasks decomposed: {e}")
+
+
+async def broadcast_tasks_ready(
+    manager, project_id: int, total_tasks: int
+) -> None:
+    """
+    Broadcast when all tasks are ready for user review.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        total_tasks: Total number of tasks ready for review
+    """
+    message = {
+        "type": "tasks_ready",
+        "project_id": project_id,
+        "total_tasks": total_tasks,
+        "status": "ready_for_review",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast tasks_ready: {total_tasks} tasks for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast tasks ready: {e}")
+
+
+async def broadcast_planning_failed(
+    manager, project_id: int, error: str
+) -> None:
+    """
+    Broadcast when planning automation fails.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        error: Error message describing the failure
+    """
+    message = {
+        "type": "planning_failed",
+        "project_id": project_id,
+        "status": "failed",
+        "error": error,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast planning_failed for project {project_id}: {error}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast planning failed: {e}")
+
+
+async def broadcast_development_started(
+    manager, project_id: int, approved_count: int, excluded_count: int
+) -> None:
+    """
+    Broadcast when development phase starts after task approval.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        approved_count: Number of tasks approved
+        excluded_count: Number of tasks excluded from approval
+    """
+    message = {
+        "type": "development_started",
+        "project_id": project_id,
+        "approved_count": approved_count,
+        "excluded_count": excluded_count,
+        "phase": "active",
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(
+            f"Broadcast development_started for project {project_id}: "
+            f"{approved_count} approved, {excluded_count} excluded"
+        )
+    except Exception as e:
+        logger.error(f"Failed to broadcast development started: {e}")

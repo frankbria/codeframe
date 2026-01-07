@@ -4,6 +4,7 @@ This module handles discovery-related endpoints for projects,
 allowing submission of discovery answers and retrieval of discovery progress.
 """
 
+import asyncio
 import os
 import logging
 from typing import Dict, Any
@@ -17,6 +18,13 @@ from codeframe.ui.dependencies import get_db
 from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
 from codeframe.ui.shared import manager
+from codeframe.ui.websocket_broadcasts import (
+    broadcast_planning_started,
+    broadcast_issues_generated,
+    broadcast_tasks_decomposed,
+    broadcast_tasks_ready,
+    broadcast_planning_failed,
+)
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -33,14 +41,13 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
     3. prd_generation_progress (calling_llm) - Sending to Claude API
     4. prd_generation_progress (saving) - Saving PRD to database/file
     5. prd_generation_completed - Final notification
+    6. Spawns planning automation as a separate async task
 
     Args:
         project_id: Project ID
         db: Database instance
         api_key: API key for Claude
     """
-    import asyncio
-
     async def broadcast_progress(stage: str, message: str, progress_pct: int = 0):
         """Helper to broadcast progress updates."""
         await manager.broadcast(
@@ -127,8 +134,21 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
             project_id=project_id,
         )
 
+        # Trigger planning automation as a non-blocking background task
+        # This allows PRD completion to be reported immediately while planning runs
+        def _handle_planning_exception(task: asyncio.Task) -> None:
+            """Log any unhandled exceptions from background planning task."""
+            if not task.cancelled() and task.exception():
+                logger.error(
+                    f"Unhandled exception in planning background task: {task.exception()}",
+                    exc_info=task.exception()
+                )
+
+        planning_task = asyncio.create_task(generate_planning_background(project_id, db, api_key))
+        planning_task.add_done_callback(_handle_planning_exception)
+
     except Exception as e:
-        logger.error(f"Failed to generate PRD for project {project_id}: {e}")
+        logger.error(f"Failed to generate PRD for project {project_id}: {e}", exc_info=True)
         # Broadcast error
         await manager.broadcast(
             {
@@ -139,6 +159,78 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
             },
             project_id=project_id,
         )
+
+
+async def generate_planning_background(project_id: int, db: Database, api_key: str):
+    """Background task to generate issues and tasks after PRD completion.
+
+    This function implements planning automation:
+    1. planning_started - Notify automation begins
+    2. generate_issues - Create issues from PRD
+    3. issues_generated - Report issues created
+    4. decompose_prd - Decompose issues into tasks
+    5. tasks_decomposed - Report tasks created
+    6. tasks_ready - Signal ready for user review
+
+    Note: LeadAgent methods are synchronous and use the sync Anthropic client,
+    so asyncio.to_thread() is appropriate for running them without blocking.
+
+    Args:
+        project_id: Project ID
+        db: Database instance
+        api_key: API key for Claude
+    """
+    # Configurable timeout for AI operations (default 2 minutes per operation)
+    planning_timeout = float(os.environ.get("PLANNING_OPERATION_TIMEOUT", "120"))
+
+    try:
+        logger.info(f"Starting planning automation for project {project_id}")
+
+        # Stage 1: Broadcast planning started
+        await broadcast_planning_started(manager, project_id)
+
+        # Initialize LeadAgent for issue/task generation
+        agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+
+        # Stage 2: Generate issues from PRD (with timeout)
+        logger.info(f"Generating issues for project {project_id}")
+        issues = await asyncio.wait_for(
+            asyncio.to_thread(agent.generate_issues, sprint_number=1),
+            timeout=planning_timeout
+        )
+        issue_count = len(issues) if issues else 0
+
+        # Stage 3: Broadcast issues generated
+        await broadcast_issues_generated(manager, project_id, issue_count)
+        logger.info(f"Generated {issue_count} issues for project {project_id}")
+
+        # Stage 4: Decompose PRD into tasks (with timeout)
+        logger.info(f"Decomposing PRD into tasks for project {project_id}")
+        decomposition_result = await asyncio.wait_for(
+            asyncio.to_thread(agent.decompose_prd),
+            timeout=planning_timeout
+        )
+        task_count = decomposition_result.get("tasks", 0) if decomposition_result else 0
+
+        # Stage 5: Broadcast tasks decomposed
+        await broadcast_tasks_decomposed(manager, project_id, task_count)
+        logger.info(f"Decomposed into {task_count} tasks for project {project_id}")
+
+        # Stage 6: Broadcast tasks ready for review
+        await broadcast_tasks_ready(manager, project_id, task_count)
+        logger.info(f"Planning automation completed for project {project_id}")
+
+    except asyncio.TimeoutError:
+        logger.error(
+            f"Planning automation timed out for project {project_id} "
+            f"(timeout={planning_timeout}s)",
+            exc_info=True
+        )
+        await broadcast_planning_failed(manager, project_id, "Planning operation timed out")
+
+    except Exception as e:
+        logger.error(f"Planning automation failed for project {project_id}: {e}", exc_info=True)
+        await broadcast_planning_failed(manager, project_id, str(e))
 
 
 @router.post("/answer")
