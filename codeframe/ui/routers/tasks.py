@@ -199,6 +199,8 @@ async def approve_tasks(
         )
 
     # Separate approved and excluded tasks
+    # Note: Excluded tasks remain unchanged in the database for audit trail.
+    # They are not deleted or modified - users can re-include them later if needed.
     excluded_ids = set(request.excluded_task_ids)
     approved_tasks = [t for t in tasks if t.id not in excluded_ids]
     excluded_tasks = [t for t in tasks if t.id in excluded_ids]

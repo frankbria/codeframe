@@ -136,7 +136,16 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
 
         # Trigger planning automation as a non-blocking background task
         # This allows PRD completion to be reported immediately while planning runs
-        asyncio.create_task(generate_planning_background(project_id, db, api_key))
+        def _handle_planning_exception(task: asyncio.Task) -> None:
+            """Log any unhandled exceptions from background planning task."""
+            if not task.cancelled() and task.exception():
+                logger.error(
+                    f"Unhandled exception in planning background task: {task.exception()}",
+                    exc_info=task.exception()
+                )
+
+        planning_task = asyncio.create_task(generate_planning_background(project_id, db, api_key))
+        planning_task.add_done_callback(_handle_planning_exception)
 
     except Exception as e:
         logger.error(f"Failed to generate PRD for project {project_id}: {e}", exc_info=True)
