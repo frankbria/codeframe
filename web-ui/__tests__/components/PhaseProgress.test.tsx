@@ -182,14 +182,15 @@ describe('PhaseProgress', () => {
   });
 
   describe('phase-specific styling', () => {
+    // Tests verify light mode classes; dark mode classes are also present
     it('applies blue theme for discovery phase', () => {
       const { container } = render(
         <PhaseProgress phase="discovery" currentStep={1} totalSteps={15} />
       );
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      expect(progressContainer).toHaveClass('bg-blue-100');
-      expect(progressContainer).toHaveClass('text-blue-800');
-      expect(progressContainer).toHaveClass('border-blue-300');
+      expect(progressContainer).toHaveClass('bg-blue-50');
+      expect(progressContainer).toHaveClass('text-blue-700');
+      expect(progressContainer).toHaveClass('border-blue-200');
     });
 
     it('applies purple theme for planning phase', () => {
@@ -197,9 +198,9 @@ describe('PhaseProgress', () => {
         <PhaseProgress phase="planning" currentStep={2} totalSteps={15} />
       );
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      expect(progressContainer).toHaveClass('bg-purple-100');
-      expect(progressContainer).toHaveClass('text-purple-800');
-      expect(progressContainer).toHaveClass('border-purple-300');
+      expect(progressContainer).toHaveClass('bg-purple-50');
+      expect(progressContainer).toHaveClass('text-purple-700');
+      expect(progressContainer).toHaveClass('border-purple-200');
     });
 
     it('applies green theme for development phase', () => {
@@ -207,9 +208,9 @@ describe('PhaseProgress', () => {
         <PhaseProgress phase="development" currentStep={5} totalSteps={15} />
       );
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      expect(progressContainer).toHaveClass('bg-green-100');
-      expect(progressContainer).toHaveClass('text-green-800');
-      expect(progressContainer).toHaveClass('border-green-300');
+      expect(progressContainer).toHaveClass('bg-green-50');
+      expect(progressContainer).toHaveClass('text-green-700');
+      expect(progressContainer).toHaveClass('border-green-200');
     });
 
     it('applies yellow theme for review phase', () => {
@@ -217,19 +218,20 @@ describe('PhaseProgress', () => {
         <PhaseProgress phase="review" currentStep={10} totalSteps={15} />
       );
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      expect(progressContainer).toHaveClass('bg-yellow-100');
-      expect(progressContainer).toHaveClass('text-yellow-800');
-      expect(progressContainer).toHaveClass('border-yellow-300');
+      expect(progressContainer).toHaveClass('bg-yellow-50');
+      expect(progressContainer).toHaveClass('text-yellow-700');
+      expect(progressContainer).toHaveClass('border-yellow-200');
     });
 
-    it('applies gray theme for complete phase', () => {
+    it('applies muted theme for complete phase', () => {
       const { container } = render(
         <PhaseProgress phase="complete" currentStep={15} totalSteps={15} />
       );
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      expect(progressContainer).toHaveClass('bg-gray-100');
-      expect(progressContainer).toHaveClass('text-gray-800');
-      expect(progressContainer).toHaveClass('border-gray-300');
+      // Complete uses Nova semantic colors
+      expect(progressContainer).toHaveClass('bg-muted');
+      expect(progressContainer).toHaveClass('text-muted-foreground');
+      expect(progressContainer).toHaveClass('border-border');
     });
 
     it('applies indigo theme for shipped phase', () => {
@@ -237,9 +239,9 @@ describe('PhaseProgress', () => {
         <PhaseProgress phase="shipped" currentStep={15} totalSteps={15} />
       );
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      expect(progressContainer).toHaveClass('bg-indigo-100');
-      expect(progressContainer).toHaveClass('text-indigo-800');
-      expect(progressContainer).toHaveClass('border-indigo-300');
+      expect(progressContainer).toHaveClass('bg-indigo-50');
+      expect(progressContainer).toHaveClass('text-indigo-700');
+      expect(progressContainer).toHaveClass('border-indigo-200');
     });
   });
 
@@ -256,10 +258,10 @@ describe('PhaseProgress', () => {
         <PhaseProgress phase="unknown" currentStep={5} totalSteps={15} />
       );
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      // Should fallback to gray theme (default)
-      expect(progressContainer).toHaveClass('bg-gray-100');
-      expect(progressContainer).toHaveClass('text-gray-800');
-      expect(progressContainer).toHaveClass('border-gray-300');
+      // Should fallback to muted theme (Nova semantic default)
+      expect(progressContainer).toHaveClass('bg-muted');
+      expect(progressContainer).toHaveClass('text-muted-foreground');
+      expect(progressContainer).toHaveClass('border-border');
     });
 
     it('handles unknown phase with default label', () => {
@@ -270,8 +272,8 @@ describe('PhaseProgress', () => {
     it('handles empty phase string', () => {
       const { container } = render(<PhaseProgress phase="" currentStep={5} totalSteps={15} />);
       const progressContainer = container.querySelector('[data-testid="phase-progress"]');
-      // Should fallback to gray theme
-      expect(progressContainer).toHaveClass('bg-gray-100');
+      // Should fallback to muted theme (Nova semantic default)
+      expect(progressContainer).toHaveClass('bg-muted');
     });
 
     it('normalizes phase name to lowercase', () => {

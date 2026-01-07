@@ -36,6 +36,23 @@ import ErrorBoundary from './ErrorBoundary';
 import TaskStats from './tasks/TaskStats';
 import PhaseProgress from './PhaseProgress';
 
+/**
+ * Maps backend phase names to PhaseProgress component phase names.
+ * Backend uses 'active' for development in progress; PhaseProgress uses 'development'.
+ */
+const normalizePhase = (phase: string | undefined): string => {
+  const phaseMap: Record<string, string> = {
+    active: 'development',
+    discovery: 'discovery',
+    planning: 'planning',
+    development: 'development',
+    review: 'review',
+    complete: 'complete',
+    shipped: 'shipped',
+  };
+  return phaseMap[phase?.toLowerCase() || ''] || 'discovery';
+};
+
 interface DashboardProps {
   projectId: number;
 }
@@ -338,8 +355,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
       <div className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8">
           <PhaseProgress
-            phase={projectData.phase === 'active' ? 'development' : (projectData.phase || 'discovery')}
-            currentStep={projectData.workflow_step || 0}
+            phase={normalizePhase(projectData.phase)}
+            currentStep={projectData.workflow_step ?? 0}
             totalSteps={15}
           />
         </div>

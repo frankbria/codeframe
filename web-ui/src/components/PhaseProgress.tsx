@@ -1,18 +1,22 @@
 /**
  * PhaseProgress Component
  * Visualizes the current project phase with icons, step counters, and progress bars
+ *
+ * Note: totalSteps defaults to 15 which matches the codeframe workflow phases.
+ * The nextAction prop is available for future integration when the backend
+ * provides suggested next actions.
  */
 
 'use client';
 
-interface PhaseProgressProps {
+export interface PhaseProgressProps {
   phase: string;
   currentStep: number;
   totalSteps: number;
   nextAction?: string;
 }
 
-interface PhaseConfig {
+export interface PhaseConfig {
   icon: string;
   label: string;
   bgColor: string;
@@ -20,57 +24,62 @@ interface PhaseConfig {
   borderColor: string;
 }
 
+/**
+ * Phase configurations with dark mode compatible colors.
+ * Uses shade-50/950 for backgrounds, shade-700/300 for text,
+ * and shade-200/800 for borders to support both light and dark themes.
+ */
 const PHASE_CONFIGS: Record<string, PhaseConfig> = {
   discovery: {
     icon: '🔍',
     label: 'Discovery Phase',
-    bgColor: 'bg-blue-100',
-    textColor: 'text-blue-800',
-    borderColor: 'border-blue-300',
+    bgColor: 'bg-blue-50 dark:bg-blue-950',
+    textColor: 'text-blue-700 dark:text-blue-300',
+    borderColor: 'border-blue-200 dark:border-blue-800',
   },
   planning: {
     icon: '📋',
     label: 'Planning Phase',
-    bgColor: 'bg-purple-100',
-    textColor: 'text-purple-800',
-    borderColor: 'border-purple-300',
+    bgColor: 'bg-purple-50 dark:bg-purple-950',
+    textColor: 'text-purple-700 dark:text-purple-300',
+    borderColor: 'border-purple-200 dark:border-purple-800',
   },
   development: {
     icon: '🔨',
     label: 'Development Phase',
-    bgColor: 'bg-green-100',
-    textColor: 'text-green-800',
-    borderColor: 'border-green-300',
+    bgColor: 'bg-green-50 dark:bg-green-950',
+    textColor: 'text-green-700 dark:text-green-300',
+    borderColor: 'border-green-200 dark:border-green-800',
   },
   review: {
     icon: '✅',
     label: 'Review Phase',
-    bgColor: 'bg-yellow-100',
-    textColor: 'text-yellow-800',
-    borderColor: 'border-yellow-300',
+    bgColor: 'bg-yellow-50 dark:bg-yellow-950',
+    textColor: 'text-yellow-700 dark:text-yellow-300',
+    borderColor: 'border-yellow-200 dark:border-yellow-800',
   },
   complete: {
     icon: '🎉',
     label: 'Complete',
-    bgColor: 'bg-gray-100',
-    textColor: 'text-gray-800',
-    borderColor: 'border-gray-300',
+    bgColor: 'bg-muted',
+    textColor: 'text-muted-foreground',
+    borderColor: 'border-border',
   },
   shipped: {
     icon: '🚀',
     label: 'Shipped',
-    bgColor: 'bg-indigo-100',
-    textColor: 'text-indigo-800',
-    borderColor: 'border-indigo-300',
+    bgColor: 'bg-indigo-50 dark:bg-indigo-950',
+    textColor: 'text-indigo-700 dark:text-indigo-300',
+    borderColor: 'border-indigo-200 dark:border-indigo-800',
   },
 };
 
 const DEFAULT_PHASE_CONFIG: PhaseConfig = {
   icon: '❓',
   label: 'Unknown Phase',
-  bgColor: 'bg-gray-100',
-  textColor: 'text-gray-800',
-  borderColor: 'border-gray-300',
+  bgColor: 'bg-muted',
+  textColor: 'text-muted-foreground',
+  borderColor: 'border-border',
 };
 
 export default function PhaseProgress({
