@@ -244,7 +244,7 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
       >
         <span
           className={`w-2 h-2 rounded-full ${
-            wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+            wsConnected ? 'bg-secondary animate-pulse' : 'bg-destructive'
           }`}
         />
         <span className="text-xs text-muted-foreground">
