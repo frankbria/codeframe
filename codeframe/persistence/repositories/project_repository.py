@@ -191,15 +191,20 @@ class ProjectRepository(BaseRepository):
 
 
 
-    def update_project(self, project_id: int, updates: Dict[str, Any]) -> int:
+    def update_project(
+        self,
+        project_id: int,
+        updates: Dict[str, Any],
+        user_id: Optional[int] = None,
+        ip_address: Optional[str] = None,
+    ) -> int:
         """Update project fields.
-
-        TODO(Issue #132): Add audit logging for PROJECT_UPDATED event.
-        Requires adding user_id parameter and updating all callers.
 
         Args:
             project_id: Project ID to update
             updates: Dictionary of fields to update
+            user_id: ID of user performing update (for audit logging)
+            ip_address: Client IP address (for audit logging)
 
         Returns:
             Number of rows affected
@@ -238,23 +243,69 @@ class ProjectRepository(BaseRepository):
         cursor.execute(query, values)
         self.conn.commit()
 
-        return cursor.rowcount
+        rows_affected = cursor.rowcount
+
+        # Log project update if user_id is provided
+        # NOTE: Audit logging happens after commit, so if audit fails, the update
+        # is already persisted. This is intentional - we prefer data consistency
+        # over audit completeness. Failed audits are logged but don't roll back.
+        if user_id is not None and rows_affected > 0:
+            # Import locally to avoid circular dependency: audit_logger -> database -> project_repository
+            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+            audit = AuditLogger(self._database if self._database else self)
+            audit.log_project_event(
+                event_type=AuditEventType.PROJECT_UPDATED,
+                user_id=user_id,
+                project_id=project_id,
+                ip_address=ip_address,
+                metadata={"updated_fields": list(updates.keys())},
+            )
+
+        return rows_affected
 
 
 
-    def delete_project(self, project_id: int) -> None:
+    def delete_project(
+        self,
+        project_id: int,
+        user_id: Optional[int] = None,
+        ip_address: Optional[str] = None,
+    ) -> None:
         """Delete a project.
-
-        TODO(Issue #132): Add audit logging for PROJECT_DELETED event.
-        Requires adding user_id parameter to distinguish user-initiated
-        deletions from automatic cleanup operations.
 
         Args:
             project_id: Project ID to delete
+            user_id: ID of user performing deletion (for audit logging)
+            ip_address: Client IP address (for audit logging)
         """
+        # Get project name before deletion for audit log
+        project_name = None
+        if user_id is not None:
+            project = self.get_project(project_id)
+            if project:
+                project_name = project.get("name")
+
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         self.conn.commit()
+
+        rows_affected = cursor.rowcount
+
+        # Log project deletion if user_id is provided and deletion actually occurred
+        # NOTE: Audit logging happens after commit, so if audit fails, the deletion
+        # is already persisted. This is intentional - we prefer data consistency
+        # over audit completeness. Failed audits are logged but don't roll back.
+        if user_id is not None and rows_affected > 0:
+            # Import locally to avoid circular dependency: audit_logger -> database -> project_repository
+            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+            audit = AuditLogger(self._database if self._database else self)
+            audit.log_project_event(
+                event_type=AuditEventType.PROJECT_DELETED,
+                user_id=user_id,
+                project_id=project_id,
+                ip_address=ip_address,
+                metadata={"name": project_name} if project_name else None,
+            )
 
 
 

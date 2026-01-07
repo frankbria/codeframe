@@ -29,6 +29,7 @@ ALLOWED_ISSUE_FIELDS = {
     "priority",
     "workflow_step",
     "completed_at",
+    "depends_on",
 }
 
 
@@ -154,6 +155,9 @@ class IssueRepository(BaseRepository):
         for issue_row in issue_rows:
             issue_dict = dict(issue_row)
 
+            # Parse depends_on from JSON using centralized helper
+            depends_on = self._parse_depends_on(issue_dict.get("depends_on"))
+
             # Format issue according to API contract
             formatted_issue = {
                 "id": str(issue_dict["id"]),
@@ -162,7 +166,7 @@ class IssueRepository(BaseRepository):
                 "description": issue_dict["description"] or "",
                 "status": issue_dict["status"],
                 "priority": issue_dict["priority"],
-                "depends_on": [],  # TODO: Parse from database if stored
+                "depends_on": depends_on,
                 "proposed_by": "agent",  # Default for now
                 "created_at": self._ensure_rfc3339(issue_dict["created_at"]),
                 "updated_at": self._ensure_rfc3339(issue_dict["created_at"]),  # Use created_at for now
@@ -305,6 +309,33 @@ class IssueRepository(BaseRepository):
         )
 
 
+
+    def _parse_depends_on(self, depends_on_str: Optional[str]) -> List[str]:
+        """Parse depends_on JSON string into a list of dependency IDs.
+
+        The depends_on field is stored as a JSON array of issue/task IDs.
+        IDs may be stored as integers or strings in the JSON; this method
+        coerces all values to strings for consistency with API contracts.
+        Handles NULL values, invalid JSON, and non-list JSON gracefully.
+
+        Args:
+            depends_on_str: JSON string from database, or None
+
+        Returns:
+            List of dependency IDs as strings, or empty list if parsing fails
+        """
+        if not depends_on_str:
+            return []
+        try:
+            parsed = json.loads(depends_on_str)
+            # Ensure it's a list - non-list JSON returns empty list
+            if isinstance(parsed, list):
+                # Coerce all values to strings for consistent API contract
+                return [str(x) for x in parsed]
+            return []
+        except (json.JSONDecodeError, TypeError):
+            # Invalid JSON returns empty list
+            return []
 
     def _row_to_issue(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Issue:
         """Convert a database row to an Issue object.

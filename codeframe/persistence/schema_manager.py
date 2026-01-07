@@ -63,10 +63,68 @@ class SchemaManager:
         # Create all indexes
         self._create_indexes(cursor)
 
+        # Apply schema migrations for existing databases
+        self._apply_migrations(cursor)
+
         self.conn.commit()
 
         # Ensure default admin user exists
         self._ensure_default_admin_user()
+
+    def _apply_migrations(self, cursor: sqlite3.Cursor) -> None:
+        """Apply schema migrations for existing databases.
+
+        Handles adding new columns to existing tables.
+        These are idempotent - safe to run multiple times.
+        """
+        # Migration: Add depends_on column to issues table (cf-207)
+        self._add_column_if_not_exists(
+            cursor, "issues", "depends_on", "TEXT"
+        )
+
+    def _add_column_if_not_exists(
+        self,
+        cursor: sqlite3.Cursor,
+        table_name: str,
+        column_name: str,
+        column_type: str,
+        default_value: str = None,
+    ) -> None:
+        """Add a column to a table if it doesn't exist.
+
+        Args:
+            cursor: SQLite cursor
+            table_name: Table to modify
+            column_name: Column to add
+            column_type: SQLite column type
+            default_value: Optional default value for the column
+
+        Raises:
+            ValueError: If table_name, column_name, or column_type contain invalid characters
+        """
+        # SECURITY: Validate identifiers to prevent SQL injection.
+        # Only alphanumeric + underscore allowed (standard SQL identifier rules).
+        import re
+        identifier_pattern = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+        for name, value in [("table_name", table_name), ("column_name", column_name), ("column_type", column_type)]:
+            if not identifier_pattern.match(value):
+                raise ValueError(f"Invalid SQL identifier for {name}: {value}")
+
+        # Check if column exists
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = {row[1] for row in cursor.fetchall()}
+
+        if column_name not in columns:
+            # Add the column
+            if default_value is not None:
+                cursor.execute(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type} DEFAULT {default_value}"
+                )
+            else:
+                cursor.execute(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+                )
+            logger.info(f"Added column {column_name} to {table_name}")
 
     def _create_auth_tables(self, cursor: sqlite3.Cursor) -> None:
         """Create authentication tables (fastapi-users compatible)."""
@@ -198,6 +256,7 @@ class SchemaManager:
                 status TEXT CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
                 priority INTEGER CHECK(priority BETWEEN 0 AND 4),
                 workflow_step INTEGER,
+                depends_on TEXT,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP,
                 UNIQUE(project_id, issue_number)
