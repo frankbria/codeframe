@@ -29,6 +29,7 @@ ALLOWED_ISSUE_FIELDS = {
     "priority",
     "workflow_step",
     "completed_at",
+    "depends_on",
 }
 
 
@@ -154,6 +155,19 @@ class IssueRepository(BaseRepository):
         for issue_row in issue_rows:
             issue_dict = dict(issue_row)
 
+            # Parse depends_on from JSON
+            depends_on = []
+            depends_on_str = issue_dict.get("depends_on")
+            if depends_on_str:
+                try:
+                    parsed = json.loads(depends_on_str)
+                    # Ensure it's a list
+                    if isinstance(parsed, list):
+                        depends_on = parsed
+                except (json.JSONDecodeError, TypeError):
+                    # If parsing fails, return empty list
+                    pass
+
             # Format issue according to API contract
             formatted_issue = {
                 "id": str(issue_dict["id"]),
@@ -162,7 +176,7 @@ class IssueRepository(BaseRepository):
                 "description": issue_dict["description"] or "",
                 "status": issue_dict["status"],
                 "priority": issue_dict["priority"],
-                "depends_on": [],  # TODO: Parse from database if stored
+                "depends_on": depends_on,
                 "proposed_by": "agent",  # Default for now
                 "created_at": self._ensure_rfc3339(issue_dict["created_at"]),
                 "updated_at": self._ensure_rfc3339(issue_dict["created_at"]),  # Use created_at for now
