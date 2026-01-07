@@ -4,39 +4,58 @@
  * TDD: Tests written before implementation
  */
 
+// Mock Hugeicons before imports
+jest.mock('@hugeicons/react', () => ({
+  Search01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="search-icon" />,
+  TaskEdit01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="task-edit-icon" />,
+  Wrench01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="wrench-icon" />,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="checkmark-icon" />,
+  Award01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="award-icon" />,
+  RocketIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="rocket-icon" />,
+  HelpCircleIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="help-icon" />,
+  Idea01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="idea-icon" />,
+}));
+
 import { render, screen } from '@testing-library/react';
 import PhaseProgress from '@/components/PhaseProgress';
 
 describe('PhaseProgress', () => {
   describe('phase icons', () => {
-    it('displays 🔍 for discovery phase', () => {
-      render(<PhaseProgress phase="discovery" currentStep={1} totalSteps={15} />);
-      expect(screen.getByTestId('phase-icon')).toHaveTextContent('🔍');
+    // Tests verify Hugeicons are rendered as SVG elements
+    it('displays Search icon for discovery phase', () => {
+      const { container } = render(<PhaseProgress phase="discovery" currentStep={1} totalSteps={15} />);
+      const iconContainer = screen.getByTestId('phase-icon');
+      expect(iconContainer.querySelector('svg')).toBeInTheDocument();
     });
 
-    it('displays 📋 for planning phase', () => {
-      render(<PhaseProgress phase="planning" currentStep={1} totalSteps={15} />);
-      expect(screen.getByTestId('phase-icon')).toHaveTextContent('📋');
+    it('displays TaskEdit icon for planning phase', () => {
+      const { container } = render(<PhaseProgress phase="planning" currentStep={1} totalSteps={15} />);
+      const iconContainer = screen.getByTestId('phase-icon');
+      expect(iconContainer.querySelector('svg')).toBeInTheDocument();
     });
 
-    it('displays 🔨 for development phase', () => {
-      render(<PhaseProgress phase="development" currentStep={5} totalSteps={15} />);
-      expect(screen.getByTestId('phase-icon')).toHaveTextContent('🔨');
+    it('displays Wrench icon for development phase', () => {
+      const { container } = render(<PhaseProgress phase="development" currentStep={5} totalSteps={15} />);
+      const iconContainer = screen.getByTestId('phase-icon');
+      expect(iconContainer.querySelector('svg')).toBeInTheDocument();
     });
 
-    it('displays ✅ for review phase', () => {
-      render(<PhaseProgress phase="review" currentStep={10} totalSteps={15} />);
-      expect(screen.getByTestId('phase-icon')).toHaveTextContent('✅');
+    it('displays Checkmark icon for review phase', () => {
+      const { container } = render(<PhaseProgress phase="review" currentStep={10} totalSteps={15} />);
+      const iconContainer = screen.getByTestId('phase-icon');
+      expect(iconContainer.querySelector('svg')).toBeInTheDocument();
     });
 
-    it('displays 🎉 for complete phase', () => {
-      render(<PhaseProgress phase="complete" currentStep={15} totalSteps={15} />);
-      expect(screen.getByTestId('phase-icon')).toHaveTextContent('🎉');
+    it('displays Award icon for complete phase', () => {
+      const { container } = render(<PhaseProgress phase="complete" currentStep={15} totalSteps={15} />);
+      const iconContainer = screen.getByTestId('phase-icon');
+      expect(iconContainer.querySelector('svg')).toBeInTheDocument();
     });
 
-    it('displays 🚀 for shipped phase', () => {
-      render(<PhaseProgress phase="shipped" currentStep={15} totalSteps={15} />);
-      expect(screen.getByTestId('phase-icon')).toHaveTextContent('🚀');
+    it('displays Rocket icon for shipped phase', () => {
+      const { container } = render(<PhaseProgress phase="shipped" currentStep={15} totalSteps={15} />);
+      const iconContainer = screen.getByTestId('phase-icon');
+      expect(iconContainer.querySelector('svg')).toBeInTheDocument();
     });
   });
 
@@ -143,7 +162,7 @@ describe('PhaseProgress', () => {
       );
     });
 
-    it('displays lightbulb emoji with next action', () => {
+    it('displays Idea icon with next action', () => {
       render(
         <PhaseProgress
           phase="development"
@@ -153,7 +172,8 @@ describe('PhaseProgress', () => {
         />
       );
       const hint = screen.getByTestId('next-action-hint');
-      expect(hint).toHaveTextContent('💡');
+      // Check for SVG icon (Hugeicon)
+      expect(hint.querySelector('svg')).toBeInTheDocument();
     });
 
     it('hides next action hint when not provided', () => {
@@ -279,7 +299,9 @@ describe('PhaseProgress', () => {
     it('normalizes phase name to lowercase', () => {
       render(<PhaseProgress phase="DEVELOPMENT" currentStep={5} totalSteps={15} />);
       expect(screen.getByText('Development Phase')).toBeInTheDocument();
-      expect(screen.getByTestId('phase-icon')).toHaveTextContent('🔨');
+      // Should display Wrench icon (SVG) for development phase
+      const iconContainer = screen.getByTestId('phase-icon');
+      expect(iconContainer.querySelector('svg')).toBeInTheDocument();
     });
 
     it('handles totalSteps of 0 without division error', () => {

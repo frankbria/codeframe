@@ -9,6 +9,18 @@
 
 'use client';
 
+import type { ComponentType } from 'react';
+import {
+  Search01Icon,
+  TaskEdit01Icon,
+  Wrench01Icon,
+  CheckmarkCircle01Icon,
+  Award01Icon,
+  RocketIcon,
+  HelpCircleIcon,
+  Idea01Icon,
+} from '@hugeicons/react';
+
 export interface PhaseProgressProps {
   phase: string;
   currentStep: number;
@@ -17,7 +29,7 @@ export interface PhaseProgressProps {
 }
 
 export interface PhaseConfig {
-  icon: string;
+  icon: ComponentType<{ className?: string }>;
   label: string;
   bgColor: string;
   textColor: string;
@@ -28,45 +40,46 @@ export interface PhaseConfig {
  * Phase configurations with dark mode compatible colors.
  * Uses shade-50/950 for backgrounds, shade-700/300 for text,
  * and shade-200/800 for borders to support both light and dark themes.
+ * Icons use Hugeicons per project coding guidelines.
  */
 const PHASE_CONFIGS: Record<string, PhaseConfig> = {
   discovery: {
-    icon: '🔍',
+    icon: Search01Icon,
     label: 'Discovery Phase',
     bgColor: 'bg-blue-50 dark:bg-blue-950',
     textColor: 'text-blue-700 dark:text-blue-300',
     borderColor: 'border-blue-200 dark:border-blue-800',
   },
   planning: {
-    icon: '📋',
+    icon: TaskEdit01Icon,
     label: 'Planning Phase',
     bgColor: 'bg-purple-50 dark:bg-purple-950',
     textColor: 'text-purple-700 dark:text-purple-300',
     borderColor: 'border-purple-200 dark:border-purple-800',
   },
   development: {
-    icon: '🔨',
+    icon: Wrench01Icon,
     label: 'Development Phase',
     bgColor: 'bg-green-50 dark:bg-green-950',
     textColor: 'text-green-700 dark:text-green-300',
     borderColor: 'border-green-200 dark:border-green-800',
   },
   review: {
-    icon: '✅',
+    icon: CheckmarkCircle01Icon,
     label: 'Review Phase',
     bgColor: 'bg-yellow-50 dark:bg-yellow-950',
     textColor: 'text-yellow-700 dark:text-yellow-300',
     borderColor: 'border-yellow-200 dark:border-yellow-800',
   },
   complete: {
-    icon: '🎉',
+    icon: Award01Icon,
     label: 'Complete',
     bgColor: 'bg-muted',
     textColor: 'text-muted-foreground',
     borderColor: 'border-border',
   },
   shipped: {
-    icon: '🚀',
+    icon: RocketIcon,
     label: 'Shipped',
     bgColor: 'bg-indigo-50 dark:bg-indigo-950',
     textColor: 'text-indigo-700 dark:text-indigo-300',
@@ -75,7 +88,7 @@ const PHASE_CONFIGS: Record<string, PhaseConfig> = {
 };
 
 const DEFAULT_PHASE_CONFIG: PhaseConfig = {
-  icon: '❓',
+  icon: HelpCircleIcon,
   label: 'Unknown Phase',
   bgColor: 'bg-muted',
   textColor: 'text-muted-foreground',
@@ -98,6 +111,8 @@ export default function PhaseProgress({
   const rawPercentage = totalSteps > 0 ? (currentStep / totalSteps) * 100 : 0;
   const percentage = Math.min(Math.max(Math.round(rawPercentage), 0), 100);
 
+  const IconComponent = config.icon;
+
   return (
     <div
       data-testid="phase-progress"
@@ -105,8 +120,8 @@ export default function PhaseProgress({
     >
       {/* Phase Header */}
       <div className="flex items-center gap-2 mb-2">
-        <span data-testid="phase-icon" className="text-2xl">
-          {config.icon}
+        <span data-testid="phase-icon" className="flex items-center justify-center">
+          <IconComponent className="h-6 w-6" />
         </span>
         <span className="font-semibold text-lg">{config.label}</span>
       </div>
@@ -133,8 +148,9 @@ export default function PhaseProgress({
 
       {/* Next Action Hint */}
       {nextAction && nextAction.trim() && (
-        <div data-testid="next-action-hint" className="text-sm mt-2 opacity-90">
-          💡 Next: {nextAction}
+        <div data-testid="next-action-hint" className="text-sm mt-2 opacity-90 flex items-center gap-1">
+          <Idea01Icon className="h-4 w-4" />
+          <span>Next: {nextAction}</span>
         </div>
       )}
     </div>
