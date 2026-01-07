@@ -289,11 +289,13 @@ class ProjectRepository(BaseRepository):
         cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         self.conn.commit()
 
-        # Log project deletion if user_id is provided
+        rows_affected = cursor.rowcount
+
+        # Log project deletion if user_id is provided and deletion actually occurred
         # NOTE: Audit logging happens after commit, so if audit fails, the deletion
         # is already persisted. This is intentional - we prefer data consistency
         # over audit completeness. Failed audits are logged but don't roll back.
-        if user_id is not None:
+        if user_id is not None and rows_affected > 0:
             # Import locally to avoid circular dependency: audit_logger -> database -> project_repository
             from codeframe.lib.audit_logger import AuditLogger, AuditEventType
             audit = AuditLogger(self._database if self._database else self)

@@ -313,14 +313,16 @@ class IssueRepository(BaseRepository):
     def _parse_depends_on(self, depends_on_str: Optional[str]) -> List[str]:
         """Parse depends_on JSON string into a list of dependency IDs.
 
-        The depends_on field is stored as a JSON array of issue/task IDs (as strings).
-        This method handles NULL values, invalid JSON, and non-list JSON gracefully.
+        The depends_on field is stored as a JSON array of issue/task IDs.
+        IDs may be stored as integers or strings in the JSON; this method
+        coerces all values to strings for consistency with API contracts.
+        Handles NULL values, invalid JSON, and non-list JSON gracefully.
 
         Args:
             depends_on_str: JSON string from database, or None
 
         Returns:
-            List of dependency IDs, or empty list if parsing fails
+            List of dependency IDs as strings, or empty list if parsing fails
         """
         if not depends_on_str:
             return []
@@ -328,7 +330,8 @@ class IssueRepository(BaseRepository):
             parsed = json.loads(depends_on_str)
             # Ensure it's a list - non-list JSON returns empty list
             if isinstance(parsed, list):
-                return parsed
+                # Coerce all values to strings for consistent API contract
+                return [str(x) for x in parsed]
             return []
         except (json.JSONDecodeError, TypeError):
             # Invalid JSON returns empty list
