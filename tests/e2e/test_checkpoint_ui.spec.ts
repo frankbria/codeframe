@@ -24,8 +24,9 @@ test.describe('Checkpoint UI Workflow', () => {
     await page.waitForLoadState('networkidle');
 
     // Wait for API calls to complete
+    // Note: Must use /api/projects/ to avoid matching the HTML page response at /projects/
     await page.waitForResponse(response =>
-      response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
+      response.url().includes(`/api/projects/${PROJECT_ID}`) && response.status() === 200,
       { timeout: 10000 }
     ).catch(() => {});
 
