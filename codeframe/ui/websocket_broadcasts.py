@@ -81,6 +81,7 @@ async def broadcast_agent_status(
     current_task_id: Optional[int] = None,
     current_task_title: Optional[str] = None,
     progress: Optional[int] = None,
+    tasks_completed: Optional[int] = None,
 ) -> None:
     """
     Broadcast agent status change to connected clients.
@@ -93,6 +94,7 @@ async def broadcast_agent_status(
         current_task_id: Optional ID of current task
         current_task_title: Optional title of current task
         progress: Optional progress percentage (0-100)
+        tasks_completed: Optional count of tasks completed by this agent
     """
     message = {
         "type": "agent_status_changed",
@@ -110,6 +112,9 @@ async def broadcast_agent_status(
 
     if progress is not None:
         message["progress"] = progress
+
+    if tasks_completed is not None:
+        message["tasks_completed"] = tasks_completed
 
     try:
         await manager.broadcast(message, project_id=project_id)

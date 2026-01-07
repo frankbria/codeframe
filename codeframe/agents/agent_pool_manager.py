@@ -254,9 +254,10 @@ class AgentPoolManager:
             # Increment tasks completed
             self.agent_pool[agent_id]["tasks_completed"] += 1
             agent_type = self.agent_pool[agent_id]["agent_type"]
+            tasks_completed = self.agent_pool[agent_id]["tasks_completed"]
 
             logger.debug(
-                f"Agent {agent_id} marked idle (completed {self.agent_pool[agent_id]['tasks_completed']} tasks)"
+                f"Agent {agent_id} marked idle (completed {tasks_completed} tasks)"
             )
 
             # Broadcast status change to connected clients
@@ -266,6 +267,7 @@ class AgentPoolManager:
                 agent_type=agent_type,
                 event_type="agent_status_changed",
                 status="idle",
+                tasks_completed=tasks_completed,
             )
 
     def mark_agent_blocked(self, agent_id: str, blocked_by: list) -> None:
@@ -374,6 +376,7 @@ class AgentPoolManager:
         status: str = None,
         current_task_id: int = None,
         current_task_title: str = None,
+        tasks_completed: int = None,
     ) -> None:
         """
         Helper to broadcast agent lifecycle events (handles async safely).
@@ -386,6 +389,7 @@ class AgentPoolManager:
             status: Agent status for status_changed events (idle/working/blocked)
             current_task_id: ID of current task (for status_changed events)
             current_task_title: Title of current task (for status_changed events)
+            tasks_completed: Number of tasks completed by this agent (for idle status)
         """
         if not self.ws_manager:
             return
@@ -394,10 +398,10 @@ class AgentPoolManager:
             loop = asyncio.get_running_loop()
 
             if event_type == "agent_created":
-                tasks_completed = self.agent_pool.get(agent_id, {}).get("tasks_completed", 0)
+                agent_tasks_completed = self.agent_pool.get(agent_id, {}).get("tasks_completed", 0)
                 loop.create_task(
                     broadcast_agent_created(
-                        self.ws_manager, project_id, agent_id, agent_type, tasks_completed
+                        self.ws_manager, project_id, agent_id, agent_type, agent_tasks_completed
                     )
                 )
             elif event_type == "agent_retired":
@@ -411,6 +415,7 @@ class AgentPoolManager:
                         status=status or "idle",
                         current_task_id=current_task_id,
                         current_task_title=current_task_title,
+                        tasks_completed=tasks_completed,
                     )
                 )
 

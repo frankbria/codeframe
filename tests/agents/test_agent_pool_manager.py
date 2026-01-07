@@ -541,4 +541,4 @@ class TestAgentStatusBroadcasting:
         # Get the last idle broadcast
         last_call = mock_broadcast.call_args_list[-1]
         assert last_call.kwargs["status"] == "idle"
-        # Note: tasks_completed may be in progress field or metadata
+        assert last_call.kwargs["tasks_completed"] == 3
