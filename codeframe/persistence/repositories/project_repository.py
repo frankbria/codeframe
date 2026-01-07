@@ -246,7 +246,11 @@ class ProjectRepository(BaseRepository):
         rows_affected = cursor.rowcount
 
         # Log project update if user_id is provided
+        # NOTE: Audit logging happens after commit, so if audit fails, the update
+        # is already persisted. This is intentional - we prefer data consistency
+        # over audit completeness. Failed audits are logged but don't roll back.
         if user_id is not None and rows_affected > 0:
+            # Import locally to avoid circular dependency: audit_logger -> database -> project_repository
             from codeframe.lib.audit_logger import AuditLogger, AuditEventType
             audit = AuditLogger(self._database if self._database else self)
             audit.log_project_event(
@@ -286,7 +290,11 @@ class ProjectRepository(BaseRepository):
         self.conn.commit()
 
         # Log project deletion if user_id is provided
+        # NOTE: Audit logging happens after commit, so if audit fails, the deletion
+        # is already persisted. This is intentional - we prefer data consistency
+        # over audit completeness. Failed audits are logged but don't roll back.
         if user_id is not None:
+            # Import locally to avoid circular dependency: audit_logger -> database -> project_repository
             from codeframe.lib.audit_logger import AuditLogger, AuditEventType
             audit = AuditLogger(self._database if self._database else self)
             audit.log_project_event(

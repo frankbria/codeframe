@@ -98,7 +98,18 @@ class SchemaManager:
             column_name: Column to add
             column_type: SQLite column type
             default_value: Optional default value for the column
+
+        Raises:
+            ValueError: If table_name, column_name, or column_type contain invalid characters
         """
+        # SECURITY: Validate identifiers to prevent SQL injection.
+        # Only alphanumeric + underscore allowed (standard SQL identifier rules).
+        import re
+        identifier_pattern = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+        for name, value in [("table_name", table_name), ("column_name", column_name), ("column_type", column_type)]:
+            if not identifier_pattern.match(value):
+                raise ValueError(f"Invalid SQL identifier for {name}: {value}")
+
         # Check if column exists
         cursor.execute(f"PRAGMA table_info({table_name})")
         columns = {row[1] for row in cursor.fetchall()}

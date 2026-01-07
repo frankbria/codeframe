@@ -155,18 +155,8 @@ class IssueRepository(BaseRepository):
         for issue_row in issue_rows:
             issue_dict = dict(issue_row)
 
-            # Parse depends_on from JSON
-            depends_on = []
-            depends_on_str = issue_dict.get("depends_on")
-            if depends_on_str:
-                try:
-                    parsed = json.loads(depends_on_str)
-                    # Ensure it's a list
-                    if isinstance(parsed, list):
-                        depends_on = parsed
-                except (json.JSONDecodeError, TypeError):
-                    # If parsing fails, return empty list
-                    pass
+            # Parse depends_on from JSON using centralized helper
+            depends_on = self._parse_depends_on(issue_dict.get("depends_on"))
 
             # Format issue according to API contract
             formatted_issue = {
@@ -319,6 +309,30 @@ class IssueRepository(BaseRepository):
         )
 
 
+
+    def _parse_depends_on(self, depends_on_str: Optional[str]) -> List[str]:
+        """Parse depends_on JSON string into a list of dependency IDs.
+
+        The depends_on field is stored as a JSON array of issue/task IDs (as strings).
+        This method handles NULL values, invalid JSON, and non-list JSON gracefully.
+
+        Args:
+            depends_on_str: JSON string from database, or None
+
+        Returns:
+            List of dependency IDs, or empty list if parsing fails
+        """
+        if not depends_on_str:
+            return []
+        try:
+            parsed = json.loads(depends_on_str)
+            # Ensure it's a list - non-list JSON returns empty list
+            if isinstance(parsed, list):
+                return parsed
+            return []
+        except (json.JSONDecodeError, TypeError):
+            # Invalid JSON returns empty list
+            return []
 
     def _row_to_issue(self, row: Union[sqlite3.Row, aiosqlite.Row]) -> Issue:
         """Convert a database row to an Issue object.
