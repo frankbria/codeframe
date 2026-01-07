@@ -52,7 +52,15 @@ jest.mock('@/components/PRDModal', () => ({
 }));
 jest.mock('@/components/TaskTreeView', () => ({
   __esModule: true,
-  default: () => <div>TaskTreeView Mock</div>,
+  default: () => <div data-testid="task-tree-view">TaskTreeView Mock</div>,
+}));
+jest.mock('@/components/TaskList', () => ({
+  __esModule: true,
+  default: () => <div data-testid="task-list-component">TaskList Mock</div>,
+}));
+jest.mock('@/components/TaskReview', () => ({
+  __esModule: true,
+  default: () => <div data-testid="task-review-component">TaskReview Mock</div>,
 }));
 jest.mock('@/components/DiscoveryProgress', () => ({
   __esModule: true,
@@ -1214,6 +1222,207 @@ describe('Dashboard with AgentStateProvider', () => {
 
       // Should show "Back to Projects" or similar text
       expect(screen.getByText(/Projects/i)).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Feature: Phase-Aware Dashboard Integration (016-6)
+   * Tests for phase-dependent component rendering and tab badges
+   */
+  describe('Phase-Aware Dashboard Integration (016-6)', () => {
+    /**
+     * Test: Shows TaskReview in Tasks tab during planning phase
+     */
+    it('renders TaskReview component in Tasks tab during planning phase', async () => {
+      const planningPhaseData = {
+        ...mockProjectData,
+        phase: 'planning',
+      };
+
+      (api.projectsApi.getStatus as jest.Mock).mockResolvedValue({
+        data: planningPhaseData,
+      });
+
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Navigate to Tasks tab
+      const tasksTab = screen.getByTestId('tasks-tab');
+      fireEvent.click(tasksTab);
+
+      // Should show TaskReview component
+      await waitFor(() => {
+        expect(screen.getByTestId('task-review-component')).toBeInTheDocument();
+      });
+
+      // Should show "Awaiting Approval" badge
+      expect(screen.getByText(/Awaiting Approval/i)).toBeInTheDocument();
+    });
+
+    /**
+     * Test: Shows TaskList in Tasks tab during active/development phase
+     */
+    it('renders TaskList component in Tasks tab during active phase', async () => {
+      const activePhaseData = {
+        ...mockProjectData,
+        phase: 'active',
+      };
+
+      (api.projectsApi.getStatus as jest.Mock).mockResolvedValue({
+        data: activePhaseData,
+      });
+
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Navigate to Tasks tab
+      const tasksTab = screen.getByTestId('tasks-tab');
+      fireEvent.click(tasksTab);
+
+      // Should show TaskList component
+      await waitFor(() => {
+        expect(screen.getByTestId('task-list-component')).toBeInTheDocument();
+      });
+
+      // Should show "In Development" badge
+      expect(screen.getByText(/In Development/i)).toBeInTheDocument();
+    });
+
+    /**
+     * Test: Shows TaskTreeView in Tasks tab during discovery phase
+     */
+    it('renders TaskTreeView component in Tasks tab during discovery phase', async () => {
+      const discoveryPhaseData = {
+        ...mockProjectData,
+        phase: 'discovery',
+      };
+
+      (api.projectsApi.getStatus as jest.Mock).mockResolvedValue({
+        data: discoveryPhaseData,
+      });
+
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Navigate to Tasks tab
+      const tasksTab = screen.getByTestId('tasks-tab');
+      fireEvent.click(tasksTab);
+
+      // Should show TaskTreeView component (fallback)
+      await waitFor(() => {
+        expect(screen.getByTestId('task-tree-view')).toBeInTheDocument();
+      });
+    });
+
+    /**
+     * Test: Tasks tab shows "Review" badge during planning phase
+     */
+    it('shows "Review" badge on Tasks tab during planning phase', async () => {
+      const planningPhaseData = {
+        ...mockProjectData,
+        phase: 'planning',
+      };
+
+      (api.projectsApi.getStatus as jest.Mock).mockResolvedValue({
+        data: planningPhaseData,
+      });
+      (api.projectsApi.getIssues as jest.Mock).mockResolvedValue({
+        data: { issues: [], total_issues: 2, total_tasks: 5 },
+      });
+
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Should show planning badge with task count
+      await waitFor(() => {
+        expect(screen.getByTestId('tasks-tab-badge-planning')).toBeInTheDocument();
+        expect(screen.getByTestId('tasks-tab-badge-planning')).toHaveTextContent('Review (5)');
+      });
+    });
+
+    /**
+     * Test: Tasks tab shows progress badge during active phase
+     */
+    it('shows progress badge on Tasks tab during active phase', async () => {
+      const activePhaseData = {
+        ...mockProjectData,
+        phase: 'active',
+      };
+
+      (api.projectsApi.getStatus as jest.Mock).mockResolvedValue({
+        data: activePhaseData,
+      });
+
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Should show development badge with progress
+      await waitFor(() => {
+        expect(screen.getByTestId('tasks-tab-badge-development')).toBeInTheDocument();
+      });
+    });
+
+    /**
+     * Test: No badge shown during discovery phase
+     */
+    it('shows no badge on Tasks tab during discovery phase', async () => {
+      const discoveryPhaseData = {
+        ...mockProjectData,
+        phase: 'discovery',
+      };
+
+      (api.projectsApi.getStatus as jest.Mock).mockResolvedValue({
+        data: discoveryPhaseData,
+      });
+
+      renderWithSWR(
+        <AgentStateProvider projectId={1}>
+          <Dashboard projectId={1} />
+        </AgentStateProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Test Project/i)).toBeInTheDocument();
+      });
+
+      // Should not show any phase-specific badge
+      expect(screen.queryByTestId('tasks-tab-badge-planning')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('tasks-tab-badge-development')).not.toBeInTheDocument();
     });
   });
 });
