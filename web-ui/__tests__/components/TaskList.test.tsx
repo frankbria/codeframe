@@ -147,9 +147,9 @@ describe('TaskList', () => {
       // Look for buttons with specific text patterns (including count)
       const buttons = screen.getAllByRole('button');
       const filterButtons = buttons.filter(
-        (btn) => btn.textContent?.match(/All|In Progress|Blocked|Completed/i)
+        (btn) => btn.textContent?.match(/All|Pending|In Progress|Blocked|Completed/i)
       );
-      expect(filterButtons.length).toBeGreaterThanOrEqual(4);
+      expect(filterButtons.length).toBeGreaterThanOrEqual(5);
     });
 
     it('should filter to show only in-progress tasks when filter selected', async () => {
@@ -238,9 +238,26 @@ describe('TaskList', () => {
 
       // Filter buttons should show counts in format "Label (N)"
       expect(screen.getByText(/All \(4\)/)).toBeInTheDocument();
+      expect(screen.getByText(/Pending \(1\)/)).toBeInTheDocument();
       expect(screen.getByText(/In Progress \(1\)/)).toBeInTheDocument();
       expect(screen.getByText(/Blocked \(1\)/)).toBeInTheDocument();
       expect(screen.getByText(/Completed \(1\)/)).toBeInTheDocument();
+    });
+
+    it('should filter to show only pending tasks when filter selected', async () => {
+      const user = userEvent.setup();
+      render(<TaskList {...defaultProps} />);
+
+      // Find the Pending filter button
+      const pendingButton = screen.getAllByRole('button').find(
+        (btn) => btn.textContent?.includes('Pending')
+      );
+      await user.click(pendingButton!);
+
+      expect(screen.getByText('Setup CI/CD pipeline')).toBeInTheDocument();
+      expect(screen.queryByText('Implement authentication')).not.toBeInTheDocument();
+      expect(screen.queryByText('Add login UI')).not.toBeInTheDocument();
+      expect(screen.queryByText('Write integration tests')).not.toBeInTheDocument();
     });
   });
 

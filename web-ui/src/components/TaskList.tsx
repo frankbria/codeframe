@@ -12,6 +12,7 @@
 import { useState, useMemo, useCallback, memo } from 'react';
 import { useAgentState } from '@/hooks/useAgentState';
 import QualityGateStatus from '@/components/quality-gates/QualityGateStatus';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import type { Task, TaskStatus } from '@/types/agentState';
 
 export interface TaskListProps {
@@ -27,6 +28,7 @@ interface FilterConfig {
 
 const FILTER_OPTIONS: FilterConfig[] = [
   { label: 'All', status: 'all' },
+  { label: 'Pending', status: 'pending' },
   { label: 'In Progress', status: 'in_progress' },
   { label: 'Blocked', status: 'blocked' },
   { label: 'Completed', status: 'completed' },
@@ -144,7 +146,9 @@ const TaskCard = memo(function TaskCard({
 
           {showQualityGates && (
             <div className="mt-2">
-              <QualityGateStatus taskId={task.id} />
+              <ErrorBoundary fallback={<div className="text-destructive text-xs">Failed to load quality gates</div>}>
+                <QualityGateStatus taskId={task.id} />
+              </ErrorBoundary>
             </div>
           )}
         </div>
@@ -226,7 +230,7 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
         className="text-center py-8 text-muted-foreground"
       >
         <p>No tasks available</p>
-        <p className="text-sm mt-2">Tasks will appear here once the project enters development phase</p>
+        <p className="text-sm mt-2">Tasks will appear here during the development phase</p>
       </div>
     );
   }

@@ -164,7 +164,17 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const IDLE_REFRESH_INTERVAL = 30000;
   const refreshInterval = isActiveWork ? ACTIVE_REFRESH_INTERVAL : IDLE_REFRESH_INTERVAL;
 
-  // Fetch project status with adaptive polling
+  // ============================================================================
+  // SWR Data Fetching with Adaptive Polling Strategy (016-6)
+  // ============================================================================
+  // Polling Strategy:
+  // - Active work (agents working or tasks in progress): 5-second refresh
+  // - Idle phases (no active work): 30-second refresh
+  // - Static data (PRD): Manual refresh only
+  // This reduces unnecessary API calls while keeping UI responsive during work.
+  // ============================================================================
+
+  // Fetch project status - adaptive polling based on activity
   const { data: projectData } = useSWR(
     `/projects/${projectId}/status`,
     () => projectsApi.getStatus(projectId).then((res) => res.data),
@@ -175,7 +185,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
     }
   );
 
-  // Fetch blockers with adaptive polling
+  // Fetch blockers - adaptive polling (important during active work)
   const { data: blockersData, mutate: mutateBlockers } = useSWR(
     `/projects/${projectId}/blockers`,
     () => blockersApi.list(projectId).then((res) => res.data?.blockers || []),
@@ -185,18 +195,18 @@ export default function Dashboard({ projectId }: DashboardProps) {
     }
   );
 
-  // Fetch PRD data (cf-26) - less frequent, only refresh on focus
+  // Fetch PRD data - static content, manual refresh only
   const { data: prdData, mutate: mutatePRD } = useSWR<PRDResponse>(
     `/projects/${projectId}/prd`,
     () => projectsApi.getPRD(projectId).then((res) => res.data),
     {
       shouldRetryOnError: false,
       revalidateOnFocus: true,
-      refreshInterval: 0, // Manual refresh only for PRD
+      refreshInterval: 0, // PRD rarely changes, no auto-refresh needed
     }
   );
 
-  // Fetch issues/tasks data (cf-26) with adaptive polling
+  // Fetch issues/tasks data - adaptive polling for task status updates
   const { data: issuesData } = useSWR<IssuesResponse>(
     `/projects/${projectId}/issues`,
     () => projectsApi.getIssues(projectId).then((res) => res.data),
