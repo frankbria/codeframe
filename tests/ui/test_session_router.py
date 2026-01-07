@@ -33,9 +33,9 @@ def test_client():
     os.environ["WORKSPACE_ROOT"] = str(workspace_root)
 
     # Force fresh imports by removing cached modules
-    # Clear all codeframe modules to ensure clean state
-    modules_to_clear = [k for k in list(sys.modules.keys()) if k.startswith("codeframe")]
-    for mod in modules_to_clear:
+    # Save original modules so we can restore them after test
+    saved_modules = {k: v for k, v in sys.modules.items() if k.startswith("codeframe")}
+    for mod in list(saved_modules.keys()):
         del sys.modules[mod]
 
     # Now import with fresh state
@@ -111,6 +111,14 @@ def test_client():
         os.environ["WORKSPACE_ROOT"] = original_workspace_root
     else:
         os.environ.pop("WORKSPACE_ROOT", None)
+
+    # Restore original modules to avoid affecting other tests
+    # First clear any modules we imported during this test
+    test_modules = [k for k in sys.modules.keys() if k.startswith("codeframe")]
+    for mod in test_modules:
+        del sys.modules[mod]
+    # Then restore the original modules
+    sys.modules.update(saved_modules)
 
 
 class TestSessionEndpointPhaseAndStep:
