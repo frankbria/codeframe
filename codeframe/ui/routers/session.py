@@ -15,8 +15,26 @@ from codeframe.ui.dependencies import get_db
 from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
 from codeframe.core.session_manager import SessionManager
+from codeframe.core.phase_manager import PHASE_STEPS
 
 router = APIRouter(prefix="/api/projects", tags=["session"])
+
+
+def _get_step_info(phase: str) -> Dict[str, Any]:
+    """Get step information for a phase.
+
+    Args:
+        phase: Current project phase
+
+    Returns:
+        Dict with current, total, and description fields
+    """
+    step_config = PHASE_STEPS.get(phase, {"total": 1, "description": "Unknown"})
+    return {
+        "current": 1,  # Default to step 1; future enhancement can track actual progress
+        "total": step_config["total"],
+        "description": step_config["description"],
+    }
 
 
 @router.get("/{project_id}/session")
@@ -53,6 +71,9 @@ async def get_session_state(
     if not db.user_has_project_access(current_user.id, project_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # Extract phase information
+    current_phase = project.get("phase", "discovery")
+
     # Get project path
     workspace_path = project.get("workspace_path")
     if not workspace_path:
@@ -65,6 +86,8 @@ async def get_session_state(
             "next_actions": [],
             "progress_pct": 0.0,
             "active_blockers": [],
+            "phase": current_phase,
+            "step": _get_step_info(current_phase),
         }
 
     # Load session state
@@ -81,6 +104,8 @@ async def get_session_state(
             "next_actions": [],
             "progress_pct": 0.0,
             "active_blockers": [],
+            "phase": current_phase,
+            "step": _get_step_info(current_phase),
         }
 
     # Return session state (omit completed_tasks and current_plan for API response)
@@ -92,4 +117,6 @@ async def get_session_state(
         "next_actions": session.get("next_actions", []),
         "progress_pct": session.get("progress_pct", 0.0),
         "active_blockers": session.get("active_blockers", []),
+        "phase": current_phase,
+        "step": _get_step_info(current_phase),
     }
