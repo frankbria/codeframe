@@ -63,6 +63,13 @@ export const projectsApi = {
     api.post<{ success: boolean; message: string }>(
       `/api/projects/${projectId}/planning/generate-tasks`
     ),
+  approveTaskBreakdown: (projectId: number, taskIds: string[]) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      approved_count: number;
+      project_phase: string;
+    }>(`/api/projects/${projectId}/tasks/approve`, { task_ids: taskIds }),
 };
 
 export const agentsApi = {

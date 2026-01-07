@@ -137,3 +137,20 @@ export interface DiscoveryProgressResponse {
   phase: ProjectPhase;
   discovery: DiscoveryInfo | null;
 }
+
+/**
+ * Task approval request payload for planning phase
+ */
+export interface TaskApprovalRequest {
+  task_ids: string[];
+}
+
+/**
+ * Task approval response from planning phase
+ */
+export interface TaskApprovalResponse {
+  success: boolean;
+  message: string;
+  approved_count: number;
+  project_phase: ProjectPhase;
+}
