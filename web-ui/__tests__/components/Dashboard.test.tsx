@@ -11,6 +11,18 @@ import * as api from '@/lib/api';
 import * as websocket from '@/lib/websocket';
 import * as agentAssignment from '@/api/agentAssignment';
 
+// Mock Hugeicons (used by PhaseProgress component)
+jest.mock('@hugeicons/react', () => ({
+  Search01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="search-icon" />,
+  TaskEdit01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="task-edit-icon" />,
+  Wrench01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="wrench-icon" />,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="checkmark-icon" />,
+  Award01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="award-icon" />,
+  RocketIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="rocket-icon" />,
+  HelpCircleIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="help-icon" />,
+  Idea01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="idea-icon" />,
+}));
+
 // Create a shared mock WebSocket client that will be used across all tests
 const sharedMockWsClient = {
   connect: jest.fn(),

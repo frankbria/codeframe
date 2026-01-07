@@ -25,8 +25,16 @@ jest.mock('@/lib/api-client', () => ({
 }));
 jest.mock('@hugeicons/react', () => ({
   Cancel01Icon: () => <span data-testid="cancel-icon">×</span>,
-  CheckmarkCircle01Icon: () => <span data-testid="check-icon">✓</span>,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="check-icon" />,
   Alert02Icon: () => <span data-testid="alert-icon">!</span>,
+  // PhaseProgress icons
+  Search01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="search-icon" />,
+  TaskEdit01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="task-edit-icon" />,
+  Wrench01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="wrench-icon" />,
+  Award01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="award-icon" />,
+  RocketIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="rocket-icon" />,
+  HelpCircleIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="help-icon" />,
+  Idea01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="idea-icon" />,
 }));
 jest.mock('@/components/ChatInterface', () => ({
   __esModule: true,
