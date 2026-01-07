@@ -180,6 +180,9 @@ async def generate_planning_background(project_id: int, db: Database, api_key: s
         db: Database instance
         api_key: API key for Claude
     """
+    # Configurable timeout for AI operations (default 2 minutes per operation)
+    planning_timeout = float(os.environ.get("PLANNING_OPERATION_TIMEOUT", "120"))
+
     try:
         logger.info(f"Starting planning automation for project {project_id}")
 
@@ -189,18 +192,24 @@ async def generate_planning_background(project_id: int, db: Database, api_key: s
         # Initialize LeadAgent for issue/task generation
         agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
 
-        # Stage 2: Generate issues from PRD
+        # Stage 2: Generate issues from PRD (with timeout)
         logger.info(f"Generating issues for project {project_id}")
-        issues = await asyncio.to_thread(agent.generate_issues, sprint_number=1)
+        issues = await asyncio.wait_for(
+            asyncio.to_thread(agent.generate_issues, sprint_number=1),
+            timeout=planning_timeout
+        )
         issue_count = len(issues) if issues else 0
 
         # Stage 3: Broadcast issues generated
         await broadcast_issues_generated(manager, project_id, issue_count)
         logger.info(f"Generated {issue_count} issues for project {project_id}")
 
-        # Stage 4: Decompose PRD into tasks
+        # Stage 4: Decompose PRD into tasks (with timeout)
         logger.info(f"Decomposing PRD into tasks for project {project_id}")
-        decomposition_result = await asyncio.to_thread(agent.decompose_prd)
+        decomposition_result = await asyncio.wait_for(
+            asyncio.to_thread(agent.decompose_prd),
+            timeout=planning_timeout
+        )
         task_count = decomposition_result.get("tasks", 0) if decomposition_result else 0
 
         # Stage 5: Broadcast tasks decomposed
@@ -210,6 +219,14 @@ async def generate_planning_background(project_id: int, db: Database, api_key: s
         # Stage 6: Broadcast tasks ready for review
         await broadcast_tasks_ready(manager, project_id, task_count)
         logger.info(f"Planning automation completed for project {project_id}")
+
+    except asyncio.TimeoutError:
+        logger.error(
+            f"Planning automation timed out for project {project_id} "
+            f"(timeout={planning_timeout}s)",
+            exc_info=True
+        )
+        await broadcast_planning_failed(manager, project_id, "Planning operation timed out")
 
     except Exception as e:
         logger.error(f"Planning automation failed for project {project_id}: {e}", exc_info=True)

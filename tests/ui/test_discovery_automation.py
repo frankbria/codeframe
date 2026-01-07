@@ -266,6 +266,79 @@ class TestPlanningAutomationErrorHandling:
         # Phase should not be updated on error
         mock_db.update_project.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_generate_issues_timeout_broadcasts_failure(
+        self, mock_db, mock_manager
+    ):
+        """Test that timeout during generate_issues broadcasts planning_failed."""
+        import asyncio
+
+        mock_agent = MagicMock()
+        # Simulate a slow operation that will timeout
+        async def slow_generate_issues(*args, **kwargs):
+            await asyncio.sleep(10)  # Longer than timeout
+            return []
+
+        with patch("codeframe.ui.routers.discovery.manager", mock_manager), \
+             patch("codeframe.ui.routers.discovery.LeadAgent", return_value=mock_agent), \
+             patch("codeframe.ui.routers.discovery.asyncio.to_thread", side_effect=slow_generate_issues), \
+             patch.dict("os.environ", {"PLANNING_OPERATION_TIMEOUT": "0.1"}):
+            await generate_planning_background(
+                project_id=1, db=mock_db, api_key="test-key"
+            )
+
+        calls = mock_manager.broadcast.call_args_list
+        failure_calls = [
+            call for call in calls
+            if call[0][0].get("type") == "planning_failed"
+        ]
+
+        assert len(failure_calls) == 1
+        message = failure_calls[0][0][0]
+        assert message["type"] == "planning_failed"
+        assert "timed out" in message["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_decompose_prd_timeout_broadcasts_failure(
+        self, mock_db, mock_manager
+    ):
+        """Test that timeout during decompose_prd broadcasts planning_failed."""
+        import asyncio
+
+        mock_agent = MagicMock()
+        mock_agent.generate_issues.return_value = [MagicMock(id=1)]
+
+        call_count = 0
+
+        async def conditional_slow(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call (generate_issues) returns quickly
+                return [MagicMock(id=1)]
+            else:
+                # Second call (decompose_prd) times out
+                await asyncio.sleep(10)
+                return {}
+
+        with patch("codeframe.ui.routers.discovery.manager", mock_manager), \
+             patch("codeframe.ui.routers.discovery.LeadAgent", return_value=mock_agent), \
+             patch("codeframe.ui.routers.discovery.asyncio.to_thread", side_effect=conditional_slow), \
+             patch.dict("os.environ", {"PLANNING_OPERATION_TIMEOUT": "0.1"}):
+            await generate_planning_background(
+                project_id=1, db=mock_db, api_key="test-key"
+            )
+
+        calls = mock_manager.broadcast.call_args_list
+        failure_calls = [
+            call for call in calls
+            if call[0][0].get("type") == "planning_failed"
+        ]
+
+        assert len(failure_calls) == 1
+        message = failure_calls[0][0][0]
+        assert "timed out" in message["error"].lower()
+
 
 class TestPRDCompletionTrigger:
     """Tests for planning automation trigger after PRD completion."""
