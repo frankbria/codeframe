@@ -1,8 +1,17 @@
 # cf-47: Dashboard Data Integration Gaps
 
 **Priority**: P1 (Post-Sprint 3)
-**Status**: Identified (2025-10-19)
+**Status**: ✅ RESOLVED (2026-01-06)
 **Type**: Bug / Feature Gap
+**Resolution**: All mock data replaced with real API data via state management refactor
+
+> **RESOLVED**: This issue was addressed during Sprint 5.2 (Phase 5.2 State Management)
+> and subsequent improvements. The Dashboard now uses:
+> - `useAgentState()` hook for agents, tasks, and activity
+> - `blockersApi.list()` for real blockers from database
+> - WebSocket integration for real-time updates
+>
+> See `web-ui/src/components/Dashboard.tsx` for implementation.
 
 ## Context
 
@@ -116,10 +125,10 @@ ASYNC - Task #25: "Use Material UI or Ant Design for form components?"
 
 ## Acceptance Criteria
 
-- [ ] No mock data visible on Dashboard
-- [ ] All sections show real database data OR helpful empty state messages
-- [ ] No "Failed to load" errors
-- [ ] Dashboard accurately reflects current project state
+- [x] No mock data visible on Dashboard
+- [x] All sections show real database data OR helpful empty state messages
+- [x] No "Failed to load" errors
+- [x] Dashboard accurately reflects current project state
 
 ## Testing
 

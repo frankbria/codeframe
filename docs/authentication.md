@@ -1,6 +1,9 @@
 # Authentication & Authorization Guide
 
-This document provides comprehensive guidance on CodeFRAME's authentication and authorization system, implemented to address OWASP A01 - Broken Access Control vulnerability.
+This document provides comprehensive guidance on CodeFRAME's authentication and authorization system.
+
+**Last Updated**: 2026-01-06
+**Status**: Production Ready (FastAPI Users with JWT)
 
 ## Table of Contents
 
@@ -9,65 +12,65 @@ This document provides comprehensive guidance on CodeFRAME's authentication and 
 - [Authorization](#authorization)
 - [Audit Logging](#audit-logging)
 - [Security Considerations](#security-considerations)
-- [Migration Guide](#migration-guide)
 - [API Reference](#api-reference)
 
 ---
 
 ## Overview
 
-CodeFRAME implements a layered security architecture:
+CodeFRAME implements a layered security architecture using **FastAPI Users** with JWT tokens:
 
-1. **Authentication Layer**: Better Auth v1.4.7 (frontend) + FastAPI dependencies (backend)
+1. **Authentication Layer**: FastAPI Users with JWT Bearer tokens
 2. **Authorization Layer**: Project ownership model with role-based access control
 3. **Audit Layer**: Comprehensive logging of security-relevant events
 
 ### Key Features
 
-- ✅ **Email/Password Authentication**: Secure user registration and login
-- ✅ **Session Management**: JWT tokens with configurable lifetime
-- ✅ **Project Ownership**: Automatic owner assignment on project creation
-- ✅ **Role-Based Access**: Owner, collaborator, and viewer roles
-- ✅ **Audit Logging**: Comprehensive logging of auth/authz events
+- **Email/Password Authentication**: Secure user registration and login
+- **JWT Tokens**: Stateless authentication with configurable lifetime
+- **Project Ownership**: Automatic owner assignment on project creation
+- **Role-Based Access**: Owner, collaborator, and viewer roles
+- **WebSocket Authentication**: Token-based auth via query parameter
+- **Audit Logging**: Comprehensive logging of auth/authz events
 
 ---
 
 ## Authentication
 
-### Frontend (Better Auth v1.4.7)
+### Architecture
 
-Better Auth provides the frontend authentication UI and session management.
+CodeFRAME uses **FastAPI Users** for authentication, a production-ready authentication library that provides:
 
-#### Installation
+- JWT token generation and validation
+- User registration and management
+- Password hashing (bcrypt)
+- SQLAlchemy integration
 
-```bash
-cd web-ui
-npm install better-auth@1.4.7
+### Backend Auth Module
+
+```
+codeframe/auth/
+├── __init__.py          # Module exports
+├── dependencies.py      # FastAPI dependencies (get_current_user, etc.)
+├── manager.py           # UserManager, JWT configuration
+├── models.py            # SQLAlchemy User model
+├── router.py            # Auth routes (/auth/jwt/login, /auth/register)
+└── schemas.py           # Pydantic schemas (UserCreate, UserRead, UserUpdate)
 ```
 
-#### Configuration
+### JWT Configuration
 
-Better Auth is configured to use the SQLite database with the following tables:
-- `users` - User accounts (email, password, name)
-- `sessions` - Active sessions with 7-day expiry
-- `verification_tokens` - Email verification tokens
-- `accounts` - OAuth provider accounts (future)
+Tokens are configured in `codeframe/auth/manager.py`:
 
-#### Session Management
+- **Algorithm**: HS256
+- **Lifetime**: 1 hour (configurable)
+- **Audience**: `fastapi-users:auth`
 
-- **Session Duration**: 7 days from login
-- **Session Storage**: SQLite database (sessions table)
-- **Session Cleanup**: Automatic cleanup on expiry check
-- **Session Token**: Stored in HTTP-only cookie
-
-### Backend (FastAPI Dependencies)
-
-The backend uses FastAPI dependency injection for authentication.
-
-#### get_current_user Dependency
+### get_current_user Dependency
 
 ```python
-from codeframe.ui.auth import get_current_user, User
+from codeframe.auth.dependencies import get_current_user
+from codeframe.auth.models import User
 
 @router.get("/api/protected")
 async def protected_endpoint(current_user: User = Depends(get_current_user)):
@@ -77,36 +80,65 @@ async def protected_endpoint(current_user: User = Depends(get_current_user)):
 
 **How it works**:
 1. Extracts Bearer token from Authorization header
-2. Validates token against sessions table
-3. Checks session expiry
-4. Returns User model with user information
-5. Raises 401 Unauthorized if invalid/expired
+2. Decodes and validates JWT using PyJWT
+3. Checks token expiry
+4. Fetches user from database
+5. Returns User model with user information
+6. Raises 401 Unauthorized if invalid/expired
 
-#### User Model
+### User Model
 
 ```python
-from pydantic import BaseModel
+from sqlalchemy.orm import DeclarativeBase
+from fastapi_users.db import SQLAlchemyBaseUserTable
 
-class User(BaseModel):
-    id: int              # User's database ID
-    email: str           # User's email address
-    name: Optional[str]  # User's display name
+class User(SQLAlchemyBaseUserTable[int], Base):
+    """User model with FastAPI Users integration."""
+    pass
 ```
 
-#### Optional Authentication
+FastAPI Users automatically provides fields:
+- `id`: Integer primary key
+- `email`: Unique email address
+- `hashed_password`: bcrypt password hash
+- `is_active`: Account active status
+- `is_superuser`: Admin privileges
+- `is_verified`: Email verification status
 
-During the migration period, authentication can be optional:
+### Frontend Authentication
+
+The frontend stores JWT tokens in localStorage:
+
+```typescript
+// Login stores token
+const response = await authFetch('/auth/jwt/login', {
+  method: 'POST',
+  body: JSON.stringify({ username: email, password }),
+});
+localStorage.setItem('auth_token', response.access_token);
+
+// API calls include token via interceptor (lib/api.ts)
+config.headers.Authorization = `Bearer ${token}`;
+```
+
+### WebSocket Authentication
+
+WebSocket connections require the token as a query parameter:
+
+```typescript
+// Frontend WebSocket connection
+const token = localStorage.getItem('auth_token');
+new WebSocket(`${WS_URL}?token=${token}`);
+```
+
+The backend validates the token on connection:
 
 ```python
-from codeframe.ui.dependencies import get_current_user_optional
-
-@router.get("/api/optional-auth")
-async def endpoint(user: Optional[User] = Depends(get_current_user_optional)):
-    """Endpoint with optional authentication."""
-    if user:
-        return {"message": f"Hello, {user.email}"}
-    else:
-        return {"message": "Hello, guest"}
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(None)):
+    if not token:
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+    # Validate token and get user...
 ```
 
 ---
@@ -124,15 +156,14 @@ CodeFRAME uses a flexible ownership model with three roles:
 ### Database Schema
 
 ```sql
--- Users table
+-- Users table (managed by FastAPI Users)
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    name TEXT,
-    email_verified INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    hashed_password TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    is_superuser INTEGER DEFAULT 0,
+    is_verified INTEGER DEFAULT 0
 );
 
 -- Projects table (user_id is owner)
@@ -161,7 +192,8 @@ All API endpoints that access project resources must check authorization:
 ```python
 from fastapi import HTTPException, Depends
 from codeframe.persistence.database import Database
-from codeframe.ui.dependencies import get_db, get_current_user, User
+from codeframe.auth.dependencies import get_current_user
+from codeframe.auth.models import User
 
 @router.get("/api/projects/{project_id}/resource")
 async def get_resource(
@@ -189,37 +221,6 @@ async def get_resource(
 - Return 403 Forbidden (not 404) for unauthorized access
 - Use `user_has_project_access()` for consistent authorization logic
 
-### Task-Scoped Endpoints
-
-For endpoints that operate on tasks (not projects), extract the project_id from the task:
-
-```python
-@router.get("/api/tasks/{task_id}")
-async def get_task(
-    task_id: int,
-    db: Database = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Get task details (task-scoped endpoint)."""
-
-    # 1. Get task (implicitly checks task exists)
-    task = db.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    # 2. Extract project_id from task
-    project_id = task.get("project_id")
-    if not project_id:
-        raise HTTPException(status_code=500, detail="Task missing project_id")
-
-    # 3. Authorization check on project
-    if not db.user_has_project_access(current_user.id, project_id):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    # 4. Return task
-    return task
-```
-
 ### user_has_project_access Method
 
 The core authorization method checks both ownership and collaborator access:
@@ -227,10 +228,6 @@ The core authorization method checks both ownership and collaborator access:
 ```python
 def user_has_project_access(self, user_id: int, project_id: int) -> bool:
     """Check if a user has access to a project.
-
-    Args:
-        user_id: User ID to check
-        project_id: Project ID to check
 
     Returns:
         True if user is owner or has collaborator/viewer access
@@ -314,78 +311,24 @@ audit.log_authz_event(
     granted=True,
     metadata={"access_type": "owner"}
 )
-
-# Log project lifecycle event
-audit.log_project_event(
-    event_type=AuditEventType.PROJECT_CREATED,
-    user_id=user_id,
-    project_id=project_id,
-    metadata={"name": "My Project", "source_type": "api"}
-)
-```
-
-### Audit Logs Database Schema
-
-```sql
-CREATE TABLE audit_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT NOT NULL,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    resource_type TEXT NOT NULL,
-    resource_id INTEGER,
-    ip_address TEXT,
-    metadata TEXT,  -- JSON metadata
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Performance indexes
-CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id, timestamp DESC);
-CREATE INDEX idx_audit_logs_event_type ON audit_logs(event_type, timestamp DESC);
-CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id, timestamp DESC);
-```
-
-### Querying Audit Logs
-
-```python
-# Get all login attempts for a user
-cursor.execute(
-    """
-    SELECT * FROM audit_logs
-    WHERE user_id = ? AND event_type LIKE 'auth.login%'
-    ORDER BY timestamp DESC
-    LIMIT 100
-    """,
-    (user_id,)
-)
-
-# Get all access attempts for a project
-cursor.execute(
-    """
-    SELECT * FROM audit_logs
-    WHERE resource_type = 'project' AND resource_id = ?
-    ORDER BY timestamp DESC
-    """,
-    (project_id,)
-)
 ```
 
 ---
 
 ## Security Considerations
 
-### Session Security
+### JWT Security
 
-- **HTTP-Only Cookies**: Session tokens stored in HTTP-only cookies (prevents XSS)
-- **Secure Flag**: Cookies marked as Secure in production (HTTPS only)
-- **SameSite Policy**: Cookies use SameSite=Lax to prevent CSRF
-- **Session Expiry**: 7-day expiry with automatic cleanup
-- **Token Validation**: All tokens validated on every request
+- **HS256 Algorithm**: Symmetric signing with secret key
+- **Short Lifetime**: 1-hour expiry (configurable)
+- **Audience Claim**: Validates `aud` claim to prevent token reuse
+- **Token Validation**: Every request validates signature and expiry
 
 ### Password Security
 
-- **Hashing**: bcrypt with salt rounds=12 (via Better Auth)
+- **Hashing**: bcrypt with automatic salt rounds (passlib[bcrypt])
 - **No Plaintext Storage**: Passwords never stored in plaintext
-- **Password Requirements**: Minimum 8 characters (configurable)
+- **Password Requirements**: Minimum length enforced by frontend
 
 ### API Security
 
@@ -396,16 +339,9 @@ cursor.execute(
 
 ### WebSocket Security
 
-**Current Status**: WebSocket connections do not yet have authentication (Issue #132).
-
-**Planned Implementation**:
-1. Accept auth token as query parameter: `ws://host/ws?token=...`
-2. Validate token and extract user_id on connection
-3. Store user_id with WebSocket connection in manager
-4. Check `db.user_has_project_access()` on subscribe/unsubscribe messages
-5. Return authorization error if user lacks project access
-
-**Workaround**: Deploy WebSocket endpoint behind authentication proxy or firewall until implemented.
+- **Token Authentication**: Required via query parameter: `ws://host/ws?token=...`
+- **Connection Validation**: Token validated on connection establishment
+- **Project Scoping**: WebSocket subscriptions check project access
 
 ### Database Security
 
@@ -416,86 +352,65 @@ cursor.execute(
 
 ---
 
-## Setup Guide
-
-### Initial Setup
-
-1. **Deploy Backend**:
-   ```bash
-   uv run uvicorn codeframe.ui.server:app --reload
-   ```
-
-2. **Deploy Frontend**:
-   ```bash
-   cd web-ui
-   npm install
-   npm run dev
-   ```
-
-3. **Create Admin Account**:
-   - Navigate to `/signup` in browser
-   - Create admin account with email/password
-   - Verify email (if email verification enabled)
-
-4. **Test Authentication**:
-   - Log in at `/login`
-   - Verify you can access your projects
-   - Verify unauthorized users get 401 errors
-
----
-
 ## API Reference
 
 ### Authentication Endpoints
 
-**Login** (handled by Better Auth):
-```
-POST /api/auth/login
+**Register** (`POST /auth/register`):
+```json
 {
   "email": "user@example.com",
-  "password": "password123"
+  "password": "securepassword123"
 }
 
 Response:
 {
-  "token": "session-token-here",
-  "user": {
-    "id": 1,
-    "email": "user@example.com",
-    "name": "User Name"
-  }
+  "id": 1,
+  "email": "user@example.com",
+  "is_active": true,
+  "is_superuser": false,
+  "is_verified": false
 }
 ```
 
-**Logout** (handled by Better Auth):
+**Login** (`POST /auth/jwt/login`):
 ```
-POST /api/auth/logout
+Content-Type: application/x-www-form-urlencoded
+
+username=user@example.com&password=securepassword123
+
+Response:
+{
+  "access_token": "eyJ0eXAi...",
+  "token_type": "bearer"
+}
+```
+
+**Get Current User** (`GET /users/me`):
+```
 Authorization: Bearer <token>
 
 Response:
 {
-  "message": "Logged out successfully"
+  "id": 1,
+  "email": "user@example.com",
+  "is_active": true,
+  "is_superuser": false,
+  "is_verified": false
 }
 ```
 
-**Session Check**:
+**Logout** (`POST /auth/jwt/logout`):
 ```
-GET /api/auth/session
 Authorization: Bearer <token>
 
 Response:
-{
-  "user": {
-    "id": 1,
-    "email": "user@example.com",
-    "name": "User Name"
-  }
-}
+null
 ```
 
-### Authorization Endpoints
+### Protected Endpoints
 
-All project-scoped endpoints require authentication and authorization:
+All project-scoped endpoints require authentication:
 
 ```
 # Project endpoints
@@ -512,21 +427,6 @@ POST   /api/projects/{id}/agents               # Create agent
 # Task endpoints
 GET    /api/projects/{id}/tasks                # List project tasks
 GET    /api/tasks/{id}                         # Get task details
-
-# Blocker endpoints
-GET    /api/projects/{id}/blockers             # List project blockers
-POST   /api/blockers/{id}/answer               # Answer blocker
-
-# Review endpoints
-POST   /api/agents/{agent_id}/review           # Trigger code review
-GET    /api/agents/{agent_id}/review/latest    # Get latest review
-
-# Context endpoints
-GET    /api/agents/{agent_id}/context          # List context items
-POST   /api/agents/{agent_id}/flash-save       # Trigger flash save
-
-# Session endpoints
-GET    /api/projects/{id}/session              # Get session state
 ```
 
 ### Error Responses
@@ -534,7 +434,7 @@ GET    /api/projects/{id}/session              # Get session state
 **401 Unauthorized** - Missing or invalid authentication token:
 ```json
 {
-  "detail": "Missing authentication token"
+  "detail": "Not authenticated"
 }
 ```
 
@@ -561,53 +461,32 @@ GET    /api/projects/{id}/session              # Get session state
 Test authentication and authorization logic:
 
 ```python
-def test_get_current_user_valid_token(db, test_user):
+def test_get_current_user_valid_token(test_user):
     """Test authentication with valid token."""
-    # Create session
-    token = create_session(test_user.id)
-
-    # Authenticate
-    credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-    user = await get_current_user(credentials, db)
-
+    token = create_jwt_token(test_user)
+    user = await get_current_user(create_request(token))
     assert user.id == test_user.id
-    assert user.email == test_user.email
 
 def test_user_has_project_access_owner(db, test_user, test_project):
     """Test authorization for project owner."""
     assert db.user_has_project_access(test_user.id, test_project.id) is True
-
-def test_user_has_project_access_denied(db, test_user, other_project):
-    """Test authorization denied for non-owner."""
-    assert db.user_has_project_access(test_user.id, other_project.id) is False
 ```
 
-### Integration Tests
+### E2E Tests
 
-Test full authentication flow:
+Test full authentication flow using Playwright:
 
-```python
-async def test_protected_endpoint_with_auth(client, db, test_user):
-    """Test protected endpoint with authentication."""
-    # Login
-    response = await client.post("/api/auth/login", json={
-        "email": test_user.email,
-        "password": "password123"
-    })
-    token = response.json()["token"]
+```typescript
+import { loginUser } from './test-utils';
 
-    # Access protected endpoint
-    response = await client.get(
-        "/api/projects",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    assert response.status_code == 200
-
-async def test_protected_endpoint_without_auth(client):
-    """Test protected endpoint without authentication."""
-    response = await client.get("/api/projects")
-    assert response.status_code == 401
+test('authenticated user can access dashboard', async ({ page }) => {
+  await loginUser(page);
+  await page.goto('/dashboard');
+  await expect(page.locator('h1')).toContainText('Projects');
+});
 ```
+
+The `loginUser()` helper handles registration/login and token storage.
 
 ---
 
@@ -615,46 +494,45 @@ async def test_protected_endpoint_without_auth(client):
 
 ### Common Issues
 
-**"Missing authentication token" error**:
+**"Not authenticated" error**:
 - Ensure `Authorization: Bearer <token>` header is included
-- Check that token is valid and not expired
-- Authentication is always required for all API endpoints
+- Check that token is not expired (1 hour lifetime)
+- Verify token was obtained from `/auth/jwt/login`
 
 **"Access denied" error (403)**:
 - Verify user has access to the project
 - Check `project_users` table for collaborator/viewer access
 - Ensure project.user_id matches authenticated user (for owner)
 
-**Session expired error**:
-- Sessions expire after 7 days
-- Re-authenticate to obtain new session token
-- Check `sessions` table for session expiry timestamp
+**Token expired**:
+- Tokens expire after 1 hour
+- Re-authenticate to obtain new token
+- Consider implementing refresh token flow for longer sessions
 
-**Audit logs not appearing**:
-- Verify AuditLogger is initialized with database instance
-- Check that audit_logs table exists
-- Verify database connection is committed after log writes
+**WebSocket connection rejected (code 1008)**:
+- Ensure token is passed as query parameter: `?token=...`
+- Verify token is valid and not expired
+- Check browser console for connection errors
 
 ---
 
 ## Future Enhancements
 
 - **OAuth 2.0 Providers**: Google, GitHub, Microsoft SSO
-- **Two-Factor Authentication**: TOTP, SMS, or email verification
+- **Two-Factor Authentication**: TOTP or email verification
 - **API Keys**: Long-lived tokens for CI/CD and automation
-- **Role-Based Permissions**: Fine-grained permissions beyond owner/collaborator/viewer
+- **Refresh Tokens**: Longer sessions without re-authentication
 - **IP Allowlisting**: Restrict access to specific IP ranges
-- **WebSocket Authentication**: Token-based auth for WebSocket connections
 - **Audit Log API**: Query and export audit logs via API
 
 ---
 
 ## Related Documentation
 
-- [SECURITY.md](../SECURITY.md) - Security policy and best practices
-- [CONTRIBUTING.md](../CONTRIBUTING.md) - Development setup with authentication
-- [API Documentation](../docs/api/) - Complete API reference
-- [Database Schema](../CLAUDE.md) - Database schema documentation
+- [Database Repository Pattern](./architecture/database-repository-pattern.md)
+- [E2E Testing Guide](./e2e-testing.md)
+- [Session Lifecycle](./session-lifecycle.md)
+- [CLAUDE.md](../CLAUDE.md) - Authentication Architecture section
 
 ---
 

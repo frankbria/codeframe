@@ -2,8 +2,13 @@
 
 **Purpose**: Analysis of new concept ideas and their integration into CodeFRAME specification and implementation plan.
 
-**Date**: 2025-01-16
-**Status**: Integration Planning
+**Date**: 2025-01-16 (Original)
+**Last Reviewed**: 2026-01-06
+**Status**: Historical Planning Document
+
+> **Note**: This document captures concept analysis from early 2025. Many features
+> discussed here have since been implemented (context management, checklist system).
+> See SPRINTS.md and specs/ for current implementation status.
 
 ---
 

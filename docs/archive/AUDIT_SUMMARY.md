@@ -1,8 +1,12 @@
 # AGILE_SPRINTS.md Audit - Executive Summary
 
-> Historical audit snapshot (pre-Sprints 6–9.5). For current sprint status and
-> documentation structure, see [`SPRINTS.md`](../../SPRINTS.md), `PRD.md`, and
-> the `sprints/` and `specs/` directories.
+> **⚠️ ARCHIVED - Historical Reference Only**
+>
+> This audit was conducted on 2025-11-08 against the old AGILE_SPRINTS.md format.
+> The issues identified here have been addressed during the documentation restructure.
+> For current project status, see [`SPRINTS.md`](../../SPRINTS.md).
+>
+> **Why archived**: Audit findings resolved; documentation restructured.
 
 **Date**: 2025-11-08
 **Auditor**: Claude Code

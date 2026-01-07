@@ -1,8 +1,12 @@
 # Sprint Status Visual Summary
 
-> Historical sprint status visualization derived from `AGILE_SPRINTS.md`.
-> Current sprint status is maintained in [`SPRINTS.md`](../../SPRINTS.md) and the
-> `sprints/` directory.
+> **⚠️ ARCHIVED - Historical Reference Only**
+>
+> This visual summary was created on 2025-11-08 from the old AGILE_SPRINTS.md.
+> It shows the sprint status at that point in time (pre-Sprint 10).
+> For current sprint status, see [`SPRINTS.md`](../../SPRINTS.md).
+>
+> **Why archived**: Snapshot in time; project has progressed significantly.
 
 ```
 AGILE_SPRINTS.md Audit - Visual Dashboard

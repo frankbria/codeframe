@@ -1,7 +1,13 @@
 # CodeFRAME Agile Sprint Plan
 
-> Historical sprint planning document; superseded by [`SPRINTS.md`](../../SPRINTS.md)
-> and the detailed files in the `sprints/` directory.
+> **⚠️ ARCHIVED - Historical Reference Only**
+>
+> This document was superseded by [`SPRINTS.md`](../../SPRINTS.md) on 2025-11-21.
+> The sprint structure and content here is outdated. For current project status,
+> see the `sprints/` directory for individual sprint summaries.
+>
+> **Why archived**: Sprint documentation restructured to separate index (SPRINTS.md)
+> from detailed sprint records (sprints/*.md).
 
 **Philosophy**: Every sprint delivers a functional, working demo you can interact with and review - even if features are incomplete or use mock data.
 
