@@ -203,7 +203,9 @@ describe('Dashboard with AgentStateProvider', () => {
       // Use more specific selector for status badge
       const statusBadges = screen.getAllByText(/ACTIVE/i);
       expect(statusBadges.length).toBeGreaterThan(0);
-      expect(screen.getByText(/Phase: implementation \(Step 5\/15\)/i)).toBeInTheDocument();
+      // Verify PhaseProgress component is rendered with correct step counter
+      expect(screen.getByTestId('phase-progress')).toBeInTheDocument();
+      expect(screen.getByTestId('step-counter')).toHaveTextContent('Step 5 of 15');
     });
 
     it('should display loading state initially', () => {

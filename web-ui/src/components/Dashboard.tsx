@@ -34,6 +34,7 @@ import { QualityGatesPanel } from './quality-gates';
 import QualityGatesPanelFallback from './quality-gates/QualityGatesPanelFallback';
 import ErrorBoundary from './ErrorBoundary';
 import TaskStats from './tasks/TaskStats';
+import PhaseProgress from './PhaseProgress';
 
 interface DashboardProps {
   projectId: number;
@@ -280,9 +281,6 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
                   {projectData.status.toUpperCase()}
                 </span>
-                <span className="text-sm text-muted-foreground">
-                  Phase: {projectData.phase} (Step {projectData.workflow_step}/15)
-                </span>
                 {/* Connection status from AgentStateProvider */}
                 {wsConnected ? (
                   <span className="inline-flex items-center gap-1 text-xs text-green-600">
@@ -335,6 +333,17 @@ export default function Dashboard({ projectId }: DashboardProps) {
           </div>
         </div>
       </header>
+
+      {/* Phase Progress Section */}
+      <div className="bg-card border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8">
+          <PhaseProgress
+            phase={projectData.phase === 'active' ? 'development' : (projectData.phase || 'discovery')}
+            currentStep={projectData.workflow_step || 0}
+            totalSteps={15}
+          />
+        </div>
+      </div>
 
       {/* Tab Navigation (T009 - Feature 013, Sprint 10 Refactor) */}
       <div className="bg-card border-b border-border">

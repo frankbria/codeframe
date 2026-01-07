@@ -79,9 +79,6 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
     return null;
   }
 
-  // Check if this is a new session
-  const isNewSession = session.last_session.summary === 'No previous session';
-
   return (
     <div className="bg-primary/10 border border-primary rounded-lg p-6">
       <div className="flex items-start space-x-3">
@@ -91,77 +88,66 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
             Session Context
           </h3>
 
-          {isNewSession ? (
-            <div className="text-foreground">
-              <p className="font-medium">🚀 Starting new session...</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                No previous session state found
-              </p>
+          {/* Last Session */}
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-foreground mb-1">
+              Last session:
+            </h4>
+            <p className="text-foreground">{session.last_session.summary}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {formatDistanceToNow(new Date(session.last_session.timestamp), {
+                addSuffix: true,
+              })}
+            </p>
+          </div>
+
+          {/* Next Actions */}
+          {session.next_actions && session.next_actions.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-foreground mb-1">
+                Next actions:
+              </h4>
+              <ul className="list-disc list-inside text-foreground space-y-1">
+                {session.next_actions.slice(0, 3).map((action, index) => (
+                  <li key={index} className="text-sm">
+                    {action}
+                  </li>
+                ))}
+              </ul>
             </div>
-          ) : (
-            <>
-              {/* Last Session */}
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-foreground mb-1">
-                  Last session:
-                </h4>
-                <p className="text-foreground">{session.last_session.summary}</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {formatDistanceToNow(new Date(session.last_session.timestamp), {
-                    addSuffix: true,
-                  })}
-                </p>
-              </div>
-
-              {/* Next Actions */}
-              {session.next_actions && session.next_actions.length > 0 && (
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-foreground mb-1">
-                    Next actions:
-                  </h4>
-                  <ul className="list-disc list-inside text-foreground space-y-1">
-                    {session.next_actions.slice(0, 3).map((action, index) => (
-                      <li key={index} className="text-sm">
-                        {action}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Progress */}
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-foreground">
-                  Progress:
-                </span>
-                <span className="text-primary font-semibold">
-                  {Math.round(session.progress_pct)}%
-                </span>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="w-full bg-muted rounded-full h-2 mb-4">
-                <div
-                  className="bg-primary h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(session.progress_pct, 100)}%` }}
-                />
-              </div>
-
-              {/* Blockers */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-foreground">
-                  Blockers:
-                </span>
-                {session.active_blockers.length > 0 ? (
-                  <span className="text-yellow-700 font-semibold">
-                    {session.active_blockers.length} active
-                  </span>
-                ) : (
-                  <span className="text-green-700 font-semibold">None</span>
-                )}
-              </div>
-            </>
           )}
+
+          {/* Progress */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground">
+              Progress:
+            </span>
+            <span className="text-primary font-semibold">
+              {Math.round(session.progress_pct)}%
+            </span>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-muted rounded-full h-2 mb-4">
+            <div
+              className="bg-primary h-2 rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(session.progress_pct, 100)}%` }}
+            />
+          </div>
+
+          {/* Blockers */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-foreground">
+              Blockers:
+            </span>
+            {session.active_blockers.length > 0 ? (
+              <span className="text-yellow-700 font-semibold">
+                {session.active_blockers.length} active
+              </span>
+            ) : (
+              <span className="text-green-700 font-semibold">None</span>
+            )}
+          </div>
         </div>
       </div>
     </div>
