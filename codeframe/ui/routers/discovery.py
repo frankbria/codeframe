@@ -4,6 +4,7 @@ This module handles discovery-related endpoints for projects,
 allowing submission of discovery answers and retrieval of discovery progress.
 """
 
+import asyncio
 import os
 import logging
 from typing import Dict, Any
@@ -17,6 +18,13 @@ from codeframe.ui.dependencies import get_db
 from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
 from codeframe.ui.shared import manager
+from codeframe.ui.websocket_broadcasts import (
+    broadcast_planning_started,
+    broadcast_issues_generated,
+    broadcast_tasks_decomposed,
+    broadcast_tasks_ready,
+    broadcast_planning_failed,
+)
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -33,14 +41,13 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
     3. prd_generation_progress (calling_llm) - Sending to Claude API
     4. prd_generation_progress (saving) - Saving PRD to database/file
     5. prd_generation_completed - Final notification
+    6. Spawns planning automation as a separate async task
 
     Args:
         project_id: Project ID
         db: Database instance
         api_key: API key for Claude
     """
-    import asyncio
-
     async def broadcast_progress(stage: str, message: str, progress_pct: int = 0):
         """Helper to broadcast progress updates."""
         await manager.broadcast(
@@ -127,11 +134,12 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
             project_id=project_id,
         )
 
-        # Trigger planning automation after PRD is saved
-        await generate_planning_background(project_id, db, api_key)
+        # Trigger planning automation as a non-blocking background task
+        # This allows PRD completion to be reported immediately while planning runs
+        asyncio.create_task(generate_planning_background(project_id, db, api_key))
 
     except Exception as e:
-        logger.error(f"Failed to generate PRD for project {project_id}: {e}")
+        logger.error(f"Failed to generate PRD for project {project_id}: {e}", exc_info=True)
         # Broadcast error
         await manager.broadcast(
             {
@@ -155,20 +163,14 @@ async def generate_planning_background(project_id: int, db: Database, api_key: s
     5. tasks_decomposed - Report tasks created
     6. tasks_ready - Signal ready for user review
 
+    Note: LeadAgent methods are synchronous and use the sync Anthropic client,
+    so asyncio.to_thread() is appropriate for running them without blocking.
+
     Args:
         project_id: Project ID
         db: Database instance
         api_key: API key for Claude
     """
-    import asyncio
-    from codeframe.ui.websocket_broadcasts import (
-        broadcast_planning_started,
-        broadcast_issues_generated,
-        broadcast_tasks_decomposed,
-        broadcast_tasks_ready,
-        broadcast_planning_failed,
-    )
-
     try:
         logger.info(f"Starting planning automation for project {project_id}")
 
@@ -201,7 +203,7 @@ async def generate_planning_background(project_id: int, db: Database, api_key: s
         logger.info(f"Planning automation completed for project {project_id}")
 
     except Exception as e:
-        logger.error(f"Planning automation failed for project {project_id}: {e}")
+        logger.error(f"Planning automation failed for project {project_id}: {e}", exc_info=True)
         await broadcast_planning_failed(manager, project_id, str(e))
 
 

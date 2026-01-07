@@ -203,21 +203,22 @@ async def approve_tasks(
     approved_tasks = [t for t in tasks if t.id not in excluded_ids]
     excluded_tasks = [t for t in tasks if t.id in excluded_ids]
 
-    # Update approved tasks to pending status
-    for task in approved_tasks:
-        db.update_task(task.id, {"status": "pending"})
-
-    # Transition project phase to active (development)
+    # Transition project phase to active FIRST (fails early before modifying tasks)
+    # This ensures we don't leave tasks in pending status if phase transition fails
     try:
         PhaseManager.transition(project_id, "active", db)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to transition phase for project {project_id}: {e}")
+        logger.error(f"Failed to transition phase for project {project_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to transition project to development phase"
         )
+
+    # Update approved tasks to pending status (after phase transition succeeds)
+    for task in approved_tasks:
+        db.update_task(task.id, {"status": "pending"})
 
     # Broadcast development started event
     await broadcast_development_started(
