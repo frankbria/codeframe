@@ -420,3 +420,125 @@ class TestAgentStatusWithSDKFields:
         assert agent_id in status
         assert "session_id" in status[agent_id]
         assert status[agent_id]["session_id"] is None  # Traditional agents have no session_id
+
+
+# ============================================================================
+# Agent Status Broadcasting Tests (cf-16-7)
+# ============================================================================
+
+
+class TestAgentStatusBroadcasting:
+    """Test agent status change broadcasting."""
+
+    @pytest.mark.asyncio
+    @patch("codeframe.agents.agent_pool_manager.broadcast_agent_status", new_callable=AsyncMock)
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    async def test_mark_agent_busy_broadcasts_working_status(
+        self, mock_backend_class, mock_broadcast, pool_manager
+    ):
+        """Test mark_agent_busy broadcasts agent_status_changed with status='working'."""
+        import asyncio
+
+        mock_backend_class.return_value = Mock()
+
+        agent_id = pool_manager.create_agent("backend")
+        pool_manager.mark_agent_busy(agent_id, task_id=42)
+
+        # Allow the event loop to process scheduled tasks
+        await asyncio.sleep(0)
+
+        # Verify broadcast was scheduled
+        mock_broadcast.assert_called_once()
+        call_args = mock_broadcast.call_args
+        assert call_args.kwargs["status"] == "working"
+        assert call_args.kwargs["agent_id"] == agent_id
+        assert call_args.kwargs["current_task_id"] == 42
+
+    @pytest.mark.asyncio
+    @patch("codeframe.agents.agent_pool_manager.broadcast_agent_status", new_callable=AsyncMock)
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    async def test_mark_agent_idle_broadcasts_idle_status(
+        self, mock_backend_class, mock_broadcast, pool_manager
+    ):
+        """Test mark_agent_idle broadcasts agent_status_changed with status='idle'."""
+        import asyncio
+
+        mock_backend_class.return_value = Mock()
+
+        agent_id = pool_manager.create_agent("backend")
+        pool_manager.mark_agent_busy(agent_id, task_id=42)
+        await asyncio.sleep(0)  # Process busy broadcast
+        mock_broadcast.reset_mock()  # Reset after busy broadcast
+
+        pool_manager.mark_agent_idle(agent_id)
+        await asyncio.sleep(0)  # Process idle broadcast
+
+        mock_broadcast.assert_called_once()
+        call_args = mock_broadcast.call_args
+        assert call_args.kwargs["status"] == "idle"
+        assert call_args.kwargs["agent_id"] == agent_id
+
+    @pytest.mark.asyncio
+    @patch("codeframe.agents.agent_pool_manager.broadcast_agent_status", new_callable=AsyncMock)
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    async def test_mark_agent_blocked_broadcasts_blocked_status(
+        self, mock_backend_class, mock_broadcast, pool_manager
+    ):
+        """Test mark_agent_blocked broadcasts agent_status_changed with status='blocked'."""
+        import asyncio
+
+        mock_backend_class.return_value = Mock()
+
+        agent_id = pool_manager.create_agent("backend")
+        pool_manager.mark_agent_blocked(agent_id, blocked_by=[1, 2])
+
+        # Allow the event loop to process scheduled tasks
+        await asyncio.sleep(0)
+
+        mock_broadcast.assert_called_once()
+        call_args = mock_broadcast.call_args
+        assert call_args.kwargs["status"] == "blocked"
+        assert call_args.kwargs["agent_id"] == agent_id
+
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    def test_no_broadcast_without_ws_manager(self, mock_backend_class, mock_db):
+        """Test status changes don't fail without WebSocket manager."""
+        mock_backend_class.return_value = Mock()
+
+        # Create manager without ws_manager
+        manager = AgentPoolManager(project_id=1, db=mock_db, ws_manager=None, max_agents=5)
+
+        agent_id = manager.create_agent("backend")
+
+        # These should not raise even without ws_manager
+        manager.mark_agent_busy(agent_id, task_id=42)
+        manager.mark_agent_idle(agent_id)
+        manager.mark_agent_blocked(agent_id, blocked_by=[1, 2])
+
+        # Verify state was updated correctly
+        assert manager.agent_pool[agent_id]["status"] == "blocked"
+
+    @pytest.mark.asyncio
+    @patch("codeframe.agents.agent_pool_manager.broadcast_agent_status", new_callable=AsyncMock)
+    @patch("codeframe.agents.agent_pool_manager.BackendWorkerAgent")
+    async def test_broadcast_includes_tasks_completed_on_idle(
+        self, mock_backend_class, mock_broadcast, pool_manager
+    ):
+        """Test mark_agent_idle broadcast includes tasks_completed count."""
+        import asyncio
+
+        mock_backend_class.return_value = Mock()
+
+        agent_id = pool_manager.create_agent("backend")
+
+        # Complete a few tasks
+        for i in range(3):
+            pool_manager.mark_agent_busy(agent_id, task_id=i)
+            await asyncio.sleep(0)
+            pool_manager.mark_agent_idle(agent_id)
+            await asyncio.sleep(0)
+
+        # Get the last idle broadcast
+        last_call = mock_broadcast.call_args_list[-1]
+        assert last_call.kwargs["status"] == "idle"
+        assert last_call.kwargs["tasks_completed"] == 3

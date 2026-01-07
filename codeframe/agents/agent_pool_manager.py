@@ -39,7 +39,11 @@ from codeframe.agents.test_worker_agent import TestWorkerAgent
 from codeframe.agents.review_worker_agent import ReviewWorkerAgent
 from codeframe.agents.hybrid_worker import HybridWorkerAgent
 from codeframe.core.models import AgentMaturity
-from codeframe.ui.websocket_broadcasts import broadcast_agent_created, broadcast_agent_retired
+from codeframe.ui.websocket_broadcasts import (
+    broadcast_agent_created,
+    broadcast_agent_retired,
+    broadcast_agent_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -216,8 +220,19 @@ class AgentPoolManager:
 
             self.agent_pool[agent_id]["status"] = "busy"
             self.agent_pool[agent_id]["current_task"] = task_id
+            agent_type = self.agent_pool[agent_id]["agent_type"]
 
             logger.debug(f"Agent {agent_id} marked busy with task {task_id}")
+
+            # Broadcast status change to connected clients
+            self._broadcast_async(
+                project_id=self.project_id,
+                agent_id=agent_id,
+                agent_type=agent_type,
+                event_type="agent_status_changed",
+                status="working",
+                current_task_id=task_id,
+            )
 
     def mark_agent_idle(self, agent_id: str) -> None:
         """
@@ -238,9 +253,21 @@ class AgentPoolManager:
 
             # Increment tasks completed
             self.agent_pool[agent_id]["tasks_completed"] += 1
+            agent_type = self.agent_pool[agent_id]["agent_type"]
+            tasks_completed = self.agent_pool[agent_id]["tasks_completed"]
 
             logger.debug(
-                f"Agent {agent_id} marked idle (completed {self.agent_pool[agent_id]['tasks_completed']} tasks)"
+                f"Agent {agent_id} marked idle (completed {tasks_completed} tasks)"
+            )
+
+            # Broadcast status change to connected clients
+            self._broadcast_async(
+                project_id=self.project_id,
+                agent_id=agent_id,
+                agent_type=agent_type,
+                event_type="agent_status_changed",
+                status="idle",
+                tasks_completed=tasks_completed,
             )
 
     def mark_agent_blocked(self, agent_id: str, blocked_by: list) -> None:
@@ -260,8 +287,18 @@ class AgentPoolManager:
 
             self.agent_pool[agent_id]["status"] = "blocked"
             self.agent_pool[agent_id]["blocked_by"] = blocked_by
+            agent_type = self.agent_pool[agent_id]["agent_type"]
 
             logger.debug(f"Agent {agent_id} marked blocked by tasks: {blocked_by}")
+
+            # Broadcast status change to connected clients
+            self._broadcast_async(
+                project_id=self.project_id,
+                agent_id=agent_id,
+                agent_type=agent_type,
+                event_type="agent_status_changed",
+                status="blocked",
+            )
 
     def retire_agent(self, agent_id: str) -> None:
         """
@@ -331,7 +368,15 @@ class AgentPoolManager:
             return self.agent_pool[agent_id]["instance"]
 
     def _broadcast_async(
-        self, project_id: int, agent_id: str, agent_type: str, event_type: str
+        self,
+        project_id: int,
+        agent_id: str,
+        agent_type: str,
+        event_type: str,
+        status: str = None,
+        current_task_id: int = None,
+        current_task_title: str = None,
+        tasks_completed: int = None,
     ) -> None:
         """
         Helper to broadcast agent lifecycle events (handles async safely).
@@ -340,7 +385,11 @@ class AgentPoolManager:
             project_id: Project ID
             agent_id: Agent ID
             agent_type: Type of agent
-            event_type: Type of event (agent_created, agent_retired)
+            event_type: Type of event (agent_created, agent_retired, agent_status_changed)
+            status: Agent status for status_changed events (idle/working/blocked)
+            current_task_id: ID of current task (for status_changed events)
+            current_task_title: Title of current task (for status_changed events)
+            tasks_completed: Number of tasks completed by this agent (for idle status)
         """
         if not self.ws_manager:
             return
@@ -349,14 +398,26 @@ class AgentPoolManager:
             loop = asyncio.get_running_loop()
 
             if event_type == "agent_created":
-                tasks_completed = self.agent_pool.get(agent_id, {}).get("tasks_completed", 0)
+                agent_tasks_completed = self.agent_pool.get(agent_id, {}).get("tasks_completed", 0)
                 loop.create_task(
                     broadcast_agent_created(
-                        self.ws_manager, project_id, agent_id, agent_type, tasks_completed
+                        self.ws_manager, project_id, agent_id, agent_type, agent_tasks_completed
                     )
                 )
             elif event_type == "agent_retired":
                 loop.create_task(broadcast_agent_retired(self.ws_manager, project_id, agent_id))
+            elif event_type == "agent_status_changed":
+                loop.create_task(
+                    broadcast_agent_status(
+                        manager=self.ws_manager,
+                        project_id=project_id,
+                        agent_id=agent_id,
+                        status=status or "idle",
+                        current_task_id=current_task_id,
+                        current_task_title=current_task_title,
+                        tasks_completed=tasks_completed,
+                    )
+                )
 
         except RuntimeError:
             # No event loop running (sync context, testing)
