@@ -11,6 +11,18 @@ import * as api from '@/lib/api';
 import * as websocket from '@/lib/websocket';
 import * as agentAssignment from '@/api/agentAssignment';
 
+// Mock Hugeicons (used by PhaseProgress component)
+jest.mock('@hugeicons/react', () => ({
+  Search01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="search-icon" />,
+  TaskEdit01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="task-edit-icon" />,
+  Wrench01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="wrench-icon" />,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="checkmark-icon" />,
+  Award01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="award-icon" />,
+  RocketIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="rocket-icon" />,
+  HelpCircleIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="help-icon" />,
+  Idea01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="idea-icon" />,
+}));
+
 // Create a shared mock WebSocket client that will be used across all tests
 const sharedMockWsClient = {
   connect: jest.fn(),
@@ -203,7 +215,9 @@ describe('Dashboard with AgentStateProvider', () => {
       // Use more specific selector for status badge
       const statusBadges = screen.getAllByText(/ACTIVE/i);
       expect(statusBadges.length).toBeGreaterThan(0);
-      expect(screen.getByText(/Phase: implementation \(Step 5\/15\)/i)).toBeInTheDocument();
+      // Verify PhaseProgress component is rendered with correct step counter
+      expect(screen.getByTestId('phase-progress')).toBeInTheDocument();
+      expect(screen.getByTestId('step-counter')).toHaveTextContent('Step 5 of 15');
     });
 
     it('should display loading state initially', () => {

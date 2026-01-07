@@ -12,6 +12,19 @@ import * as websocket from '@/lib/websocket';
 // Mock dependencies
 jest.mock('@/lib/api');
 jest.mock('@/lib/websocket');
+
+// Mock Hugeicons (used by PhaseProgress component)
+jest.mock('@hugeicons/react', () => ({
+  Search01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="search-icon" />,
+  TaskEdit01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="task-edit-icon" />,
+  Wrench01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="wrench-icon" />,
+  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="checkmark-icon" />,
+  Award01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="award-icon" />,
+  RocketIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="rocket-icon" />,
+  HelpCircleIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="help-icon" />,
+  Idea01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="idea-icon" />,
+}));
+
 jest.mock('@/components/ChatInterface', () => ({
   __esModule: true,
   default: () => <div>ChatInterface Mock</div>,

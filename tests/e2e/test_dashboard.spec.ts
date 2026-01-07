@@ -92,8 +92,9 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     console.log('✅ Logged in successfully using FastAPI Users JWT');
 
     // Set up response listener BEFORE navigation
+    // Note: Must use /api/projects/ to avoid matching the HTML page response at /projects/
     const apiResponsePromise = page.waitForResponse(
-      response => response.url().includes(`/projects/${PROJECT_ID}`) && response.status() === 200,
+      response => response.url().includes(`/api/projects/${PROJECT_ID}`) && response.status() === 200,
       { timeout: 15000 }
     );
 

@@ -87,7 +87,7 @@ describe('SessionStatus', () => {
   });
 
   describe('new session state', () => {
-    it('displays new session message when no previous session', async () => {
+    it('displays "No previous session" as regular summary for new projects', async () => {
       mockAuthFetch.mockResolvedValueOnce({
         last_session: {
           summary: 'No previous session',
@@ -101,11 +101,13 @@ describe('SessionStatus', () => {
       render(<SessionStatus projectId={1} />);
 
       await waitFor(() => {
-        expect(screen.getByText('🚀 Starting new session...')).toBeInTheDocument();
+        // New sessions should display summary as regular text, not placeholder
+        expect(screen.getByText('Last session:')).toBeInTheDocument();
+        expect(screen.getByText('No previous session')).toBeInTheDocument();
       });
     });
 
-    it('displays "No previous session state found" for new session', async () => {
+    it('displays full session UI even for new sessions', async () => {
       mockAuthFetch.mockResolvedValueOnce({
         last_session: {
           summary: 'No previous session',
@@ -119,7 +121,12 @@ describe('SessionStatus', () => {
       render(<SessionStatus projectId={1} />);
 
       await waitFor(() => {
-        expect(screen.getByText('No previous session state found')).toBeInTheDocument();
+        // All standard session UI elements should be present
+        expect(screen.getByText('Session Context')).toBeInTheDocument();
+        expect(screen.getByText('Progress:')).toBeInTheDocument();
+        expect(screen.getByText('Blockers:')).toBeInTheDocument();
+        expect(screen.getByText('0%')).toBeInTheDocument();
+        expect(screen.getByText('None')).toBeInTheDocument();
       });
     });
   });
