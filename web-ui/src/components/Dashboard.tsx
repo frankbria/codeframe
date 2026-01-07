@@ -35,6 +35,8 @@ import QualityGatesPanelFallback from './quality-gates/QualityGatesPanelFallback
 import ErrorBoundary from './ErrorBoundary';
 import TaskStats from './tasks/TaskStats';
 import PhaseProgress from './PhaseProgress';
+import TaskList from './TaskList';
+import TaskReview from './TaskReview';
 
 /**
  * Maps backend phase names to PhaseProgress component phase names.
@@ -148,30 +150,61 @@ export default function Dashboard({ projectId }: DashboardProps) {
     </div>
   ), [handleQualityGatesRetry, handleQualityGatesDismiss]);
 
-  // Fetch project status
+  // Compute if active work is happening for polling optimization (016-6)
+  // Active work: development/review phase with active agents working
+  const isActiveWork = useMemo(() => {
+    const activeAgents = agents.filter(a => a.status === 'working' || a.status === 'blocked');
+    const activeTasks = tasks.filter(t => t.status === 'in_progress');
+    return activeAgents.length > 0 || activeTasks.length > 0;
+  }, [agents, tasks]);
+
+  // Polling intervals based on activity (016-6)
+  // Active work: 5 seconds, Idle: 30 seconds
+  const ACTIVE_REFRESH_INTERVAL = 5000;
+  const IDLE_REFRESH_INTERVAL = 30000;
+  const refreshInterval = isActiveWork ? ACTIVE_REFRESH_INTERVAL : IDLE_REFRESH_INTERVAL;
+
+  // Fetch project status with adaptive polling
   const { data: projectData } = useSWR(
     `/projects/${projectId}/status`,
-    () => projectsApi.getStatus(projectId).then((res) => res.data)
+    () => projectsApi.getStatus(projectId).then((res) => res.data),
+    {
+      refreshInterval,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+    }
   );
 
-  // Fetch blockers
+  // Fetch blockers with adaptive polling
   const { data: blockersData, mutate: mutateBlockers } = useSWR(
     `/projects/${projectId}/blockers`,
-    () => blockersApi.list(projectId).then((res) => res.data?.blockers || [])
+    () => blockersApi.list(projectId).then((res) => res.data?.blockers || []),
+    {
+      refreshInterval: isActiveWork ? ACTIVE_REFRESH_INTERVAL : IDLE_REFRESH_INTERVAL,
+      revalidateOnFocus: true,
+    }
   );
 
-  // Fetch PRD data (cf-26)
+  // Fetch PRD data (cf-26) - less frequent, only refresh on focus
   const { data: prdData, mutate: mutatePRD } = useSWR<PRDResponse>(
     `/projects/${projectId}/prd`,
     () => projectsApi.getPRD(projectId).then((res) => res.data),
-    { shouldRetryOnError: false }
+    {
+      shouldRetryOnError: false,
+      revalidateOnFocus: true,
+      refreshInterval: 0, // Manual refresh only for PRD
+    }
   );
 
-  // Fetch issues/tasks data (cf-26)
+  // Fetch issues/tasks data (cf-26) with adaptive polling
   const { data: issuesData } = useSWR<IssuesResponse>(
     `/projects/${projectId}/issues`,
     () => projectsApi.getIssues(projectId).then((res) => res.data),
-    { shouldRetryOnError: false }
+    {
+      shouldRetryOnError: false,
+      refreshInterval: isActiveWork ? ACTIVE_REFRESH_INTERVAL : IDLE_REFRESH_INTERVAL,
+      revalidateOnFocus: true,
+    }
   );
 
   // Fetch review data for latest completed task (Sprint 10)
@@ -386,13 +419,30 @@ export default function Dashboard({ projectId }: DashboardProps) {
               aria-controls="tasks-panel"
               onClick={() => setActiveTab('tasks')}
               data-testid="tasks-tab"
-              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2 ${
                 activeTab === 'tasks'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               Tasks
+              {/* Phase-aware badge (016-6) */}
+              {normalizePhase(projectData.phase) === 'planning' && issuesData && (
+                <span
+                  data-testid="tasks-tab-badge-planning"
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 transition-opacity duration-200"
+                >
+                  Review ({issuesData.total_tasks})
+                </span>
+              )}
+              {(normalizePhase(projectData.phase) === 'development' || normalizePhase(projectData.phase) === 'review') && (
+                <span
+                  data-testid="tasks-tab-badge-development"
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 transition-opacity duration-200"
+                >
+                  {tasks.filter(t => t.status === 'completed').length}/{tasks.length}
+                </span>
+              )}
             </button>
             <button
               role="tab"
@@ -604,7 +654,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
           </div>
         )}
 
-        {/* Tasks Tab Panel (Sprint 10 Refactor) */}
+        {/* Tasks Tab Panel (Sprint 10 Refactor, 016-6 Phase Integration) */}
         {activeTab === 'tasks' && (
           <div role="tabpanel" id="tasks-panel" aria-labelledby="tasks-tab" data-testid="tasks-panel">
             {/* Task Statistics Section */}
@@ -613,18 +663,47 @@ export default function Dashboard({ projectId }: DashboardProps) {
               <TaskStats />
             </div>
 
-            {/* Issues & Tasks Section (cf-26) */}
-            <div className="bg-card rounded-lg shadow p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">🎯 Issues & Tasks</h2>
-                {issuesData && (
-                  <span className="text-sm text-muted-foreground">
-                    {issuesData.total_issues} issues, {issuesData.total_tasks} tasks
+            {/* Phase-Aware Task View (016-6) */}
+            {normalizePhase(projectData.phase) === 'planning' ? (
+              /* Planning Phase: Show TaskReview for task approval */
+              <div className="bg-card rounded-lg shadow p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">📋 Review Task Breakdown</h2>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                    Awaiting Approval
                   </span>
-                )}
+                </div>
+                <ErrorBoundary fallback={<div className="text-destructive p-4">Failed to load task review. Please refresh the page.</div>}>
+                  <TaskReview projectId={projectId} />
+                </ErrorBoundary>
               </div>
-              <TaskTreeView issues={issuesData?.issues || []} />
-            </div>
+            ) : normalizePhase(projectData.phase) === 'development' || normalizePhase(projectData.phase) === 'review' ? (
+              /* Development/Review Phase: Show TaskList for active tasks */
+              <div className="bg-card rounded-lg shadow p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">🎯 Active Tasks</h2>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                    In Development
+                  </span>
+                </div>
+                <ErrorBoundary fallback={<div className="text-destructive p-4">Failed to load task list. Please refresh the page.</div>}>
+                  <TaskList projectId={projectId} />
+                </ErrorBoundary>
+              </div>
+            ) : (
+              /* Discovery/Complete/Shipped: Show traditional TaskTreeView */
+              <div className="bg-card rounded-lg shadow p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">🎯 Issues & Tasks</h2>
+                  {issuesData && (
+                    <span className="text-sm text-muted-foreground">
+                      {issuesData.total_issues} issues, {issuesData.total_tasks} tasks
+                    </span>
+                  )}
+                </div>
+                <TaskTreeView issues={issuesData?.issues || []} />
+              </div>
+            )}
 
             {/* Blockers Section (T020, 049-human-in-loop) */}
             <div className="mb-6">
