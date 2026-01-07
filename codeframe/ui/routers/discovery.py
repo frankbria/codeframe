@@ -127,6 +127,9 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
             project_id=project_id,
         )
 
+        # Trigger planning automation after PRD is saved
+        await generate_planning_background(project_id, db, api_key)
+
     except Exception as e:
         logger.error(f"Failed to generate PRD for project {project_id}: {e}")
         # Broadcast error
@@ -139,6 +142,67 @@ async def generate_prd_background(project_id: int, db: Database, api_key: str):
             },
             project_id=project_id,
         )
+
+
+async def generate_planning_background(project_id: int, db: Database, api_key: str):
+    """Background task to generate issues and tasks after PRD completion.
+
+    This function implements planning automation:
+    1. planning_started - Notify automation begins
+    2. generate_issues - Create issues from PRD
+    3. issues_generated - Report issues created
+    4. decompose_prd - Decompose issues into tasks
+    5. tasks_decomposed - Report tasks created
+    6. tasks_ready - Signal ready for user review
+
+    Args:
+        project_id: Project ID
+        db: Database instance
+        api_key: API key for Claude
+    """
+    import asyncio
+    from codeframe.ui.websocket_broadcasts import (
+        broadcast_planning_started,
+        broadcast_issues_generated,
+        broadcast_tasks_decomposed,
+        broadcast_tasks_ready,
+        broadcast_planning_failed,
+    )
+
+    try:
+        logger.info(f"Starting planning automation for project {project_id}")
+
+        # Stage 1: Broadcast planning started
+        await broadcast_planning_started(manager, project_id)
+
+        # Initialize LeadAgent for issue/task generation
+        agent = LeadAgent(project_id=project_id, db=db, api_key=api_key)
+
+        # Stage 2: Generate issues from PRD
+        logger.info(f"Generating issues for project {project_id}")
+        issues = await asyncio.to_thread(agent.generate_issues, sprint_number=1)
+        issue_count = len(issues) if issues else 0
+
+        # Stage 3: Broadcast issues generated
+        await broadcast_issues_generated(manager, project_id, issue_count)
+        logger.info(f"Generated {issue_count} issues for project {project_id}")
+
+        # Stage 4: Decompose PRD into tasks
+        logger.info(f"Decomposing PRD into tasks for project {project_id}")
+        decomposition_result = await asyncio.to_thread(agent.decompose_prd)
+        task_count = decomposition_result.get("tasks", 0) if decomposition_result else 0
+
+        # Stage 5: Broadcast tasks decomposed
+        await broadcast_tasks_decomposed(manager, project_id, task_count)
+        logger.info(f"Decomposed into {task_count} tasks for project {project_id}")
+
+        # Stage 6: Broadcast tasks ready for review
+        await broadcast_tasks_ready(manager, project_id, task_count)
+        logger.info(f"Planning automation completed for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"Planning automation failed for project {project_id}: {e}")
+        await broadcast_planning_failed(manager, project_id, str(e))
 
 
 @router.post("/answer")

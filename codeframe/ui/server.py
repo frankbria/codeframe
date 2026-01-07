@@ -337,6 +337,7 @@ app.include_router(quality_gates.router)
 app.include_router(review.router)
 app.include_router(session.router)
 app.include_router(tasks.router)
+app.include_router(tasks.project_router)
 app.include_router(websocket.router)
 app.include_router(auth_router.router)
 
