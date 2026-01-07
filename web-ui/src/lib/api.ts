@@ -59,6 +59,10 @@ export const projectsApi = {
     api.post<{ success: boolean; message: string }>(
       `/api/projects/${projectId}/discovery/generate-prd`
     ),
+  generateTasks: (projectId: number | string) =>
+    api.post<{ success: boolean; message: string }>(
+      `/api/projects/${projectId}/planning/generate-tasks`
+    ),
 };
 
 export const agentsApi = {

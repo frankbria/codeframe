@@ -459,7 +459,11 @@ export default function Dashboard({ projectId }: DashboardProps) {
         {activeTab === 'overview' && (
           <div role="tabpanel" id="overview-panel" aria-labelledby="overview-tab">
             {/* Discovery Progress (cf-17.2) */}
-            <DiscoveryProgress projectId={projectId} onViewPRD={() => setShowPRD(true)} />
+            <DiscoveryProgress
+              projectId={projectId}
+              onViewPRD={() => setShowPRD(true)}
+              onNavigateToTasks={() => setActiveTab('tasks')}
+            />
 
             {/* Session Status (T029, 014-session-lifecycle) */}
             <div className="mb-6">

@@ -19,12 +19,16 @@ jest.mock('@hugeicons/react', () => ({
 const mockStartProject = jest.fn();
 const mockRestartDiscovery = jest.fn();
 const mockRetryPrdGeneration = jest.fn();
+const mockGenerateTasks = jest.fn();
+const mockGetPRD = jest.fn();
 jest.mock('@/lib/api', () => ({
   projectsApi: {
     getDiscoveryProgress: jest.fn(),
     startProject: (...args: unknown[]) => mockStartProject(...args),
     restartDiscovery: (...args: unknown[]) => mockRestartDiscovery(...args),
     retryPrdGeneration: (...args: unknown[]) => mockRetryPrdGeneration(...args),
+    generateTasks: (...args: unknown[]) => mockGenerateTasks(...args),
+    getPRD: (...args: unknown[]) => mockGetPRD(...args),
   },
 }));
 
@@ -87,6 +91,8 @@ describe('DiscoveryProgress Component', () => {
     mockStartProject.mockReset();
     mockRestartDiscovery.mockReset();
     mockRetryPrdGeneration.mockReset();
+    mockGenerateTasks.mockReset();
+    mockGetPRD.mockReset();
     // Clear WebSocket message handlers
     mockMessageHandlers.length = 0;
   });
@@ -2042,8 +2048,8 @@ describe('DiscoveryProgress Component', () => {
       simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
 
       await waitFor(() => {
-        expect(screen.getByTestId('next-phase-indicator')).toBeInTheDocument();
-        expect(screen.getByText(/next.*task creation/i)).toBeInTheDocument();
+        expect(screen.getByTestId('task-generation-section')).toBeInTheDocument();
+        expect(screen.getByText(/ready for task breakdown/i)).toBeInTheDocument();
       });
     });
 
@@ -2981,8 +2987,8 @@ describe('DiscoveryProgress Component', () => {
       simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
 
       await waitFor(() => {
-        expect(screen.getByTestId('next-phase-indicator')).toBeInTheDocument();
-        expect(screen.getByText(/next.*task creation/i)).toBeInTheDocument();
+        expect(screen.getByTestId('task-generation-section')).toBeInTheDocument();
+        expect(screen.getByText(/ready for task breakdown/i)).toBeInTheDocument();
       });
     });
   });
@@ -3033,6 +3039,498 @@ describe('DiscoveryProgress Component', () => {
       // Should only call once
       await waitFor(() => {
         expect(mockAuthFetch).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  // ============================================================================
+  // Task Generation Button Tests (Feature 016-3)
+  // ============================================================================
+
+  describe('Task Generation Button', () => {
+    const mockPlanningPhaseData: DiscoveryProgressResponse = {
+      project_id: 1,
+      phase: 'planning',
+      discovery: {
+        state: 'completed',
+        progress_percentage: 100,
+        answered_count: 10,
+        total_required: 10,
+        remaining_count: 0,
+      },
+    };
+
+    describe('Button Visibility', () => {
+      it('should show "Generate Task Breakdown" button when PRD complete and phase is planning', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        // Wait for PRD completion state
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        expect(screen.getByTestId('generate-tasks-button')).toHaveTextContent('Generate Task Breakdown');
+      });
+
+      it('should not show button when PRD is still generating', async () => {
+        const discoveringData: DiscoveryProgressResponse = {
+          project_id: 1,
+          phase: 'discovery',
+          discovery: {
+            state: 'completed',
+            progress_percentage: 100,
+            answered_count: 10,
+            total_required: 10,
+          },
+        };
+
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: discoveringData });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        // Simulate PRD generation in progress (not completed)
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_started', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.queryByTestId('generate-tasks-button')).not.toBeInTheDocument();
+        });
+      });
+
+      it('should not show button when phase is not planning', async () => {
+        const activePhaseData: DiscoveryProgressResponse = {
+          project_id: 1,
+          phase: 'active', // Not planning phase
+          discovery: {
+            state: 'completed',
+            progress_percentage: 100,
+            answered_count: 10,
+            total_required: 10,
+          },
+        };
+
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: activePhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        // Should not show generate button when not in planning phase
+        await waitFor(() => {
+          expect(screen.queryByTestId('generate-tasks-button')).not.toBeInTheDocument();
+        });
+      });
+    });
+
+    describe('Button Click Behavior', () => {
+      it('should call generateTasks API when button is clicked', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockGenerateTasks.mockResolvedValue({ data: { success: true } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        const button = screen.getByTestId('generate-tasks-button');
+        fireEvent.click(button);
+
+        await waitFor(() => {
+          expect(mockGenerateTasks).toHaveBeenCalledWith(1);
+        });
+      });
+
+      it('should show loading state when task generation is in progress', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        // Wait for component to load and trigger PRD completion
+        // Use advanceTimersByTime to advance just enough for state updates, not the auto-minimize
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+          jest.advanceTimersByTime(100);
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        // Simulate planning started via WebSocket
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          jest.advanceTimersByTime(100);
+        });
+
+        const progressElement = screen.getByTestId('task-generation-progress');
+        expect(progressElement).toBeInTheDocument();
+        expect(progressElement).toHaveTextContent(/generating tasks/i);
+      });
+
+      it('should disable button while generating tasks', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        // Start generation
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          const progressElement = screen.getByTestId('task-generation-progress');
+          expect(progressElement).toBeInTheDocument();
+        });
+      });
+    });
+
+    describe('WebSocket Event Handling', () => {
+      it('should handle planning_started event and show generating state', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        // Simulate planning started
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('task-generation-progress')).toBeInTheDocument();
+        });
+      });
+
+      it('should handle issues_generated event and update progress text', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        // Start planning and then send issues_generated
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({ type: 'issues_generated', project_id: 1, issues_count: 5 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/5 issues/i)).toBeInTheDocument();
+        });
+      });
+
+      it('should handle tasks_decomposed event and update progress text', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        // Send sequence of planning events
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({ type: 'issues_generated', project_id: 1, issues_count: 5 });
+          simulateWsMessage({ type: 'tasks_decomposed', project_id: 1, tasks_count: 24 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/24 tasks/i)).toBeInTheDocument();
+        });
+      });
+
+      it('should handle tasks_ready event and show "Review Tasks" button', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        // Complete planning sequence
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({ type: 'issues_generated', project_id: 1, issues_count: 5 });
+          simulateWsMessage({ type: 'tasks_decomposed', project_id: 1, tasks_count: 24 });
+          simulateWsMessage({ type: 'tasks_ready', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('review-tasks-button')).toBeInTheDocument();
+          expect(screen.getByTestId('review-tasks-button')).toHaveTextContent(/review tasks/i);
+        });
+      });
+
+      it('should filter events by project_id', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        // Send event for different project - should be ignored
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 999 });
+        });
+
+        // Button should still be visible (not switched to generating state)
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+      });
+    });
+
+    describe('Navigation', () => {
+      it('should call onNavigateToTasks when "Review Tasks" button is clicked', async () => {
+        const mockNavigateToTasks = jest.fn();
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} onNavigateToTasks={mockNavigateToTasks} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        // Complete planning sequence
+        await act(async () => {
+          simulateWsMessage({ type: 'tasks_ready', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('review-tasks-button')).toBeInTheDocument();
+        });
+
+        const reviewButton = screen.getByTestId('review-tasks-button');
+        fireEvent.click(reviewButton);
+
+        expect(mockNavigateToTasks).toHaveBeenCalledTimes(1);
+      });
+
+      it('should not throw error if onNavigateToTasks is not provided', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await act(async () => {
+          simulateWsMessage({ type: 'tasks_ready', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('review-tasks-button')).toBeInTheDocument();
+        });
+
+        // Should not throw when clicked without callback
+        const reviewButton = screen.getByTestId('review-tasks-button');
+        expect(() => fireEvent.click(reviewButton)).not.toThrow();
+      });
+    });
+
+    describe('Error Handling', () => {
+      it('should show error state when planning_failed event is received', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        // Start planning, then fail
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({
+            type: 'planning_failed',
+            project_id: 1,
+            planning_error: 'Failed to decompose PRD into tasks',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('task-generation-error')).toBeInTheDocument();
+          expect(screen.getByText(/failed to decompose prd into tasks/i)).toBeInTheDocument();
+        });
+      });
+
+      it('should show retry button after task generation failure', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        // Start and fail planning
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({
+            type: 'planning_failed',
+            project_id: 1,
+            planning_error: 'API timeout',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('retry-task-generation-button')).toBeInTheDocument();
+        });
+      });
+
+      it('should call generateTasks when retry button is clicked', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockGenerateTasks.mockResolvedValue({ data: { success: true } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        // Start and fail planning
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({
+            type: 'planning_failed',
+            project_id: 1,
+            planning_error: 'API timeout',
+          });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByTestId('retry-task-generation-button')).toBeInTheDocument();
+        });
+
+        const retryButton = screen.getByTestId('retry-task-generation-button');
+        fireEvent.click(retryButton);
+
+        await waitFor(() => {
+          expect(mockGenerateTasks).toHaveBeenCalledWith(1);
+        });
+      });
+    });
+
+    describe('Progress Display', () => {
+      it('should show issues count when issues_generated event is received', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({ type: 'issues_generated', project_id: 1, issues_count: 8 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/created 8 issues/i)).toBeInTheDocument();
+        });
+      });
+
+      it('should show tasks count when tasks_decomposed event is received', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({ type: 'tasks_decomposed', project_id: 1, tasks_count: 32 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/decomposed into 32 tasks/i)).toBeInTheDocument();
+        });
+      });
+
+      it('should show summary when tasks_ready event is received', async () => {
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+
+        render(<DiscoveryProgress projectId={1} />);
+
+        await act(async () => {
+          simulateWsMessage({ type: 'prd_generation_completed', project_id: 1 });
+        });
+
+        await act(async () => {
+          simulateWsMessage({ type: 'planning_started', project_id: 1 });
+          simulateWsMessage({ type: 'issues_generated', project_id: 1, issues_count: 6 });
+          simulateWsMessage({ type: 'tasks_decomposed', project_id: 1, tasks_count: 18 });
+          simulateWsMessage({ type: 'tasks_ready', project_id: 1 });
+        });
+
+        await waitFor(() => {
+          expect(screen.getByText(/tasks ready for review/i)).toBeInTheDocument();
+        });
       });
     });
   });

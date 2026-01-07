@@ -20,9 +20,10 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 interface DiscoveryProgressProps {
   projectId: number;
   onViewPRD?: () => void;
+  onNavigateToTasks?: () => void;
 }
 
-const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD }: DiscoveryProgressProps) {
+const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD, onNavigateToTasks }: DiscoveryProgressProps) {
   const [data, setData] = useState<DiscoveryProgressResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,14 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
 
   // PRD retry state
   const [isRetryingPrd, setIsRetryingPrd] = useState(false);
+
+  // Task generation state (Feature 016-3)
+  const [tasksGenerated, setTasksGenerated] = useState(false);
+  const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
+  const [taskGenerationError, setTaskGenerationError] = useState<string | null>(null);
+  const [taskGenerationProgress, setTaskGenerationProgress] = useState<string>('');
+  const [issuesCount, setIssuesCount] = useState<number>(0);
+  const [tasksCount, setTasksCount] = useState<number>(0);
 
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
@@ -256,6 +265,28 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
     }
   };
 
+  // Generate task breakdown from PRD (Feature 016-3)
+  const handleGenerateTaskBreakdown = async () => {
+    if (isGeneratingTasks) return;
+
+    setIsGeneratingTasks(true);
+    setTaskGenerationError(null);
+    setTaskGenerationProgress('Starting task generation...');
+
+    try {
+      await projectsApi.generateTasks(projectId);
+      // The WebSocket messages will update the UI progressively
+    } catch (err) {
+      console.error('Failed to generate tasks:', err);
+      setIsGeneratingTasks(false);
+      if (err instanceof Error) {
+        setTaskGenerationError(`Failed to generate tasks: ${err.message}`);
+      } else {
+        setTaskGenerationError('Failed to generate tasks. Please try again.');
+      }
+    }
+  };
+
   // Initial fetch - initialize PRD state from API to prevent spinner reappearing on tab revisit
   useEffect(() => {
     fetchProgress(true);  // Pass true to initialize PRD state on mount
@@ -368,6 +399,44 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
         setPrdError(errorMsg);
         setPrdStage('failed');
         setPrdProgressPct(0);
+      }
+
+      // Handle planning phase events (Feature 016-3)
+      if (message.type === 'planning_started') {
+        setIsGeneratingTasks(true);
+        setTasksGenerated(false);
+        setTaskGenerationError(null);
+        setTaskGenerationProgress('Generating tasks from PRD...');
+        setIssuesCount(0);
+        setTasksCount(0);
+      }
+
+      if (message.type === 'issues_generated') {
+        const count = message.issues_count || 0;
+        setIssuesCount(count);
+        setTaskGenerationProgress(`Created ${count} issues from PRD...`);
+      }
+
+      if (message.type === 'tasks_decomposed') {
+        const count = message.tasks_count || 0;
+        setTasksCount(count);
+        setTaskGenerationProgress(`Decomposed into ${count} tasks...`);
+      }
+
+      if (message.type === 'tasks_ready') {
+        setIsGeneratingTasks(false);
+        setTasksGenerated(true);
+        setTaskGenerationError(null);
+        setTaskGenerationProgress('Tasks ready for review');
+      }
+
+      if (message.type === 'planning_failed') {
+        setIsGeneratingTasks(false);
+        setTasksGenerated(false);
+        const errorMsg = message.planning_error ||
+          message.data?.error ||
+          'Failed to generate tasks';
+        setTaskGenerationError(errorMsg);
       }
 
       // Handle discovery reset - refresh to show idle state
@@ -798,17 +867,88 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                   </div>
                 </div>
 
-                {/* Task Creation Phase Indicator - shown when PRD is complete */}
-                {prdCompleted && phase === 'planning' && (
-                  <div className="p-4 bg-secondary/50 rounded-lg border border-border" data-testid="next-phase-indicator">
+                {/* Task Generation Section - shown when PRD is complete and in planning phase (Feature 016-3) */}
+                {prdCompleted && phase === 'planning' && !tasksGenerated && !isGeneratingTasks && !taskGenerationError && (
+                  <div className="p-4 bg-secondary/50 rounded-lg border border-border" data-testid="task-generation-section">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
+                          <span className="text-primary text-lg" aria-hidden="true">→</span>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-foreground">Ready for Task Breakdown</div>
+                          <div className="text-xs text-muted-foreground mt-1">Generate actionable tasks from your PRD</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleGenerateTaskBreakdown}
+                        data-testid="generate-tasks-button"
+                        className="px-4 py-2 rounded-lg font-medium text-sm bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
+                      >
+                        Generate Task Breakdown
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Task Generation Progress - shown while generating */}
+                {prdCompleted && phase === 'planning' && isGeneratingTasks && (
+                  <div className="p-4 bg-primary/10 rounded-lg border border-primary" data-testid="task-generation-progress">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
-                        <span className="text-primary text-lg" aria-hidden="true">→</span>
+                      <svg className="animate-spin h-5 w-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-primary">Generating Tasks...</div>
+                        <div className="text-xs text-muted-foreground mt-1">{taskGenerationProgress}</div>
                       </div>
-                      <div>
-                        <div className="text-sm font-medium text-foreground">Next: Task Creation</div>
-                        <div className="text-xs text-muted-foreground mt-1">The system will now break down your requirements into actionable tasks</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Task Generation Error - shown on failure */}
+                {prdCompleted && phase === 'planning' && taskGenerationError && (
+                  <div className="p-4 bg-destructive/10 rounded-lg border border-destructive" data-testid="task-generation-error">
+                    <div className="flex items-center gap-3">
+                      <Cancel01Icon className="h-5 w-5 text-destructive flex-shrink-0" aria-hidden="true" />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-destructive">Task Generation Failed</div>
+                        <div className="text-xs text-destructive/80 mt-1">{taskGenerationError}</div>
+                        <button
+                          onClick={handleGenerateTaskBreakdown}
+                          data-testid="retry-task-generation-button"
+                          className="mt-3 px-4 py-2 rounded-lg font-medium text-sm bg-destructive hover:bg-destructive/90 text-destructive-foreground transition-colors"
+                        >
+                          Retry Task Generation
+                        </button>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tasks Ready - shown when generation is complete */}
+                {prdCompleted && phase === 'planning' && tasksGenerated && (
+                  <div className="p-4 bg-success/10 rounded-lg border border-success" data-testid="tasks-ready-section">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <CheckmarkCircle01Icon className="h-5 w-5 text-success flex-shrink-0" aria-hidden="true" />
+                        <div>
+                          <div className="text-sm font-medium text-foreground">Tasks Ready for Review</div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {issuesCount > 0 && tasksCount > 0
+                              ? `Created ${issuesCount} issues with ${tasksCount} tasks`
+                              : 'Your tasks have been generated from the PRD'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => onNavigateToTasks?.()}
+                        data-testid="review-tasks-button"
+                        className="px-4 py-2 rounded-lg font-medium text-sm bg-primary hover:bg-primary/90 text-primary-foreground transition-colors"
+                      >
+                        Review Tasks →
+                      </button>
                     </div>
                   </div>
                 )}

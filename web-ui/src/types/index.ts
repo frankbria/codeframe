@@ -108,6 +108,11 @@ export type WebSocketMessageType =
   | 'prd_generation_progress'  // PRD generation progress update (stage, message, progress_pct)
   | 'prd_generation_completed' // PRD generation finished
   | 'prd_generation_failed'    // PRD generation failed
+  | 'planning_started'         // Planning phase: task generation has begun
+  | 'issues_generated'         // Planning phase: issues created from PRD
+  | 'tasks_decomposed'         // Planning phase: issues decomposed into tasks
+  | 'tasks_ready'              // Planning phase: all tasks ready for review
+  | 'planning_failed'          // Planning phase: task generation failed
   | 'agent_created'            // Sprint 4
   | 'agent_retired'        // Sprint 4
   | 'task_assigned'        // Sprint 4
@@ -187,6 +192,11 @@ export interface WebSocketMessage {
   // message is already defined above for activity_update
   progress_pct?: number;         // prd_generation_progress (0-100)
   prd_preview?: string;          // prd_generation_completed
+
+  // Planning phase fields
+  issues_count?: number;         // issues_generated: number of issues created
+  tasks_count?: number;          // tasks_decomposed: number of tasks created
+  planning_error?: string;       // planning_failed: error message
 }
 
 /**
