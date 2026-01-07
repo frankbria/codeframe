@@ -174,10 +174,12 @@ const TaskReview = memo(function TaskReview({
   // Toggle all tasks in an issue
   const toggleIssueTasks = useCallback((issue: Issue) => {
     const issueTaskIds = getIssueTaskIds(issue);
-    const allSelected = issueTaskIds.every((id) => selectedTaskIds.has(id));
 
     setSelectedTaskIds((prev) => {
+      // Compute allSelected inside the updater to avoid stale closure
+      const allSelected = issueTaskIds.every((id) => prev.has(id));
       const newSet = new Set(prev);
+
       if (allSelected) {
         // Deselect all tasks in this issue
         issueTaskIds.forEach((id) => newSet.delete(id));
@@ -187,7 +189,7 @@ const TaskReview = memo(function TaskReview({
       }
       return newSet;
     });
-  }, [selectedTaskIds]);
+  }, []);
 
   // Handle approval
   const handleApprove = useCallback(async () => {
