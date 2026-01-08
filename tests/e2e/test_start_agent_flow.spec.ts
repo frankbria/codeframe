@@ -85,9 +85,10 @@ test.describe('Start Agent Flow', () => {
       // Answer 3 discovery questions
       for (let i = 0; i < 3; i++) {
         // Check if discovery question is still visible
-        const questionVisible = await page.getByTestId('discovery-question').isVisible().catch(() => false);
+        const questionLocator = page.getByTestId('discovery-question');
+        const questionCount = await questionLocator.count();
 
-        if (!questionVisible) {
+        if (questionCount === 0 || !(await questionLocator.isVisible())) {
           // Discovery might be complete
           break;
         }
@@ -145,7 +146,8 @@ test.describe('Start Agent Flow', () => {
 
       // Check if Start Discovery button is visible (discovery idle state)
       const startButton = page.getByTestId('start-discovery-button');
-      const startButtonVisible = await startButton.isVisible().catch(() => false);
+      const startButtonCount = await startButton.count();
+      const startButtonVisible = startButtonCount > 0 && await startButton.isVisible();
 
       if (startButtonVisible) {
         // Click Start Discovery button
@@ -196,7 +198,8 @@ test.describe('Start Agent Flow', () => {
       // If discovery is already running, verify no error is shown
       // and the progress is displayed correctly
       const errorAlert = page.getByRole('alert');
-      const hasError = await errorAlert.isVisible().catch(() => false);
+      const alertCount = await errorAlert.count();
+      const hasError = alertCount > 0 && await errorAlert.isVisible();
 
       // Should not show any error on initial load
       if (hasError) {

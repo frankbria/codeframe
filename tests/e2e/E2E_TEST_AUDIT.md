@@ -2,19 +2,28 @@
 
 **Date**: 2026-01-07
 **Auditor**: Claude Code
-**Status**: CRITICAL ISSUES FOUND AND PARTIALLY FIXED
+**Status**: CRITICAL ISSUES FOUND AND FIXED
 
 ## Fixes Applied in This PR
 
+### Commit 1: Initial fixes
 1. **WebSocket test now REQUIRES messages** - `test_dashboard.spec.ts:444-456`
 2. **Error filters tightened** - All test files now only filter `net::ERR_ABORTED`
 3. **API response validation added** - `test_project_creation.spec.ts`, `test_task_breakdown.spec.ts`
 
+### Commit 2: Comprehensive pattern replacement
+4. **Replaced `.catch(() => false)` patterns** across all test files:
+   - `test_task_breakdown.spec.ts`: All 6 conditional skips now verify alternate state before skipping
+   - `test_metrics_ui.spec.ts`: API responses now validated, no silent failures
+   - `test_start_agent_flow.spec.ts`: Replaced 3 instances with `.count()` + `.isVisible()` pattern
+   - `test_complete_user_journey.spec.ts`: Replaced 5 instances with proper assertions
+5. **Replaced `.catch(() => {})` patterns** - Metrics tests now fail on API errors
+6. **Added state verification before skips** - Tests now assert they're in a known alternate state
+
 ## Remaining Work (Future PRs)
 
-- Replace `.catch(() => false)` patterns with proper assertions
-- Replace conditional skips with proper test data setup
-- Add API response validation to more user actions
+- Add API response validation to more user actions (lower priority)
+- Consider test data fixtures for consistent project states
 
 ## Executive Summary
 
