@@ -369,3 +369,261 @@ class TestMetricsEndpointIntegration:
         assert backend_stats["cost_usd"] == agent_data["total_cost_usd"]
         assert backend_stats["total_tokens"] == agent_data["total_tokens"]
         assert backend_stats["call_count"] == agent_data["total_calls"]
+
+
+class TestProjectTokenTimeSeriesEndpoint:
+    """Test GET /api/projects/{id}/metrics/tokens/timeseries endpoint."""
+
+    def test_endpoint_exists(self, api_client, project_with_token_usage):
+        """Test that endpoint exists and returns 200."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date={start_date}&end_date={end_date}"
+        )
+        assert response.status_code == 200
+
+    def test_returns_timeseries_structure(self, api_client, project_with_token_usage):
+        """Test that endpoint returns proper time series structure."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date={start_date}&end_date={end_date}&interval=day"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Response should be an array of time series data points
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+        # Each data point should have the expected structure
+        for point in data:
+            assert "timestamp" in point
+            assert "input_tokens" in point
+            assert "output_tokens" in point
+            assert "total_tokens" in point
+            assert "cost_usd" in point
+
+    def test_aggregates_by_day(self, api_client, project_with_token_usage):
+        """Test that data is properly aggregated by day interval."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=3)).strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date={start_date}&end_date={end_date}&interval=day"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should have data points for days with usage
+        assert len(data) > 0
+
+        # Verify total tokens across all data points matches expected
+        total_input = sum(point["input_tokens"] for point in data)
+        total_output = sum(point["output_tokens"] for point in data)
+
+        # We have 3 records: today (1500 tokens), yesterday (750), two days ago (3000)
+        # Filtering to last 3 days should include all
+        assert total_input + total_output > 0
+
+    def test_supports_hour_interval(self, api_client, project_with_token_usage):
+        """Test that hour interval is supported."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = now.strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date={start_date}&end_date={end_date}&interval=hour"
+        )
+
+        assert response.status_code == 200
+
+    def test_supports_week_interval(self, api_client, project_with_token_usage):
+        """Test that week interval is supported."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=14)).strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date={start_date}&end_date={end_date}&interval=week"
+        )
+
+        assert response.status_code == 200
+
+    def test_invalid_interval_returns_400(self, api_client, project_with_token_usage):
+        """Test that invalid interval returns 400 Bad Request."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date={start_date}&end_date={end_date}&interval=invalid"
+        )
+
+        assert response.status_code == 400
+        assert "interval" in response.json()["detail"].lower()
+
+    def test_missing_dates_returns_400(self, api_client, project_with_token_usage):
+        """Test that missing required date parameters returns 400."""
+        project_id, _ = project_with_token_usage
+
+        # Missing start_date
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries?end_date=2025-01-01"
+        )
+        assert response.status_code == 400
+
+        # Missing end_date
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries?start_date=2025-01-01"
+        )
+        assert response.status_code == 400
+
+    def test_empty_date_range_returns_empty_array(self, api_client, project_with_token_usage):
+        """Test that date range with no data returns empty array."""
+        project_id, _ = project_with_token_usage
+
+        # Use date range far in the future with no data
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date=2099-01-01&end_date=2099-01-07"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) == 0
+
+    def test_nonexistent_project_returns_404(self, api_client):
+        """Test that nonexistent project returns 404."""
+        response = api_client.get(
+            "/api/projects/99999/metrics/tokens/timeseries"
+            "?start_date=2025-01-01&end_date=2025-01-07"
+        )
+        assert response.status_code == 404
+
+    def test_accepts_iso8601_dates(self, api_client, project_with_token_usage):
+        """Test that full ISO 8601 dates with time are accepted."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=7)).isoformat().replace("+00:00", "Z")
+        end_date = now.isoformat().replace("+00:00", "Z")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date={start_date}&end_date={end_date}"
+        )
+
+        assert response.status_code == 200
+
+    def test_invalid_month_returns_400(self, api_client, project_with_token_usage):
+        """Test that invalid month (13) returns 400 Bad Request."""
+        project_id, _ = project_with_token_usage
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date=2025-13-01&end_date=2025-01-07"
+        )
+
+        assert response.status_code == 400
+        assert "Invalid date format" in response.json()["detail"]
+
+    def test_invalid_day_returns_400(self, api_client, project_with_token_usage):
+        """Test that invalid day (32) returns 400 Bad Request."""
+        project_id, _ = project_with_token_usage
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date=2025-01-32&end_date=2025-01-07"
+        )
+
+        assert response.status_code == 400
+        assert "Invalid date format" in response.json()["detail"]
+
+    def test_malformed_date_returns_400(self, api_client, project_with_token_usage):
+        """Test that malformed date string returns 400 Bad Request."""
+        project_id, _ = project_with_token_usage
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date=not-a-date&end_date=2025-01-07"
+        )
+
+        assert response.status_code == 400
+        assert "Invalid date format" in response.json()["detail"]
+
+
+class TestProjectCostMetricsDateFiltering:
+    """Test date filtering on GET /api/projects/{id}/metrics/costs endpoint."""
+
+    def test_date_filtering_reduces_costs(self, api_client, project_with_token_usage):
+        """Test that date filtering reduces returned costs."""
+        project_id, _ = project_with_token_usage
+
+        # Get all-time costs
+        all_time_response = api_client.get(f"/api/projects/{project_id}/metrics/costs")
+        all_time_data = all_time_response.json()
+
+        # Get today-only costs (should be less than all-time)
+        now = datetime.now(timezone.utc)
+        start_date = now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+
+        filtered_response = api_client.get(
+            f"/api/projects/{project_id}/metrics/costs"
+            f"?start_date={start_date}&end_date={end_date}"
+        )
+
+        assert filtered_response.status_code == 200
+        filtered_data = filtered_response.json()
+
+        # Filtered should have fewer or equal costs (today only vs all time)
+        assert filtered_data["total_cost_usd"] <= all_time_data["total_cost_usd"]
+        assert filtered_data["total_calls"] <= all_time_data["total_calls"]
+
+    def test_date_filtering_with_iso8601_format(self, api_client, project_with_token_usage):
+        """Test that ISO 8601 format works for costs date filtering."""
+        project_id, _ = project_with_token_usage
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=7)).isoformat().replace("+00:00", "Z")
+        end_date = now.isoformat().replace("+00:00", "Z")
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/costs"
+            f"?start_date={start_date}&end_date={end_date}"
+        )
+
+        assert response.status_code == 200
+
+    def test_date_filtering_backwards_compatible(self, api_client, project_with_token_usage):
+        """Test that costs endpoint still works without date params (backward compatible)."""
+        project_id, _ = project_with_token_usage
+
+        # Should work without any date params
+        response = api_client.get(f"/api/projects/{project_id}/metrics/costs")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert "total_cost_usd" in data
+        assert "by_agent" in data
+        assert "by_model" in data

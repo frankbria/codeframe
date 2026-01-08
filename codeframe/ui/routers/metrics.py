@@ -10,7 +10,7 @@ Endpoints:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -134,9 +134,147 @@ async def get_project_token_metrics(
         raise HTTPException(status_code=500, detail=f"Failed to retrieve token metrics: {str(e)}")
 
 
+def _parse_date(date_str: str) -> datetime:
+    """Parse a date string in multiple formats.
+
+    Accepts:
+    - ISO 8601 with time: '2025-01-01T00:00:00Z'
+    - Date only: '2025-01-01' (converts to start of day UTC)
+
+    Args:
+        date_str: Date string to parse
+
+    Returns:
+        Parsed datetime object
+
+    Raises:
+        ValueError: If date format is invalid
+    """
+    # Try full ISO 8601 format first
+    if "T" in date_str:
+        return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+
+    # Try date-only format (yyyy-MM-dd)
+    try:
+        parsed = datetime.strptime(date_str, "%Y-%m-%d")
+        return parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise ValueError(
+            f"Invalid date format: '{date_str}'. "
+            "Use ISO 8601 format (e.g., '2025-01-01T00:00:00Z' or '2025-01-01')"
+        )
+
+
+@router.get("/api/projects/{project_id}/metrics/tokens/timeseries")
+async def get_project_token_timeseries(
+    project_id: int,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    interval: str = "day",
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get token usage time series data for charting.
+
+    Returns token usage records aggregated by time intervals (hour, day, or week)
+    for visualization in charts. Each data point contains aggregated token counts
+    and costs for that time bucket.
+
+    Args:
+        project_id: Project ID to get time series for
+        start_date: Start date (required). Accepts:
+            - ISO 8601: '2025-01-01T00:00:00Z'
+            - Date only: '2025-01-01'
+        end_date: End date (required). Same formats as start_date.
+        interval: Time interval for grouping ('hour', 'day', 'week'). Default: 'day'
+        db: Database instance (injected)
+        current_user: Authenticated user (injected)
+
+    Returns:
+        200 OK: Array of time series data points
+        [
+            {
+                "timestamp": "2025-01-01T00:00:00Z",
+                "input_tokens": 1000,
+                "output_tokens": 500,
+                "total_tokens": 1500,
+                "cost_usd": 0.0105
+            },
+            ...
+        ]
+        400 Bad Request: Missing required dates, invalid date format, or invalid interval
+        404 Not Found: Project not found
+        403 Forbidden: Access denied
+        500 Internal Server Error: Processing error
+
+    Example:
+        GET /api/projects/1/metrics/tokens/timeseries?start_date=2025-01-01&end_date=2025-01-07&interval=day
+    """
+    # Validate required date parameters
+    if not start_date or not end_date:
+        raise HTTPException(
+            status_code=400,
+            detail="Both start_date and end_date are required for time series data",
+        )
+
+    # Validate project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Parse and validate date parameters
+    try:
+        start_dt = _parse_date(start_date)
+        end_dt = _parse_date(end_date)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Validate interval
+    valid_intervals = ("hour", "day", "week")
+    if interval not in valid_intervals:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid interval '{interval}'. Must be one of: {', '.join(valid_intervals)}",
+        )
+
+    try:
+        # Get time series data using MetricsTracker
+        tracker = MetricsTracker(db=db)
+        timeseries = await tracker.get_token_usage_timeseries(
+            project_id=project_id,
+            start_date=start_dt,
+            end_date=end_dt,
+            interval=interval,
+        )
+
+        logger.info(
+            f"Retrieved time series for project {project_id}: "
+            f"{len(timeseries)} data points ({interval} interval)"
+        )
+
+        return timeseries
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(
+            f"Failed to get token time series for project {project_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve token time series: {str(e)}"
+        )
+
+
 @router.get("/api/projects/{project_id}/metrics/costs")
 async def get_project_cost_metrics(
     project_id: int,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -146,10 +284,16 @@ async def get_project_cost_metrics(
 
     Returns total costs and breakdowns by agent and model for a project.
     Useful for understanding cost allocation and identifying high-cost operations.
+    Optionally filter by date range.
 
     Args:
         project_id: Project ID to get cost breakdown for
+        start_date: Optional start date. Accepts:
+            - ISO 8601: '2025-01-01T00:00:00Z'
+            - Date only: '2025-01-01'
+        end_date: Optional end date. Same formats as start_date.
         db: Database instance (injected)
+        current_user: Authenticated user (injected)
 
     Returns:
         200 OK: Cost breakdown
@@ -177,11 +321,14 @@ async def get_project_cost_metrics(
                 ...
             ]
         }
+        400 Bad Request: Invalid date format
         404 Not Found: Project not found
+        403 Forbidden: Access denied
         500 Internal Server Error: Database or processing error
 
     Example:
         GET /api/projects/1/metrics/costs
+        GET /api/projects/1/metrics/costs?start_date=2025-01-01&end_date=2025-01-07
         Response: {
             "project_id": 1,
             "total_cost_usd": 0.125,
@@ -205,10 +352,23 @@ async def get_project_cost_metrics(
     if not db.user_has_project_access(current_user.id, project_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # Parse optional date parameters
+    start_dt = None
+    end_dt = None
+    try:
+        if start_date:
+            start_dt = _parse_date(start_date)
+        if end_date:
+            end_dt = _parse_date(end_date)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     try:
         # Get project costs using MetricsTracker
         tracker = MetricsTracker(db=db)
-        costs = await tracker.get_project_costs(project_id=project_id)
+        costs = await tracker.get_project_costs(
+            project_id=project_id, start_date=start_dt, end_date=end_dt
+        )
 
         logger.info(
             f"Retrieved cost metrics for project {project_id}: ${costs['total_cost_usd']:.6f}"
