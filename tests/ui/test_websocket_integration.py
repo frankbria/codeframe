@@ -35,6 +35,49 @@ async def trigger_broadcast(server_url: str, message: dict, project_id: int = No
     return response.json()
 
 
+async def drain_proactive_messages(websocket, expected_project_id: int = None):
+    """Drain proactive messages sent after subscription.
+
+    After subscribing, the server sends:
+    1. subscribed - subscription confirmation
+    2. connection_ack - proactive connection acknowledgment
+    3. project_status - proactive project state snapshot
+
+    This helper reads these messages and returns the last one received.
+    Use this after calling subscribe to clear the proactive messages
+    before testing broadcast message reception.
+
+    Args:
+        websocket: WebSocket connection
+        expected_project_id: Optional project ID to verify in messages
+
+    Returns:
+        List of message types received during drain
+    """
+    proactive_types = {"subscribed", "connection_ack", "project_status"}
+    drained = []
+
+    # Read up to 3 proactive messages (subscribed, connection_ack, project_status)
+    for _ in range(3):
+        try:
+            data = json.loads(await asyncio.wait_for(websocket.recv(), timeout=0.5))
+            msg_type = data.get("type")
+            drained.append(msg_type)
+
+            if expected_project_id is not None:
+                assert data.get("project_id") == expected_project_id, \
+                    f"Expected project_id {expected_project_id}, got {data.get('project_id')}"
+
+            # Stop if we get a non-proactive message (shouldn't happen normally)
+            if msg_type not in proactive_types:
+                break
+        except asyncio.TimeoutError:
+            # No more messages
+            break
+
+    return drained
+
+
 class TestFullSubscriptionWorkflow:
     """Test complete subscription workflow: connect → subscribe → receive → unsubscribe."""
 
@@ -56,8 +99,10 @@ class TestFullSubscriptionWorkflow:
         async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            data = json.loads(await websocket.recv())  # subscription confirmation
-            assert data["type"] == "subscribed"
+
+            # Drain proactive messages (subscribed, connection_ack, project_status)
+            drained = await drain_proactive_messages(websocket, expected_project_id=1)
+            assert "subscribed" in drained
 
             # Trigger broadcast via test API endpoint
             await trigger_broadcast(
@@ -78,7 +123,9 @@ class TestFullSubscriptionWorkflow:
         async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await websocket.recv()  # confirmation
+
+            # Drain proactive messages
+            await drain_proactive_messages(websocket, expected_project_id=1)
 
             # Unsubscribe from project 1
             await websocket.send(json.dumps({"type": "unsubscribe", "project_id": 1}))
@@ -110,10 +157,10 @@ class TestFullSubscriptionWorkflow:
         try:
             # Subscribe to projects
             await websocket1.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await websocket1.recv()
+            await drain_proactive_messages(websocket1, expected_project_id=1)
 
             await websocket1.send(json.dumps({"type": "subscribe", "project_id": 2}))
-            await websocket1.recv()
+            await drain_proactive_messages(websocket1, expected_project_id=2)
 
             # Verify subscriptions work by receiving a broadcast
             await trigger_broadcast(
@@ -133,7 +180,7 @@ class TestFullSubscriptionWorkflow:
             # Create second connection and subscribe to same project
             websocket2 = await websockets.connect(ws_url)
             await websocket2.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await websocket2.recv()
+            await drain_proactive_messages(websocket2, expected_project_id=1)
 
             # Trigger broadcast - only websocket2 should receive it
             await trigger_broadcast(
@@ -167,17 +214,17 @@ class TestMultiClientScenario:
         try:
             # Client 1: subscribe to project 1
             await ws1.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await ws1.recv()
+            await drain_proactive_messages(ws1, expected_project_id=1)
 
             # Client 2: subscribe to project 2
             await ws2.send(json.dumps({"type": "subscribe", "project_id": 2}))
-            await ws2.recv()
+            await drain_proactive_messages(ws2, expected_project_id=2)
 
             # Client 3: subscribe to both projects
             await ws3.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await ws3.recv()
+            await drain_proactive_messages(ws3, expected_project_id=1)
             await ws3.send(json.dumps({"type": "subscribe", "project_id": 2}))
-            await ws3.recv()
+            await drain_proactive_messages(ws3, expected_project_id=2)
 
             # Broadcast to project 1
             await trigger_broadcast(server_url,
@@ -226,11 +273,11 @@ class TestMultiClientScenario:
         try:
             # Client 1: subscribe to project 1 only
             await ws1.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            await ws1.recv()
+            await drain_proactive_messages(ws1, expected_project_id=1)
 
             # Client 2: subscribe to project 2 only
             await ws2.send(json.dumps({"type": "subscribe", "project_id": 2}))
-            await ws2.recv()
+            await drain_proactive_messages(ws2, expected_project_id=2)
 
             # Broadcast to project 1
             await trigger_broadcast(server_url,
@@ -261,20 +308,20 @@ class TestSubscribeUnsubscribeFlow:
     async def test_subscribe_to_multiple_projects_sequentially(self, running_server, ws_url, server_url):
         """Test subscribing to multiple projects one after another."""
         async with websockets.connect(ws_url) as websocket:
-            # Subscribe to project 1
+            # Subscribe to project 1 and drain proactive messages
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            resp1 = json.loads(await websocket.recv())
-            assert resp1["project_id"] == 1
+            drained1 = await drain_proactive_messages(websocket, expected_project_id=1)
+            assert "subscribed" in drained1
 
-            # Subscribe to project 2
+            # Subscribe to project 2 and drain proactive messages
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 2}))
-            resp2 = json.loads(await websocket.recv())
-            assert resp2["project_id"] == 2
+            drained2 = await drain_proactive_messages(websocket, expected_project_id=2)
+            assert "subscribed" in drained2
 
-            # Subscribe to project 3
+            # Subscribe to project 3 and drain proactive messages
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 3}))
-            resp3 = json.loads(await websocket.recv())
-            assert resp3["project_id"] == 3
+            drained3 = await drain_proactive_messages(websocket, expected_project_id=3)
+            assert "subscribed" in drained3
 
             # Verify all subscriptions are active by triggering broadcasts
             # and confirming client receives messages from all projects
@@ -308,15 +355,13 @@ class TestSubscribeUnsubscribeFlow:
         async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            resp1 = json.loads(await websocket.recv())
-            assert resp1["type"] == "subscribed"
-            assert resp1["project_id"] == 1
+            drained1 = await drain_proactive_messages(websocket, expected_project_id=1)
+            assert "subscribed" in drained1
 
             # Subscribe to same project again
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            resp2 = json.loads(await websocket.recv())
-            assert resp2["type"] == "subscribed"
-            assert resp2["project_id"] == 1
+            drained2 = await drain_proactive_messages(websocket, expected_project_id=1)
+            assert "subscribed" in drained2
 
             # Verify subscription still works by triggering a broadcast
             await trigger_broadcast(
@@ -334,8 +379,7 @@ class TestSubscribeUnsubscribeFlow:
         async with websockets.connect(ws_url) as websocket:
             # Subscribe to project 1
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            resp1 = json.loads(await websocket.recv())
-            assert resp1["type"] == "subscribed"
+            await drain_proactive_messages(websocket, expected_project_id=1)
 
             # Unsubscribe
             await websocket.send(json.dumps({"type": "unsubscribe", "project_id": 1}))
@@ -344,8 +388,8 @@ class TestSubscribeUnsubscribeFlow:
 
             # Resubscribe
             await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            resp3 = json.loads(await websocket.recv())
-            assert resp3["type"] == "subscribed"
+            drained = await drain_proactive_messages(websocket, expected_project_id=1)
+            assert "subscribed" in drained
 
             # Verify subscription is active by triggering a broadcast
             await trigger_broadcast(
@@ -370,8 +414,7 @@ class TestDisconnectCleanup:
         # Subscribe to multiple projects
         for project_id in [1, 2, 3]:
             await websocket.send(json.dumps({"type": "subscribe", "project_id": project_id}))
-            resp = json.loads(await websocket.recv())
-            assert resp["type"] == "subscribed"
+            await drain_proactive_messages(websocket, expected_project_id=project_id)
 
         # Verify subscriptions work before disconnect
         await trigger_broadcast(
@@ -417,8 +460,7 @@ class TestDisconnectCleanup:
 
             # Subscribe to project 1
             await ws.send(json.dumps({"type": "subscribe", "project_id": 1}))
-            resp = json.loads(await ws.recv())
-            assert resp["type"] == "subscribed"
+            await drain_proactive_messages(ws, expected_project_id=1)
 
         # Trigger broadcast - all 3 should receive
         await trigger_broadcast(
@@ -498,7 +540,7 @@ class TestBackwardCompatibility:
         # Client 1: subscribed to project 1
         ws1 = await websockets.connect(ws_url)
         await ws1.send(json.dumps({"type": "subscribe", "project_id": 1}))
-        await ws1.recv()
+        await drain_proactive_messages(ws1, expected_project_id=1)
 
         # Client 2: not subscribed to anything
         ws2 = await websockets.connect(ws_url)
@@ -762,9 +804,11 @@ class TestEdgeCases:
             # Rapidly subscribe and unsubscribe
             for i in range(10):
                 await websocket.send(json.dumps({"type": "subscribe", "project_id": 1}))
-                await websocket.recv()
+                # Drain proactive messages (subscribed, connection_ack, project_status)
+                await drain_proactive_messages(websocket, expected_project_id=1)
                 await websocket.send(json.dumps({"type": "unsubscribe", "project_id": 1}))
-                await websocket.recv()
+                resp = json.loads(await websocket.recv())
+                assert resp["type"] == "unsubscribed"
 
             # Connection should still be valid
             await websocket.send(json.dumps({"type": "ping"}))

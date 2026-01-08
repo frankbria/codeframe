@@ -24,6 +24,9 @@ Message Types:
 - task_assigned: Task assigned to agent (Sprint 4)
 - task_blocked: Task blocked by dependencies (Sprint 4)
 - task_unblocked: Task unblocked (Sprint 4)
+- heartbeat: Periodic connection health check (proactive messaging)
+- connection_ack: Connection acknowledgment after subscription (proactive messaging)
+- project_status: Initial project state snapshot (proactive messaging)
 """
 
 from datetime import datetime, UTC
@@ -31,6 +34,30 @@ from typing import Optional, List
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+async def broadcast_heartbeat(manager, project_id: int) -> None:
+    """
+    Broadcast heartbeat message to connected clients.
+
+    Heartbeat messages are sent periodically (every 30 seconds) to keep
+    WebSocket connections alive and verify real-time functionality.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID for filtered broadcast
+    """
+    message = {
+        "type": "heartbeat",
+        "project_id": project_id,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast heartbeat for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast heartbeat: {e}")
 
 
 async def broadcast_task_status(

@@ -4,10 +4,22 @@ This module provides the WebSocket endpoint for real-time updates to the dashboa
 
 Endpoints:
     - WS /ws - WebSocket connection for real-time project updates
+
+Proactive Messaging:
+    The WebSocket sends proactive messages to clients:
+    - connection_ack: Sent after successful subscription to confirm real-time connectivity
+    - project_status: Initial project state snapshot sent on subscription
+    - heartbeat: Periodic messages (every 30 seconds) to keep connections alive
+
+Configuration:
+    WEBSOCKET_HEARTBEAT_INTERVAL: Environment variable to configure heartbeat interval (default: 30 seconds)
 """
 
+import asyncio
 import json
 import logging
+import os
+from datetime import datetime, UTC
 
 import jwt as pyjwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
@@ -30,6 +42,48 @@ logger = logging.getLogger(__name__)
 # Create router for WebSocket endpoint
 # No prefix since WebSocket uses /ws path directly
 router = APIRouter(tags=["websocket"])
+
+# Heartbeat interval in seconds
+# Heartbeats keep connections alive and verify real-time functionality
+# Configurable via WEBSOCKET_HEARTBEAT_INTERVAL env var for testing/tuning
+try:
+    HEARTBEAT_INTERVAL_SECONDS = int(os.getenv("WEBSOCKET_HEARTBEAT_INTERVAL", "30"))
+except ValueError:
+    logger.warning("Invalid WEBSOCKET_HEARTBEAT_INTERVAL value, using default 30 seconds")
+    HEARTBEAT_INTERVAL_SECONDS = 30
+
+
+async def send_heartbeats(websocket: WebSocket, project_id: int) -> None:
+    """
+    Send periodic heartbeat messages to a WebSocket client.
+
+    This function runs in a background task and sends heartbeat messages
+    every HEARTBEAT_INTERVAL_SECONDS to keep the connection alive and
+    verify real-time functionality.
+
+    Args:
+        websocket: WebSocket connection to send heartbeats to
+        project_id: Project ID to include in heartbeat messages
+    """
+    try:
+        while True:
+            await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+            try:
+                message = {
+                    "type": "heartbeat",
+                    "project_id": project_id,
+                    "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                }
+                await websocket.send_json(message)
+                logger.debug(f"Sent heartbeat for project {project_id}")
+            except Exception as e:
+                # Connection may have closed - exit the loop
+                logger.debug(f"Heartbeat send failed (connection likely closed): {e}")
+                break
+    except asyncio.CancelledError:
+        # Normal cancellation on disconnect
+        logger.debug(f"Heartbeat task cancelled for project {project_id}")
+        raise
 
 
 @router.get("/ws/health")
@@ -144,6 +198,10 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
     # Accept WebSocket connection after successful authentication
     # Note: user_id is captured in closure and used for authorization checks below
     await manager.connect(websocket)
+
+    # Track heartbeat tasks per project to cancel on disconnect
+    heartbeat_tasks: dict[int, asyncio.Task] = {}
+
     try:
         while True:
             # Keep connection alive and handle incoming messages
@@ -212,6 +270,53 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
                     await manager.subscription_manager.subscribe(websocket, project_id)
                     logger.info(f"WebSocket (user_id={user_id}) subscribed to project {project_id}")
                     await websocket.send_json({"type": "subscribed", "project_id": project_id})
+
+                    # Send connection acknowledgment (proactive messaging)
+                    await websocket.send_json({
+                        "type": "connection_ack",
+                        "project_id": project_id,
+                        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                        "message": "Connected to real-time updates",
+                    })
+
+                    # Send initial project status snapshot (proactive messaging)
+                    try:
+                        project = db.get_project(project_id)
+                        if project:
+                            await websocket.send_json({
+                                "type": "project_status",
+                                "project_id": project_id,
+                                "status": project.get("status", "unknown"),
+                                "phase": project.get("phase", "unknown"),
+                                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                            })
+                        else:
+                            logger.debug(f"Project {project_id} not found for status snapshot")
+                    except (KeyError, AttributeError) as e:
+                        # Expected - project may not have status/phase fields
+                        logger.debug(f"Project {project_id} missing status fields: {e}")
+                    except Exception as e:
+                        # Unexpected error - log as warning for investigation
+                        logger.warning(f"Unexpected error sending project status for {project_id}: {e}")
+
+                    # Start heartbeat task for this subscription (proactive messaging)
+                    # Cancel existing task if present (handles re-subscription case to prevent memory leak)
+                    if project_id in heartbeat_tasks:
+                        old_task = heartbeat_tasks[project_id]
+                        old_task.cancel()
+                        try:
+                            await old_task
+                        except asyncio.CancelledError:
+                            pass
+                        logger.debug(f"Cancelled old heartbeat task for project {project_id}")
+
+                    # Start new heartbeat task
+                    heartbeat_task = asyncio.create_task(
+                        send_heartbeats(websocket, project_id)
+                    )
+                    heartbeat_tasks[project_id] = heartbeat_task
+                    logger.debug(f"Started heartbeat task for project {project_id}")
+
                 except Exception as e:
                     logger.error(f"Error subscribing to project {project_id}: {e}")
                     await websocket.send_json(
@@ -253,6 +358,17 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
                     await manager.subscription_manager.unsubscribe(websocket, project_id)
                     logger.info(f"WebSocket unsubscribed from project {project_id}")
                     await websocket.send_json({"type": "unsubscribed", "project_id": project_id})
+
+                    # Cancel heartbeat task for this project
+                    if project_id in heartbeat_tasks:
+                        heartbeat_tasks[project_id].cancel()
+                        try:
+                            await heartbeat_tasks[project_id]
+                        except asyncio.CancelledError:
+                            pass
+                        del heartbeat_tasks[project_id]
+                        logger.debug(f"Cancelled heartbeat task for unsubscribed project {project_id}")
+
                 except Exception as e:
                     logger.error(f"Error unsubscribing from project {project_id}: {e}")
                     await websocket.send_json(
@@ -266,6 +382,16 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
         # Log unexpected errors for debugging
         logger.error(f"WebSocket error: {type(e).__name__} - {str(e)}", exc_info=True)
     finally:
+        # Cancel all heartbeat tasks
+        for project_id, task in heartbeat_tasks.items():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            logger.debug(f"Cancelled heartbeat task for project {project_id}")
+        heartbeat_tasks.clear()
+
         # Always disconnect and clean up, regardless of how we exited
         await manager.disconnect(websocket)
         try:
