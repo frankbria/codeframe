@@ -163,70 +163,38 @@ test.describe('Late-Joining User Scenarios', () => {
         timeout: 15000,
       });
 
-      // If project has tasks AND is in planning phase, should show Tasks Ready section
-      if (progressData.phase === 'planning' && exists) {
-        // CRITICAL ASSERTION: Should NOT show "Generate Task Breakdown" button
-        const generateButton = page.locator('[data-testid="generate-tasks-button"]');
-        const tasksReadySection = page.locator('[data-testid="tasks-ready-section"]');
+      // Project must be in planning phase with tasks to test late-joining scenario
+      expect(progressData.phase).toBe('planning');
+      expect(exists).toBe(true);
 
-        // Wait for either section to appear
-        await Promise.race([
-          generateButton.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null),
-          tasksReadySection.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null),
-        ]);
+      // CRITICAL: Verify correct UI state for late-joining user
+      const generateButton = page.locator('[data-testid="generate-tasks-button"]');
+      const tasksReadySection = page.locator('[data-testid="tasks-ready-section"]');
+      const minimizedView = page.locator('[data-testid="prd-minimized-view"]');
 
-        // The bug: generate button appears even when tasks exist
-        // The fix: component checks for existing tasks on mount
-        const generateButtonVisible = await generateButton.isVisible().catch(() => false);
-        const tasksReadySectionVisible = await tasksReadySection.isVisible().catch(() => false);
+      // Wait for the page to stabilize after task state initialization
+      await page.waitForTimeout(1000);
 
-        console.log(`📊 Generate button visible: ${generateButtonVisible}`);
-        console.log(`📊 Tasks ready section visible: ${tasksReadySectionVisible}`);
-
-        // ASSERTION: If tasks exist, we should see "Tasks Ready" not "Generate Tasks"
-        if (generateButtonVisible && !tasksReadySectionVisible) {
-          // This would indicate the bug is present
-          throw new Error(
-            'BUG DETECTED: "Generate Task Breakdown" button is visible when tasks already exist. ' +
-            'Late-joining users are seeing the wrong UI state. ' +
-            'The fix should check for existing tasks on component mount.'
-          );
-        }
-
-        // Success case: Tasks Ready section is visible
-        if (tasksReadySectionVisible) {
-          console.log('✅ Tasks Ready section is visible (correct behavior for late-joining user)');
-          await expect(tasksReadySection).toBeVisible();
-
-          // Should also have a "Review Tasks" button
-          const reviewButton = page.locator('[data-testid="review-tasks-button"]');
-          await expect(reviewButton).toBeVisible();
-          console.log('✅ Review Tasks button is visible');
-        } else if (!generateButtonVisible && !tasksReadySectionVisible) {
-          // Neither visible - might be in a different state (minimized, etc.)
-          console.log('ℹ️ Neither button nor ready section visible - checking for alternate states');
-
-          // Check if the discovery section is minimized
-          const minimizedView = page.locator('[data-testid="prd-minimized-view"]');
-          if (await minimizedView.isVisible().catch(() => false)) {
-            console.log('ℹ️ Discovery section is minimized - expanding to verify state');
-            const expandButton = page.locator('[data-testid="expand-discovery-button"]');
-            if (await expandButton.isVisible().catch(() => false)) {
-              await expandButton.click();
-              await page.waitForTimeout(500);
-
-              // Now check again
-              const tasksReadyAfterExpand = page.locator('[data-testid="tasks-ready-section"]');
-              await expect(tasksReadyAfterExpand).toBeVisible({ timeout: 5000 });
-              console.log('✅ Tasks Ready section visible after expanding');
-            }
-          }
-        }
-      } else {
-        // Project not in planning phase with tasks - skip this specific assertion
-        console.log(`ℹ️ Project in phase "${progressData.phase}" - cannot fully test late-joining task scenario`);
-        console.log('   For full test coverage, seed data should include a project in planning phase with tasks');
+      // Check for minimized state first and expand if needed
+      if (await minimizedView.isVisible().catch(() => false)) {
+        console.log('ℹ️ Discovery section is minimized - expanding to verify state');
+        const expandButton = page.locator('[data-testid="expand-discovery-button"]');
+        await expandButton.click();
+        await page.waitForTimeout(500);
       }
+
+      // ASSERTION 1: "Generate Tasks" button must NOT be visible when tasks exist
+      await expect(generateButton).not.toBeVisible({ timeout: 5000 });
+      console.log('✅ Generate Task Breakdown button is correctly hidden');
+
+      // ASSERTION 2: "Tasks Ready" section must be visible
+      await expect(tasksReadySection).toBeVisible({ timeout: 5000 });
+      console.log('✅ Tasks Ready section is visible (correct behavior for late-joining user)');
+
+      // ASSERTION 3: "Review Tasks" button must be visible
+      const reviewButton = page.locator('[data-testid="review-tasks-button"]');
+      await expect(reviewButton).toBeVisible();
+      console.log('✅ Review Tasks button is visible');
     });
 
     test('should not show "Generate Tasks" button after clicking when tasks already exist', async () => {

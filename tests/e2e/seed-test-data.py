@@ -1282,7 +1282,7 @@ Sprint 2: Testing and polish
                 "completed",  # status
                 3,  # priority (high)
                 1,  # workflow_step
-                "backend-001",  # assigned_to
+                "backend-worker-001",  # assigned_to
                 now_ts,  # created_at
             ),
             (
@@ -1293,7 +1293,7 @@ Sprint 2: Testing and polish
                 "in_progress",  # status
                 2,  # priority (medium)
                 2,  # workflow_step
-                "frontend-001",  # assigned_to
+                "frontend-specialist-001",  # assigned_to
                 now_ts,  # created_at
             ),
         ]
@@ -1322,8 +1322,8 @@ Sprint 2: Testing and polish
         # Use the same agents seeded for project 1
         # Schema: project_id, agent_id, role, assigned_at
         project_agent_assignments_p2 = [
-            (planning_project_id, "backend-001", "developer", now_ts),
-            (planning_project_id, "frontend-001", "developer", now_ts),
+            (planning_project_id, "backend-worker-001", "developer", now_ts),
+            (planning_project_id, "frontend-specialist-001", "developer", now_ts),
         ]
         for assignment in project_agent_assignments_p2:
             cursor.execute(

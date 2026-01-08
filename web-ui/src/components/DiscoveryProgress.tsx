@@ -70,6 +70,10 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
   const [taskGenerationProgress, setTaskGenerationProgress] = useState<string>('');
   const [issuesCount, setIssuesCount] = useState<number>(0);
   const [tasksCount, setTasksCount] = useState<number>(0);
+  // Tracks whether task state has been initialized (prevents race condition on mount)
+  const [taskStateInitialized, setTaskStateInitialized] = useState(false);
+  // Message shown when user tries to generate tasks that already exist
+  const [tasksAlreadyExistMessage, setTasksAlreadyExistMessage] = useState(false);
 
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
@@ -185,7 +189,13 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
               } catch (tasksErr) {
                 // Tasks fetch failed - fail open (show button, let user try to generate)
                 console.warn('Failed to check existing tasks during initialization:', tasksErr);
+              } finally {
+                // Mark task state as initialized to prevent race condition
+                setTaskStateInitialized(true);
               }
+            } else {
+              // Not in planning phase, but still mark as initialized
+              setTaskStateInitialized(true);
             }
           } else if (prdStatus === 'generating') {
             setIsGeneratingPRD(true);
@@ -297,6 +307,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
         setIsGeneratingTasks(false);
         setTasksGenerated(true);
         setTaskGenerationProgress('Tasks already generated');
+        // Show brief notification to user
+        setTasksAlreadyExistMessage(true);
+        setTimeout(() => setTasksAlreadyExistMessage(false), 3000);
         return;
       }
 
@@ -893,7 +906,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                 </div>
 
                 {/* Task Generation Section - shown when PRD is complete and in planning phase (Feature 016-3) */}
-                {prdCompleted && phase === 'planning' && !tasksGenerated && !isGeneratingTasks && !taskGenerationError && (
+                {/* taskStateInitialized prevents button flash during async task check on mount */}
+                {prdCompleted && phase === 'planning' && taskStateInitialized && !tasksGenerated && !isGeneratingTasks && !taskGenerationError && (
                   <div className="p-4 bg-secondary/50 rounded-lg border border-border" data-testid="task-generation-section">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -949,6 +963,18 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                         </button>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Notification: Tasks already existed (idempotent response) */}
+                {tasksAlreadyExistMessage && (
+                  <div
+                    className="p-3 mb-4 rounded-lg border bg-primary/10 border-primary text-primary text-sm"
+                    data-testid="tasks-already-exist-message"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Tasks have already been generated for this project.
                   </div>
                 )}
 
