@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { authFetch } from '@/lib/api-client';
+import { ClipboardIcon, Alert02Icon } from '@hugeicons/react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -55,7 +56,7 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
     return (
       <div className="bg-primary/10 border border-primary rounded-lg p-4">
         <div className="flex items-center space-x-2">
-          <span className="text-2xl">📋</span>
+          <ClipboardIcon className="h-6 w-6 text-primary" />
           <span className="text-primary font-medium">Loading session...</span>
         </div>
       </div>
@@ -66,7 +67,7 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
     return (
       <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
         <div className="flex items-center space-x-2">
-          <span className="text-2xl">⚠️</span>
+          <Alert02Icon className="h-6 w-6 text-destructive" />
           <span className="text-destructive font-medium">
             Could not load session state: {error}
           </span>
@@ -82,7 +83,7 @@ export function SessionStatus({ projectId }: SessionStatusProps) {
   return (
     <div className="bg-primary/10 border border-primary rounded-lg p-6">
       <div className="flex items-start space-x-3">
-        <span className="text-3xl">📋</span>
+        <ClipboardIcon className="h-8 w-8 text-primary flex-shrink-0" />
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-foreground mb-3">
             Session Context

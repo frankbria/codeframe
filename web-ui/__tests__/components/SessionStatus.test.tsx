@@ -3,6 +3,16 @@
  * Tests for session lifecycle display (014-session-lifecycle, T030)
  */
 
+// Mock Hugeicons used by SessionStatus
+jest.mock('@hugeicons/react', () => ({
+  ClipboardIcon: ({ className }: { className?: string }) => (
+    <svg className={className} data-testid="clipboard-icon" />
+  ),
+  Alert02Icon: ({ className }: { className?: string }) => (
+    <svg className={className} data-testid="alert-icon" />
+  ),
+}));
+
 // Mock the api-client module BEFORE imports
 jest.mock('@/lib/api-client', () => ({
   authFetch: jest.fn(),
@@ -34,7 +44,7 @@ describe('SessionStatus', () => {
       render(<SessionStatus projectId={1} />);
 
       expect(screen.getByText('Loading session...')).toBeInTheDocument();
-      expect(screen.getByText('📋')).toBeInTheDocument();
+      expect(screen.getByTestId('clipboard-icon')).toBeInTheDocument();
     });
 
     it('shows blue background for loading state', () => {
@@ -61,7 +71,7 @@ describe('SessionStatus', () => {
       });
     });
 
-    it('shows warning emoji for error state', async () => {
+    it('shows alert icon for error state', async () => {
       mockAuthFetch.mockRejectedValueOnce(
         new Error('Failed to fetch')
       );
@@ -69,7 +79,7 @@ describe('SessionStatus', () => {
       render(<SessionStatus projectId={1} />);
 
       await waitFor(() => {
-        expect(screen.getByText('⚠️')).toBeInTheDocument();
+        expect(screen.getByTestId('alert-icon')).toBeInTheDocument();
       });
     });
 
