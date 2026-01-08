@@ -1227,21 +1227,22 @@ def seed_test_data(db_path: str, project_id: int):
         )
         print(f"✅ Created/updated project {planning_project_id} in 'planning' phase")
 
-        # Add completed discovery state for project 2
-        discovery_entries_p2 = [
-            (planning_project_id, "discovery_state", "state", "completed", now_ts, now_ts),
-        ]
-        for entry in discovery_entries_p2:
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                entry,
-            )
+        # Add completed discovery state for project 2 (guard against missing memory table)
+        if table_exists(cursor, TABLE_MEMORY):
+            discovery_entries_p2 = [
+                (planning_project_id, "discovery_state", "state", "completed", now_ts, now_ts),
+            ]
+            for entry in discovery_entries_p2:
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    entry,
+                )
 
-        # Add PRD content for project 2
-        prd_content = """# Project Requirements Document
+            # Add PRD content for project 2
+            prd_content = """# Project Requirements Document
 
 ## Overview
 This is a test PRD for late-joining user E2E tests.
@@ -1260,13 +1261,15 @@ This is a test PRD for late-joining user E2E tests.
 Sprint 1: Core features
 Sprint 2: Testing and polish
 """
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
-            VALUES (?, 'prd', 'content', ?, ?, ?)
-            """,
-            (planning_project_id, prd_content, now_ts, now_ts),
-        )
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (planning_project_id, prd_content, now_ts, now_ts),
+            )
+        else:
+            print(f"⚠️  Warning: {TABLE_MEMORY} table doesn't exist, skipping project 2 discovery state and PRD")
 
         # Clear existing tasks for project 2 before re-seeding (ensures clean state)
         cursor.execute("DELETE FROM tasks WHERE project_id = ?", (planning_project_id,))
@@ -1352,16 +1355,16 @@ Sprint 2: Testing and polish
         # Clear existing assignments first
         cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (planning_project_id,))
         # Use the same agents seeded for project 1
-        # Schema: project_id, agent_id, role, assigned_at
+        # Schema: project_id, agent_id, role, is_active, assigned_at (5 columns - must match project 1)
         project_agent_assignments_p2 = [
-            (planning_project_id, "backend-worker-001", "developer", now_ts),
-            (planning_project_id, "frontend-specialist-001", "developer", now_ts),
+            (planning_project_id, "backend-worker-001", "developer", 1, now_ts),
+            (planning_project_id, "frontend-specialist-001", "developer", 1, now_ts),
         ]
         for assignment in project_agent_assignments_p2:
             cursor.execute(
                 """
-                INSERT INTO project_agents (project_id, agent_id, role, assigned_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 assignment,
             )
