@@ -440,16 +440,14 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     }
 
     // Step 9: STRICT VERIFICATION - WebSocket MUST receive messages to prove it works
-    // If the backend is truly "passive", we need to trigger a state change to get a message.
-    // A WebSocket test that accepts 0 messages is not testing anything!
+    // The backend now sends proactive messages (connection_ack, project_status, heartbeat)
+    // so we should always receive at least one message after subscription.
     if (wsMonitor.messages.length === 0) {
-      // This is a REAL failure - WebSocket should send at least a connection acknowledgment
-      // or heartbeat. If we receive nothing, the connection may be broken.
       throw new Error(
         'WebSocket test FAILED: No messages received.\n' +
-        'A working WebSocket should send at least one message (subscription ack, heartbeat, or state update).\n' +
+        'The backend sends proactive messages (subscribed, connection_ack, project_status) on subscription.\n' +
         'Possible causes:\n' +
-        '  1. WebSocket server not sending messages on connection\n' +
+        '  1. WebSocket subscription not completing\n' +
         '  2. Message parsing failed silently\n' +
         '  3. Connection established but immediately dropped\n' +
         'This test requires the backend to send at least one message to verify the connection works end-to-end.'
@@ -457,10 +455,14 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     }
 
     // Verify we received meaningful messages (not just empty frames)
+    // Check for proactive messaging types: connection_ack, project_status, heartbeat
     if (wsMonitor.messages.length > 0) {
       const hasMeaningfulMessage = wsMonitor.messages.some(m =>
         m.includes('pong') ||
         m.includes('subscribed') ||
+        m.includes('connection_ack') ||
+        m.includes('project_status') ||
+        m.includes('heartbeat') ||
         m.includes('type') ||
         m.includes('agent') ||
         m.includes('project')

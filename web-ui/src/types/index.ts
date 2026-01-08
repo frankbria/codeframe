@@ -100,6 +100,9 @@ export type WebSocketMessageType =
   | 'pong'
   | 'subscribe'
   | 'subscribed'
+  | 'heartbeat'                   // Proactive: Periodic connection health check
+  | 'connection_ack'              // Proactive: Subscription confirmation
+  | 'project_status'              // Proactive: Initial project state snapshot
   | 'discovery_starting'       // Immediate feedback when Start Discovery clicked
   | 'discovery_question_ready' // First question is available after starting discovery
   | 'discovery_reset'          // Discovery was reset to idle state
