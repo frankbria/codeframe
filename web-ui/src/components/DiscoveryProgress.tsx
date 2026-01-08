@@ -307,9 +307,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
         setIsGeneratingTasks(false);
         setTasksGenerated(true);
         setTaskGenerationProgress('Tasks already generated');
-        // Show brief notification to user
+        // Show brief notification to user (auto-cleared by useEffect below)
         setTasksAlreadyExistMessage(true);
-        setTimeout(() => setTasksAlreadyExistMessage(false), 3000);
         return;
       }
 
@@ -329,6 +328,18 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
   useEffect(() => {
     fetchProgress(true);  // Pass true to initialize PRD state on mount
   }, [fetchProgress]);
+
+  // Auto-clear "tasks already exist" notification after 3 seconds
+  // Uses useEffect with cleanup to prevent state updates on unmounted component
+  useEffect(() => {
+    if (!tasksAlreadyExistMessage) return;
+
+    const timeoutId = setTimeout(() => {
+      setTasksAlreadyExistMessage(false);
+    }, 3000);
+
+    return () => clearTimeout(timeoutId);
+  }, [tasksAlreadyExistMessage]);
 
   // Timeout detection for stuck discovery state
   useEffect(() => {
