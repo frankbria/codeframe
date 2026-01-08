@@ -35,6 +35,21 @@ jest.mock('@hugeicons/react', () => ({
   RocketIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="rocket-icon" />,
   HelpCircleIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="help-icon" />,
   Idea01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="idea-icon" />,
+  // Dashboard section header icons
+  UserGroupIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="user-group-icon" />,
+  Loading03Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="loading-icon" />,
+  WorkHistoryIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="work-history-icon" />,
+  AnalyticsUpIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="analytics-icon" />,
+  ClipboardIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="clipboard-icon" />,
+  CheckListIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="checklist-icon" />,
+  Target02Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="target-icon" />,
+  FloppyDiskIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="floppy-icon" />,
+  // Activity item icons
+  TestTube01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="test-tube-icon" />,
+  CheckmarkSquare01Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="checkmark-square-icon" />,
+  BotIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="bot-icon" />,
+  Logout02Icon: ({ className }: { className?: string }) => <svg className={className} data-testid="logout-icon" />,
+  GitCommitIcon: ({ className }: { className?: string }) => <svg className={className} data-testid="git-commit-icon" />,
 }));
 jest.mock('@/components/ChatInterface', () => ({
   __esModule: true,

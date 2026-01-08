@@ -37,6 +37,24 @@ import TaskStats from './tasks/TaskStats';
 import PhaseProgress from './PhaseProgress';
 import TaskList from './TaskList';
 import TaskReview from './TaskReview';
+import {
+  UserGroupIcon,
+  Loading03Icon,
+  WorkHistoryIcon,
+  CheckmarkCircle01Icon,
+  TestTube01Icon,
+  Alert02Icon,
+  CheckmarkSquare01Icon,
+  BotIcon,
+  Logout02Icon,
+  GitCommitIcon,
+  AnalyticsUpIcon,
+  ClipboardIcon,
+  Search01Icon,
+  CheckListIcon,
+  Target02Icon,
+  FloppyDiskIcon,
+} from '@hugeicons/react';
 
 /**
  * Maps backend phase names to PhaseProgress component phase names.
@@ -593,7 +611,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
             {/* Agents Section - Multi-Agent Per Project Architecture */}
             <div className="bg-card rounded-lg shadow p-6 mb-6" data-testid="agent-status-panel">
-              <h2 className="text-lg font-semibold mb-4">🤖 Multi-Agent Team</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <UserGroupIcon className="h-5 w-5" />
+                Multi-Agent Team
+              </h2>
               <AgentList
                 projectId={projectId}
                 onAgentClick={handleAgentClick}
@@ -606,7 +627,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
             {agents.length > 0 && (
               <div className="bg-card rounded-lg shadow p-6 mb-6" data-testid="agent-state-panel">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">🔄 Agent State (Real-time)</h2>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Loading03Icon className="h-5 w-5" />
+                    Agent State (Real-time)
+                  </h2>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
                     {agents.length} agents active
                   </span>
@@ -633,7 +657,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
 
             {/* Recent Activity */}
             <div className="bg-card rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold mb-4">📝 Recent Activity</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <WorkHistoryIcon className="h-5 w-5" />
+                Recent Activity
+              </h2>
               <div className="space-y-2">
                 {activity.length > 0 ? (
                   activity.map((item, index) => (
@@ -641,15 +668,14 @@ export default function Dashboard({ projectId }: DashboardProps) {
                       <span className="text-muted-foreground min-w-[60px]">
                         {new Date(item.timestamp).toLocaleTimeString()}
                       </span>
-                      <span className="flex-1">
-                        {item.type === 'task_completed' && '✅'}
-                        {item.type === 'test_result' && '🧪'}
-                        {item.type === 'task_blocked' && '⚠️'}
-                        {item.type === 'task_unblocked' && '✓'}
-                        {item.type === 'agent_created' && '🤖'}
-                        {item.type === 'agent_retired' && '👋'}
-                        {item.type === 'commit_created' && '💾'}
-                        {' '}
+                      <span className="flex-1 flex items-center gap-1">
+                        {item.type === 'task_completed' && <CheckmarkCircle01Icon className="h-4 w-4 text-green-600 flex-shrink-0" />}
+                        {item.type === 'test_result' && <TestTube01Icon className="h-4 w-4 text-blue-600 flex-shrink-0" />}
+                        {item.type === 'task_blocked' && <Alert02Icon className="h-4 w-4 text-yellow-600 flex-shrink-0" />}
+                        {item.type === 'task_unblocked' && <CheckmarkSquare01Icon className="h-4 w-4 text-green-600 flex-shrink-0" />}
+                        {item.type === 'agent_created' && <BotIcon className="h-4 w-4 text-primary flex-shrink-0" />}
+                        {item.type === 'agent_retired' && <Logout02Icon className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
+                        {item.type === 'commit_created' && <GitCommitIcon className="h-4 w-4 text-purple-600 flex-shrink-0" />}
                         <span className="font-medium">{item.agent}:</span> {item.message}
                       </span>
                     </div>
@@ -669,7 +695,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
           <div role="tabpanel" id="tasks-panel" aria-labelledby="tasks-tab" data-testid="tasks-panel">
             {/* Task Statistics Section */}
             <div className="bg-card rounded-lg shadow p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">📊 Task Statistics</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <AnalyticsUpIcon className="h-5 w-5" />
+                Task Statistics
+              </h2>
               <TaskStats />
             </div>
 
@@ -678,7 +707,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
               /* Planning Phase: Show TaskReview for task approval */
               <div className="bg-card rounded-lg shadow p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">📋 Review Task Breakdown</h2>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <ClipboardIcon className="h-5 w-5" />
+                    Review Task Breakdown
+                  </h2>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
                     Awaiting Approval
                   </span>
@@ -691,7 +723,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
               /* Development/Review Phase: Show TaskList for active tasks */
               <div className="bg-card rounded-lg shadow p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">🎯 Active Tasks</h2>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Target02Icon className="h-5 w-5" />
+                    Active Tasks
+                  </h2>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                     In Development
                   </span>
@@ -704,7 +739,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
               /* Discovery/Complete/Shipped: Show traditional TaskTreeView */
               <div className="bg-card rounded-lg shadow p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">🎯 Issues & Tasks</h2>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Target02Icon className="h-5 w-5" />
+                    Issues & Tasks
+                  </h2>
                   {issuesData && (
                     <span className="text-sm text-muted-foreground">
                       {issuesData.total_issues} issues, {issuesData.total_tasks} tasks
@@ -745,7 +783,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
             {/* Review Findings Panel (T065, Sprint 10) */}
             <div className="mb-6" data-testid="review-findings-panel">
               <div className="bg-card rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold mb-4">🔍 Code Review Findings</h2>
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <Search01Icon className="h-5 w-5" />
+                  Code Review Findings
+                </h2>
                 <ReviewSummary reviewResult={reviewData} loading={reviewLoading} />
               </div>
             </div>
@@ -762,7 +803,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 onError={handleQualityGatesError}
               >
                 <div className="bg-card rounded-lg shadow p-6">
-                  <h2 className="text-lg font-semibold mb-4">✅ Quality Gates</h2>
+                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <CheckListIcon className="h-5 w-5" />
+                    Quality Gates
+                  </h2>
                   <QualityGatesPanel projectId={projectId} tasks={tasks} />
                 </div>
               </ErrorBoundary>
@@ -786,7 +830,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
         {activeTab === 'metrics' && (
           <div role="tabpanel" id="metrics-panel" aria-labelledby="metrics-tab" data-testid="metrics-panel">
             <div className="bg-card rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold mb-4">📊 Cost & Token Metrics</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <AnalyticsUpIcon className="h-5 w-5" />
+                Cost & Token Metrics
+              </h2>
               <CostDashboard projectId={projectId} />
             </div>
           </div>
@@ -843,7 +890,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
         {activeTab === 'checkpoints' && (
           <div role="tabpanel" id="checkpoints-panel" aria-labelledby="checkpoints-tab">
             <div className="bg-card rounded-lg shadow p-6" data-testid="checkpoint-panel">
-              <h2 className="text-lg font-semibold mb-4">💾 Checkpoints</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <FloppyDiskIcon className="h-5 w-5" />
+                Checkpoints
+              </h2>
               <CheckpointList projectId={projectId} refreshInterval={30000} />
             </div>
           </div>
