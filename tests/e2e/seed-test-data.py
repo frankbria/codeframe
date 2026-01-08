@@ -47,6 +47,8 @@ def table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
 def seed_test_data(db_path: str, project_id: int):
     """Seed comprehensive test data for E2E tests."""
     conn = sqlite3.connect(db_path)
+    # Enable WAL mode for better concurrent access during tests
+    conn.execute("PRAGMA journal_mode = WAL")
     cursor = conn.cursor()
 
     try:

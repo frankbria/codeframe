@@ -24,8 +24,9 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
 
-  /* Opt out of parallel tests on CI */
-  workers: process.env.CI ? 1 : undefined,
+  /* SQLite doesn't handle concurrent writes well, so always use 1 worker.
+   * Multiple workers cause "database is locked" errors during parallel tests. */
+  workers: 1,
 
   /* Reporter to use */
   reporter: [
