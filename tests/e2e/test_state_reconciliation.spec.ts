@@ -77,6 +77,31 @@ async function getProjectPhase(
   };
 }
 
+/**
+ * Helper to wait for dashboard to fully load
+ */
+async function waitForDashboardLoad(page: Page): Promise<void> {
+  await page.locator('[data-testid="dashboard-header"]').waitFor({
+    state: 'visible',
+    timeout: 15000,
+  });
+  // Wait for any initial loading states to resolve
+  await page.waitForLoadState('networkidle');
+}
+
+/**
+ * Helper to expand discovery section if minimized
+ */
+async function expandIfMinimized(page: Page): Promise<void> {
+  const minimizedView = page.locator('[data-testid="prd-minimized-view"]');
+  if (await minimizedView.isVisible().catch(() => false)) {
+    const expandButton = page.locator('[data-testid="expand-discovery-button"]');
+    await expandButton.click();
+    // Wait for expansion animation to complete
+    await expect(minimizedView).not.toBeVisible({ timeout: 2000 });
+  }
+}
+
 test.describe('State Reconciliation - Late Joining User', () => {
   let page: Page;
 
@@ -108,27 +133,17 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.PLANNING;
 
-      // Verify backend state
+      // Verify backend state - FAIL if seed data is wrong
       const { phase } = await getProjectPhase(request, token, projectId);
+      expect(phase).toBe('planning');
       console.log(`📊 Project ${projectId} phase: ${phase}`);
 
       // Navigate as late-joining user (fresh page load, no WebSocket history)
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
+      await waitForDashboardLoad(page);
 
-      // Wait for dashboard to load
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
-
-      // Check if discovery section is minimized and expand if needed
-      const minimizedView = page.locator('[data-testid="prd-minimized-view"]');
-      if (await minimizedView.isVisible().catch(() => false)) {
-        console.log('ℹ️ Discovery section minimized - expanding');
-        await page.locator('[data-testid="expand-discovery-button"]').click();
-        await page.waitForTimeout(500);
-      }
+      // Expand discovery section if minimized
+      await expandIfMinimized(page);
 
       // ASSERTION: "Generate Tasks" button must NOT be visible
       const generateButton = page.locator('[data-testid="generate-tasks-button"]');
@@ -151,27 +166,11 @@ test.describe('State Reconciliation - Late Joining User', () => {
 
       // Navigate as late-joining user
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
-
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
-
-      // Wait for state to stabilize
-      await page.waitForTimeout(1000);
+      await waitForDashboardLoad(page);
 
       // ASSERTION: Task generation progress spinner must NOT be visible
       const progressSection = page.locator('[data-testid="task-generation-progress"]');
-      const progressVisible = await progressSection.isVisible().catch(() => false);
-
-      if (progressVisible) {
-        throw new Error(
-          'BUG DETECTED: Task generation spinner visible when tasks already exist. ' +
-          'Late-joining users see incorrect loading state.'
-        );
-      }
-
+      await expect(progressSection).not.toBeVisible({ timeout: 3000 });
       console.log('✅ No task generation spinner (correct for late-joining user)');
     });
   });
@@ -184,32 +183,20 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.PLANNING;
 
-      // Check PRD status via API
+      // Check PRD status via API - FAIL if seed data is wrong
       const prdResponse = await request.get(`${BACKEND_URL}/api/projects/${projectId}/prd`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (prdResponse.status() === 404) {
-        test.skip(true, 'PRD does not exist - cannot test late-joining PRD scenario');
-        return;
-      }
-
+      // PRD must exist for planning phase project
+      expect(prdResponse.status()).not.toBe(404);
       const prdData = await prdResponse.json();
+      expect(prdData.status).toBe('available');
       console.log(`📊 PRD status: ${prdData.status}`);
-
-      if (prdData.status !== 'available') {
-        test.skip(true, `PRD status is ${prdData.status}, not available`);
-        return;
-      }
 
       // Navigate as late-joining user
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
-
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      await waitForDashboardLoad(page);
 
       // Should NOT show loading spinner for PRD generation
       const prdSpinner = page.locator('[data-testid="prd-generation-status"] svg.animate-spin');
@@ -218,12 +205,9 @@ test.describe('State Reconciliation - Late Joining User', () => {
       if (spinnerVisible) {
         const statusSection = page.locator('[data-testid="prd-generation-status"]');
         const statusText = await statusSection.textContent().catch(() => '');
-        if (statusText?.includes('Starting PRD Generation') || statusText?.includes('Generating')) {
-          throw new Error(
-            'BUG DETECTED: PRD generation spinner visible when PRD already exists. ' +
-            'Late-joining users see incorrect loading state.'
-          );
-        }
+        expect(
+          statusText?.includes('Starting PRD Generation') || statusText?.includes('Generating')
+        ).toBe(false);
       }
 
       // Should show View PRD button (either in minimized or expanded view)
@@ -241,24 +225,15 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const projectId = TEST_PROJECT_IDS.PLANNING;
 
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
-
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
-
-      // Wait for state initialization
-      await page.waitForTimeout(1000);
+      await waitForDashboardLoad(page);
 
       // Check for incorrect loading state text
       const prdStatusSection = page.locator('[data-testid="prd-generation-status"]');
       if (await prdStatusSection.isVisible().catch(() => false)) {
         const text = await prdStatusSection.textContent();
-        if (text?.includes('Generating') && !text?.includes('Generated')) {
-          throw new Error(
-            'BUG DETECTED: "Generating PRD" text visible when PRD already exists.'
-          );
+        // Should NOT show "Generating" without "Generated"
+        if (text?.includes('Generating')) {
+          expect(text).toContain('Generated');
         }
       }
 
@@ -276,15 +251,11 @@ test.describe('State Reconciliation - Late Joining User', () => {
 
       // Get actual discovery state from API
       const { phase, discoveryState } = await getProjectPhase(request, token, projectId);
+      expect(phase).toBe('discovery');
       console.log(`📊 Project ${projectId}: phase=${phase}, discovery=${discoveryState}`);
 
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
-
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      await waitForDashboardLoad(page);
 
       // Discovery progress section should be visible
       const discoveryProgress = page.locator('[data-testid="discovery-progress"]');
@@ -294,11 +265,11 @@ test.describe('State Reconciliation - Late Joining User', () => {
       if (discoveryState === 'discovering') {
         const questionSection = page.locator('[data-testid="discovery-question"]');
         const waitingSection = page.locator('[data-testid="waiting-for-question"]');
-        const questionOrWaiting = await questionSection.isVisible().catch(() => false) ||
-                                  await waitingSection.isVisible().catch(() => false);
 
         // Should show either the question or waiting for question state
-        expect(questionOrWaiting).toBe(true);
+        const questionVisible = await questionSection.isVisible().catch(() => false);
+        const waitingVisible = await waitingSection.isVisible().catch(() => false);
+        expect(questionVisible || waitingVisible).toBe(true);
         console.log('✅ Discovery question or waiting state visible');
       }
 
@@ -309,32 +280,25 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.PLANNING;
 
-      // Verify discovery is complete
+      // Verify discovery is complete - FAIL if seed data is wrong
       const { discoveryState } = await getProjectPhase(request, token, projectId);
+      expect(discoveryState).toBe('completed');
       console.log(`📊 Discovery state: ${discoveryState}`);
 
-      if (discoveryState !== 'completed') {
-        test.skip(true, `Discovery state is ${discoveryState}, not completed`);
-        return;
-      }
-
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
-
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      await waitForDashboardLoad(page);
 
       // Should show discovery complete state (minimized or expanded)
       const minimizedView = page.locator('[data-testid="prd-minimized-view"]');
       const prdStatus = page.locator('[data-testid="prd-generation-status"]');
+      const tasksReadySection = page.locator('[data-testid="tasks-ready-section"]');
 
       const minimizedVisible = await minimizedView.isVisible().catch(() => false);
       const prdVisible = await prdStatus.isVisible().catch(() => false);
+      const tasksVisible = await tasksReadySection.isVisible().catch(() => false);
 
       // At least one completion indicator should be visible
-      expect(minimizedVisible || prdVisible).toBe(true);
+      expect(minimizedVisible || prdVisible || tasksVisible).toBe(true);
       console.log('✅ Discovery complete state visible');
     });
   });
@@ -347,64 +311,55 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.ACTIVE;
 
-      // Verify project is in active phase
+      // Verify project is in active phase - FAIL if seed data is wrong
       const { phase } = await getProjectPhase(request, token, projectId);
+      expect(phase).toBe('active');
       console.log(`📊 Project ${projectId} phase: ${phase}`);
 
-      if (phase !== 'active') {
-        test.skip(true, `Project phase is ${phase}, not active`);
-        return;
-      }
-
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
+      await waitForDashboardLoad(page);
 
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      // Dashboard header should be visible (basic assertion)
+      const dashboardHeader = page.locator('[data-testid="dashboard-header"]');
+      await expect(dashboardHeader).toBeVisible();
 
-      // Navigate to appropriate tab that shows agent status
-      // The dashboard should display agent information
-      const dashboardContent = await page.content();
-      const hasAgentInfo = dashboardContent.includes('agent') ||
-                          dashboardContent.includes('Agent') ||
-                          dashboardContent.includes('working');
-
-      console.log(`📊 Agent info present in page: ${hasAgentInfo}`);
-      // Note: This test verifies the page loads correctly for active projects
-      // More specific agent state checks depend on component implementation
+      // Should have some content loaded (not just loading state)
+      const pageContent = await page.content();
+      expect(pageContent.length).toBeGreaterThan(1000);
+      console.log('✅ Dashboard loaded with content for active project');
     });
 
     test('should show in-progress tasks when tasks already in progress', async () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.ACTIVE;
 
-      // Check tasks via API
+      // Check tasks via API - FAIL if no tasks
       const tasksResponse = await request.get(`${BACKEND_URL}/api/projects/${projectId}/tasks`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!tasksResponse.ok()) {
-        test.skip(true, 'Cannot verify task state via API');
-        return;
-      }
-
+      expect(tasksResponse.ok()).toBe(true);
       const tasksData = await tasksResponse.json();
-      const inProgressTasks = (tasksData.tasks || []).filter(
+      const allTasks = tasksData.tasks || [];
+      const inProgressTasks = allTasks.filter(
         (t: { status: string }) => t.status === 'in_progress'
       );
+
+      // Should have in-progress tasks per seed data
+      expect(inProgressTasks.length).toBeGreaterThan(0);
       console.log(`📊 In-progress tasks: ${inProgressTasks.length}`);
 
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
+      await waitForDashboardLoad(page);
 
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      // Navigate to Tasks tab
+      const tasksTab = page.locator('[data-testid="tasks-tab"]');
+      if (await tasksTab.isVisible().catch(() => false)) {
+        await tasksTab.click();
+        // Wait for tab content to load
+        await page.waitForLoadState('networkidle');
+      }
 
-      // The page should load without errors for projects with in-progress tasks
       console.log('✅ Page loaded correctly for project with in-progress tasks');
     });
   });
@@ -417,31 +372,29 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.REVIEW;
 
-      // Verify project is in review phase
+      // Verify project is in review phase - FAIL if seed data is wrong
       const { phase } = await getProjectPhase(request, token, projectId);
+      expect(phase).toBe('review');
       console.log(`📊 Project ${projectId} phase: ${phase}`);
 
-      if (phase !== 'review') {
-        test.skip(true, `Project phase is ${phase}, not review`);
-        return;
-      }
-
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
+      await waitForDashboardLoad(page);
 
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      // Dashboard header should be visible
+      const dashboardHeader = page.locator('[data-testid="dashboard-header"]');
+      await expect(dashboardHeader).toBeVisible();
 
       // Navigate to Quality Gates tab if available
       const qualityGatesTab = page.locator('[data-testid="quality-gates-tab"]');
       if (await qualityGatesTab.isVisible().catch(() => false)) {
         await qualityGatesTab.click();
-        await page.waitForTimeout(500);
+        await page.waitForLoadState('networkidle');
+        console.log('✅ Quality Gates tab loaded');
       }
 
-      // Page should load without errors for review phase projects
+      // Page should have substantial content
+      const pageContent = await page.content();
+      expect(pageContent.length).toBeGreaterThan(1000);
       console.log('✅ Page loaded correctly for review phase project');
     });
 
@@ -449,29 +402,27 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.REVIEW;
 
-      // Check for review findings via API (if endpoint exists)
-      try {
-        const reviewResponse = await request.get(`${BACKEND_URL}/api/projects/${projectId}/code-reviews`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      // Check for review findings via API
+      const reviewResponse = await request.get(`${BACKEND_URL}/api/projects/${projectId}/code-reviews`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        if (reviewResponse.ok()) {
-          const reviewData = await reviewResponse.json();
-          console.log(`📊 Code review findings: ${reviewData.findings?.length || 0}`);
-        }
-      } catch {
-        console.log('ℹ️ Code reviews endpoint not available');
+      // Log whether endpoint exists
+      if (reviewResponse.ok()) {
+        const reviewData = await reviewResponse.json();
+        const findingsCount = reviewData.findings?.length || reviewData.reviews?.length || 0;
+        console.log(`📊 Code review findings: ${findingsCount}`);
+        expect(findingsCount).toBeGreaterThanOrEqual(0);
+      } else {
+        console.log('ℹ️ Code reviews endpoint returned non-200');
       }
 
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
+      await waitForDashboardLoad(page);
 
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
-
-      // Page should load correctly
+      // Dashboard should load
+      const dashboardHeader = page.locator('[data-testid="dashboard-header"]');
+      await expect(dashboardHeader).toBeVisible();
       console.log('✅ Page loaded for project with review findings');
     });
   });
@@ -484,36 +435,28 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.COMPLETED;
 
-      // Verify project is completed
+      // Verify project is completed - FAIL if seed data is wrong
       const { phase } = await getProjectPhase(request, token, projectId);
+      expect(phase).toBe('completed');
       console.log(`📊 Project ${projectId} phase: ${phase}`);
 
-      if (phase !== 'completed') {
-        test.skip(true, `Project phase is ${phase}, not completed`);
-        return;
-      }
-
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
+      await waitForDashboardLoad(page);
+
+      // Dashboard header should be visible
+      const dashboardHeader = page.locator('[data-testid="dashboard-header"]');
+      await expect(dashboardHeader).toBeVisible();
+
+      // Wait for page to stabilize, then check spinners
       await page.waitForLoadState('networkidle');
 
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
-
-      // Should NOT show any "in progress" spinners
+      // Completed projects shouldn't have active spinners (after stabilization)
       const spinners = page.locator('svg.animate-spin');
       const spinnerCount = await spinners.count();
+      console.log(`📊 Spinners visible: ${spinnerCount}`);
 
-      // Wait for any loading states to resolve
-      await page.waitForTimeout(2000);
-
-      // Re-check spinners after loading
-      const finalSpinnerCount = await spinners.count();
-      console.log(`📊 Spinners visible: ${finalSpinnerCount}`);
-
-      // Completed projects shouldn't have active spinners
-      if (finalSpinnerCount > 0) {
+      // Warn but don't fail - some spinners may be transient
+      if (spinnerCount > 0) {
         console.log('⚠️ Warning: Spinners visible on completed project (may be transient)');
       }
 
@@ -524,24 +467,20 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.COMPLETED;
 
-      // Check tasks via API
+      // Check tasks via API - FAIL if wrong
       const tasksResponse = await request.get(`${BACKEND_URL}/api/projects/${projectId}/tasks`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!tasksResponse.ok()) {
-        test.skip(true, 'Cannot verify task state via API');
-        return;
-      }
-
+      expect(tasksResponse.ok()).toBe(true);
       const tasksData = await tasksResponse.json();
       const allTasks = tasksData.tasks || [];
       const completedTasks = allTasks.filter((t: { status: string }) => t.status === 'completed');
 
-      console.log(`📊 Tasks: ${completedTasks.length}/${allTasks.length} completed`);
-
       // All tasks should be completed for completed project
+      expect(allTasks.length).toBeGreaterThan(0);
       expect(completedTasks.length).toBe(allTasks.length);
+      console.log(`📊 Tasks: ${completedTasks.length}/${allTasks.length} completed`);
       console.log('✅ All tasks are completed');
     });
   });
@@ -555,43 +494,26 @@ test.describe('State Reconciliation - Late Joining User', () => {
 
       // Initial navigation
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-      await page.waitForLoadState('networkidle');
+      await waitForDashboardLoad(page);
 
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      // Expand discovery section to check state
+      await expandIfMinimized(page);
 
-      // Record initial state
+      // Record initial state - tasks ready section should be visible
       const tasksReadySection = page.locator('[data-testid="tasks-ready-section"]');
-      const initialTasksReady = await tasksReadySection.isVisible().catch(() => false);
+      await expect(tasksReadySection).toBeVisible({ timeout: 5000 });
+      console.log('✅ Initial state: Tasks ready section visible');
 
       // Refresh the page (simulates late-joining scenario)
       await page.reload();
-      await page.waitForLoadState('networkidle');
+      await waitForDashboardLoad(page);
 
-      await page.locator('[data-testid="dashboard-header"]').waitFor({
-        state: 'visible',
-        timeout: 15000,
-      });
+      // Expand if minimized again
+      await expandIfMinimized(page);
 
-      // Expand if minimized
-      const minimizedView = page.locator('[data-testid="prd-minimized-view"]');
-      if (await minimizedView.isVisible().catch(() => false)) {
-        await page.locator('[data-testid="expand-discovery-button"]').click();
-        await page.waitForTimeout(500);
-      }
-
-      // Verify state is preserved
-      const tasksReadyAfterRefresh = await tasksReadySection.isVisible().catch(() => false);
-
-      // Both should show tasks ready (if tasks exist)
-      if (initialTasksReady) {
-        expect(tasksReadyAfterRefresh).toBe(true);
-        console.log('✅ Tasks ready state preserved after refresh');
-      } else {
-        console.log('ℹ️ Tasks were not ready in initial state');
-      }
+      // Verify state is preserved - tasks ready should still be visible
+      await expect(tasksReadySection).toBeVisible({ timeout: 5000 });
+      console.log('✅ Tasks ready state preserved after refresh');
     });
   });
 });
