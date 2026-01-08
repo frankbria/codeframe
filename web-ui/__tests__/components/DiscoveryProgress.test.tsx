@@ -2042,6 +2042,9 @@ describe('DiscoveryProgress Component', () => {
       };
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+      // Mock PRD as available and no existing tasks (required for taskStateInitialized)
+      mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+      mockTasksList.mockResolvedValue({ data: { tasks: [], total: 0 } });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -2981,6 +2984,9 @@ describe('DiscoveryProgress Component', () => {
       };
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+      // Mock PRD as available and no existing tasks (required for taskStateInitialized)
+      mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+      mockTasksList.mockResolvedValue({ data: { tasks: [], total: 0 } });
 
       render(<DiscoveryProgress projectId={1} />);
 
