@@ -43,15 +43,12 @@ test.describe('Complete User Journey', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    // Filter transient errors during complete journey tests
+    // STRICT ERROR CHECKING: Only filter navigation cancellation
+    // All other errors (WebSocket, API, network) MUST cause test failures
+    // This is the "complete user journey" - EVERYTHING must work!
     checkTestErrors(page, 'Complete user journey test', [
-      'WebSocket', 'ws://', 'wss://',
-      'net::ERR_ABORTED',
-      'net::ERR_FAILED',
-      'Failed to fetch',
-      'Load request cancelled',
-      'cancelled',
-      'discovery'
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 
@@ -85,18 +82,18 @@ test.describe('Complete User Journey', () => {
 
     // Navigate to checkpoints tab
     const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
-    const hasCheckpointTab = await checkpointTab.isVisible().catch(() => false);
+    const checkpointTabCount = await checkpointTab.count();
 
-    if (hasCheckpointTab) {
+    if (checkpointTabCount > 0 && await checkpointTab.isVisible()) {
       await checkpointTab.click();
       await expect(page.locator('[data-testid="checkpoint-panel"]')).toBeAttached({ timeout: 10000 });
     }
 
     // Return to overview/first tab
     const overviewTab = page.locator('[data-testid="overview-tab"]');
-    const hasOverviewTab = await overviewTab.isVisible().catch(() => false);
+    const overviewTabCount = await overviewTab.count();
 
-    if (hasOverviewTab) {
+    if (overviewTabCount > 0 && await overviewTab.isVisible()) {
       await overviewTab.click();
     }
   });
@@ -130,11 +127,10 @@ test.describe('Complete User Journey', () => {
       const numberOfQuestions = 3;
       for (let i = 0; i < numberOfQuestions; i++) {
         // Check if we still have questions to answer
-        const questionVisible = await page.getByTestId('discovery-question')
-          .isVisible()
-          .catch(() => false);
+        const questionLocator = page.getByTestId('discovery-question');
+        const questionCount = await questionLocator.count();
 
-        if (!questionVisible) {
+        if (questionCount === 0 || !(await questionLocator.isVisible())) {
           // Discovery complete or no more questions
           break;
         }
@@ -161,8 +157,8 @@ The target users are software development teams looking to accelerate their deve
 
       // Check metrics panel (may be on a different tab now)
       const metricsTab = page.locator('[data-testid="metrics-tab"]');
-      const hasMetricsTab = await metricsTab.isVisible().catch(() => false);
-      if (hasMetricsTab) {
+      const metricsTabCount = await metricsTab.count();
+      if (metricsTabCount > 0 && await metricsTab.isVisible()) {
         await metricsTab.click();
         await expect(page.getByTestId('metrics-panel')).toBeVisible({ timeout: 5000 });
       }
@@ -174,16 +170,16 @@ The target users are software development teams looking to accelerate their deve
 
       // Click on Checkpoints tab
       const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
-      const hasCheckpointTab = await checkpointTab.isVisible().catch(() => false);
-      if (hasCheckpointTab) {
+      const checkpointTabCount = await checkpointTab.count();
+      if (checkpointTabCount > 0 && await checkpointTab.isVisible()) {
         await checkpointTab.click();
         await expect(page.getByTestId('checkpoint-panel')).toBeAttached({ timeout: 10000 });
       }
 
       // Return to overview tab
       const overviewTab = page.locator('[data-testid="overview-tab"]');
-      const hasOverviewTab = await overviewTab.isVisible().catch(() => false);
-      if (hasOverviewTab) {
+      const overviewTabCount = await overviewTab.count();
+      if (overviewTabCount > 0 && await overviewTab.isVisible()) {
         await overviewTab.click();
       }
 

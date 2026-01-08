@@ -517,7 +517,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
   const isIdle = discovery?.state === 'idle' || !discovery;
 
   return (
-    <div className="w-full bg-card rounded-lg shadow p-6 mb-6" role="region" aria-label="Discovery Progress">
+    <div className="w-full bg-card rounded-lg shadow p-6 mb-6" role="region" aria-label="Discovery Progress" data-testid="discovery-progress">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Discovery Progress</h2>
         <PhaseIndicator phase={phase} />

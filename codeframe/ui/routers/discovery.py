@@ -633,3 +633,87 @@ async def retry_prd_generation(
         "success": True,
         "message": "PRD generation has been started. Watch for WebSocket updates.",
     }
+
+
+@router.post("/generate-tasks")
+async def generate_tasks(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Manually trigger task generation from PRD.
+
+    This endpoint allows users to manually start task generation when the
+    project is in the planning phase with a completed PRD. It reuses the
+    existing generate_planning_background() function that handles issue
+    creation and task decomposition.
+
+    Args:
+        project_id: Project ID
+        background_tasks: FastAPI background tasks
+        db: Database instance (injected)
+        current_user: Authenticated user (injected)
+
+    Returns:
+        Success message indicating task generation has started
+
+    Raises:
+        HTTPException:
+            - 400: Not in planning phase, PRD missing, or tasks already exist
+            - 403: User lacks project access
+            - 404: Project not found
+            - 500: API key not configured
+    """
+    # Check if project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Verify project is in planning phase
+    current_phase = project.get("phase", "discovery")
+    if current_phase != "planning":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project must be in planning phase to generate tasks. "
+            f"Current phase: {current_phase}",
+        )
+
+    # Verify PRD exists
+    prd = db.get_prd(project_id)
+    if not prd:
+        raise HTTPException(
+            status_code=400,
+            detail="PRD must be generated before task generation. "
+            "Please complete PRD generation first.",
+        )
+
+    # Check if tasks already exist to prevent duplicate generation
+    existing_tasks = db.get_project_tasks(project_id)
+    if existing_tasks:
+        raise HTTPException(
+            status_code=400,
+            detail="Tasks have already been generated for this project.",
+        )
+
+    # Verify API key is available
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY environment variable is not set.",
+        )
+
+    # Start task generation in background
+    background_tasks.add_task(generate_planning_background, project_id, db, api_key)
+
+    logger.info(f"Task generation started for project {project_id} by user {current_user.id}")
+
+    return {
+        "success": True,
+        "message": "Task generation has been started. Watch for WebSocket updates.",
+    }

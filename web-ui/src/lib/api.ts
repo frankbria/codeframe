@@ -61,7 +61,7 @@ export const projectsApi = {
     ),
   generateTasks: (projectId: number | string) =>
     api.post<{ success: boolean; message: string }>(
-      `/api/projects/${projectId}/planning/generate-tasks`
+      `/api/projects/${projectId}/discovery/generate-tasks`
     ),
   approveTaskBreakdown: (projectId: number, taskIds: string[]) =>
     api.post<{

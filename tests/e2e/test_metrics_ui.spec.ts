@@ -23,40 +23,47 @@ test.describe('Metrics Dashboard UI', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
-    // Wait for project API to load
+    // Wait for project API to load - this MUST succeed for tests to be valid
     // Note: Must use /api/projects/ to avoid matching the HTML page response at /projects/
-    await page.waitForResponse(response =>
+    const projectResponse = await page.waitForResponse(response =>
       response.url().includes(`/api/projects/${PROJECT_ID}`) && response.status() === 200,
       { timeout: 10000 }
-    ).catch(() => {});
+    );
+    expect(projectResponse.ok()).toBe(true);  // API must succeed
 
-    // Wait for dashboard to render - agent panel is one of the last to render
-    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+    // Wait for dashboard header to render (always visible regardless of active tab)
+    await page.locator('[data-testid="dashboard-header"]').waitFor({ state: 'visible', timeout: 10000 });
 
-    // Navigate to Metrics tab (Sprint 10 Refactor - metrics now on dedicated tab)
+    // Navigate to Metrics tab - set up response listener BEFORE clicking
     const metricsTab = page.locator('[data-testid="metrics-tab"]');
     await metricsTab.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Set up metrics API response listener BEFORE clicking tab
+    const metricsResponsePromise = page.waitForResponse(
+      response => response.url().includes('/metrics') && response.status() === 200,
+      { timeout: 15000 }
+    );
+
+    // Click tab to trigger metrics load
     await metricsTab.click();
 
     // Wait for metrics panel to be visible
     const metricsPanel = page.locator('[data-testid="metrics-panel"]');
-    await metricsPanel.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    await metricsPanel.waitFor({ state: 'visible', timeout: 10000 });
 
-    // Wait for metrics API to load
-    await page.waitForResponse(response =>
-      response.url().includes('/metrics') && response.status() === 200,
-      { timeout: 10000 }
-    ).catch(() => {});
+    // Wait for the metrics API response we're listening for
+    const metricsResponse = await metricsResponsePromise;
+    expect(metricsResponse.ok()).toBe(true);  // Metrics API must succeed
 
     // Wait for cost dashboard to be visible (indicates data has rendered)
-    await page.locator('[data-testid="cost-dashboard"]').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    await page.locator('[data-testid="cost-dashboard"]').waitFor({ state: 'visible', timeout: 5000 });
   });
 
   test('should display metrics panel', async ({ page }) => {
     const metricsPanel = page.locator('[data-testid="metrics-panel"]');
 
     // Scroll panel into view
-    await metricsPanel.scrollIntoViewIfNeeded().catch(() => {});
+    await metricsPanel.scrollIntoViewIfNeeded();
 
     await metricsPanel.waitFor({ state: 'visible', timeout: 15000 });
     await expect(metricsPanel).toBeVisible();
@@ -123,13 +130,14 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost breakdown by agent', async ({ page }) => {
     const agentBreakdown = page.locator('[data-testid="cost-by-agent"]');
-    await agentBreakdown.scrollIntoViewIfNeeded().catch(() => {});
+    await agentBreakdown.scrollIntoViewIfNeeded();
     await agentBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(agentBreakdown).toBeVisible();
 
     // Check for empty state first (most common case in CI)
     const emptyState = page.locator('[data-testid="agent-cost-empty"]');
-    const emptyStateVisible = await emptyState.isVisible().catch(() => false);
+    const emptyStateCount = await emptyState.count();
+    const emptyStateVisible = emptyStateCount > 0 && await emptyState.isVisible();
 
     if (emptyStateVisible) {
       // Empty state is shown - test passes
@@ -154,13 +162,14 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost breakdown by model', async ({ page }) => {
     const modelBreakdown = page.locator('[data-testid="cost-by-model"]');
-    await modelBreakdown.scrollIntoViewIfNeeded().catch(() => {});
+    await modelBreakdown.scrollIntoViewIfNeeded();
     await modelBreakdown.waitFor({ state: 'visible', timeout: 15000 });
     await expect(modelBreakdown).toBeVisible();
 
     // Check for empty state first (most common case in CI)
     const emptyState = page.locator('[data-testid="model-cost-empty"]');
-    const emptyStateVisible = await emptyState.isVisible().catch(() => false);
+    const emptyStateCount = await emptyState.count();
+    const emptyStateVisible = emptyStateCount > 0 && await emptyState.isVisible();
 
     if (emptyStateVisible) {
       // Empty state is shown - test passes
@@ -190,44 +199,47 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should filter metrics by date range', async ({ page }) => {
     const dateFilter = page.locator('[data-testid="date-range-filter"]');
-    await dateFilter.scrollIntoViewIfNeeded().catch(() => {});
+    await dateFilter.scrollIntoViewIfNeeded();
 
-    // Wait for the filter to appear (may not exist if API errors)
-    const filterVisible = await dateFilter.isVisible().catch(() => false);
-
-    if (!filterVisible) {
-      // Date filter not visible (API might have errored) - skip this test
-      // This is acceptable behavior when API data isn't available
-      test.skip();
-      return;
+    // Date filter MUST be visible - we validated metrics API in beforeEach
+    const filterCount = await dateFilter.count();
+    if (filterCount === 0) {
+      // No date filter component exists in the page - this is a real bug
+      throw new Error('Date range filter component not found in metrics panel');
     }
+    await expect(dateFilter).toBeVisible({ timeout: 5000 });
 
     // Store initial filter value
     const initialValue = await dateFilter.inputValue();
 
     // Change to a different filter option
     const newValue = initialValue === 'last-30-days' ? 'last-7-days' : 'last-30-days';
+
+    // Set up response listener BEFORE changing filter
+    const filterResponsePromise = page.waitForResponse(response =>
+      response.url().includes('/metrics'),
+      { timeout: 15000 }
+    );
+
+    // Change the filter value
     await dateFilter.selectOption(newValue);
 
-    // Wait for any API response (success or error)
-    await page.waitForResponse(response =>
-      response.url().includes('/metrics'),
-      { timeout: 10000 }
-    ).catch(() => {});
+    // Wait for metrics API response triggered by filter change
+    const filterResponse = await filterResponsePromise;
+    expect(filterResponse.ok()).toBe(true);
 
-    // Wait a moment for React to re-render
-    await page.waitForTimeout(1000);
+    // Wait for cost-dashboard to reappear after loading state
+    const costDashboard = page.locator('[data-testid="cost-dashboard"]');
+    await costDashboard.waitFor({ state: 'visible', timeout: 10000 });
 
-    // After filtering, the metrics panel should still be visible
+    // After loading completes, metrics panel and filter should be visible
     const metricsPanel = page.locator('[data-testid="metrics-panel"]');
     await expect(metricsPanel).toBeVisible();
 
-    // If the date filter is still visible, verify the value changed
-    // (It may disappear if API returns an error)
-    if (await dateFilter.isVisible().catch(() => false)) {
-      const currentValue = await dateFilter.inputValue();
-      expect(currentValue).toBe(newValue);
-    }
+    // Wait for filter to reappear after loading state completes
+    await expect(dateFilter).toBeVisible({ timeout: 5000 });
+    const currentValue = await dateFilter.inputValue();
+    expect(currentValue).toBe(newValue);
   });
 
   test('should export cost report to CSV', async ({ page }) => {
@@ -248,7 +260,7 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost per task', async ({ page }) => {
     const taskCostTable = page.locator('[data-testid="cost-per-task-table"]');
-    await taskCostTable.scrollIntoViewIfNeeded().catch(() => {});
+    await taskCostTable.scrollIntoViewIfNeeded();
     await taskCostTable.waitFor({ state: 'visible', timeout: 10000 });
 
     // Table section should be visible
@@ -259,10 +271,17 @@ test.describe('Metrics Dashboard UI', () => {
     const emptyState = page.locator('[data-testid="task-cost-empty"]');
 
     // Wait for either data or empty state to appear
-    await Promise.race([
-      taskRows.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {}),
-      emptyState.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {})
-    ]);
+    try {
+      await Promise.race([
+        taskRows.first().waitFor({ state: 'visible', timeout: 5000 }),
+        emptyState.waitFor({ state: 'visible', timeout: 5000 })
+      ]);
+    } catch {
+      // At least one of these must be visible
+      const hasRows = await taskRows.count() > 0;
+      const hasEmpty = await emptyState.count() > 0;
+      expect(hasRows || hasEmpty).toBe(true);
+    }
 
     const count = await taskRows.count();
 
@@ -339,7 +358,7 @@ test.describe('Metrics Dashboard UI', () => {
 
   test('should display cost trend chart', async ({ page }) => {
     const trendChart = page.locator('[data-testid="cost-trend-chart"]');
-    await trendChart.scrollIntoViewIfNeeded().catch(() => {});
+    await trendChart.scrollIntoViewIfNeeded();
     await trendChart.waitFor({ state: 'visible', timeout: 10000 });
 
     // Trend chart section should be visible

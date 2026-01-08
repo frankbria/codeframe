@@ -39,14 +39,11 @@ test.describe('Task Execution Flow', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    // Filter transient errors during task flow tests
+    // STRICT ERROR CHECKING: Only filter navigation cancellation
+    // All other errors (WebSocket, API, network) MUST cause test failures
     checkTestErrors(page, 'Task execution test', [
-      'WebSocket', 'ws://', 'wss://',
-      'net::ERR_ABORTED',
-      'net::ERR_FAILED',
-      'Failed to fetch',
-      'Load request cancelled',
-      'cancelled'
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 

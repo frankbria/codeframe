@@ -140,10 +140,11 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   // (WebSocket reconnections, brief disconnections during tab switching, etc.)
   // Also filter net::ERR_ABORTED - normal browser behavior when navigation cancels pending requests
   test.afterEach(async ({ page }) => {
+    // STRICT ERROR CHECKING: Only filter navigation cancellation (normal browser behavior)
+    // WebSocket errors, API failures, and network errors MUST cause test failures
     checkTestErrors(page, 'Dashboard test', [
-      'WebSocket', 'ws://', 'wss://',
-      'net::ERR_FAILED',
-      'net::ERR_ABORTED'
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 
@@ -438,17 +439,21 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       );
     }
 
-    // Step 9: VERIFICATION - Check if we received messages
-    // Note: The backend is "passive" - it only pushes updates when state changes,
-    // not on initial connection. This is valid behavior for event-driven WebSocket systems.
+    // Step 9: STRICT VERIFICATION - WebSocket MUST receive messages to prove it works
+    // If the backend is truly "passive", we need to trigger a state change to get a message.
+    // A WebSocket test that accepts 0 messages is not testing anything!
     if (wsMonitor.messages.length === 0) {
-      // Backend may not send immediate messages if there's no state change.
-      // We differentiate between "connection failed" and "no messages yet":
-      // - If we got here without errors, connection succeeded but no messages arrived in time window
-      // - This is acceptable for passive backends that only push on state changes
-      console.log('ℹ️ No WebSocket messages received (backend is passive - only pushes on state changes)');
-      console.log('   ✅ WebSocket connection successful, no errors detected');
-      // Accept 0 messages as long as connection succeeded without errors
+      // This is a REAL failure - WebSocket should send at least a connection acknowledgment
+      // or heartbeat. If we receive nothing, the connection may be broken.
+      throw new Error(
+        'WebSocket test FAILED: No messages received.\n' +
+        'A working WebSocket should send at least one message (subscription ack, heartbeat, or state update).\n' +
+        'Possible causes:\n' +
+        '  1. WebSocket server not sending messages on connection\n' +
+        '  2. Message parsing failed silently\n' +
+        '  3. Connection established but immediately dropped\n' +
+        'This test requires the backend to send at least one message to verify the connection works end-to-end.'
+      );
     }
 
     // Verify we received meaningful messages (not just empty frames)

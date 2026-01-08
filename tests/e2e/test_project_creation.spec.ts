@@ -29,19 +29,13 @@ test.describe('Project Creation Flow', () => {
     await loginUser(page);
   });
 
-  // Verify no network errors occurred during each test
-  // Filter out transient errors during project creation:
-  // - WebSocket disconnects/reconnects
-  // - Discovery API errors (discovery auto-starts on project creation)
-  // - net::ERR_ABORTED: Normal browser behavior when navigation cancels pending requests
-  // - Failed to fetch: Session fetch errors during rapid navigation
+  // STRICT ERROR CHECKING: Only filter navigation cancellation
+  // All other errors (WebSocket, API, network) MUST cause test failures
+  // Discovery errors are REAL errors that indicate broken functionality
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Project creation test', [
-      'WebSocket', 'ws://', 'wss://',
-      'discovery',
-      'net::ERR_FAILED',
-      'net::ERR_ABORTED',
-      'Failed to fetch'
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 
@@ -87,8 +81,22 @@ test.describe('Project Creation Flow', () => {
     // Fill project description
     await page.getByTestId('project-description-input').fill('Created via E2E test');
 
+    // Set up API response listener BEFORE clicking submit
+    // This ensures we verify the backend actually processes the request
+    const createProjectResponsePromise = page.waitForResponse(
+      response => response.url().includes('/api/projects') && response.request().method() === 'POST',
+      { timeout: 15000 }
+    );
+
     // Click submit button
     await page.getByTestId('create-project-submit').click();
+
+    // CRITICAL: Verify API call succeeded - this catches backend failures
+    const createResponse = await createProjectResponsePromise;
+    expect(createResponse.status()).toBeLessThan(400);
+    const responseData = await createResponse.json();
+    expect(responseData.id).toBeTruthy();
+    console.log(`✅ Project created via API with ID: ${responseData.id}`);
 
     // Assert redirect to project dashboard (proves project was created successfully)
     await expect(page).toHaveURL(/\/projects\/\d+/, { timeout: 10000 });
@@ -101,6 +109,7 @@ test.describe('Project Creation Flow', () => {
     const currentUrl = page.url();
     const projectId = currentUrl.match(/\/projects\/(\d+)/)?.[1];
     expect(projectId).toBeTruthy();
+    expect(projectId).toBe(String(responseData.id));
   });
 
   test('should validate project name is required', async ({ page }) => {
@@ -174,16 +183,12 @@ test.describe('Project Navigation Flow', () => {
   // Verify no network errors occurred during each test
   // Filter out transient errors that can occur during rapid navigation:
   // - WebSocket disconnects/reconnects when navigating between pages
-  // - Discovery API errors (discovery auto-starts on project creation)
-  // - net::ERR_ABORTED: Normal browser behavior when navigation cancels pending requests
-  // - Failed to fetch: Session fetch errors during rapid navigation
+  // STRICT ERROR CHECKING: Only filter navigation cancellation
+  // All other errors (WebSocket, API, network) MUST cause test failures
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Project navigation test', [
-      'WebSocket', 'ws://', 'wss://',
-      'discovery',
-      'net::ERR_FAILED',
-      'net::ERR_ABORTED',
-      'Failed to fetch'
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 
