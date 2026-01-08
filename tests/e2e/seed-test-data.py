@@ -1272,39 +1272,71 @@ Sprint 2: Testing and polish
         cursor.execute("DELETE FROM tasks WHERE project_id = ?", (planning_project_id,))
 
         # Add tasks for project 2 (so late-joining user tests can verify task state)
-        # Using correct tasks table schema: assigned_to (not assigned_agent), no quality_score
+        # Using full 22-column tasks schema to match Project 1 format
+        # Schema: id, project_id, issue_id, task_number, parent_issue_number, title, description,
+        #         status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+        #         requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+        #         commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
         tasks_p2 = [
             (
                 None,  # id (auto-increment)
                 planning_project_id,
+                None,  # issue_id
+                "T001",  # task_number
+                None,  # parent_issue_number
                 "Implement user authentication",  # title
                 "Set up JWT-based authentication",  # description
                 "completed",  # status
+                "backend-worker-001",  # assigned_to
+                None,  # depends_on
+                0,  # can_parallelize
                 3,  # priority (high)
                 1,  # workflow_step
-                "backend-worker-001",  # assigned_to
+                0,  # requires_mcp
+                5000,  # estimated_tokens
+                4800,  # actual_tokens
                 now_ts,  # created_at
+                now_ts,  # completed_at
+                "abc123",  # commit_sha
+                "passed",  # quality_gate_status
+                None,  # quality_gate_failures
+                0,  # requires_human_approval
             ),
             (
                 None,  # id (auto-increment)
                 planning_project_id,
+                None,  # issue_id
+                "T002",  # task_number
+                None,  # parent_issue_number
                 "Create project dashboard",  # title
                 "Build the main dashboard UI",  # description
                 "in_progress",  # status
+                "frontend-specialist-001",  # assigned_to
+                "1",  # depends_on (depends on T001)
+                1,  # can_parallelize
                 2,  # priority (medium)
                 2,  # workflow_step
-                "frontend-specialist-001",  # assigned_to
+                0,  # requires_mcp
+                8000,  # estimated_tokens
+                3500,  # actual_tokens
                 now_ts,  # created_at
+                None,  # completed_at
+                None,  # commit_sha
+                None,  # quality_gate_status
+                None,  # quality_gate_failures
+                0,  # requires_human_approval
             ),
         ]
         for task in tasks_p2:
             cursor.execute(
                 """
                 INSERT INTO tasks (
-                    id, project_id, title, description, status, priority,
-                    workflow_step, assigned_to, created_at
+                    id, project_id, issue_id, task_number, parent_issue_number, title, description,
+                    status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+                    requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+                    commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 task,
             )
