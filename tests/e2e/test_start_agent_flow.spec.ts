@@ -39,19 +39,12 @@ test.describe('Start Agent Flow', () => {
     await loginUser(page);
   });
 
-  // Verify no network errors occurred during each test
-  // Filter out transient errors during agent flow:
-  // - WebSocket disconnects/reconnects
-  // - Discovery API errors (discovery auto-starts on project creation)
-  // - net::ERR_ABORTED: Normal browser behavior when navigation cancels pending requests
-  // - Failed to fetch: Session fetch errors during rapid navigation
+  // STRICT ERROR CHECKING: Only filter navigation cancellation
+  // All other errors (WebSocket, API, network) MUST cause test failures
+  // Discovery errors are REAL errors that indicate broken functionality
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Start agent flow test', [
-      'WebSocket', 'ws://', 'wss://',
-      'discovery',
-      'net::ERR_FAILED',
-      'net::ERR_ABORTED',
-      'Failed to fetch'
+      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
     ]);
   });
 

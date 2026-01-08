@@ -43,15 +43,11 @@ test.describe('Complete User Journey', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    // Filter transient errors during complete journey tests
+    // STRICT ERROR CHECKING: Only filter navigation cancellation
+    // All other errors (WebSocket, API, network) MUST cause test failures
+    // This is the "complete user journey" - EVERYTHING must work!
     checkTestErrors(page, 'Complete user journey test', [
-      'WebSocket', 'ws://', 'wss://',
-      'net::ERR_ABORTED',
-      'net::ERR_FAILED',
-      'Failed to fetch',
-      'Load request cancelled',
-      'cancelled',
-      'discovery'
+      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
     ]);
   });
 
