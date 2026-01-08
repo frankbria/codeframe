@@ -371,7 +371,8 @@ test.describe('State Reconciliation - Late Joining User', () => {
 
       // Look for in-progress status indicator in the UI
       const inProgressIndicators = page.locator('[data-testid="task-status-in-progress"], .status-in-progress, [data-status="in_progress"]');
-      const progressBadges = page.locator('text=In Progress, text=in progress, text=In-Progress');
+      // Use regex for case-insensitive matching of "In Progress" variants
+      const progressBadges = page.locator('text=/[Ii]n[- ]?[Pp]rogress/');
       const hasInProgressIndicator = (await inProgressIndicators.count()) > 0 || (await progressBadges.count()) > 0;
 
       // Log whether we found in-progress indicators (may depend on UI implementation)
@@ -414,15 +415,15 @@ test.describe('State Reconciliation - Late Joining User', () => {
         const qualityGateContent = page.locator('[data-testid="quality-gates-content"], [data-testid="quality-gate-results"], .quality-gates');
         const qualityGateItems = page.locator('[data-testid^="quality-gate-"], .quality-gate-item, [data-testid="gate-result"]');
 
-        // Check for quality gate related text content
-        const gateStatusText = page.locator('text=Pass, text=Fail, text=Passed, text=Failed, text=Pending');
+        // Check for quality gate related text content using regex alternation
+        const gateStatusText = page.locator('text=/Pass(ed)?|Fail(ed)?|Pending/i');
         const hasGateStatus = (await gateStatusText.count()) > 0;
 
         if (hasGateStatus) {
           console.log('✅ Quality gate status indicators visible');
         } else {
-          // Look for gate names or test results
-          const gateNames = page.locator('text=Test, text=Coverage, text=Lint, text=Type');
+          // Look for gate names or test results using regex alternation
+          const gateNames = page.locator('text=/Test|Coverage|Lint|Type/i');
           const hasGateNames = (await gateNames.count()) > 0;
           expect(hasGateNames).toBe(true);
           console.log('✅ Quality gate names visible');
@@ -484,8 +485,8 @@ test.describe('State Reconciliation - Late Joining User', () => {
         const reviewFindings = page.locator('[data-testid="review-findings"], [data-testid="code-review-findings"], .review-findings');
         const findingItems = page.locator('[data-testid^="finding-"], [data-testid="review-finding-item"], .finding-item');
 
-        // Check for finding-related content
-        const findingIndicators = page.locator('text=severity, text=high, text=medium, text=low, text=quality, text=security');
+        // Check for finding-related content using regex alternation
+        const findingIndicators = page.locator('text=/severity|high|medium|low|quality|security/i');
         const hasFindingIndicators = (await findingIndicators.count()) > 0;
 
         if (hasFindingIndicators) {
