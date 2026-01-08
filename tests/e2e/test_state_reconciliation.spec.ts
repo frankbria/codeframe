@@ -514,9 +514,10 @@ test.describe('State Reconciliation - Late Joining User', () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.COMPLETED;
 
-      // Verify project is completed - FAIL if seed data is wrong
+      // Verify project is complete - FAIL if seed data is wrong
+      // Note: phase CHECK constraint uses 'complete' not 'completed'
       const { phase } = await getProjectPhase(request, token, projectId);
-      expect(phase).toBe('completed');
+      expect(phase).toBe('complete');
       console.log(`📊 Project ${projectId} phase: ${phase}`);
 
       await page.goto(`${FRONTEND_URL}/projects/${projectId}`);

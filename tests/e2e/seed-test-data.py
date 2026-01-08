@@ -1648,13 +1648,18 @@ This is a test PRD for review phase E2E tests.
         task_count_p4 = cursor.fetchone()[0]
         print(f"✅ Seeded {task_count_p4} tasks for project {review_project_id}")
 
+        # Get task IDs for code review findings (task_id is NOT NULL in code_reviews table)
+        cursor.execute("SELECT id FROM tasks WHERE project_id = ? ORDER BY id LIMIT 3", (review_project_id,))
+        task_ids_p4 = [row[0] for row in cursor.fetchall()]
+
         # Add code review findings for project 4
-        if table_exists(cursor, TABLE_CODE_REVIEWS):
+        if table_exists(cursor, TABLE_CODE_REVIEWS) and len(task_ids_p4) >= 3:
             cursor.execute("DELETE FROM code_reviews WHERE project_id = ?", (review_project_id,))
             # Note: category must be one of: 'security', 'performance', 'quality', 'maintainability', 'style'
+            # Note: task_id is NOT NULL, so we use actual task IDs from the tasks we just created
             review_findings_p4 = [
                 (
-                    None, "review-agent-001", review_project_id,
+                    task_ids_p4[0], "review-agent-001", review_project_id,
                     "web-ui/src/components/ProjectDashboard.tsx", 145,
                     "high", "quality",  # accessibility maps to quality
                     "Missing aria-label on interactive button",
@@ -1663,7 +1668,7 @@ This is a test PRD for review phase E2E tests.
                     now_ts,
                 ),
                 (
-                    None, "review-agent-001", review_project_id,
+                    task_ids_p4[1], "review-agent-001", review_project_id,
                     "codeframe/api/projects.py", 89,
                     "critical", "security",
                     "User input not sanitized in query",
@@ -1672,7 +1677,7 @@ This is a test PRD for review phase E2E tests.
                     now_ts,
                 ),
                 (
-                    None, "review-agent-001", review_project_id,
+                    task_ids_p4[2], "review-agent-001", review_project_id,
                     "web-ui/src/components/TaskList.tsx", 67,
                     "medium", "maintainability",
                     "Component exceeds 200 lines",
@@ -1735,15 +1740,15 @@ This is a test PRD for review phase E2E tests.
             (
                 completed_project_id,
                 "e2e-completed-project",
-                "Test project in completed phase (for state reconciliation tests)",
+                "Test project in complete phase (for state reconciliation tests)",
                 1,  # test user
                 workspace_path_p5,
-                "completed",  # status
-                "completed",  # phase
+                "completed",  # status (CHECK: init, planning, running, active, paused, completed)
+                "complete",   # phase (CHECK: discovery, planning, active, review, complete)
                 now_ts,
             ),
         )
-        print(f"✅ Created/updated project {completed_project_id} in 'completed' phase")
+        print(f"✅ Created/updated project {completed_project_id} in 'complete' phase")
 
         # Add completed discovery state for project 5
         if table_exists(cursor, TABLE_MEMORY):
