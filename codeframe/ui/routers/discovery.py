@@ -697,8 +697,7 @@ async def generate_tasks(
     if existing_tasks:
         raise HTTPException(
             status_code=400,
-            detail="Tasks have already been generated for this project. "
-            "Use retry endpoint if regeneration is needed.",
+            detail="Tasks have already been generated for this project.",
         )
 
     # Verify API key is available
