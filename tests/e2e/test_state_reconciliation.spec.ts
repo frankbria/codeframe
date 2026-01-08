@@ -542,10 +542,14 @@ test.describe('State Reconciliation - Late Joining User', () => {
       }
 
       // ASSERTION: Look for completed status indicators in the UI
-      const completedIndicators = page.locator('[data-testid="project-completed"], [data-testid="status-completed"], text=Completed, text=Done, text=Finished');
+      // Use separate locators for CSS selectors and text matching (text= doesn't support comma OR)
+      const completedDataTestIds = page.locator('[data-testid="project-completed"], [data-testid="status-completed"]');
+      const completedTextIndicators = page.locator('text=/Completed|Done|Finished/i');
       const statusBadges = page.locator('[data-status="completed"], .status-completed, .badge-completed');
 
-      const hasCompletedIndicator = (await completedIndicators.count()) > 0 || (await statusBadges.count()) > 0;
+      const hasCompletedIndicator = (await completedDataTestIds.count()) > 0 ||
+                                    (await completedTextIndicators.count()) > 0 ||
+                                    (await statusBadges.count()) > 0;
 
       // Navigate to Tasks tab to verify completed tasks are shown
       const tasksTab = page.locator('[data-testid="tasks-tab"]');
@@ -560,8 +564,10 @@ test.describe('State Reconciliation - Late Joining User', () => {
         console.log(`✅ Tasks tab visible with ${taskCount} completed task items`);
 
         // Look for completed task status indicators
-        const completedTaskIndicators = page.locator('[data-testid="task-status-completed"], text=Completed, .status-completed');
-        const completedTaskCount = await completedTaskIndicators.count();
+        // CSS selectors work with comma OR, but text= must be separate or use regex
+        const completedTaskIndicators = page.locator('[data-testid="task-status-completed"], .status-completed');
+        const completedTaskText = page.locator('text=/Completed/i');
+        const completedTaskCount = (await completedTaskIndicators.count()) + (await completedTaskText.count());
         if (completedTaskCount > 0) {
           console.log(`✅ Found ${completedTaskCount} completed task indicators in UI`);
         }
