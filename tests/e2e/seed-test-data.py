@@ -1542,7 +1542,7 @@ This is a test PRD for active phase E2E tests.
                 "Test project in review phase with quality gates (for state reconciliation tests)",
                 1,  # test user
                 workspace_path_p4,
-                "review",  # status
+                "active",  # status (must be valid: init/planning/running/active/paused/completed)
                 "review",  # phase
                 now_ts,
             ),
