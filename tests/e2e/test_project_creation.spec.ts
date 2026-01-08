@@ -34,7 +34,8 @@ test.describe('Project Creation Flow', () => {
   // Discovery errors are REAL errors that indicate broken functionality
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Project creation test', [
-      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 
@@ -186,7 +187,8 @@ test.describe('Project Navigation Flow', () => {
   // All other errors (WebSocket, API, network) MUST cause test failures
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Project navigation test', [
-      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 

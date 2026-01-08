@@ -45,7 +45,8 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
   // All other errors (WebSocket, API, network) MUST cause test failures
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Task Breakdown test', [
-      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 

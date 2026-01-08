@@ -31,23 +31,28 @@ test.describe('Metrics Dashboard UI', () => {
     );
     expect(projectResponse.ok()).toBe(true);  // API must succeed
 
-    // Wait for dashboard to render - agent panel is one of the last to render
-    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 });
+    // Wait for dashboard header to render (always visible regardless of active tab)
+    await page.locator('[data-testid="dashboard-header"]').waitFor({ state: 'visible', timeout: 10000 });
 
-    // Navigate to Metrics tab (Sprint 10 Refactor - metrics now on dedicated tab)
+    // Navigate to Metrics tab - set up response listener BEFORE clicking
     const metricsTab = page.locator('[data-testid="metrics-tab"]');
     await metricsTab.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Set up metrics API response listener BEFORE clicking tab
+    const metricsResponsePromise = page.waitForResponse(
+      response => response.url().includes('/metrics') && response.status() === 200,
+      { timeout: 15000 }
+    );
+
+    // Click tab to trigger metrics load
     await metricsTab.click();
 
-    // Wait for metrics panel to be visible - required for all metrics tests
+    // Wait for metrics panel to be visible
     const metricsPanel = page.locator('[data-testid="metrics-panel"]');
     await metricsPanel.waitFor({ state: 'visible', timeout: 10000 });
 
-    // Wait for metrics API to load
-    const metricsResponse = await page.waitForResponse(response =>
-      response.url().includes('/metrics') && response.status() === 200,
-      { timeout: 10000 }
-    );
+    // Wait for the metrics API response we're listening for
+    const metricsResponse = await metricsResponsePromise;
     expect(metricsResponse.ok()).toBe(true);  // Metrics API must succeed
 
     // Wait for cost dashboard to be visible (indicates data has rendered)
@@ -209,24 +214,30 @@ test.describe('Metrics Dashboard UI', () => {
 
     // Change to a different filter option
     const newValue = initialValue === 'last-30-days' ? 'last-7-days' : 'last-30-days';
+
+    // Set up response listener BEFORE changing filter
+    const filterResponsePromise = page.waitForResponse(response =>
+      response.url().includes('/metrics'),
+      { timeout: 15000 }
+    );
+
+    // Change the filter value
     await dateFilter.selectOption(newValue);
 
-    // Wait for metrics API response - must succeed after filter change
-    const filterResponse = await page.waitForResponse(response =>
-      response.url().includes('/metrics'),
-      { timeout: 10000 }
-    );
+    // Wait for metrics API response triggered by filter change
+    const filterResponse = await filterResponsePromise;
     expect(filterResponse.ok()).toBe(true);
 
-    // Wait a moment for React to re-render
-    await page.waitForTimeout(1000);
+    // Wait for cost-dashboard to reappear after loading state
+    const costDashboard = page.locator('[data-testid="cost-dashboard"]');
+    await costDashboard.waitFor({ state: 'visible', timeout: 10000 });
 
-    // After filtering, the metrics panel should still be visible
+    // After loading completes, metrics panel and filter should be visible
     const metricsPanel = page.locator('[data-testid="metrics-panel"]');
     await expect(metricsPanel).toBeVisible();
 
-    // Date filter must still be visible and value must have changed
-    await expect(dateFilter).toBeVisible();
+    // Wait for filter to reappear after loading state completes
+    await expect(dateFilter).toBeVisible({ timeout: 5000 });
     const currentValue = await dateFilter.inputValue();
     expect(currentValue).toBe(newValue);
   });

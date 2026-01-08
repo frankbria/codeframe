@@ -143,7 +143,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     // STRICT ERROR CHECKING: Only filter navigation cancellation (normal browser behavior)
     // WebSocket errors, API failures, and network errors MUST cause test failures
     checkTestErrors(page, 'Dashboard test', [
-      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 

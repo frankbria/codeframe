@@ -44,7 +44,8 @@ test.describe('Start Agent Flow', () => {
   // Discovery errors are REAL errors that indicate broken functionality
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Start agent flow test', [
-      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 

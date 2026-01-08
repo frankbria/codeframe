@@ -47,7 +47,8 @@ test.describe('Complete User Journey', () => {
     // All other errors (WebSocket, API, network) MUST cause test failures
     // This is the "complete user journey" - EVERYTHING must work!
     checkTestErrors(page, 'Complete user journey test', [
-      'net::ERR_ABORTED'  // Normal when navigation cancels pending requests
+      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
+      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
   });
 

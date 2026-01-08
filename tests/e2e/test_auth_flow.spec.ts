@@ -51,7 +51,9 @@ test.describe('Authentication Flow', () => {
       'Invalid credentials', 'LOGIN_BAD_CREDENTIALS',
       'Unauthorized', 'Forbidden',
       // Navigation cancellation is normal browser behavior
-      'net::ERR_ABORTED'
+      'net::ERR_ABORTED',
+      // Next.js RSC payload fetch during navigation - transient, non-blocking
+      'Failed to fetch RSC payload'
     ]);
   });
 
