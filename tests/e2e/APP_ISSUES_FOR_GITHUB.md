@@ -5,27 +5,27 @@
 
 ## Issue #1: WebSocket Does Not Send Messages After Connection (HIGH)
 
-## Issue #2: Metrics Dashboard Stuck in Loading After Date Filter Change (MEDIUM)
+## Issue #2: Metrics API Returns 404 for Date-Filtered Queries (MEDIUM)
 
 **Test**: `test_metrics_ui.spec.ts` - "should filter metrics by date range"
 
 **Behavior**:
 - Date filter is changed from one value to another
-- Component enters loading state
-- Loading state never completes (cost-dashboard doesn't reappear)
+- API request is made with date range parameters
+- **API returns 404 {"detail":"Not Found"}**
+- Component displays error: "Error: Request failed: 404 {"detail":"Not Found"}"
 
 **Expected**:
-After changing the date filter, the metrics should reload and the dashboard should display updated data.
+The metrics API should accept date range query parameters and return filtered data.
 
 **Impact**: Users cannot filter metrics by date range.
 
 **Files to Investigate**:
-- `web-ui/src/components/metrics/CostDashboard.tsx` - `loadData` function and loading state
+- `codeframe/ui/routers/metrics.py` - Check if date filter parameters are supported
+- `web-ui/src/components/metrics/CostDashboard.tsx` - Verify query parameters being sent
 
-**Possible Causes**:
-1. API request failing for date-filtered queries
-2. Error in date filter logic (date formatting)
-3. Component not handling API error gracefully
+**Root Cause**:
+The metrics API endpoint likely does not have query parameter handling for date filtering, or the route pattern doesn't match when parameters are included.
 
 ---
 
