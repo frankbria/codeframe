@@ -35,7 +35,7 @@ Example:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 from codeframe.core.models import CallType, TokenUsage
 from codeframe.persistence.database import Database
@@ -202,14 +202,21 @@ class MetricsTracker:
 
         return usage_id
 
-    async def get_project_costs(self, project_id: int) -> Dict[str, Any]:
+    async def get_project_costs(
+        self,
+        project_id: int,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> Dict[str, Any]:
         """Get total costs and breakdown for a project.
 
         Aggregates all token usage records for the project and provides
-        breakdowns by agent and model.
+        breakdowns by agent and model. Optionally filter by date range.
 
         Args:
             project_id: Project ID to get costs for
+            start_date: Optional start of date range (inclusive)
+            end_date: Optional end of date range (inclusive)
 
         Returns:
             Dictionary with cost breakdown:
@@ -234,8 +241,10 @@ class MetricsTracker:
             >>> for agent in costs['by_agent']:
             ...     print(f"  {agent['agent_id']}: ${agent['cost_usd']:.2f}")
         """
-        # Get all usage records for project
-        usage_records = self.db.get_token_usage(project_id=project_id)
+        # Get usage records for project (optionally filtered by date)
+        usage_records = self.db.get_token_usage(
+            project_id=project_id, start_date=start_date, end_date=end_date
+        )
 
         # Initialize result
         result = {
@@ -458,3 +467,133 @@ class MetricsTracker:
         # This would group usage by date for timeline visualization
 
         return result
+
+    async def get_token_usage_timeseries(
+        self,
+        project_id: int,
+        start_date: datetime,
+        end_date: datetime,
+        interval: str = "day",
+    ) -> list[dict[str, Any]]:
+        """Get token usage aggregated by time intervals for charting.
+
+        Groups token usage records into time buckets (hour, day, or week) for
+        visualization in time series charts. Each bucket contains aggregated
+        token counts and costs.
+
+        Args:
+            project_id: Project ID to get time series for
+            start_date: Start of date range (inclusive)
+            end_date: End of date range (inclusive)
+            interval: Time interval for grouping ('hour', 'day', 'week')
+
+        Returns:
+            List of time series data points, each containing:
+            {
+                "timestamp": str (ISO 8601 format),
+                "input_tokens": int,
+                "output_tokens": int,
+                "total_tokens": int,
+                "cost_usd": float
+            }
+
+        Raises:
+            ValueError: If interval is not one of 'hour', 'day', 'week'
+
+        Example:
+            >>> from datetime import datetime, timedelta
+            >>> start = datetime.now() - timedelta(days=7)
+            >>> end = datetime.now()
+            >>> series = await tracker.get_token_usage_timeseries(
+            ...     project_id=1,
+            ...     start_date=start,
+            ...     end_date=end,
+            ...     interval='day'
+            ... )
+            >>> for point in series:
+            ...     print(f"{point['timestamp']}: {point['total_tokens']} tokens")
+        """
+        valid_intervals = ("hour", "day", "week")
+        if interval not in valid_intervals:
+            raise ValueError(
+                f"Invalid interval '{interval}'. Must be one of: {', '.join(valid_intervals)}"
+            )
+
+        # Get usage records with date filtering
+        usage_records = self.db.get_token_usage(
+            project_id=project_id, start_date=start_date, end_date=end_date
+        )
+
+        if not usage_records:
+            return []
+
+        # Group records by time bucket
+        buckets: dict[str, dict[str, Any]] = {}
+
+        for record in usage_records:
+            # Parse timestamp if string, otherwise use as-is
+            timestamp = record["timestamp"]
+            if isinstance(timestamp, str):
+                # Handle both ISO 8601 and simple date formats
+                timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+            # Calculate bucket key based on interval
+            bucket_key = self._get_bucket_key(timestamp, interval)
+
+            # Initialize bucket if not exists
+            if bucket_key not in buckets:
+                buckets[bucket_key] = {
+                    "timestamp": bucket_key,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cost_usd": 0.0,
+                }
+
+            # Aggregate values
+            buckets[bucket_key]["input_tokens"] += record["input_tokens"]
+            buckets[bucket_key]["output_tokens"] += record["output_tokens"]
+            buckets[bucket_key]["total_tokens"] += (
+                record["input_tokens"] + record["output_tokens"]
+            )
+            buckets[bucket_key]["cost_usd"] += record["estimated_cost_usd"]
+
+        # Round costs and sort by timestamp
+        result = []
+        for bucket in buckets.values():
+            bucket["cost_usd"] = round(bucket["cost_usd"], 6)
+            result.append(bucket)
+
+        # Sort by timestamp
+        result.sort(key=lambda x: x["timestamp"])
+
+        return result
+
+    def _get_bucket_key(self, timestamp: datetime, interval: str) -> str:
+        """Get the bucket key for a timestamp based on the interval.
+
+        Args:
+            timestamp: Datetime to get bucket key for
+            interval: Time interval ('hour', 'day', 'week')
+
+        Returns:
+            ISO 8601 formatted string representing the bucket start time
+        """
+        if interval == "hour":
+            # Truncate to start of hour
+            bucket_start = timestamp.replace(minute=0, second=0, microsecond=0)
+        elif interval == "day":
+            # Truncate to start of day
+            bucket_start = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif interval == "week":
+            # Truncate to start of ISO week (Monday)
+            # Get the weekday (0=Monday, 6=Sunday)
+            days_since_monday = timestamp.weekday()
+            bucket_start = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+            bucket_start = bucket_start - timedelta(days=days_since_monday)
+        else:
+            # Default to day
+            bucket_start = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Return ISO format with Z suffix for UTC
+        return bucket_start.strftime("%Y-%m-%dT%H:%M:%SZ")
