@@ -10,7 +10,7 @@ Endpoints:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -156,10 +156,8 @@ def _parse_date(date_str: str) -> datetime:
 
     # Try date-only format (yyyy-MM-dd)
     try:
-        from datetime import timezone as tz
-
         parsed = datetime.strptime(date_str, "%Y-%m-%d")
-        return parsed.replace(tzinfo=tz.utc)
+        return parsed.replace(tzinfo=timezone.utc)
     except ValueError:
         raise ValueError(
             f"Invalid date format: '{date_str}'. "

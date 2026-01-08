@@ -531,11 +531,14 @@ class MetricsTracker:
         buckets: dict[str, dict[str, Any]] = {}
 
         for record in usage_records:
-            # Parse timestamp if string, otherwise use as-is
+            # Parse timestamp - handle string, naive datetime, and aware datetime
             timestamp = record["timestamp"]
             if isinstance(timestamp, str):
                 # Handle both ISO 8601 and simple date formats
                 timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            elif timestamp.tzinfo is None:
+                # Assume UTC for naive datetimes from database
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
 
             # Calculate bucket key based on interval
             bucket_key = self._get_bucket_key(timestamp, interval)
@@ -592,8 +595,8 @@ class MetricsTracker:
             bucket_start = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
             bucket_start = bucket_start - timedelta(days=days_since_monday)
         else:
-            # Default to day
-            bucket_start = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+            # This should never be reached due to validation in get_token_usage_timeseries
+            raise ValueError(f"Invalid interval: {interval}")
 
         # Return ISO format with Z suffix for UTC
         return bucket_start.strftime("%Y-%m-%dT%H:%M:%SZ")

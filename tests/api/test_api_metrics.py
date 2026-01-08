@@ -536,6 +536,42 @@ class TestProjectTokenTimeSeriesEndpoint:
 
         assert response.status_code == 200
 
+    def test_invalid_month_returns_400(self, api_client, project_with_token_usage):
+        """Test that invalid month (13) returns 400 Bad Request."""
+        project_id, _ = project_with_token_usage
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date=2025-13-01&end_date=2025-01-07"
+        )
+
+        assert response.status_code == 400
+        assert "Invalid date format" in response.json()["detail"]
+
+    def test_invalid_day_returns_400(self, api_client, project_with_token_usage):
+        """Test that invalid day (32) returns 400 Bad Request."""
+        project_id, _ = project_with_token_usage
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date=2025-01-32&end_date=2025-01-07"
+        )
+
+        assert response.status_code == 400
+        assert "Invalid date format" in response.json()["detail"]
+
+    def test_malformed_date_returns_400(self, api_client, project_with_token_usage):
+        """Test that malformed date string returns 400 Bad Request."""
+        project_id, _ = project_with_token_usage
+
+        response = api_client.get(
+            f"/api/projects/{project_id}/metrics/tokens/timeseries"
+            f"?start_date=not-a-date&end_date=2025-01-07"
+        )
+
+        assert response.status_code == 400
+        assert "Invalid date format" in response.json()["detail"]
+
 
 class TestProjectCostMetricsDateFiltering:
     """Test date filtering on GET /api/projects/{id}/metrics/costs endpoint."""
