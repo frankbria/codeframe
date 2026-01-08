@@ -126,7 +126,7 @@ test.describe('Late-Joining User Scenarios', () => {
      * The bug was: User B saw "Generate Tasks" because the component relied on WebSocket
      * events to set `tasksGenerated = true`, and didn't check API on mount.
      */
-    test('should show "Tasks Ready" section when tasks already exist (late-joining user)', async () => {
+    test('should show "Tasks Ready" section when tasks already exist (late-joining user) @smoke', async () => {
       // Use project 2 which is seeded in 'planning' phase with tasks
       // Project 1 is in 'discovery' phase for discovery tests
       const PROJECT_ID = process.env.E2E_TEST_PROJECT_PLANNING_ID || '2';

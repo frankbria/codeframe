@@ -64,7 +64,7 @@ test.describe('Project Creation Flow', () => {
     await expect(page.getByTestId('create-project-submit')).toBeVisible();
   });
 
-  test('should create new project via UI', async ({ page }) => {
+  test('should create new project via UI @smoke', async ({ page }) => {
     // Navigate to root page
     await page.goto('/');
 
