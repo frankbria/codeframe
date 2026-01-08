@@ -148,7 +148,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     ]);
   });
 
-  test('should display all main dashboard sections', async () => {
+  test('should display all main dashboard sections @smoke', async () => {
     // Verify main dashboard elements are visible with waits
     const header = page.locator('[data-testid="dashboard-header"]');
     await header.waitFor({ state: 'visible', timeout: 15000 });
@@ -287,7 +287,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     await expect(page.locator('[data-testid="total-cost-display"]')).toBeAttached();
   });
 
-  test('should receive real-time updates via WebSocket', async () => {
+  test('should receive real-time updates via WebSocket @smoke', async () => {
     // Step 1: Verify WebSocket backend endpoint is ready
     await waitForWebSocketReady(BACKEND_URL);
 

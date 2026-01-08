@@ -692,13 +692,19 @@ async def generate_tasks(
             "Please complete PRD generation first.",
         )
 
-    # Check if tasks already exist to prevent duplicate generation
+    # Check if tasks already exist - return idempotent success instead of error
+    # This improves UX for users who join late and miss WebSocket events
     existing_tasks = db.get_project_tasks(project_id)
     if existing_tasks:
-        raise HTTPException(
-            status_code=400,
-            detail="Tasks have already been generated for this project.",
+        logger.info(
+            f"Tasks already exist for project {project_id} "
+            f"(count: {len(existing_tasks)}). Returning idempotent success."
         )
+        return {
+            "success": True,
+            "message": "Tasks have already been generated for this project.",
+            "tasks_already_exist": True,
+        }
 
     # Verify API key is available
     api_key = os.environ.get("ANTHROPIC_API_KEY")

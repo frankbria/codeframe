@@ -5,7 +5,7 @@
 
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import DiscoveryProgress from '@/components/DiscoveryProgress';
-import { projectsApi } from '@/lib/api';
+import { projectsApi, tasksApi } from '@/lib/api';
 import type { DiscoveryProgressResponse } from '@/types/api';
 
 // Mock Hugeicons
@@ -21,6 +21,7 @@ const mockRestartDiscovery = jest.fn();
 const mockRetryPrdGeneration = jest.fn();
 const mockGenerateTasks = jest.fn();
 const mockGetPRD = jest.fn();
+const mockTasksList = jest.fn();
 jest.mock('@/lib/api', () => ({
   projectsApi: {
     getDiscoveryProgress: jest.fn(),
@@ -29,6 +30,9 @@ jest.mock('@/lib/api', () => ({
     retryPrdGeneration: (...args: unknown[]) => mockRetryPrdGeneration(...args),
     generateTasks: (...args: unknown[]) => mockGenerateTasks(...args),
     getPRD: (...args: unknown[]) => mockGetPRD(...args),
+  },
+  tasksApi: {
+    list: (...args: unknown[]) => mockTasksList(...args),
   },
 }));
 
@@ -93,6 +97,7 @@ describe('DiscoveryProgress Component', () => {
     mockRetryPrdGeneration.mockReset();
     mockGenerateTasks.mockReset();
     mockGetPRD.mockReset();
+    mockTasksList.mockReset();
     // Clear WebSocket message handlers
     mockMessageHandlers.length = 0;
   });
@@ -2037,6 +2042,9 @@ describe('DiscoveryProgress Component', () => {
       };
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+      // Mock PRD as available and no existing tasks (required for taskStateInitialized)
+      mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+      mockTasksList.mockResolvedValue({ data: { tasks: [], total: 0 } });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -2976,6 +2984,9 @@ describe('DiscoveryProgress Component', () => {
       };
 
       (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: completedData });
+      // Mock PRD as available and no existing tasks (required for taskStateInitialized)
+      mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+      mockTasksList.mockResolvedValue({ data: { tasks: [], total: 0 } });
 
       render(<DiscoveryProgress projectId={1} />);
 
@@ -3530,6 +3541,171 @@ describe('DiscoveryProgress Component', () => {
 
         await waitFor(() => {
           expect(screen.getByText(/tasks ready for review/i)).toBeInTheDocument();
+        });
+      });
+    });
+
+    describe('Task State Initialization on Mount', () => {
+      /**
+       * Tests for initializing task state when tasks already exist.
+       * This addresses the UX issue where users who join late (after tasks
+       * were generated) see the "Generate Task Breakdown" button even though
+       * tasks already exist.
+       */
+
+      const mockPlanningPhaseData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 10,
+          total_required: 10,
+        },
+      };
+
+      it('should initialize tasksGenerated to true when tasks already exist on mount', async () => {
+        // Arrange: Project is in planning phase with completed PRD and existing tasks
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockTasksList.mockResolvedValue({ data: { tasks: [{ id: 1, title: 'Task 1' }], total: 1 } });
+
+        // Act
+        render(<DiscoveryProgress projectId={1} />);
+
+        // Assert: Button should NOT appear because tasks already exist
+        await waitFor(() => {
+          expect(screen.queryByTestId('generate-tasks-button')).not.toBeInTheDocument();
+        });
+
+        // Verify tasks API was called to check existing tasks
+        await waitFor(() => {
+          expect(mockTasksList).toHaveBeenCalledWith(1, { limit: 1 });
+        });
+      });
+
+      it('should show "Tasks Ready" section when tasks exist on mount', async () => {
+        // Arrange: Tasks already exist
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockTasksList.mockResolvedValue({ data: { tasks: [{ id: 1, title: 'Task 1' }], total: 5 } });
+
+        // Act
+        render(<DiscoveryProgress projectId={1} />);
+
+        // Assert: Should show "Tasks Ready" section
+        await waitFor(() => {
+          expect(screen.getByTestId('tasks-ready-section')).toBeInTheDocument();
+        });
+      });
+
+      it('should show generate button when no tasks exist on mount', async () => {
+        // Arrange: PRD completed but no tasks yet
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockTasksList.mockResolvedValue({ data: { tasks: [], total: 0 } });
+
+        // Act
+        render(<DiscoveryProgress projectId={1} />);
+
+        // Assert: Button should appear
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+      });
+
+      it('should handle tasks fetch failure gracefully without blocking UI', async () => {
+        // Arrange: Tasks fetch fails (network error, etc.)
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockTasksList.mockRejectedValue(new Error('Network error'));
+
+        // Act
+        render(<DiscoveryProgress projectId={1} />);
+
+        // Assert: Component should still render and show button (fail-open)
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+      });
+    });
+
+    describe('Idempotent Backend Response Handling', () => {
+      /**
+       * Tests for handling the idempotent backend response when tasks already exist.
+       * When the user clicks "Generate Task Breakdown" and tasks already exist,
+       * the backend returns {success: true, tasks_already_exist: true} instead of 400.
+       */
+
+      const mockPlanningPhaseData: DiscoveryProgressResponse = {
+        project_id: 1,
+        phase: 'planning',
+        discovery: {
+          state: 'completed',
+          progress_percentage: 100,
+          answered_count: 10,
+          total_required: 10,
+        },
+      };
+
+      it('should handle tasks_already_exist response and show tasks ready section', async () => {
+        // Arrange: Button is shown (tasks check failed or returned empty initially)
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockTasksList.mockResolvedValue({ data: { tasks: [], total: 0 } }); // Initially no tasks
+
+        // Backend returns idempotent response
+        mockGenerateTasks.mockResolvedValue({
+          data: {
+            success: true,
+            message: 'Tasks have already been generated for this project.',
+            tasks_already_exist: true,
+          },
+        });
+
+        // Act
+        render(<DiscoveryProgress projectId={1} />);
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        // Click the button
+        const button = screen.getByTestId('generate-tasks-button');
+        fireEvent.click(button);
+
+        // Assert: Should transition to "tasks ready" state
+        await waitFor(() => {
+          expect(screen.getByTestId('tasks-ready-section')).toBeInTheDocument();
+        });
+      });
+
+      it('should not show error when tasks_already_exist is returned', async () => {
+        // Arrange
+        (projectsApi.getDiscoveryProgress as jest.Mock).mockResolvedValue({ data: mockPlanningPhaseData });
+        mockGetPRD.mockResolvedValue({ data: { status: 'available' } });
+        mockTasksList.mockResolvedValue({ data: { tasks: [], total: 0 } });
+
+        mockGenerateTasks.mockResolvedValue({
+          data: {
+            success: true,
+            message: 'Tasks have already been generated for this project.',
+            tasks_already_exist: true,
+          },
+        });
+
+        // Act
+        render(<DiscoveryProgress projectId={1} />);
+
+        await waitFor(() => {
+          expect(screen.getByTestId('generate-tasks-button')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('generate-tasks-button'));
+
+        // Assert: No error section should appear
+        await waitFor(() => {
+          expect(screen.queryByTestId('task-generation-error')).not.toBeInTheDocument();
         });
       });
     });

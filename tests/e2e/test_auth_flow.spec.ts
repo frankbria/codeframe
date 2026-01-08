@@ -137,7 +137,7 @@ test.describe('Authentication Flow', () => {
   });
 
   test.describe('Login Success', () => {
-    test('should login successfully with valid credentials', async ({ page }) => {
+    test('should login successfully with valid credentials @smoke', async ({ page }) => {
       await page.goto('/login');
 
       // Fill in credentials

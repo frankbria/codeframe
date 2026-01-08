@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useState, memo, useCallback, useRef } from 'react';
-import { projectsApi } from '@/lib/api';
+import { projectsApi, tasksApi } from '@/lib/api';
 import { authFetch } from '@/lib/api-client';
 import { getWebSocketClient } from '@/lib/websocket';
 import type { DiscoveryProgressResponse } from '@/types/api';
@@ -70,6 +70,10 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
   const [taskGenerationProgress, setTaskGenerationProgress] = useState<string>('');
   const [issuesCount, setIssuesCount] = useState<number>(0);
   const [tasksCount, setTasksCount] = useState<number>(0);
+  // Tracks whether task state has been initialized (prevents race condition on mount)
+  const [taskStateInitialized, setTaskStateInitialized] = useState(false);
+  // Message shown when user tries to generate tasks that already exist
+  const [tasksAlreadyExistMessage, setTasksAlreadyExistMessage] = useState(false);
 
   // Feature: 012-discovery-answer-ui - Submit Answer (T038-T040)
   const submitAnswer = async () => {
@@ -172,6 +176,27 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
             setPrdStage('completed');
             setPrdMessage('PRD generated successfully');
             setPrdProgressPct(100);
+
+            // If PRD is available and we're in planning phase, check if tasks exist
+            // This prevents showing "Generate Task Breakdown" button when tasks already exist
+            // (addresses UX issue for users who join late and miss WebSocket events)
+            if (response.data.phase === 'planning') {
+              try {
+                const tasksResponse = await tasksApi.list(projectId, { limit: 1 });
+                if (tasksResponse.data?.total > 0) {
+                  setTasksGenerated(true);
+                }
+              } catch (tasksErr) {
+                // Tasks fetch failed - fail open (show button, let user try to generate)
+                console.warn('Failed to check existing tasks during initialization:', tasksErr);
+              } finally {
+                // Mark task state as initialized to prevent race condition
+                setTaskStateInitialized(true);
+              }
+            } else {
+              // Not in planning phase, but still mark as initialized
+              setTaskStateInitialized(true);
+            }
           } else if (prdStatus === 'generating') {
             setIsGeneratingPRD(true);
             setPrdCompleted(false);
@@ -274,7 +299,19 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
     setTaskGenerationProgress('Starting task generation...');
 
     try {
-      await projectsApi.generateTasks(projectId);
+      const response = await projectsApi.generateTasks(projectId);
+
+      // Handle idempotent response: tasks already exist
+      // Backend returns {success: true, tasks_already_exist: true} instead of 400
+      if (response.data?.tasks_already_exist) {
+        setIsGeneratingTasks(false);
+        setTasksGenerated(true);
+        setTaskGenerationProgress('Tasks already generated');
+        // Show brief notification to user (auto-cleared by useEffect below)
+        setTasksAlreadyExistMessage(true);
+        return;
+      }
+
       // The WebSocket messages will update the UI progressively
     } catch (err) {
       console.error('Failed to generate tasks:', err);
@@ -291,6 +328,18 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
   useEffect(() => {
     fetchProgress(true);  // Pass true to initialize PRD state on mount
   }, [fetchProgress]);
+
+  // Auto-clear "tasks already exist" notification after 3 seconds
+  // Uses useEffect with cleanup to prevent state updates on unmounted component
+  useEffect(() => {
+    if (!tasksAlreadyExistMessage) return;
+
+    const timeoutId = setTimeout(() => {
+      setTasksAlreadyExistMessage(false);
+    }, 3000);
+
+    return () => clearTimeout(timeoutId);
+  }, [tasksAlreadyExistMessage]);
 
   // Timeout detection for stuck discovery state
   useEffect(() => {
@@ -868,7 +917,8 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                 </div>
 
                 {/* Task Generation Section - shown when PRD is complete and in planning phase (Feature 016-3) */}
-                {prdCompleted && phase === 'planning' && !tasksGenerated && !isGeneratingTasks && !taskGenerationError && (
+                {/* taskStateInitialized prevents button flash during async task check on mount */}
+                {prdCompleted && phase === 'planning' && taskStateInitialized && !tasksGenerated && !isGeneratingTasks && !taskGenerationError && (
                   <div className="p-4 bg-secondary/50 rounded-lg border border-border" data-testid="task-generation-section">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -926,6 +976,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                     </div>
                   </div>
                 )}
+
 
                 {/* Tasks Ready - shown when generation is complete */}
                 {prdCompleted && phase === 'planning' && tasksGenerated && (
@@ -986,6 +1037,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
           </div>
         )}
       </div>
+
+      {/* Fixed-position toast notification for "tasks already exist" */}
+      {tasksAlreadyExistMessage && (
+        <div
+          className="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg bg-primary/10 border border-primary text-primary animate-in slide-in-from-right-full"
+          data-testid="tasks-already-exist-message"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2">
+            <CheckmarkCircle01Icon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+            <span className="text-sm font-medium">Tasks have already been generated for this project.</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

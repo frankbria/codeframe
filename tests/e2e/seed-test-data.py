@@ -1179,10 +1179,11 @@ def seed_test_data(db_path: str, project_id: int):
             print(f"✅ Seeded {count}/3 discovery state entries for project {project_id}")
 
         # ========================================
-        # 8. Update Project Phase for Discovery Tests
+        # 8. Update Project Phase for Discovery Tests (Project 1)
         # ========================================
         # Set project to 'discovery' phase so discovery UI renders correctly
-        print("📋 Setting project phase to 'discovery'...")
+        # This project is used by test_start_agent_flow.spec.ts and other discovery tests
+        print("📋 Setting project phase to 'discovery' for discovery tests...")
         try:
             cursor.execute(
                 "UPDATE projects SET phase = 'discovery' WHERE id = ?",
@@ -1191,6 +1192,184 @@ def seed_test_data(db_path: str, project_id: int):
             print(f"✅ Set project {project_id} phase to 'discovery'")
         except sqlite3.Error as e:
             print(f"⚠️  Failed to update project phase: {e}")
+
+        # ========================================
+        # 9. Create Second Project for Late-Joining User Tests (Project 2)
+        # ========================================
+        # Create a separate project in 'planning' phase with completed PRD and tasks
+        # This enables testing late-joining user scenarios where tasks already exist
+        print("\n📦 Creating second project for late-joining user tests...")
+        planning_project_id = 2
+
+        # Create workspace directory for Project 2 (required for dashboard to load)
+        workspace_path_p2 = os.path.join(E2E_TEST_ROOT, ".codeframe", "workspaces", str(planning_project_id))
+        os.makedirs(workspace_path_p2, exist_ok=True)
+        print(f"   📁 Created workspace: {workspace_path_p2}")
+
+        # Use INSERT OR REPLACE to ensure project exists with correct data
+        # This handles both fresh installs and re-runs
+        # NOTE: Both 'status' and 'phase' must be set - status is used in Dashboard header
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO projects (id, name, description, user_id, workspace_path, status, phase, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                planning_project_id,
+                "e2e-planning-project",
+                "Test project in planning phase with tasks (for late-joining user tests)",
+                1,  # test user
+                workspace_path_p2,
+                "planning",  # status - required for Dashboard to render (not null)
+                "planning",  # phase - project lifecycle phase
+                now_ts,
+            ),
+        )
+        print(f"✅ Created/updated project {planning_project_id} in 'planning' phase")
+
+        # Add completed discovery state for project 2 (guard against missing memory table)
+        if table_exists(cursor, TABLE_MEMORY):
+            discovery_entries_p2 = [
+                (planning_project_id, "discovery_state", "state", "completed", now_ts, now_ts),
+            ]
+            for entry in discovery_entries_p2:
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    entry,
+                )
+
+            # Add PRD content for project 2
+            prd_content = """# Project Requirements Document
+
+## Overview
+This is a test PRD for late-joining user E2E tests.
+
+## Features
+1. User authentication
+2. Project management
+3. Task tracking
+
+## Technical Requirements
+- FastAPI backend
+- Next.js frontend
+- SQLite database
+
+## Timeline
+Sprint 1: Core features
+Sprint 2: Testing and polish
+"""
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (planning_project_id, prd_content, now_ts, now_ts),
+            )
+        else:
+            print(f"⚠️  Warning: {TABLE_MEMORY} table doesn't exist, skipping project 2 discovery state and PRD")
+
+        # Clear existing tasks for project 2 before re-seeding (ensures clean state)
+        cursor.execute("DELETE FROM tasks WHERE project_id = ?", (planning_project_id,))
+
+        # Add tasks for project 2 (so late-joining user tests can verify task state)
+        # Using full 22-column tasks schema to match Project 1 format
+        # Schema: id, project_id, issue_id, task_number, parent_issue_number, title, description,
+        #         status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+        #         requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+        #         commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
+        tasks_p2 = [
+            (
+                None,  # id (auto-increment)
+                planning_project_id,
+                None,  # issue_id
+                "T001",  # task_number
+                None,  # parent_issue_number
+                "Implement user authentication",  # title
+                "Set up JWT-based authentication",  # description
+                "completed",  # status
+                "backend-worker-001",  # assigned_to
+                None,  # depends_on
+                0,  # can_parallelize
+                3,  # priority (high)
+                1,  # workflow_step
+                0,  # requires_mcp
+                5000,  # estimated_tokens
+                4800,  # actual_tokens
+                now_ts,  # created_at
+                now_ts,  # completed_at
+                "abc123",  # commit_sha
+                "passed",  # quality_gate_status
+                None,  # quality_gate_failures
+                0,  # requires_human_approval
+            ),
+            (
+                None,  # id (auto-increment)
+                planning_project_id,
+                None,  # issue_id
+                "T002",  # task_number
+                None,  # parent_issue_number
+                "Create project dashboard",  # title
+                "Build the main dashboard UI",  # description
+                "in_progress",  # status
+                "frontend-specialist-001",  # assigned_to
+                "1",  # depends_on (depends on T001)
+                1,  # can_parallelize
+                2,  # priority (medium)
+                2,  # workflow_step
+                0,  # requires_mcp
+                8000,  # estimated_tokens
+                3500,  # actual_tokens
+                now_ts,  # created_at
+                None,  # completed_at
+                None,  # commit_sha
+                None,  # quality_gate_status
+                None,  # quality_gate_failures
+                0,  # requires_human_approval
+            ),
+        ]
+        for task in tasks_p2:
+            cursor.execute(
+                """
+                INSERT INTO tasks (
+                    id, project_id, issue_id, task_number, parent_issue_number, title, description,
+                    status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+                    requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+                    commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                task,
+            )
+
+        cursor.execute(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
+            (planning_project_id,),
+        )
+        task_count = cursor.fetchone()[0]
+        print(f"✅ Seeded {task_count} tasks for project {planning_project_id}")
+
+        # Add project-agent assignments for project 2 (required for Dashboard to render)
+        # Clear existing assignments first
+        cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (planning_project_id,))
+        # Use the same agents seeded for project 1
+        # Schema: project_id, agent_id, role, is_active, assigned_at (5 columns - must match project 1)
+        project_agent_assignments_p2 = [
+            (planning_project_id, "backend-worker-001", "developer", 1, now_ts),
+            (planning_project_id, "frontend-specialist-001", "developer", 1, now_ts),
+        ]
+        for assignment in project_agent_assignments_p2:
+            cursor.execute(
+                """
+                INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                assignment,
+            )
+        print(f"✅ Seeded {len(project_agent_assignments_p2)} project-agent assignments for project {planning_project_id}")
+        print(f"✅ Set E2E_TEST_PROJECT_PLANNING_ID={planning_project_id}")
 
         # Commit all changes
         conn.commit()
