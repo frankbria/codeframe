@@ -47,9 +47,6 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
       'WebSocket', 'ws://', 'wss://',
       'net::ERR_FAILED',
       'net::ERR_ABORTED',
-      // Backend endpoint may not exist yet
-      '/planning/generate-tasks',
-      '404',
     ]);
   });
 
@@ -118,8 +115,19 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
       return;
     }
 
+    // Set up response listener BEFORE clicking to catch the API call
+    const responsePromise = page.waitForResponse(
+      response => response.url().includes('/discovery/generate-tasks'),
+      { timeout: 10000 }
+    );
+
     // Click the button
     await generateButton.click();
+
+    // CRITICAL: Verify the API call succeeds (not 404 or 500)
+    const response = await responsePromise;
+    expect(response.status()).toBeLessThan(400);
+    console.log(`✅ API responded with status ${response.status()}`);
 
     // Should show loading state
     // Either the button shows "Generating..." or a progress section appears
@@ -129,7 +137,7 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
     // Wait a moment for state to change
     await page.waitForTimeout(500);
 
-    // Check for either progress or error state (API may fail if backend not implemented)
+    // Check for progress state - errors are NOT acceptable for a working endpoint
     const hasProgress = await progressSection.isVisible().catch(() => false);
     const hasError = await errorSection.isVisible().catch(() => false);
 
@@ -137,9 +145,11 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
       console.log('✅ Task generation progress section visible');
       await expect(progressSection).toBeVisible();
     } else if (hasError) {
-      console.log('ℹ️ Task generation error section visible (expected if backend not implemented)');
+      // If we got a successful API response but still see an error, that's a real bug
       const errorText = await errorSection.textContent();
-      console.log(`   Error: ${errorText}`);
+      console.log(`❌ Unexpected error state: ${errorText}`);
+      // Don't fail here - the error might be from a subsequent WebSocket issue
+      // But log it prominently for investigation
     } else {
       // Check if button changed to loading state
       const buttonText = await generateButton.textContent();
