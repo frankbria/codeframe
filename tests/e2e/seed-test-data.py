@@ -1651,11 +1651,12 @@ This is a test PRD for review phase E2E tests.
         # Add code review findings for project 4
         if table_exists(cursor, TABLE_CODE_REVIEWS):
             cursor.execute("DELETE FROM code_reviews WHERE project_id = ?", (review_project_id,))
+            # Note: category must be one of: 'security', 'performance', 'quality', 'maintainability', 'style'
             review_findings_p4 = [
                 (
                     None, "review-agent-001", review_project_id,
                     "web-ui/src/components/ProjectDashboard.tsx", 145,
-                    "high", "accessibility",
+                    "high", "quality",  # accessibility maps to quality
                     "Missing aria-label on interactive button",
                     "Add aria-label attribute for screen readers",
                     "<button onClick={...}>X</button>",
