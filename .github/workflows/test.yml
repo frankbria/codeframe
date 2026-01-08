@@ -451,7 +451,11 @@ jobs:
 
       - name: Install E2E test dependencies
         working-directory: tests/e2e
-        run: npm ci
+        run: |
+          npm ci
+          # Rebuild native modules for current Node.js version
+          # (better-sqlite3 requires matching NODE_MODULE_VERSION)
+          npm rebuild better-sqlite3
 
       - name: Install Playwright browsers (Chromium only)
         working-directory: tests/e2e
