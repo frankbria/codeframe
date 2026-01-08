@@ -49,6 +49,7 @@ artifacts/
 .codeframe/checkpoints/
 .codeframe/logs/
 *.db-journal
+state.db
 
 # Environment
 .env
