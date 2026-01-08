@@ -272,11 +272,11 @@ class TestHeartbeatMechanism:
             if call[0][0].get("type") == "heartbeat"
         ]
 
-        if len(heartbeat_calls) > 0:
-            heartbeat = heartbeat_calls[0][0][0]
-            assert heartbeat["type"] == "heartbeat"
-            assert heartbeat["project_id"] == 1
-            assert "timestamp" in heartbeat
+        assert len(heartbeat_calls) > 0, "Should receive at least one heartbeat"
+        heartbeat = heartbeat_calls[0][0][0]
+        assert heartbeat["type"] == "heartbeat"
+        assert heartbeat["project_id"] == 1
+        assert "timestamp" in heartbeat
 
     @pytest.mark.asyncio
     async def test_heartbeat_task_cancelled_on_disconnect(self, mock_websocket, mock_manager, mock_db):
@@ -303,6 +303,40 @@ class TestHeartbeatMechanism:
 
         # If we get here without timeout, the heartbeat task was properly cancelled
         mock_manager.disconnect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_task_cancelled_on_unsubscribe(self, mock_websocket, mock_manager, mock_db):
+        """Test that heartbeat task is cancelled when client unsubscribes."""
+        call_count = 0
+
+        async def receive_messages():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return json.dumps({"type": "subscribe", "project_id": 1})
+            elif call_count == 2:
+                # Wait a bit to let heartbeat task start
+                await asyncio.sleep(0.02)
+                return json.dumps({"type": "unsubscribe", "project_id": 1})
+            # Wait to verify no more heartbeats after unsubscribe
+            await asyncio.sleep(0.1)
+            raise WebSocketDisconnect()
+
+        mock_websocket.receive_text = receive_messages
+
+        with patch("codeframe.ui.routers.websocket.manager", mock_manager):
+            with patch("codeframe.ui.routers.websocket.HEARTBEAT_INTERVAL_SECONDS", 0.01):
+                await asyncio.wait_for(
+                    websocket_endpoint(mock_websocket, db=mock_db),
+                    timeout=1.0
+                )
+
+        # Verify unsubscribed message was sent
+        unsubscribed_calls = [
+            call for call in mock_websocket.send_json.call_args_list
+            if call[0][0].get("type") == "unsubscribed"
+        ]
+        assert len(unsubscribed_calls) == 1, "Should send unsubscribed message"
 
 
 class TestInitialStateSnapshot:

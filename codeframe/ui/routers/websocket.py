@@ -334,6 +334,17 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
                     await manager.subscription_manager.unsubscribe(websocket, project_id)
                     logger.info(f"WebSocket unsubscribed from project {project_id}")
                     await websocket.send_json({"type": "unsubscribed", "project_id": project_id})
+
+                    # Cancel heartbeat task for this project
+                    if project_id in heartbeat_tasks:
+                        heartbeat_tasks[project_id].cancel()
+                        try:
+                            await heartbeat_tasks[project_id]
+                        except asyncio.CancelledError:
+                            pass
+                        del heartbeat_tasks[project_id]
+                        logger.debug(f"Cancelled heartbeat task for unsubscribed project {project_id}")
+
                 except Exception as e:
                     logger.error(f"Error unsubscribing from project {project_id}: {e}")
                     await websocket.send_json(
