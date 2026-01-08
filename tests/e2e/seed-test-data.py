@@ -1200,20 +1200,19 @@ def seed_test_data(db_path: str, project_id: int):
         # This enables testing late-joining user scenarios where tasks already exist
         print("\n📦 Creating second project for late-joining user tests...")
         try:
-            # Create project 2
+            # Create project 2 using the correct schema (no slug/updated_at columns)
             cursor.execute(
                 """
-                INSERT INTO projects (id, name, description, slug, phase, user_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO projects (id, name, description, user_id, workspace_path, phase, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     2,
                     "e2e-planning-project",
                     "Test project in planning phase with tasks (for late-joining user tests)",
-                    "e2e-planning-project",
-                    "planning",
                     1,  # test user
-                    now_ts,
+                    "/tmp/e2e-planning-project",  # workspace_path is required
+                    "planning",
                     now_ts,
                 ),
             )
