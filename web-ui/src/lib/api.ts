@@ -60,7 +60,7 @@ export const projectsApi = {
       `/api/projects/${projectId}/discovery/generate-prd`
     ),
   generateTasks: (projectId: number | string) =>
-    api.post<{ success: boolean; message: string }>(
+    api.post<{ success: boolean; message: string; tasks_already_exist?: boolean }>(
       `/api/projects/${projectId}/discovery/generate-tasks`
     ),
   approveTaskBreakdown: (projectId: number, taskIds: string[]) =>

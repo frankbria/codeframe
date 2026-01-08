@@ -191,8 +191,13 @@ class TestGenerateTasksEndpoint:
         # Note: In TestClient, background tasks are executed synchronously
         # so we can verify the function was called correctly
 
-    def test_returns_400_when_tasks_already_exist(self, api_client):
-        """Test endpoint returns 400 when tasks have already been generated."""
+    def test_returns_200_with_flag_when_tasks_already_exist(self, api_client):
+        """Test endpoint is idempotent - returns 200 with tasks_already_exist flag.
+
+        Instead of returning 400 error when tasks exist, the endpoint should
+        be idempotent and return success with a flag indicating tasks already
+        exist. This improves UX for users who join late and miss WebSocket events.
+        """
         # ARRANGE
         db = get_db_from_client(api_client)
         project_id = db.create_project("test-project", "Test Project")
@@ -216,10 +221,12 @@ class TestGenerateTasksEndpoint:
             f"/api/projects/{project_id}/discovery/generate-tasks"
         )
 
-        # ASSERT
-        assert response.status_code == 400
-        detail = response.json()["detail"].lower()
-        assert "already" in detail or "exist" in detail
+        # ASSERT - idempotent endpoint returns 200 with flag
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["tasks_already_exist"] is True
+        assert "already" in data["message"].lower()
 
 
 class TestGenerateTasksEndpointIntegration:

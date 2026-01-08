@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useState, memo, useCallback, useRef } from 'react';
-import { projectsApi } from '@/lib/api';
+import { projectsApi, tasksApi } from '@/lib/api';
 import { authFetch } from '@/lib/api-client';
 import { getWebSocketClient } from '@/lib/websocket';
 import type { DiscoveryProgressResponse } from '@/types/api';
@@ -172,6 +172,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
             setPrdStage('completed');
             setPrdMessage('PRD generated successfully');
             setPrdProgressPct(100);
+
+            // If PRD is available and we're in planning phase, check if tasks exist
+            // This prevents showing "Generate Task Breakdown" button when tasks already exist
+            // (addresses UX issue for users who join late and miss WebSocket events)
+            if (response.data.phase === 'planning') {
+              try {
+                const tasksResponse = await tasksApi.list(projectId, { limit: 1 });
+                if (tasksResponse.data?.total > 0) {
+                  setTasksGenerated(true);
+                }
+              } catch (tasksErr) {
+                // Tasks fetch failed - fail open (show button, let user try to generate)
+                console.warn('Failed to check existing tasks during initialization:', tasksErr);
+              }
+            }
           } else if (prdStatus === 'generating') {
             setIsGeneratingPRD(true);
             setPrdCompleted(false);
@@ -274,7 +289,17 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
     setTaskGenerationProgress('Starting task generation...');
 
     try {
-      await projectsApi.generateTasks(projectId);
+      const response = await projectsApi.generateTasks(projectId);
+
+      // Handle idempotent response: tasks already exist
+      // Backend returns {success: true, tasks_already_exist: true} instead of 400
+      if (response.data?.tasks_already_exist) {
+        setIsGeneratingTasks(false);
+        setTasksGenerated(true);
+        setTaskGenerationProgress('Tasks already generated');
+        return;
+      }
+
       // The WebSocket messages will update the UI progressively
     } catch (err) {
       console.error('Failed to generate tasks:', err);
