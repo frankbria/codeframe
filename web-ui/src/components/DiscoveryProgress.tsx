@@ -966,17 +966,6 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                   </div>
                 )}
 
-                {/* Notification: Tasks already existed (idempotent response) */}
-                {tasksAlreadyExistMessage && (
-                  <div
-                    className="p-3 mb-4 rounded-lg border bg-primary/10 border-primary text-primary text-sm"
-                    data-testid="tasks-already-exist-message"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    Tasks have already been generated for this project.
-                  </div>
-                )}
 
                 {/* Tasks Ready - shown when generation is complete */}
                 {prdCompleted && phase === 'planning' && tasksGenerated && (
@@ -1037,6 +1026,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
           </div>
         )}
       </div>
+
+      {/* Fixed-position toast notification for "tasks already exist" */}
+      {tasksAlreadyExistMessage && (
+        <div
+          className="fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg bg-primary/10 border border-primary text-primary animate-in slide-in-from-right-full"
+          data-testid="tasks-already-exist-message"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center gap-2">
+            <CheckmarkCircle01Icon className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+            <span className="text-sm font-medium">Tasks have already been generated for this project.</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 });
