@@ -287,9 +287,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     await expect(page.locator('[data-testid="total-cost-display"]')).toBeAttached();
   });
 
-  // TODO: Investigate WebSocket message detection - test consistently fails in CI-like conditions
-  // See: https://github.com/frankbria/codeframe/issues/229
-  test('should receive real-time updates via WebSocket', async () => {
+  test('should receive real-time updates via WebSocket @smoke', async () => {
     // Step 1: Verify WebSocket backend endpoint is ready
     await waitForWebSocketReady(BACKEND_URL);
 

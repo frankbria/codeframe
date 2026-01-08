@@ -30,6 +30,8 @@ export class WebSocketClient {
   private maxReconnectDelay: number = 30000; // 30 seconds
   private lastReconnectTime: number = 0;
   private minReconnectInterval: number = 500; // Minimum 500ms between reconnects (debounce)
+  // Queue for subscriptions made before socket is open
+  private pendingSubscriptions: Set<number> = new Set();
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) {
@@ -53,6 +55,19 @@ export class WebSocketClient {
       }
       // Notify connection change
       this.notifyConnectionChange(true);
+
+      // Send any pending subscriptions that were queued before connection opened
+      if (this.pendingSubscriptions.size > 0) {
+        this.pendingSubscriptions.forEach((projectId) => {
+          this.ws?.send(
+            JSON.stringify({
+              type: 'subscribe',
+              project_id: projectId,
+            })
+          );
+        });
+        this.pendingSubscriptions.clear();
+      }
     };
 
     this.ws.onmessage = (event) => {
@@ -141,6 +156,9 @@ export class WebSocketClient {
           project_id: projectId,
         })
       );
+    } else {
+      // Queue subscription to be sent when connection opens
+      this.pendingSubscriptions.add(projectId);
     }
   }
 
