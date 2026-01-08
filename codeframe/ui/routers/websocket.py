@@ -10,11 +10,15 @@ Proactive Messaging:
     - connection_ack: Sent after successful subscription to confirm real-time connectivity
     - project_status: Initial project state snapshot sent on subscription
     - heartbeat: Periodic messages (every 30 seconds) to keep connections alive
+
+Configuration:
+    WEBSOCKET_HEARTBEAT_INTERVAL: Environment variable to configure heartbeat interval (default: 30 seconds)
 """
 
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, UTC
 
 import jwt as pyjwt
@@ -41,7 +45,8 @@ router = APIRouter(tags=["websocket"])
 
 # Heartbeat interval in seconds
 # Heartbeats keep connections alive and verify real-time functionality
-HEARTBEAT_INTERVAL_SECONDS = 30
+# Configurable via WEBSOCKET_HEARTBEAT_INTERVAL env var for testing/tuning
+HEARTBEAT_INTERVAL_SECONDS = int(os.getenv("WEBSOCKET_HEARTBEAT_INTERVAL", "30"))
 
 
 async def send_heartbeats(websocket: WebSocket, project_id: int) -> None:
@@ -281,17 +286,32 @@ async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db
                                 "phase": project.get("phase", "unknown"),
                                 "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                             })
+                        else:
+                            logger.debug(f"Project {project_id} not found for status snapshot")
+                    except (KeyError, AttributeError) as e:
+                        # Expected - project may not have status/phase fields
+                        logger.debug(f"Project {project_id} missing status fields: {e}")
                     except Exception as e:
-                        # Project status is optional - don't fail subscription if unavailable
-                        logger.debug(f"Could not send project status for {project_id}: {e}")
+                        # Unexpected error - log as warning for investigation
+                        logger.warning(f"Unexpected error sending project status for {project_id}: {e}")
 
                     # Start heartbeat task for this subscription (proactive messaging)
-                    if project_id not in heartbeat_tasks:
-                        heartbeat_task = asyncio.create_task(
-                            send_heartbeats(websocket, project_id)
-                        )
-                        heartbeat_tasks[project_id] = heartbeat_task
-                        logger.debug(f"Started heartbeat task for project {project_id}")
+                    # Cancel existing task if present (handles re-subscription case to prevent memory leak)
+                    if project_id in heartbeat_tasks:
+                        old_task = heartbeat_tasks[project_id]
+                        old_task.cancel()
+                        try:
+                            await old_task
+                        except asyncio.CancelledError:
+                            pass
+                        logger.debug(f"Cancelled old heartbeat task for project {project_id}")
+
+                    # Start new heartbeat task
+                    heartbeat_task = asyncio.create_task(
+                        send_heartbeats(websocket, project_id)
+                    )
+                    heartbeat_tasks[project_id] = heartbeat_task
+                    logger.debug(f"Started heartbeat task for project {project_id}")
 
                 except Exception as e:
                     logger.error(f"Error subscribing to project {project_id}: {e}")
