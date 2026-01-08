@@ -46,7 +46,11 @@ router = APIRouter(tags=["websocket"])
 # Heartbeat interval in seconds
 # Heartbeats keep connections alive and verify real-time functionality
 # Configurable via WEBSOCKET_HEARTBEAT_INTERVAL env var for testing/tuning
-HEARTBEAT_INTERVAL_SECONDS = int(os.getenv("WEBSOCKET_HEARTBEAT_INTERVAL", "30"))
+try:
+    HEARTBEAT_INTERVAL_SECONDS = int(os.getenv("WEBSOCKET_HEARTBEAT_INTERVAL", "30"))
+except ValueError:
+    logger.warning("Invalid WEBSOCKET_HEARTBEAT_INTERVAL value, using default 30 seconds")
+    HEARTBEAT_INTERVAL_SECONDS = 30
 
 
 async def send_heartbeats(websocket: WebSocket, project_id: int) -> None:
