@@ -1179,10 +1179,11 @@ def seed_test_data(db_path: str, project_id: int):
             print(f"✅ Seeded {count}/3 discovery state entries for project {project_id}")
 
         # ========================================
-        # 8. Update Project Phase for Discovery Tests
+        # 8. Update Project Phase for Discovery Tests (Project 1)
         # ========================================
         # Set project to 'discovery' phase so discovery UI renders correctly
-        print("📋 Setting project phase to 'discovery'...")
+        # This project is used by test_start_agent_flow.spec.ts and other discovery tests
+        print("📋 Setting project phase to 'discovery' for discovery tests...")
         try:
             cursor.execute(
                 "UPDATE projects SET phase = 'discovery' WHERE id = ?",
@@ -1191,6 +1192,130 @@ def seed_test_data(db_path: str, project_id: int):
             print(f"✅ Set project {project_id} phase to 'discovery'")
         except sqlite3.Error as e:
             print(f"⚠️  Failed to update project phase: {e}")
+
+        # ========================================
+        # 9. Create Second Project for Late-Joining User Tests (Project 2)
+        # ========================================
+        # Create a separate project in 'planning' phase with completed PRD and tasks
+        # This enables testing late-joining user scenarios where tasks already exist
+        print("\n📦 Creating second project for late-joining user tests...")
+        try:
+            # Create project 2
+            cursor.execute(
+                """
+                INSERT INTO projects (id, name, description, slug, phase, user_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    2,
+                    "e2e-planning-project",
+                    "Test project in planning phase with tasks (for late-joining user tests)",
+                    "e2e-planning-project",
+                    "planning",
+                    1,  # test user
+                    now_ts,
+                    now_ts,
+                ),
+            )
+            planning_project_id = 2
+            print(f"✅ Created project {planning_project_id} in 'planning' phase")
+
+            # Add completed discovery state for project 2
+            discovery_entries_p2 = [
+                (planning_project_id, "discovery_state", "state", "completed", now_ts, now_ts),
+            ]
+            for entry in discovery_entries_p2:
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    entry,
+                )
+
+            # Add PRD content for project 2
+            prd_content = """# Project Requirements Document
+
+## Overview
+This is a test PRD for late-joining user E2E tests.
+
+## Features
+1. User authentication
+2. Project management
+3. Task tracking
+
+## Technical Requirements
+- FastAPI backend
+- Next.js frontend
+- SQLite database
+
+## Timeline
+Sprint 1: Core features
+Sprint 2: Testing and polish
+"""
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (planning_project_id, prd_content, now_ts, now_ts),
+            )
+
+            # Add tasks for project 2 (so late-joining user tests can verify task state)
+            tasks_p2 = [
+                (
+                    None,
+                    planning_project_id,
+                    "Implement user authentication",
+                    "Set up JWT-based authentication",
+                    "completed",
+                    3,  # high priority
+                    1,  # workflow_step
+                    "backend-001",
+                    95.0,  # quality_score
+                    now_ts,
+                    now_ts,
+                ),
+                (
+                    None,
+                    planning_project_id,
+                    "Create project dashboard",
+                    "Build the main dashboard UI",
+                    "in_progress",
+                    2,  # medium priority
+                    2,  # workflow_step
+                    "frontend-001",
+                    None,  # no quality_score yet
+                    now_ts,
+                    now_ts,
+                ),
+            ]
+            for task in tasks_p2:
+                cursor.execute(
+                    """
+                    INSERT INTO tasks (
+                        id, project_id, title, description, status, priority,
+                        workflow_step, assigned_agent, quality_score,
+                        created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    task,
+                )
+
+            cursor.execute(
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
+                (planning_project_id,),
+            )
+            task_count = cursor.fetchone()[0]
+            print(f"✅ Seeded {task_count} tasks for project {planning_project_id}")
+            print(f"✅ Set E2E_TEST_PROJECT_PLANNING_ID={planning_project_id}")
+
+        except sqlite3.IntegrityError as e:
+            # Project 2 might already exist
+            print(f"ℹ️  Project 2 already exists (skipping): {e}")
+        except sqlite3.Error as e:
+            print(f"⚠️  Failed to create planning project: {e}")
 
         # Commit all changes
         conn.commit()
