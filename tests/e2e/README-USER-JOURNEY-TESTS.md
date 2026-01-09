@@ -97,44 +97,41 @@ The following components were updated with `data-testid` attributes for stable t
 - Submits
 - Waits for next question or completion
 
-## Authentication System: Unified BetterAuth Integration
+## Authentication System: FastAPI Users JWT Authentication
 
-### ✅ Resolved: BetterAuth/CodeFRAME Auth Alignment (Issue #158)
+### Current Authentication Architecture
 
-**Previous Issue:**
-E2E tests used an auth bypass mechanism (`auth-bypass.ts` + `setTestUserSession()`) because BetterAuth expected singular table names (`user`, `session`) while CodeFRAME used plural names (`users`, `sessions`). This mismatch prevented the login UI from working in tests.
-
-**Resolution:**
-Configured BetterAuth to use CodeFRAME's existing plural table names via `usePlural: true` setting in `web-ui/src/lib/auth.ts`. This aligns both systems to use the same database schema.
+The application uses FastAPI Users with JWT tokens for authentication. E2E tests use real authentication flows.
 
 **Implementation:**
-- **BetterAuth Config:** Added `usePlural: true` to use `users` and `sessions` tables
-- **Password Hashing:** Both systems use bcrypt by default (compatible)
-- **Session Storage:** BetterAuth now creates sessions in CodeFRAME's `sessions` table
-- **Backend Validation:** Existing backend auth (`codeframe/ui/auth.py`) validates BetterAuth sessions seamlessly
+- **Backend:** FastAPI Users module in `codeframe/auth/`
+- **Frontend:** JWT token stored in `localStorage.getItem('auth_token')`
+- **WebSocket:** Token included as query parameter: `?token={jwt_token}`
+- **API Client:** Authenticated axios instance in `web-ui/src/lib/api.ts`
 
-**Test Changes:**
-- **Removed:** `auth-bypass.ts` file (auth bypass mechanism deleted)
-- **Removed:** Session token file generation in `seed-test-data.py` and `global-setup.ts`
-- **Updated:** All E2E tests now use `loginUser()` helper for real authentication
-- **Enhanced:** `test_auth_flow.spec.ts` expanded to 18 comprehensive auth tests covering:
-  - Login success/failure scenarios
-  - Session persistence across reloads
-  - Protected route access
-  - BetterAuth API integration
-  - Database integration validation
+**Test Authentication Flow:**
+1. `loginUser(page)` navigates to `/login`
+2. Fills email/password credentials
+3. Submits form, JWT returned and stored in localStorage
+4. Redirect to `/projects` confirms successful auth
+5. All subsequent API calls include `Authorization: Bearer {token}` header
 
-**Test User:**
+**Test User Credentials:**
 - Email: `test@example.com`
-- Password: `testpassword123`
-- Seeded by `seed-test-data.py` into `users` table with bcrypt hash
-- Sessions created by BetterAuth during login are stored in `sessions` table
+- Password: `Testpassword123`
+- Seeded by `seed-test-data.py` into `users` table
+
+**E2E Test Helpers (in `test-utils.ts`):**
+- `loginUser(page)` - Real login via UI
+- `registerUser(page, name, email, password)` - Real signup via UI
+- `isAuthenticated(page)` - Check localStorage for auth token
+- `clearAuth(page)` - Remove auth token
+- `getAuthToken(page)` - Get current JWT token
 
 **Benefits:**
-- ✅ Tests now validate the real authentication flow
-- ✅ Single source of truth for user data (CodeFRAME database)
-- ✅ BetterAuth features (OAuth, 2FA) can be added without schema conflicts
-- ✅ No more auth bypass complexity in test code
+- ✅ Tests validate the real authentication flow end-to-end
+- ✅ 401 errors in tests indicate real authentication bugs
+- ✅ No mocking or bypassing - what works in tests works in production
 
 ## Current Status & Known Issues
 

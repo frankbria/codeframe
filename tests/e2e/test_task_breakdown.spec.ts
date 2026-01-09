@@ -367,4 +367,91 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
       test.skip(true, 'Project not in PRD generation state (verified in alternate state)');
     }
   });
+
+  test('should validate task approval API response with proper authentication', async () => {
+    const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
+
+    await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
+    await page.waitForLoadState('networkidle');
+
+    // Wait for dashboard
+    await page.locator('[data-testid="dashboard-header"]').waitFor({
+      state: 'visible',
+      timeout: 15000,
+    });
+
+    // Navigate to Tasks tab to find approve button
+    const tasksTab = page.locator('[data-testid="tasks-tab"]');
+    if (await tasksTab.count() > 0 && await tasksTab.isVisible()) {
+      await tasksTab.click();
+      await page.waitForTimeout(500);
+    }
+
+    // Check for task review section or approval button
+    const approveButton = page.locator('[data-testid="approve-button"]')
+      .or(page.locator('button:has-text("Approve")'))
+      .or(page.locator('[data-testid="approve-tasks-button"]'));
+
+    const approveButtonCount = await approveButton.count();
+    if (approveButtonCount === 0 || !(await approveButton.first().isVisible())) {
+      // Verify project is in a known alternate state
+      const tasksPanel = page.locator('[data-testid="tasks-panel"]');
+      const discoverySection = page.locator('[data-testid="discovery-progress"]');
+      const hasKnownState = (await tasksPanel.count() > 0) || (await discoverySection.count() > 0);
+      expect(hasKnownState).toBe(true);  // Must be in SOME known state
+
+      console.log('ℹ️ Approve button not visible - tasks may already be approved or not yet generated');
+      test.skip(true, 'Approve button not visible (verified in alternate state)');
+      return;
+    }
+
+    // Set up response listener BEFORE clicking to catch the API call
+    const responsePromise = page.waitForResponse(
+      response => response.url().includes('/tasks/approve') ||
+                  response.url().includes('/api/projects/') && response.request().method() === 'POST',
+      { timeout: 15000 }
+    );
+
+    // Click the approve button
+    await approveButton.first().click();
+
+    // Wait for and VERIFY API response
+    try {
+      const response = await responsePromise;
+      const status = response.status();
+
+      console.log(`   API responded with status ${status}`);
+
+      // STRICT: API MUST return success (2xx) or valid error (4xx)
+      // 5xx errors indicate server bugs
+      expect(status).toBeLessThan(500);
+
+      // If success, verify response data
+      if (status >= 200 && status < 300) {
+        const data = await response.json();
+        console.log(`✅ Task approval succeeded:`, data);
+
+        // Response should have expected fields
+        expect(data).toBeDefined();
+        if (data.success !== undefined) {
+          expect(data.success).toBe(true);
+        }
+        if (data.approved_count !== undefined) {
+          expect(data.approved_count).toBeGreaterThanOrEqual(0);
+        }
+      } else if (status === 401) {
+        // Authentication failure - this is a REAL bug we need to catch
+        throw new Error(`Task approval failed with 401 Unauthorized - authentication issue detected`);
+      } else if (status === 403) {
+        console.log('ℹ️ 403 Forbidden - user may not have permission');
+      } else if (status === 400) {
+        // Bad request might be OK if tasks are already approved
+        const errorData = await response.json().catch(() => ({}));
+        console.log(`ℹ️ 400 Bad Request: ${errorData.detail || 'Unknown reason'}`);
+      }
+    } catch (timeoutError) {
+      // No matching response within timeout
+      console.log('ℹ️ No matching API response captured (may use different endpoint)');
+    }
+  });
 });

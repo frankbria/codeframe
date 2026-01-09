@@ -214,9 +214,48 @@ const TaskReview = memo(function TaskReview({
 
       onApprovalSuccess?.();
       router.push(`/projects/${projectId}`);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to approve tasks');
-      setApprovalError('Failed to approve tasks. Please try again.');
+    } catch (err: unknown) {
+      // Log full error details for debugging
+      console.error('[TaskReview] Task approval failed:', err);
+
+      // Extract specific error message from API response
+      let errorMessage = 'Failed to approve tasks. Please try again.';
+      let isAuthError = false;
+
+      if (err instanceof Error) {
+        // Check for authentication errors (401)
+        if (err.message.includes('401') || err.message.includes('Not authenticated')) {
+          errorMessage = 'Session expired. Please log in again to continue.';
+          isAuthError = true;
+        } else if (err.message.includes('403')) {
+          errorMessage = 'You do not have permission to approve these tasks.';
+        } else if (err.message.includes('404')) {
+          errorMessage = 'Project or tasks not found. Please refresh the page.';
+        } else if (err.message.includes('Request failed:')) {
+          // Extract detail from our authFetch error format
+          const detailMatch = err.message.match(/Request failed: \d+ (.+)/);
+          if (detailMatch && detailMatch[1]) {
+            try {
+              const detail = JSON.parse(detailMatch[1]);
+              errorMessage = detail.detail || detail.message || errorMessage;
+            } catch {
+              // Use the raw message if not JSON
+              errorMessage = detailMatch[1] || errorMessage;
+            }
+          }
+        }
+      }
+
+      setApprovalError(errorMessage);
+
+      // Redirect to login on auth errors
+      if (isAuthError) {
+        setTimeout(() => {
+          router.push('/login');
+        }, 2000);
+      }
+
+      const error = err instanceof Error ? err : new Error(errorMessage);
       onApprovalError?.(error);
     } finally {
       setApproving(false);
