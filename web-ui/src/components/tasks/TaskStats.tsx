@@ -23,6 +23,12 @@
 import React, { useMemo } from 'react';
 import { useAgentState } from '@/hooks/useAgentState';
 import type { IssuesResponse, Task as ApiTask } from '@/types/api';
+import {
+  CheckListIcon,
+  CheckmarkCircle01Icon,
+  Alert02Icon,
+  Loading03Icon,
+} from '@hugeicons/react';
 
 /**
  * Props for TaskStats component
@@ -132,7 +138,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* Total Tasks */}
         <div className="p-4 rounded-lg bg-primary/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">📋</span>
+            <CheckListIcon className="h-6 w-6 text-primary" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">Total Tasks</div>
           <div
@@ -146,7 +152,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* Completed Tasks */}
         <div className="p-4 rounded-lg bg-secondary/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">✅</span>
+            <CheckmarkCircle01Icon className="h-6 w-6 text-secondary" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">Completed</div>
           <div
@@ -160,7 +166,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* Blocked Tasks */}
         <div className="p-4 rounded-lg bg-destructive/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">🚫</span>
+            <Alert02Icon className="h-6 w-6 text-destructive" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">Blocked</div>
           <div
@@ -174,7 +180,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* In-Progress Tasks */}
         <div className="p-4 rounded-lg bg-accent/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">⚙️</span>
+            <Loading03Icon className="h-6 w-6 text-accent-foreground" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">In Progress</div>
           <div

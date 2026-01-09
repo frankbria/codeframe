@@ -196,12 +196,19 @@ const TaskReview = memo(function TaskReview({
   const handleApprove = useCallback(async () => {
     if (selectedTaskIds.size === 0) return;
 
+    // Validate projectId before calling API
+    const numericProjectId = typeof projectId === 'string' ? parseInt(projectId, 10) : projectId;
+    if (isNaN(numericProjectId) || numericProjectId <= 0) {
+      setApprovalError('Invalid project ID. Please refresh and try again.');
+      return;
+    }
+
     setApproving(true);
     setApprovalError(null);
 
     try {
       await projectsApi.approveTaskBreakdown(
-        typeof projectId === 'string' ? parseInt(projectId, 10) : projectId,
+        numericProjectId,
         Array.from(selectedTaskIds)
       );
 
