@@ -5,6 +5,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-1498%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
+[![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
 > AI coding agents that work autonomously while you sleep. Check in like a coworker, answer questions when needed, ship features continuously.
 
