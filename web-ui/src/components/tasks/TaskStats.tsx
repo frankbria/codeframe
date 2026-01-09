@@ -1,7 +1,15 @@
 /**
- * TaskStats - Task statistics display component
+ * TaskStats - Phase-aware task statistics display component
  *
- * Displays real-time task statistics from the agent state:
+ * Displays task statistics from the appropriate data source based on project phase:
+ * - Planning phase: Uses issuesData prop (REST API data from issues endpoint)
+ * - Development/Review phase: Uses useAgentState hook (WebSocket real-time data)
+ *
+ * This phase-aware approach fixes the "late-joining user" bug where TaskStats
+ * would show 0 tasks during planning phase because agent state is empty until
+ * development begins.
+ *
+ * Statistics shown:
  * - Total tasks
  * - Completed tasks
  * - Blocked tasks
@@ -14,42 +22,94 @@
 
 import React, { useMemo } from 'react';
 import { useAgentState } from '@/hooks/useAgentState';
+import type { IssuesResponse, Task as ApiTask } from '@/types/api';
+
+/**
+ * Props for TaskStats component
+ */
+interface TaskStatsProps {
+  /**
+   * Current project phase. Determines which data source to use:
+   * - 'planning': Uses issuesData prop
+   * - 'development' | 'review': Uses useAgentState hook
+   * - undefined: Falls back to useAgentState (backward compatibility)
+   */
+  phase?: string;
+
+  /**
+   * Issues data from REST API, containing tasks nested within issues.
+   * Used when phase is 'planning' to display accurate task counts
+   * before agents start working.
+   */
+  issuesData?: IssuesResponse;
+}
+
+/**
+ * Extract task statistics from issues data (planning phase).
+ * Iterates through all issues and their nested tasks to calculate counts.
+ */
+function calculateStatsFromIssues(issuesData: IssuesResponse | undefined): {
+  total: number;
+  completed: number;
+  blocked: number;
+  inProgress: number;
+} {
+  if (!issuesData?.issues) {
+    return { total: 0, completed: 0, blocked: 0, inProgress: 0 };
+  }
+
+  // Flatten all tasks from all issues
+  const allTasks: ApiTask[] = issuesData.issues.flatMap(
+    (issue) => issue.tasks || []
+  );
+
+  return {
+    total: allTasks.length,
+    completed: allTasks.filter((t) => t.status === 'completed').length,
+    blocked: allTasks.filter((t) => t.status === 'blocked').length,
+    inProgress: allTasks.filter((t) => t.status === 'in_progress').length,
+  };
+}
 
 /**
  * TaskStats Component
  *
  * Displays task statistics in a grid layout with colored stat cards.
- * Data is sourced from the useAgentState hook, which provides real-time
- * task data updated via WebSocket.
+ * Data source is selected based on project phase:
+ * - Planning phase: Uses issuesData prop (REST API)
+ * - Development/Review: Uses useAgentState hook (WebSocket)
  *
- * Performance: Uses pre-filtered derived state from useAgentState hook
- * to avoid redundant filtering operations. The hook already memoizes
- * these filtered arrays.
- *
- * UI Note: Emojis are used for visual appeal and quick recognition,
- * following the pattern established in CostDashboard and ReviewSummary.
+ * Performance: Uses memoization for both data source selection and
+ * statistics calculation to prevent unnecessary re-renders.
  */
-function TaskStats(): JSX.Element {
-  // Use pre-filtered derived state from useAgentState for better performance
-  // These are already memoized in the hook (see useAgentState.ts:201-231)
+function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
+  // Always call the hook (React hooks rules) but conditionally use its data
   const { tasks, completedTasks, blockedTasks, activeTasks } = useAgentState();
 
   /**
-   * Calculate statistics from pre-filtered task arrays.
-   * Memoized to prevent recalculation on every render.
-   * Only recalculates when any of the task arrays change.
-   *
-   * Benefits of using derived state:
-   * - Type-safe (uses hook's TaskStatus type)
-   * - More efficient (no redundant filtering)
-   * - Leverages existing memoization from useAgentState
+   * Determine if we should use issues data based on phase.
+   * Planning phase = use issuesData; otherwise = use agent state.
    */
-  const stats = useMemo(() => ({
-    total: tasks.length,
-    completed: completedTasks.length,  // Already filtered for status === 'completed'
-    blocked: blockedTasks.length,      // Already filtered for status === 'blocked'
-    inProgress: activeTasks.length,    // Already filtered for status === 'in_progress'
-  }), [tasks, completedTasks, blockedTasks, activeTasks]);
+  const usePlanningData = phase === 'planning';
+
+  /**
+   * Calculate statistics from the appropriate data source.
+   * Memoized to prevent recalculation on every render.
+   */
+  const stats = useMemo(() => {
+    if (usePlanningData) {
+      // Planning phase: Calculate from issues data
+      return calculateStatsFromIssues(issuesData);
+    }
+
+    // Development/Review phase: Use agent state (existing behavior)
+    return {
+      total: tasks.length,
+      completed: completedTasks.length,
+      blocked: blockedTasks.length,
+      inProgress: activeTasks.length,
+    };
+  }, [usePlanningData, issuesData, tasks, completedTasks, blockedTasks, activeTasks]);
 
   return (
     <div className="task-stats">
