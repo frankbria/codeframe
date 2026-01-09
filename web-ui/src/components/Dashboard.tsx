@@ -699,7 +699,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 <AnalyticsUpIcon className="h-5 w-5" />
                 Task Statistics
               </h2>
-              <TaskStats />
+              <TaskStats phase={normalizePhase(projectData.phase)} issuesData={issuesData} />
             </div>
 
             {/* Phase-Aware Task View (016-6) */}
