@@ -288,6 +288,10 @@ class CheckpointManager:
         # Close any open transactions before copying
         self.db.conn.commit()  # type: ignore[union-attr]
 
+        # Force WAL checkpoint to ensure all data is in main database file
+        # (WAL mode keeps recent changes in -wal file until checkpoint)
+        self.db.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # type: ignore[union-attr]
+
         # Copy database file
         shutil.copy2(self.db.db_path, backup_path)
 
@@ -570,6 +574,16 @@ class CheckpointManager:
 
         # Close current database connection
         self.db.conn.close()  # type: ignore[union-attr]
+
+        # Remove WAL and SHM files to prevent old journal data from
+        # being applied to the restored database
+        db_path = Path(self.db.db_path)
+        wal_path = db_path.with_suffix(db_path.suffix + "-wal")
+        shm_path = db_path.with_suffix(db_path.suffix + "-shm")
+        if wal_path.exists():
+            wal_path.unlink()
+        if shm_path.exists():
+            shm_path.unlink()
 
         # Replace database file with backup
         shutil.copy2(backup, self.db.db_path)
