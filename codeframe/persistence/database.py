@@ -117,6 +117,10 @@ class Database:
         self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
+        # Enable WAL mode for better concurrent access (allows reads during writes)
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        # Set busy timeout to handle concurrent access contention
+        self.conn.execute("PRAGMA busy_timeout = 5000")
 
         # Create schema using SchemaManager
         schema_mgr = SchemaManager(self.conn)
@@ -193,6 +197,10 @@ class Database:
             if self._async_conn is None:
                 self._async_conn = await aiosqlite.connect(str(self.db_path))
                 self._async_conn.row_factory = aiosqlite.Row
+                # Match sync connection pragmas for consistency
+                await self._async_conn.execute("PRAGMA foreign_keys = ON")
+                await self._async_conn.execute("PRAGMA journal_mode = WAL")
+                await self._async_conn.execute("PRAGMA busy_timeout = 5000")
                 logger.debug(f"Async connection initialized for {self.db_path}")
                 # Update repository async connections
                 if self.projects:
@@ -213,6 +221,10 @@ class Database:
             if self._async_conn is None:
                 self._async_conn = await aiosqlite.connect(str(self.db_path))
                 self._async_conn.row_factory = aiosqlite.Row
+                # Match sync connection pragmas for consistency
+                await self._async_conn.execute("PRAGMA foreign_keys = ON")
+                await self._async_conn.execute("PRAGMA journal_mode = WAL")
+                await self._async_conn.execute("PRAGMA busy_timeout = 5000")
                 logger.debug(f"Async connection created (lazy init) for {self.db_path}")
                 self._update_repository_async_connections()
                 return self._async_conn
@@ -229,6 +241,10 @@ class Database:
 
                 self._async_conn = await aiosqlite.connect(str(self.db_path))
                 self._async_conn.row_factory = aiosqlite.Row
+                # Match sync connection pragmas for consistency
+                await self._async_conn.execute("PRAGMA foreign_keys = ON")
+                await self._async_conn.execute("PRAGMA journal_mode = WAL")
+                await self._async_conn.execute("PRAGMA busy_timeout = 5000")
                 logger.info(f"Async connection reconnected for {self.db_path}")
                 self._update_repository_async_connections()
                 return self._async_conn

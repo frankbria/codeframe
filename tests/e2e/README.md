@@ -612,6 +612,125 @@ assertWebSocketHealthy(wsMonitor);
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
     ```
 
+## State Reconciliation Testing
+
+State reconciliation tests validate that the UI correctly reflects backend state for "late-joining users" who navigate to a project AFTER events have occurred (missing WebSocket events).
+
+### The Problem
+
+Components like `DiscoveryProgress.tsx` rely on WebSocket events to update state:
+- Users present during events see correct state via WebSocket
+- Users who join late (page refresh, new tab, login after events) miss these events
+- Without proper state reconciliation, late-joining users see incorrect UI (e.g., "Generate Tasks" button when tasks already exist)
+
+### The Solution
+
+1. **Components check API state on mount** (not just rely on WebSocket)
+2. **State initialization flags** prevent UI flash during async checks
+3. **Tests navigate to pre-seeded projects** and verify UI without WebSocket events
+
+### Test Projects
+
+Five test projects are seeded with different lifecycle states (see `seed-test-data.py`):
+
+| Project ID | Phase | State Description |
+|------------|-------|-------------------|
+| 1 | discovery | Active discovery questions |
+| 2 | planning | PRD complete, tasks generated |
+| 3 | active | Agents working, tasks in progress |
+| 4 | review | Tasks complete, quality gates run |
+| 5 | completed | All work done |
+
+Use `TEST_PROJECT_IDS` from `e2e-config.ts`:
+```typescript
+import { TEST_PROJECT_IDS } from './e2e-config';
+
+const projectId = TEST_PROJECT_IDS.PLANNING;
+await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
+```
+
+### Writing State Reconciliation Tests
+
+**Pattern**: Navigate to pre-seeded project, verify UI matches backend state without WebSocket events.
+
+```typescript
+test('should show correct state when X already completed', async ({ page }) => {
+  // Use pre-seeded project in specific state
+  const projectId = TEST_PROJECT_IDS.PLANNING;
+
+  // Navigate as "late-joining user" (fresh page load, no WebSocket history)
+  await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
+  await page.waitForLoadState('networkidle');
+
+  // Wait for dashboard to load
+  await page.locator('[data-testid="dashboard-header"]').waitFor({
+    state: 'visible',
+    timeout: 15000,
+  });
+
+  // CRITICAL: Verify UI matches backend state
+  // Correct element should be visible
+  await expect(page.locator('[data-testid="x-completed"]')).toBeVisible();
+
+  // Incorrect element should NOT be visible
+  await expect(page.locator('[data-testid="x-button"]')).not.toBeVisible();
+});
+```
+
+### Anti-Patterns to Avoid
+
+1. **Conditional skips that accept ANY alternate state**:
+   ```typescript
+   // BAD: Masks bugs by accepting any state
+   if (!buttonVisible) {
+     test.skip(true, 'Button not visible');
+     return;
+   }
+
+   // GOOD: Verify project is in expected state before testing
+   const { phase } = await getProjectPhase(request, token, projectId);
+   expect(phase).toBe('planning');
+   ```
+
+2. **Tests that only work when user is present during entire workflow**:
+   ```typescript
+   // BAD: Relies on WebSocket events
+   await page.waitForEvent('websocket-message');
+
+   // GOOD: Check API state directly
+   const tasksResponse = await request.get(`${API}/projects/${id}/tasks`);
+   expect(tasksResponse.data.total).toBeGreaterThan(0);
+   ```
+
+3. **Relying on WebSocket events without API state checks**:
+   ```typescript
+   // BAD: Component only updates via WebSocket
+   wsClient.onMessage((msg) => setTasksGenerated(true));
+
+   // GOOD: Component checks API on mount AND listens to WebSocket
+   useEffect(() => {
+     fetchTasks().then(tasks => setTasksGenerated(tasks.length > 0));
+   }, []);
+   wsClient.onMessage((msg) => setTasksGenerated(true));
+   ```
+
+### State Reconciliation Test Files
+
+- `test_state_reconciliation.spec.ts` - Comprehensive state reconciliation tests
+- `test_late_joining_user.spec.ts` - Additional late-joining user scenarios
+
+### Smoke Tests
+
+State reconciliation smoke tests are tagged with `@smoke`:
+```bash
+npm run test:smoke  # Runs all @smoke tests
+```
+
+Key smoke tests:
+- `should show "Review Tasks" when tasks already exist @smoke`
+- `should show "View PRD" when PRD already complete @smoke`
+- `should maintain correct state after page refresh @smoke`
+
 ## References
 
 - [Pytest Documentation](https://docs.pytest.org/)

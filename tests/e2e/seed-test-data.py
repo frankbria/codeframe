@@ -47,6 +47,8 @@ def table_exists(cursor: sqlite3.Cursor, table_name: str) -> bool:
 def seed_test_data(db_path: str, project_id: int):
     """Seed comprehensive test data for E2E tests."""
     conn = sqlite3.connect(db_path)
+    # Enable WAL mode for better concurrent access during tests
+    conn.execute("PRAGMA journal_mode = WAL")
     cursor = conn.cursor()
 
     try:
@@ -1370,6 +1372,503 @@ Sprint 2: Testing and polish
             )
         print(f"✅ Seeded {len(project_agent_assignments_p2)} project-agent assignments for project {planning_project_id}")
         print(f"✅ Set E2E_TEST_PROJECT_PLANNING_ID={planning_project_id}")
+
+        # ========================================
+        # 10. Create Third Project for Active Phase Tests (Project 3)
+        # ========================================
+        # Project in 'active' phase with running agents and in-progress tasks
+        # Used for testing late-joining user scenarios where agents are already working
+        print("\n📦 Creating third project for active phase tests...")
+        active_project_id = 3
+
+        # Create workspace directory for Project 3
+        workspace_path_p3 = os.path.join(E2E_TEST_ROOT, ".codeframe", "workspaces", str(active_project_id))
+        os.makedirs(workspace_path_p3, exist_ok=True)
+        print(f"   📁 Created workspace: {workspace_path_p3}")
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO projects (id, name, description, user_id, workspace_path, status, phase, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                active_project_id,
+                "e2e-active-project",
+                "Test project in active phase with running agents (for state reconciliation tests)",
+                1,  # test user
+                workspace_path_p3,
+                "active",  # status
+                "active",  # phase
+                now_ts,
+            ),
+        )
+        print(f"✅ Created/updated project {active_project_id} in 'active' phase")
+
+        # Add completed discovery state for project 3
+        if table_exists(cursor, TABLE_MEMORY):
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'discovery_state', 'state', 'completed', ?, ?)
+                """,
+                (active_project_id, now_ts, now_ts),
+            )
+
+            # Add PRD content for project 3
+            prd_content_p3 = """# Project Requirements Document - Active Project
+
+## Overview
+This is a test PRD for active phase E2E tests.
+
+## Features
+1. Real-time agent monitoring
+2. Task execution tracking
+3. Blocker resolution workflow
+
+## Technical Requirements
+- FastAPI backend with WebSocket support
+- Next.js frontend with real-time updates
+- SQLite database with async support
+"""
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (active_project_id, prd_content_p3, now_ts, now_ts),
+            )
+
+        # Clear existing tasks for project 3 before seeding
+        cursor.execute("DELETE FROM tasks WHERE project_id = ?", (active_project_id,))
+
+        # Add tasks for project 3 - mix of in_progress and blocked tasks
+        tasks_p3 = [
+            (
+                None, active_project_id, None, "T001", None,
+                "Implement WebSocket handler",
+                "Build real-time WebSocket event handler",
+                "completed", "backend-worker-001", None,
+                0, 3, 1, 0, 8000, 7500, now_ts, now_ts,
+                "ws123", "passed", None, 0,
+            ),
+            (
+                None, active_project_id, None, "T002", None,
+                "Build agent status dashboard",
+                "Create real-time agent status UI component",
+                "in_progress", "frontend-specialist-001", "1",
+                1, 2, 2, 0, 12000, 6000, now_ts, None,
+                None, None, None, 0,
+            ),
+            (
+                None, active_project_id, None, "T003", None,
+                "Implement blocker detection",
+                "Add automatic blocker detection logic",
+                "in_progress", "backend-worker-001", "1",
+                1, 2, 2, 0, 10000, 4500, now_ts, None,
+                None, None, None, 0,
+            ),
+            (
+                None, active_project_id, None, "T004", None,
+                "Add blocker notification UI",
+                "Create blocker notification panel",
+                "blocked", None, "2,3",
+                0, 2, 3, 0, 6000, 0, now_ts, None,
+                None, None, None, 0,
+            ),
+            (
+                None, active_project_id, None, "T005", None,
+                "Integration testing",
+                "End-to-end integration tests",
+                "pending", None, "2,3,4",
+                0, 1, 4, 0, 15000, 0, now_ts, None,
+                None, None, None, 0,
+            ),
+        ]
+        for task in tasks_p3:
+            cursor.execute(
+                """
+                INSERT INTO tasks (
+                    id, project_id, issue_id, task_number, parent_issue_number, title, description,
+                    status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+                    requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+                    commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                task,
+            )
+
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (active_project_id,))
+        task_count_p3 = cursor.fetchone()[0]
+        print(f"✅ Seeded {task_count_p3} tasks for project {active_project_id}")
+
+        # Add project-agent assignments for project 3 (agents in working state)
+        cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (active_project_id,))
+        project_agent_assignments_p3 = [
+            (active_project_id, "lead-001", "orchestrator", 1, now_ts),
+            (active_project_id, "backend-worker-001", "developer", 1, now_ts),
+            (active_project_id, "frontend-specialist-001", "developer", 1, now_ts),
+        ]
+        for assignment in project_agent_assignments_p3:
+            cursor.execute(
+                """
+                INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                assignment,
+            )
+        print(f"✅ Seeded {len(project_agent_assignments_p3)} project-agent assignments for project {active_project_id}")
+        print(f"✅ Set E2E_TEST_PROJECT_ACTIVE_ID={active_project_id}")
+
+        # ========================================
+        # 11. Create Fourth Project for Review Phase Tests (Project 4)
+        # ========================================
+        # Project in 'review' phase with completed tasks awaiting review
+        # Used for testing late-joining user scenarios where quality gates have run
+        print("\n📦 Creating fourth project for review phase tests...")
+        review_project_id = 4
+
+        # Create workspace directory for Project 4
+        workspace_path_p4 = os.path.join(E2E_TEST_ROOT, ".codeframe", "workspaces", str(review_project_id))
+        os.makedirs(workspace_path_p4, exist_ok=True)
+        print(f"   📁 Created workspace: {workspace_path_p4}")
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO projects (id, name, description, user_id, workspace_path, status, phase, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                review_project_id,
+                "e2e-review-project",
+                "Test project in review phase with quality gates (for state reconciliation tests)",
+                1,  # test user
+                workspace_path_p4,
+                "active",  # status (must be valid: init/planning/running/active/paused/completed)
+                "review",  # phase
+                now_ts,
+            ),
+        )
+        print(f"✅ Created/updated project {review_project_id} in 'review' phase")
+
+        # Add completed discovery state for project 4
+        if table_exists(cursor, TABLE_MEMORY):
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'discovery_state', 'state', 'completed', ?, ?)
+                """,
+                (review_project_id, now_ts, now_ts),
+            )
+
+            # Add PRD content for project 4
+            prd_content_p4 = """# Project Requirements Document - Review Project
+
+## Overview
+This is a test PRD for review phase E2E tests.
+
+## Features
+1. Code review workflow
+2. Quality gate validation
+3. Review findings display
+
+## Technical Requirements
+- Automated quality gates
+- Code review integration
+- Finding severity classification
+"""
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (review_project_id, prd_content_p4, now_ts, now_ts),
+            )
+
+        # Clear existing tasks for project 4 before seeding
+        cursor.execute("DELETE FROM tasks WHERE project_id = ?", (review_project_id,))
+
+        # Add tasks for project 4 - all completed, awaiting review
+        tasks_p4 = [
+            (
+                None, review_project_id, None, "T001", None,
+                "Implement core API endpoints",
+                "Create REST API for project management",
+                "completed", "backend-worker-001", None,
+                0, 3, 1, 0, 10000, 9500, now_ts, now_ts,
+                "api123", "passed", None, 0,
+            ),
+            (
+                None, review_project_id, None, "T002", None,
+                "Build project dashboard",
+                "Create main dashboard UI",
+                "completed", "frontend-specialist-001", "1",
+                1, 2, 2, 0, 15000, 14200, now_ts, now_ts,
+                "ui456", "failed",
+                json.dumps([
+                    {"gate": "type_check", "reason": "2 TypeScript errors", "severity": "high"},
+                    {"gate": "code_review", "reason": "Accessibility issues", "severity": "medium"},
+                ]),
+                0,
+            ),
+            (
+                None, review_project_id, None, "T003", None,
+                "Write integration tests",
+                "Test API and UI integration",
+                "completed", "test-engineer-001", "1,2",
+                0, 2, 3, 0, 8000, 7800, now_ts, now_ts,
+                "test789", "passed", None, 0,
+            ),
+            (
+                None, review_project_id, None, "T004", None,
+                "Security audit",
+                "Run OWASP security checks",
+                "completed", "review-agent-001", "1,2,3",
+                0, 3, 4, 0, 12000, 11500, now_ts, now_ts,
+                "sec012", "failed",
+                json.dumps([
+                    {"gate": "code_review", "reason": "CRITICAL: XSS vulnerability", "severity": "critical"},
+                ]),
+                1,
+            ),
+        ]
+        for task in tasks_p4:
+            cursor.execute(
+                """
+                INSERT INTO tasks (
+                    id, project_id, issue_id, task_number, parent_issue_number, title, description,
+                    status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+                    requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+                    commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                task,
+            )
+
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (review_project_id,))
+        task_count_p4 = cursor.fetchone()[0]
+        print(f"✅ Seeded {task_count_p4} tasks for project {review_project_id}")
+
+        # Get task IDs for code review findings (task_id is NOT NULL in code_reviews table)
+        cursor.execute("SELECT id FROM tasks WHERE project_id = ? ORDER BY id LIMIT 3", (review_project_id,))
+        task_ids_p4 = [row[0] for row in cursor.fetchall()]
+
+        # Add code review findings for project 4
+        if table_exists(cursor, TABLE_CODE_REVIEWS) and len(task_ids_p4) >= 3:
+            cursor.execute("DELETE FROM code_reviews WHERE project_id = ?", (review_project_id,))
+            # Note: category must be one of: 'security', 'performance', 'quality', 'maintainability', 'style'
+            # Note: task_id is NOT NULL, so we use actual task IDs from the tasks we just created
+            review_findings_p4 = [
+                (
+                    task_ids_p4[0], "review-agent-001", review_project_id,
+                    "web-ui/src/components/ProjectDashboard.tsx", 145,
+                    "high", "quality",  # accessibility maps to quality
+                    "Missing aria-label on interactive button",
+                    "Add aria-label attribute for screen readers",
+                    "<button onClick={...}>X</button>",
+                    now_ts,
+                ),
+                (
+                    task_ids_p4[1], "review-agent-001", review_project_id,
+                    "codeframe/api/projects.py", 89,
+                    "critical", "security",
+                    "User input not sanitized in query",
+                    "Use parameterized queries to prevent SQL injection",
+                    "query = f\"SELECT * FROM projects WHERE name = '{user_input}'\"",
+                    now_ts,
+                ),
+                (
+                    task_ids_p4[2], "review-agent-001", review_project_id,
+                    "web-ui/src/components/TaskList.tsx", 67,
+                    "medium", "maintainability",
+                    "Component exceeds 200 lines",
+                    "Extract sub-components for better maintainability",
+                    "function TaskList() { // 250 lines of code",
+                    now_ts,
+                ),
+            ]
+            for finding in review_findings_p4:
+                cursor.execute(
+                    """
+                    INSERT INTO code_reviews (
+                        task_id, agent_id, project_id, file_path, line_number, severity, category,
+                        message, recommendation, code_snippet, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    finding,
+                )
+            print(f"✅ Seeded {len(review_findings_p4)} code review findings for project {review_project_id}")
+
+        # Add project-agent assignments for project 4
+        cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (review_project_id,))
+        project_agent_assignments_p4 = [
+            (review_project_id, "lead-001", "orchestrator", 1, now_ts),
+            (review_project_id, "backend-worker-001", "developer", 0, now_ts),  # inactive
+            (review_project_id, "frontend-specialist-001", "developer", 0, now_ts),  # inactive
+            (review_project_id, "test-engineer-001", "testing", 0, now_ts),  # inactive
+            (review_project_id, "review-agent-001", "review", 1, now_ts),  # still active for review
+        ]
+        for assignment in project_agent_assignments_p4:
+            cursor.execute(
+                """
+                INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                assignment,
+            )
+        print(f"✅ Seeded {len(project_agent_assignments_p4)} project-agent assignments for project {review_project_id}")
+        print(f"✅ Set E2E_TEST_PROJECT_REVIEW_ID={review_project_id}")
+
+        # ========================================
+        # 12. Create Fifth Project for Completed Phase Tests (Project 5)
+        # ========================================
+        # Project in 'completed' phase with all work done
+        # Used for testing late-joining user scenarios where project is finished
+        print("\n📦 Creating fifth project for completed phase tests...")
+        completed_project_id = 5
+
+        # Create workspace directory for Project 5
+        workspace_path_p5 = os.path.join(E2E_TEST_ROOT, ".codeframe", "workspaces", str(completed_project_id))
+        os.makedirs(workspace_path_p5, exist_ok=True)
+        print(f"   📁 Created workspace: {workspace_path_p5}")
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO projects (id, name, description, user_id, workspace_path, status, phase, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                completed_project_id,
+                "e2e-completed-project",
+                "Test project in complete phase (for state reconciliation tests)",
+                1,  # test user
+                workspace_path_p5,
+                "completed",  # status (CHECK: init, planning, running, active, paused, completed)
+                "complete",   # phase (CHECK: discovery, planning, active, review, complete)
+                now_ts,
+            ),
+        )
+        print(f"✅ Created/updated project {completed_project_id} in 'complete' phase")
+
+        # Add completed discovery state for project 5
+        if table_exists(cursor, TABLE_MEMORY):
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'discovery_state', 'state', 'completed', ?, ?)
+                """,
+                (completed_project_id, now_ts, now_ts),
+            )
+
+            # Add PRD content for project 5
+            prd_content_p5 = """# Project Requirements Document - Completed Project
+
+## Overview
+This is a test PRD for completed phase E2E tests.
+All features have been implemented and verified.
+
+## Delivered Features
+1. User authentication (complete)
+2. Project management (complete)
+3. Task tracking (complete)
+4. Quality gates (complete)
+
+## Final Status
+All sprints completed. Project delivered.
+"""
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (completed_project_id, prd_content_p5, now_ts, now_ts),
+            )
+
+        # Clear existing tasks for project 5 before seeding
+        cursor.execute("DELETE FROM tasks WHERE project_id = ?", (completed_project_id,))
+
+        # Add tasks for project 5 - all completed with passed quality gates
+        tasks_p5 = [
+            (
+                None, completed_project_id, None, "T001", None,
+                "Setup project structure",
+                "Initialize project with best practices",
+                "completed", "lead-001", None,
+                0, 3, 1, 0, 5000, 4800, now_ts, now_ts,
+                "init001", "passed", None, 0,
+            ),
+            (
+                None, completed_project_id, None, "T002", None,
+                "Implement authentication",
+                "JWT-based authentication system",
+                "completed", "backend-worker-001", "1",
+                0, 3, 2, 0, 12000, 11500, now_ts, now_ts,
+                "auth002", "passed", None, 0,
+            ),
+            (
+                None, completed_project_id, None, "T003", None,
+                "Build user interface",
+                "React frontend with Tailwind",
+                "completed", "frontend-specialist-001", "1",
+                1, 2, 2, 0, 15000, 14800, now_ts, now_ts,
+                "ui003", "passed", None, 0,
+            ),
+            (
+                None, completed_project_id, None, "T004", None,
+                "Write comprehensive tests",
+                "Unit and integration test suite",
+                "completed", "test-engineer-001", "2,3",
+                0, 2, 3, 0, 10000, 9800, now_ts, now_ts,
+                "test004", "passed", None, 0,
+            ),
+            (
+                None, completed_project_id, None, "T005", None,
+                "Final code review",
+                "Security and quality review",
+                "completed", "review-agent-001", "1,2,3,4",
+                0, 3, 4, 0, 8000, 7500, now_ts, now_ts,
+                "review005", "passed", None, 0,
+            ),
+        ]
+        for task in tasks_p5:
+            cursor.execute(
+                """
+                INSERT INTO tasks (
+                    id, project_id, issue_id, task_number, parent_issue_number, title, description,
+                    status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+                    requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+                    commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                task,
+            )
+
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (completed_project_id,))
+        task_count_p5 = cursor.fetchone()[0]
+        print(f"✅ Seeded {task_count_p5} tasks for project {completed_project_id}")
+
+        # Add project-agent assignments for project 5 (all inactive - project complete)
+        cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (completed_project_id,))
+        project_agent_assignments_p5 = [
+            (completed_project_id, "lead-001", "orchestrator", 0, now_ts),
+            (completed_project_id, "backend-worker-001", "developer", 0, now_ts),
+            (completed_project_id, "frontend-specialist-001", "developer", 0, now_ts),
+            (completed_project_id, "test-engineer-001", "testing", 0, now_ts),
+            (completed_project_id, "review-agent-001", "review", 0, now_ts),
+        ]
+        for assignment in project_agent_assignments_p5:
+            cursor.execute(
+                """
+                INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                assignment,
+            )
+        print(f"✅ Seeded {len(project_agent_assignments_p5)} project-agent assignments for project {completed_project_id}")
+        print(f"✅ Set E2E_TEST_PROJECT_COMPLETED_ID={completed_project_id}")
 
         # Commit all changes
         conn.commit()

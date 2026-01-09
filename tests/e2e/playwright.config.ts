@@ -24,8 +24,9 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
 
-  /* Opt out of parallel tests on CI */
-  workers: process.env.CI ? 1 : undefined,
+  /* SQLite doesn't handle concurrent writes well, so always use 1 worker.
+   * Multiple workers cause "database is locked" errors during parallel tests. */
+  workers: 1,
 
   /* Reporter to use */
   reporter: [
@@ -100,12 +101,11 @@ export default defineConfig({
           timeout: 120000,
         },
         // Frontend Next.js production server (on port 3001 to avoid conflicts)
-        // Note: reuseExistingServer is false to ensure TEST_DB_PATH is picked up
         // Note: NEXT_PUBLIC_API_URL must be set at BUILD TIME for Next.js to bake it into client code
         {
           command: `cd ../../web-ui && rm -rf .next && TEST_DB_PATH=${TEST_DB_PATH} NEXT_PUBLIC_API_URL=http://localhost:8080 PORT=3001 npm run build && TEST_DB_PATH=${TEST_DB_PATH} NEXT_PUBLIC_API_URL=http://localhost:8080 PORT=3001 npm start`,
           url: FRONTEND_URL,
-          reuseExistingServer: false,
+          reuseExistingServer: !process.env.CI,
           timeout: 120000,
         },
       ],
