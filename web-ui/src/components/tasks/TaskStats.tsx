@@ -46,7 +46,17 @@ interface TaskStatsProps {
 
 /**
  * Extract task statistics from issues data (planning phase).
- * Iterates through all issues and their nested tasks to calculate counts.
+ *
+ * IMPORTANT: Uses `issuesData.total_tasks` directly for the total count because
+ * the API does not populate the nested `issues[].tasks` arrays in the response.
+ * The `total_tasks` field is the authoritative count from the database.
+ *
+ * For status-specific counts (completed, blocked, in-progress), we still try to
+ * calculate from nested tasks when available. However, during planning phase,
+ * these will typically be 0 since tasks haven't started execution yet.
+ *
+ * This fixes the "late-joining user" bug where TaskStats showed 0 tasks during
+ * planning phase while the tab badge showed the correct count (e.g., "Review (24)").
  */
 function calculateStatsFromIssues(issuesData: IssuesResponse | undefined): {
   total: number;
@@ -54,17 +64,22 @@ function calculateStatsFromIssues(issuesData: IssuesResponse | undefined): {
   blocked: number;
   inProgress: number;
 } {
-  if (!issuesData?.issues) {
+  if (!issuesData) {
     return { total: 0, completed: 0, blocked: 0, inProgress: 0 };
   }
 
-  // Flatten all tasks from all issues
-  const allTasks: ApiTask[] = issuesData.issues.flatMap(
+  // Use total_tasks directly - this is the authoritative count from the API.
+  // The nested issues[].tasks arrays may be empty even when total_tasks > 0.
+  const total = issuesData.total_tasks ?? 0;
+
+  // Try to calculate status-specific counts from nested tasks when available.
+  // During planning phase, tasks arrays are typically empty, so these will be 0.
+  const allTasks: ApiTask[] = issuesData.issues?.flatMap(
     (issue) => issue.tasks || []
-  );
+  ) ?? [];
 
   return {
-    total: allTasks.length,
+    total,
     completed: allTasks.filter((t) => t.status === 'completed').length,
     blocked: allTasks.filter((t) => t.status === 'blocked').length,
     inProgress: allTasks.filter((t) => t.status === 'in_progress').length,
