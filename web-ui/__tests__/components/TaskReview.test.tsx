@@ -762,7 +762,7 @@ describe('TaskReview', () => {
       render(<TaskReview projectId="1" />);
 
       await waitFor(() => {
-        expect(projectsApi.getIssues).toHaveBeenCalledWith('1');
+        expect(projectsApi.getIssues).toHaveBeenCalledWith('1', { include: 'tasks' });
       });
     });
 
@@ -770,7 +770,7 @@ describe('TaskReview', () => {
       render(<TaskReview projectId={1} />);
 
       await waitFor(() => {
-        expect(projectsApi.getIssues).toHaveBeenCalledWith(1);
+        expect(projectsApi.getIssues).toHaveBeenCalledWith(1, { include: 'tasks' });
       });
     });
 

@@ -89,13 +89,14 @@ const TaskReview = memo(function TaskReview({
   // Refs for indeterminate checkboxes
   const issueCheckboxRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
-  // Fetch issues on mount
+  // Fetch issues with tasks on mount
+  // Must pass include='tasks' to get nested task arrays for approval selection
   const fetchIssues = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const response = await projectsApi.getIssues(projectId);
+      const response = await projectsApi.getIssues(projectId, { include: 'tasks' });
       const fetchedIssues = response.data.issues;
       setIssues(fetchedIssues);
 
