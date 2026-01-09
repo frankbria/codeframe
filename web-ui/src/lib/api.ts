@@ -45,9 +45,12 @@ export const projectsApi = {
     api.post(`/api/projects/${projectId}/resume`),
   getPRD: (projectId: number | string) =>
     api.get<PRDResponse>(`/api/projects/${projectId}/prd`),
-  getIssues: (projectId: number | string, cursor?: string) =>
+  getIssues: (projectId: number | string, options?: { cursor?: string; include?: 'tasks' }) =>
     api.get<IssuesResponse>(`/api/projects/${projectId}/issues`, {
-      params: cursor ? { cursor } : {},
+      params: {
+        ...(options?.cursor && { cursor: options.cursor }),
+        ...(options?.include && { include: options.include }),
+      },
     }),
   getDiscoveryProgress: (projectId: number | string) =>
     api.get<DiscoveryProgressResponse>(`/api/projects/${projectId}/discovery/progress`),

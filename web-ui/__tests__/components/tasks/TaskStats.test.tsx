@@ -709,5 +709,83 @@ describe('TaskStats', () => {
         String(consistentIssuesData.total_tasks)
       );
     });
+
+    it('test_planning_phase_uses_total_tasks_when_tasks_arrays_empty', () => {
+      // CRITICAL: This test replicates the actual production bug.
+      // The API returns total_tasks count but does NOT populate the nested
+      // issues[].tasks arrays. The component must use total_tasks directly
+      // rather than trying to flatten empty task arrays.
+      //
+      // Production scenario: "Review (24)" badge shows correct count from
+      // issuesData.total_tasks, but TaskStats shows 0 because it tries to
+      // flatten empty tasks arrays.
+
+      // ARRANGE: Realistic API response - tasks arrays are empty but total_tasks is populated
+      const productionLikeResponse = {
+        issues: [
+          {
+            id: '1',
+            issue_number: '1',
+            title: 'Authentication Feature',
+            description: 'Implement user authentication',
+            status: 'pending' as const,
+            priority: 1,
+            depends_on: [],
+            proposed_by: 'agent' as const,
+            created_at: '2025-01-01T00:00:00Z',
+            updated_at: '2025-01-01T00:00:00Z',
+            completed_at: null,
+            tasks: [], // Empty - API doesn't populate nested tasks
+          },
+          {
+            id: '2',
+            issue_number: '2',
+            title: 'Dashboard Feature',
+            description: 'Build analytics dashboard',
+            status: 'pending' as const,
+            priority: 2,
+            depends_on: [],
+            proposed_by: 'agent' as const,
+            created_at: '2025-01-01T00:00:00Z',
+            updated_at: '2025-01-01T00:00:00Z',
+            completed_at: null,
+            tasks: [], // Empty - API doesn't populate nested tasks
+          },
+        ],
+        total_issues: 2,
+        total_tasks: 24, // This is the authoritative count from the database
+      };
+
+      mockUseAgentState.mockReturnValue(emptyAgentState);
+
+      // ACT
+      render(<TaskStats phase="planning" issuesData={productionLikeResponse} />);
+
+      // ASSERT: Must show 24 (from total_tasks), NOT 0 (from flattening empty arrays)
+      expect(screen.getByTestId('total-tasks')).toHaveTextContent('24');
+
+      // During planning phase, completed/blocked/in-progress are unavailable
+      // since we don't have the individual task status data
+      expect(screen.getByTestId('completed-tasks')).toHaveTextContent('0');
+      expect(screen.getByTestId('blocked-tasks')).toHaveTextContent('0');
+      expect(screen.getByTestId('in-progress-tasks')).toHaveTextContent('0');
+    });
+
+    it('test_planning_phase_handles_undefined_total_tasks', () => {
+      // Edge case: total_tasks field is missing from response
+      const responseWithoutTotalTasks = {
+        issues: [],
+        total_issues: 0,
+        // total_tasks intentionally omitted
+      } as unknown as typeof mockIssuesData;
+
+      mockUseAgentState.mockReturnValue(emptyAgentState);
+
+      // ACT
+      render(<TaskStats phase="planning" issuesData={responseWithoutTotalTasks} />);
+
+      // ASSERT: Should gracefully default to 0
+      expect(screen.getByTestId('total-tasks')).toHaveTextContent('0');
+    });
   });
 });

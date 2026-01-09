@@ -23,6 +23,12 @@
 import React, { useMemo } from 'react';
 import { useAgentState } from '@/hooks/useAgentState';
 import type { IssuesResponse, Task as ApiTask } from '@/types/api';
+import {
+  CheckListIcon,
+  CheckmarkCircle01Icon,
+  Alert02Icon,
+  Loading03Icon,
+} from '@hugeicons/react';
 
 /**
  * Props for TaskStats component
@@ -46,7 +52,17 @@ interface TaskStatsProps {
 
 /**
  * Extract task statistics from issues data (planning phase).
- * Iterates through all issues and their nested tasks to calculate counts.
+ *
+ * IMPORTANT: Uses `issuesData.total_tasks` directly for the total count because
+ * the API does not populate the nested `issues[].tasks` arrays in the response.
+ * The `total_tasks` field is the authoritative count from the database.
+ *
+ * For status-specific counts (completed, blocked, in-progress), we still try to
+ * calculate from nested tasks when available. However, during planning phase,
+ * these will typically be 0 since tasks haven't started execution yet.
+ *
+ * This fixes the "late-joining user" bug where TaskStats showed 0 tasks during
+ * planning phase while the tab badge showed the correct count (e.g., "Review (24)").
  */
 function calculateStatsFromIssues(issuesData: IssuesResponse | undefined): {
   total: number;
@@ -54,17 +70,22 @@ function calculateStatsFromIssues(issuesData: IssuesResponse | undefined): {
   blocked: number;
   inProgress: number;
 } {
-  if (!issuesData?.issues) {
+  if (!issuesData) {
     return { total: 0, completed: 0, blocked: 0, inProgress: 0 };
   }
 
-  // Flatten all tasks from all issues
-  const allTasks: ApiTask[] = issuesData.issues.flatMap(
+  // Use total_tasks directly - this is the authoritative count from the API.
+  // The nested issues[].tasks arrays may be empty even when total_tasks > 0.
+  const total = issuesData.total_tasks ?? 0;
+
+  // Try to calculate status-specific counts from nested tasks when available.
+  // During planning phase, tasks arrays are typically empty, so these will be 0.
+  const allTasks: ApiTask[] = issuesData.issues?.flatMap(
     (issue) => issue.tasks || []
-  );
+  ) ?? [];
 
   return {
-    total: allTasks.length,
+    total,
     completed: allTasks.filter((t) => t.status === 'completed').length,
     blocked: allTasks.filter((t) => t.status === 'blocked').length,
     inProgress: allTasks.filter((t) => t.status === 'in_progress').length,
@@ -117,7 +138,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* Total Tasks */}
         <div className="p-4 rounded-lg bg-primary/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">📋</span>
+            <CheckListIcon className="h-6 w-6 text-primary" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">Total Tasks</div>
           <div
@@ -131,7 +152,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* Completed Tasks */}
         <div className="p-4 rounded-lg bg-secondary/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">✅</span>
+            <CheckmarkCircle01Icon className="h-6 w-6 text-secondary" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">Completed</div>
           <div
@@ -145,7 +166,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* Blocked Tasks */}
         <div className="p-4 rounded-lg bg-destructive/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">🚫</span>
+            <Alert02Icon className="h-6 w-6 text-destructive" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">Blocked</div>
           <div
@@ -159,7 +180,7 @@ function TaskStats({ phase, issuesData }: TaskStatsProps): JSX.Element {
         {/* In-Progress Tasks */}
         <div className="p-4 rounded-lg bg-accent/10 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">⚙️</span>
+            <Loading03Icon className="h-6 w-6 text-accent-foreground" />
           </div>
           <div className="text-sm text-muted-foreground mb-1">In Progress</div>
           <div
