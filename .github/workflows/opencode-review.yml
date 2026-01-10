@@ -4,9 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize]
     # Skip review for documentation and config-only changes
+    # Exclude this workflow file to prevent self-triggering loops
     paths-ignore:
       - "**/*.md"
-      - ".github/**"
+      - ".github/workflows/opencode-review.yml"
       - ".gitignore"
       - "pyproject.toml"
 
