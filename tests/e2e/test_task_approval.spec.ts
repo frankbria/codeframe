@@ -40,7 +40,9 @@ test.describe('Task Approval API Contract', () => {
   test.afterEach(async ({ page }) => {
     checkTestErrors(page, 'Task approval test', [
       'net::ERR_ABORTED', // Normal when navigation cancels pending requests
-      'Failed to fetch RSC payload' // Next.js RSC during navigation - transient
+      'Failed to fetch RSC payload', // Next.js RSC during navigation - transient
+      'NS_BINDING_ABORTED', // Firefox: Normal when navigation cancels requests
+      'Load request cancelled' // WebKit/Safari: Normal when navigation cancels requests
     ]);
   });
 
