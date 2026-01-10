@@ -1870,6 +1870,147 @@ All sprints completed. Project delivered.
         print(f"✅ Seeded {len(project_agent_assignments_p5)} project-agent assignments for project {completed_project_id}")
         print(f"✅ Set E2E_TEST_PROJECT_COMPLETED_ID={completed_project_id}")
 
+        # ========================================
+        # 13. Create Sixth Project for Task Breakdown Tests (Project 6)
+        # ========================================
+        # Project in 'planning' phase with PRD complete but NO tasks generated
+        # This is the exact state where "Generate Task Breakdown" button appears
+        # Used for testing task breakdown workflow (test_task_breakdown.spec.ts)
+        print("\n📦 Creating sixth project for task breakdown tests...")
+        task_breakdown_project_id = 6
+
+        # Create workspace directory for Project 6
+        workspace_path_p6 = os.path.join(E2E_TEST_ROOT, ".codeframe", "workspaces", str(task_breakdown_project_id))
+        os.makedirs(workspace_path_p6, exist_ok=True)
+        print(f"   📁 Created workspace: {workspace_path_p6}")
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO projects (id, name, description, user_id, workspace_path, status, phase, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                task_breakdown_project_id,
+                "e2e-task-breakdown-project",
+                "Test project for task breakdown workflow - planning phase with PRD, NO tasks",
+                1,  # test user
+                workspace_path_p6,
+                "planning",  # status
+                "planning",  # phase - this triggers "Generate Task Breakdown" button
+                now_ts,
+            ),
+        )
+        print(f"✅ Created/updated project {task_breakdown_project_id} in 'planning' phase (no tasks)")
+
+        # Add completed discovery state for project 6 (PRD is ready)
+        if table_exists(cursor, TABLE_MEMORY):
+            # CRITICAL: Clear ALL existing discovery_state and prd records for project 6 first
+            # This prevents stale records from previous test runs conflicting with new seed data
+            # (LeadAgent iterates through all records - last one wins, so order matters)
+            cursor.execute(
+                "DELETE FROM memory WHERE project_id = ? AND category IN ('discovery_state', 'prd')",
+                (task_breakdown_project_id,)
+            )
+            print(f"   🧹 Cleared existing discovery/PRD state for project {task_breakdown_project_id}")
+
+            # Discovery is completed (not in progress)
+            cursor.execute(
+                """
+                INSERT INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'discovery_state', 'state', 'completed', ?, ?)
+                """,
+                (task_breakdown_project_id, now_ts, now_ts),
+            )
+
+            # Add comprehensive PRD content for project 6
+            prd_content_p6 = """# Project Requirements Document - Task Breakdown Test Project
+
+## Overview
+This PRD is ready for task breakdown generation. The project has completed discovery
+and is awaiting task decomposition.
+
+## Problem Statement
+Users need a way to track their software development tasks efficiently.
+
+## Proposed Solution
+Build a task tracking application with the following features.
+
+## Features
+1. **User Authentication**
+   - Email/password login
+   - JWT-based sessions
+   - Password reset flow
+
+2. **Project Management**
+   - Create/edit/delete projects
+   - Project status tracking
+   - Team member assignment
+
+3. **Task Tracking**
+   - Create tasks from requirements
+   - Dependency management
+   - Status updates (pending, in_progress, completed, blocked)
+
+4. **Quality Gates**
+   - Automated code review
+   - Test coverage validation
+   - Type checking enforcement
+
+## Technical Requirements
+- Backend: FastAPI with Python 3.11+
+- Frontend: Next.js 14 with React 18
+- Database: SQLite with async support
+- Real-time: WebSocket for live updates
+
+## Success Criteria
+- 85%+ test coverage
+- All quality gates passing
+- Sub-second page load times
+
+## Timeline
+Sprint 1: Authentication and project management
+Sprint 2: Task tracking core features
+Sprint 3: Quality gates and polish
+"""
+            cursor.execute(
+                """
+                INSERT INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (task_breakdown_project_id, prd_content_p6, now_ts, now_ts),
+            )
+
+            # Mark PRD as complete (important for UI to show "Generate Task Breakdown" button)
+            cursor.execute(
+                """
+                INSERT INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'status', 'complete', ?, ?)
+                """,
+                (task_breakdown_project_id, now_ts, now_ts),
+            )
+            print(f"✅ Seeded completed PRD for project {task_breakdown_project_id}")
+
+        # IMPORTANT: Do NOT seed any tasks for Project 6!
+        # The absence of tasks is what triggers the "Generate Task Breakdown" UI
+        cursor.execute("DELETE FROM tasks WHERE project_id = ?", (task_breakdown_project_id,))
+        print(f"✅ Ensured NO tasks exist for project {task_breakdown_project_id} (task breakdown state)")
+
+        # Add minimal project-agent assignments (just the lead agent for coordination)
+        cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (task_breakdown_project_id,))
+        project_agent_assignments_p6 = [
+            (task_breakdown_project_id, "lead-001", "orchestrator", 1, now_ts),
+        ]
+        for assignment in project_agent_assignments_p6:
+            cursor.execute(
+                """
+                INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                assignment,
+            )
+        print(f"✅ Seeded {len(project_agent_assignments_p6)} project-agent assignment for project {task_breakdown_project_id}")
+        print(f"✅ Set E2E_TEST_PROJECT_TASK_BREAKDOWN_ID={task_breakdown_project_id}")
+
         # Commit all changes
         conn.commit()
         print(f"\n✅ Test data seeding complete for project {project_id}!")

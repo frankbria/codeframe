@@ -1,5 +1,5 @@
 // T122: Lint API client
-import axios from 'axios';
+import { authFetch } from '@/lib/api-client';
 import type { LintResult, LintTrendEntry, LintConfig } from '@/types/lint';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -7,10 +7,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 export const lintApi = {
   // Get lint results for task
   getResults: async (taskId: number): Promise<{ task_id: number; results: LintResult[] }> => {
-    const response = await axios.get(`${API_BASE}/api/lint/results`, {
-      params: { task_id: taskId }
-    });
-    return response.data;
+    return authFetch<{ task_id: number; results: LintResult[] }>(
+      `${API_BASE}/api/lint/results?task_id=${taskId}`
+    );
   },
 
   // Get lint trend
@@ -19,18 +18,18 @@ export const lintApi = {
     days: number;
     trend: LintTrendEntry[];
   }> => {
-    const response = await axios.get(`${API_BASE}/api/lint/trend`, {
-      params: { project_id: projectId, days }
-    });
-    return response.data;
+    return authFetch<{
+      project_id: number;
+      days: number;
+      trend: LintTrendEntry[];
+    }>(`${API_BASE}/api/lint/trend?project_id=${projectId}&days=${days}`);
   },
 
   // Get lint config
   getConfig: async (projectId: number): Promise<LintConfig> => {
-    const response = await axios.get(`${API_BASE}/api/lint/config`, {
-      params: { project_id: projectId }
-    });
-    return response.data;
+    return authFetch<LintConfig>(
+      `${API_BASE}/api/lint/config?project_id=${projectId}`
+    );
   },
 
   // Run manual lint
@@ -44,11 +43,22 @@ export const lintApi = {
       files_linted: number;
     }>;
   }> => {
-    const response = await axios.post(`${API_BASE}/api/lint/run`, {
-      project_id: projectId,
-      task_id: taskId,
-      files
+    return authFetch<{
+      status: string;
+      has_errors: boolean;
+      results: Array<{
+        linter: string;
+        error_count: number;
+        warning_count: number;
+        files_linted: number;
+      }>;
+    }>(`${API_BASE}/api/lint/run`, {
+      method: 'POST',
+      body: {
+        project_id: projectId,
+        task_id: taskId,
+        files
+      }
     });
-    return response.data;
   }
 };

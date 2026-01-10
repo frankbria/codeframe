@@ -114,13 +114,13 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
   }
 
   return (
-    <div role="tree" className="space-y-2">
+    <div role="tree" className="space-y-2" data-testid="task-tree">
       {issues.map((issue) => {
         const isExpanded = expandedIssues.has(issue.id);
         const hasTasks = issue.tasks && issue.tasks.length > 0;
 
         return (
-          <div key={issue.id} className="border border-border rounded-lg">
+          <div key={issue.id} className="border border-border rounded-lg" data-testid={`issue-${issue.id}`}>
             {/* Issue Header */}
             <div className="flex items-start gap-3 p-4 bg-card hover:bg-muted/50">
               {/* Expand/Collapse Button */}
@@ -188,6 +188,8 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                       return (
                         <div
                           key={task.id}
+                          data-testid={`task-item-${task.id}`}
+                          data-status={task.status}
                           className={`ml-8 p-3 bg-card border rounded transition-colors ${
                             blocked
                               ? 'border-destructive/20 bg-destructive/5'

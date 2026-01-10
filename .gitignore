@@ -43,6 +43,7 @@ coverage.xml
 htmlcov/
 .hypothesis/
 artifacts/
+tests/e2e/run-e2e-full.sh
 
 # CodeFRAME specific
 .codeframe/state.db

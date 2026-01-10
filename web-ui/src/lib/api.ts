@@ -27,6 +27,42 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor for error logging and handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Log authentication errors with endpoint details
+    if (error.response?.status === 401) {
+      const endpoint = error.config?.url || 'unknown endpoint';
+      console.error(`[API] 401 Unauthorized at ${endpoint}`, {
+        method: error.config?.method?.toUpperCase(),
+        url: endpoint,
+        hasAuthHeader: !!error.config?.headers?.Authorization,
+      });
+
+      // In development, provide more context
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(
+          '[API] Authentication failed. Check that:\n' +
+          '  1. User is logged in (auth_token exists in localStorage)\n' +
+          '  2. Token has not expired\n' +
+          '  3. Backend JWT validation is configured correctly'
+        );
+      }
+    }
+
+    // Log other errors in development
+    if (process.env.NODE_ENV === 'development' && error.response) {
+      console.error(`[API] ${error.response.status} at ${error.config?.url}`, {
+        data: error.response.data,
+        status: error.response.status,
+      });
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 export const projectsApi = {
   list: () => api.get<{ projects: Project[] }>('/api/projects'),
   createProject: (name: string, description: string) =>
