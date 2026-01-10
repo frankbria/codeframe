@@ -380,5 +380,29 @@ describe('CostDashboard', () => {
       // Should still not make API calls
       expect(mockGetProjectCosts).not.toHaveBeenCalled();
     });
+
+    it('should update display when phase changes from planning to development', async () => {
+      mockGetProjectCosts.mockResolvedValue(mockCostBreakdown);
+
+      // Start with planning phase
+      const { rerender } = render(<CostDashboard projectId={123} phase="planning" />);
+
+      // Verify planning message is shown
+      expect(screen.getByTestId('planning-phase-message')).toBeInTheDocument();
+      expect(mockGetProjectCosts).not.toHaveBeenCalled();
+
+      // Transition to development phase
+      rerender(<CostDashboard projectId={123} phase="development" />);
+
+      // Wait for loading to complete
+      await waitFor(() => {
+        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      });
+
+      // Verify cost metrics are now shown
+      expect(screen.queryByTestId('planning-phase-message')).not.toBeInTheDocument();
+      expect(screen.getByText('$15.75')).toBeInTheDocument();
+      expect(mockGetProjectCosts).toHaveBeenCalled();
+    });
   });
 });

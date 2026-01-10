@@ -210,7 +210,7 @@ function QualityGatesPanel({
         >
           <div className="flex flex-col items-center text-center gap-3">
             <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-full">
-              <CheckmarkCircle01Icon className="h-6 w-6 text-primary" />
+              <CheckmarkCircle01Icon className="h-6 w-6 text-primary" aria-hidden="true" />
             </div>
             <div>
               <h3 className="text-sm font-medium text-foreground mb-1">
@@ -221,7 +221,7 @@ function QualityGatesPanel({
               </p>
               {issuesData && issuesData.total_tasks > 0 && (
                 <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-sm text-primary">
-                  <CheckListIcon className="h-4 w-4" />
+                  <CheckListIcon className="h-4 w-4" aria-hidden="true" />
                   <span>{issuesData.total_tasks} tasks pending evaluation</span>
                 </div>
               )}
@@ -332,6 +332,6 @@ function QualityGatesPanel({
 
 /**
  * Memoized export to prevent unnecessary re-renders when parent state changes.
- * Only re-renders when projectId or tasks props change.
+ * Re-renders when any prop changes (projectId, tasks, phase, issuesData).
  */
 export default React.memo(QualityGatesPanel);

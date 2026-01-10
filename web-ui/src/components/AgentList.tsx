@@ -159,7 +159,7 @@ export function AgentList({
           data-testid="planning-phase-message"
         >
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
-            <BotIcon className="h-8 w-8 text-primary" />
+            <BotIcon className="h-8 w-8 text-primary" aria-hidden="true" data-testid="bot-icon" />
           </div>
           <h3 className="text-lg font-medium text-foreground mb-2">
             Agents Ready for Development
@@ -169,7 +169,7 @@ export function AgentList({
           </p>
           {issuesData && issuesData.total_tasks > 0 && (
             <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-sm text-primary">
-              <CheckListIcon className="h-4 w-4" />
+              <CheckListIcon className="h-4 w-4" aria-hidden="true" />
               <span>{issuesData.total_tasks} tasks ready for agent assignment</span>
             </div>
           )}
@@ -181,7 +181,7 @@ export function AgentList({
     return (
       <div className="text-center py-12 bg-muted rounded-lg border border-border">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-background rounded-full mb-4">
-          <BotIcon className="h-8 w-8 text-muted-foreground" />
+          <BotIcon className="h-8 w-8 text-muted-foreground" aria-hidden="true" data-testid="bot-icon" />
         </div>
         <h3 className="text-lg font-medium text-foreground mb-2">
           No Agents Assigned

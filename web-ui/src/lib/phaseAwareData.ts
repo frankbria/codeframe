@@ -50,6 +50,10 @@ export function isPlanningPhase(phase: string | undefined): boolean {
  * This function returns only the tasks that are actually present in the response.
  * For accurate task counts, use issuesData.total_tasks directly.
  *
+ * NOTE: Performance consideration - uses flatMap which creates a new array on each call.
+ * Intended for planning phase only where data volume is typically small (<100 tasks).
+ * Not recommended for heavy production use with large datasets.
+ *
  * @param issuesData - Issues response from REST API
  * @returns Flattened array of tasks from all issues
  *
