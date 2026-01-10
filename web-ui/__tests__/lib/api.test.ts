@@ -277,6 +277,59 @@ describe('projectsApi.approveTaskBreakdown', () => {
       projectsApi.approveTaskBreakdown(1, [], [])
     ).rejects.toMatchObject(errorResponse);
   });
+
+  it('should reject malformed task IDs defensively', async () => {
+    const mockResponse = {
+      data: { success: true, approved_count: 0, project_phase: 'active' },
+    };
+
+    mockPost.mockResolvedValueOnce(mockResponse);
+
+    // Malformed IDs should be filtered out (return NaN, then filtered by .filter(!isNaN))
+    const allTaskIds = ['task-1-2-3', 'abc123def', 'task-4', '5', 'invalid'];
+    const selectedTaskIds = ['task-4']; // Only task-4 is selected
+
+    await projectsApi.approveTaskBreakdown(1, selectedTaskIds, allTaskIds);
+
+    // Only valid excluded IDs should be sent:
+    // - 'task-1-2-3' -> matches /-(\d+)$/ -> '3' (last number after hyphen)
+    // - 'abc123def' -> no match -> NaN -> filtered out
+    // - '5' -> matches /^(\d+)$/ -> 5
+    // - 'invalid' -> no match -> NaN -> filtered out
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/projects/1/tasks/approve',
+      {
+        approved: true,
+        excluded_task_ids: [3, 5], // Only valid IDs extracted
+      }
+    );
+  });
+
+  it('should handle prefix-number format correctly', async () => {
+    const mockResponse = {
+      data: { success: true, approved_count: 1, project_phase: 'active' },
+    };
+
+    mockPost.mockResolvedValueOnce(mockResponse);
+
+    // Various valid formats
+    const allTaskIds = ['task-10', 'issue-25', 'T-100', '42'];
+    const selectedTaskIds = ['task-10'];
+
+    await projectsApi.approveTaskBreakdown(1, selectedTaskIds, allTaskIds);
+
+    // All should be valid:
+    // - 'issue-25' -> 25
+    // - 'T-100' -> 100
+    // - '42' -> 42
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/projects/1/tasks/approve',
+      {
+        approved: true,
+        excluded_task_ids: [25, 100, 42],
+      }
+    );
+  });
 });
 
 describe('blockersApi (T019 - 049-human-in-loop)', () => {

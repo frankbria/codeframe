@@ -121,8 +121,10 @@ export const projectsApi = {
       .filter((id) => !selectedSet.has(id))
       .map((id) => {
         // Extract numeric ID from strings like 'task-4' or just '4'
-        const numericPart = id.replace(/\D/g, '');
-        return parseInt(numericPart, 10);
+        // Defensive: only accept 'prefix-digits' or pure digits, reject malformed IDs
+        const match = id.match(/-(\d+)$/) || id.match(/^(\d+)$/);
+        if (!match) return NaN;
+        return parseInt(match[1], 10);
       })
       .filter((id) => !isNaN(id));
 
