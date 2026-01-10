@@ -16,7 +16,7 @@ This document describes the implementation of comprehensive E2E tests that valid
 - Session persistence across navigation
 - Protected route access when authenticated
 - Redirect to login when accessing protected routes unauthenticated
-- BetterAuth API integration (sign-in endpoint)
+- FastAPI Users JWT API integration (sign-in endpoint)
 - Database integration (session creation in CodeFRAME tables)
 
 ### 2. `test_project_creation.spec.ts` (3 test cases)
@@ -139,7 +139,7 @@ The application uses FastAPI Users with JWT tokens for authentication. E2E tests
 - All frontend components have data-testid attributes
 - Test utilities created
 - 4 test spec files with comprehensive test cases written
-- **Unified authentication system** - BetterAuth aligned with CodeFRAME schema
+- **Unified authentication system** - FastAPI Users JWT authentication
 - Tests use real login flow (no more auth bypass)
 - TypeScript compilation passes
 - Frontend build succeeds
@@ -226,7 +226,7 @@ Projects created during tests use timestamps to:
 | `test_complete_user_journey.spec.ts` with 1 test | ✅ Complete |
 | Helper utilities in `test-utils.ts` | ✅ Complete |
 | Tests pass on Chromium, Firefox, WebKit | ✅ Complete - 15/15 project creation tests passing |
-| Tests run in CI without flakiness | ✅ Complete - Auth bypass allows consistent execution |
+| Tests run in CI without flakiness | ✅ Complete - Real authentication flow ensures production-like testing |
 | Coverage for `/login`, `/`, dashboard flows | ✅ Complete |
 
 ## Files Modified

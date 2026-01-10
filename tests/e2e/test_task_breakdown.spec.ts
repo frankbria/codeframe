@@ -414,8 +414,8 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
 
     // Set up response listener BEFORE clicking to catch the API call
     const responsePromise = page.waitForResponse(
-      response => response.url().includes('/tasks/approve') ||
-                  response.url().includes('/api/projects/') && response.request().method() === 'POST',
+      response => (response.url().includes('/tasks/approve') ||
+                   response.url().includes('/api/projects/')) && response.request().method() === 'POST',
       { timeout: 15000 }
     );
 
