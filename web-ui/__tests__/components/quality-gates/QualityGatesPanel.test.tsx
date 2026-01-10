@@ -12,6 +12,7 @@ import QualityGatesPanel from '@/components/quality-gates/QualityGatesPanel';
 import * as qualityGatesAPI from '@/api/qualityGates';
 import type { Task } from '@/types/agentState';
 import type { QualityGateStatus, QualityGateFailure } from '@/types/qualityGates';
+import type { IssuesResponse } from '@/types/api';
 
 // Mock child components
 jest.mock('@/components/quality-gates/QualityGateStatus', () => {
@@ -582,6 +583,141 @@ describe('QualityGatesPanel', () => {
       await waitFor(() => {
         expect(mockFetchQualityGateStatus).toHaveBeenCalledWith(1, 2);
       });
+    });
+  });
+
+  // ============================================================
+  // Phase-Aware Empty State Tests (Late-Joining User Bug Fix)
+  // ============================================================
+  describe('Phase-Aware Empty State', () => {
+    // Sample issues data for planning phase
+    const mockIssuesData: IssuesResponse = {
+      issues: [],
+      total_issues: 2,
+      total_tasks: 24,
+    };
+
+    it('should display planning phase message when phase is planning and no tasks', () => {
+      render(
+        <QualityGatesPanel
+          projectId={1}
+          tasks={[]}
+          phase="planning"
+          issuesData={mockIssuesData}
+        />
+      );
+
+      // Should show planning-specific message
+      expect(screen.getByTestId('planning-phase-message')).toBeInTheDocument();
+      expect(
+        screen.getByText(/quality gates will be evaluated during development phase/i)
+      ).toBeInTheDocument();
+
+      // Should NOT show the default empty state message
+      expect(
+        screen.queryByText(/no tasks available for quality gate evaluation/i)
+      ).not.toBeInTheDocument();
+    });
+
+    it('should display planning phase message when only pending tasks exist during planning', () => {
+      render(
+        <QualityGatesPanel
+          projectId={1}
+          tasks={[pendingTask]}
+          phase="planning"
+          issuesData={mockIssuesData}
+        />
+      );
+
+      // Should show planning-specific message
+      expect(screen.getByTestId('planning-phase-message')).toBeInTheDocument();
+    });
+
+    it('should display default empty state when phase is development and no eligible tasks', () => {
+      render(
+        <QualityGatesPanel
+          projectId={1}
+          tasks={[]}
+          phase="development"
+          issuesData={mockIssuesData}
+        />
+      );
+
+      // Should show default message, not planning message
+      expect(
+        screen.getByText(/no tasks available for quality gate evaluation/i)
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('planning-phase-message')).not.toBeInTheDocument();
+    });
+
+    it('should display default empty state when phase is undefined (backward compatibility)', () => {
+      render(<QualityGatesPanel projectId={1} tasks={[]} />);
+
+      // Should show default message
+      expect(
+        screen.getByText(/no tasks available for quality gate evaluation/i)
+      ).toBeInTheDocument();
+    });
+
+    it('should show tasks normally during planning if eligible tasks exist', async () => {
+      mockFetchQualityGateStatus.mockResolvedValue(mockPassedStatus);
+
+      render(
+        <QualityGatesPanel
+          projectId={1}
+          tasks={[completedTask]}
+          phase="planning"
+          issuesData={mockIssuesData}
+        />
+      );
+
+      // Should show task selector, not planning message
+      await waitFor(() => {
+        expect(screen.getByRole('combobox')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('planning-phase-message')).not.toBeInTheDocument();
+    });
+
+    it('should show task count in planning phase message', () => {
+      render(
+        <QualityGatesPanel
+          projectId={1}
+          tasks={[]}
+          phase="planning"
+          issuesData={mockIssuesData}
+        />
+      );
+
+      // Should show task count from issuesData
+      expect(screen.getByText(/24 tasks/i)).toBeInTheDocument();
+    });
+
+    it('should handle missing issuesData gracefully during planning', () => {
+      render(
+        <QualityGatesPanel
+          projectId={1}
+          tasks={[]}
+          phase="planning"
+          // No issuesData prop
+        />
+      );
+
+      // Should still show planning message without task count
+      expect(screen.getByTestId('planning-phase-message')).toBeInTheDocument();
+    });
+
+    it('should have proper accessibility for planning phase message', () => {
+      render(
+        <QualityGatesPanel
+          projectId={1}
+          tasks={[]}
+          phase="planning"
+          issuesData={mockIssuesData}
+        />
+      );
+
+      const planningState = screen.getByRole('status');
+      expect(planningState).toHaveAttribute('aria-label', 'Planning phase');
     });
   });
 });

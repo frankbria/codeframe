@@ -4,8 +4,12 @@
  * Displays all agents assigned to a project with their roles, status, and metadata.
  * Supports empty state and integration with agent assignment API.
  *
+ * Phase-aware: During planning phase, shows informational message instead of
+ * "No agents assigned" since agents haven't been created yet.
+ *
  * Phase: Multi-Agent Per Project Architecture (Phase 3)
  * Date: 2025-12-03
+ * Updated: 2026-01-10 (Phase-Awareness Pattern)
  */
 
 'use client';
@@ -14,7 +18,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import useSWR from 'swr';
 import { getAgentsForProject } from '@/api/agentAssignment';
 import type { AgentAssignment } from '@/types/agentAssignment';
+import type { IssuesResponse } from '@/types/api';
 import { AgentAssignmentCard } from './AgentAssignmentCard';
+import { isPlanningPhase, getPlanningPhaseMessage } from '@/lib/phaseAwareData';
+import { BotIcon, CheckListIcon } from '@hugeicons/react';
 
 interface AgentListProps {
   /** Project ID to fetch agents for */
@@ -25,6 +32,17 @@ interface AgentListProps {
   showActiveOnly?: boolean;
   /** Refresh interval in milliseconds (default: 30000 = 30s) */
   refreshInterval?: number;
+  /**
+   * Current project phase. During 'planning' phase, shows informational
+   * message instead of "No agents assigned" since agents are created
+   * when development begins.
+   */
+  phase?: string;
+  /**
+   * Issues data from REST API, used during planning phase to show
+   * task count in the phase-aware message.
+   */
+  issuesData?: IssuesResponse;
 }
 
 /**
@@ -34,19 +52,23 @@ interface AgentListProps {
  * - Fetches agent assignments from API
  * - Shows agent role, status, and assignment metadata
  * - Auto-refreshes every 30 seconds
- * - Handles empty state (no agents assigned)
+ * - Phase-aware empty state (planning vs development)
  * - Responsive grid layout
  *
  * @param projectId - Project ID to fetch agents for
  * @param onAgentClick - Callback when agent card is clicked
  * @param showActiveOnly - Filter to show only active assignments (default: true)
  * @param refreshInterval - Auto-refresh interval in milliseconds (default: 30000)
+ * @param phase - Current project phase for phase-aware messaging
+ * @param issuesData - Issues data for planning phase task count
  */
 export function AgentList({
   projectId,
   onAgentClick,
   showActiveOnly = true,
   refreshInterval = 30000,
+  phase,
+  issuesData,
 }: AgentListProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -126,12 +148,40 @@ export function AgentList({
     );
   }
 
-  // Empty state
+  // Empty state - phase-aware messaging
   if (!assignments || assignments.length === 0) {
+    // Planning phase: Show informational message (not "No Agents Assigned")
+    // This fixes the "late-joining user" bug where users see misleading empty state
+    if (isPlanningPhase(phase)) {
+      return (
+        <div
+          className="text-center py-12 bg-primary/5 rounded-lg border border-primary/20"
+          data-testid="planning-phase-message"
+        >
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
+            <BotIcon className="h-8 w-8 text-primary" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-2">
+            Agents Ready for Development
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-3">
+            {getPlanningPhaseMessage('agent-list', issuesData)}
+          </p>
+          {issuesData && issuesData.total_tasks > 0 && (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-sm text-primary">
+              <CheckListIcon className="h-4 w-4" />
+              <span>{issuesData.total_tasks} tasks ready for agent assignment</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Default empty state (development/review phase)
     return (
       <div className="text-center py-12 bg-muted rounded-lg border border-border">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-background rounded-full mb-4">
-          <span className="text-3xl">🤖</span>
+          <BotIcon className="h-8 w-8 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-medium text-foreground mb-2">
           No Agents Assigned

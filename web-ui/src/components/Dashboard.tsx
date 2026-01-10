@@ -620,6 +620,8 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 onAgentClick={handleAgentClick}
                 showActiveOnly={true}
                 refreshInterval={30000}
+                phase={normalizePhase(projectData.phase)}
+                issuesData={issuesData}
               />
             </div>
 
@@ -807,7 +809,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     <CheckListIcon className="h-5 w-5" />
                     Quality Gates
                   </h2>
-                  <QualityGatesPanel projectId={projectId} tasks={tasks} />
+                  <QualityGatesPanel
+                    projectId={projectId}
+                    tasks={tasks}
+                    phase={normalizePhase(projectData.phase)}
+                    issuesData={issuesData}
+                  />
                 </div>
               </ErrorBoundary>
             ) : (
@@ -834,7 +841,10 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 <AnalyticsUpIcon className="h-5 w-5" />
                 Cost & Token Metrics
               </h2>
-              <CostDashboard projectId={projectId} />
+              <CostDashboard
+                projectId={projectId}
+                phase={normalizePhase(projectData.phase)}
+              />
             </div>
           </div>
         )}

@@ -306,4 +306,79 @@ describe('CostDashboard', () => {
     expect(screen.getByText('$1234.57')).toBeInTheDocument();
     expect(screen.getByText('$0.12')).toBeInTheDocument();
   });
+
+  // ============================================================
+  // Phase-Aware Tests (Late-Joining User Bug Fix)
+  // ============================================================
+  describe('Phase-Aware Display', () => {
+    it('should display planning phase message when phase is planning', () => {
+      render(<CostDashboard projectId={123} phase="planning" />);
+
+      // Should show planning-specific message
+      expect(screen.getByTestId('planning-phase-message')).toBeInTheDocument();
+      expect(
+        screen.getByText(/cost metrics will be available during development phase/i)
+      ).toBeInTheDocument();
+
+      // Should NOT make API calls during planning phase
+      expect(mockGetProjectCosts).not.toHaveBeenCalled();
+      expect(mockGetProjectTokens).not.toHaveBeenCalled();
+    });
+
+    it('should display cost metrics when phase is development', async () => {
+      mockGetProjectCosts.mockResolvedValueOnce(mockCostBreakdown);
+
+      render(<CostDashboard projectId={123} phase="development" />);
+
+      // Should show cost metrics, not planning message
+      await waitFor(() => {
+        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      });
+
+      expect(screen.getByText('$15.75')).toBeInTheDocument();
+      expect(screen.queryByTestId('planning-phase-message')).not.toBeInTheDocument();
+    });
+
+    it('should display cost metrics when phase is undefined (backward compatibility)', async () => {
+      mockGetProjectCosts.mockResolvedValueOnce(mockCostBreakdown);
+
+      render(<CostDashboard projectId={123} />);
+
+      await waitFor(() => {
+        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      });
+
+      expect(screen.getByText('$15.75')).toBeInTheDocument();
+    });
+
+    it('should display cost metrics when phase is review', async () => {
+      mockGetProjectCosts.mockResolvedValueOnce(mockCostBreakdown);
+
+      render(<CostDashboard projectId={123} phase="review" />);
+
+      await waitFor(() => {
+        expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      });
+
+      expect(screen.getByText('$15.75')).toBeInTheDocument();
+      expect(screen.queryByTestId('planning-phase-message')).not.toBeInTheDocument();
+    });
+
+    it('should have proper accessibility for planning phase message', () => {
+      render(<CostDashboard projectId={123} phase="planning" />);
+
+      const planningState = screen.getByRole('status');
+      expect(planningState).toHaveAttribute('aria-label', 'Planning phase');
+    });
+
+    it('should not auto-refresh during planning phase', () => {
+      render(<CostDashboard projectId={123} phase="planning" refreshInterval={5000} />);
+
+      // Advance time
+      jest.advanceTimersByTime(5000);
+
+      // Should still not make API calls
+      expect(mockGetProjectCosts).not.toHaveBeenCalled();
+    });
+  });
 });
