@@ -102,13 +102,40 @@ export const projectsApi = {
     api.post<{ success: boolean; message: string; tasks_already_exist?: boolean }>(
       `/api/projects/${projectId}/discovery/generate-tasks`
     ),
-  approveTaskBreakdown: (projectId: number, taskIds: string[]) =>
-    api.post<{
+  /**
+   * Approve task breakdown and transition project to development phase.
+   *
+   * The backend uses an exclusion model - all tasks are approved by default,
+   * and you specify which ones to exclude. This function converts from the
+   * frontend's selection model (which tasks ARE selected).
+   *
+   * @param projectId - Project ID
+   * @param selectedTaskIds - Array of task IDs that the user selected (will be approved)
+   * @param allTaskIds - Array of all task IDs (needed to compute exclusions)
+   * @returns Approval response with success status and counts
+   */
+  approveTaskBreakdown: (projectId: number, selectedTaskIds: string[], allTaskIds: string[]) => {
+    // Compute excluded task IDs: tasks that are in allTaskIds but NOT in selectedTaskIds
+    const selectedSet = new Set(selectedTaskIds);
+    const excludedTaskIds = allTaskIds
+      .filter((id) => !selectedSet.has(id))
+      .map((id) => {
+        // Extract numeric ID from strings like 'task-4' or just '4'
+        const numericPart = id.replace(/\D/g, '');
+        return parseInt(numericPart, 10);
+      })
+      .filter((id) => !isNaN(id));
+
+    return api.post<{
       success: boolean;
       message: string;
       approved_count: number;
       project_phase: string;
-    }>(`/api/projects/${projectId}/tasks/approve`, { task_ids: taskIds }),
+    }>(`/api/projects/${projectId}/tasks/approve`, {
+      approved: true,
+      excluded_task_ids: excludedTaskIds,
+    });
+  },
 };
 
 export const agentsApi = {

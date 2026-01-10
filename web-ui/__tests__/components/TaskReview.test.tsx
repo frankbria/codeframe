@@ -446,7 +446,7 @@ describe('TaskReview', () => {
   });
 
   describe('Approval Flow', () => {
-    it('should call approval API with selected task IDs when approved', async () => {
+    it('should call approval API with both selected and all task IDs', async () => {
       const user = userEvent.setup();
 
       render(<TaskReview projectId={1} />);
@@ -458,17 +458,18 @@ describe('TaskReview', () => {
       const approveButton = screen.getByRole('button', { name: /approve/i });
       await user.click(approveButton);
 
+      // The API should receive selectedTaskIds (all selected) AND allTaskIds
+      // Since all are selected, both arrays should be identical
       await waitFor(() => {
-        expect(projectsApi.approveTaskBreakdown).toHaveBeenCalledWith(1, [
-          'task-1',
-          'task-2',
-          'task-3',
-          'task-4',
-        ]);
+        expect(projectsApi.approveTaskBreakdown).toHaveBeenCalledWith(
+          1,
+          expect.arrayContaining(['task-1', 'task-2', 'task-3', 'task-4']),
+          expect.arrayContaining(['task-1', 'task-2', 'task-3', 'task-4'])
+        );
       });
     });
 
-    it('should only include selected tasks in approval', async () => {
+    it('should pass excluded tasks via the allTaskIds parameter', async () => {
       const user = userEvent.setup();
 
       render(<TaskReview projectId={1} />);
@@ -488,12 +489,21 @@ describe('TaskReview', () => {
       const approveButton = screen.getByRole('button', { name: /approve/i });
       await user.click(approveButton);
 
+      // API should receive:
+      // - selectedTaskIds: 3 tasks (task-2, task-3, task-4)
+      // - allTaskIds: all 4 tasks (so backend can compute excluded = [task-1])
       await waitFor(() => {
-        expect(projectsApi.approveTaskBreakdown).toHaveBeenCalledWith(1, [
-          'task-2',
-          'task-3',
-          'task-4',
-        ]);
+        expect(projectsApi.approveTaskBreakdown).toHaveBeenCalledWith(
+          1,
+          expect.arrayContaining(['task-2', 'task-3', 'task-4']),
+          expect.arrayContaining(['task-1', 'task-2', 'task-3', 'task-4'])
+        );
+
+        // Verify task-1 is NOT in selectedTaskIds (first argument after projectId)
+        const calls = (projectsApi.approveTaskBreakdown as jest.Mock).mock.calls;
+        const selectedTaskIds = calls[0][1];
+        expect(selectedTaskIds).not.toContain('task-1');
+        expect(selectedTaskIds).toHaveLength(3);
       });
     });
 
