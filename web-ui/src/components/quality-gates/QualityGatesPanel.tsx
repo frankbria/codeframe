@@ -3,12 +3,18 @@
  *
  * Dashboard-level panel for quality gates with task selection
  * Displays overview of all gate types and detailed status view
+ *
+ * Phase-aware: During planning phase, shows informational message instead of
+ * "No tasks available" since quality gates are evaluated during development.
+ *
+ * Updated: 2026-01-10 (Phase-Awareness Pattern)
  */
 
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Task } from '@/types/agentState';
+import type { IssuesResponse } from '@/types/api';
 import type {
   QualityGateStatus as QualityGateStatusType,
   GateTypeE2E,
@@ -16,8 +22,10 @@ import type {
 } from '@/types/qualityGates';
 import { mapE2EToBackend, ALL_GATE_TYPES_E2E } from '@/types/qualityGates';
 import { fetchQualityGateStatus } from '@/api/qualityGates';
+import { isPlanningPhase, getPlanningPhaseMessage } from '@/lib/phaseAwareData';
 import QualityGateStatus from './QualityGateStatus';
 import GateStatusIndicator from './GateStatusIndicator';
+import { CheckmarkCircle01Icon, CheckListIcon } from '@hugeicons/react';
 
 /**
  * Props for QualityGatesPanel component
@@ -27,6 +35,17 @@ interface QualityGatesPanelProps {
   projectId: number;
   /** List of tasks from Dashboard state (filters for completed/in_progress) */
   tasks: Task[];
+  /**
+   * Current project phase. During 'planning' phase, shows informational
+   * message instead of "No tasks available" since quality gates are
+   * evaluated during development phase.
+   */
+  phase?: string;
+  /**
+   * Issues data from REST API, used during planning phase to show
+   * task count in the phase-aware message.
+   */
+  issuesData?: IssuesResponse;
 }
 
 /**
@@ -86,6 +105,8 @@ function getGateStatus(
 function QualityGatesPanel({
   projectId,
   tasks,
+  phase,
+  issuesData,
 }: QualityGatesPanelProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [gateStatus, setGateStatus] = useState<QualityGateStatusType | null>(null);
@@ -175,8 +196,42 @@ function QualityGatesPanel({
   // All gate types in order (from shared constant)
   const gateTypes = ALL_GATE_TYPES_E2E;
 
-  // No eligible tasks
+  // No eligible tasks - phase-aware messaging
   if (eligibleTasks.length === 0) {
+    // Planning phase: Show informational message (not "No tasks available")
+    // This fixes the "late-joining user" bug where users see misleading empty state
+    if (isPlanningPhase(phase)) {
+      return (
+        <div
+          className="p-6 bg-primary/5 rounded-lg border border-primary/20"
+          role="status"
+          aria-label="Planning phase"
+          data-testid="planning-phase-message"
+        >
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-full">
+              <CheckmarkCircle01Icon className="h-6 w-6 text-primary" aria-hidden="true" />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-foreground mb-1">
+                Quality Gates Ready
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {getPlanningPhaseMessage('quality-gates')}
+              </p>
+              {issuesData && issuesData.total_tasks > 0 && (
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-sm text-primary">
+                  <CheckListIcon className="h-4 w-4" aria-hidden="true" />
+                  <span>{issuesData.total_tasks} tasks pending evaluation</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Default empty state (development/review phase)
     return (
       <div
         className="p-4 bg-muted rounded-lg border border-border"
@@ -277,6 +332,6 @@ function QualityGatesPanel({
 
 /**
  * Memoized export to prevent unnecessary re-renders when parent state changes.
- * Only re-renders when projectId or tasks props change.
+ * Re-renders when any prop changes (projectId, tasks, phase, issuesData).
  */
 export default React.memo(QualityGatesPanel);

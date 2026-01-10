@@ -4,11 +4,16 @@
  * Displays total project cost, breakdown by agent, and breakdown by model.
  * Auto-refreshes every 30 seconds.
  *
+ * Phase-aware: During planning phase, shows informational message instead of
+ * empty data since cost metrics are only available during development.
+ *
  * Part of 015-review-polish Phase 5 (Sprint 10 - Metrics & Cost Tracking)
+ * Updated: 2026-01-10 (Phase-Awareness Pattern)
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Download01Icon } from '@hugeicons/react';
+import { isPlanningPhase, getPlanningPhaseMessage } from '@/lib/phaseAwareData';
 import { format, subDays } from 'date-fns';
 import {
   LineChart,
@@ -36,6 +41,12 @@ interface CostDashboardProps {
   projectId: number;
   /** Auto-refresh interval in milliseconds (default 30000 = 30 seconds) */
   refreshInterval?: number;
+  /**
+   * Current project phase. During 'planning' phase, shows informational
+   * message instead of loading cost metrics since they are only available
+   * during development phase.
+   */
+  phase?: string;
 }
 
 /**
@@ -169,11 +180,16 @@ function exportToCSV(
  * - Model pricing information
  * - Cost per task table
  * - Auto-refreshes periodically
+ *
+ * Phase-aware: During planning phase, shows informational message
+ * since cost metrics are only generated during development.
  */
 export function CostDashboard({
   projectId,
   refreshInterval = 30000,
+  phase,
 }: CostDashboardProps): JSX.Element {
+  // All hooks must be called before any conditional returns (React rules of hooks)
   const [breakdown, setBreakdown] = useState<CostBreakdown | null>(null);
   const [tokens, setTokens] = useState<TokenUsage[]>([]);
   const [timeSeries, setTimeSeries] = useState<TokenUsageTimeSeries[]>([]);
@@ -222,7 +238,14 @@ export function CostDashboard({
   }, [tokens]);
 
   // Fetch cost breakdown on mount and set up auto-refresh
+  // Skip data loading during planning phase (no cost data exists yet)
   useEffect(() => {
+    // Skip loading during planning phase - no data to fetch
+    if (isPlanningPhase(phase)) {
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
 
     const loadData = async () => {
@@ -276,7 +299,7 @@ export function CostDashboard({
       mounted = false;
       clearInterval(intervalId);
     };
-  }, [projectId, refreshInterval, dateFilter]);
+  }, [projectId, refreshInterval, dateFilter, phase]);
 
   // Handle CSV export
   const handleExportCSV = () => {
@@ -284,6 +307,36 @@ export function CostDashboard({
       exportToCSV(breakdown, tokens, taskCosts, projectId);
     }
   };
+
+  // Planning phase: Show informational message (not empty data)
+  // This fixes the "late-joining user" bug where users see misleading empty state
+  if (isPlanningPhase(phase)) {
+    return (
+      <div
+        className="p-6 bg-primary/5 rounded-lg border border-primary/20"
+        role="status"
+        aria-label="Planning phase"
+        data-testid="planning-phase-message"
+      >
+        <div className="flex flex-col items-center text-center gap-3">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-full">
+            <Download01Icon className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-lg font-medium text-foreground mb-1">
+              Cost Metrics
+            </h3>
+            <p className="text-sm text-muted-foreground max-w-md">
+              {getPlanningPhaseMessage('cost-dashboard')}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Metrics track LLM API usage and token consumption during agent execution.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
