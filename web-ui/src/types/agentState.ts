@@ -166,6 +166,15 @@ export interface AgentsLoadedAction {
 }
 
 /**
+ * Load initial tasks from API
+ * Enables returning users to see tasks without WebSocket events
+ */
+export interface TasksLoadedAction {
+  type: 'TASKS_LOADED';
+  payload: Task[];
+}
+
+/**
  * New agent created by backend
  */
 export interface AgentCreatedAction {
@@ -288,6 +297,7 @@ export interface FullResyncAction {
  */
 export type AgentAction =
   | AgentsLoadedAction
+  | TasksLoadedAction
   | AgentCreatedAction
   | AgentUpdatedAction
   | AgentRetiredAction

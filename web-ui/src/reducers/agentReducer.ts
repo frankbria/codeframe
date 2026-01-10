@@ -100,6 +100,18 @@ export function agentReducer(
     }
 
     // ========================================================================
+    // TASKS_LOADED - Load initial tasks from API
+    // Enables returning users to see tasks without WebSocket events
+    // ========================================================================
+    case 'TASKS_LOADED': {
+      newState = {
+        ...state,
+        tasks: action.payload,
+      };
+      break;
+    }
+
+    // ========================================================================
     // T022: AGENT_CREATED - Add new agent
     // ========================================================================
     case 'AGENT_CREATED': {

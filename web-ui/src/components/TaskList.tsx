@@ -81,6 +81,7 @@ const TaskCard = memo(function TaskCard({
     <li
       role="listitem"
       data-testid="task-card"
+      data-status={task.status}
       className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
     >
       {/* Task Header */}

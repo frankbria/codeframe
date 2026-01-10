@@ -356,7 +356,11 @@ export default function Dashboard({ projectId }: DashboardProps) {
                 CodeFRAME - {projectData.name}
               </h1>
               <div className="flex items-center gap-4 mt-1">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+                <span
+                  data-testid="project-status"
+                  data-phase={projectData.phase}
+                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground"
+                >
                   {projectData.status.toUpperCase()}
                 </span>
                 {/* Connection status from AgentStateProvider */}

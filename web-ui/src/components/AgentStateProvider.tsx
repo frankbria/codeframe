@@ -118,14 +118,29 @@ export function AgentStateProvider({
 
   /**
    * Load tasks when data is fetched
-   * 
-   * Note: Tasks don't have a dedicated TASKS_LOADED action.
-   * We skip loading tasks separately to avoid complexity.
-   * Tasks will be loaded via WebSocket updates or can be accessed via SWR directly.
+   *
+   * CRITICAL: This ensures returning users see tasks even without WebSocket events.
+   * Without this, users who navigate to a project after missing WebSocket events
+   * would see an empty task list.
+   *
+   * See: GitHub Issue #231 - E2E test failures for returning user state reconciliation
    */
   useEffect(() => {
-    // Intentionally empty - tasks are managed via WebSocket or fetched on-demand
-    // This prevents infinite loops and simplifies the data flow
+    if (tasksData?.data?.tasks) {
+      // Transform API tasks to include timestamp if missing
+      const tasksWithTimestamp = tasksData.data.tasks.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (task: any) => ({
+          ...task,
+          timestamp: task.timestamp || Date.now(),
+        })
+      );
+
+      dispatch({
+        type: 'TASKS_LOADED',
+        payload: tasksWithTimestamp,
+      });
+    }
   }, [tasksData]);
 
   /**
