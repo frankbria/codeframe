@@ -185,6 +185,153 @@ describe('projectsApi.startProject', () => {
   });
 });
 
+describe('projectsApi.approveTaskBreakdown', () => {
+  it('should send correct request body matching backend contract', async () => {
+    const mockResponse = {
+      data: {
+        success: true,
+        message: 'Tasks approved successfully',
+        approved_count: 3,
+        project_phase: 'active',
+      },
+    };
+
+    mockPost.mockResolvedValueOnce(mockResponse);
+
+    // Frontend has 4 tasks total, user selected 3 (excluded task-4)
+    const allTaskIds = ['task-1', 'task-2', 'task-3', 'task-4'];
+    const selectedTaskIds = ['task-1', 'task-2', 'task-3'];
+
+    await projectsApi.approveTaskBreakdown(42, selectedTaskIds, allTaskIds);
+
+    // Backend expects: { approved: true, excluded_task_ids: [integers of excluded tasks] }
+    // Excluded = allTaskIds - selectedTaskIds = ['task-4'] -> need to convert to integers
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/projects/42/tasks/approve',
+      {
+        approved: true,
+        excluded_task_ids: [4], // task-4 was excluded, converted to integer
+      }
+    );
+  });
+
+  it('should handle when all tasks are selected (no exclusions)', async () => {
+    const mockResponse = {
+      data: {
+        success: true,
+        message: 'All tasks approved',
+        approved_count: 4,
+        project_phase: 'active',
+      },
+    };
+
+    mockPost.mockResolvedValueOnce(mockResponse);
+
+    const allTaskIds = ['task-1', 'task-2', 'task-3', 'task-4'];
+    const selectedTaskIds = ['task-1', 'task-2', 'task-3', 'task-4'];
+
+    await projectsApi.approveTaskBreakdown(1, selectedTaskIds, allTaskIds);
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/projects/1/tasks/approve',
+      {
+        approved: true,
+        excluded_task_ids: [], // No exclusions
+      }
+    );
+  });
+
+  it('should handle numeric task IDs correctly', async () => {
+    const mockResponse = {
+      data: { success: true, approved_count: 2, project_phase: 'active' },
+    };
+
+    mockPost.mockResolvedValueOnce(mockResponse);
+
+    // Some backends use numeric IDs directly
+    const allTaskIds = ['1', '2', '3'];
+    const selectedTaskIds = ['1', '3'];
+
+    await projectsApi.approveTaskBreakdown(1, selectedTaskIds, allTaskIds);
+
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/projects/1/tasks/approve',
+      {
+        approved: true,
+        excluded_task_ids: [2], // task ID '2' excluded, converted to integer
+      }
+    );
+  });
+
+  it('should handle 422 validation error (schema mismatch)', async () => {
+    const errorResponse = {
+      response: {
+        status: 422,
+        data: { detail: 'Validation error' },
+      },
+    };
+
+    mockPost.mockRejectedValueOnce(errorResponse);
+
+    await expect(
+      projectsApi.approveTaskBreakdown(1, [], [])
+    ).rejects.toMatchObject(errorResponse);
+  });
+
+  it('should reject malformed task IDs defensively', async () => {
+    const mockResponse = {
+      data: { success: true, approved_count: 0, project_phase: 'active' },
+    };
+
+    mockPost.mockResolvedValueOnce(mockResponse);
+
+    // Malformed IDs should be filtered out (return NaN, then filtered by .filter(!isNaN))
+    const allTaskIds = ['task-1-2-3', 'abc123def', 'task-4', '5', 'invalid'];
+    const selectedTaskIds = ['task-4']; // Only task-4 is selected
+
+    await projectsApi.approveTaskBreakdown(1, selectedTaskIds, allTaskIds);
+
+    // Only valid excluded IDs should be sent:
+    // - 'task-1-2-3' -> matches /-(\d+)$/ -> '3' (last number after hyphen)
+    // - 'abc123def' -> no match -> NaN -> filtered out
+    // - '5' -> matches /^(\d+)$/ -> 5
+    // - 'invalid' -> no match -> NaN -> filtered out
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/projects/1/tasks/approve',
+      {
+        approved: true,
+        excluded_task_ids: [3, 5], // Only valid IDs extracted
+      }
+    );
+  });
+
+  it('should handle prefix-number format correctly', async () => {
+    const mockResponse = {
+      data: { success: true, approved_count: 1, project_phase: 'active' },
+    };
+
+    mockPost.mockResolvedValueOnce(mockResponse);
+
+    // Various valid formats
+    const allTaskIds = ['task-10', 'issue-25', 'T-100', '42'];
+    const selectedTaskIds = ['task-10'];
+
+    await projectsApi.approveTaskBreakdown(1, selectedTaskIds, allTaskIds);
+
+    // All should be valid:
+    // - 'issue-25' -> 25
+    // - 'T-100' -> 100
+    // - '42' -> 42
+    expect(mockPost).toHaveBeenCalledWith(
+      '/api/projects/1/tasks/approve',
+      {
+        approved: true,
+        excluded_task_ids: [25, 100, 42],
+      }
+    );
+  });
+});
+
 describe('blockersApi (T019 - 049-human-in-loop)', () => {
   describe('list() method', () => {
     it('should call correct endpoint with projectId', async () => {

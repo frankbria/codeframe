@@ -207,9 +207,14 @@ const TaskReview = memo(function TaskReview({
     setApprovalError(null);
 
     try {
+      // Get all task IDs for exclusion calculation
+      // Backend uses exclusion model: all tasks approved by default, specify excluded
+      const allTaskIds = getAllTaskIds(issues);
+
       await projectsApi.approveTaskBreakdown(
         numericProjectId,
-        Array.from(selectedTaskIds)
+        Array.from(selectedTaskIds),
+        allTaskIds
       );
 
       onApprovalSuccess?.();
@@ -260,7 +265,7 @@ const TaskReview = memo(function TaskReview({
     } finally {
       setApproving(false);
     }
-  }, [projectId, selectedTaskIds, onApprovalSuccess, onApprovalError, router]);
+  }, [projectId, selectedTaskIds, issues, onApprovalSuccess, onApprovalError, router]);
 
   // Check if all tasks in an issue are selected
   const isIssueFullySelected = (issue: Issue): boolean => {
