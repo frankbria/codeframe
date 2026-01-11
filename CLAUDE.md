@@ -341,6 +341,58 @@ new WebSocket(`wss://api.example.com/ws?token=${authToken}`);
 new WebSocket('wss://api.example.com/ws');
 ```
 
+### E2E Test Architecture Policy
+
+**CRITICAL: Never use `test.skip()` inside test logic.**
+
+Using `test.skip()` within test execution masks bugs. If UI doesn't show up due to a bug, the test silently skips instead of failing.
+
+**Correct patterns:**
+```typescript
+// ✅ Skip at describe level for environmental conditions
+test.describe('Feature requiring API key', () => {
+  test.skip(!process.env.ANTHROPIC_API_KEY, 'Requires ANTHROPIC_API_KEY');
+
+  test('does something with API', async () => {
+    // Test runs OR entire suite is skipped - never silently passes
+  });
+});
+
+// ✅ Assert UI elements exist - FAIL if missing
+test('should show approve button', async ({ page }) => {
+  const button = page.getByRole('button', { name: /approve/i });
+  await expect(button).toBeVisible();  // FAILS if not visible
+  await button.click();
+});
+
+// ✅ Use separate test projects for different states
+const PROJECT_ID = TEST_PROJECT_IDS.PLANNING;  // Seeded in planning phase
+```
+
+**Anti-patterns to avoid:**
+```typescript
+// ❌ NEVER: Skip inside test logic
+test('approves tasks', async ({ page }) => {
+  const button = page.getByRole('button', { name: /approve/i });
+  if (!(await button.isVisible())) {
+    test.skip(true, 'Button not visible');  // MASKS BUGS
+    return;
+  }
+  // ...
+});
+
+// ❌ NEVER: Silent pass on missing elements
+if (await element.isVisible()) {
+  // do assertions
+}
+// Test passes even if element never shows up!
+```
+
+**Test data guarantees:**
+- `TEST_PROJECT_IDS.PLANNING` is seeded in planning phase with tasks
+- `TEST_PROJECT_IDS.ACTIVE` is seeded in active phase with agents
+- If test data doesn't match expectations, that's a bug in `seed-test-data.py`
+
 ### E2E Test Limitations (Issue #172)
 Current E2E tests have coverage gaps:
 - Tests verify DOM exists, not API success

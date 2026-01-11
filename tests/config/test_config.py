@@ -9,9 +9,18 @@ from codeframe.core.config import Config, GlobalConfig, load_environment
 class TestGlobalConfig:
     """Test GlobalConfig class."""
 
-    def test_default_values(self):
+    def test_default_values(self, monkeypatch):
         """Test that default values are set correctly."""
-        config = GlobalConfig()
+        # Clear environment variables that would override defaults
+        monkeypatch.delenv("LOG_LEVEL", raising=False)
+        monkeypatch.delenv("DEBUG", raising=False)
+        monkeypatch.delenv("HOT_RELOAD", raising=False)
+        monkeypatch.delenv("DATABASE_PATH", raising=False)
+        monkeypatch.delenv("API_HOST", raising=False)
+        monkeypatch.delenv("API_PORT", raising=False)
+        monkeypatch.delenv("DEFAULT_PROVIDER", raising=False)
+
+        config = GlobalConfig(_env_file=None)
         assert config.database_path == ".codeframe/state.db"
         assert config.api_host == "0.0.0.0"
         assert config.api_port == 8080
@@ -138,7 +147,23 @@ class TestConfig:
         # Ensure no API key in environment
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
+        # Prevent load_environment from reading .env files
+        monkeypatch.setattr("codeframe.core.config.load_environment", lambda *args, **kwargs: None)
+
         config = Config(tmp_path)
+        # Override _global_config to ensure fresh GlobalConfig without env file
+        config._global_config = None
+
+        # Patch get_global to not read from .env
+        from codeframe.core.config import GlobalConfig
+
+        def patched_get_global():
+            if not config._global_config:
+                config._global_config = GlobalConfig(_env_file=None)
+            return config._global_config
+
+        monkeypatch.setattr(config, "get_global", patched_get_global)
+
         with pytest.raises(ValueError, match="ANTHROPIC_API_KEY is required"):
             config.validate_for_sprint(sprint=1)
 
