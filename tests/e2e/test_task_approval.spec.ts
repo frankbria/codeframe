@@ -183,14 +183,14 @@ test.describe('Task Approval API Contract', () => {
     expect(response.status()).toBe(422);
 
     // Verify UI shows error message (not a blank screen)
-    const errorMessage = page.locator('[class*="destructive"], [class*="error"], [role="alert"]');
-    await errorMessage.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    // Use explicit assertion - FAIL if no error UI appears
+    const errorIndicators = page.locator('[class*="destructive"], [class*="error"], [role="alert"]');
+    const errorText = page.getByText(/failed|error|try again/i);
 
-    // Should display some error feedback
-    const hasErrorUI = await errorMessage.count() > 0 ||
-      await page.getByText(/failed|error|try again/i).isVisible().catch(() => false);
-
-    expect(hasErrorUI).toBe(true);
+    // At least one error indicator must be visible
+    await expect(
+      errorIndicators.first().or(errorText.first())
+    ).toBeVisible({ timeout: 5000 });
   });
 
 });
@@ -224,29 +224,6 @@ test.describe('Task Approval - API Key Required Tests', () => {
    * Test the full task approval flow with API response validation.
    */
   test('should complete task approval with correct API response', async ({ page }) => {
-    let approvalResponse: any = null;
-
-    // Capture the approval response
-    page.on('response', async response => {
-      if (response.url().includes('/tasks/approve') && response.request().method() === 'POST') {
-        const status = response.status();
-
-        // Fail fast on 422 - this was the original bug
-        if (status === 422) {
-          const body = await response.json().catch(() => ({}));
-          throw new Error(
-            `Task approval returned 422 Validation Error!\n` +
-            `This indicates a frontend/backend contract mismatch.\n` +
-            `Response: ${JSON.stringify(body, null, 2)}`
-          );
-        }
-
-        if (status === 200) {
-          approvalResponse = await response.json().catch(() => null);
-        }
-      }
-    });
-
     // Navigate to project
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
@@ -259,18 +236,31 @@ test.describe('Task Approval - API Key Required Tests', () => {
     // Approve button - MUST be visible
     const approveButton = page.getByRole('button', { name: /approve/i });
     await expect(approveButton).toBeVisible({ timeout: 5000 });
-    await approveButton.click();
 
-    // Wait for approval to complete
-    const response = await page.waitForResponse(
-      r => r.url().includes('/tasks/approve'),
-      { timeout: 15000 }
-    );
+    // Click and wait for response in parallel to avoid race condition
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        r => r.url().includes('/tasks/approve') && r.request().method() === 'POST',
+        { timeout: 15000 }
+      ),
+      approveButton.click()
+    ]);
 
-    expect(response.status()).toBe(200);
+    // Fail fast on 422 - this was the original bug
+    const status = response.status();
+    if (status === 422) {
+      const body = await response.json();
+      throw new Error(
+        `Task approval returned 422 Validation Error!\n` +
+        `This indicates a frontend/backend contract mismatch.\n` +
+        `Response: ${JSON.stringify(body, null, 2)}`
+      );
+    }
 
-    // Validate response format
-    expect(approvalResponse).toBeTruthy();
+    expect(status).toBe(200);
+
+    // Parse and validate response format synchronously
+    const approvalResponse = await response.json();
     expect(approvalResponse).toHaveProperty('success');
     expect(approvalResponse).toHaveProperty('phase');
     expect(approvalResponse).toHaveProperty('approved_count');
@@ -385,24 +375,21 @@ test.describe('Task Approval API Contract - Direct API Tests', () => {
  * Without the key, approval succeeds but agent creation is skipped.
  */
 test.describe('Multi-Agent Execution After Task Approval - Direct API Tests', () => {
+  // Use loginUser() helper in beforeEach per E2E test coding guidelines
+  test.beforeEach(async ({ context, page }) => {
+    await context.clearCookies();
+    await loginUser(page);
+  });
+
   /**
    * Test that approval returns immediately without waiting for agent execution.
    *
    * The background task should not block the approval response.
    * This is a critical test for the P0 fix - ensures non-blocking behavior.
    */
-  test('should return approval response immediately without blocking', async ({ request }) => {
-    // Login to get auth token
-    const loginResponse = await request.post(`${BACKEND_URL}/auth/jwt/login`, {
-      form: {
-        username: 'test@example.com',
-        password: 'Testpassword123'
-      }
-    });
-
-    expect(loginResponse.ok()).toBe(true);
-    const loginData = await loginResponse.json();
-    const authToken = loginData.access_token;
+  test('should return approval response immediately without blocking', async ({ page, request }) => {
+    // Get auth token from localStorage (set by loginUser() in beforeEach)
+    const authToken = await page.evaluate(() => localStorage.getItem('auth_token'));
     expect(authToken).toBeTruthy();
 
     const startTime = Date.now();
