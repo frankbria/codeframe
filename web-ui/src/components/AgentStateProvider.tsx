@@ -127,9 +127,13 @@ export function AgentStateProvider({
    * See: GitHub Issue #231 - E2E test failures for returning user state reconciliation
    */
   useEffect(() => {
-    if (tasksData?.data?.tasks && Array.isArray(tasksData.data.tasks)) {
+    // Dispatch when tasksData.data exists, even if tasks is null/undefined
+    // This ensures stale tasks are cleared when API returns no tasks
+    if (tasksData?.data) {
+      const rawTasks = Array.isArray(tasksData.data.tasks) ? tasksData.data.tasks : [];
+
       // Validate and transform API tasks to internal Task type
-      const validTasks: Task[] = tasksData.data.tasks
+      const validTasks: Task[] = rawTasks
         .filter((task: unknown) => {
           if (!isValidTaskResponse(task)) {
             console.warn('Invalid task response skipped:', task);
@@ -139,8 +143,6 @@ export function AgentStateProvider({
         })
         .map((task: unknown) => transformAPITask(task as Parameters<typeof transformAPITask>[0]));
 
-      // Always dispatch TASKS_LOADED, even for empty arrays.
-      // This ensures the store is cleared when API returns no tasks.
       dispatch({
         type: 'TASKS_LOADED',
         payload: validTasks,
