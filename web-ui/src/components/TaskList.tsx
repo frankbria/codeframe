@@ -29,9 +29,11 @@ interface FilterConfig {
 const FILTER_OPTIONS: FilterConfig[] = [
   { label: 'All', status: 'all' },
   { label: 'Pending', status: 'pending' },
+  { label: 'Assigned', status: 'assigned' },
   { label: 'In Progress', status: 'in_progress' },
   { label: 'Blocked', status: 'blocked' },
   { label: 'Completed', status: 'completed' },
+  { label: 'Failed', status: 'failed' },
 ];
 
 /**
@@ -45,6 +47,10 @@ function getStatusStyles(status: TaskStatus): { bgClass: string; textClass: stri
       return { bgClass: 'bg-primary/10', textClass: 'text-primary' };
     case 'blocked':
       return { bgClass: 'bg-destructive/10', textClass: 'text-destructive' };
+    case 'failed':
+      return { bgClass: 'bg-destructive/20', textClass: 'text-destructive' };
+    case 'assigned':
+      return { bgClass: 'bg-accent', textClass: 'text-accent-foreground' };
     case 'pending':
     default:
       return { bgClass: 'bg-muted', textClass: 'text-muted-foreground' };
@@ -183,9 +189,11 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
     const counts: Record<FilterOption, number> = {
       all: projectTasks.length,
       pending: 0,
+      assigned: 0,
       in_progress: 0,
       blocked: 0,
       completed: 0,
+      failed: 0,
     };
 
     projectTasks.forEach((task) => {

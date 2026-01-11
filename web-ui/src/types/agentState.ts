@@ -39,12 +39,15 @@ export type AgentMaturity =
 
 /**
  * Task execution status
+ * Must match TaskStatus in web-ui/src/types/index.ts
  */
 export type TaskStatus =
   | 'pending'       // Not started, no blockers
+  | 'assigned'      // Assigned to agent but not started
   | 'in_progress'   // Agent actively working
   | 'blocked'       // Waiting on dependencies
-  | 'completed';    // Finished
+  | 'completed'     // Finished successfully
+  | 'failed';       // Failed to complete
 
 /**
  * Activity feed event categories
@@ -156,9 +159,33 @@ export function isValidTaskResponse(task: unknown): task is APITaskResponse {
 }
 
 /**
- * Valid task status values for strict validation
+ * Valid task status values for strict validation.
+ * Must match TaskStatus type above.
  */
-const VALID_TASK_STATUSES: readonly TaskStatus[] = ['pending', 'in_progress', 'blocked', 'completed'];
+const VALID_TASK_STATUSES: readonly TaskStatus[] = [
+  'pending',
+  'assigned',
+  'in_progress',
+  'blocked',
+  'completed',
+  'failed',
+];
+
+/**
+ * Parses a comma-separated string of task IDs into a number array.
+ * Filters out invalid values (empty strings, NaN).
+ */
+function parseDependsOn(dependsOn: string | undefined): number[] {
+  if (!dependsOn || dependsOn.trim() === '') {
+    return [];
+  }
+  return dependsOn
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+    .map((s) => parseInt(s, 10))
+    .filter((n) => !isNaN(n));
+}
 
 /**
  * Transforms an API task response to internal Task type.
@@ -170,12 +197,16 @@ export function transformAPITask(apiTask: APITaskResponse): Task {
     ? (apiTask.status as TaskStatus)
     : 'pending';
 
+  // Parse depends_on string into blocked_by number array
+  const blocked_by = parseDependsOn(apiTask.depends_on);
+
   return {
     id: apiTask.id,
     project_id: apiTask.project_id,
     title: apiTask.title,
     status,
     agent_id: apiTask.assigned_to,
+    blocked_by: blocked_by.length > 0 ? blocked_by : undefined,
     progress: apiTask.progress,
     timestamp: apiTask.timestamp || Date.now(),
   };
