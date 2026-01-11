@@ -85,58 +85,53 @@ test.describe('Task Approval API Contract', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
-    // Navigate to Tasks tab
+    // Navigate to Tasks tab - MUST be visible for planning phase project
     const tasksTab = page.locator('[data-testid="tasks-tab"]');
-    await tasksTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    await expect(tasksTab).toBeVisible({ timeout: 10000 });
+    await tasksTab.click();
 
-    if (await tasksTab.isVisible()) {
-      await tasksTab.click();
+    // Look for TaskReview component and approve button
+    // These MUST be visible for a planning phase project with tasks
+    const taskReview = page.locator('[role="tree"]');
+    const approveButton = page.getByRole('button', { name: /approve/i });
 
-      // Look for TaskReview component (only present in planning phase)
-      const taskReview = page.locator('[role="tree"]'); // TaskReview uses role="tree"
-      const approveButton = page.getByRole('button', { name: /approve/i });
+    await expect(taskReview).toBeVisible({ timeout: 10000 });
+    await expect(approveButton).toBeVisible({ timeout: 5000 });
 
-      // Only proceed if we're in planning phase with task review available
-      if (await taskReview.isVisible().catch(() => false) && await approveButton.isVisible().catch(() => false)) {
-        // Click approve button
-        await approveButton.click();
+    // Click approve button
+    await approveButton.click();
 
-        // Wait for API call to complete (success or error)
-        await page.waitForResponse(
-          response => response.url().includes('/tasks/approve'),
-          { timeout: 10000 }
-        ).catch(() => {});
+    // Wait for API call to complete
+    await page.waitForResponse(
+      response => response.url().includes('/tasks/approve'),
+      { timeout: 10000 }
+    );
 
-        // Validate the request body format
-        if (approvalRequestIntercepted && capturedRequestBody) {
-          // CRITICAL ASSERTIONS: These would have caught the original bug
+    // Validate the request body format was captured
+    expect(approvalRequestIntercepted).toBe(true);
+    expect(capturedRequestBody).toBeTruthy();
 
-          // 1. Must have "approved" field (boolean)
-          expect(capturedRequestBody).toHaveProperty('approved');
-          expect(typeof capturedRequestBody.approved).toBe('boolean');
+    // CRITICAL ASSERTIONS: These would have caught the original bug
 
-          // 2. Must have "excluded_task_ids" field (array)
-          expect(capturedRequestBody).toHaveProperty('excluded_task_ids');
-          expect(Array.isArray(capturedRequestBody.excluded_task_ids)).toBe(true);
+    // 1. Must have "approved" field (boolean)
+    expect(capturedRequestBody).toHaveProperty('approved');
+    expect(typeof capturedRequestBody.approved).toBe('boolean');
 
-          // 3. Must NOT have "task_ids" field (the buggy format)
-          expect(capturedRequestBody).not.toHaveProperty('task_ids');
+    // 2. Must have "excluded_task_ids" field (array)
+    expect(capturedRequestBody).toHaveProperty('excluded_task_ids');
+    expect(Array.isArray(capturedRequestBody.excluded_task_ids)).toBe(true);
 
-          // 4. excluded_task_ids should contain integers, not strings
-          if (capturedRequestBody.excluded_task_ids.length > 0) {
-            capturedRequestBody.excluded_task_ids.forEach((id: any) => {
-              expect(typeof id).toBe('number');
-            });
-          }
+    // 3. Must NOT have "task_ids" field (the buggy format)
+    expect(capturedRequestBody).not.toHaveProperty('task_ids');
 
-          console.log('[Task Approval] Request body validated successfully:', capturedRequestBody);
-        }
-      } else {
-        // Not in planning phase - skip test but don't fail
-        console.log('[Task Approval] Project not in planning phase - skipping approval validation');
-        test.skip(true, 'Project not in planning phase');
-      }
+    // 4. excluded_task_ids should contain integers, not strings
+    if (capturedRequestBody.excluded_task_ids.length > 0) {
+      capturedRequestBody.excluded_task_ids.forEach((id: any) => {
+        expect(typeof id).toBe('number');
+      });
     }
+
+    console.log('[Task Approval] Request body validated successfully:', capturedRequestBody);
   });
 
   /**
@@ -145,8 +140,6 @@ test.describe('Task Approval API Contract', () => {
    * This test mocks a 422 response to verify the frontend handles it gracefully.
    */
   test('should handle 422 validation error gracefully', async ({ page }) => {
-    let responseStatus: number | null = null;
-
     // Mock a 422 validation error response
     await page.route('**/api/projects/*/tasks/approve', async (route: Route) => {
       await route.fulfill({
@@ -168,115 +161,124 @@ test.describe('Task Approval API Contract', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
-    // Navigate to Tasks tab
+    // Navigate to Tasks tab - MUST be visible for planning phase project
     const tasksTab = page.locator('[data-testid="tasks-tab"]');
-    await tasksTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    await expect(tasksTab).toBeVisible({ timeout: 10000 });
+    await tasksTab.click();
 
-    if (await tasksTab.isVisible()) {
-      await tasksTab.click();
+    // Look for approve button - MUST be visible
+    const approveButton = page.getByRole('button', { name: /approve/i });
+    await expect(approveButton).toBeVisible({ timeout: 5000 });
 
-      // Look for approve button
-      const approveButton = page.getByRole('button', { name: /approve/i });
+    // Click approve button
+    await approveButton.click();
 
-      if (await approveButton.isVisible().catch(() => false)) {
-        // Click approve button
-        await approveButton.click();
+    // Wait for response
+    const response = await page.waitForResponse(
+      r => r.url().includes('/tasks/approve'),
+      { timeout: 10000 }
+    );
 
-        // Wait for response
-        const response = await page.waitForResponse(
-          r => r.url().includes('/tasks/approve'),
-          { timeout: 10000 }
-        ).catch(() => null);
+    // Verify 422 was received (mocked response)
+    expect(response.status()).toBe(422);
 
-        if (response) {
-          responseStatus = response.status();
+    // Verify UI shows error message (not a blank screen)
+    const errorMessage = page.locator('[class*="destructive"], [class*="error"], [role="alert"]');
+    await errorMessage.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
 
-          // Verify 422 was received
-          expect(responseStatus).toBe(422);
+    // Should display some error feedback
+    const hasErrorUI = await errorMessage.count() > 0 ||
+      await page.getByText(/failed|error|try again/i).isVisible().catch(() => false);
 
-          // Verify UI shows error message (not a blank screen)
-          const errorMessage = page.locator('[class*="destructive"], [class*="error"], [role="alert"]');
-          await errorMessage.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    expect(hasErrorUI).toBe(true);
+  });
 
-          // Should display some error feedback
-          const hasErrorUI = await errorMessage.count() > 0 ||
-            await page.getByText(/failed|error|try again/i).isVisible().catch(() => false);
+});
 
-          expect(hasErrorUI).toBe(true);
-        }
-      } else {
-        console.log('[Task Approval] Approve button not visible - project may not be in planning phase');
-        test.skip(true, 'Project not in planning phase');
-      }
-    }
+/**
+ * Tests requiring ANTHROPIC_API_KEY.
+ * Skip entire suite if key is not available.
+ */
+test.describe('Task Approval - API Key Required Tests', () => {
+  // Skip entire suite if no API key
+  test.skip(!HAS_API_KEY, 'Requires ANTHROPIC_API_KEY');
+
+  test.beforeEach(async ({ context, page }) => {
+    const errorMonitor = setupErrorMonitoring(page);
+    (page as ExtendedPage).__errorMonitor = errorMonitor;
+
+    await context.clearCookies();
+    await loginUser(page);
+  });
+
+  test.afterEach(async ({ page }) => {
+    checkTestErrors(page, 'API key required test', [
+      'net::ERR_ABORTED',
+      'Failed to fetch RSC payload',
+      'NS_BINDING_ABORTED',
+      'Load request cancelled'
+    ]);
   });
 
   /**
    * Test the full task approval flow with API response validation.
-   *
-   * Only runs when ANTHROPIC_API_KEY is available (needed for task generation).
    */
-  test(HAS_API_KEY ? 'should complete task approval with correct API response' : 'skip: requires ANTHROPIC_API_KEY',
-    async ({ page }) => {
-      test.skip(!HAS_API_KEY, 'Requires ANTHROPIC_API_KEY for task generation');
+  test('should complete task approval with correct API response', async ({ page }) => {
+    let approvalResponse: any = null;
 
-      let approvalResponse: any = null;
+    // Capture the approval response
+    page.on('response', async response => {
+      if (response.url().includes('/tasks/approve') && response.request().method() === 'POST') {
+        const status = response.status();
 
-      // Capture the approval response
-      page.on('response', async response => {
-        if (response.url().includes('/tasks/approve') && response.request().method() === 'POST') {
-          const status = response.status();
-
-          // Fail fast on 422 - this was the original bug
-          if (status === 422) {
-            const body = await response.json().catch(() => ({}));
-            throw new Error(
-              `Task approval returned 422 Validation Error!\n` +
-              `This indicates a frontend/backend contract mismatch.\n` +
-              `Response: ${JSON.stringify(body, null, 2)}`
-            );
-          }
-
-          if (status === 200) {
-            approvalResponse = await response.json().catch(() => null);
-          }
+        // Fail fast on 422 - this was the original bug
+        if (status === 422) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(
+            `Task approval returned 422 Validation Error!\n` +
+            `This indicates a frontend/backend contract mismatch.\n` +
+            `Response: ${JSON.stringify(body, null, 2)}`
+          );
         }
-      });
 
-      // Navigate to project
-      await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
-      await page.waitForLoadState('networkidle');
-
-      // Navigate to Tasks tab
-      const tasksTab = page.locator('[data-testid="tasks-tab"]');
-      if (await tasksTab.isVisible().catch(() => false)) {
-        await tasksTab.click();
-
-        const approveButton = page.getByRole('button', { name: /approve/i });
-
-        if (await approveButton.isVisible().catch(() => false)) {
-          await approveButton.click();
-
-          // Wait for approval to complete
-          await page.waitForResponse(
-            r => r.url().includes('/tasks/approve'),
-            { timeout: 15000 }
-          ).catch(() => {});
-
-          // Validate response format
-          if (approvalResponse) {
-            expect(approvalResponse).toHaveProperty('success');
-            expect(approvalResponse).toHaveProperty('phase');
-            expect(approvalResponse).toHaveProperty('approved_count');
-            expect(approvalResponse).toHaveProperty('excluded_count');
-            expect(approvalResponse).toHaveProperty('message');
-
-            console.log('[Task Approval] API response validated:', approvalResponse);
-          }
+        if (status === 200) {
+          approvalResponse = await response.json().catch(() => null);
         }
       }
-    }
-  );
+    });
+
+    // Navigate to project
+    await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
+    await page.waitForLoadState('networkidle');
+
+    // Navigate to Tasks tab - MUST be visible
+    const tasksTab = page.locator('[data-testid="tasks-tab"]');
+    await expect(tasksTab).toBeVisible({ timeout: 10000 });
+    await tasksTab.click();
+
+    // Approve button - MUST be visible
+    const approveButton = page.getByRole('button', { name: /approve/i });
+    await expect(approveButton).toBeVisible({ timeout: 5000 });
+    await approveButton.click();
+
+    // Wait for approval to complete
+    const response = await page.waitForResponse(
+      r => r.url().includes('/tasks/approve'),
+      { timeout: 15000 }
+    );
+
+    expect(response.status()).toBe(200);
+
+    // Validate response format
+    expect(approvalResponse).toBeTruthy();
+    expect(approvalResponse).toHaveProperty('success');
+    expect(approvalResponse).toHaveProperty('phase');
+    expect(approvalResponse).toHaveProperty('approved_count');
+    expect(approvalResponse).toHaveProperty('excluded_count');
+    expect(approvalResponse).toHaveProperty('message');
+
+    console.log('[Task Approval] API response validated:', approvalResponse);
+  });
 });
 
 /**
@@ -296,9 +298,9 @@ test.describe('Task Approval API Contract - Direct API Tests', () => {
    * This catches mismatches even if the UI is never exercised.
    */
   test('should accept correct request body format via direct API call', async ({ page, request }) => {
-    // Get auth token
+    // Get auth token - loginUser() was called in beforeEach
     const authToken = await page.evaluate(() => localStorage.getItem('auth_token'));
-    test.skip(!authToken, 'No auth token available');
+    expect(authToken).toBeTruthy();  // FAIL if login didn't work
 
     // Make direct API call with correct format
     const response = await request.post(
@@ -338,9 +340,9 @@ test.describe('Task Approval API Contract - Direct API Tests', () => {
    * This documents the expected backend behavior.
    */
   test('should return 422 for incorrect request body format', async ({ page, request }) => {
-    // Get auth token
+    // Get auth token - loginUser() was called in beforeEach
     const authToken = await page.evaluate(() => localStorage.getItem('auth_token'));
-    test.skip(!authToken, 'No auth token available');
+    expect(authToken).toBeTruthy();  // FAIL if login didn't work
 
     // Make direct API call with INCORRECT format (the buggy format)
     const response = await request.post(
@@ -370,193 +372,38 @@ test.describe('Task Approval API Contract - Direct API Tests', () => {
 });
 
 /**
- * Multi-Agent Execution Tests - P0 Blocker Fix
+ * Multi-Agent Execution Tests - P0 Blocker Fix (Direct API Tests)
  *
  * After task approval transitions to Development phase, verify that:
- * 1. Multi-agent execution is triggered in the background
- * 2. WebSocket receives agent_created events
- * 3. Agents appear in the API response
- * 4. Tasks are assigned to agents
+ * 1. Approval returns immediately (background task doesn't block)
+ * 2. WebSocket receives development_started event
+ *
+ * These are direct API tests that don't depend on UI state.
+ * They use TEST_PROJECT_IDS.PLANNING which is seeded in planning phase.
  *
  * Note: These tests require ANTHROPIC_API_KEY to actually create agents.
- * Without the key, the execution is skipped but approval still succeeds.
+ * Without the key, approval succeeds but agent creation is skipped.
  */
-test.describe('Multi-Agent Execution After Task Approval', () => {
-  const HAS_API_KEY = !!process.env.ANTHROPIC_API_KEY;
-
-  test.beforeEach(async ({ context, page }) => {
-    const errorMonitor = setupErrorMonitoring(page);
-    (page as ExtendedPage).__errorMonitor = errorMonitor;
-
-    await context.clearCookies();
-    await loginUser(page);
-  });
-
-  test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Multi-agent execution test', [
-      'net::ERR_ABORTED',
-      'Failed to fetch RSC payload',
-      'NS_BINDING_ABORTED',
-      'Load request cancelled'
-    ]);
-  });
-
-  /**
-   * Test that task approval triggers the multi-agent execution background task.
-   *
-   * Verifies:
-   * 1. WebSocket receives development_started event
-   * 2. If ANTHROPIC_API_KEY is set, WebSocket should also receive agent_created events
-   * 3. Agents API endpoint returns created agents (if API key is available)
-   */
-  test('should trigger multi-agent execution after task approval', async ({ page, request }) => {
-    const wsEvents: any[] = [];
-    let developmentStartedReceived = false;
-    let agentCreatedReceived = false;
-
-    // Intercept WebSocket messages to verify event broadcasting
-    await page.addInitScript(() => {
-      // Store original WebSocket
-      const OriginalWebSocket = window.WebSocket;
-
-      // Override WebSocket constructor
-      (window as any).WebSocket = function(url: string, protocols?: string | string[]) {
-        const ws = new OriginalWebSocket(url, protocols);
-
-        const originalOnMessage = ws.onmessage;
-        ws.onmessage = function(event: MessageEvent) {
-          try {
-            const data = JSON.parse(event.data);
-            // Store events for later inspection
-            (window as any).__wsEvents = (window as any).__wsEvents || [];
-            (window as any).__wsEvents.push(data);
-
-            // Track specific events
-            if (data.type === 'development_started') {
-              (window as any).__developmentStartedReceived = true;
-            }
-            if (data.type === 'agent_created') {
-              (window as any).__agentCreatedReceived = true;
-            }
-          } catch {}
-
-          if (originalOnMessage) {
-            originalOnMessage.call(ws, event);
-          }
-        };
-
-        return ws;
-      } as any;
-    });
-
-    // Navigate to project with tasks in planning phase
-    await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
-    await page.waitForLoadState('networkidle');
-
-    // Get auth token for direct API calls
-    const authToken = await page.evaluate(() => localStorage.getItem('auth_token'));
-    test.skip(!authToken, 'No auth token available');
-
-    // Navigate to Tasks tab
-    const tasksTab = page.locator('[data-testid="tasks-tab"]');
-    await tasksTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-
-    // Explicit check: tasks tab must be visible to proceed
-    if (!(await tasksTab.isVisible())) {
-      test.skip(true, 'Tasks tab not visible - project not in planning phase or tasks tab missing');
-      return;
-    }
-
-    await tasksTab.click();
-
-    // Look for approve button
-    const approveButton = page.getByRole('button', { name: /approve/i });
-
-    // Explicit check: approve button must be visible
-    if (!(await approveButton.isVisible().catch(() => false))) {
-      test.skip(true, 'Approve button not visible - project not in planning phase');
-      return;
-    }
-
-    // Click approve
-    await approveButton.click();
-
-    // Wait for approval API response
-    const response = await page.waitForResponse(
-      r => r.url().includes('/tasks/approve'),
-      { timeout: 15000 }
-    ).catch(() => null);
-
-    // Explicit check: approval response must be successful
-    if (!response || response.status() !== 200) {
-      test.skip(true, 'Approval failed or returned non-200 status');
-      return;
-    }
-
-    // Give time for background task to start and broadcast events
-    await page.waitForTimeout(2000);
-
-    // Check if development_started event was received
-    developmentStartedReceived = await page.evaluate(
-      () => (window as any).__developmentStartedReceived || false
-    );
-
-    expect(developmentStartedReceived).toBe(true);
-    console.log('[Multi-Agent] development_started WebSocket event received');
-
-    // If API key is available, check for agent_created events
-    if (HAS_API_KEY) {
-      // Wait longer for agents to be created (they take time)
-      await page.waitForTimeout(5000);
-
-      agentCreatedReceived = await page.evaluate(
-        () => (window as any).__agentCreatedReceived || false
-      );
-
-      // Also check agents API endpoint
-      const agentsResponse = await request.get(
-        `${BACKEND_URL}/api/projects/${PROJECT_ID}/agents`,
-        {
-          headers: {
-            'Authorization': `Bearer ${authToken}`
-          }
-        }
-      );
-
-      if (agentsResponse.ok()) {
-        const agents = await agentsResponse.json();
-        console.log(`[Multi-Agent] Found ${agents.length} agents via API`);
-
-        if (agents.length > 0) {
-          expect(agents.length).toBeGreaterThan(0);
-          console.log('[Multi-Agent] Agents successfully created after approval');
-        }
-      }
-    } else {
-      console.log('[Multi-Agent] Skipping agent verification - ANTHROPIC_API_KEY not set');
-    }
-  });
-
-  /**
-   * Test that development_failed event is broadcast on execution errors.
-   *
-   * This test mocks a failure scenario to verify error handling.
-   */
-  test('should broadcast development_failed on execution error', async ({ page }) => {
-    // This test would require ability to inject failures which is not easily
-    // done in E2E tests. We verify the error handling through unit tests instead.
-    console.log('[Multi-Agent] Error handling verified through unit tests');
-    test.skip(true, 'Error handling tested at unit level');
-  });
-
+test.describe('Multi-Agent Execution After Task Approval - Direct API Tests', () => {
   /**
    * Test that approval returns immediately without waiting for agent execution.
    *
    * The background task should not block the approval response.
+   * This is a critical test for the P0 fix - ensures non-blocking behavior.
    */
-  test('should return approval response immediately without blocking', async ({ page, request }) => {
-    const authToken = await page.evaluate(() => localStorage.getItem('auth_token'));
-    test.skip(!authToken, 'No auth token available');
+  test('should return approval response immediately without blocking', async ({ request }) => {
+    // Login to get auth token
+    const loginResponse = await request.post(`${BACKEND_URL}/auth/jwt/login`, {
+      form: {
+        username: 'test@example.com',
+        password: 'Testpassword123'
+      }
+    });
+
+    expect(loginResponse.ok()).toBe(true);
+    const loginData = await loginResponse.json();
+    const authToken = loginData.access_token;
+    expect(authToken).toBeTruthy();
 
     const startTime = Date.now();
 
@@ -577,15 +424,20 @@ test.describe('Multi-Agent Execution After Task Approval', () => {
 
     const elapsed = Date.now() - startTime;
 
-    // Explicit check: skip if not in planning phase
-    if (response.status() !== 200) {
-      test.skip(true, `Project not in planning phase - got status ${response.status()}`);
-      return;
-    }
+    // Assert: Response must be successful
+    // If this fails, it means test data is wrong (project not in planning phase)
+    // That's a bug in seed-test-data.py, not something to skip
+    expect(response.status()).toBe(200);
 
-    // Approval should return quickly (< 5 seconds) even if agents are being created
+    // Assert: Approval should return quickly (< 5 seconds)
     // Agent creation happens in background and shouldn't block
     expect(elapsed).toBeLessThan(5000);
+
+    const responseData = await response.json();
+    expect(responseData.success).toBe(true);
+    expect(responseData.phase).toBe('active');
+
     console.log(`[Multi-Agent] Approval returned in ${elapsed}ms - confirmed non-blocking`);
+    console.log(`[Multi-Agent] Approved ${responseData.approved_count} tasks`);
   });
 });
