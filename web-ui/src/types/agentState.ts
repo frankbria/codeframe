@@ -156,14 +156,25 @@ export function isValidTaskResponse(task: unknown): task is APITaskResponse {
 }
 
 /**
- * Transforms an API task response to internal Task type
+ * Valid task status values for strict validation
+ */
+const VALID_TASK_STATUSES: readonly TaskStatus[] = ['pending', 'in_progress', 'blocked', 'completed'];
+
+/**
+ * Transforms an API task response to internal Task type.
+ * Uses strict status validation - invalid statuses default to 'pending'.
  */
 export function transformAPITask(apiTask: APITaskResponse): Task {
+  // Strict status validation: only accept known values, default to 'pending'
+  const status: TaskStatus = VALID_TASK_STATUSES.includes(apiTask.status as TaskStatus)
+    ? (apiTask.status as TaskStatus)
+    : 'pending';
+
   return {
     id: apiTask.id,
     project_id: apiTask.project_id,
     title: apiTask.title,
-    status: apiTask.status as TaskStatus,
+    status,
     agent_id: apiTask.assigned_to,
     progress: apiTask.progress,
     timestamp: apiTask.timestamp || Date.now(),

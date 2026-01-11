@@ -139,12 +139,12 @@ export function AgentStateProvider({
         })
         .map((task: unknown) => transformAPITask(task as Parameters<typeof transformAPITask>[0]));
 
-      if (validTasks.length > 0) {
-        dispatch({
-          type: 'TASKS_LOADED',
-          payload: validTasks,
-        });
-      }
+      // Always dispatch TASKS_LOADED, even for empty arrays.
+      // This ensures the store is cleared when API returns no tasks.
+      dispatch({
+        type: 'TASKS_LOADED',
+        payload: validTasks,
+      });
     }
   }, [tasksData]);
 

@@ -55,8 +55,13 @@ jobs:
           git config --global --unset-all credential.url || true
           git config --local --unset-all credential.url || true
           # Clear any includeIf configs that might add credentials
-          git config --global --unset-all includeIf."gitdir:*".path || true
-          git config --local --unset-all includeIf."gitdir:*".path || true
+          # Note: git config doesn't support wildcards, so we iterate over matching keys
+          for key in $(git config --global --list --name-only 2>/dev/null | grep "^includeif\." || true); do
+            git config --global --unset "$key" || true
+          done
+          for key in $(git config --local --list --name-only 2>/dev/null | grep "^includeif\." || true); do
+            git config --local --unset "$key" || true
+          done
           # Ensure we're not using any existing credentials
           git config --global credential.helper ""
 
