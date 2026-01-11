@@ -26,7 +26,14 @@ import { FRONTEND_URL, BACKEND_URL, TEST_PROJECT_IDS } from './e2e-config';
 const HAS_API_KEY = !!process.env.ANTHROPIC_API_KEY;
 
 // Use the planning phase project for task approval tests
+// WARNING: Multiple test suites share this project ID.
+// Approval tests mutate state (planning → active phase).
+// Tests must run serially to avoid race conditions.
 const PROJECT_ID = TEST_PROJECT_IDS.PLANNING;
+
+// Wrap all tests in serial describe to prevent parallel execution issues
+// (approval tests mutate shared project state)
+test.describe.serial('Task Approval Tests', () => {
 
 test.describe('Task Approval API Contract', () => {
   test.beforeEach(async ({ context, page }) => {
@@ -428,3 +435,5 @@ test.describe('Multi-Agent Execution After Task Approval - Direct API Tests', ()
     console.log(`[Multi-Agent] Approved ${responseData.approved_count} tasks`);
   });
 });
+
+}); // End of serial describe wrapper
