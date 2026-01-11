@@ -103,31 +103,37 @@ async def start_development_execution(
         logger.error(
             f"❌ Multi-agent execution timed out for project {project_id} after 300s"
         )
-        # Broadcast timeout error to UI
-        await ws_manager.broadcast(
-            {
-                "type": "development_failed",
-                "project_id": project_id,
-                "error": "Multi-agent execution timed out after 300 seconds",
-                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            },
-            project_id=project_id
-        )
+        # Broadcast timeout error to UI (guarded to prevent masking original error)
+        try:
+            await ws_manager.broadcast(
+                {
+                    "type": "development_failed",
+                    "project_id": project_id,
+                    "error": "Multi-agent execution timed out after 300 seconds",
+                    "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z")
+                },
+                project_id=project_id
+            )
+        except Exception:
+            logger.exception("Failed to broadcast development_failed (timeout)")
     except Exception as e:
         logger.error(
             f"❌ Failed to start multi-agent execution for project {project_id}: {e}",
             exc_info=True
         )
-        # Broadcast error to UI
-        await ws_manager.broadcast(
-            {
-                "type": "development_failed",
-                "project_id": project_id,
-                "error": str(e),
-                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            },
-            project_id=project_id
-        )
+        # Broadcast error to UI (guarded to prevent masking original error)
+        try:
+            await ws_manager.broadcast(
+                {
+                    "type": "development_failed",
+                    "project_id": project_id,
+                    "error": str(e),
+                    "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z")
+                },
+                project_id=project_id
+            )
+        except Exception:
+            logger.exception("Failed to broadcast development_failed (error)")
 
 
 class TaskCreateRequest(BaseModel):
