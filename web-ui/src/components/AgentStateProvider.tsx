@@ -19,7 +19,8 @@ import { agentsApi, tasksApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
 import { processWebSocketMessage } from '@/lib/websocketMessageMapper';
 import { fullStateResyncWithRetry } from '@/lib/agentStateSync';
-import type { Agent, ActivityItem } from '@/types/agentState';
+import type { Agent, ActivityItem, Task } from '@/types/agentState';
+import { isValidTaskResponse, transformAPITask } from '@/types/agentState';
 
 /**
  * Props for AgentStateProvider
@@ -118,14 +119,35 @@ export function AgentStateProvider({
 
   /**
    * Load tasks when data is fetched
-   * 
-   * Note: Tasks don't have a dedicated TASKS_LOADED action.
-   * We skip loading tasks separately to avoid complexity.
-   * Tasks will be loaded via WebSocket updates or can be accessed via SWR directly.
+   *
+   * CRITICAL: This ensures returning users see tasks even without WebSocket events.
+   * Without this, users who navigate to a project after missing WebSocket events
+   * would see an empty task list.
+   *
+   * See: GitHub Issue #231 - E2E test failures for returning user state reconciliation
    */
   useEffect(() => {
-    // Intentionally empty - tasks are managed via WebSocket or fetched on-demand
-    // This prevents infinite loops and simplifies the data flow
+    // Dispatch when tasksData.data exists, even if tasks is null/undefined
+    // This ensures stale tasks are cleared when API returns no tasks
+    if (tasksData?.data) {
+      const rawTasks = Array.isArray(tasksData.data.tasks) ? tasksData.data.tasks : [];
+
+      // Validate and transform API tasks to internal Task type
+      const validTasks: Task[] = rawTasks
+        .filter((task: unknown) => {
+          if (!isValidTaskResponse(task)) {
+            console.warn('Invalid task response skipped:', task);
+            return false;
+          }
+          return true;
+        })
+        .map((task: unknown) => transformAPITask(task as Parameters<typeof transformAPITask>[0]));
+
+      dispatch({
+        type: 'TASKS_LOADED',
+        payload: validTasks,
+      });
+    }
   }, [tasksData]);
 
   /**

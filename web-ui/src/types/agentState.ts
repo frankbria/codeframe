@@ -39,12 +39,15 @@ export type AgentMaturity =
 
 /**
  * Task execution status
+ * Must match TaskStatus in web-ui/src/types/index.ts
  */
 export type TaskStatus =
   | 'pending'       // Not started, no blockers
+  | 'assigned'      // Assigned to agent but not started
   | 'in_progress'   // Agent actively working
   | 'blocked'       // Waiting on dependencies
-  | 'completed';    // Finished
+  | 'completed'     // Finished successfully
+  | 'failed';       // Failed to complete
 
 /**
  * Activity feed event categories
@@ -118,6 +121,98 @@ export interface Task {
 }
 
 /**
+ * Raw task data from API response
+ *
+ * Used for type-safe parsing of API responses before transforming to Task.
+ * Matches the backend's task serialization format.
+ */
+export interface APITaskResponse {
+  id: number;
+  project_id: number;
+  title: string;
+  status: string;                   // Raw status string from API
+  assigned_to?: string;             // Backend uses assigned_to, not agent_id
+  depends_on?: string;              // Comma-separated task IDs
+  progress?: number;
+  timestamp?: number;               // May be missing from API
+  // Additional fields from backend (optional)
+  task_number?: string;
+  description?: string;
+  priority?: number;
+  workflow_step?: number;
+  created_at?: string;
+  completed_at?: string;
+}
+
+/**
+ * Validates that a raw API response has required Task fields
+ */
+export function isValidTaskResponse(task: unknown): task is APITaskResponse {
+  if (typeof task !== 'object' || task === null) return false;
+  const t = task as Record<string, unknown>;
+  return (
+    typeof t.id === 'number' &&
+    typeof t.project_id === 'number' &&
+    typeof t.title === 'string' &&
+    typeof t.status === 'string'
+  );
+}
+
+/**
+ * Valid task status values for strict validation.
+ * Must match TaskStatus type above.
+ */
+const VALID_TASK_STATUSES: readonly TaskStatus[] = [
+  'pending',
+  'assigned',
+  'in_progress',
+  'blocked',
+  'completed',
+  'failed',
+];
+
+/**
+ * Parses a comma-separated string of task IDs into a number array.
+ * Filters out invalid values (empty strings, NaN).
+ */
+function parseDependsOn(dependsOn: string | undefined): number[] {
+  if (!dependsOn || dependsOn.trim() === '') {
+    return [];
+  }
+  return dependsOn
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+    .map((s) => parseInt(s, 10))
+    .filter((n) => !isNaN(n));
+}
+
+/**
+ * Transforms an API task response to internal Task type.
+ * Uses strict status validation - invalid statuses default to 'pending'.
+ */
+export function transformAPITask(apiTask: APITaskResponse): Task {
+  // Strict status validation: only accept known values, default to 'pending'
+  const status: TaskStatus = VALID_TASK_STATUSES.includes(apiTask.status as TaskStatus)
+    ? (apiTask.status as TaskStatus)
+    : 'pending';
+
+  // Parse depends_on string into blocked_by number array
+  const blocked_by = parseDependsOn(apiTask.depends_on);
+
+  return {
+    id: apiTask.id,
+    project_id: apiTask.project_id,
+    title: apiTask.title,
+    status,
+    agent_id: apiTask.assigned_to,
+    blocked_by: blocked_by.length > 0 ? blocked_by : undefined,
+    progress: apiTask.progress,
+    timestamp: apiTask.timestamp || Date.now(),
+  };
+}
+
+/**
  * Single entry in the activity feed
  */
 export interface ActivityItem {
@@ -163,6 +258,15 @@ export interface AgentState {
 export interface AgentsLoadedAction {
   type: 'AGENTS_LOADED';
   payload: Agent[];
+}
+
+/**
+ * Load initial tasks from API
+ * Enables returning users to see tasks without WebSocket events
+ */
+export interface TasksLoadedAction {
+  type: 'TASKS_LOADED';
+  payload: Task[];
 }
 
 /**
@@ -288,6 +392,7 @@ export interface FullResyncAction {
  */
 export type AgentAction =
   | AgentsLoadedAction
+  | TasksLoadedAction
   | AgentCreatedAction
   | AgentUpdatedAction
   | AgentRetiredAction

@@ -717,7 +717,92 @@ test('should show correct state when X already completed', async ({ page }) => {
 ### State Reconciliation Test Files
 
 - `test_state_reconciliation.spec.ts` - Comprehensive state reconciliation tests
-- `test_late_joining_user.spec.ts` - Additional late-joining user scenarios
+- `test_late_joining_user.spec.ts` - Late-joining user scenarios (may catch WebSocket events)
+- `test_returning_user.spec.ts` - Returning user scenarios (no WebSocket events)
+
+## Returning User vs Late-Joining User
+
+**Critical distinction** (GitHub Issue #231):
+
+| Scenario | WebSocket | Data Source | Test Pattern |
+|----------|-----------|-------------|--------------|
+| **Late-Joining** | May catch some events | API + partial WebSocket | Navigate during active session |
+| **Returning User** | No events received | API only | Block WebSocket, navigate to seeded project |
+
+### The Returning User Problem (Fixed in #231)
+
+Users who navigate to a project AFTER all events occurred (page refresh, login later, new tab) don't receive WebSocket history. Before the fix:
+
+```typescript
+// OLD BEHAVIOR: Tasks only loaded via WebSocket events
+useEffect(() => {
+  // Intentionally empty - tasks managed via WebSocket
+}, [tasksData]);
+```
+
+After the fix:
+
+```typescript
+// NEW BEHAVIOR: Tasks loaded from API on mount
+useEffect(() => {
+  if (tasksData?.data?.tasks) {
+    dispatch({ type: 'TASKS_LOADED', payload: tasksData.data.tasks });
+  }
+}, [tasksData]);
+```
+
+### Writing Returning User Tests
+
+Block WebSocket to ensure tests don't rely on real-time events:
+
+```typescript
+import { blockWebSocketConnections } from './test-utils';
+
+test('should show state when returning to project', async ({ page }) => {
+  // Block WebSocket BEFORE navigation
+  const unblock = await blockWebSocketConnections(page);
+
+  // Navigate as returning user (no WebSocket history)
+  await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
+
+  // Wait for API data to load
+  await page.waitForLoadState('networkidle');
+
+  // Verify UI shows correct state from API
+  await expect(page.locator('[data-testid="task-card"]')).toHaveCount(5);
+
+  // Cleanup
+  await unblock();
+});
+```
+
+### Helper Functions
+
+Use these utilities from `test-utils.ts`:
+
+```typescript
+// Block WebSocket connections
+const unblock = await blockWebSocketConnections(page);
+
+// Verify task state from API
+await verifyTaskStateFromAPI(page, projectId, {
+  inProgress: 2,
+  completed: 3,
+  total: 5,
+});
+
+// Verify task state from DOM
+const { actualCounts, passed, errors } = await verifyTaskStateFromDOM(page, {
+  inProgress: 2,
+  completed: 3,
+});
+
+// Verify project phase
+await verifyProjectPhaseFromAPI(page, projectId, 'active');
+
+// Verify project completion
+const { isComplete, hasActiveWork } = await verifyProjectCompletionFromDOM(page);
+```
 
 ### Smoke Tests
 

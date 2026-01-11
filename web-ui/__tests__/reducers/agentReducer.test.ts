@@ -24,6 +24,7 @@ import {
 import type {
   AgentAction,
   AgentsLoadedAction,
+  TasksLoadedAction,
   AgentCreatedAction,
   AgentUpdatedAction,
   AgentRetiredAction,
@@ -97,6 +98,85 @@ describe('agentReducer', () => {
 
       expect(newState.agents).toEqual([]);
       expect(newState.agents.length).toBe(0);
+    });
+  });
+
+  // ============================================================================
+  // TASKS_LOADED Action Tests (Returning User State Reconciliation)
+  // See: GitHub Issue #231 - E2E test failures for returning user state reconciliation
+  // ============================================================================
+  describe('TASKS_LOADED', () => {
+    it('should load initial tasks into empty state', () => {
+      const initialState = getInitialState();
+      const tasks = [
+        createMockTask({ id: 1, title: 'Task 1' }),
+        createMockTask({ id: 2, title: 'Task 2' }),
+      ];
+
+      const action: TasksLoadedAction = {
+        type: 'TASKS_LOADED',
+        payload: tasks,
+      };
+
+      const newState = agentReducer(initialState, action);
+
+      expect(newState.tasks).toEqual(tasks);
+      expect(newState.tasks.length).toBe(2);
+      expect(newState).not.toBe(initialState); // Immutability check
+    });
+
+    it('should replace existing tasks when loading', () => {
+      const initialState = createInitialAgentState({
+        tasks: [createMockTask({ id: 100, title: 'Old task' })],
+      });
+
+      const newTasks = [
+        createMockTask({ id: 1, title: 'New task 1' }),
+        createMockTask({ id: 2, title: 'New task 2' }),
+      ];
+
+      const action: TasksLoadedAction = {
+        type: 'TASKS_LOADED',
+        payload: newTasks,
+      };
+
+      const newState = agentReducer(initialState, action);
+
+      expect(newState.tasks).toEqual(newTasks);
+      expect(newState.tasks.length).toBe(2);
+      expect(newState.tasks.find((t) => t.id === 100)).toBeUndefined();
+    });
+
+    it('should handle loading empty task array', () => {
+      const initialState = createInitialAgentState({
+        tasks: [createMockTask()],
+      });
+
+      const action: TasksLoadedAction = {
+        type: 'TASKS_LOADED',
+        payload: [],
+      };
+
+      const newState = agentReducer(initialState, action);
+
+      expect(newState.tasks).toEqual([]);
+      expect(newState.tasks.length).toBe(0);
+    });
+
+    it('should not mutate original state', () => {
+      const originalTasks = [createMockTask({ id: 1 })];
+      const initialState = createInitialAgentState({ tasks: originalTasks });
+      const tasksSnapshot = [...originalTasks];
+
+      const action: TasksLoadedAction = {
+        type: 'TASKS_LOADED',
+        payload: [createMockTask({ id: 2 })],
+      };
+
+      agentReducer(initialState, action);
+
+      // Original tasks array should be unchanged
+      expect(initialState.tasks).toEqual(tasksSnapshot);
     });
   });
 

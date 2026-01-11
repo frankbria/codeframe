@@ -717,3 +717,238 @@ export async function answerDiscoveryQuestion(
     // This is a valid end state, so we continue
   }
 }
+
+// ============================================================================
+// STATE VERIFICATION HELPERS (for returning user tests)
+// ============================================================================
+
+/**
+ * Expected task state counts by status
+ */
+export interface ExpectedTaskState {
+  inProgress?: number;
+  completed?: number;
+  pending?: number;
+  blocked?: number;
+  total?: number;
+}
+
+/**
+ * Verify task state from API matches expected counts
+ *
+ * Use this to validate that API returns expected task data before checking UI.
+ * This is critical for returning user tests where WebSocket is blocked.
+ *
+ * @param page - Playwright page object
+ * @param projectId - Project ID to check
+ * @param expected - Expected task counts by status
+ * @throws Error if task counts don't match
+ *
+ * @example
+ * await verifyTaskStateFromAPI(page, '3', {
+ *   inProgress: 2,
+ *   completed: 1,
+ *   total: 5
+ * });
+ */
+export async function verifyTaskStateFromAPI(
+  page: Page,
+  projectId: string,
+  expected: ExpectedTaskState
+): Promise<{ tasks: any[]; counts: Required<ExpectedTaskState> }> {
+  // Get auth token
+  const token = await getAuthToken(page);
+  if (!token) {
+    throw new Error('No auth token available');
+  }
+
+  // Fetch tasks from API
+  const response = await page.request.get(`${BACKEND_URL}/api/projects/${projectId}/tasks`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok()) {
+    throw new Error(`Failed to fetch tasks: ${response.status()}`);
+  }
+
+  const data = await response.json();
+  const tasks = data.tasks || [];
+
+  // Count tasks by status
+  const counts = {
+    inProgress: tasks.filter((t: { status: string }) => t.status === 'in_progress').length,
+    completed: tasks.filter((t: { status: string }) => t.status === 'completed').length,
+    pending: tasks.filter((t: { status: string }) => t.status === 'pending').length,
+    blocked: tasks.filter((t: { status: string }) => t.status === 'blocked').length,
+    total: tasks.length,
+  };
+
+  // Validate expected counts
+  if (expected.inProgress !== undefined && counts.inProgress !== expected.inProgress) {
+    throw new Error(`Expected ${expected.inProgress} in-progress tasks, got ${counts.inProgress}`);
+  }
+  if (expected.completed !== undefined && counts.completed !== expected.completed) {
+    throw new Error(`Expected ${expected.completed} completed tasks, got ${counts.completed}`);
+  }
+  if (expected.pending !== undefined && counts.pending !== expected.pending) {
+    throw new Error(`Expected ${expected.pending} pending tasks, got ${counts.pending}`);
+  }
+  if (expected.blocked !== undefined && counts.blocked !== expected.blocked) {
+    throw new Error(`Expected ${expected.blocked} blocked tasks, got ${counts.blocked}`);
+  }
+  if (expected.total !== undefined && counts.total !== expected.total) {
+    throw new Error(`Expected ${expected.total} total tasks, got ${counts.total}`);
+  }
+
+  return { tasks, counts };
+}
+
+/**
+ * Verify project phase from API
+ *
+ * @param page - Playwright page object
+ * @param projectId - Project ID to check
+ * @param expectedPhase - Expected phase (discovery, planning, active, review, complete)
+ * @throws Error if phase doesn't match
+ */
+export async function verifyProjectPhaseFromAPI(
+  page: Page,
+  projectId: string,
+  expectedPhase: string
+): Promise<{ project: any }> {
+  const token = await getAuthToken(page);
+  if (!token) {
+    throw new Error('No auth token available');
+  }
+
+  const response = await page.request.get(`${BACKEND_URL}/api/projects/${projectId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok()) {
+    throw new Error(`Failed to fetch project: ${response.status()}`);
+  }
+
+  const project = await response.json();
+
+  if (project.phase !== expectedPhase) {
+    throw new Error(`Expected project phase '${expectedPhase}', got '${project.phase}'`);
+  }
+
+  return { project };
+}
+
+/**
+ * Verify task state from DOM elements
+ *
+ * Checks the actual UI for task status indicators.
+ * Use after page has loaded to verify UI matches expected state.
+ *
+ * @param page - Playwright page object
+ * @param expected - Expected task counts by status
+ * @returns Object with actual counts and whether validation passed
+ */
+export async function verifyTaskStateFromDOM(
+  page: Page,
+  expected: ExpectedTaskState
+): Promise<{ actualCounts: ExpectedTaskState; passed: boolean; errors: string[] }> {
+  const errors: string[] = [];
+
+  // Look for task items with status indicators
+  // Common patterns: data-status, data-task-status, status badge classes
+  const inProgressLocator = page.locator('[data-status="in_progress"], [data-task-status="in_progress"]');
+  const completedLocator = page.locator('[data-status="completed"], [data-task-status="completed"]');
+  const pendingLocator = page.locator('[data-status="pending"], [data-task-status="pending"]');
+  const blockedLocator = page.locator('[data-status="blocked"], [data-task-status="blocked"]');
+  const allTasksLocator = page.locator('[data-testid="task-item"], [data-testid="task-card"]');
+
+  const actualCounts: ExpectedTaskState = {
+    inProgress: await inProgressLocator.count(),
+    completed: await completedLocator.count(),
+    pending: await pendingLocator.count(),
+    blocked: await blockedLocator.count(),
+    total: await allTasksLocator.count(),
+  };
+
+  // Validate expected counts
+  if (expected.inProgress !== undefined && actualCounts.inProgress !== expected.inProgress) {
+    errors.push(`Expected ${expected.inProgress} in-progress tasks in DOM, found ${actualCounts.inProgress}`);
+  }
+  if (expected.completed !== undefined && actualCounts.completed !== expected.completed) {
+    errors.push(`Expected ${expected.completed} completed tasks in DOM, found ${actualCounts.completed}`);
+  }
+  if (expected.pending !== undefined && actualCounts.pending !== expected.pending) {
+    errors.push(`Expected ${expected.pending} pending tasks in DOM, found ${actualCounts.pending}`);
+  }
+  if (expected.blocked !== undefined && actualCounts.blocked !== expected.blocked) {
+    errors.push(`Expected ${expected.blocked} blocked tasks in DOM, found ${actualCounts.blocked}`);
+  }
+  if (expected.total !== undefined && actualCounts.total !== expected.total) {
+    errors.push(`Expected ${expected.total} total tasks in DOM, found ${actualCounts.total}`);
+  }
+
+  return { actualCounts, passed: errors.length === 0, errors };
+}
+
+/**
+ * Verify project completion state from UI
+ *
+ * Checks for completion indicators in the UI.
+ *
+ * @param page - Playwright page object
+ * @returns Object with completion state details
+ */
+export async function verifyProjectCompletionFromDOM(
+  page: Page
+): Promise<{ isComplete: boolean; hasActiveWork: boolean; details: string }> {
+  // Check for completion badge/status
+  const statusBadge = page.locator('[data-testid="project-status"], [data-testid="phase-badge"]');
+  let statusText = '';
+  if (await statusBadge.first().isVisible()) {
+    statusText = await statusBadge.first().textContent() || '';
+  }
+
+  const isComplete = /complete|done|finished/i.test(statusText);
+
+  // Check for any in-progress or pending tasks
+  const inProgressTasks = await page.locator('[data-status="in_progress"]').count();
+  const pendingTasks = await page.locator('[data-status="pending"]').count();
+  const hasActiveWork = inProgressTasks > 0 || pendingTasks > 0;
+
+  return {
+    isComplete,
+    hasActiveWork,
+    details: `Status: "${statusText}", In-progress: ${inProgressTasks}, Pending: ${pendingTasks}`,
+  };
+}
+
+/**
+ * Block WebSocket connections to simulate returning user scenario
+ *
+ * CRITICAL: Call this BEFORE navigating to the project page.
+ * Returns a cleanup function to restore WebSocket connections.
+ *
+ * @param page - Playwright page object
+ * @returns Cleanup function to unblock WebSocket
+ *
+ * @example
+ * const unblock = await blockWebSocketConnections(page);
+ * await page.goto('/projects/3');
+ * // ... test assertions ...
+ * await unblock();
+ */
+export async function blockWebSocketConnections(page: Page): Promise<() => Promise<void>> {
+  // Block all WebSocket upgrade requests
+  await page.route('**/ws**', async (route) => {
+    await route.abort('connectionrefused');
+  });
+
+  await page.route('**/localhost**/ws**', async (route) => {
+    await route.abort('connectionrefused');
+  });
+
+  return async () => {
+    await page.unroute('**/ws**');
+    await page.unroute('**/localhost**/ws**');
+  };
+}
