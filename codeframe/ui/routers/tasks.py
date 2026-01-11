@@ -5,12 +5,16 @@ This module provides API endpoints for:
 - Task updates
 - Task status management
 - Task approval (for planning phase automation)
+- Multi-agent execution trigger (P0 fix)
 """
 
+import asyncio
 import logging
-from typing import List, Optional
+import os
+from datetime import datetime, UTC
+from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from codeframe.core.models import Task, TaskStatus
@@ -21,6 +25,7 @@ from codeframe.ui.shared import manager
 from codeframe.ui.websocket_broadcasts import broadcast_development_started
 from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
+from codeframe.agents.lead_agent import LeadAgent
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,101 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 # Also register under project-scoped prefix for task approval
 project_router = APIRouter(prefix="/api/projects", tags=["tasks"])
+
+
+# ============================================================================
+# Background Task for Multi-Agent Execution (P0 Fix)
+# ============================================================================
+
+
+async def start_development_execution(
+    project_id: int,
+    db: Database,
+    ws_manager: Any,
+    api_key: str
+) -> None:
+    """
+    Background task to start multi-agent execution after task approval.
+
+    This function:
+    1. Creates a LeadAgent instance for the project
+    2. Calls start_multi_agent_execution() to create agents and assign tasks
+    3. Handles errors gracefully with logging and WebSocket notifications
+
+    Workflow:
+    - LeadAgent loads all approved tasks from database
+    - Builds dependency graph for task ordering
+    - Creates agents on-demand via AgentPoolManager
+    - Assigns tasks to agents and executes in parallel
+    - Broadcasts agent_created and task_assigned events via WebSocket
+    - Continues until all tasks complete or fail
+
+    Args:
+        project_id: Project ID to start execution for
+        db: Database instance
+        ws_manager: WebSocket manager for broadcasts
+        api_key: Anthropic API key for agent creation
+    """
+    try:
+        logger.info(f"🚀 Starting multi-agent execution for project {project_id}")
+
+        # Create LeadAgent instance with WebSocket manager for event broadcasts
+        lead_agent = LeadAgent(
+            project_id=project_id,
+            db=db,
+            api_key=api_key,
+            ws_manager=ws_manager
+        )
+
+        # Start multi-agent execution (creates agents and assigns tasks)
+        # This is the main coordination loop that:
+        # 1. Loads all tasks and builds dependency graph
+        # 2. Creates agents on-demand via agent_pool_manager.get_or_create_agent()
+        # 3. Assigns tasks to agents and executes in parallel
+        # 4. Broadcasts agent_created events when agents are created
+        # 5. Broadcasts task_assigned events when tasks are assigned
+        # 6. Continues until all tasks complete or fail
+        summary = await lead_agent.start_multi_agent_execution(
+            max_retries=3,
+            max_concurrent=5,
+            timeout=300
+        )
+
+        logger.info(
+            f"✅ Multi-agent execution completed for project {project_id}: "
+            f"{summary.get('completed', 0)}/{summary.get('total_tasks', 0)} tasks completed, "
+            f"{summary.get('failed', 0)} failed, {summary.get('execution_time', 0):.2f}s"
+        )
+
+    except asyncio.TimeoutError:
+        logger.error(
+            f"❌ Multi-agent execution timed out for project {project_id} after 300s"
+        )
+        # Broadcast timeout error to UI
+        await ws_manager.broadcast(
+            {
+                "type": "development_failed",
+                "project_id": project_id,
+                "error": "Multi-agent execution timed out after 300 seconds",
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            },
+            project_id=project_id
+        )
+    except Exception as e:
+        logger.error(
+            f"❌ Failed to start multi-agent execution for project {project_id}: {e}",
+            exc_info=True
+        )
+        # Broadcast error to UI
+        await ws_manager.broadcast(
+            {
+                "type": "development_failed",
+                "project_id": project_id,
+                "error": str(e),
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            },
+            project_id=project_id
+        )
 
 
 class TaskCreateRequest(BaseModel):
@@ -136,6 +236,7 @@ class TaskApprovalResponse(BaseModel):
 async def approve_tasks(
     project_id: int,
     request: TaskApprovalRequest,
+    background_tasks: BackgroundTasks,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> TaskApprovalResponse:
@@ -143,11 +244,13 @@ async def approve_tasks(
 
     This endpoint allows users to approve generated tasks after reviewing them.
     Approved tasks are updated to 'pending' status and the project phase
-    transitions to 'active' (development).
+    transitions to 'active' (development). After approval, multi-agent execution
+    is triggered in the background.
 
     Args:
         project_id: Project ID
         request: Approval request with approved flag and optional exclusions
+        background_tasks: FastAPI background tasks for async execution
         db: Database connection
         current_user: Authenticated user
 
@@ -229,6 +332,25 @@ async def approve_tasks(
         approved_count=len(approved_tasks),
         excluded_count=len(excluded_tasks),
     )
+
+    # START MULTI-AGENT EXECUTION IN BACKGROUND
+    # Schedule background task to create agents and start task execution
+    # This follows the same pattern as start_project_agent in agents.py
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if api_key:
+        # Schedule background task to start multi-agent execution
+        background_tasks.add_task(
+            start_development_execution,
+            project_id,
+            db,
+            manager,
+            api_key
+        )
+        logger.info(f"✅ Scheduled multi-agent execution for project {project_id}")
+    else:
+        logger.warning(
+            f"⚠️  ANTHROPIC_API_KEY not configured - cannot start agents for project {project_id}"
+        )
 
     logger.info(
         f"Tasks approved for project {project_id}: "

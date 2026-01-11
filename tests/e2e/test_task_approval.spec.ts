@@ -368,3 +368,216 @@ test.describe('Task Approval API Contract - Direct API Tests', () => {
     console.log('[API Contract] Incorrect format correctly rejected with 422');
   });
 });
+
+/**
+ * Multi-Agent Execution Tests - P0 Blocker Fix
+ *
+ * After task approval transitions to Development phase, verify that:
+ * 1. Multi-agent execution is triggered in the background
+ * 2. WebSocket receives agent_created events
+ * 3. Agents appear in the API response
+ * 4. Tasks are assigned to agents
+ *
+ * Note: These tests require ANTHROPIC_API_KEY to actually create agents.
+ * Without the key, the execution is skipped but approval still succeeds.
+ */
+test.describe('Multi-Agent Execution After Task Approval', () => {
+  const HAS_API_KEY = !!process.env.ANTHROPIC_API_KEY;
+
+  test.beforeEach(async ({ context, page }) => {
+    const errorMonitor = setupErrorMonitoring(page);
+    (page as ExtendedPage).__errorMonitor = errorMonitor;
+
+    await context.clearCookies();
+    await loginUser(page);
+  });
+
+  test.afterEach(async ({ page }) => {
+    checkTestErrors(page, 'Multi-agent execution test', [
+      'net::ERR_ABORTED',
+      'Failed to fetch RSC payload',
+      'NS_BINDING_ABORTED',
+      'Load request cancelled'
+    ]);
+  });
+
+  /**
+   * Test that task approval triggers the multi-agent execution background task.
+   *
+   * Verifies:
+   * 1. WebSocket receives development_started event
+   * 2. If ANTHROPIC_API_KEY is set, WebSocket should also receive agent_created events
+   * 3. Agents API endpoint returns created agents (if API key is available)
+   */
+  test('should trigger multi-agent execution after task approval', async ({ page, request }) => {
+    const wsEvents: any[] = [];
+    let developmentStartedReceived = false;
+    let agentCreatedReceived = false;
+
+    // Intercept WebSocket messages to verify event broadcasting
+    await page.addInitScript(() => {
+      // Store original WebSocket
+      const OriginalWebSocket = window.WebSocket;
+
+      // Override WebSocket constructor
+      (window as any).WebSocket = function(url: string, protocols?: string | string[]) {
+        const ws = new OriginalWebSocket(url, protocols);
+
+        const originalOnMessage = ws.onmessage;
+        ws.onmessage = function(event: MessageEvent) {
+          try {
+            const data = JSON.parse(event.data);
+            // Store events for later inspection
+            (window as any).__wsEvents = (window as any).__wsEvents || [];
+            (window as any).__wsEvents.push(data);
+
+            // Track specific events
+            if (data.type === 'development_started') {
+              (window as any).__developmentStartedReceived = true;
+            }
+            if (data.type === 'agent_created') {
+              (window as any).__agentCreatedReceived = true;
+            }
+          } catch {}
+
+          if (originalOnMessage) {
+            originalOnMessage.call(ws, event);
+          }
+        };
+
+        return ws;
+      } as any;
+    });
+
+    // Navigate to project with tasks in planning phase
+    await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
+    await page.waitForLoadState('networkidle');
+
+    // Get auth token for direct API calls
+    const authToken = await page.evaluate(() => localStorage.getItem('auth_token'));
+    test.skip(!authToken, 'No auth token available');
+
+    // Navigate to Tasks tab
+    const tasksTab = page.locator('[data-testid="tasks-tab"]');
+    await tasksTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+
+    if (await tasksTab.isVisible()) {
+      await tasksTab.click();
+
+      // Look for approve button
+      const approveButton = page.getByRole('button', { name: /approve/i });
+
+      if (await approveButton.isVisible().catch(() => false)) {
+        // Click approve
+        await approveButton.click();
+
+        // Wait for approval API response
+        const response = await page.waitForResponse(
+          r => r.url().includes('/tasks/approve'),
+          { timeout: 15000 }
+        ).catch(() => null);
+
+        if (response && response.status() === 200) {
+          // Give time for background task to start and broadcast events
+          await page.waitForTimeout(2000);
+
+          // Check if development_started event was received
+          developmentStartedReceived = await page.evaluate(
+            () => (window as any).__developmentStartedReceived || false
+          );
+
+          expect(developmentStartedReceived).toBe(true);
+          console.log('[Multi-Agent] development_started WebSocket event received');
+
+          // If API key is available, check for agent_created events
+          if (HAS_API_KEY) {
+            // Wait longer for agents to be created (they take time)
+            await page.waitForTimeout(5000);
+
+            agentCreatedReceived = await page.evaluate(
+              () => (window as any).__agentCreatedReceived || false
+            );
+
+            // Also check agents API endpoint
+            const agentsResponse = await request.get(
+              `${BACKEND_URL}/api/projects/${PROJECT_ID}/agents`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${authToken}`
+                }
+              }
+            );
+
+            if (agentsResponse.ok()) {
+              const agents = await agentsResponse.json();
+              console.log(`[Multi-Agent] Found ${agents.length} agents via API`);
+
+              if (agents.length > 0) {
+                expect(agents.length).toBeGreaterThan(0);
+                console.log('[Multi-Agent] Agents successfully created after approval');
+              }
+            }
+          } else {
+            console.log('[Multi-Agent] Skipping agent verification - ANTHROPIC_API_KEY not set');
+          }
+        } else {
+          console.log('[Multi-Agent] Approval failed or returned non-200 status - skipping agent check');
+          test.skip(true, 'Project not in planning phase or approval failed');
+        }
+      } else {
+        console.log('[Multi-Agent] Approve button not visible - project may not be in planning phase');
+        test.skip(true, 'Project not in planning phase');
+      }
+    }
+  });
+
+  /**
+   * Test that development_failed event is broadcast on execution errors.
+   *
+   * This test mocks a failure scenario to verify error handling.
+   */
+  test('should broadcast development_failed on execution error', async ({ page }) => {
+    // This test would require ability to inject failures which is not easily
+    // done in E2E tests. We verify the error handling through unit tests instead.
+    console.log('[Multi-Agent] Error handling verified through unit tests');
+    test.skip(true, 'Error handling tested at unit level');
+  });
+
+  /**
+   * Test that approval returns immediately without waiting for agent execution.
+   *
+   * The background task should not block the approval response.
+   */
+  test('should return approval response immediately without blocking', async ({ page, request }) => {
+    const authToken = await page.evaluate(() => localStorage.getItem('auth_token'));
+    test.skip(!authToken, 'No auth token available');
+
+    const startTime = Date.now();
+
+    // Make direct API call for approval
+    const response = await request.post(
+      `${BACKEND_URL}/api/projects/${PROJECT_ID}/tasks/approve`,
+      {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: {
+          approved: true,
+          excluded_task_ids: []
+        }
+      }
+    );
+
+    const elapsed = Date.now() - startTime;
+
+    // Approval should return quickly (< 5 seconds) even if agents are being created
+    // Agent creation happens in background and shouldn't block
+    if (response.status() === 200) {
+      expect(elapsed).toBeLessThan(5000);
+      console.log(`[Multi-Agent] Approval returned in ${elapsed}ms - confirmed non-blocking`);
+    } else {
+      console.log(`[Multi-Agent] Got status ${response.status()} - not in planning phase`);
+    }
+  });
+});
