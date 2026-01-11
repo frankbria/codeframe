@@ -118,6 +118,59 @@ export interface Task {
 }
 
 /**
+ * Raw task data from API response
+ *
+ * Used for type-safe parsing of API responses before transforming to Task.
+ * Matches the backend's task serialization format.
+ */
+export interface APITaskResponse {
+  id: number;
+  project_id: number;
+  title: string;
+  status: string;                   // Raw status string from API
+  assigned_to?: string;             // Backend uses assigned_to, not agent_id
+  depends_on?: string;              // Comma-separated task IDs
+  progress?: number;
+  timestamp?: number;               // May be missing from API
+  // Additional fields from backend (optional)
+  task_number?: string;
+  description?: string;
+  priority?: number;
+  workflow_step?: number;
+  created_at?: string;
+  completed_at?: string;
+}
+
+/**
+ * Validates that a raw API response has required Task fields
+ */
+export function isValidTaskResponse(task: unknown): task is APITaskResponse {
+  if (typeof task !== 'object' || task === null) return false;
+  const t = task as Record<string, unknown>;
+  return (
+    typeof t.id === 'number' &&
+    typeof t.project_id === 'number' &&
+    typeof t.title === 'string' &&
+    typeof t.status === 'string'
+  );
+}
+
+/**
+ * Transforms an API task response to internal Task type
+ */
+export function transformAPITask(apiTask: APITaskResponse): Task {
+  return {
+    id: apiTask.id,
+    project_id: apiTask.project_id,
+    title: apiTask.title,
+    status: apiTask.status as TaskStatus,
+    agent_id: apiTask.assigned_to,
+    progress: apiTask.progress,
+    timestamp: apiTask.timestamp || Date.now(),
+  };
+}
+
+/**
  * Single entry in the activity feed
  */
 export interface ActivityItem {

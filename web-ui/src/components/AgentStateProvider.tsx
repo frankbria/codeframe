@@ -19,7 +19,8 @@ import { agentsApi, tasksApi, activityApi } from '@/lib/api';
 import { getWebSocketClient } from '@/lib/websocket';
 import { processWebSocketMessage } from '@/lib/websocketMessageMapper';
 import { fullStateResyncWithRetry } from '@/lib/agentStateSync';
-import type { Agent, ActivityItem } from '@/types/agentState';
+import type { Agent, ActivityItem, Task } from '@/types/agentState';
+import { isValidTaskResponse, transformAPITask } from '@/types/agentState';
 
 /**
  * Props for AgentStateProvider
@@ -126,20 +127,24 @@ export function AgentStateProvider({
    * See: GitHub Issue #231 - E2E test failures for returning user state reconciliation
    */
   useEffect(() => {
-    if (tasksData?.data?.tasks) {
-      // Transform API tasks to include timestamp if missing
-      const tasksWithTimestamp = tasksData.data.tasks.map(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (task: any) => ({
-          ...task,
-          timestamp: task.timestamp || Date.now(),
+    if (tasksData?.data?.tasks && Array.isArray(tasksData.data.tasks)) {
+      // Validate and transform API tasks to internal Task type
+      const validTasks: Task[] = tasksData.data.tasks
+        .filter((task: unknown) => {
+          if (!isValidTaskResponse(task)) {
+            console.warn('Invalid task response skipped:', task);
+            return false;
+          }
+          return true;
         })
-      );
+        .map((task: unknown) => transformAPITask(task as Parameters<typeof transformAPITask>[0]));
 
-      dispatch({
-        type: 'TASKS_LOADED',
-        payload: tasksWithTimestamp,
-      });
+      if (validTasks.length > 0) {
+        dispatch({
+          type: 'TASKS_LOADED',
+          payload: validTasks,
+        });
+      }
     }
   }, [tasksData]);
 

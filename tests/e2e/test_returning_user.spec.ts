@@ -18,13 +18,13 @@
  * See: GitHub Issue #231 - E2E test failures for returning user state reconciliation
  */
 
-import { test, expect, Page, APIRequestContext, Route } from '@playwright/test';
+import { test, expect, Page, APIRequestContext } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
   checkTestErrors,
   ExtendedPage,
-  waitForAPIResponse,
+  blockWebSocketConnections,
 } from './test-utils';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -52,32 +52,6 @@ async function getAuthenticatedRequest(page: Page): Promise<{ request: APIReques
 
   const data = await response.json();
   return { request: page.request, token: data.access_token };
-}
-
-/**
- * Block WebSocket connections to simulate returning user scenario
- *
- * Returns a function to unblock if needed.
- */
-async function blockWebSocket(page: Page): Promise<() => Promise<void>> {
-  const wsRoutes: Route[] = [];
-
-  // Block all WebSocket upgrade requests
-  await page.route('**/ws**', async (route) => {
-    wsRoutes.push(route);
-    await route.abort('connectionrefused');
-  });
-
-  // Also block localhost WebSocket connections
-  await page.route('**/localhost**/ws**', async (route) => {
-    wsRoutes.push(route);
-    await route.abort('connectionrefused');
-  });
-
-  return async () => {
-    await page.unroute('**/ws**');
-    await page.unroute('**/localhost**/ws**');
-  };
 }
 
 /**
@@ -205,7 +179,7 @@ test.describe('Returning User Scenarios', () => {
       });
 
       // Block WebSocket to simulate returning user (missed all events)
-      const unblock = await blockWebSocket(page);
+      const unblock = await blockWebSocketConnections(page);
       console.log('🔒 WebSocket blocked - simulating returning user');
 
       // Navigate to project as a "returning user" (no WebSocket history)
@@ -235,14 +209,15 @@ test.describe('Returning User Scenarios', () => {
       const inProgressCount = await inProgressTasks.count();
       console.log(`📊 In-progress tasks visible in UI: ${inProgressCount}`);
 
-      // UI should show tasks - exact count depends on component rendering
-      // At minimum, some tasks should be visible
-      const allTasks = page.locator('[data-testid="task-item"], [data-testid="task-card"]');
+      // Verify total task count matches API (5 tasks seeded for Project 3)
+      // Using task-card since TaskList renders li elements with data-testid="task-card"
+      const allTasks = page.locator('[data-testid="task-card"]');
       const totalTasksVisible = await allTasks.count();
       console.log(`📊 Total tasks visible in UI: ${totalTasksVisible}`);
 
-      // ASSERTION: At least one task should be visible
-      expect(totalTasksVisible).toBeGreaterThan(0);
+      // ASSERTION: All 5 seeded tasks should be visible (matching API verification above)
+      // The TaskList component shows all tasks by default with "All" filter
+      expect(totalTasksVisible).toBe(5);
 
       // Verify project phase badge shows correct state
       // Look for active/development indicators
@@ -261,7 +236,7 @@ test.describe('Returning User Scenarios', () => {
       const { request, token } = await getAuthenticatedRequest(page);
 
       // Block WebSocket to simulate returning user
-      const unblock = await blockWebSocket(page);
+      const unblock = await blockWebSocketConnections(page);
 
       // Navigate to active project
       await page.goto(`${FRONTEND_URL}/projects/${ACTIVE_PROJECT_ID}`);
@@ -321,7 +296,7 @@ test.describe('Returning User Scenarios', () => {
       });
 
       // Block WebSocket to simulate returning user
-      const unblock = await blockWebSocket(page);
+      const unblock = await blockWebSocketConnections(page);
       console.log('🔒 WebSocket blocked - simulating returning user');
 
       // Navigate to completed project
@@ -385,10 +360,11 @@ test.describe('Returning User Scenarios', () => {
     });
 
     test('should show quality gates as passed for completed project', async () => {
-      const { request, token } = await getAuthenticatedRequest(page);
+      // Authenticate but only need loginUser for this test (no direct API calls needed)
+      await getAuthenticatedRequest(page);
 
       // Block WebSocket
-      const unblock = await blockWebSocket(page);
+      const unblock = await blockWebSocketConnections(page);
 
       // Navigate to completed project
       await page.goto(`${FRONTEND_URL}/projects/${COMPLETED_PROJECT_ID}`);
@@ -440,7 +416,7 @@ test.describe('Returning User Scenarios', () => {
       await verifyProjectPhase(request, token, REVIEW_PROJECT_ID, 'review');
 
       // Block WebSocket
-      const unblock = await blockWebSocket(page);
+      const unblock = await blockWebSocketConnections(page);
       console.log('🔒 WebSocket blocked - simulating returning user');
 
       // Navigate to review project
@@ -514,10 +490,11 @@ test.describe('Returning User Scenarios', () => {
      * function correctly fetches and populates state when WebSocket is unavailable.
      */
     test('should load complete state from API endpoints without WebSocket @returning-user', async () => {
-      const { request, token } = await getAuthenticatedRequest(page);
+      // Authenticate (sets up session for frontend API calls)
+      await getAuthenticatedRequest(page);
 
       // Block WebSocket BEFORE navigation
-      const unblock = await blockWebSocket(page);
+      const unblock = await blockWebSocketConnections(page);
       console.log('🔒 WebSocket blocked before navigation');
 
       // Navigate to active project
