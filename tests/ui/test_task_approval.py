@@ -19,8 +19,15 @@ from codeframe.ui.routers.tasks import approve_tasks, TaskApprovalRequest
 
 
 @pytest.fixture
-def mock_background_tasks():
-    """Create mock BackgroundTasks."""
+def mock_background_tasks(monkeypatch):
+    """Create mock BackgroundTasks.
+
+    Also clears ANTHROPIC_API_KEY to make tests deterministic.
+    Tests that need API key behavior should explicitly set it.
+    """
+    # Clear ANTHROPIC_API_KEY to ensure deterministic behavior
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
     bg = MagicMock(spec=BackgroundTasks)
     bg.add_task = MagicMock()
     return bg

@@ -154,9 +154,8 @@ class TestConfig:
         # Override _global_config to ensure fresh GlobalConfig without env file
         config._global_config = None
 
-        # Patch GlobalConfig to not read from .env
+        # Patch get_global to not read from .env
         from codeframe.core.config import GlobalConfig
-        original_get_global = config.get_global
 
         def patched_get_global():
             if not config._global_config:

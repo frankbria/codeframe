@@ -461,73 +461,79 @@ test.describe('Multi-Agent Execution After Task Approval', () => {
     const tasksTab = page.locator('[data-testid="tasks-tab"]');
     await tasksTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
 
-    if (await tasksTab.isVisible()) {
-      await tasksTab.click();
+    // Explicit check: tasks tab must be visible to proceed
+    if (!(await tasksTab.isVisible())) {
+      test.skip(true, 'Tasks tab not visible - project not in planning phase or tasks tab missing');
+      return;
+    }
 
-      // Look for approve button
-      const approveButton = page.getByRole('button', { name: /approve/i });
+    await tasksTab.click();
 
-      if (await approveButton.isVisible().catch(() => false)) {
-        // Click approve
-        await approveButton.click();
+    // Look for approve button
+    const approveButton = page.getByRole('button', { name: /approve/i });
 
-        // Wait for approval API response
-        const response = await page.waitForResponse(
-          r => r.url().includes('/tasks/approve'),
-          { timeout: 15000 }
-        ).catch(() => null);
+    // Explicit check: approve button must be visible
+    if (!(await approveButton.isVisible().catch(() => false))) {
+      test.skip(true, 'Approve button not visible - project not in planning phase');
+      return;
+    }
 
-        if (response && response.status() === 200) {
-          // Give time for background task to start and broadcast events
-          await page.waitForTimeout(2000);
+    // Click approve
+    await approveButton.click();
 
-          // Check if development_started event was received
-          developmentStartedReceived = await page.evaluate(
-            () => (window as any).__developmentStartedReceived || false
-          );
+    // Wait for approval API response
+    const response = await page.waitForResponse(
+      r => r.url().includes('/tasks/approve'),
+      { timeout: 15000 }
+    ).catch(() => null);
 
-          expect(developmentStartedReceived).toBe(true);
-          console.log('[Multi-Agent] development_started WebSocket event received');
+    // Explicit check: approval response must be successful
+    if (!response || response.status() !== 200) {
+      test.skip(true, 'Approval failed or returned non-200 status');
+      return;
+    }
 
-          // If API key is available, check for agent_created events
-          if (HAS_API_KEY) {
-            // Wait longer for agents to be created (they take time)
-            await page.waitForTimeout(5000);
+    // Give time for background task to start and broadcast events
+    await page.waitForTimeout(2000);
 
-            agentCreatedReceived = await page.evaluate(
-              () => (window as any).__agentCreatedReceived || false
-            );
+    // Check if development_started event was received
+    developmentStartedReceived = await page.evaluate(
+      () => (window as any).__developmentStartedReceived || false
+    );
 
-            // Also check agents API endpoint
-            const agentsResponse = await request.get(
-              `${BACKEND_URL}/api/projects/${PROJECT_ID}/agents`,
-              {
-                headers: {
-                  'Authorization': `Bearer ${authToken}`
-                }
-              }
-            );
+    expect(developmentStartedReceived).toBe(true);
+    console.log('[Multi-Agent] development_started WebSocket event received');
 
-            if (agentsResponse.ok()) {
-              const agents = await agentsResponse.json();
-              console.log(`[Multi-Agent] Found ${agents.length} agents via API`);
+    // If API key is available, check for agent_created events
+    if (HAS_API_KEY) {
+      // Wait longer for agents to be created (they take time)
+      await page.waitForTimeout(5000);
 
-              if (agents.length > 0) {
-                expect(agents.length).toBeGreaterThan(0);
-                console.log('[Multi-Agent] Agents successfully created after approval');
-              }
-            }
-          } else {
-            console.log('[Multi-Agent] Skipping agent verification - ANTHROPIC_API_KEY not set');
+      agentCreatedReceived = await page.evaluate(
+        () => (window as any).__agentCreatedReceived || false
+      );
+
+      // Also check agents API endpoint
+      const agentsResponse = await request.get(
+        `${BACKEND_URL}/api/projects/${PROJECT_ID}/agents`,
+        {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
           }
-        } else {
-          console.log('[Multi-Agent] Approval failed or returned non-200 status - skipping agent check');
-          test.skip(true, 'Project not in planning phase or approval failed');
         }
-      } else {
-        console.log('[Multi-Agent] Approve button not visible - project may not be in planning phase');
-        test.skip(true, 'Project not in planning phase');
+      );
+
+      if (agentsResponse.ok()) {
+        const agents = await agentsResponse.json();
+        console.log(`[Multi-Agent] Found ${agents.length} agents via API`);
+
+        if (agents.length > 0) {
+          expect(agents.length).toBeGreaterThan(0);
+          console.log('[Multi-Agent] Agents successfully created after approval');
+        }
       }
+    } else {
+      console.log('[Multi-Agent] Skipping agent verification - ANTHROPIC_API_KEY not set');
     }
   });
 
@@ -571,13 +577,15 @@ test.describe('Multi-Agent Execution After Task Approval', () => {
 
     const elapsed = Date.now() - startTime;
 
+    // Explicit check: skip if not in planning phase
+    if (response.status() !== 200) {
+      test.skip(true, `Project not in planning phase - got status ${response.status()}`);
+      return;
+    }
+
     // Approval should return quickly (< 5 seconds) even if agents are being created
     // Agent creation happens in background and shouldn't block
-    if (response.status() === 200) {
-      expect(elapsed).toBeLessThan(5000);
-      console.log(`[Multi-Agent] Approval returned in ${elapsed}ms - confirmed non-blocking`);
-    } else {
-      console.log(`[Multi-Agent] Got status ${response.status()} - not in planning phase`);
-    }
+    expect(elapsed).toBeLessThan(5000);
+    console.log(`[Multi-Agent] Approval returned in ${elapsed}ms - confirmed non-blocking`);
   });
 });
