@@ -72,6 +72,7 @@ jobs:
           steps.calc.outputs.total >= 20
         uses: anomalyco/opencode/github@latest
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
           # Pass PR context as environment variables for the review
           PR_NUMBER: ${{ github.event.pull_request.number }}
