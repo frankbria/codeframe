@@ -15,8 +15,7 @@ Related: codeframe/ui/routers/tasks.py, codeframe/agents/lead_agent.py
 import asyncio
 import os
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import BackgroundTasks
 
