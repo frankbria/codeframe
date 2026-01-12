@@ -150,6 +150,21 @@ export const tasksApi = {
     api.get<{ tasks: Task[]; total: number }>(`/api/projects/${projectId}/tasks`, {
       params: filters,
     }),
+  /**
+   * Manually trigger assignment for pending unassigned tasks (Issue #248 fix).
+   *
+   * This endpoint allows users to restart the multi-agent execution process
+   * when tasks are stuck in 'pending' state with no agent assigned.
+   *
+   * @param projectId - Project ID
+   * @returns Assignment response with pending count and status message
+   */
+  assignPending: (projectId: number) =>
+    api.post<{
+      success: boolean;
+      pending_count: number;
+      message: string;
+    }>(`/api/projects/${projectId}/tasks/assign`),
 };
 
 export const blockersApi = {
