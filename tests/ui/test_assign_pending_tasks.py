@@ -206,11 +206,12 @@ class TestAssignPendingTasksEndpoint:
                     current_user=mock_user
                 )
 
-        # Should still return success (pending tasks exist)
-        assert response.success is True
+        # Should return failure when API key missing
+        assert response.success is False
         assert response.pending_count == 1
+        assert "api key" in response.message.lower() or "not configured" in response.message.lower()
 
-        # But background task should NOT be scheduled
+        # Background task should NOT be scheduled
         mock_background_tasks.add_task.assert_not_called()
 
         # Should log warning
@@ -281,7 +282,7 @@ class TestAssignPendingTasksEndpoint:
         """Test that assignment proceeds when no tasks are in progress."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
 
-        # Setup: Only pending and completed tasks, no in_progress
+        # Setup: Only pending and completed tasks, no in_progress or assigned
         mock_db.get_project_tasks.return_value = [
             Task(id=1, project_id=1, title="Task 1", status=TaskStatus.PENDING, assigned_to=None),
             Task(id=2, project_id=1, title="Task 2", status=TaskStatus.PENDING, assigned_to=None),
@@ -302,6 +303,35 @@ class TestAssignPendingTasksEndpoint:
         assert response.pending_count == 2
         assert "started" in response.message.lower()
         mock_background_tasks.add_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_assign_pending_tasks_blocked_when_tasks_assigned(
+        self, mock_db, mock_user, mock_manager, mock_background_tasks
+    ):
+        """Test that assignment is blocked when tasks are in ASSIGNED status."""
+        from codeframe.ui.routers.tasks import assign_pending_tasks
+
+        # Setup: 2 pending tasks + 1 assigned (not yet in_progress)
+        mock_db.get_project_tasks.return_value = [
+            Task(id=1, project_id=1, title="Task 1", status=TaskStatus.PENDING, assigned_to=None),
+            Task(id=2, project_id=1, title="Task 2", status=TaskStatus.PENDING, assigned_to=None),
+            Task(id=3, project_id=1, title="Task 3", status=TaskStatus.ASSIGNED, assigned_to="agent-1"),
+        ]
+
+        with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
+             patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            response = await assign_pending_tasks(
+                project_id=1,
+                background_tasks=mock_background_tasks,
+                db=mock_db,
+                current_user=mock_user
+            )
+
+        # Should return success but NOT schedule execution
+        assert response.success is True
+        assert response.pending_count == 2
+        assert "in progress" in response.message.lower() or "assigned" in response.message.lower()
+        mock_background_tasks.add_task.assert_not_called()
 
 
 class TestAssignPendingTasksResponseModel:

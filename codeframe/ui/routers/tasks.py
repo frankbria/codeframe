@@ -444,6 +444,11 @@ async def assign_pending_tasks(
     pending_count = len(pending_unassigned)
 
     if pending_count == 0:
+        # Debug logging to help diagnose why tasks might appear stuck
+        logger.debug(
+            f"assign_pending_tasks called for project {project_id} but found 0 pending unassigned tasks. "
+            f"Total tasks: {len(tasks)}, statuses: {[t.status.value for t in tasks]}"
+        )
         return TaskAssignmentResponse(
             success=True,
             pending_count=0,
@@ -451,33 +456,42 @@ async def assign_pending_tasks(
         )
 
     # Check if execution is already in progress (Phase 1 fix for concurrent execution)
-    in_progress_tasks = [t for t in tasks if t.status == TaskStatus.IN_PROGRESS]
-    if in_progress_tasks:
+    # Include ASSIGNED status to prevent race between assignment and execution start
+    executing_tasks = [
+        t for t in tasks
+        if t.status in [TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS]
+    ]
+    if executing_tasks:
         logger.info(
             f"⏳ Execution already in progress for project {project_id}: "
-            f"{len(in_progress_tasks)} tasks running"
+            f"{len(executing_tasks)} tasks assigned/running"
         )
         return TaskAssignmentResponse(
             success=True,
             pending_count=pending_count,
-            message=f"Execution already in progress ({len(in_progress_tasks)} task(s) running). Please wait."
+            message=f"Execution already in progress ({len(executing_tasks)} task(s) assigned/running). Please wait."
         )
 
     # Schedule multi-agent execution in background
     api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if api_key:
-        background_tasks.add_task(
-            start_development_execution,
-            project_id,
-            db,
-            manager,
-            api_key
-        )
-        logger.info(f"✅ Scheduled task assignment for project {project_id} ({pending_count} pending tasks)")
-    else:
+    if not api_key:
         logger.warning(
             f"⚠️  ANTHROPIC_API_KEY not configured - cannot assign tasks for project {project_id}"
         )
+        return TaskAssignmentResponse(
+            success=False,
+            pending_count=pending_count,
+            message="Cannot assign tasks: API key not configured. Please contact administrator."
+        )
+
+    background_tasks.add_task(
+        start_development_execution,
+        project_id,
+        db,
+        manager,
+        api_key
+    )
+    logger.info(f"✅ Scheduled task assignment for project {project_id} ({pending_count} pending tasks)")
 
     return TaskAssignmentResponse(
         success=True,
