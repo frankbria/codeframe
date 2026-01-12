@@ -684,7 +684,6 @@ class TestAssignAndExecuteTaskAssignedTo:
         during task execution.
         """
         from codeframe.agents.lead_agent import LeadAgent
-        from codeframe.core.models import Task
 
         # Setup project
         project_id = real_db.create_project(
@@ -792,7 +791,6 @@ class TestAssignAndExecuteTaskAssignedTo:
         task execution begins.
         """
         from codeframe.agents.lead_agent import LeadAgent
-        from codeframe.core.models import Task
 
         # Setup project
         project_id = real_db.create_project(
