@@ -22,6 +22,8 @@ export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
  * - ACTIVE: Project 3 - In active phase with running agents and in-progress tasks
  * - REVIEW: Project 4 - In review phase with completed tasks awaiting review
  * - COMPLETED: Project 5 - In completed phase with all work done
+ * - TASK_BREAKDOWN: Project 6 - In planning phase with PRD but NO tasks (for task generation UI)
+ * - ASSIGN_TASKS: Project 7 - In active phase with pending unassigned tasks, NO in-progress tasks
  *
  * @example
  * // Use in tests:
@@ -39,6 +41,10 @@ export const TEST_PROJECT_IDS = {
   REVIEW: process.env.E2E_TEST_PROJECT_REVIEW_ID || '4',
   /** Project in completed phase - all work done */
   COMPLETED: process.env.E2E_TEST_PROJECT_COMPLETED_ID || '5',
+  /** Project in planning phase with PRD but NO tasks - for task breakdown UI tests */
+  TASK_BREAKDOWN: process.env.E2E_TEST_PROJECT_TASK_BREAKDOWN_ID || '6',
+  /** Project in active phase with pending unassigned tasks - for Assign Tasks button tests */
+  ASSIGN_TASKS: process.env.E2E_TEST_PROJECT_ASSIGN_TASKS_ID || '7',
 } as const;
 
 /** Type for valid project IDs */

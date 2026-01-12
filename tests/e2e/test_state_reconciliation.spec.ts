@@ -401,7 +401,7 @@ test.describe('State Reconciliation - Late Joining User', () => {
     /**
      * Review findings should be visible when quality gates have already run
      */
-    test('should show quality gate results when already completed', async () => {
+    test('should show quality gate results when already completed @smoke', async () => {
       const { request, token } = await getAuthenticatedRequest(page);
       const projectId = TEST_PROJECT_IDS.REVIEW;
 

@@ -23,23 +23,24 @@ test.describe('Review Findings UI', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
-    // Wait for project API to load
+    // Wait for project API to load - MUST succeed
     // Note: Must use /api/projects/ to avoid matching the HTML page response at /projects/
-    await page.waitForResponse(response =>
+    const projectResponse = await page.waitForResponse(response =>
       response.url().includes(`/api/projects/${PROJECT_ID}`) && response.status() === 200,
       { timeout: 10000 }
-    ).catch(() => {});
+    );
+    expect(projectResponse.ok()).toBe(true);
 
-    // Wait for dashboard to render - agent panel is last to render
-    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+    // Wait for dashboard to render - agent panel should exist
+    await page.locator('[data-testid="agent-status-panel"]').waitFor({ state: 'attached', timeout: 10000 });
 
     // Navigate to Tasks tab where review findings now live (Sprint 10 Refactor)
     const tasksTab = page.locator('[data-testid="tasks-tab"]');
     await tasksTab.waitFor({ state: 'visible', timeout: 10000 });
     await tasksTab.click();
 
-    // Wait for review findings panel to be visible
-    await page.locator('[data-testid="review-findings-panel"]').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+    // Wait for review findings panel to be visible - MUST exist
+    await page.locator('[data-testid="review-findings-panel"]').waitFor({ state: 'attached', timeout: 10000 });
   });
 
   test('should display review findings panel', async ({ page }) => {
@@ -63,37 +64,70 @@ test.describe('Review Findings UI', () => {
   test('should display severity badges correctly', async ({ page }) => {
     const severities = ['critical', 'high', 'medium', 'low'];
 
+    // At least the review summary should be visible
+    await expect(page.locator('[data-testid="review-summary"]')).toBeVisible();
+
+    // Check for severity badges - at least ONE should exist (not necessarily all)
+    let foundBadges = 0;
     for (const severity of severities) {
-      // Check if severity badge exists (may be 0 count)
       const badge = page.locator(`[data-testid="severity-badge-${severity}"]`);
       const count = await badge.count();
-      // Badge should exist in UI even if count is 0
-      expect(count >= 0).toBe(true);
+      if (count > 0) {
+        foundBadges++;
+        // If badge exists, it should be visible and have valid content
+        await expect(badge.first()).toBeVisible();
+      }
+    }
+
+    // Either we have some badges, or the review has no findings (both are valid)
+    const noFindingsMsg = page.locator('[data-testid="no-findings"], text=/no.*findings|no.*issues/i');
+    if (foundBadges === 0) {
+      // No badges - should show empty/no findings state
+      console.log('No severity badges - checking for empty state');
+    } else {
+      console.log(`✅ Found ${foundBadges} severity badge types`);
     }
   });
 
   test('should display review score chart', async ({ page }) => {
     const scoreChart = page.locator('[data-testid="review-score-chart"]');
+    const reviewSummary = page.locator('[data-testid="review-summary"]');
 
-    // Chart may not be visible if no review data exists
-    if (await scoreChart.isVisible()) {
+    // Either score chart OR review summary should be visible
+    const chartVisible = await scoreChart.isVisible();
+    const summaryVisible = await reviewSummary.isVisible();
+
+    // At least one review display element must be visible
+    expect(chartVisible || summaryVisible).toBe(true);
+
+    if (chartVisible) {
       // Chart should have data or empty state
-      const hasData = await scoreChart.locator('[data-testid="chart-data"]').count() > 0;
-      const hasEmptyState = await scoreChart.locator('[data-testid="chart-empty"]').count() > 0;
+      const chartData = scoreChart.locator('[data-testid="chart-data"]');
+      const chartEmpty = scoreChart.locator('[data-testid="chart-empty"]');
 
-      expect(hasData || hasEmptyState).toBe(true);
+      // One of these MUST be visible
+      await expect(chartData.or(chartEmpty)).toBeVisible({ timeout: 5000 });
+      console.log('✅ Score chart displayed with content');
+    } else {
+      // No chart - review summary should be showing instead
+      await expect(reviewSummary).toBeVisible();
+      console.log('✅ Review summary displayed (no chart)');
     }
   });
 
   test('should expand/collapse review finding details', async ({ page }) => {
     // Individual review findings with expand/collapse now implemented in ReviewSummary
-
     const findingsList = page.locator('[data-testid="review-findings-list"]');
+    const noFindingsMsg = page.locator('[data-testid="no-findings"], text=/no.*findings|no.*issues/i');
+
+    // Wait for findings list
+    await expect(findingsList).toBeVisible();
 
     // Get first finding item
     const firstFinding = findingsList.locator('[data-testid^="review-finding-"]').first();
+    const findingCount = await firstFinding.count();
 
-    if (await firstFinding.count() > 0) {
+    if (findingCount > 0) {
       // Click to expand
       await firstFinding.click();
 
@@ -104,26 +138,38 @@ test.describe('Review Findings UI', () => {
       // Click again to collapse
       await firstFinding.click();
       await expect(details).not.toBeVisible();
+      console.log('✅ Finding expand/collapse works correctly');
+    } else {
+      // No findings - should show empty state or "no findings" message
+      // This is valid - not all projects have review findings
+      console.log('No review findings to expand - project has no findings');
     }
   });
 
   test('should filter findings by severity', async ({ page }) => {
     // Severity filter now implemented in ReviewSummary
-
     const severityFilter = page.locator('[data-testid="severity-filter"]');
+    const reviewSummary = page.locator('[data-testid="review-summary"]');
 
-    if (await severityFilter.isVisible()) {
+    // Either filter or summary should be visible
+    const filterVisible = await severityFilter.isVisible();
+    const summaryVisible = await reviewSummary.isVisible();
+
+    // At least one must be visible
+    expect(filterVisible || summaryVisible).toBe(true);
+
+    if (filterVisible) {
       // Select "critical" filter
       await severityFilter.selectOption('critical');
 
       // Wait for findings list to update (either filtered results or empty state)
-      await Promise.race([
-        page.locator('[data-testid^="review-finding-"]').first().waitFor({ state: 'attached', timeout: 3000 }),
-        page.locator('[data-testid="no-findings"]').waitFor({ state: 'visible', timeout: 3000 })
-      ]).catch(() => {});
+      const findings = page.locator('[data-testid^="review-finding-"]');
+      const noFindings = page.locator('[data-testid="no-findings"]');
+
+      // One of these MUST be visible after filtering
+      await expect(findings.first().or(noFindings)).toBeVisible({ timeout: 5000 });
 
       // Only critical findings should be visible
-      const findings = page.locator('[data-testid^="review-finding-"]');
       const count = await findings.count();
 
       if (count > 0) {
@@ -134,17 +180,28 @@ test.describe('Review Findings UI', () => {
           const severityText = await severityBadge.textContent();
           expect(severityText?.toLowerCase()).toContain('critical');
         }
+        console.log(`✅ Filter works - ${count} critical findings displayed`);
+      } else {
+        console.log('✅ Filter works - no critical findings (empty state shown)');
       }
+    } else {
+      // No filter - review summary should be visible
+      await expect(reviewSummary).toBeVisible();
+      console.log('✅ Review summary displayed (no filter component)');
     }
   });
 
   test('should display actionable recommendations', async ({ page }) => {
     // Individual finding recommendations now implemented in ReviewSummary
-
     const findingsList = page.locator('[data-testid="review-findings-list"]');
     const firstFinding = findingsList.locator('[data-testid^="review-finding-"]').first();
 
-    if (await firstFinding.count() > 0) {
+    // Wait for findings list
+    await expect(findingsList).toBeVisible();
+
+    const findingCount = await firstFinding.count();
+
+    if (findingCount > 0) {
       await firstFinding.click();
 
       // Recommendation should be visible
@@ -167,6 +224,10 @@ test.describe('Review Findings UI', () => {
       });
       // Should have blue-ish background (rgb values for bg-blue-50)
       expect(bgColor).toMatch(/rgb\(239,\s*246,\s*255\)/);
+      console.log('✅ Recommendation displayed with correct styling');
+    } else {
+      // No findings - this is valid, just log it
+      console.log('No review findings to show recommendations - project has no findings');
     }
   });
 });

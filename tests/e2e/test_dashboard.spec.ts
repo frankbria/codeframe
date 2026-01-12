@@ -201,7 +201,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     await reviewPanel.waitFor({ state: 'attached', timeout: 15000 });
 
     // Scroll into view
-    await reviewPanel.scrollIntoViewIfNeeded().catch(() => {});
+    await reviewPanel.scrollIntoViewIfNeeded();
 
     await reviewPanel.waitFor({ state: 'visible', timeout: 10000 });
     await expect(reviewPanel).toBeVisible();
@@ -278,7 +278,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
 
     // Check for cost dashboard components
     const costDashboard = page.locator('[data-testid="cost-dashboard"]');
-    await costDashboard.scrollIntoViewIfNeeded().catch(() => {});
+    await costDashboard.scrollIntoViewIfNeeded();
     await costDashboard.waitFor({ state: 'visible', timeout: 10000 });
     await expect(costDashboard).toBeAttached();
 
@@ -496,7 +496,10 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     const overviewTab = page.getByRole('tab', { name: 'Overview' });
     const contextTab = page.getByRole('tab', { name: 'Context' });
 
-    if (await overviewTab.isVisible() && await contextTab.isVisible()) {
+    const overviewVisible = await overviewTab.isVisible();
+    const contextVisible = await contextTab.isVisible();
+
+    if (overviewVisible && contextVisible) {
       // Click Context tab
       await contextTab.click();
 
@@ -512,6 +515,17 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       const overviewPanel = page.locator('#overview-panel');
       await overviewPanel.waitFor({ state: 'visible', timeout: 5000 });
       await expect(overviewPanel).toBeVisible();
+      console.log('✅ Tab navigation works correctly');
+    } else {
+      // Different tab structure - verify alternative navigation exists
+      // Check for Tasks, Quality Gates, Metrics, Checkpoints tabs (Sprint 10 structure)
+      const tasksTab = page.locator('[data-testid="tasks-tab"]');
+      const metricsTab = page.locator('[data-testid="metrics-tab"]');
+
+      // At least one navigation element must exist
+      const hasAltNav = await tasksTab.isVisible() || await metricsTab.isVisible();
+      expect(hasAltNav).toBe(true);
+      console.log('✅ Alternative navigation structure present');
     }
   });
 
@@ -533,7 +547,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       await page.waitForFunction((selector) => {
         const el = document.querySelector(selector);
         return el && el.textContent && /\d+/.test(el.textContent);
-      }, `[data-testid="${statId}"]`, { timeout: 5000 }).catch(() => {});
+      }, `[data-testid="${statId}"]`, { timeout: 5000 });
 
       // Stat should contain a number
       const text = await statElement.textContent();
@@ -573,17 +587,19 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     const errorBoundary = page.locator('[data-testid="error-boundary"]');
     const count = await errorBoundary.count();
 
-    // If ErrorBoundary wrapper doesn't exist in DOM, skip with explanation
-    // This may happen if the component doesn't render a data-testid wrapper when there's no error
+    // ErrorBoundary may only add testid when error occurs
+    // If not present, verify dashboard is rendering children correctly (no error state)
     if (count === 0) {
-      console.log('ℹ️ ErrorBoundary data-testid not found - component may only add testid when error occurs');
-      // Test passes - ErrorBoundary exists but doesn't expose testid in normal state
-      return;
+      // No error boundary wrapper visible - this means children are rendering normally
+      // Verify dashboard content is visible as proof no error occurred
+      const dashboardContent = page.locator('[data-testid="agent-status-panel"]');
+      await expect(dashboardContent).toBeVisible();
+      console.log('✅ No ErrorBoundary wrapper visible - dashboard rendering normally');
+    } else {
+      // ErrorBoundary wrapper exists - verify at least one instance
+      expect(count).toBeGreaterThanOrEqual(1);
+      console.log(`✅ Found ${count} ErrorBoundary wrapper(s) in DOM`);
     }
-
-    // ErrorBoundary wrapper exists - verify at least one instance
-    expect(count).toBeGreaterThanOrEqual(1);
-    console.log(`✅ Found ${count} ErrorBoundary wrapper(s) in DOM`);
   });
 
   test('should be responsive on mobile viewport', async () => {
@@ -598,12 +614,21 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     await header.waitFor({ state: 'visible', timeout: 15000 });
     await expect(header).toBeVisible();
 
-    // Mobile menu might be present
+    // Mobile menu might be present depending on responsive design
     const mobileMenu = page.locator('[data-testid="mobile-menu"]');
-    if (await mobileMenu.isVisible()) {
+    const mobileMenuVisible = await mobileMenu.isVisible();
+
+    if (mobileMenuVisible) {
       await mobileMenu.click();
       // Menu items should be visible
       await expect(page.locator('[data-testid="nav-menu"]')).toBeVisible();
+      console.log('✅ Mobile menu works correctly');
+    } else {
+      // No mobile menu - dashboard may use different responsive pattern
+      // Verify main content is still accessible
+      const agentPanel = page.locator('[data-testid="agent-status-panel"]');
+      await expect(agentPanel).toBeAttached();
+      console.log('✅ Dashboard content accessible on mobile (no hamburger menu)');
     }
   });
 });

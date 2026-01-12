@@ -49,7 +49,7 @@ test.describe('Start Agent Flow', () => {
     ]);
   });
 
-  test('should display Socratic discovery question from seeded data', async ({ page }) => {
+  test('should display Socratic discovery question from seeded data @smoke', async ({ page }) => {
     // Use seeded project with discovery already in progress
     // (seed-test-data.py populates memory table with discovery_state)
     const projectId = process.env.E2E_TEST_PROJECT_ID || '1';

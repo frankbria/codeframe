@@ -121,11 +121,13 @@ test.describe('Metrics Dashboard UI', () => {
     await trendChart.waitFor({ state: 'visible', timeout: 10000 });
     await expect(trendChart).toBeVisible();
 
-    // Chart should have data or show empty state message
-    const hasData = (await trendChart.locator('[data-testid="trend-chart-data"]').count()) > 0;
-    const hasEmptyState = (await trendChart.textContent())?.includes('No time series data') || false;
+    // Chart MUST have data element OR show empty state message
+    const trendChartData = trendChart.locator('[data-testid="trend-chart-data"]');
+    const emptyStateText = trendChart.locator('text=/No time series data/i');
 
-    expect(hasData || hasEmptyState).toBe(true);
+    // Use Playwright's or() for proper assertion that fails if neither is visible
+    await expect(trendChartData.or(emptyStateText)).toBeVisible({ timeout: 5000 });
+    console.log('✅ Token usage chart displays data or empty state correctly');
   });
 
   test('should display cost breakdown by agent', async ({ page }) => {
@@ -245,7 +247,8 @@ test.describe('Metrics Dashboard UI', () => {
   test('should export cost report to CSV', async ({ page }) => {
     const exportButton = page.locator('[data-testid="export-csv-button"]');
 
-    if (await exportButton.isVisible()) {
+    const isExportButtonVisible = await exportButton.isVisible();
+    if (isExportButtonVisible) {
       // Setup download listener
       const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
 
@@ -255,6 +258,12 @@ test.describe('Metrics Dashboard UI', () => {
       // Verify download started
       const download = await downloadPromise;
       expect(download.suggestedFilename()).toContain('.csv');
+      console.log('✅ CSV export works correctly');
+    } else {
+      // Export button not visible - may be disabled in current project state
+      // Verify metrics panel is still functional without export
+      await expect(page.locator('[data-testid="cost-dashboard"]')).toBeVisible();
+      console.log('ℹ️ Export CSV button not visible - feature may be disabled for this project');
     }
   });
 
@@ -304,7 +313,8 @@ test.describe('Metrics Dashboard UI', () => {
   test('should display model pricing information', async ({ page }) => {
     const pricingInfo = page.locator('[data-testid="model-pricing-info"]');
 
-    if (await pricingInfo.isVisible()) {
+    const isPricingInfoVisible = await pricingInfo.isVisible();
+    if (isPricingInfoVisible) {
       // Should list pricing for each model
       const pricingItems = page.locator('[data-testid^="pricing-"]');
       const count = await pricingItems.count();
@@ -318,6 +328,12 @@ test.describe('Metrics Dashboard UI', () => {
       // Should contain model name and price per MTok
       expect(pricingText).toMatch(/\$\d+/); // Contains price
       expect(pricingText).toMatch(/MTok|per million|\/M/i); // Contains "per million tokens"
+      console.log('✅ Model pricing information displayed correctly');
+    } else {
+      // Pricing info not visible - may not be included in current UI layout
+      // Verify the metrics panel is still functional
+      await expect(page.locator('[data-testid="cost-dashboard"]')).toBeVisible();
+      console.log('ℹ️ Model pricing info not visible - feature may not be enabled');
     }
   });
 
@@ -335,15 +351,21 @@ test.describe('Metrics Dashboard UI', () => {
     const initialCost = await totalCostDisplay.textContent();
 
     // Monitor WebSocket for real-time updates
-    const wsPromise = page.waitForEvent('websocket', { timeout: 5000 }).catch(() => null);
-    const ws = await wsPromise;
+    // Note: WebSocket may already be established from page load
+    let wsReceived = false;
+    try {
+      const wsPromise = page.waitForEvent('websocket', { timeout: 5000 });
+      const ws = await wsPromise;
 
-    if (ws) {
       // Wait for a WebSocket frame (indicates real-time update capability)
       await Promise.race([
-        new Promise(resolve => ws.on('framereceived', resolve)),
+        new Promise(resolve => ws.on('framereceived', () => { wsReceived = true; resolve(null); })),
         new Promise(resolve => setTimeout(resolve, 2000))
       ]);
+      console.log(`✅ WebSocket connected, frame received: ${wsReceived}`);
+    } catch {
+      // WebSocket may already be established or not available for this test
+      console.log('ℹ️ No new WebSocket connection - may already be established');
     }
 
     // Cost might update via WebSocket (or stay the same if no new data)
@@ -364,16 +386,19 @@ test.describe('Metrics Dashboard UI', () => {
     // Trend chart section should be visible
     await expect(trendChart).toBeVisible();
 
-    // Chart may have data or show empty state message
-    const hasData = (await page.locator('[data-testid="trend-chart-data"]').count()) > 0;
-    const hasEmptyState = (await trendChart.textContent())?.includes('No time series data') || false;
+    // Chart MUST have data element OR show empty state message
+    const trendChartData = page.locator('[data-testid="trend-chart-data"]');
+    const emptyStateText = trendChart.locator('text=/No time series data/i');
 
-    // Either data or empty state should be present
-    expect(hasData || hasEmptyState).toBe(true);
+    // Use Playwright's or() for proper assertion that fails if neither is visible
+    await expect(trendChartData.or(emptyStateText)).toBeVisible({ timeout: 5000 });
 
-    // If data exists, verify chart has data element
+    // Log which state was found
+    const hasData = await trendChartData.isVisible();
     if (hasData) {
-      await expect(page.locator('[data-testid="trend-chart-data"]')).toBeVisible();
+      console.log('✅ Cost trend chart displays data correctly');
+    } else {
+      console.log('✅ Cost trend chart shows empty state (no data yet)');
     }
   });
 });

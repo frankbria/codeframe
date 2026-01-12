@@ -23,29 +23,30 @@ test.describe('Checkpoint UI Workflow', () => {
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
 
-    // Wait for API calls to complete
+    // Wait for API calls to complete - MUST succeed
     // Note: Must use /api/projects/ to avoid matching the HTML page response at /projects/
-    await page.waitForResponse(response =>
+    const projectResponse = await page.waitForResponse(response =>
       response.url().includes(`/api/projects/${PROJECT_ID}`) && response.status() === 200,
       { timeout: 10000 }
-    ).catch(() => {});
+    );
+    expect(projectResponse.ok()).toBe(true);
 
-    // Navigate to checkpoint section
+    // Navigate to checkpoint section - tab MUST be visible
     const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
-    await checkpointTab.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
-    if (await checkpointTab.isVisible()) {
-      await checkpointTab.click();
-      // Wait for checkpoint panel to become visible after tab switch
-      const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
-      await checkpointPanel.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-    }
+    await checkpointTab.waitFor({ state: 'visible', timeout: 10000 });
+    await expect(checkpointTab).toBeVisible();
+
+    await checkpointTab.click();
+    // Wait for checkpoint panel to become visible after tab switch
+    const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
+    await checkpointPanel.waitFor({ state: 'visible', timeout: 5000 });
   });
 
   test('should display checkpoint panel', async ({ page }) => {
     const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
 
     // Scroll panel into view before waiting
-    await checkpointPanel.scrollIntoViewIfNeeded().catch(() => {});
+    await checkpointPanel.scrollIntoViewIfNeeded();
 
     await checkpointPanel.waitFor({ state: 'visible', timeout: 15000 });
     await expect(checkpointPanel).toBeVisible();
@@ -65,25 +66,25 @@ test.describe('Checkpoint UI Workflow', () => {
     await checkpointList.waitFor({ state: 'visible', timeout: 15000 });
     await expect(checkpointList).toBeVisible();
 
-    // Wait for checkpoints API response
-    await page.waitForResponse(response =>
+    // Wait for checkpoints API response - MUST succeed
+    const checkpointsResponse = await page.waitForResponse(response =>
       response.url().includes('/checkpoints') && response.status() === 200,
       { timeout: 10000 }
-    ).catch(() => {});
+    );
+    expect(checkpointsResponse.ok()).toBe(true);
 
-    // Wait for DOM to update - either checkpoint items or empty state should be visible
-    await Promise.race([
-      page.locator('[data-testid^="checkpoint-item-"]').first().waitFor({ state: 'attached', timeout: 5000 }),
-      page.locator('[data-testid="checkpoint-empty-state"]').waitFor({ state: 'visible', timeout: 5000 })
-    ]).catch(() => {});
+    // Wait for DOM to update - either checkpoint items or empty state MUST be visible
+    const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
+    const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
+
+    // One of these MUST appear - if neither does, that's a bug
+    await expect(checkpointItems.first().or(emptyState)).toBeVisible({ timeout: 5000 });
 
     // Check if checkpoints are displayed (or empty state)
-    const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
     const count = await checkpointItems.count();
 
     if (count === 0) {
-      // Empty state should be visible
-      const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
+      // Empty state should be visible (already declared above)
       await expect(emptyState).toBeVisible();
     } else {
       // At least one checkpoint should be visible
@@ -146,8 +147,11 @@ test.describe('Checkpoint UI Workflow', () => {
   test('should show restore confirmation dialog', async ({ page }) => {
     const checkpointList = page.locator('[data-testid="checkpoint-list"]');
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
+    const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
 
-    if (await checkpointItems.count() > 0) {
+    const count = await checkpointItems.count();
+
+    if (count > 0) {
       const firstCheckpoint = checkpointItems.first();
 
       // Click restore button
@@ -164,64 +168,89 @@ test.describe('Checkpoint UI Workflow', () => {
       // Dialog should have confirm and cancel buttons
       await expect(confirmDialog.locator('[data-testid="restore-confirm-button"]')).toBeVisible();
       await expect(confirmDialog.locator('[data-testid="restore-cancel-button"]')).toBeVisible();
+    } else {
+      // No checkpoints - verify empty state is displayed correctly
+      await expect(emptyState).toBeVisible();
+      console.log('✅ No checkpoints to restore - empty state displayed correctly');
     }
   });
 
   test('should display checkpoint diff preview', async ({ page }) => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
+    const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
 
-    if (await checkpointItems.count() > 0) {
+    const count = await checkpointItems.count();
+
+    if (count > 0) {
       const firstCheckpoint = checkpointItems.first();
 
       // Click to expand checkpoint details
       await firstCheckpoint.click();
 
-      // Wait for diff API response (success or failure)
-      await page.waitForResponse(
-        (response) => response.url().includes('/diff'),
-        { timeout: 10000 }
-      ).catch(() => {});
+      // Wait for diff API response (success or failure) - log but don't swallow
+      try {
+        const diffResponse = await page.waitForResponse(
+          (response) => response.url().includes('/diff'),
+          { timeout: 10000 }
+        );
+        console.log(`Diff API responded with status ${diffResponse.status()}`);
+      } catch {
+        console.log('No diff API response - may use different mechanism');
+      }
 
       // Give UI time to render after API response
       await page.waitForTimeout(1000);
 
-      // After clicking, the expanded section should show something:
-      // - Diff content, "No changes" message, loading spinner, or error message
-      // Check at page level since error might not be inside the checkpoint item
-      const hasContent = await Promise.race([
-        firstCheckpoint.locator('[data-testid="checkpoint-diff"]').isVisible(),
-        firstCheckpoint.locator('[data-testid="no-changes-message"]').isVisible(),
-        page.locator('text=/Request failed|Failed to get|Loading diff/i').isVisible(),
-      ]).catch(() => false);
+      // After clicking, the expanded section MUST show something:
+      // - Diff content, "No changes" message, or error message
+      const diffContent = firstCheckpoint.locator('[data-testid="checkpoint-diff"]');
+      const noChangesMsg = firstCheckpoint.locator('[data-testid="no-changes-message"]');
+      const errorMsg = page.locator('text=/Request failed|Failed to get|Error loading/i');
 
-      // Test passes if any content appeared (we're testing UI expansion, not backend)
-      expect(hasContent || true).toBe(true); // Always pass - just verify no crash
+      // At least ONE of these must be visible - test FAILS if nothing appears
+      await expect(diffContent.or(noChangesMsg).or(errorMsg)).toBeVisible({ timeout: 5000 });
+      console.log('✅ Checkpoint expansion shows content correctly');
+    } else {
+      // No checkpoints - verify empty state is displayed
+      await expect(emptyState).toBeVisible();
+      console.log('✅ No checkpoints - empty state displayed correctly');
     }
   });
 
   test('should display checkpoint metadata', async ({ page }) => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
+    const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
 
-    if (await checkpointItems.count() > 0) {
+    const count = await checkpointItems.count();
+
+    if (count > 0) {
       const firstCheckpoint = checkpointItems.first();
 
       // Metadata should be visible
       await expect(firstCheckpoint.locator('[data-testid="checkpoint-name"]')).toBeVisible();
       await expect(firstCheckpoint.locator('[data-testid="checkpoint-timestamp"]')).toBeVisible();
 
-      // Git SHA should be visible
+      // Git SHA should be visible if present
       const gitSha = firstCheckpoint.locator('[data-testid="checkpoint-git-sha"]');
       if (await gitSha.count() > 0) {
         const shaText = await gitSha.textContent();
         expect(shaText).toMatch(/[0-9a-f]{7,40}/); // Git SHA format
       }
+      console.log('✅ Checkpoint metadata displayed correctly');
+    } else {
+      // No checkpoints - verify empty state is displayed
+      await expect(emptyState).toBeVisible();
+      console.log('✅ No checkpoints - empty state displayed correctly');
     }
   });
 
   test('should allow deleting checkpoint', async ({ page }) => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
+    const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
 
-    if (await checkpointItems.count() > 0) {
+    const count = await checkpointItems.count();
+
+    if (count > 0) {
       const firstCheckpoint = checkpointItems.first();
 
       // Click delete button
@@ -234,6 +263,11 @@ test.describe('Checkpoint UI Workflow', () => {
 
       // Dialog should have warning
       await expect(confirmDialog.locator('[data-testid="delete-warning"]')).toBeVisible();
+      console.log('✅ Delete confirmation dialog displayed correctly');
+    } else {
+      // No checkpoints - verify empty state is displayed
+      await expect(emptyState).toBeVisible();
+      console.log('✅ No checkpoints to delete - empty state displayed correctly');
     }
   });
 });
@@ -274,7 +308,7 @@ test.describe('Checkpoint UI - New Project (Empty State)', () => {
     const checkpointsResponsePromise = page.waitForResponse(
       (response) => response.url().includes('/checkpoints'),
       { timeout: 15000 }
-    ).catch(() => null); // Don't fail if response already happened
+    );
 
     await checkpointTab.click();
 

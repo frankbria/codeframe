@@ -82,19 +82,30 @@ test.describe('Complete User Journey', () => {
 
     // Navigate to checkpoints tab
     const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
-    const checkpointTabCount = await checkpointTab.count();
+    const checkpointTabVisible = await checkpointTab.isVisible();
 
-    if (checkpointTabCount > 0 && await checkpointTab.isVisible()) {
+    if (checkpointTabVisible) {
       await checkpointTab.click();
       await expect(page.locator('[data-testid="checkpoint-panel"]')).toBeAttached({ timeout: 10000 });
+      console.log('✅ Checkpoint tab navigation works');
+    } else {
+      // Checkpoint tab may not be visible in all project phases - verify we're still on a valid tab
+      console.log('ℹ️ Checkpoint tab not visible - may not be available for this project phase');
     }
 
     // Return to overview/first tab
     const overviewTab = page.locator('[data-testid="overview-tab"]');
-    const overviewTabCount = await overviewTab.count();
+    const overviewTabVisible = await overviewTab.isVisible();
 
-    if (overviewTabCount > 0 && await overviewTab.isVisible()) {
+    if (overviewTabVisible) {
       await overviewTab.click();
+      console.log('✅ Overview tab navigation works');
+    } else {
+      // Return to tasks tab as fallback
+      const tasksTabReturn = page.locator('[data-testid="tasks-tab"]');
+      if (await tasksTabReturn.isVisible()) {
+        await tasksTabReturn.click();
+      }
     }
   });
 
@@ -157,30 +168,40 @@ The target users are software development teams looking to accelerate their deve
 
       // Check metrics panel (may be on a different tab now)
       const metricsTab = page.locator('[data-testid="metrics-tab"]');
-      const metricsTabCount = await metricsTab.count();
-      if (metricsTabCount > 0 && await metricsTab.isVisible()) {
+      const metricsTabVisible = await metricsTab.isVisible();
+      if (metricsTabVisible) {
         await metricsTab.click();
         await expect(page.getByTestId('metrics-panel')).toBeVisible({ timeout: 5000 });
+        console.log('✅ Metrics tab verified');
+      } else {
+        console.log('ℹ️ Metrics tab not visible in current layout');
       }
 
       // Navigate to Tasks tab for review findings
       const tasksTab = page.locator('[data-testid="tasks-tab"]');
       await tasksTab.click();
       await expect(page.locator('[data-testid="review-findings-panel"]')).toBeAttached({ timeout: 5000 });
+      console.log('✅ Tasks tab verified');
 
       // Click on Checkpoints tab
       const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
-      const checkpointTabCount = await checkpointTab.count();
-      if (checkpointTabCount > 0 && await checkpointTab.isVisible()) {
+      const checkpointTabVisible = await checkpointTab.isVisible();
+      if (checkpointTabVisible) {
         await checkpointTab.click();
         await expect(page.getByTestId('checkpoint-panel')).toBeAttached({ timeout: 10000 });
+        console.log('✅ Checkpoint tab verified');
+      } else {
+        console.log('ℹ️ Checkpoint tab not visible in current layout');
       }
 
       // Return to overview tab
       const overviewTab = page.locator('[data-testid="overview-tab"]');
-      const overviewTabCount = await overviewTab.count();
-      if (overviewTabCount > 0 && await overviewTab.isVisible()) {
+      const overviewTabVisible = await overviewTab.isVisible();
+      if (overviewTabVisible) {
         await overviewTab.click();
+      } else {
+        // Stay on current tab - still validates journey completed
+        console.log('ℹ️ Overview tab not visible - journey completed on current tab');
       }
 
       // Final verification: Project is in a healthy state

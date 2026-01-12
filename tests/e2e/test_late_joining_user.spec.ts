@@ -136,13 +136,14 @@ test.describe('Late-Joining User Scenarios', () => {
       const { exists, count } = await checkTasksExist(request, token, PROJECT_ID);
       console.log(`📊 Tasks check: exists=${exists}, count=${count}`);
 
+      // STRICT: Tasks MUST exist for this test - if not, seed data is broken
+      // This is a seed data bug, not an acceptable skip condition
+      expect(exists).toBe(true);
       if (!exists) {
-        // Tasks don't exist - can't test late-joining scenario
-        // This is a seed data issue, not a bug in the code
-        console.log('⚠️ No tasks exist in test project - cannot test late-joining scenario');
-        console.log('   This test requires seed data with tasks already generated');
-        test.skip(true, 'Test project does not have tasks - seed data needs to include tasks');
-        return;
+        throw new Error(
+          `SEED DATA BUG: Project ${PROJECT_ID} has no tasks but should have tasks in 'planning' phase.\n` +
+          `Run: python tests/e2e/seed-test-data.py to fix seed data.`
+        );
       }
 
       // Check project phase
@@ -218,19 +219,28 @@ test.describe('Late-Joining User Scenarios', () => {
         timeout: 15000,
       });
 
-      // Check if generate button is visible
+      // For late-joining user with tasks already generated, the generate button
+      // should NOT be visible. This test validates that behavior.
       const generateButton = page.locator('[data-testid="generate-tasks-button"]');
+
+      // ASSERTION: Generate button should NOT be visible when tasks exist
+      // If it IS visible, that's a bug we need to catch and test further
       const buttonVisible = await generateButton.isVisible().catch(() => false);
 
       if (!buttonVisible) {
-        // Button not visible - this is correct behavior if tasks exist
-        console.log('✅ Generate button not visible - correct behavior');
-        test.skip(true, 'Generate button not visible - cannot test idempotent click behavior');
+        // This is the EXPECTED correct behavior - button hidden when tasks exist
+        console.log('✅ Generate button correctly hidden - late-joining user sees correct state');
+
+        // Verify "Tasks Ready" section is visible instead
+        const tasksReadySection = page.locator('[data-testid="tasks-ready-section"]');
+        await expect(tasksReadySection).toBeVisible({ timeout: 5000 });
+        console.log('✅ Tasks Ready section visible - test passes');
         return;
       }
 
-      // Button IS visible - let's click it and verify the response
-      console.log('ℹ️ Generate button is visible - clicking to test idempotent behavior');
+      // Button IS visible when it shouldn't be - this is a potential bug
+      // Let's click it and verify idempotent backend behavior
+      console.log('⚠️ Generate button unexpectedly visible - testing idempotent backend behavior');
 
       // Listen for the API response
       const responsePromise = page.waitForResponse(
@@ -273,24 +283,26 @@ test.describe('Late-Joining User Scenarios', () => {
       const PROJECT_ID = process.env.E2E_TEST_PROJECT_PLANNING_ID || '2';
       const { request, token } = await getAuthenticatedRequest(page);
 
-      // Check PRD status
+      // Check PRD status - MUST exist for this test
       const prdResponse = await request.get(`${BACKEND_URL}/api/projects/${PROJECT_ID}/prd`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      // STRICT: PRD MUST exist for planning phase project
+      // If 404, that's a seed data bug
+      expect(prdResponse.status()).not.toBe(404);
       if (prdResponse.status() === 404) {
-        console.log('ℹ️ PRD does not exist - cannot test late-joining PRD scenario');
-        test.skip(true, 'PRD does not exist in test project');
-        return;
+        throw new Error(
+          `SEED DATA BUG: Project ${PROJECT_ID} has no PRD but should have PRD in 'planning' phase.\n` +
+          `Run: python tests/e2e/seed-test-data.py to fix seed data.`
+        );
       }
 
       const prdData = await prdResponse.json();
       console.log(`📊 PRD status: ${prdData.status}`);
 
-      if (prdData.status !== 'available') {
-        test.skip(true, `PRD status is ${prdData.status}, not available`);
-        return;
-      }
+      // PRD status should be 'available' for planning phase project
+      expect(prdData.status).toBe('available');
 
       // Navigate to project as late-joining user
       await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);

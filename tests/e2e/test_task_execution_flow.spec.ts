@@ -105,11 +105,11 @@ test.describe('Task Execution Flow', () => {
 
     // The agent state panel may also be present
     const agentStatePanel = page.locator('[data-testid="agent-state-panel"]');
-    const agentPanelVisible = await agentPanel.isVisible().catch(() => false);
-    const agentStatePanelVisible = await agentStatePanel.isVisible().catch(() => false);
+    const agentPanelVisible = await agentPanel.isVisible();
+    const agentStatePanelVisible = await agentStatePanel.isVisible();
 
-    // At least one agent panel should be visible
-    expect(agentPanelVisible || agentStatePanelVisible).toBeTruthy();
+    // At least one agent panel MUST be visible - use Playwright's or() for proper assertion
+    await expect(agentPanel.or(agentStatePanel)).toBeVisible({ timeout: 5000 });
   });
 
   test('should display review findings from seeded code reviews', async ({ page }) => {
@@ -134,13 +134,10 @@ test.describe('Task Execution Flow', () => {
     const reviewSummary = page.locator('[data-testid="review-summary"]');
     const reviewFindingsList = page.locator('[data-testid="review-findings-list"]');
 
-    // Either summary or findings list should be visible (depending on data state)
-    const hasSummary = await reviewSummary.isVisible().catch(() => false);
-    const hasFindingsList = await reviewFindingsList.isVisible().catch(() => false);
-
-    // The review panel is attached, which is sufficient for this test
-    // Actual findings display depends on the backend data state
-    expect(reviewPanel).toBeAttached();
+    // Either summary or findings list MUST be visible (depending on data state)
+    // Use Playwright's or() for proper assertion that fails if neither is visible
+    await expect(reviewSummary.or(reviewFindingsList)).toBeVisible({ timeout: 10000 });
+    console.log('✅ Review panel displays summary or findings list correctly');
   });
 
   test('should navigate between dashboard tabs', async ({ page }) => {
@@ -160,32 +157,41 @@ test.describe('Task Execution Flow', () => {
 
     // Navigate to Quality Gates tab (if exists)
     const qualityGatesTab = page.locator('[data-testid="quality-gates-tab"]');
-    const hasQualityGatesTab = await qualityGatesTab.isVisible().catch(() => false);
+    const hasQualityGatesTab = await qualityGatesTab.isVisible();
 
     if (hasQualityGatesTab) {
       await qualityGatesTab.click();
-      // Verify quality gates panel loads
-      await page.waitForTimeout(1000);
+      // Verify quality gates panel loads - MUST render after click
+      await expect(page.locator('[data-testid="quality-gates-panel"]')).toBeAttached({ timeout: 10000 });
+      console.log('✅ Quality Gates tab navigation works');
+    } else {
+      console.log('ℹ️ Quality Gates tab not visible - may not be available for this project phase');
     }
 
     // Navigate to Metrics tab (if exists)
     const metricsTab = page.locator('[data-testid="metrics-tab"]');
-    const hasMetricsTab = await metricsTab.isVisible().catch(() => false);
+    const hasMetricsTab = await metricsTab.isVisible();
 
     if (hasMetricsTab) {
       await metricsTab.click();
-      // Verify metrics content loads
-      await page.waitForTimeout(1000);
+      // Verify metrics panel loads - MUST render after click
+      await expect(page.locator('[data-testid="metrics-panel"]')).toBeVisible({ timeout: 10000 });
+      console.log('✅ Metrics tab navigation works');
+    } else {
+      console.log('ℹ️ Metrics tab not visible - may not be available for this project phase');
     }
 
     // Navigate to Checkpoints tab
     const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
-    const hasCheckpointTab = await checkpointTab.isVisible().catch(() => false);
+    const hasCheckpointTab = await checkpointTab.isVisible();
 
     if (hasCheckpointTab) {
       await checkpointTab.click();
-      // Verify checkpoint panel loads
+      // Verify checkpoint panel loads - MUST render after click
       await expect(page.locator('[data-testid="checkpoint-panel"]')).toBeAttached({ timeout: 10000 });
+      console.log('✅ Checkpoint tab navigation works');
+    } else {
+      console.log('ℹ️ Checkpoint tab not visible - may not be available for this project phase');
     }
 
     // Navigate back to Tasks tab to verify navigation still works

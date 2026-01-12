@@ -1273,63 +1273,188 @@ Sprint 2: Testing and polish
         else:
             print(f"⚠️  Warning: {TABLE_MEMORY} table doesn't exist, skipping project 2 discovery state and PRD")
 
+        # ========================================
+        # 9.1 Seed Issues for Project 2 (Planning Phase Task Approval Tests)
+        # ========================================
+        # TaskReview component fetches issues (not tasks directly), so we need issues
+        # with nested tasks for the task approval flow to work
+        print("📋 Seeding issues for project 2 (planning phase task approval)...")
+
+        TABLE_ISSUES = "issues"
+        if not table_exists(cursor, TABLE_ISSUES):
+            print(f"⚠️  Warning: {TABLE_ISSUES} table doesn't exist, skipping issues for project 2")
+        else:
+            # Clear existing issues for project 2
+            cursor.execute("DELETE FROM issues WHERE project_id = ?", (planning_project_id,))
+
+            # Seed issues for task approval testing
+            # Schema: id, project_id, issue_number, title, description, status, priority, workflow_step, depends_on, created_at, completed_at
+            issues_p2 = [
+                (
+                    100,  # id (fixed for FK references)
+                    planning_project_id,
+                    "1.1",  # issue_number (Sprint 1, Issue 1)
+                    "User Authentication System",
+                    "Implement secure user authentication with JWT tokens",
+                    "pending",  # status - pending for approval
+                    3,  # priority (high)
+                    1,  # workflow_step
+                    None,  # depends_on
+                    now_ts,
+                    None,
+                ),
+                (
+                    101,  # id
+                    planning_project_id,
+                    "1.2",  # issue_number (Sprint 1, Issue 2)
+                    "Project Dashboard UI",
+                    "Create the main project dashboard interface",
+                    "pending",
+                    2,  # priority (medium)
+                    2,
+                    "1.1",  # depends_on
+                    now_ts,
+                    None,
+                ),
+                (
+                    102,  # id
+                    planning_project_id,
+                    "2.1",  # issue_number (Sprint 2, Issue 1)
+                    "Task Management API",
+                    "Build REST API for task CRUD operations",
+                    "pending",
+                    2,
+                    3,
+                    "1.1",
+                    now_ts,
+                    None,
+                ),
+            ]
+
+            for issue in issues_p2:
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO issues (
+                        id, project_id, issue_number, title, description, status,
+                        priority, workflow_step, depends_on, created_at, completed_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    issue,
+                )
+
+            cursor.execute("SELECT COUNT(*) FROM issues WHERE project_id = ?", (planning_project_id,))
+            issue_count = cursor.fetchone()[0]
+            print(f"✅ Seeded {issue_count}/3 issues for project {planning_project_id}")
+
         # Clear existing tasks for project 2 before re-seeding (ensures clean state)
         cursor.execute("DELETE FROM tasks WHERE project_id = ?", (planning_project_id,))
 
-        # Add tasks for project 2 (so late-joining user tests can verify task state)
-        # Using full 22-column tasks schema to match Project 1 format
+        # Add tasks for project 2 linked to issues (for TaskReview approval flow)
+        # Tasks must have issue_id set for TaskReview to display them
         # Schema: id, project_id, issue_id, task_number, parent_issue_number, title, description,
         #         status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
         #         requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
         #         commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
         tasks_p2 = [
+            # Tasks for Issue 100 (User Authentication)
             (
                 None,  # id (auto-increment)
                 planning_project_id,
-                None,  # issue_id
-                "T001",  # task_number
-                None,  # parent_issue_number
-                "Implement user authentication",  # title
-                "Set up JWT-based authentication",  # description
-                "completed",  # status
-                "backend-worker-001",  # assigned_to
+                100,  # issue_id - linked to issue
+                "1.1.1",  # task_number
+                "1.1",  # parent_issue_number
+                "Implement JWT token generation",  # title
+                "Create JWT token generation and validation",  # description
+                "pending",  # status - pending for approval
+                None,  # assigned_to - unassigned for approval
                 None,  # depends_on
                 0,  # can_parallelize
                 3,  # priority (high)
                 1,  # workflow_step
                 0,  # requires_mcp
                 5000,  # estimated_tokens
-                4800,  # actual_tokens
-                now_ts,  # created_at
-                now_ts,  # completed_at
-                "abc123",  # commit_sha
-                "passed",  # quality_gate_status
-                None,  # quality_gate_failures
-                0,  # requires_human_approval
-            ),
-            (
-                None,  # id (auto-increment)
-                planning_project_id,
-                None,  # issue_id
-                "T002",  # task_number
-                None,  # parent_issue_number
-                "Create project dashboard",  # title
-                "Build the main dashboard UI",  # description
-                "in_progress",  # status
-                "frontend-specialist-001",  # assigned_to
-                "1",  # depends_on (depends on T001)
-                1,  # can_parallelize
-                2,  # priority (medium)
-                2,  # workflow_step
-                0,  # requires_mcp
-                8000,  # estimated_tokens
-                3500,  # actual_tokens
+                0,  # actual_tokens
                 now_ts,  # created_at
                 None,  # completed_at
                 None,  # commit_sha
                 None,  # quality_gate_status
                 None,  # quality_gate_failures
                 0,  # requires_human_approval
+            ),
+            (
+                None,
+                planning_project_id,
+                100,  # issue_id
+                "1.1.2",
+                "1.1",
+                "Create login endpoint",
+                "Implement POST /auth/login endpoint",
+                "pending",
+                None,
+                None,
+                0,
+                3,
+                1,
+                0,
+                3000,
+                0,
+                now_ts,
+                None,
+                None,
+                None,
+                None,
+                0,
+            ),
+            # Tasks for Issue 101 (Dashboard UI)
+            (
+                None,
+                planning_project_id,
+                101,  # issue_id
+                "1.2.1",
+                "1.2",
+                "Create dashboard layout component",
+                "Build the main dashboard layout with navigation",
+                "pending",
+                None,
+                None,
+                1,
+                2,
+                2,
+                0,
+                8000,
+                0,
+                now_ts,
+                None,
+                None,
+                None,
+                None,
+                0,
+            ),
+            # Tasks for Issue 102 (Task API)
+            (
+                None,
+                planning_project_id,
+                102,  # issue_id
+                "2.1.1",
+                "2.1",
+                "Implement task CRUD endpoints",
+                "Create REST endpoints for task management",
+                "pending",
+                None,
+                None,
+                0,
+                2,
+                3,
+                0,
+                6000,
+                0,
+                now_ts,
+                None,
+                None,
+                None,
+                None,
+                0,
             ),
         ]
         for task in tasks_p2:
@@ -2010,6 +2135,173 @@ Sprint 3: Quality gates and polish
             )
         print(f"✅ Seeded {len(project_agent_assignments_p6)} project-agent assignment for project {task_breakdown_project_id}")
         print(f"✅ Set E2E_TEST_PROJECT_TASK_BREAKDOWN_ID={task_breakdown_project_id}")
+
+        # ========================================
+        # 14. Create Seventh Project for Assign Tasks Button Tests (Project 7)
+        # ========================================
+        # Project in 'active' phase with:
+        # - Pending unassigned tasks (triggers "Assign Tasks" button)
+        # - NO in_progress tasks (button is disabled when tasks are in_progress)
+        # This enables E2E testing of the Assign Tasks button (Issue #248 fix)
+        print("\n📦 Creating seventh project for assign tasks button tests...")
+        assign_tasks_project_id = 7
+
+        # Create workspace directory for Project 7
+        workspace_path_p7 = os.path.join(E2E_TEST_ROOT, ".codeframe", "workspaces", str(assign_tasks_project_id))
+        os.makedirs(workspace_path_p7, exist_ok=True)
+        print(f"   📁 Created workspace: {workspace_path_p7}")
+
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO projects (id, name, description, user_id, workspace_path, status, phase, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                assign_tasks_project_id,
+                "e2e-assign-tasks-project",
+                "Test project for Assign Tasks button E2E tests (Issue #248)",
+                1,  # test user
+                workspace_path_p7,
+                "active",  # status
+                "active",  # phase - must be active for Assign Tasks button to appear
+                now_ts,
+            ),
+        )
+        print(f"✅ Created/updated project {assign_tasks_project_id} in 'active' phase (for Assign Tasks tests)")
+
+        # Add completed discovery state for project 7
+        if table_exists(cursor, TABLE_MEMORY):
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'discovery_state', 'state', 'completed', ?, ?)
+                """,
+                (assign_tasks_project_id, now_ts, now_ts),
+            )
+
+            # Add PRD content for project 7
+            prd_content_p7 = """# Project Requirements Document - Assign Tasks Test Project
+
+## Overview
+Test project for validating the Assign Tasks button functionality (Issue #248).
+This project has pending unassigned tasks but NO in-progress tasks.
+
+## Test Scenarios
+1. Assign Tasks button should be visible
+2. Clicking button should trigger task assignment API
+3. Tasks should transition from pending to assigned/in_progress
+"""
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO memory (project_id, category, key, value, created_at, updated_at)
+                VALUES (?, 'prd', 'content', ?, ?, ?)
+                """,
+                (assign_tasks_project_id, prd_content_p7, now_ts, now_ts),
+            )
+
+        # Clear existing tasks for project 7 before seeding
+        cursor.execute("DELETE FROM tasks WHERE project_id = ?", (assign_tasks_project_id,))
+
+        # Add tasks for project 7 - IMPORTANT: Only completed and pending tasks
+        # NO in_progress tasks (which would disable the Assign Tasks button)
+        # The button shows when: hasPendingUnassigned=true AND hasTasksInProgress=false
+        tasks_p7 = [
+            # Completed task (provides context)
+            (
+                None, assign_tasks_project_id, None, "T001", None,
+                "Setup project structure",
+                "Initialize project with required dependencies",
+                "completed", "lead-001", None,  # completed, assigned
+                0, 3, 1, 0, 5000, 4800, now_ts, now_ts,
+                "setup123", "passed", None, 0,
+            ),
+            # Pending unassigned tasks (these trigger the Assign Tasks button)
+            (
+                None, assign_tasks_project_id, None, "T002", None,
+                "Implement core API",
+                "Build the main API endpoints",
+                "pending", None, "1",  # pending, unassigned
+                0, 2, 2, 0, 10000, 0, now_ts, None,
+                None, None, None, 0,
+            ),
+            (
+                None, assign_tasks_project_id, None, "T003", None,
+                "Create frontend components",
+                "Build React components for the UI",
+                "pending", None, "1",  # pending, unassigned
+                1, 2, 2, 0, 12000, 0, now_ts, None,
+                None, None, None, 0,
+            ),
+            (
+                None, assign_tasks_project_id, None, "T004", None,
+                "Write unit tests",
+                "Create comprehensive test suite",
+                "pending", None, "2,3",  # pending, unassigned
+                0, 1, 3, 0, 8000, 0, now_ts, None,
+                None, None, None, 0,
+            ),
+            # Blocked task (doesn't affect button visibility)
+            (
+                None, assign_tasks_project_id, None, "T005", None,
+                "Deploy to production",
+                "Deploy application to production environment",
+                "blocked", None, "2,3,4",  # blocked, unassigned
+                0, 1, 4, 0, 3000, 0, now_ts, None,
+                None, None, None, 1,  # requires_human_approval
+            ),
+        ]
+        for task in tasks_p7:
+            cursor.execute(
+                """
+                INSERT INTO tasks (
+                    id, project_id, issue_id, task_number, parent_issue_number, title, description,
+                    status, assigned_to, depends_on, can_parallelize, priority, workflow_step,
+                    requires_mcp, estimated_tokens, actual_tokens, created_at, completed_at,
+                    commit_sha, quality_gate_status, quality_gate_failures, requires_human_approval
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                task,
+            )
+
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (assign_tasks_project_id,))
+        task_count_p7 = cursor.fetchone()[0]
+        print(f"✅ Seeded {task_count_p7} tasks for project {assign_tasks_project_id}")
+
+        # Verify pending unassigned count
+        cursor.execute(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'pending' AND assigned_to IS NULL",
+            (assign_tasks_project_id,)
+        )
+        pending_unassigned = cursor.fetchone()[0]
+        print(f"   ✅ Pending unassigned tasks: {pending_unassigned} (button should appear)")
+
+        # Verify no in_progress tasks
+        cursor.execute(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ? AND status = 'in_progress'",
+            (assign_tasks_project_id,)
+        )
+        in_progress_count = cursor.fetchone()[0]
+        print(f"   ✅ In-progress tasks: {in_progress_count} (button should be enabled)")
+
+        # Add project-agent assignments for project 7
+        cursor.execute("DELETE FROM project_agents WHERE project_id = ?", (assign_tasks_project_id,))
+        project_agent_assignments_p7 = [
+            (assign_tasks_project_id, "lead-001", "orchestrator", 1, now_ts),
+            (assign_tasks_project_id, "backend-worker-001", "developer", 1, now_ts),
+            (assign_tasks_project_id, "frontend-specialist-001", "developer", 1, now_ts),
+            (assign_tasks_project_id, "test-engineer-001", "testing", 1, now_ts),
+        ]
+        for assignment in project_agent_assignments_p7:
+            cursor.execute(
+                """
+                INSERT INTO project_agents (project_id, agent_id, role, is_active, assigned_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                assignment,
+            )
+        print(f"✅ Seeded {len(project_agent_assignments_p7)} project-agent assignments for project {assign_tasks_project_id}")
+        print(f"✅ Set E2E_TEST_PROJECT_ASSIGN_TASKS_ID={assign_tasks_project_id}")
 
         # Commit all changes
         conn.commit()

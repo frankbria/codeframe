@@ -67,7 +67,7 @@ test.describe('Task Approval API Contract', () => {
    * - { approved_task_ids: [...] }  // Wrong approach
    * - Missing "approved" field
    */
-  test('should send correct request body format for task approval', async ({ page }) => {
+  test('should send correct request body format for task approval @smoke', async ({ page }) => {
     let capturedRequestBody: any = null;
     let approvalRequestIntercepted = false;
 
