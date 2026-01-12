@@ -450,6 +450,19 @@ async def assign_pending_tasks(
             message="No pending unassigned tasks to assign."
         )
 
+    # Check if execution is already in progress (Phase 1 fix for concurrent execution)
+    in_progress_tasks = [t for t in tasks if t.status == TaskStatus.IN_PROGRESS]
+    if in_progress_tasks:
+        logger.info(
+            f"⏳ Execution already in progress for project {project_id}: "
+            f"{len(in_progress_tasks)} tasks running"
+        )
+        return TaskAssignmentResponse(
+            success=True,
+            pending_count=pending_count,
+            message=f"Execution already in progress ({len(in_progress_tasks)} task(s) running). Please wait."
+        )
+
     # Schedule multi-agent execution in background
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if api_key:
