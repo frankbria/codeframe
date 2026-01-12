@@ -11,6 +11,7 @@
 
 import { useState, useMemo, useCallback, memo } from 'react';
 import { useAgentState } from '@/hooks/useAgentState';
+import { tasksApi } from '@/lib/api';
 import QualityGateStatus from '@/components/quality-gates/QualityGateStatus';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import type { Task, TaskStatus } from '@/types/agentState';
@@ -178,6 +179,10 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
   // Quality gates visibility state (keyed by task ID)
   const [qualityGatesVisible, setQualityGatesVisible] = useState<Set<number>>(new Set());
 
+  // Assignment state (Issue #248 fix)
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+
   // Filter tasks by project ID
   const projectTasks = useMemo(
     () => tasks.filter((task) => task.project_id === projectId),
@@ -212,6 +217,43 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
     }
     return projectTasks.filter((task) => task.status === activeFilter);
   }, [projectTasks, activeFilter]);
+
+  // Check if there are pending unassigned tasks (Issue #248 fix)
+  const hasPendingUnassigned = useMemo(() => {
+    return projectTasks.some(
+      (task) => task.status === 'pending' && !task.agent_id
+    );
+  }, [projectTasks]);
+
+  // Count of pending unassigned tasks
+  const pendingUnassignedCount = useMemo(() => {
+    return projectTasks.filter(
+      (task) => task.status === 'pending' && !task.agent_id
+    ).length;
+  }, [projectTasks]);
+
+  // Check if execution is already in progress (Phase 1 fix for concurrent execution)
+  const hasTasksInProgress = useMemo(() => {
+    return projectTasks.some((task) => task.status === 'in_progress');
+  }, [projectTasks]);
+
+  // Handler for Assign Tasks button (Issue #248 fix)
+  const handleAssignTasks = useCallback(async () => {
+    setIsAssigning(true);
+    setAssignmentError(null);
+    try {
+      const response = await tasksApi.assignPending(projectId);
+      if (!response.data.success) {
+        setAssignmentError(response.data.message || 'Assignment failed');
+      }
+      // Success - the WebSocket will update the task list as agents are assigned
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to assign tasks';
+      setAssignmentError(errorMessage);
+    } finally {
+      setIsAssigning(false);
+    }
+  }, [projectId]);
 
   // Toggle quality gates visibility for a task
   const handleViewQualityGates = useCallback((taskId: number) => {
@@ -260,6 +302,38 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
           {wsConnected ? 'Live updates enabled' : 'Reconnecting...'}
         </span>
       </div>
+
+      {/* Pending Unassigned Tasks Banner (Issue #248 fix) */}
+      {hasPendingUnassigned && (
+        <div
+          data-testid="assign-tasks-banner"
+          className="mb-4 p-4 bg-muted/50 border border-border rounded-lg"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="font-medium text-foreground">Tasks Pending Assignment</h3>
+              <p className="text-sm text-muted-foreground">
+                {hasTasksInProgress ? (
+                  <>Execution in progress. {pendingUnassignedCount} task{pendingUnassignedCount !== 1 ? 's' : ''} waiting...</>
+                ) : (
+                  <>{pendingUnassignedCount} task{pendingUnassignedCount !== 1 ? 's are' : ' is'} waiting to be assigned to agents</>
+                )}
+              </p>
+            </div>
+            <button
+              data-testid="assign-tasks-button"
+              onClick={handleAssignTasks}
+              disabled={isAssigning || hasTasksInProgress}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isAssigning ? 'Assigning...' : hasTasksInProgress ? 'Running...' : 'Assign Tasks'}
+            </button>
+          </div>
+          {assignmentError && (
+            <p className="mt-2 text-sm text-destructive">{assignmentError}</p>
+          )}
+        </div>
+      )}
 
       {/* Filter Buttons */}
       <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Filter tasks by status">

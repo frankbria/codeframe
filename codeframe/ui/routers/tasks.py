@@ -370,3 +370,131 @@ async def approve_tasks(
         excluded_count=len(excluded_tasks),
         message=f"Successfully approved {len(approved_tasks)} tasks. Development phase started."
     )
+
+
+# ============================================================================
+# Task Assignment Endpoint (Issue #248 - Manual trigger for stuck tasks)
+# ============================================================================
+
+
+class TaskAssignmentResponse(BaseModel):
+    """Response model for task assignment."""
+    success: bool
+    pending_count: int
+    message: str
+
+
+@project_router.post("/{project_id}/tasks/assign")
+async def assign_pending_tasks(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TaskAssignmentResponse:
+    """Manually trigger task assignment for pending unassigned tasks.
+
+    This endpoint allows users to restart the multi-agent execution process
+    when tasks are stuck in 'pending' state with no agent assigned. This can
+    happen when:
+    - User joins a session after the initial execution completed/failed
+    - The original execution timed out or crashed
+    - WebSocket messages were missed
+
+    Args:
+        project_id: Project ID
+        background_tasks: FastAPI background tasks for async execution
+        db: Database connection
+        current_user: Authenticated user
+
+    Returns:
+        TaskAssignmentResponse with pending task count and status
+
+    Raises:
+        HTTPException:
+            - 400: Project not in active phase
+            - 403: Access denied
+            - 404: Project not found
+    """
+    # Verify project exists
+    project = db.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Authorization check
+    if not db.user_has_project_access(current_user.id, project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Validate project is in active phase (development)
+    current_phase = project.get("phase", "discovery")
+    if current_phase != "active":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project must be in active (development) phase to assign tasks. Current phase: {current_phase}"
+        )
+
+    # Get all tasks and count pending unassigned ones
+    tasks = db.get_project_tasks(project_id)
+    pending_unassigned = [
+        t for t in tasks
+        if t.status == TaskStatus.PENDING and not t.assigned_to
+    ]
+    pending_count = len(pending_unassigned)
+
+    if pending_count == 0:
+        # Debug logging to help diagnose why tasks might appear stuck
+        logger.debug(
+            f"assign_pending_tasks called for project {project_id} but found 0 pending unassigned tasks. "
+            f"Total tasks: {len(tasks)}, statuses: {[t.status.value for t in tasks]}"
+        )
+        return TaskAssignmentResponse(
+            success=True,
+            pending_count=0,
+            message="No pending unassigned tasks to assign."
+        )
+
+    # Check if execution is already in progress (Phase 1 fix for concurrent execution)
+    # Include ASSIGNED status to prevent race between assignment and execution start
+    executing_tasks = [
+        t for t in tasks
+        if t.status in [TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS]
+    ]
+    if executing_tasks:
+        logger.info(
+            f"⏳ Execution already in progress for project {project_id}: "
+            f"{len(executing_tasks)} tasks assigned/running"
+        )
+        return TaskAssignmentResponse(
+            success=True,
+            pending_count=pending_count,
+            message=f"Execution already in progress ({len(executing_tasks)} task(s) assigned/running). Please wait."
+        )
+
+    # Schedule multi-agent execution in background
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        logger.warning(
+            f"⚠️  ANTHROPIC_API_KEY not configured - cannot assign tasks for project {project_id}"
+        )
+        return TaskAssignmentResponse(
+            success=False,
+            pending_count=pending_count,
+            message="Cannot assign tasks: API key not configured. Please contact administrator."
+        )
+
+    background_tasks.add_task(
+        start_development_execution,
+        project_id,
+        db,
+        manager,
+        api_key
+    )
+    logger.info(f"✅ Scheduled task assignment for project {project_id} ({pending_count} pending tasks)")
+
+    return TaskAssignmentResponse(
+        success=True,
+        pending_count=pending_count,
+        message=f"Assignment started for {pending_count} pending task(s)."
+    )

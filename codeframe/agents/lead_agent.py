@@ -1870,7 +1870,9 @@ Generate the PRD in markdown format with clear sections and professional languag
             # Mark agent busy
             self.agent_pool_manager.mark_agent_busy(agent_id, task.id)
 
-            # Update task status to in_progress
+            # Update task with assigned agent and status (Issue #248 fix)
+            # Set assigned_to BEFORE status change so UI shows assignment immediately
+            self.db.update_task(task.id, {"assigned_to": agent_id})
             self.db.update_task(task.id, {"status": "in_progress"})
 
             # Get agent instance
