@@ -135,8 +135,8 @@ test.describe('Task Execution Flow', () => {
     const reviewFindingsList = page.locator('[data-testid="review-findings-list"]');
 
     // Either summary or findings list MUST be visible (depending on data state)
-    // Use Playwright's or() for proper assertion that fails if neither is visible
-    await expect(reviewSummary.or(reviewFindingsList)).toBeVisible({ timeout: 10000 });
+    // Use .first() with .or() to avoid strict mode violation when both exist
+    await expect(reviewSummary.or(reviewFindingsList).first()).toBeVisible({ timeout: 10000 });
     console.log('✅ Review panel displays summary or findings list correctly');
   });
 
