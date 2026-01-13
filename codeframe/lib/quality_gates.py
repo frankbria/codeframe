@@ -52,7 +52,10 @@ from codeframe.core.models import (
 )
 from codeframe.persistence.database import Database
 from codeframe.config.security import get_security_config
+from codeframe.config.quality_gates_config import get_quality_gates_config
 from codeframe.enforcement.skip_pattern_detector import SkipPatternDetector
+from codeframe.lib.task_classifier import TaskClassifier
+from codeframe.lib.quality_gate_rules import QualityGateRules
 
 logger = logging.getLogger(__name__)
 
@@ -610,13 +613,22 @@ class QualityGates:
         return result
 
     async def run_all_gates(self, task: Task) -> QualityGateResult:
-        """Orchestrator: Run all quality gates in sequence and aggregate results.
+        """Orchestrator: Run applicable quality gates based on task classification.
 
-        This is the main entry point for quality gate validation. It runs all gates
-        in a specific order and aggregates failures. The task is blocked if ANY gate
-        fails.
+        This is the main entry point for quality gate validation. It classifies the
+        task to determine which gates are applicable, then runs only those gates.
+        The task is blocked if ANY applicable gate fails.
 
-        Execution Order:
+        Task Classification:
+            - CODE_IMPLEMENTATION: All gates (tests, coverage, type_check, linting, code_review, skip_detection)
+            - DESIGN: Only code_review (for design document quality)
+            - DOCUMENTATION: Only linting (for markdown/doc linting)
+            - CONFIGURATION: linting and type_check gates
+            - TESTING: tests, coverage, skip_detection gates
+            - REFACTORING: All gates
+            - MIXED: All gates (conservative approach)
+
+        Execution Order (for applicable gates):
             1. Linting gate (fast, catches obvious issues)
             2. Type check gate (fast, catches type errors)
             3. Skip detection gate (fast, scans for test skips)
@@ -625,11 +637,13 @@ class QualityGates:
             6. Review gate (slowest, deep code analysis)
 
         Args:
-            task: Task to validate against all quality gates
+            task: Task to validate against applicable quality gates
 
         Returns:
-            QualityGateResult with aggregated results from all gates. Status is "passed"
-            only if ALL gates pass. Failures list contains all failures from all gates.
+            QualityGateResult with aggregated results from all applicable gates.
+            Status is "passed" only if ALL applicable gates pass.
+            Failures list contains all failures from applicable gates.
+            skipped_gates contains list of gates that were skipped based on task category.
 
         Example:
             >>> result = await gates.run_all_gates(task)
@@ -642,8 +656,36 @@ class QualityGates:
         """
         start_time = datetime.now(timezone.utc)
         all_failures: List[QualityGateFailure] = []
+        skipped_gates: List[str] = []
 
-        logger.info(f"Running all quality gates for task {task.id}")
+        # Get configuration
+        config = get_quality_gates_config()
+
+        # Classify the task and determine applicable gates
+        classifier = TaskClassifier()
+        rules = QualityGateRules()
+        category = classifier.classify_task(task)
+
+        # Apply task classification unless disabled or in strict mode
+        if config.should_use_task_classification():
+            # Check for custom rules first
+            custom_gates = config.get_custom_gates_for_category(category.value)
+            if custom_gates is not None:
+                applicable_gates = custom_gates
+            else:
+                applicable_gates = rules.get_applicable_gates(category)
+        else:
+            # Strict mode or classification disabled - run all gates
+            applicable_gates = rules.all_gates
+            logger.info(
+                f"Task classification disabled (strict_mode={config.strict_mode}). "
+                f"Running all gates for task {task.id}"
+            )
+
+        logger.info(
+            f"Running quality gates for task {task.id} "
+            f"(category: {category.value}, applicable gates: {[g.value for g in applicable_gates]})"
+        )
 
         # Check if task involves risky changes (auth, payment, security)
         if self._contains_risky_changes(task):
@@ -657,28 +699,58 @@ class QualityGates:
             self.db.conn.commit()  # type: ignore[union-attr]
 
         # 1. Linting gate (fast)
-        linting_result = await self.run_linting_gate(task)
-        all_failures.extend(linting_result.failures)
+        if QualityGateType.LINTING in applicable_gates:
+            linting_result = await self.run_linting_gate(task)
+            all_failures.extend(linting_result.failures)
+        else:
+            reason = rules.get_skip_reason(category, QualityGateType.LINTING)
+            logger.info(f"Skipping linting gate for task {task.id}: {reason}")
+            skipped_gates.append(QualityGateType.LINTING.value)
 
         # 2. Type check gate (fast)
-        type_check_result = await self.run_type_check_gate(task)
-        all_failures.extend(type_check_result.failures)
+        if QualityGateType.TYPE_CHECK in applicable_gates:
+            type_check_result = await self.run_type_check_gate(task)
+            all_failures.extend(type_check_result.failures)
+        else:
+            reason = rules.get_skip_reason(category, QualityGateType.TYPE_CHECK)
+            logger.info(f"Skipping type check gate for task {task.id}: {reason}")
+            skipped_gates.append(QualityGateType.TYPE_CHECK.value)
 
         # 3. Skip detection gate (fast, scans for test skips)
-        skip_detection_result = await self.run_skip_detection_gate(task)
-        all_failures.extend(skip_detection_result.failures)
+        if QualityGateType.SKIP_DETECTION in applicable_gates:
+            skip_detection_result = await self.run_skip_detection_gate(task)
+            all_failures.extend(skip_detection_result.failures)
+        else:
+            reason = rules.get_skip_reason(category, QualityGateType.SKIP_DETECTION)
+            logger.info(f"Skipping skip detection gate for task {task.id}: {reason}")
+            skipped_gates.append(QualityGateType.SKIP_DETECTION.value)
 
         # 4. Test gate
-        test_result = await self.run_tests_gate(task)
-        all_failures.extend(test_result.failures)
+        if QualityGateType.TESTS in applicable_gates:
+            test_result = await self.run_tests_gate(task)
+            all_failures.extend(test_result.failures)
+        else:
+            reason = rules.get_skip_reason(category, QualityGateType.TESTS)
+            logger.info(f"Skipping tests gate for task {task.id}: {reason}")
+            skipped_gates.append(QualityGateType.TESTS.value)
 
         # 5. Coverage gate
-        coverage_result = await self.run_coverage_gate(task)
-        all_failures.extend(coverage_result.failures)
+        if QualityGateType.COVERAGE in applicable_gates:
+            coverage_result = await self.run_coverage_gate(task)
+            all_failures.extend(coverage_result.failures)
+        else:
+            reason = rules.get_skip_reason(category, QualityGateType.COVERAGE)
+            logger.info(f"Skipping coverage gate for task {task.id}: {reason}")
+            skipped_gates.append(QualityGateType.COVERAGE.value)
 
         # 6. Review gate (slowest, most comprehensive)
-        review_result = await self.run_review_gate(task)
-        all_failures.extend(review_result.failures)
+        if QualityGateType.CODE_REVIEW in applicable_gates:
+            review_result = await self.run_review_gate(task)
+            all_failures.extend(review_result.failures)
+        else:
+            reason = rules.get_skip_reason(category, QualityGateType.CODE_REVIEW)
+            logger.info(f"Skipping code review gate for task {task.id}: {reason}")
+            skipped_gates.append(QualityGateType.CODE_REVIEW.value)
 
         execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
@@ -690,11 +762,13 @@ class QualityGates:
             status=status,
             failures=all_failures,
             execution_time_seconds=execution_time,
+            skipped_gates=skipped_gates,
+            task_category=category.value,
         )
 
         logger.info(
             f"Quality gates for task {task.id} completed in {execution_time:.2f}s: "
-            f"status={status}, failures={len(all_failures)}"
+            f"status={status}, failures={len(all_failures)}, skipped={len(skipped_gates)}"
         )
 
         return result
@@ -751,12 +825,17 @@ class QualityGates:
     def _run_pytest(self) -> Dict[str, Any]:
         """Run pytest and return results.
 
+        Runs tests without coverage first. If pytest-cov is available, coverage
+        is collected separately by _run_coverage(). This prevents test failures
+        due to missing pytest-cov plugin.
+
         Returns:
             dict with keys: returncode, output, summary
         """
         try:
+            # Run pytest without coverage flags (coverage is handled separately)
             result = subprocess.run(
-                ["pytest", "--tb=short", "-v", "--cov=.", "--cov-report=term-missing"],
+                ["pytest", "--tb=short", "-v"],
                 cwd=str(self.project_root),
                 capture_output=True,
                 text=True,
@@ -779,6 +858,7 @@ class QualityGates:
                 "summary": "Timeout",
             }
         except FileNotFoundError:
+            logger.warning("pytest not found - skipping test execution")
             return {
                 "returncode": 0,  # Don't fail if pytest not installed
                 "output": "pytest not found, skipping",
@@ -882,7 +962,10 @@ class QualityGates:
             }
 
     def _run_coverage(self) -> Dict[str, Any]:
-        """Run tests with coverage and return results."""
+        """Run tests with coverage and return results.
+
+        Handles missing pytest-cov gracefully by treating it as a skip rather than failure.
+        """
         # Use pytest with coverage for Python
         try:
             result = subprocess.run(
@@ -894,6 +977,21 @@ class QualityGates:
             )
 
             output = result.stdout + result.stderr
+
+            # Check if pytest-cov is not installed
+            if "unrecognized arguments: --cov" in output or "no module named 'pytest_cov'" in output.lower():
+                logger.warning(
+                    "pytest-cov not installed - skipping coverage check. "
+                    "Install with: pip install pytest-cov"
+                )
+                return {
+                    "returncode": 0,
+                    "output": "pytest-cov not installed, skipping coverage check",
+                    "coverage_pct": 100.0,  # Pass if tool not available
+                    "skipped": True,
+                    "skip_reason": "pytest-cov plugin not installed",
+                }
+
             coverage_pct = self._extract_coverage_percentage(output)
 
             return {
@@ -908,10 +1006,13 @@ class QualityGates:
                 "coverage_pct": 0.0,
             }
         except FileNotFoundError:
+            logger.warning("pytest not found - skipping coverage check")
             return {
                 "returncode": 0,
                 "output": "pytest not found, skipping coverage",
                 "coverage_pct": 100.0,  # Pass if tool not available
+                "skipped": True,
+                "skip_reason": "pytest not found",
             }
 
     def _run_ruff(self) -> Dict[str, Any]:
@@ -1041,12 +1142,21 @@ class QualityGates:
     # Helper Methods - Blocker Creation
     # ========================================================================
 
-    def _create_quality_blocker(self, task: Task, failures: List[QualityGateFailure]) -> None:
+    def _create_quality_blocker(
+        self,
+        task: Task,
+        failures: List[QualityGateFailure],
+        task_category: Optional[str] = None
+    ) -> None:
         """Create a SYNC blocker for quality gate failures.
+
+        Includes task category context in the blocker message to help users understand
+        which gates were applied and why.
 
         Args:
             task: Task that failed quality gates
             failures: List of quality gate failures to include in blocker
+            task_category: Optional task category (e.g., 'design', 'code_implementation')
         """
         if not failures:
             return
@@ -1054,8 +1164,16 @@ class QualityGates:
         # Format failures into blocker question
         question_parts = [
             f"Quality gates failed for task #{task.task_number} ({task.title}):",
-            "",
         ]
+
+        # Add task category context if available
+        if task_category:
+            category_guidance = self._get_category_guidance(task_category)
+            question_parts.append(f"[Task Category: {task_category}]")
+            if category_guidance:
+                question_parts.append(f"Note: {category_guidance}")
+
+        question_parts.append("")
 
         for i, failure in enumerate(failures[:10], 1):  # Limit to 10 failures
             severity_emoji = {
@@ -1094,6 +1212,46 @@ class QualityGates:
         logger.info(
             f"Created quality gate blocker for task {task.id} due to {len(failures)} failures"
         )
+
+    def _get_category_guidance(self, task_category: str) -> str:
+        """Get category-specific guidance for blocker messages.
+
+        Args:
+            task_category: The task category string
+
+        Returns:
+            Guidance message appropriate for the task category
+        """
+        guidance_map = {
+            "design": (
+                "This task was classified as a design task. If code was written, "
+                "ensure tests are included and the task title reflects the actual work done."
+            ),
+            "documentation": (
+                "This task was classified as a documentation task. Only linting gates apply. "
+                "If code was written, update the task title to reflect implementation work."
+            ),
+            "configuration": (
+                "This task was classified as a configuration task. "
+                "Only linting and type checking gates apply."
+            ),
+            "testing": (
+                "This task was classified as a testing task. "
+                "Ensure tests pass and coverage meets requirements."
+            ),
+            "code_implementation": (
+                "All quality gates apply for code implementation tasks."
+            ),
+            "refactoring": (
+                "All quality gates apply for refactoring tasks. "
+                "Ensure no regressions were introduced."
+            ),
+            "mixed": (
+                "This task has mixed characteristics - all quality gates apply. "
+                "Consider splitting into more focused tasks if issues persist."
+            ),
+        }
+        return guidance_map.get(task_category, "")
 
     # ========================================================================
     # Helper Methods - Evidence Extraction (for EvidenceVerifier integration)

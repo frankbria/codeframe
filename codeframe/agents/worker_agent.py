@@ -1397,9 +1397,18 @@ class WorkerAgent:
                 # Commit both operations atomically
                 self.db.conn.commit()
 
+                # Build completion message with task classification info
+                skipped_count = quality_result.gates_skipped_count if hasattr(quality_result, 'gates_skipped_count') else 0
+                task_category = quality_result.task_category if hasattr(quality_result, 'task_category') else None
+
+                if skipped_count > 0 and task_category:
+                    gates_msg = f"{6 - skipped_count} gates passed, {skipped_count} skipped (not applicable for {task_category} tasks)"
+                else:
+                    gates_msg = "all quality gates passed"
+
                 logger.info(
                     f"Task {task.id} completed successfully - "
-                    f"all quality gates passed and evidence {evidence_id} verified"
+                    f"{gates_msg} and evidence {evidence_id} verified"
                 )
 
                 return {
@@ -1408,7 +1417,9 @@ class WorkerAgent:
                     "quality_gate_result": quality_result,
                     "evidence_verified": True,
                     "evidence_id": evidence_id,
-                    "message": "Task completed successfully - all quality gates passed and evidence verified",
+                    "message": f"Task completed successfully - {gates_msg} and evidence verified",
+                    "task_category": task_category,
+                    "skipped_gates": quality_result.skipped_gates if hasattr(quality_result, 'skipped_gates') else [],
                 }
             except Exception as e:
                 # Rollback both operations on any error to maintain consistency
@@ -1430,13 +1441,19 @@ class WorkerAgent:
             blocker_row = cursor.fetchone()
             blocker_id = blocker_row[0] if blocker_row else None
 
+            # Include task category in failure message for context
+            task_category = quality_result.task_category if hasattr(quality_result, 'task_category') else None
+            category_note = f" (task category: {task_category})" if task_category else ""
+
             return {
                 "success": False,
                 "status": "blocked",
                 "quality_gate_result": quality_result,
                 "blocker_id": blocker_id,
-                "message": f"Task blocked by quality gates - {len(quality_result.failures)} failures. "
+                "message": f"Task blocked by quality gates{category_note} - {len(quality_result.failures)} failures. "
                 f"Fix issues and try again.",
+                "task_category": task_category,
+                "skipped_gates": quality_result.skipped_gates if hasattr(quality_result, 'skipped_gates') else [],
             }
 
     def _create_quality_blocker(self, task: Task, failures: List[Any]) -> int:
