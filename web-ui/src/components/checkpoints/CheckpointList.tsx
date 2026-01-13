@@ -275,7 +275,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center p-8">
+      <div className="flex justify-center items-center p-8" data-testid="checkpoint-loading">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         <span className="ml-3 text-muted-foreground">Loading checkpoints...</span>
       </div>
@@ -298,8 +298,15 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
 
       {/* Error message */}
       {error && (
-        <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4">
+        <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4" data-testid="checkpoint-error">
           <p className="text-sm text-destructive">{error}</p>
+          <button
+            onClick={loadCheckpoints}
+            className="mt-2 text-sm text-primary hover:underline"
+            aria-label="Retry loading checkpoints"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -415,7 +422,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                     <div>
                       <span className="text-muted-foreground">Git Commit:</span>{' '}
                       <span className="font-mono text-foreground text-xs" data-testid="checkpoint-git-sha">
-                        {checkpoint.git_commit.substring(0, 7)}
+                        {checkpoint.git_commit ? checkpoint.git_commit.substring(0, 7) : 'N/A'}
                       </span>
                     </div>
                     <div>
