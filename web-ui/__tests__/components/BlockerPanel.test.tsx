@@ -311,6 +311,114 @@ describe('BlockerPanel', () => {
     });
   });
 
+  describe('type filtering', () => {
+    it('keeps filter buttons visible when ASYNC filter returns 0 results', () => {
+      // Render with only SYNC blockers
+      render(<BlockerPanel blockers={[mockSyncBlocker]} />);
+
+      // Click ASYNC filter
+      fireEvent.click(screen.getByRole('button', { name: 'ASYNC' }));
+
+      // All three filter buttons should still be visible
+      expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'SYNC' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'ASYNC' })).toBeInTheDocument();
+
+      // Count should show 0
+      expect(screen.getByText('(0)')).toBeInTheDocument();
+
+      // Empty message should be displayed
+      expect(screen.getByText('No ASYNC blockers found')).toBeInTheDocument();
+      expect(screen.getByText('Try selecting a different filter')).toBeInTheDocument();
+    });
+
+    it('keeps filter buttons visible when SYNC filter returns 0 results', () => {
+      // Render with only ASYNC blockers
+      render(<BlockerPanel blockers={[mockAsyncBlocker]} />);
+
+      // Click SYNC filter
+      fireEvent.click(screen.getByRole('button', { name: 'SYNC' }));
+
+      // All three filter buttons should still be visible
+      expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'SYNC' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'ASYNC' })).toBeInTheDocument();
+
+      // Count should show 0
+      expect(screen.getByText('(0)')).toBeInTheDocument();
+
+      // Empty message should be displayed
+      expect(screen.getByText('No SYNC blockers found')).toBeInTheDocument();
+    });
+
+    it('allows switching back to ALL filter after seeing empty filtered results', () => {
+      // Render with only SYNC blockers
+      render(<BlockerPanel blockers={[mockSyncBlocker]} />);
+
+      // Click ASYNC filter (should show 0 results)
+      fireEvent.click(screen.getByRole('button', { name: 'ASYNC' }));
+      expect(screen.getByText('(0)')).toBeInTheDocument();
+
+      // Click ALL filter
+      fireEvent.click(screen.getByRole('button', { name: 'All' }));
+
+      // SYNC blocker should now be visible
+      expect(screen.getByText(mockSyncBlocker.question)).toBeInTheDocument();
+
+      // Count should show 1
+      expect(screen.getByText('(1)')).toBeInTheDocument();
+    });
+
+    it('shows empty state without buttons only when truly no pending blockers', () => {
+      // Render with only resolved/expired blockers
+      render(<BlockerPanel blockers={[mockResolvedBlocker, mockExpiredBlocker]} />);
+
+      // Empty state message should be shown
+      expect(screen.getByText('No blockers - agents are running smoothly!')).toBeInTheDocument();
+
+      // Filter buttons should NOT be present
+      expect(screen.queryByRole('button', { name: 'All' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'SYNC' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'ASYNC' })).not.toBeInTheDocument();
+    });
+
+    it('shows empty state without buttons when blockers array is empty', () => {
+      render(<BlockerPanel blockers={mockEmptyBlockersList} />);
+
+      // Empty state message should be shown
+      expect(screen.getByText('No blockers - agents are running smoothly!')).toBeInTheDocument();
+
+      // Filter buttons should NOT be present
+      expect(screen.queryByRole('button', { name: 'All' })).not.toBeInTheDocument();
+    });
+
+    it('switches between filter states correctly', () => {
+      // Render with both SYNC and ASYNC blockers
+      render(<BlockerPanel blockers={[mockSyncBlocker, mockAsyncBlocker]} />);
+
+      // Initially ALL filter, both visible
+      expect(screen.getByText('(2)')).toBeInTheDocument();
+      expect(screen.getByText(mockSyncBlocker.question)).toBeInTheDocument();
+      expect(screen.getByText(mockAsyncBlocker.question)).toBeInTheDocument();
+
+      // Click SYNC filter
+      fireEvent.click(screen.getByRole('button', { name: 'SYNC' }));
+      expect(screen.getByText('(1)')).toBeInTheDocument();
+      expect(screen.getByText(mockSyncBlocker.question)).toBeInTheDocument();
+      expect(screen.queryByText(mockAsyncBlocker.question)).not.toBeInTheDocument();
+
+      // Click ASYNC filter
+      fireEvent.click(screen.getByRole('button', { name: 'ASYNC' }));
+      expect(screen.getByText('(1)')).toBeInTheDocument();
+      expect(screen.queryByText(mockSyncBlocker.question)).not.toBeInTheDocument();
+      expect(screen.getByText(mockAsyncBlocker.question)).toBeInTheDocument();
+
+      // Click ALL filter again
+      fireEvent.click(screen.getByRole('button', { name: 'All' }));
+      expect(screen.getByText('(2)')).toBeInTheDocument();
+    });
+  });
+
   describe('UI styling and structure', () => {
     it('applies hover styles to blocker buttons', () => {
       render(<BlockerPanel blockers={[mockSyncBlocker]} />);
