@@ -2198,8 +2198,8 @@ Generate the PRD in markdown format with clear sections and professional languag
         7. Broadcast task status changes
         """
         try:
-            # Determine agent type
-            task_dict = {"id": task.id, "title": task.title, "description": task.description}
+            # Determine agent type - use task.to_dict() for complete task data
+            task_dict = task.to_dict()
             agent_type = self.agent_assigner.assign_agent_type(task_dict)
 
             logger.info(f"Assigning task {task.id} ({task.title}) to {agent_type}")

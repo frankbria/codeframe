@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from anthropic.types import Message, TextBlock
 
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
-from codeframe.core.models import Task, AgentMaturity
+from codeframe.core.models import AgentMaturity
 
 
 @pytest.fixture
@@ -42,15 +42,25 @@ def mock_websocket_manager():
 
 @pytest.fixture
 def sample_task():
-    """Create sample task for testing."""
-    return Task(
-        id=1,
-        title="Create UserCard component",
-        description="Create a UserCard component that displays user information",
-        status="pending",
-        priority=1,
-        workflow_step=1,
-    )
+    """Create sample task dict for testing (matches LeadAgent's task.to_dict() output)."""
+    return {
+        "id": 1,
+        "project_id": 1,
+        "issue_id": 1,
+        "task_number": "T-001",
+        "parent_issue_number": "I-001",
+        "title": "Create UserCard component",
+        "description": "Create a UserCard component that displays user information",
+        "status": "pending",
+        "assigned_to": None,
+        "depends_on": "",
+        "can_parallelize": False,
+        "priority": 1,
+        "workflow_step": 1,
+        "requires_mcp": False,
+        "estimated_tokens": 0,
+        "actual_tokens": None,
+    }
 
 
 class TestFrontendWorkerAgentInitialization:
@@ -329,20 +339,25 @@ class TestTaskExecution:
     @pytest.mark.asyncio
     async def test_execute_task_json_spec(self, frontend_agent):
         """Test task execution with JSON specification."""
-        json_task = Task(
-            id=2,
-            title="Create Button component",
-            description=json.dumps(
+        json_task = {
+            "id": 2,
+            "project_id": 1,
+            "issue_id": 1,
+            "task_number": "T-002",
+            "parent_issue_number": "I-001",
+            "title": "Create Button component",
+            "description": json.dumps(
                 {
                     "name": "Button",
                     "description": "Reusable button component",
                     "generate_types": False,
                 }
             ),
-            status="pending",
-            priority=1,
-            workflow_step=1,
-        )
+            "status": "pending",
+            "assigned_to": None,
+            "priority": 1,
+            "workflow_step": 1,
+        }
 
         result = await frontend_agent.execute_task(json_task, project_id=1)
 
@@ -357,14 +372,19 @@ class TestTaskExecution:
     async def test_execute_task_error_handling(self, frontend_agent):
         """Test task execution handles errors gracefully."""
         # Create task with invalid spec that will cause error
-        invalid_task = Task(
-            id=3,
-            title="Invalid task",
-            description="Component: <Invalid>Name>",  # Invalid component name
-            status="pending",
-            priority=1,
-            workflow_step=1,
-        )
+        invalid_task = {
+            "id": 3,
+            "project_id": 1,
+            "issue_id": 1,
+            "task_number": "T-003",
+            "parent_issue_number": "I-001",
+            "title": "Invalid task",
+            "description": "Component: <Invalid>Name>",  # Invalid component name
+            "status": "pending",
+            "assigned_to": None,
+            "priority": 1,
+            "workflow_step": 1,
+        }
 
         # Mock _create_component_files to raise error
         original_method = frontend_agent._create_component_files
@@ -422,14 +442,19 @@ class TestErrorHandling:
         existing_file = frontend_agent.components_dir / "Existing.tsx"
         existing_file.write_text("original content")
 
-        task = Task(
-            id=4,
-            title="Create Existing component",
-            description="Component: Existing",
-            status="pending",
-            priority=1,
-            workflow_step=1,
-        )
+        task = {
+            "id": 4,
+            "project_id": 1,
+            "issue_id": 1,
+            "task_number": "T-004",
+            "parent_issue_number": "I-001",
+            "title": "Create Existing component",
+            "description": "Component: Existing",
+            "status": "pending",
+            "assigned_to": None,
+            "priority": 1,
+            "workflow_step": 1,
+        }
 
         result = await frontend_agent.execute_task(task, project_id=1)
 

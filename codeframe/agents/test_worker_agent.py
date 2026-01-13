@@ -98,18 +98,33 @@ Output format:
 - Ensure proper async/await handling for async code
 """
 
-    async def execute_task(self, task: Task, project_id: int = 1) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any], project_id: int = 1) -> Dict[str, Any]:
         """
         Execute test generation task.
 
         Args:
-            task: Task with target code specification
+            task: Task dictionary with id, project_id, task_number, title, description, etc.
             project_id: Project ID for broadcasts
 
         Returns:
             Execution result with test status
         """
-        self.current_task = task
+        # Extract commonly used fields from task dict
+        task_id = task["id"]
+        task_title = task["title"]
+        task_description = task["description"]
+
+        # Create Task object for self.current_task (used by blocker creation)
+        self.current_task = Task(
+            id=task_id,
+            project_id=task.get("project_id"),
+            issue_id=task.get("issue_id"),
+            task_number=task.get("task_number", ""),
+            parent_issue_number=task.get("parent_issue_number", ""),
+            title=task_title,
+            description=task_description,
+            assigned_to=task.get("assigned_to"),
+        )
 
         try:
             # Broadcast task started
@@ -120,7 +135,7 @@ Output format:
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
-                        task.id,
+                        task_id,
                         "in_progress",
                         agent_id=self.agent_id,
                         progress=0,
@@ -128,10 +143,10 @@ Output format:
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
 
-            logger.info(f"Test agent {self.agent_id} executing task {task.id}: {task.title}")
+            logger.info(f"Test agent {self.agent_id} executing task {task_id}: {task_title}")
 
             # Parse task for target code
-            test_spec = self._parse_test_spec(task.description)
+            test_spec = self._parse_test_spec(task_description)
 
             # Analyze target code
             code_analysis = self._analyze_target_code(test_spec.get("target_file"))
@@ -147,7 +162,7 @@ Output format:
 
             # Execute tests and self-correct if needed
             test_result = await self._execute_and_correct_tests(
-                test_file, test_spec, code_analysis, project_id, task.id
+                test_file, test_spec, code_analysis, project_id, task_id
             )
 
             # Broadcast completion or failure
@@ -159,7 +174,7 @@ Output format:
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
-                        task.id,
+                        task_id,
                         final_status,
                         agent_id=self.agent_id,
                         progress=100,
@@ -168,7 +183,7 @@ Output format:
                     logger.debug(f"Failed to broadcast task status: {e}")
 
             logger.info(
-                f"Test agent {self.agent_id} completed task {task.id}: "
+                f"Test agent {self.agent_id} completed task {task_id}: "
                 f"{test_result['passed_count']}/{test_result['total_count']} tests passed"
             )
 
@@ -178,13 +193,13 @@ Output format:
                     # Convert test_file Path to string for files_modified
                     files_modified = [str(test_file)]
 
-                    # Convert Task object to dict for git_workflow
+                    # Task is already a dict, extract fields for git_workflow
                     task_dict = {
-                        "id": task.id,
-                        "project_id": task.project_id,
-                        "task_number": task.task_number,
-                        "title": task.title,
-                        "description": task.description,
+                        "id": task_id,
+                        "project_id": task.get("project_id"),
+                        "task_number": task.get("task_number", ""),
+                        "title": task_title,
+                        "description": task_description,
                     }
 
                     commit_sha = self.git_workflow.commit_task_changes(
@@ -193,11 +208,11 @@ Output format:
 
                     # T082: Record commit SHA in database
                     if commit_sha and self.db:
-                        self.db.update_task_commit_sha(task.id, commit_sha)
-                        logger.info(f"Task {task.id} committed with SHA: {commit_sha[:7]}")
+                        self.db.update_task_commit_sha(task_id, commit_sha)
+                        logger.info(f"Task {task_id} committed with SHA: {commit_sha[:7]}")
                 except Exception as e:
                     # T080: Graceful degradation - log warning but don't block task completion
-                    logger.warning(f"Auto-commit failed for task {task.id} (non-blocking): {e}")
+                    logger.warning(f"Auto-commit failed for task {task_id} (non-blocking): {e}")
 
             return {
                 "status": final_status,
@@ -208,7 +223,7 @@ Output format:
             }
 
         except Exception as e:
-            logger.error(f"Test agent {self.agent_id} failed task {task.id}: {e}")
+            logger.error(f"Test agent {self.agent_id} failed task {task_id}: {e}")
 
             if self.websocket_manager:
                 try:
@@ -217,12 +232,12 @@ Output format:
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
-                        task.id,
+                        task_id,
                         "failed",
                         agent_id=self.agent_id,
                     )
-                except Exception as e:
-                    logger.debug(f"Failed to broadcast task status: {e}")
+                except Exception as broadcast_err:
+                    logger.debug(f"Failed to broadcast task status: {broadcast_err}")
 
             return {"status": "failed", "output": str(e), "error": str(e)}
 
@@ -411,7 +426,9 @@ def {test_name}():
 
         return test_file
 
-    async def _run_and_check_linting(self, task: Task, test_file: Path, project_id: int) -> None:
+    async def _run_and_check_linting(
+        self, task: Dict[str, Any], test_file: Path, project_id: int
+    ) -> None:
         """
         Run linting on test file and create blocker if critical errors found (T113).
 
@@ -419,13 +436,15 @@ def {test_name}():
         stores results in the database, and creates a blocker if critical errors are found.
 
         Args:
-            task: Task object
+            task: Task dictionary with id, project_id, task_number, title, description, etc.
             test_file: Path to created test file
             project_id: Project ID for broadcasts
 
         Raises:
             ValueError: If linting fails with critical errors (blocker created)
         """
+        task_id = task["id"]
+
         try:
             from codeframe.testing.lint_runner import LintRunner
             from codeframe.lib.lint_utils import format_lint_blocker
@@ -434,7 +453,7 @@ def {test_name}():
             # Initialize LintRunner
             lint_runner = LintRunner(self.project_root)
 
-            logger.info(f"Running linting on test file {test_file} for task {task.id}")
+            logger.info(f"Running linting on test file {test_file} for task {task_id}")
 
             # Run linting on test file
             lint_results = await lint_runner.run_lint([test_file])
@@ -443,7 +462,7 @@ def {test_name}():
             if self.db:
                 for result in lint_results:
                     self.db.create_lint_result(
-                        task_id=task.id,
+                        task_id=task_id,
                         linter=result.linter,
                         error_count=result.error_count,
                         warning_count=result.warning_count,
@@ -463,10 +482,10 @@ def {test_name}():
                         blocker_type="SYNC",
                         title=f"Linting failed: {total_errors} critical errors",
                         description=blocker_description,
-                        blocking_task_id=task.id,
+                        blocking_task_id=task_id,
                     )
 
-                logger.error(f"Task {task.id} blocked by {total_errors} lint errors")
+                logger.error(f"Task {task_id} blocked by {total_errors} lint errors")
 
                 # Broadcast lint failure via WebSocket (T119)
                 if self.websocket_manager:
@@ -478,7 +497,7 @@ def {test_name}():
                             project_id,
                             {
                                 "type": "lint_failed",
-                                "task_id": task.id,
+                                "task_id": task_id,
                                 "error_count": total_errors,
                                 "timestamp": datetime.utcnow().isoformat(),
                             },
@@ -491,7 +510,7 @@ def {test_name}():
             # Log warnings (non-blocking)
             total_warnings = sum(r.warning_count for r in lint_results)
             if total_warnings > 0:
-                logger.warning(f"Task {task.id}: {total_warnings} lint warnings (non-blocking)")
+                logger.warning(f"Task {task_id}: {total_warnings} lint warnings (non-blocking)")
 
             # Broadcast lint success via WebSocket (T119)
             if self.websocket_manager:
@@ -503,7 +522,7 @@ def {test_name}():
                         project_id,
                         {
                             "type": "lint_completed",
-                            "task_id": task.id,
+                            "task_id": task_id,
                             "error_count": 0,
                             "warning_count": total_warnings,
                             "timestamp": datetime.utcnow().isoformat(),

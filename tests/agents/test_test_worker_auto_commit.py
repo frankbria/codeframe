@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock
 
 from codeframe.agents.test_worker_agent import TestWorkerAgent
-from codeframe.core.models import Task, AgentMaturity
+from codeframe.core.models import AgentMaturity
 
 
 @pytest.fixture
@@ -57,25 +57,26 @@ async def test_test_worker_commits_after_successful_task(
     # Arrange
     test_agent.git_workflow = mock_git_workflow
 
-    task = Task(
-        id=20,
-        issue_id=1,
-        task_number="cf-3.4.1",
-        parent_issue_number="cf-3",
-        title="Generate tests for auth module",
-        description='{"test_name": "test_auth", "target_file": "auth.py"}',
-        status="pending",
-        assigned_to="test-001",
-        depends_on=None,
-        can_parallelize=True,
-        priority=1,
-        workflow_step=8,
-        requires_mcp=False,
-        estimated_tokens=3000,
-        actual_tokens=0,
-        created_at="2025-01-01T00:00:00",
-        completed_at=None,
-    )
+    task = {
+        "id": 20,
+        "project_id": 1,
+        "issue_id": 1,
+        "task_number": "cf-3.4.1",
+        "parent_issue_number": "cf-3",
+        "title": "Generate tests for auth module",
+        "description": '{"test_name": "test_auth", "target_file": "auth.py"}',
+        "status": "pending",
+        "assigned_to": "test-001",
+        "depends_on": None,
+        "can_parallelize": True,
+        "priority": 1,
+        "workflow_step": 8,
+        "requires_mcp": False,
+        "estimated_tokens": 3000,
+        "actual_tokens": 0,
+        "created_at": "2025-01-01T00:00:00",
+        "completed_at": None,
+    }
 
     # Mock test execution to pass immediately
     def mock_execute_tests(test_file):
@@ -126,25 +127,26 @@ async def test_test_worker_commits_even_after_test_correction(
     test_agent.git_workflow = mock_git_workflow
     test_agent.max_correction_attempts = 2
 
-    task = Task(
-        id=21,
-        issue_id=1,
-        task_number="cf-3.4.2",
-        parent_issue_number="cf-3",
-        title="Generate tests with correction",
-        description='{"test_name": "test_complex", "target_file": "complex.py"}',
-        status="pending",
-        assigned_to="test-001",
-        depends_on=None,
-        can_parallelize=True,
-        priority=1,
-        workflow_step=8,
-        requires_mcp=False,
-        estimated_tokens=3000,
-        actual_tokens=0,
-        created_at="2025-01-01T00:00:00",
-        completed_at=None,
-    )
+    task = {
+        "id": 21,
+        "project_id": 1,
+        "issue_id": 1,
+        "task_number": "cf-3.4.2",
+        "parent_issue_number": "cf-3",
+        "title": "Generate tests with correction",
+        "description": '{"test_name": "test_complex", "target_file": "complex.py"}',
+        "status": "pending",
+        "assigned_to": "test-001",
+        "depends_on": None,
+        "can_parallelize": True,
+        "priority": 1,
+        "workflow_step": 8,
+        "requires_mcp": False,
+        "estimated_tokens": 3000,
+        "actual_tokens": 0,
+        "created_at": "2025-01-01T00:00:00",
+        "completed_at": None,
+    }
 
     # Mock tests to fail first, then pass
     attempt_count = 0
