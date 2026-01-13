@@ -12,12 +12,19 @@ import { test, expect, Page } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   waitForAPIResponse,
   monitorWebSocket,
   assertWebSocketHealthy,
   ExtendedPage,
-  WebSocketMonitor
+  WebSocketMonitor,
+  getBrowserInfo,
+  getBrowserTimeout,
+  isMobileBrowser,
+  waitForMobileReady,
+  waitForResponsiveLayout,
+  browserAwareClick,
+  scrollIntoViewMobile,
 } from './test-utils';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -138,14 +145,13 @@ test.describe('Dashboard - Sprint 10 Features', () => {
   // Verify no network errors occurred during each test
   // Filter out transient WebSocket errors that can occur during dashboard operations
   // (WebSocket reconnections, brief disconnections during tab switching, etc.)
-  // Also filter net::ERR_ABORTED - normal browser behavior when navigation cancels pending requests
+  // Note: checkTestErrorsWithBrowserFilters automatically adds Firefox NS_BINDING_ABORTED
+  // and other browser-specific expected errors (net::ERR_ABORTED, etc.)
   test.afterEach(async ({ page }) => {
     // STRICT ERROR CHECKING: Only filter navigation cancellation (normal browser behavior)
     // WebSocket errors, API failures, and network errors MUST cause test failures
-    checkTestErrors(page, 'Dashboard test', [
-      'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
-      'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
-    ]);
+    // Browser-specific errors are automatically filtered
+    checkTestErrorsWithBrowserFilters(page, 'Dashboard test');
   });
 
   test('should display all main dashboard sections @smoke', async () => {
@@ -606,12 +612,14 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
 
-    // Dashboard should still load
-    await page.waitForLoadState('networkidle');
+    // Wait for responsive layout to stabilize
+    await waitForResponsiveLayout(page);
 
     // Wait for React to rerender with new viewport - header should be visible
     const header = page.locator('[data-testid="dashboard-header"]');
-    await header.waitFor({ state: 'visible', timeout: 15000 });
+    const browserInfo = getBrowserInfo(page);
+    const timeout = getBrowserTimeout(page, 15000, 'expect');
+    await header.waitFor({ state: 'visible', timeout });
     await expect(header).toBeVisible();
 
     // Mobile menu might be present depending on responsive design
@@ -619,7 +627,8 @@ test.describe('Dashboard - Sprint 10 Features', () => {
     const mobileMenuVisible = await mobileMenu.isVisible();
 
     if (mobileMenuVisible) {
-      await mobileMenu.click();
+      // Use browser-aware click for touch handling
+      await browserAwareClick(page, '[data-testid="mobile-menu"]');
       // Menu items should be visible
       await expect(page.locator('[data-testid="nav-menu"]')).toBeVisible();
       console.log('✅ Mobile menu works correctly');
@@ -628,7 +637,7 @@ test.describe('Dashboard - Sprint 10 Features', () => {
       // Verify main content is still accessible
       const agentPanel = page.locator('[data-testid="agent-status-panel"]');
       await expect(agentPanel).toBeAttached();
-      console.log('✅ Dashboard content accessible on mobile (no hamburger menu)');
+      console.log(`✅ Dashboard content accessible on mobile (no hamburger menu) [${browserInfo.browserName}]`);
     }
   });
 });

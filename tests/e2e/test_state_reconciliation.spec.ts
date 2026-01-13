@@ -30,7 +30,7 @@ import { test, expect, Page, APIRequestContext } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   ExtendedPage,
 } from './test-utils';
 import { FRONTEND_URL, BACKEND_URL, TEST_PROJECT_IDS } from './e2e-config';
@@ -118,7 +118,7 @@ test.describe('State Reconciliation - Late Joining User', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'State Reconciliation test', [
+    checkTestErrorsWithBrowserFilters(page, 'State Reconciliation test', [
       'net::ERR_ABORTED',
       'Failed to fetch RSC payload',
     ]);

@@ -9,8 +9,16 @@
  * - Project utilities: Create and navigate projects
  */
 
-import type { Page, WebSocket } from '@playwright/test';
+import type { Page, WebSocket, BrowserContext } from '@playwright/test';
 import { BACKEND_URL } from './e2e-config';
+import {
+  BROWSER_TIMEOUTS,
+  BROWSER_QUIRKS,
+  BROWSER_EXPECTED_ERRORS,
+  MOBILE_VIEWPORTS,
+  type BrowserName,
+  type ProjectName,
+} from './browser-config';
 
 // ============================================================================
 // TYPE EXTENSIONS
@@ -952,3 +960,710 @@ export async function blockWebSocketConnections(page: Page): Promise<() => Promi
     await page.unroute('**/localhost**/ws**');
   };
 }
+
+// ============================================================================
+// BROWSER DETECTION UTILITIES
+// ============================================================================
+
+/**
+ * Extended Page interface with browser info for cross-browser testing
+ */
+export interface BrowserInfo {
+  browserName: BrowserName;
+  projectName: string;
+  isMobile: boolean;
+  isFirefox: boolean;
+  isWebKit: boolean;
+  isChromium: boolean;
+}
+
+/**
+ * Get browser information from page context
+ *
+ * Uses the browser context to determine which browser is running.
+ * This is more reliable than user agent parsing.
+ *
+ * @param page - Playwright page object
+ * @returns BrowserInfo object with browser detection flags
+ */
+export function getBrowserInfo(page: Page): BrowserInfo {
+  const context = page.context();
+  const browser = context.browser();
+  const browserType = browser?.browserType();
+  const browserName = (browserType?.name() || 'chromium') as BrowserName;
+
+  // Get project name from test info if available
+  // This is set in playwright.config.ts for each project
+  const projectName = (page as any)._browserContext?._options?.projectName || browserName;
+
+  const isMobile =
+    projectName.toLowerCase().includes('mobile') ||
+    projectName.toLowerCase().includes('pixel') ||
+    projectName.toLowerCase().includes('iphone') ||
+    projectName.toLowerCase().includes('galaxy');
+
+  return {
+    browserName,
+    projectName,
+    isMobile,
+    isFirefox: browserName === 'firefox',
+    isWebKit: browserName === 'webkit',
+    isChromium: browserName === 'chromium',
+  };
+}
+
+/**
+ * Check if current browser is Firefox
+ */
+export function isFirefox(page: Page): boolean {
+  return getBrowserInfo(page).isFirefox;
+}
+
+/**
+ * Check if current browser is WebKit (Safari)
+ */
+export function isWebKit(page: Page): boolean {
+  return getBrowserInfo(page).isWebKit;
+}
+
+/**
+ * Check if current browser is a mobile browser
+ */
+export function isMobileBrowser(page: Page): boolean {
+  return getBrowserInfo(page).isMobile;
+}
+
+/**
+ * Check if current browser is Chromium
+ */
+export function isChromium(page: Page): boolean {
+  return getBrowserInfo(page).isChromium;
+}
+
+// ============================================================================
+// BROWSER-SPECIFIC TIMEOUT UTILITIES
+// ============================================================================
+
+/**
+ * Get the appropriate timeout for the current browser
+ *
+ * @param page - Playwright page object
+ * @param baseTimeout - Base timeout in milliseconds
+ * @param category - Timeout category (action, expect, navigation, etc.)
+ * @returns Adjusted timeout for the current browser
+ */
+export function getBrowserTimeout(
+  page: Page,
+  baseTimeout: number,
+  category: 'action' | 'expect' | 'navigation' | 'formValidation' | 'animation' = 'action'
+): number {
+  const { browserName, isMobile } = getBrowserInfo(page);
+
+  // Get browser-specific multiplier
+  const browserTimeouts = isMobile
+    ? BROWSER_TIMEOUTS.mobile
+    : BROWSER_TIMEOUTS[browserName] || BROWSER_TIMEOUTS.chromium;
+
+  const chromiumBase = BROWSER_TIMEOUTS.chromium[category];
+  const browserSpecific = browserTimeouts[category];
+
+  // Calculate multiplier based on browser's specific timeout vs chromium baseline
+  const multiplier = browserSpecific / chromiumBase;
+
+  return Math.round(baseTimeout * multiplier);
+}
+
+/**
+ * Get Firefox-specific timeout (1.5x base timeout)
+ *
+ * @param baseTimeout - Base timeout in milliseconds
+ * @returns Timeout adjusted for Firefox, or original if not Firefox
+ */
+export function getFirefoxTimeout(page: Page, baseTimeout: number): number {
+  if (isFirefox(page)) {
+    return Math.round(baseTimeout * 1.5);
+  }
+  return baseTimeout;
+}
+
+/**
+ * Get WebKit-specific timeout (1.4x base timeout)
+ *
+ * @param baseTimeout - Base timeout in milliseconds
+ * @returns Timeout adjusted for WebKit, or original if not WebKit
+ */
+export function getWebKitTimeout(page: Page, baseTimeout: number): number {
+  if (isWebKit(page)) {
+    return Math.round(baseTimeout * 1.4);
+  }
+  return baseTimeout;
+}
+
+// ============================================================================
+// MOBILE-SPECIFIC UTILITIES
+// ============================================================================
+
+/**
+ * Wait for mobile viewport to stabilize
+ *
+ * Mobile browsers need time after page load for:
+ * - Viewport stabilization
+ * - Touch event registration
+ * - Responsive layout transitions
+ *
+ * @param page - Playwright page object
+ * @param timeout - Maximum wait time in milliseconds
+ */
+export async function waitForMobileReady(page: Page, timeout: number = 5000): Promise<void> {
+  if (!isMobileBrowser(page)) {
+    return;
+  }
+
+  // Wait for load state first
+  await page.waitForLoadState('networkidle', { timeout });
+
+  // Wait for viewport to stabilize (no resize events)
+  await page.waitForTimeout(300);
+
+  // Verify viewport is set correctly
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    throw new Error('Mobile viewport not set');
+  }
+}
+
+/**
+ * Get current mobile viewport dimensions
+ *
+ * @param page - Playwright page object
+ * @returns Viewport dimensions or null if not mobile
+ */
+export function getMobileViewport(page: Page): { width: number; height: number } | null {
+  if (!isMobileBrowser(page)) {
+    return null;
+  }
+
+  const viewport = page.viewportSize();
+  return viewport || null;
+}
+
+/**
+ * Perform a mobile-friendly click using tap for touch devices
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ */
+export async function mobileClick(page: Page, selector: string): Promise<void> {
+  const element = page.locator(selector);
+
+  if (isMobileBrowser(page)) {
+    // Scroll into view first (mobile viewports are smaller)
+    await element.scrollIntoViewIfNeeded();
+
+    // Use tap for touch devices
+    await element.tap();
+  } else {
+    await element.click();
+  }
+}
+
+/**
+ * Scroll element into view with mobile-specific handling
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ */
+export async function scrollIntoViewMobile(page: Page, selector: string): Promise<void> {
+  const element = page.locator(selector);
+
+  await element.scrollIntoViewIfNeeded();
+
+  // Mobile needs extra time for scroll animation
+  if (isMobileBrowser(page)) {
+    await page.waitForTimeout(200);
+  }
+}
+
+/**
+ * Wait for responsive layout to complete
+ *
+ * Useful after viewport changes or page load to ensure CSS media queries
+ * have been applied.
+ *
+ * @param page - Playwright page object
+ * @param timeout - Maximum wait time
+ */
+export async function waitForResponsiveLayout(page: Page, timeout: number = 3000): Promise<void> {
+  const { isMobile, isFirefox } = getBrowserInfo(page);
+
+  // Wait for any pending layout operations
+  await page.waitForLoadState('domcontentloaded', { timeout });
+
+  // Additional wait for mobile CSS transitions
+  if (isMobile) {
+    await page.waitForTimeout(300);
+  }
+
+  // Firefox needs extra time for CSS rendering
+  if (isFirefox) {
+    await page.waitForTimeout(200);
+  }
+}
+
+// ============================================================================
+// FIREFOX-SPECIFIC UTILITIES
+// ============================================================================
+
+/**
+ * Wait for Firefox form validation to complete
+ *
+ * Firefox renders validation messages asynchronously, which can cause
+ * tests to fail if we check for errors too quickly.
+ *
+ * @param page - Playwright page object
+ * @param selector - Form or input selector
+ * @param timeout - Maximum wait time
+ */
+export async function waitForFirefoxFormValidation(
+  page: Page,
+  selector: string,
+  timeout: number = 5000
+): Promise<void> {
+  if (!isFirefox(page)) {
+    return;
+  }
+
+  // Wait for any validation UI to render
+  await page.waitForTimeout(BROWSER_TIMEOUTS.firefox.formValidation);
+
+  // Wait for validation state to stabilize
+  await page.locator(selector).waitFor({ state: 'visible', timeout });
+}
+
+/**
+ * Wait for Firefox network idle with extended timeout
+ *
+ * Firefox's NS_BINDING_ABORTED errors during navigation mean we need
+ * to wait longer for network to settle.
+ *
+ * @param page - Playwright page object
+ * @param timeout - Maximum wait time
+ */
+export async function waitForFirefoxNetworkIdle(
+  page: Page,
+  timeout: number = 10000
+): Promise<void> {
+  if (isFirefox(page)) {
+    await page.waitForLoadState('networkidle', {
+      timeout: getFirefoxTimeout(page, timeout),
+    });
+  } else {
+    await page.waitForLoadState('networkidle', { timeout });
+  }
+}
+
+/**
+ * Safe click for Firefox that waits for element stability
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ */
+export async function firefoxSafeClick(page: Page, selector: string): Promise<void> {
+  const element = page.locator(selector);
+
+  if (isFirefox(page)) {
+    // Wait for element to be stable (not animating)
+    await element.waitFor({ state: 'visible' });
+    await page.waitForTimeout(100); // Brief wait for CSS transitions
+  }
+
+  await element.click();
+}
+
+/**
+ * Check if an error is a benign Firefox navigation error
+ *
+ * @param error - Error message string
+ * @returns true if error is expected Firefox behavior
+ */
+export function isFirefoxNavigationError(error: string): boolean {
+  return BROWSER_EXPECTED_ERRORS.firefox.some((pattern) => error.includes(pattern));
+}
+
+// ============================================================================
+// WEBKIT-SPECIFIC UTILITIES
+// ============================================================================
+
+/**
+ * Wait for WebKit element to stabilize
+ *
+ * WebKit (Safari) often needs extra time after an element appears
+ * before it's fully interactive.
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ * @param timeout - Maximum wait time
+ */
+export async function waitForWebKitElementStable(
+  page: Page,
+  selector: string,
+  timeout: number = 5000
+): Promise<void> {
+  const element = page.locator(selector);
+
+  // Wait for element to be visible
+  await element.waitFor({ state: 'visible', timeout: getWebKitTimeout(page, timeout) });
+
+  if (isWebKit(page)) {
+    // Additional wait for WebKit element stabilization
+    await page.waitForTimeout(200);
+
+    // Verify element is still visible (WebKit can have delayed removal)
+    const isVisible = await element.isVisible();
+    if (!isVisible) {
+      await element.waitFor({ state: 'visible', timeout: 2000 });
+    }
+  }
+}
+
+/**
+ * Wait for WebKit animation to complete
+ *
+ * WebKit CSS animations can interfere with interactions.
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ */
+export async function waitForWebKitAnimation(page: Page, selector: string): Promise<void> {
+  if (!isWebKit(page)) {
+    return;
+  }
+
+  const element = page.locator(selector);
+
+  // Wait for element to be visible
+  await element.waitFor({ state: 'visible' });
+
+  // Wait for CSS transitions/animations to complete
+  await page.waitForTimeout(BROWSER_TIMEOUTS.webkit.animation);
+}
+
+/**
+ * Safe form fill for WebKit
+ *
+ * WebKit requires clicking on the input before filling in some cases.
+ *
+ * @param page - Playwright page object
+ * @param selector - Input selector
+ * @param value - Value to fill
+ */
+export async function webkitSafeFormFill(
+  page: Page,
+  selector: string,
+  value: string
+): Promise<void> {
+  const element = page.locator(selector);
+
+  if (isWebKit(page)) {
+    // Click first to ensure input is focused
+    await element.click();
+    await page.waitForTimeout(100);
+  }
+
+  await element.fill(value);
+}
+
+/**
+ * Safe wait for selector in WebKit with retry
+ *
+ * WebKit sometimes needs multiple attempts to find elements due to
+ * delayed rendering.
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ * @param options - Wait options
+ */
+export async function webkitSafeWaitForSelector(
+  page: Page,
+  selector: string,
+  options: { timeout?: number; state?: 'visible' | 'attached' } = {}
+): Promise<void> {
+  const timeout = options.timeout || 5000;
+  const state = options.state || 'visible';
+
+  if (isWebKit(page)) {
+    // Try with extended timeout and retry
+    const maxRetries = 3;
+    let lastError: Error | null = null;
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        await page.locator(selector).waitFor({
+          state,
+          timeout: timeout / maxRetries,
+        });
+        return; // Success
+      } catch (error) {
+        lastError = error as Error;
+        // Brief wait before retry
+        await page.waitForTimeout(200);
+      }
+    }
+
+    throw lastError || new Error(`Element ${selector} not found after ${maxRetries} retries`);
+  } else {
+    await page.locator(selector).waitFor({ state, timeout });
+  }
+}
+
+/**
+ * Wait for WebKit network idle with extended timeout
+ *
+ * Safari's network stack can be slower than Chromium.
+ *
+ * @param page - Playwright page object
+ * @param timeout - Maximum wait time
+ */
+export async function waitForWebKitNetworkIdle(
+  page: Page,
+  timeout: number = 10000
+): Promise<void> {
+  await page.waitForLoadState('networkidle', {
+    timeout: getWebKitTimeout(page, timeout),
+  });
+}
+
+// ============================================================================
+// CROSS-BROWSER HELPER UTILITIES
+// ============================================================================
+
+/**
+ * Get reliable selector with fallback
+ *
+ * Tries data-testid first, then falls back to role-based selector.
+ *
+ * @param page - Playwright page object
+ * @param testId - data-testid value
+ * @param fallbackRole - ARIA role for fallback
+ * @param fallbackName - Accessible name for role-based selector
+ */
+export function getReliableSelector(
+  page: Page,
+  testId: string,
+  fallbackRole?: string,
+  fallbackName?: string | RegExp
+): ReturnType<typeof page.locator> {
+  // Try data-testid first
+  const testIdLocator = page.getByTestId(testId);
+
+  if (fallbackRole && fallbackName) {
+    // Return a locator that tries testid first, then role
+    return page.locator(`[data-testid="${testId}"]`).or(
+      page.getByRole(fallbackRole as any, { name: fallbackName })
+    );
+  }
+
+  return testIdLocator;
+}
+
+/**
+ * Wait for element to be stable (position and size not changing)
+ *
+ * Critical for WebKit where elements can appear before they're fully rendered.
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ * @param timeout - Maximum wait time
+ */
+export async function waitForElementStable(
+  page: Page,
+  selector: string,
+  timeout: number = 5000
+): Promise<void> {
+  const element = page.locator(selector);
+  const browser = getBrowserInfo(page);
+
+  // Wait for visibility first
+  await element.waitFor({
+    state: 'visible',
+    timeout: getBrowserTimeout(page, timeout, 'expect'),
+  });
+
+  // WebKit and mobile need additional stabilization
+  if (browser.isWebKit || browser.isMobile) {
+    await page.waitForTimeout(200);
+
+    // Double-check visibility
+    const isVisible = await element.isVisible();
+    if (!isVisible) {
+      await element.waitFor({ state: 'visible', timeout: 2000 });
+    }
+  }
+}
+
+/**
+ * Safe getByTestId wrapper with browser-specific handling
+ *
+ * @param page - Playwright page object
+ * @param testId - data-testid value
+ * @param options - Options for handling
+ */
+export async function safeGetByTestId(
+  page: Page,
+  testId: string,
+  options: { timeout?: number; scrollIntoView?: boolean } = {}
+): Promise<ReturnType<typeof page.locator>> {
+  const timeout = options.timeout || 5000;
+  const locator = page.getByTestId(testId);
+
+  // Wait for element with browser-specific timeout
+  await locator.waitFor({
+    state: 'visible',
+    timeout: getBrowserTimeout(page, timeout, 'expect'),
+  });
+
+  // Scroll into view for mobile
+  if (options.scrollIntoView || isMobileBrowser(page)) {
+    await locator.scrollIntoViewIfNeeded();
+  }
+
+  // WebKit stability wait
+  if (isWebKit(page)) {
+    await page.waitForTimeout(100);
+  }
+
+  return locator;
+}
+
+/**
+ * Wait for text content with browser-specific handling
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ * @param expectedText - Text to wait for (string or RegExp)
+ * @param timeout - Maximum wait time
+ */
+export async function waitForTextContent(
+  page: Page,
+  selector: string,
+  expectedText: string | RegExp,
+  timeout: number = 5000
+): Promise<void> {
+  const adjustedTimeout = getBrowserTimeout(page, timeout, 'expect');
+
+  await page.locator(selector).filter({
+    hasText: expectedText,
+  }).waitFor({ state: 'visible', timeout: adjustedTimeout });
+}
+
+/**
+ * Enhanced checkTestErrors with automatic browser-specific error filtering
+ *
+ * Automatically includes browser-specific expected errors in the filter patterns.
+ *
+ * @param page - Playwright page object
+ * @param context - Test context name
+ * @param additionalPatterns - Additional patterns to filter
+ */
+export function checkTestErrorsWithBrowserFilters(
+  page: Page,
+  context: string,
+  additionalPatterns: (string | RegExp)[] = []
+): void {
+  const browser = getBrowserInfo(page);
+
+  // Combine all expected error patterns
+  const allPatterns: (string | RegExp)[] = [
+    ...BROWSER_EXPECTED_ERRORS.all,
+    ...additionalPatterns,
+  ];
+
+  // Add browser-specific patterns
+  if (browser.isFirefox) {
+    allPatterns.push(...BROWSER_EXPECTED_ERRORS.firefox);
+  }
+  if (browser.isWebKit) {
+    allPatterns.push(...BROWSER_EXPECTED_ERRORS.webkit);
+  }
+  if (browser.isMobile) {
+    allPatterns.push(...BROWSER_EXPECTED_ERRORS.mobile);
+  }
+
+  // Use existing checkTestErrors with combined patterns
+  checkTestErrors(page, context, allPatterns);
+}
+
+/**
+ * Browser-aware click that handles mobile tap, Firefox stability, and WebKit delays
+ *
+ * @param page - Playwright page object
+ * @param selector - Element selector
+ */
+export async function browserAwareClick(page: Page, selector: string): Promise<void> {
+  const element = page.locator(selector);
+  const browser = getBrowserInfo(page);
+
+  // Scroll into view for mobile
+  if (browser.isMobile) {
+    await element.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    await element.tap();
+    return;
+  }
+
+  // Firefox stability wait
+  if (browser.isFirefox) {
+    await element.waitFor({ state: 'visible' });
+    await page.waitForTimeout(50);
+  }
+
+  // WebKit element stability wait
+  if (browser.isWebKit) {
+    await waitForWebKitElementStable(page, selector);
+  }
+
+  await element.click();
+}
+
+/**
+ * Browser-aware form fill that handles WebKit click-then-fill pattern
+ *
+ * @param page - Playwright page object
+ * @param selector - Input selector
+ * @param value - Value to fill
+ */
+export async function browserAwareFormFill(
+  page: Page,
+  selector: string,
+  value: string
+): Promise<void> {
+  const element = page.locator(selector);
+  const browser = getBrowserInfo(page);
+
+  // Scroll into view for mobile
+  if (browser.isMobile) {
+    await element.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+  }
+
+  // WebKit needs click before fill
+  if (browser.isWebKit) {
+    await element.click();
+    await page.waitForTimeout(100);
+  }
+
+  await element.fill(value);
+}
+
+// ============================================================================
+// RE-EXPORTS FOR CONVENIENCE
+// ============================================================================
+
+export {
+  BROWSER_TIMEOUTS,
+  BROWSER_QUIRKS,
+  BROWSER_EXPECTED_ERRORS,
+  MOBILE_VIEWPORTS,
+  type BrowserName,
+  type ProjectName,
+};

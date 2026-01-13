@@ -18,14 +18,25 @@ import {
   clearAuth,
   getAuthToken,
   setupErrorMonitoring,
-  checkTestErrors,
-  ExtendedPage
+  checkTestErrorsWithBrowserFilters,
+  ExtendedPage,
+  getBrowserTimeout,
+  isFirefox,
+  isWebKit,
+  isMobileBrowser,
+  browserAwareFormFill,
+  browserAwareClick,
+  waitForMobileReady,
+  waitForFirefoxFormValidation,
+  webkitSafeWaitForSelector,
+  BROWSER_TIMEOUTS,
 } from './test-utils';
 
 const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'test@example.com';
 const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'Testpassword123';
 
 // CI-aware timeout: longer in CI environments to account for slower execution
+// Firefox and WebKit get extended timeouts via getBrowserTimeout() at runtime
 const AUTH_ERROR_TIMEOUT = process.env.CI ? 10000 : 5000;
 
 test.describe('Authentication Flow', () => {
@@ -44,16 +55,14 @@ test.describe('Authentication Flow', () => {
   // Filter out expected errors during auth testing:
   // Auth tests intentionally trigger auth errors - only filter EXPECTED auth failures
   // WebSocket and network errors should NOT be filtered - they indicate real problems
+  // Note: checkTestErrorsWithBrowserFilters automatically adds Firefox NS_BINDING_ABORTED
+  // and other browser-specific expected errors
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Auth flow test', [
+    checkTestErrorsWithBrowserFilters(page, 'Auth flow test', [
       // Auth-related errors that are EXPECTED in auth tests (testing invalid credentials)
       '401', '403',
       'Invalid credentials', 'LOGIN_BAD_CREDENTIALS',
       'Unauthorized', 'Forbidden',
-      // Navigation cancellation is normal browser behavior
-      'net::ERR_ABORTED',
-      // Next.js RSC payload fetch during navigation - transient, non-blocking
-      'Failed to fetch RSC payload'
     ]);
   });
 

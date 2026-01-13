@@ -20,7 +20,7 @@ import {
   answerDiscoveryQuestion,
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   ExtendedPage
 } from './test-utils';
 
@@ -43,7 +43,7 @@ test.describe('Start Agent Flow', () => {
   // All other errors (WebSocket, API, network) MUST cause test failures
   // Discovery errors are REAL errors that indicate broken functionality
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Start agent flow test', [
+    checkTestErrorsWithBrowserFilters(page, 'Start agent flow test', [
       'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
       'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);

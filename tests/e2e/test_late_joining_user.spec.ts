@@ -18,7 +18,7 @@ import { test, expect, Page, APIRequestContext } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   ExtendedPage,
 } from './test-utils';
 
@@ -105,7 +105,7 @@ test.describe('Late-Joining User Scenarios', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Late-Joining User test', [
+    checkTestErrorsWithBrowserFilters(page, 'Late-Joining User test', [
       'net::ERR_ABORTED',
       'Failed to fetch RSC payload',
     ]);

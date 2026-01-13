@@ -16,7 +16,7 @@ import { test, expect, type Route, type Request } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   ExtendedPage,
   waitForAPIResponse
 } from './test-utils';
@@ -45,7 +45,7 @@ test.describe('Task Approval API Contract', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Task approval test', [
+    checkTestErrorsWithBrowserFilters(page, 'Task approval test', [
       'net::ERR_ABORTED', // Normal when navigation cancels pending requests
       'Failed to fetch RSC payload', // Next.js RSC during navigation - transient
       'NS_BINDING_ABORTED', // Firefox: Normal when navigation cancels requests
@@ -219,7 +219,7 @@ test.describe('Task Approval - API Key Required Tests', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'API key required test', [
+    checkTestErrorsWithBrowserFilters(page, 'API key required test', [
       'net::ERR_ABORTED',
       'Failed to fetch RSC payload',
       'NS_BINDING_ABORTED',

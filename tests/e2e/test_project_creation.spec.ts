@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   ExtendedPage
 } from './test-utils';
 
@@ -33,7 +33,7 @@ test.describe('Project Creation Flow', () => {
   // All other errors (WebSocket, API, network) MUST cause test failures
   // Discovery errors are REAL errors that indicate broken functionality
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Project creation test', [
+    checkTestErrorsWithBrowserFilters(page, 'Project creation test', [
       'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
       'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);
@@ -186,7 +186,7 @@ test.describe('Project Navigation Flow', () => {
   // STRICT ERROR CHECKING: Only filter navigation cancellation
   // All other errors (WebSocket, API, network) MUST cause test failures
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Project navigation test', [
+    checkTestErrorsWithBrowserFilters(page, 'Project navigation test', [
       'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
       'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);

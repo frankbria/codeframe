@@ -19,7 +19,7 @@ import { test, expect, Page } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   ExtendedPage,
 } from './test-utils';
 
@@ -50,7 +50,7 @@ test.describe('Task Breakdown Button - Feature 016-3', () => {
   // STRICT ERROR CHECKING: Only filter navigation cancellation
   // All other errors (WebSocket, API, network) MUST cause test failures
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Task Breakdown test', [
+    checkTestErrorsWithBrowserFilters(page, 'Task Breakdown test', [
       'net::ERR_ABORTED',  // Normal when navigation cancels pending requests
       'Failed to fetch RSC payload'  // Next.js RSC during navigation - transient
     ]);

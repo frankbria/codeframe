@@ -22,7 +22,7 @@ import { test, expect, Page, APIRequestContext } from '@playwright/test';
 import {
   loginUser,
   setupErrorMonitoring,
-  checkTestErrors,
+  checkTestErrorsWithBrowserFilters,
   ExtendedPage,
   blockWebSocketConnections,
 } from './test-utils';
@@ -146,7 +146,7 @@ test.describe('Returning User Scenarios', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    checkTestErrors(page, 'Returning User test', [
+    checkTestErrorsWithBrowserFilters(page, 'Returning User test', [
       'net::ERR_ABORTED',
       'Failed to fetch RSC payload',
       'WebSocket', // Expected since we block WebSocket
