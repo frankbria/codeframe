@@ -465,3 +465,38 @@ class IssueRepository(BaseRepository):
             "completion_percentage": completion_percentage,
         }
 
+    def delete_all_project_issues(self, project_id: int, cursor: sqlite3.Cursor = None) -> int:
+        """Delete all issues for a project.
+
+        Note: Tasks must be deleted before issues due to FK constraints.
+        Use Database.delete_project_tasks_and_issues() for the complete
+        cascading delete operation.
+
+        Args:
+            project_id: Project ID to delete issues for
+            cursor: Optional cursor for transaction support. If provided,
+                    the caller is responsible for commit/rollback.
+
+        Returns:
+            Number of issues deleted
+        """
+        own_cursor = cursor is None
+        if own_cursor:
+            cursor = self.conn.cursor()
+
+        try:
+            cursor.execute(
+                "DELETE FROM issues WHERE project_id = ?",
+                (project_id,),
+            )
+            issue_count = cursor.rowcount
+
+            if own_cursor:
+                self.conn.commit()
+
+            return issue_count
+
+        except Exception:
+            if own_cursor:
+                self.conn.rollback()
+            raise

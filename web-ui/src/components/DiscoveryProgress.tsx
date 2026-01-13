@@ -288,6 +288,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
       setShowRestartConfirmation(false);
       setConfirmationData(null);
       setWaitingForQuestionStart(null);
+      setIsRestarting(false);
       fetchProgress();
     } catch (err) {
       console.error('Failed to restart discovery:', err);

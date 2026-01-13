@@ -720,9 +720,15 @@ class Database:
         return self.activities.delete_discovery_answers(*args, **kwargs)
 
     def delete_project_tasks_and_issues(self, project_id: int) -> dict:
-        """Delete all tasks and issues for a project.
+        """Delete all tasks and issues for a project atomically.
 
-        Performs cascading delete: tasks first (due to FK constraint), then issues.
+        Performs cascading delete in a single transaction:
+        1. Deletes task dependencies, test results, correction attempts
+        2. Deletes tasks (code_reviews and task_evidence cascade automatically)
+        3. Deletes issues
+
+        This method delegates to TaskRepository and IssueRepository for proper
+        separation of concerns and handles all FK constraints correctly.
 
         Args:
             project_id: Project ID
@@ -733,34 +739,34 @@ class Database:
         with self._sync_lock:
             cursor = self.conn.cursor()
 
-            # Count tasks before deletion
-            cursor.execute(
-                "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
-                (project_id,),
-            )
-            task_count = cursor.fetchone()[0]
+            try:
+                # Count before deletion for return value
+                cursor.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
+                    (project_id,),
+                )
+                task_count = cursor.fetchone()[0]
 
-            # Count issues before deletion
-            cursor.execute(
-                "SELECT COUNT(*) FROM issues WHERE project_id = ?",
-                (project_id,),
-            )
-            issue_count = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT COUNT(*) FROM issues WHERE project_id = ?",
+                    (project_id,),
+                )
+                issue_count = cursor.fetchone()[0]
 
-            # Delete tasks first (due to FK constraint on issue_id)
-            cursor.execute(
-                "DELETE FROM tasks WHERE project_id = ?",
-                (project_id,),
-            )
+                # Delete tasks first with all FK dependencies (single transaction)
+                # Pass cursor to avoid intermediate commits
+                self.tasks.delete_all_project_tasks(project_id, cursor=cursor)
 
-            # Then delete issues
-            cursor.execute(
-                "DELETE FROM issues WHERE project_id = ?",
-                (project_id,),
-            )
+                # Then delete issues
+                self.issues.delete_all_project_issues(project_id, cursor=cursor)
 
-            self.conn.commit()
-            return {"tasks": task_count, "issues": issue_count}
+                # Commit the entire operation atomically
+                self.conn.commit()
+                return {"tasks": task_count, "issues": issue_count}
+
+            except Exception:
+                self.conn.rollback()
+                raise
 
     def create_audit_log(self, *args, **kwargs):
         """Delegate to audit_logs.create_audit_log()."""
