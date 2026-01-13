@@ -8,7 +8,7 @@ import pytest
 from unittest.mock import Mock
 
 from codeframe.agents.frontend_worker_agent import FrontendWorkerAgent
-from codeframe.core.models import Task, AgentMaturity
+from codeframe.core.models import AgentMaturity
 
 
 @pytest.fixture
@@ -58,25 +58,26 @@ async def test_frontend_worker_commits_after_successful_task(
     # Arrange
     frontend_agent.git_workflow = mock_git_workflow
 
-    task = Task(
-        id=10,
-        issue_id=1,
-        task_number="cf-2.3.1",
-        parent_issue_number="cf-2",
-        title="Create UserProfile component",
-        description="Build a React component for user profiles",
-        status="pending",
-        assigned_to="frontend-001",
-        depends_on=None,
-        can_parallelize=True,
-        priority=1,
-        workflow_step=5,
-        requires_mcp=False,
-        estimated_tokens=2000,
-        actual_tokens=0,
-        created_at="2025-01-01T00:00:00",
-        completed_at=None,
-    )
+    task = {
+        "id": 10,
+        "project_id": 1,
+        "issue_id": 1,
+        "task_number": "cf-2.3.1",
+        "parent_issue_number": "cf-2",
+        "title": "Create UserProfile component",
+        "description": "Build a React component for user profiles",
+        "status": "pending",
+        "assigned_to": "frontend-001",
+        "depends_on": None,
+        "can_parallelize": True,
+        "priority": 1,
+        "workflow_step": 5,
+        "requires_mcp": False,
+        "estimated_tokens": 2000,
+        "actual_tokens": 0,
+        "created_at": "2025-01-01T00:00:00",
+        "completed_at": None,
+    }
 
     # Mock component generation (no API call)
     frontend_agent.client = None  # Force fallback to template
@@ -119,25 +120,26 @@ async def test_frontend_worker_no_commit_on_component_conflict(
     # Arrange
     frontend_agent.git_workflow = mock_git_workflow
 
-    task = Task(
-        id=11,
-        issue_id=1,
-        task_number="cf-2.3.2",
-        parent_issue_number="cf-2",
-        title="Create Dashboard component",
-        description="Duplicate component",
-        status="pending",
-        assigned_to="frontend-001",
-        depends_on=None,
-        can_parallelize=True,
-        priority=1,
-        workflow_step=5,
-        requires_mcp=False,
-        estimated_tokens=2000,
-        actual_tokens=0,
-        created_at="2025-01-01T00:00:00",
-        completed_at=None,
-    )
+    task = {
+        "id": 11,
+        "project_id": 1,
+        "issue_id": 1,
+        "task_number": "cf-2.3.2",
+        "parent_issue_number": "cf-2",
+        "title": "Create Dashboard component",
+        "description": "Duplicate component",
+        "status": "pending",
+        "assigned_to": "frontend-001",
+        "depends_on": None,
+        "can_parallelize": True,
+        "priority": 1,
+        "workflow_step": 5,
+        "requires_mcp": False,
+        "estimated_tokens": 2000,
+        "actual_tokens": 0,
+        "created_at": "2025-01-01T00:00:00",
+        "completed_at": None,
+    }
 
     # Create conflicting file - use the actual component name from the template
     (frontend_agent.components_dir / "NewComponent.tsx").write_text("// existing")

@@ -88,18 +88,33 @@ Output format:
 - Ensure proper TypeScript typing (no 'any' types)
 """
 
-    async def execute_task(self, task: Task, project_id: int = 1) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any], project_id: int = 1) -> Dict[str, Any]:
         """
         Execute frontend task: generate React component.
 
         Args:
-            task: Task to execute with component specification
+            task: Task dictionary with id, project_id, task_number, title, description, etc.
             project_id: Project ID for WebSocket broadcasts
 
         Returns:
             Execution result with status and output
         """
-        self.current_task = task
+        # Extract commonly used fields from task dict
+        task_id = task["id"]
+        task_title = task["title"]
+        task_description = task["description"]
+
+        # Create Task object for self.current_task (used by blocker creation)
+        self.current_task = Task(
+            id=task_id,
+            project_id=task.get("project_id"),
+            issue_id=task.get("issue_id"),
+            task_number=task.get("task_number", ""),
+            parent_issue_number=task.get("parent_issue_number", ""),
+            title=task_title,
+            description=task_description,
+            assigned_to=task.get("assigned_to"),
+        )
 
         try:
             # Broadcast task started
@@ -110,7 +125,7 @@ Output format:
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
-                        task.id,
+                        task_id,
                         "in_progress",
                         agent_id=self.agent_id,
                         progress=0,
@@ -118,10 +133,10 @@ Output format:
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
 
-            logger.info(f"Frontend agent {self.agent_id} executing task {task.id}: {task.title}")
+            logger.info(f"Frontend agent {self.agent_id} executing task {task_id}: {task_title}")
 
             # Parse task description for component spec
-            component_spec = self._parse_component_spec(task.description)
+            component_spec = self._parse_component_spec(task_description)
 
             # Generate component code
             component_code = await self._generate_react_component(component_spec)
@@ -151,7 +166,7 @@ Output format:
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
-                        task.id,
+                        task_id,
                         "completed",
                         agent_id=self.agent_id,
                         progress=100,
@@ -159,7 +174,7 @@ Output format:
                 except Exception as e:
                     logger.debug(f"Failed to broadcast task status: {e}")
 
-            logger.info(f"Frontend agent {self.agent_id} completed task {task.id}")
+            logger.info(f"Frontend agent {self.agent_id} completed task {task_id}")
 
             # T076: Auto-commit task changes after successful completion
             if hasattr(self, "git_workflow") and self.git_workflow and file_paths:
@@ -167,13 +182,13 @@ Output format:
                     # Convert file_paths dict to list of paths
                     files_modified = [path for path in file_paths.values()]
 
-                    # Convert Task object to dict for git_workflow
+                    # Task is already a dict, extract fields for git_workflow
                     task_dict = {
-                        "id": task.id,
-                        "project_id": task.project_id,
-                        "task_number": task.task_number,
-                        "title": task.title,
-                        "description": task.description,
+                        "id": task_id,
+                        "project_id": task.get("project_id"),
+                        "task_number": task.get("task_number", ""),
+                        "title": task_title,
+                        "description": task_description,
                     }
 
                     commit_sha = self.git_workflow.commit_task_changes(
@@ -182,11 +197,11 @@ Output format:
 
                     # T082: Record commit SHA in database
                     if commit_sha and self.db:
-                        self.db.update_task_commit_sha(task.id, commit_sha)
-                        logger.info(f"Task {task.id} committed with SHA: {commit_sha[:7]}")
+                        self.db.update_task_commit_sha(task_id, commit_sha)
+                        logger.info(f"Task {task_id} committed with SHA: {commit_sha[:7]}")
                 except Exception as e:
                     # T080: Graceful degradation - log warning but don't block task completion
-                    logger.warning(f"Auto-commit failed for task {task.id} (non-blocking): {e}")
+                    logger.warning(f"Auto-commit failed for task {task_id} (non-blocking): {e}")
 
             return {
                 "status": "completed",
@@ -196,7 +211,7 @@ Output format:
             }
 
         except Exception as e:
-            logger.error(f"Frontend agent {self.agent_id} failed task {task.id}: {e}")
+            logger.error(f"Frontend agent {self.agent_id} failed task {task_id}: {e}")
 
             # Broadcast failure
             if self.websocket_manager:
@@ -206,12 +221,12 @@ Output format:
                     await broadcast_task_status(
                         self.websocket_manager,
                         project_id,
-                        task.id,
+                        task_id,
                         "failed",
                         agent_id=self.agent_id,
                     )
-                except Exception as e:
-                    logger.debug(f"Failed to broadcast task status: {e}")
+                except Exception as broadcast_err:
+                    logger.debug(f"Failed to broadcast task status: {broadcast_err}")
 
             return {"status": "failed", "output": str(e), "error": str(e)}
 
@@ -438,7 +453,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                 )
 
     async def _run_and_check_linting(
-        self, task: Task, file_paths: Dict[str, str], project_id: int
+        self, task: Dict[str, Any], file_paths: Dict[str, str], project_id: int
     ) -> None:
         """
         Run linting on created files and create blocker if critical errors found (T112).
@@ -447,13 +462,14 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         stores results in the database, and creates a blocker if critical errors are found.
 
         Args:
-            task: Task object
+            task: Task dictionary with id, project_id, task_number, title, description, etc.
             file_paths: Dict of created file paths
             project_id: Project ID for broadcasts
 
         Raises:
             ValueError: If linting fails with critical errors (blocker created)
         """
+        task_id = task["id"]
         if not file_paths:
             logger.debug("No files created, skipping linting")
             return
@@ -478,7 +494,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             lint_runner = LintRunner(self.web_ui_root)
 
             logger.info(
-                f"Running linting on {len(files_to_lint)} TypeScript files for task {task.id}"
+                f"Running linting on {len(files_to_lint)} TypeScript files for task {task_id}"
             )
 
             # Run linting
@@ -488,7 +504,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             if self.db:
                 for result in lint_results:
                     self.db.create_lint_result(
-                        task_id=task.id,
+                        task_id=task_id,
                         linter=result.linter,
                         error_count=result.error_count,
                         warning_count=result.warning_count,
@@ -508,10 +524,10 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                         blocker_type="SYNC",
                         title=f"Linting failed: {total_errors} critical errors",
                         description=blocker_description,
-                        blocking_task_id=task.id,
+                        blocking_task_id=task_id,
                     )
 
-                logger.error(f"Task {task.id} blocked by {total_errors} lint errors")
+                logger.error(f"Task {task_id} blocked by {total_errors} lint errors")
 
                 # Broadcast lint failure via WebSocket (T119)
                 if self.websocket_manager:
@@ -523,7 +539,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                             project_id,
                             {
                                 "type": "lint_failed",
-                                "task_id": task.id,
+                                "task_id": task_id,
                                 "error_count": total_errors,
                                 "timestamp": datetime.utcnow().isoformat(),
                             },
@@ -536,7 +552,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             # Log warnings (non-blocking)
             total_warnings = sum(r.warning_count for r in lint_results)
             if total_warnings > 0:
-                logger.warning(f"Task {task.id}: {total_warnings} lint warnings (non-blocking)")
+                logger.warning(f"Task {task_id}: {total_warnings} lint warnings (non-blocking)")
 
             # Broadcast lint success via WebSocket (T119)
             if self.websocket_manager:
@@ -548,7 +564,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
                         project_id,
                         {
                             "type": "lint_completed",
-                            "task_id": task.id,
+                            "task_id": task_id,
                             "error_count": 0,
                             "warning_count": total_warnings,
                             "timestamp": datetime.utcnow().isoformat(),

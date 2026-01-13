@@ -7,7 +7,6 @@ from unittest.mock import Mock, patch, AsyncMock
 from anthropic.types import Message, TextBlock
 
 from codeframe.agents.test_worker_agent import TestWorkerAgent
-from codeframe.core.models import Task
 
 
 @pytest.fixture
@@ -29,15 +28,25 @@ def test_agent(temp_tests_dir):
 
 @pytest.fixture
 def sample_task():
-    """Create sample task for testing."""
-    return Task(
-        id=1,
-        title="Create tests for UserService",
-        description="Generate tests for codeframe/services/user_service.py",
-        status="pending",
-        priority=1,
-        workflow_step=1,
-    )
+    """Create sample task dict for testing (matches LeadAgent's task.to_dict() output)."""
+    return {
+        "id": 1,
+        "project_id": 1,
+        "issue_id": 1,
+        "task_number": "T-001",
+        "parent_issue_number": "I-001",
+        "title": "Create tests for UserService",
+        "description": "Generate tests for codeframe/services/user_service.py",
+        "status": "pending",
+        "assigned_to": None,
+        "depends_on": "",
+        "can_parallelize": False,
+        "priority": 1,
+        "workflow_step": 1,
+        "requires_mcp": False,
+        "estimated_tokens": 0,
+        "actual_tokens": None,
+    }
 
 
 class TestTestWorkerAgentInitialization:
@@ -388,7 +397,7 @@ class TestWebSocketIntegration:
         counts = {"passed": 5, "failed": 1, "errors": 0, "total": 6}
 
         # This will attempt broadcast but gracefully handle no event loop
-        await test_agent._broadcast_test_result(1, sample_task.id, counts, False)
+        await test_agent._broadcast_test_result(1, sample_task["id"], counts, False)
 
         # In async context, it should broadcast results
 
