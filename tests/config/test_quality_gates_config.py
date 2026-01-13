@@ -1,7 +1,6 @@
 """Unit tests for Quality Gates configuration module."""
 
 import os
-import pytest
 from unittest.mock import patch
 
 from codeframe.config.quality_gates_config import (
