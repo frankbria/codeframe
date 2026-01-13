@@ -9,7 +9,7 @@ const createJestConfig = nextJest({
 const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jest-environment-jsdom',
-  testPathIgnorePatterns: ['/node_modules/', '/__tests__/fixtures/'],
+  testPathIgnorePatterns: ['/node_modules/', '/__tests__/fixtures/', '\\.testutils\\.tsx$'],
   coverageProvider: 'v8', // Use V8 coverage instead of Istanbul (fixes Jest 30 compatibility)
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
