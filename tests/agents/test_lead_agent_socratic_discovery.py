@@ -324,8 +324,7 @@ class TestCategoryCoverageTracking:
         ]
 
         # Should have category coverage stored
-        # Note: This depends on implementation storing it
-        assert len(coverage_memories) >= 0  # Will fail until implemented
+        assert len(coverage_memories) > 0, "Category coverage should be persisted to database"
 
 
 @pytest.mark.unit

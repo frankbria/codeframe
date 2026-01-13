@@ -297,9 +297,12 @@ class LeadAgent:
 
             # Load discovery conversation history from discovery_state category
             # (conversation turns stored with 'conversation_turn_N' keys)
+            # Filter to only keys with valid numeric suffixes to prevent crashes
             conversation_memories = [
                 m for m in all_memories
-                if m["category"] == "discovery_state" and m["key"].startswith("conversation_turn_")
+                if m["category"] == "discovery_state"
+                and m["key"].startswith("conversation_turn_")
+                and m["key"].replace("conversation_turn_", "").isdigit()
             ]
             # Sort by key to maintain order (conversation_turn_0, conversation_turn_1, etc.)
             conversation_memories.sort(key=lambda m: int(m["key"].replace("conversation_turn_", "")))
@@ -360,6 +363,30 @@ class LeadAgent:
         except Exception as e:
             logger.error(f"Failed to save discovery state: {e}")
 
+    def _get_next_conversation_turn_index(self) -> int:
+        """Get the next available conversation turn index from database.
+
+        Queries existing conversation_turn_N keys to find max index and returns max + 1.
+        This prevents index collision after restart.
+
+        Returns:
+            Next available turn index (0 if no existing turns)
+        """
+        try:
+            all_memories = self.db.get_project_memories(self.project_id)
+            existing_indices = [
+                int(m["key"].replace("conversation_turn_", ""))
+                for m in all_memories
+                if m["category"] == "discovery_state"
+                and m["key"].startswith("conversation_turn_")
+                and m["key"].replace("conversation_turn_", "").isdigit()
+            ]
+            return max(existing_indices) + 1 if existing_indices else 0
+        except Exception as e:
+            logger.warning(f"Failed to get next turn index from DB: {e}")
+            # Fallback to in-memory length
+            return len(self._discovery_conversation_history)
+
     def _save_conversation_turn(self, question: str, answer: str) -> None:
         """Save a discovery conversation turn to database.
 
@@ -371,7 +398,8 @@ class LeadAgent:
         to avoid needing a schema migration for a new category.
         """
         turn = {"question": question, "answer": answer}
-        turn_index = len(self._discovery_conversation_history)
+        # Get next index from DB to prevent collision after restart
+        turn_index = self._get_next_conversation_turn_index()
 
         try:
             # Use discovery_state category (allowed by schema) with conversation_ prefix
@@ -384,9 +412,8 @@ class LeadAgent:
             self._discovery_conversation_history.append(turn)
             logger.debug(f"Saved conversation turn {turn_index}")
         except Exception as e:
-            logger.warning(f"Failed to save conversation turn: {e}")
-            # Still append to in-memory list even if DB save fails
-            self._discovery_conversation_history.append(turn)
+            # Don't append to in-memory list on DB failure to keep indices synchronized
+            logger.warning(f"Failed to save conversation turn {turn_index}: {e}")
 
     def _get_category_coverage(self) -> Dict[str, str]:
         """Get coverage status for all required discovery categories.
@@ -480,6 +507,15 @@ Your goal is to ask ONE focused, context-aware follow-up question that:
             for i, turn in enumerate(conversation_history, 1):
                 prompt += f"Q{i}: {turn['question']}\n"
                 prompt += f"A{i}: {turn['answer']}\n\n"
+
+        # Add structured answers by category (from framework questions)
+        if previous_answers:
+            prompt += "## Structured Answers by Topic\n"
+            for q_id, answer in previous_answers.items():
+                # Extract category from question ID (e.g., "problem_1" -> "problem")
+                category = q_id.split("_")[0] if "_" in q_id else q_id
+                prompt += f"- {category}: {answer}\n"
+            prompt += "\n"
 
         # Add uncovered categories
         if uncovered_categories:
