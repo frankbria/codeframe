@@ -924,7 +924,8 @@ Keep your question concise and conversational. Don't number it or add preamble -
             # Add current question if available
             if self._current_question_id:
                 # Handle AI-generated or default questions (distinct from framework IDs)
-                if self._current_question_id in ("ai_generated", "default_generated"):
+                # Note: IDs are formatted as "ai_generated_{N}" or "default_generated_{N}"
+                if self._current_question_id.startswith(("ai_generated", "default_generated")):
                     # These questions have custom text stored separately
                     # They map to framework questions when answered, but display their custom text
                     status["current_question"] = {
