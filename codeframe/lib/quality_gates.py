@@ -119,7 +119,7 @@ class QualityGates:
         self.project_id = project_id
         self.project_root = Path(project_root)
 
-    async def run_tests_gate(self, task: Task) -> QualityGateResult:
+    async def run_tests_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
         """Execute test gate - run pytest for Python, jest for JavaScript/TypeScript.
 
         This gate runs the project's test suite and checks for failures. It automatically
@@ -195,11 +195,11 @@ class QualityGates:
 
         # Create blocker if failed
         if not result.passed:
-            self._create_quality_blocker(task, failures)
+            self._create_quality_blocker(task, failures, task_category)
 
         return result
 
-    async def run_type_check_gate(self, task: Task) -> QualityGateResult:
+    async def run_type_check_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
         """Execute type checking gate - run mypy for Python, tsc for TypeScript.
 
         This gate runs static type checkers to catch type errors before runtime.
@@ -273,11 +273,11 @@ class QualityGates:
 
         # Create blocker if failed
         if not result.passed:
-            self._create_quality_blocker(task, failures)
+            self._create_quality_blocker(task, failures, task_category)
 
         return result
 
-    async def run_coverage_gate(self, task: Task) -> QualityGateResult:
+    async def run_coverage_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
         """Execute coverage gate - check test coverage >= 85%.
 
         This gate runs tests with coverage reporting and validates that at least 85%
@@ -302,6 +302,13 @@ class QualityGates:
 
         # Run tests with coverage
         coverage_result = self._run_coverage()
+
+        # Log warning if coverage was skipped (tool not installed)
+        if coverage_result.get("skipped"):
+            logger.warning(
+                f"Coverage check skipped for task {task.id}: {coverage_result.get('skip_reason', 'unknown reason')}. "
+                "Coverage gate passed by default but actual coverage was not measured."
+            )
 
         if coverage_result["coverage_pct"] < 85.0:
             failures.append(
@@ -332,11 +339,11 @@ class QualityGates:
 
         # Create blocker if failed
         if not result.passed:
-            self._create_quality_blocker(task, failures)
+            self._create_quality_blocker(task, failures, task_category)
 
         return result
 
-    async def run_review_gate(self, task: Task) -> QualityGateResult:
+    async def run_review_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
         """Execute code review gate - trigger Review Agent and check for critical findings.
 
         This gate runs the Review Agent to perform automated code review. It blocks
@@ -422,7 +429,7 @@ class QualityGates:
 
         return result
 
-    async def run_linting_gate(self, task: Task) -> QualityGateResult:
+    async def run_linting_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
         """Execute linting gate - run ruff for Python, eslint for JavaScript/TypeScript.
 
         This gate runs linters to enforce code style and catch common errors. Linting
@@ -497,11 +504,11 @@ class QualityGates:
 
         # Create blocker if failed
         if not result.passed:
-            self._create_quality_blocker(task, failures)
+            self._create_quality_blocker(task, failures, task_category)
 
         return result
 
-    async def run_skip_detection_gate(self, task: Task) -> QualityGateResult:
+    async def run_skip_detection_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
         """Execute skip pattern detection gate - detect test skips across all languages.
 
         This gate scans test files for skip patterns (e.g., @pytest.mark.skip, it.skip,
@@ -608,7 +615,7 @@ class QualityGates:
 
         # Create blocker if failed
         if not result.passed:
-            self._create_quality_blocker(task, failures)
+            self._create_quality_blocker(task, failures, task_category)
 
         return result
 
@@ -691,16 +698,22 @@ class QualityGates:
         if self._contains_risky_changes(task):
             logger.info(f"Task {task.id} contains risky changes - marking for human approval")
             # Set requires_human_approval flag in database
-            cursor = self.db.conn.cursor()  # type: ignore[union-attr]
-            cursor.execute(
-                "UPDATE tasks SET requires_human_approval = 1 WHERE id = ?",
-                (task.id,),
-            )
-            self.db.conn.commit()  # type: ignore[union-attr]
+            try:
+                cursor = self.db.conn.cursor()  # type: ignore[union-attr]
+                cursor.execute(
+                    "UPDATE tasks SET requires_human_approval = 1 WHERE id = ?",
+                    (task.id,),
+                )
+                self.db.conn.commit()  # type: ignore[union-attr]
+            except Exception as e:
+                logger.error(
+                    f"Failed to set requires_human_approval flag for task {task.id}: {e}"
+                )
+                # Don't fail the gate due to database error, but log it
 
         # 1. Linting gate (fast)
         if QualityGateType.LINTING in applicable_gates:
-            linting_result = await self.run_linting_gate(task)
+            linting_result = await self.run_linting_gate(task, category.value)
             all_failures.extend(linting_result.failures)
         else:
             reason = rules.get_skip_reason(category, QualityGateType.LINTING)
@@ -709,7 +722,7 @@ class QualityGates:
 
         # 2. Type check gate (fast)
         if QualityGateType.TYPE_CHECK in applicable_gates:
-            type_check_result = await self.run_type_check_gate(task)
+            type_check_result = await self.run_type_check_gate(task, category.value)
             all_failures.extend(type_check_result.failures)
         else:
             reason = rules.get_skip_reason(category, QualityGateType.TYPE_CHECK)
@@ -718,7 +731,7 @@ class QualityGates:
 
         # 3. Skip detection gate (fast, scans for test skips)
         if QualityGateType.SKIP_DETECTION in applicable_gates:
-            skip_detection_result = await self.run_skip_detection_gate(task)
+            skip_detection_result = await self.run_skip_detection_gate(task, category.value)
             all_failures.extend(skip_detection_result.failures)
         else:
             reason = rules.get_skip_reason(category, QualityGateType.SKIP_DETECTION)
@@ -727,7 +740,7 @@ class QualityGates:
 
         # 4. Test gate
         if QualityGateType.TESTS in applicable_gates:
-            test_result = await self.run_tests_gate(task)
+            test_result = await self.run_tests_gate(task, category.value)
             all_failures.extend(test_result.failures)
         else:
             reason = rules.get_skip_reason(category, QualityGateType.TESTS)
@@ -736,7 +749,7 @@ class QualityGates:
 
         # 5. Coverage gate
         if QualityGateType.COVERAGE in applicable_gates:
-            coverage_result = await self.run_coverage_gate(task)
+            coverage_result = await self.run_coverage_gate(task, category.value)
             all_failures.extend(coverage_result.failures)
         else:
             reason = rules.get_skip_reason(category, QualityGateType.COVERAGE)
@@ -745,7 +758,7 @@ class QualityGates:
 
         # 6. Review gate (slowest, most comprehensive)
         if QualityGateType.CODE_REVIEW in applicable_gates:
-            review_result = await self.run_review_gate(task)
+            review_result = await self.run_review_gate(task, category.value)
             all_failures.extend(review_result.failures)
         else:
             reason = rules.get_skip_reason(category, QualityGateType.CODE_REVIEW)

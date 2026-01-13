@@ -137,7 +137,10 @@ class TaskClassifier:
             6. CODE_IMPLEMENTATION (default for code-related tasks)
             7. MIXED (only when strong code + strong non-code keywords present)
         """
-        text = f"{task.title} {task.description}".lower()
+        # Normalize inputs - handle None values gracefully
+        title = task.title or ""
+        description = task.description or ""
+        text = f"{title} {description}".lower()
 
         # Check each category
         has_design = bool(self._design_pattern.search(text))

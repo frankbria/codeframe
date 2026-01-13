@@ -15,11 +15,14 @@ Usage:
     ...     pass
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from codeframe.core.models import QualityGateType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -72,8 +75,12 @@ class QualityGatesConfig:
             try:
                 gates.append(QualityGateType(name))
             except ValueError:
-                # Invalid gate name, skip it
-                pass
+                # Invalid gate name - log warning and skip
+                valid_names = [g.value for g in QualityGateType]
+                logger.warning(
+                    f"Invalid gate name '{name}' in custom_category_rules for category '{category}'. "
+                    f"Valid gate names are: {valid_names}"
+                )
 
         return gates if gates else None
 

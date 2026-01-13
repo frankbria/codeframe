@@ -119,9 +119,11 @@ class QualityGateRules:
             category: The task category
 
         Returns:
-            List of QualityGateType values that should be applied
+            List of QualityGateType values that should be applied (copy to prevent mutation)
         """
-        return _GATE_RULES.get(category, _GATE_RULES[TaskCategory.MIXED])
+        # Return a copy to prevent callers from mutating the internal rules
+        gates = _GATE_RULES.get(category, _GATE_RULES[TaskCategory.MIXED])
+        return list(gates)
 
     def should_skip_gate(self, category: TaskCategory, gate: QualityGateType) -> bool:
         """Check if a specific gate should be skipped for a task category.

@@ -1398,11 +1398,14 @@ class WorkerAgent:
                 self.db.conn.commit()
 
                 # Build completion message with task classification info
+                from codeframe.core.models import QualityGateType
+                total_gates = len(QualityGateType)
                 skipped_count = quality_result.gates_skipped_count if hasattr(quality_result, 'gates_skipped_count') else 0
                 task_category = quality_result.task_category if hasattr(quality_result, 'task_category') else None
 
                 if skipped_count > 0 and task_category:
-                    gates_msg = f"{6 - skipped_count} gates passed, {skipped_count} skipped (not applicable for {task_category} tasks)"
+                    passed_count = total_gates - skipped_count
+                    gates_msg = f"{passed_count} gates passed, {skipped_count} skipped (not applicable for {task_category} tasks)"
                 else:
                     gates_msg = "all quality gates passed"
 
