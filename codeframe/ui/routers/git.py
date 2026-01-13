@@ -602,7 +602,7 @@ async def list_commits(
                     short_hash=commit.hexsha[:7],
                     message=commit.message.strip().split("\n")[0],  # First line only
                     author=str(commit.author),
-                    timestamp=commit.committed_datetime.isoformat().replace("+00:00", "Z"),
+                    timestamp=commit.committed_datetime.astimezone(UTC).isoformat().replace("+00:00", "Z"),
                     files_changed=files_changed,
                 )
             )
@@ -676,7 +676,8 @@ async def get_git_status(
                 staged_files = [item.a_path for item in repo.index.diff("HEAD")]
             else:
                 # No HEAD yet - all indexed files are staged
-                staged_files = list(repo.index.entries.keys()) if repo.index.entries else []
+                # entries.keys() returns (path, stage) tuples, extract just the path
+                staged_files = [path for path, _stage in repo.index.entries.keys()] if repo.index.entries else []
         except git.BadName:
             # HEAD reference doesn't exist (empty repo)
             staged_files = []
