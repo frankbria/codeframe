@@ -1271,17 +1271,17 @@ def seed_test_data(db_path: str, project_id: int):
             print(f"✅ Seeded {count}/3 discovery state entries for project {project_id}")
 
         # ========================================
-        # 8. Update Project Phase for Discovery Tests (Project 1)
+        # 8. Update Project Phase for Discovery Tests (Project 1 ONLY)
         # ========================================
-        # Set project to 'discovery' phase so discovery UI renders correctly
+        # IMPORTANT: This UPDATE must ONLY affect Project 1 (id=1).
+        # Other projects (2-7) have their phases set during creation and must not be modified here.
+        # Project 2 must remain in 'planning' phase for late-joining user tests.
+        # Set project 1 to 'discovery' phase so discovery UI renders correctly
         # This project is used by test_start_agent_flow.spec.ts and other discovery tests
-        print("📋 Setting project phase to 'discovery' for discovery tests...")
+        print("📋 Setting Project 1 phase to 'discovery' for discovery tests...")
         try:
-            cursor.execute(
-                "UPDATE projects SET phase = 'discovery' WHERE id = ?",
-                (project_id,),
-            )
-            print(f"✅ Set project {project_id} phase to 'discovery'")
+            cursor.execute("UPDATE projects SET phase = 'discovery' WHERE id = 1")
+            print("✅ Set Project 1 phase to 'discovery'")
         except sqlite3.Error as e:
             print(f"⚠️  Failed to update project phase: {e}")
 
@@ -2392,6 +2392,37 @@ This project has pending unassigned tasks but NO in-progress tasks.
             )
         print(f"✅ Seeded {len(project_agent_assignments_p7)} project-agent assignments for project {assign_tasks_project_id}")
         print(f"✅ Set E2E_TEST_PROJECT_ASSIGN_TASKS_ID={assign_tasks_project_id}")
+
+        # ========================================
+        # VALIDATION: Verify all project phases match expectations
+        # ========================================
+        # This catches regressions where UPDATE statements inadvertently change project phases
+        print("\n🔍 Validating project phases...")
+        expected_phases = {
+            1: 'discovery',   # Discovery tests
+            2: 'planning',    # Late-joining user tests
+            3: 'active',      # Active project tests
+            4: 'review',      # Review phase tests
+            5: 'complete',    # Completed project tests
+            6: 'planning',    # Task breakdown tests
+            7: 'active',      # Task assignment tests
+        }
+        phase_validation_passed = True
+        for proj_id, expected_phase in expected_phases.items():
+            cursor.execute("SELECT phase FROM projects WHERE id = ?", (proj_id,))
+            row = cursor.fetchone()
+            if row:
+                actual_phase = row[0]
+                if actual_phase != expected_phase:
+                    print(f"   ⚠️  WARNING: Project {proj_id} phase is '{actual_phase}', expected '{expected_phase}'")
+                    phase_validation_passed = False
+                else:
+                    print(f"   ✅ Project {proj_id}: {actual_phase}")
+
+        if phase_validation_passed:
+            print("✅ All project phases validated successfully")
+        else:
+            print("⚠️  Some project phases do not match expectations!")
 
         # Commit all changes
         conn.commit()
