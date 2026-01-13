@@ -2,6 +2,17 @@
 
 This module provides a structured approach to discovering project requirements
 through progressive questioning organized by category.
+
+Note: As of the Socratic Discovery enhancement, this framework now serves as:
+1. A FALLBACK mechanism when AI question generation fails
+2. A VALIDATION layer to ensure all required categories are covered
+3. A COMPLETION DETECTOR using is_discovery_complete()
+
+AI-powered questions are generated dynamically by LeadAgent._generate_next_discovery_question()
+with full conversation context. The static questions defined here are preserved
+for fallback scenarios and backward compatibility.
+
+See docs/discovery-socratic-methodology.md for full architecture details.
 """
 
 import logging

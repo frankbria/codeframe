@@ -45,7 +45,46 @@ class MemoryRepository(BaseRepository):
         self.conn.commit()
         return cursor.lastrowid
 
+    def upsert_memory(
+        self,
+        project_id: int,
+        category: str,
+        key: str,
+        value: str,
+    ) -> int:
+        """Create or update a memory entry.
 
+        Uses INSERT ... ON CONFLICT to preserve original id and created_at.
+
+        Args:
+            project_id: Project ID
+            category: Memory category
+            key: Memory key
+            value: Memory value (content)
+
+        Returns:
+            Memory ID (existing or newly created)
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO memory (project_id, category, key, value)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(project_id, category, key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (project_id, category, key, value),
+        )
+        self.conn.commit()
+
+        # Query the actual row id (lastrowid unreliable after conflict)
+        cursor.execute(
+            "SELECT id FROM memory WHERE project_id = ? AND category = ? AND key = ?",
+            (project_id, category, key),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else cursor.lastrowid
 
     def get_memory(self, memory_id: int) -> Optional[Dict[str, Any]]:
         """Get memory entry by ID.

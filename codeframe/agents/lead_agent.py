@@ -148,6 +148,18 @@ class LeadAgent:
         # Track current task/plan for session state
         self.current_task: Optional[str] = None
 
+        # Socratic Discovery Configuration
+        self.discovery_mode = "dynamic"  # 'dynamic', 'static', or 'hybrid'
+        self.MIN_DISCOVERY_QUESTIONS = 5
+        self.MAX_DISCOVERY_QUESTIONS = 20
+
+        # Discovery conversation history for Socratic questioning
+        self._discovery_conversation_history: List[Dict[str, str]] = []
+
+        # Category coverage tracking with cache invalidation
+        self._category_coverage: Dict[str, str] = {}
+        self._coverage_turn_count: int = -1  # Track when cache was computed
+
         # Load discovery state from database
         self._load_discovery_state()
 
@@ -165,15 +177,33 @@ class LeadAgent:
         # Convert database format to provider format
         conversation = []
         for msg in db_messages:
+            # Keys are indexed like "user_0", "assistant_1" - extract role
+            key = msg["key"]
+            role = key.rsplit("_", 1)[0] if "_" in key else key
             conversation.append(
                 {
-                    "role": msg["key"],  # 'user' or 'assistant'
+                    "role": role,
                     "content": msg["value"],
                 }
             )
 
         logger.debug(f"Loaded {len(conversation)} messages from conversation history")
         return conversation
+
+    def _get_next_conversation_index(self) -> int:
+        """Get the next available conversation message index from database.
+
+        Returns:
+            Next available index for conversation messages.
+            Falls back to timestamp-based index on DB failure to avoid collisions.
+        """
+        try:
+            db_messages = self.db.get_conversation(self.project_id)
+            return len(db_messages)
+        except Exception as e:
+            logger.warning(f"Failed to get conversation count: {e}")
+            # Use timestamp to avoid collision with existing keys
+            return int(datetime.now().timestamp())
 
     def chat(self, message: str) -> str:
         """Handle natural language interaction with user.
@@ -196,6 +226,9 @@ class LeadAgent:
             # Load conversation history
             conversation = self.get_conversation_history()
 
+            # Get next message index for unique keys
+            msg_index = self._get_next_conversation_index()
+
             # Append user message to conversation
             conversation.append(
                 {
@@ -204,11 +237,11 @@ class LeadAgent:
                 }
             )
 
-            # Save user message to database
+            # Save user message to database with indexed key
             self.db.create_memory(
                 project_id=self.project_id,
                 category="conversation",
-                key="user",
+                key=f"user_{msg_index}",
                 value=message,
             )
 
@@ -220,11 +253,11 @@ class LeadAgent:
             # Extract assistant response
             assistant_response = response["content"]
 
-            # Save assistant response to database
+            # Save assistant response to database with indexed key
             self.db.create_memory(
                 project_id=self.project_id,
                 category="conversation",
-                key="assistant",
+                key=f"assistant_{msg_index + 1}",
                 value=assistant_response,
             )
 
@@ -268,6 +301,12 @@ class LeadAgent:
                     self._current_question_id = memory["value"]
                 elif memory["key"] == "current_question_text":
                     self._current_question_text = memory["value"]
+                elif memory["key"] == "category_coverage":
+                    # Load category coverage from JSON
+                    try:
+                        self._category_coverage = json.loads(memory["value"])
+                    except json.JSONDecodeError:
+                        self._category_coverage = {}
 
             # Filter and load discovery answers
             answer_memories = [m for m in all_memories if m["category"] == "discovery_answers"]
@@ -278,9 +317,29 @@ class LeadAgent:
                 # Also capture in answer_capture for structured extraction
                 self.answer_capture.capture_answer(question_id, answer_text)
 
+            # Load discovery conversation history from discovery_state category
+            # (conversation turns stored with 'conversation_turn_N' keys)
+            # Filter to only keys with valid numeric suffixes to prevent crashes
+            conversation_memories = [
+                m for m in all_memories
+                if m["category"] == "discovery_state"
+                and m["key"].startswith("conversation_turn_")
+                and m["key"].replace("conversation_turn_", "").isdigit()
+            ]
+            # Sort by key to maintain order (conversation_turn_0, conversation_turn_1, etc.)
+            conversation_memories.sort(key=lambda m: int(m["key"].replace("conversation_turn_", "")))
+            for memory in conversation_memories:
+                try:
+                    turn = json.loads(memory["value"])
+                    if "question" in turn and "answer" in turn:
+                        self._discovery_conversation_history.append(turn)
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse conversation turn: {memory['key']}")
+
             logger.debug(
                 f"Loaded discovery state: {self._discovery_state}, "
-                f"answers: {len(self._discovery_answers)}"
+                f"answers: {len(self._discovery_answers)}, "
+                f"conversation_history: {len(self._discovery_conversation_history)}"
             )
 
         except Exception as e:
@@ -289,12 +348,17 @@ class LeadAgent:
             self._discovery_state = "idle"
             self._current_question_id = None
             self._discovery_answers = {}
+            self._discovery_conversation_history = []
+            self._category_coverage = {}
 
     def _save_discovery_state(self) -> None:
-        """Save discovery state to database."""
+        """Save discovery state to database.
+
+        Uses upsert to handle updates to existing state values.
+        """
         try:
-            # Save current state
-            self.db.create_memory(
+            # Save current state (upsert to allow updates)
+            self.db.upsert_memory(
                 project_id=self.project_id,
                 category="discovery_state",
                 key="state",
@@ -303,7 +367,7 @@ class LeadAgent:
 
             # Save current question ID if exists
             if self._current_question_id:
-                self.db.create_memory(
+                self.db.upsert_memory(
                     project_id=self.project_id,
                     category="discovery_state",
                     key="current_question_id",
@@ -312,7 +376,7 @@ class LeadAgent:
 
             # Save current question text if exists (needed for fallback path)
             if self._current_question_text:
-                self.db.create_memory(
+                self.db.upsert_memory(
                     project_id=self.project_id,
                     category="discovery_state",
                     key="current_question_text",
@@ -323,6 +387,259 @@ class LeadAgent:
 
         except Exception as e:
             logger.error(f"Failed to save discovery state: {e}")
+
+    def _get_next_conversation_turn_index(self) -> int:
+        """Get the next available conversation turn index from database.
+
+        Queries existing conversation_turn_N keys to find max index and returns max + 1.
+        This prevents index collision after restart.
+
+        Returns:
+            Next available turn index (0 if no existing turns)
+        """
+        try:
+            all_memories = self.db.get_project_memories(self.project_id)
+            existing_indices = [
+                int(m["key"].replace("conversation_turn_", ""))
+                for m in all_memories
+                if m["category"] == "discovery_state"
+                and m["key"].startswith("conversation_turn_")
+                and m["key"].replace("conversation_turn_", "").isdigit()
+            ]
+            return max(existing_indices) + 1 if existing_indices else 0
+        except Exception as e:
+            logger.warning(f"Failed to get next turn index from DB: {e}")
+            # Fallback to in-memory length
+            return len(self._discovery_conversation_history)
+
+    def _save_conversation_turn(self, question: str, answer: str) -> None:
+        """Save a discovery conversation turn to database with optimistic retry.
+
+        Args:
+            question: The question that was asked
+            answer: The user's answer
+
+        Note: Uses 'discovery_state' category with 'conversation_turn_N' keys
+        to avoid needing a schema migration for a new category.
+
+        Uses optimistic retry to handle race conditions when multiple instances
+        try to save with the same index (UNIQUE constraint violation).
+        """
+        turn = {"question": question, "answer": answer}
+        max_retries = 3
+
+        for attempt in range(max_retries):
+            # Get next index from DB to prevent collision after restart
+            turn_index = self._get_next_conversation_turn_index()
+
+            try:
+                # Use discovery_state category (allowed by schema) with conversation_ prefix
+                self.db.create_memory(
+                    project_id=self.project_id,
+                    category="discovery_state",
+                    key=f"conversation_turn_{turn_index}",
+                    value=json.dumps(turn),
+                )
+                self._discovery_conversation_history.append(turn)
+                logger.debug(f"Saved conversation turn {turn_index}")
+                return  # Success
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check for UNIQUE constraint violation (retry on collision)
+                if ("unique" in error_str or "constraint" in error_str) and attempt < max_retries - 1:
+                    logger.warning(f"Turn index collision at {turn_index}, retrying (attempt {attempt + 1})")
+                    continue
+                # Don't append to in-memory list on DB failure to keep indices synchronized
+                logger.warning(f"Failed to save conversation turn {turn_index}: {e}")
+                return
+
+    def _get_category_coverage(self) -> Dict[str, str]:
+        """Get coverage status for all required discovery categories.
+
+        Uses caching to avoid recalculating when conversation hasn't changed.
+        Analyzes conversation history and answers to determine which
+        categories have been adequately covered.
+
+        Returns:
+            Dictionary mapping category names to coverage status:
+            - 'uncovered': No relevant answers yet
+            - 'covered': Category adequately addressed
+        """
+        current_turn_count = len(self._discovery_conversation_history)
+
+        # Return cached coverage if conversation hasn't changed
+        if (self._category_coverage
+                and self._coverage_turn_count == current_turn_count):
+            return self._category_coverage
+
+        # Calculate fresh coverage
+        coverage = self._calculate_category_coverage()
+
+        # Update cache
+        self._category_coverage = coverage
+        self._coverage_turn_count = current_turn_count
+
+        # Persist coverage to database (upsert to allow updates)
+        try:
+            self.db.upsert_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="category_coverage",
+                value=json.dumps(coverage),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist category coverage: {e}")
+
+        return coverage
+
+    def _calculate_category_coverage(self) -> Dict[str, str]:
+        """Calculate category coverage from conversation history and answers.
+
+        Returns:
+            Dictionary mapping category names to coverage status
+        """
+        categories = ["problem", "users", "features", "constraints", "tech_stack"]
+        coverage = {}
+
+        # Keywords that indicate coverage for each category
+        category_keywords = {
+            "problem": ["problem", "solve", "issue", "challenge", "pain", "need"],
+            "users": ["user", "customer", "audience", "target", "who", "people"],
+            "features": ["feature", "function", "capability", "able to", "requirement"],
+            "constraints": ["constraint", "limit", "budget", "timeline", "restriction"],
+            "tech_stack": ["tech", "stack", "language", "framework", "database", "tool"],
+        }
+
+        for category in categories:
+            keywords = category_keywords.get(category, [])
+
+            # Check if we have any answers that mention this category
+            has_coverage = False
+            for turn in self._discovery_conversation_history:
+                answer = turn.get("answer", "").lower()
+                question = turn.get("question", "").lower()
+
+                # Check if answer or question relates to this category
+                if any(kw in answer for kw in keywords) or any(kw in question for kw in keywords):
+                    has_coverage = True
+                    break
+
+            # Also check direct framework answers
+            for q_id, answer in self._discovery_answers.items():
+                if category in q_id and len(answer) > 10:
+                    has_coverage = True
+                    break
+
+            coverage[category] = "covered" if has_coverage else "uncovered"
+
+        return coverage
+
+    def _build_discovery_question_prompt(
+        self,
+        previous_answers: Dict[str, str],
+        conversation_history: List[Dict[str, str]],
+        uncovered_categories: List[str],
+    ) -> str:
+        """Build the prompt for generating the next Socratic discovery question.
+
+        Args:
+            previous_answers: Dictionary of question_id -> answer text
+            conversation_history: List of Q&A turns as dicts
+            uncovered_categories: List of categories still needing coverage
+
+        Returns:
+            Prompt string for Claude to generate next question
+        """
+        prompt = """You are a skilled requirements analyst gathering information for a software project using the Socratic method.
+
+Your goal is to ask ONE focused, context-aware follow-up question that:
+1. Builds on the user's previous answers
+2. Probes deeper into interesting technical or business details
+3. Helps cover any missing topic areas
+4. Uses conversational, natural language
+
+"""
+
+        # Add conversation history
+        if conversation_history:
+            prompt += "## Previous Conversation\n\n"
+            for i, turn in enumerate(conversation_history, 1):
+                prompt += f"Q{i}: {turn['question']}\n"
+                prompt += f"A{i}: {turn['answer']}\n\n"
+
+        # Add structured answers by category (from framework questions)
+        if previous_answers:
+            prompt += "## Structured Answers by Topic\n"
+            for q_id, answer in previous_answers.items():
+                # Extract category from question ID (e.g., "problem_1" -> "problem")
+                category = q_id.split("_")[0] if "_" in q_id else q_id
+                prompt += f"- {category}: {answer}\n"
+            prompt += "\n"
+
+        # Add uncovered categories
+        if uncovered_categories:
+            prompt += "## Topics Still to Cover\n"
+            prompt += f"The following areas haven't been discussed yet: {', '.join(uncovered_categories)}\n\n"
+
+        # Socratic guidelines
+        prompt += """## Guidelines for Your Question
+
+- Ask exactly ONE question
+- Reference specific details from previous answers when relevant
+- If the user mentioned something interesting, probe deeper
+- If important topics are uncovered, guide toward them naturally
+- Keep the tone conversational and helpful
+- Don't number the question or add preamble - just ask directly
+
+Generate your next question:"""
+
+        return prompt
+
+    def _generate_next_discovery_question(self) -> Optional[str]:
+        """Generate the next AI-powered Socratic discovery question.
+
+        Uses Claude API with full conversation context to generate
+        a context-aware follow-up question.
+
+        Returns:
+            Generated question text, or None if generation fails
+        """
+        try:
+            # Get current category coverage
+            coverage = self._get_category_coverage()
+            uncovered = [cat for cat, status in coverage.items() if status == "uncovered"]
+
+            # Build prompt with full context
+            prompt = self._build_discovery_question_prompt(
+                previous_answers=self._discovery_answers,
+                conversation_history=self._discovery_conversation_history,
+                uncovered_categories=uncovered,
+            )
+
+            # Call AI provider
+            conversation = [{"role": "user", "content": prompt}]
+            response = self.provider.send_message(conversation)
+
+            question_text = response["content"].strip()
+
+            # Log token usage
+            usage = response.get("usage", {})
+            logger.info(
+                f"Socratic question generation - Input: {usage.get('input_tokens', 0)}, "
+                f"Output: {usage.get('output_tokens', 0)} tokens"
+            )
+
+            # Assign unique ID for this AI-generated question
+            question_number = len(self._discovery_conversation_history) + 1
+            self._current_question_id = f"ai_generated_{question_number}"
+            self._current_question_text = question_text
+            self._save_discovery_state()
+
+            return question_text
+
+        except Exception as e:
+            logger.warning(f"AI question generation failed, will use fallback: {e}")
+            return None
 
     def reset_discovery(self) -> None:
         """Reset discovery state to idle, clearing any stuck state.
@@ -499,24 +816,29 @@ Keep your question concise and conversational. Don't number it or add preamble -
 
     def process_discovery_answer(self, answer: str) -> str:
         """
-        Process user answer during discovery phase.
+        Process user answer during discovery phase with Socratic AI-powered questioning.
 
-        Saves the answer, advances to next question, and checks for completion.
+        Saves the answer, generates AI-powered follow-up question or falls back
+        to static framework questions, and checks for completion.
 
         Args:
             answer: User's answer to current discovery question
 
         Returns:
-            Next question or completion message
+            Next question (AI-generated or static fallback) or completion message
         """
         if self._discovery_state != "discovering":
             logger.warning(f"process_discovery_answer called in state: {self._discovery_state}")
             return "Discovery is not active. Call start_discovery() first."
 
+        # Save conversation turn for Socratic context
+        if self._current_question_text:
+            self._save_conversation_turn(self._current_question_text, answer)
+
         # Determine the target question ID for storing this answer
         # AI-generated and default questions map to the first unanswered framework question
         target_question_id = self._current_question_id
-        if self._current_question_id in ("ai_generated", "default_generated"):
+        if self._current_question_id and self._current_question_id.startswith(("ai_generated", "default_generated")):
             # Map to the first unanswered framework question
             next_framework_question = self.discovery_framework.get_next_question(self._discovery_answers)
             if next_framework_question:
@@ -549,7 +871,23 @@ Keep your question concise and conversational. Don't number it or add preamble -
             logger.info("Discovery completed!")
             return "Discovery complete! All required questions have been answered."
 
-        # Get next question
+        # Check max questions limit
+        if len(self._discovery_conversation_history) >= self.MAX_DISCOVERY_QUESTIONS:
+            self._discovery_state = "completed"
+            self._save_discovery_state()
+            logger.info(f"Discovery completed (max questions {self.MAX_DISCOVERY_QUESTIONS} reached)")
+            return "Discovery complete! We have gathered sufficient information."
+
+        # Try AI-powered Socratic question generation first
+        if self.discovery_mode in ("dynamic", "hybrid"):
+            ai_question = self._generate_next_discovery_question()
+            if ai_question:
+                logger.info("Generated AI-powered Socratic follow-up question")
+                return ai_question
+            else:
+                logger.warning("AI question generation failed, falling back to static questions")
+
+        # Fallback to static framework questions
         next_question = self.discovery_framework.get_next_question(self._discovery_answers)
 
         if next_question:
@@ -558,6 +896,7 @@ Keep your question concise and conversational. Don't number it or add preamble -
             # Without this, the old AI-generated question text would be displayed
             self._current_question_text = next_question["text"]
             self._save_discovery_state()
+            logger.info(f"Using static fallback question: {next_question['id']}")
             return next_question["text"]
         else:
             # All questions answered
@@ -609,7 +948,8 @@ Keep your question concise and conversational. Don't number it or add preamble -
             # Add current question if available
             if self._current_question_id:
                 # Handle AI-generated or default questions (distinct from framework IDs)
-                if self._current_question_id in ("ai_generated", "default_generated"):
+                # Note: IDs are formatted as "ai_generated_{N}" or "default_generated_{N}"
+                if self._current_question_id.startswith(("ai_generated", "default_generated")):
                     # These questions have custom text stored separately
                     # They map to framework questions when answered, but display their custom text
                     status["current_question"] = {

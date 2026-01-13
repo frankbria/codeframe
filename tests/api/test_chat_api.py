@@ -167,20 +167,20 @@ class TestChatHistoryEndpoint:
         """
         RED Test: Retrieve conversation history from database
         """
-        # Arrange: Create conversation history
+        # Arrange: Create conversation history with indexed keys
         get_app().state.db.create_memory(
-            project_id=test_project, category="conversation", key="user", value="Hello"
+            project_id=test_project, category="conversation", key="user_0", value="Hello"
         )
         get_app().state.db.create_memory(
             project_id=test_project,
             category="conversation",
-            key="assistant",
+            key="assistant_1",
             value="Hi! How can I help?",
         )
         get_app().state.db.create_memory(
             project_id=test_project,
             category="conversation",
-            key="user",
+            key="user_2",
             value="I want to build an app",
         )
 
@@ -211,11 +211,11 @@ class TestChatHistoryEndpoint:
         """
         RED Test: Support pagination with limit and offset
         """
-        # Arrange: Create 10 messages
+        # Arrange: Create 10 messages with indexed keys
         for i in range(10):
             role = "user" if i % 2 == 0 else "assistant"
             get_app().state.db.create_memory(
-                project_id=test_project, category="conversation", key=role, value=f"Message {i}"
+                project_id=test_project, category="conversation", key=f"{role}_{i}", value=f"Message {i}"
             )
 
         # Act: Get first 5 messages
