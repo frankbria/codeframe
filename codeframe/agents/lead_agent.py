@@ -156,8 +156,9 @@ class LeadAgent:
         # Discovery conversation history for Socratic questioning
         self._discovery_conversation_history: List[Dict[str, str]] = []
 
-        # Category coverage tracking
+        # Category coverage tracking with cache invalidation
         self._category_coverage: Dict[str, str] = {}
+        self._coverage_turn_count: int = -1  # Track when cache was computed
 
         # Load discovery state from database
         self._load_discovery_state()
@@ -418,14 +419,47 @@ class LeadAgent:
     def _get_category_coverage(self) -> Dict[str, str]:
         """Get coverage status for all required discovery categories.
 
+        Uses caching to avoid recalculating when conversation hasn't changed.
         Analyzes conversation history and answers to determine which
         categories have been adequately covered.
 
         Returns:
             Dictionary mapping category names to coverage status:
             - 'uncovered': No relevant answers yet
-            - 'partial': Some relevant information gathered
             - 'covered': Category adequately addressed
+        """
+        current_turn_count = len(self._discovery_conversation_history)
+
+        # Return cached coverage if conversation hasn't changed
+        if (self._category_coverage
+                and self._coverage_turn_count == current_turn_count):
+            return self._category_coverage
+
+        # Calculate fresh coverage
+        coverage = self._calculate_category_coverage()
+
+        # Update cache
+        self._category_coverage = coverage
+        self._coverage_turn_count = current_turn_count
+
+        # Persist coverage to database
+        try:
+            self.db.create_memory(
+                project_id=self.project_id,
+                category="discovery_state",
+                key="category_coverage",
+                value=json.dumps(coverage),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to persist category coverage: {e}")
+
+        return coverage
+
+    def _calculate_category_coverage(self) -> Dict[str, str]:
+        """Calculate category coverage from conversation history and answers.
+
+        Returns:
+            Dictionary mapping category names to coverage status
         """
         categories = ["problem", "users", "features", "constraints", "tech_stack"]
         coverage = {}
@@ -461,18 +495,6 @@ class LeadAgent:
 
             coverage[category] = "covered" if has_coverage else "uncovered"
 
-        # Persist coverage to database
-        try:
-            self.db.create_memory(
-                project_id=self.project_id,
-                category="discovery_state",
-                key="category_coverage",
-                value=json.dumps(coverage),
-            )
-        except Exception as e:
-            logger.warning(f"Failed to persist category coverage: {e}")
-
-        self._category_coverage = coverage
         return coverage
 
     def _build_discovery_question_prompt(
