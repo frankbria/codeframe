@@ -34,6 +34,48 @@ function truncateText(text: string, maxLength: number): string {
   return text.substring(0, maxLength) + '...';
 }
 
+interface FilterButtonsProps {
+  filter: BlockerFilter;
+  setFilter: (filter: BlockerFilter) => void;
+}
+
+function FilterButtons({ filter, setFilter }: FilterButtonsProps) {
+  return (
+    <div className="flex gap-2">
+      <button
+        onClick={() => setFilter('all')}
+        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+          filter === 'all'
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-muted text-foreground hover:bg-muted/80'
+        }`}
+      >
+        All
+      </button>
+      <button
+        onClick={() => setFilter('sync')}
+        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+          filter === 'sync'
+            ? 'bg-destructive text-destructive-foreground'
+            : 'bg-muted text-foreground hover:bg-muted/80'
+        }`}
+      >
+        SYNC
+      </button>
+      <button
+        onClick={() => setFilter('async')}
+        className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+          filter === 'async'
+            ? 'bg-accent text-accent-foreground'
+            : 'bg-muted text-foreground hover:bg-muted/80'
+        }`}
+      >
+        ASYNC
+      </button>
+    </div>
+  );
+}
+
 export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelProps) {
   // Filter state (T068)
   const [filter, setFilter] = useState<BlockerFilter>('all');
@@ -50,22 +92,26 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
     });
   }, [blockers]);
 
+  // All pending blockers (before type filter) - used for empty state decision
+  const allPendingBlockers = useMemo(() => {
+    return sortedBlockers.filter(b => b.status === 'PENDING');
+  }, [sortedBlockers]);
+
   // Filter for pending blockers only, then apply type filter (T068)
   const filteredBlockers = useMemo(() => {
-    const pending = sortedBlockers.filter(b => b.status === 'PENDING');
-
     if (filter === 'sync') {
-      return pending.filter(b => b.blocker_type === 'SYNC');
+      return allPendingBlockers.filter(b => b.blocker_type === 'SYNC');
     } else if (filter === 'async') {
-      return pending.filter(b => b.blocker_type === 'ASYNC');
+      return allPendingBlockers.filter(b => b.blocker_type === 'ASYNC');
     }
-    return pending;
-  }, [sortedBlockers, filter]);
+    return allPendingBlockers;
+  }, [allPendingBlockers, filter]);
 
   // Alias for backwards compatibility
   const pendingBlockers = filteredBlockers;
 
-  if (pendingBlockers.length === 0) {
+  // Truly empty state - no pending blockers at all (don't show filter buttons)
+  if (allPendingBlockers.length === 0) {
     return (
       <div className="bg-card rounded-lg shadow p-4 border border-border">
         <h2 className="text-lg font-semibold mb-3 text-foreground">
@@ -74,6 +120,34 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
         <div className="text-center py-8 text-muted-foreground">
           <div className="text-4xl mb-2">✅</div>
           <p className="text-sm">No blockers - agents are running smoothly!</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Get filter display name for empty message
+  const filterDisplayName = filter === 'sync' ? 'SYNC' : filter === 'async' ? 'ASYNC' : 'All';
+
+  // Filtered empty state - pending blockers exist but none match current filter
+  if (filteredBlockers.length === 0) {
+    return (
+      <div className="bg-card rounded-lg shadow border border-border">
+        <div className="p-4 border-b border-border">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-foreground">
+              Blockers{' '}
+              <span className="text-sm font-normal text-muted-foreground">
+                (0)
+              </span>
+            </h2>
+          </div>
+
+          <FilterButtons filter={filter} setFilter={setFilter} />
+        </div>
+
+        <div className="text-center py-8 text-muted-foreground">
+          <p className="text-sm">No {filterDisplayName} blockers found</p>
+          <p className="text-xs mt-1">Try selecting a different filter</p>
         </div>
       </div>
     );
@@ -91,39 +165,7 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
           </h2>
         </div>
 
-        {/* Filter buttons (T068) */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-              filter === 'all'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-foreground hover:bg-muted/80'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('sync')}
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-              filter === 'sync'
-                ? 'bg-destructive text-destructive-foreground'
-                : 'bg-muted text-foreground hover:bg-muted/80'
-            }`}
-          >
-            SYNC
-          </button>
-          <button
-            onClick={() => setFilter('async')}
-            className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-              filter === 'async'
-                ? 'bg-accent text-accent-foreground'
-                : 'bg-muted text-foreground hover:bg-muted/80'
-            }`}
-          >
-            ASYNC
-          </button>
-        </div>
+        <FilterButtons filter={filter} setFilter={setFilter} />
       </div>
 
       <div className="divide-y divide-border">
