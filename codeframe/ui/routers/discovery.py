@@ -477,28 +477,41 @@ async def get_discovery_progress(
 @router.post("/restart")
 async def restart_discovery(
     project_id: int,
+    confirmed: bool = False,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Restart discovery when stuck in an invalid state.
+    """Restart discovery from any phase (Issue #247).
 
-    This endpoint resets discovery state to 'idle', allowing the user to
-    start discovery fresh. Use this when discovery is stuck (e.g., state is
-    'discovering' but no question is available).
+    This endpoint supports full discovery restart from any project phase.
+    When restarting from a phase other than "discovery", it requires confirmation
+    because it will delete PRD, tasks, and issues.
+
+    For projects in "discovery" phase, no confirmation is needed and only the
+    discovery state is reset (preserving answers for potential continuation).
+
+    For projects in other phases (planning, active, review), confirmation is
+    required and the following data will be deleted:
+    - Discovery answers
+    - PRD content
+    - Generated tasks and issues
+    - Project phase will be reset to "discovery"
 
     Args:
         project_id: Project ID
+        confirmed: If True, proceed with full reset. If False, return confirmation
+                   request for non-discovery phases.
         db: Database instance (injected)
         current_user: Authenticated user (injected)
 
     Returns:
-        Success message with new state
+        Success message with new state, or confirmation request
 
     Raises:
         HTTPException:
-            - 400: Discovery cannot be restarted (e.g., already completed)
             - 403: User lacks project access
             - 404: Project not found
+            - 500: Server error during reset
     """
     # Check if project exists
     project = db.get_project(project_id)
@@ -509,51 +522,127 @@ async def restart_discovery(
     if not db.user_has_project_access(current_user.id, project_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # Check project phase - only allow restart during discovery phase
-    if project.get("phase") not in ("discovery", None):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot restart discovery in {project.get('phase')} phase. "
-            "Discovery can only be restarted during the discovery phase.",
-        )
+    current_phase = project.get("phase", "discovery")
 
-    # Initialize LeadAgent to get current state and reset
-    try:
-        agent = LeadAgent(project_id=project_id, db=db, api_key="dummy-key-for-reset")
-        status = agent.get_discovery_status()
+    # For discovery phase, use simple reset (no confirmation needed)
+    if current_phase in ("discovery", None):
+        try:
+            agent = LeadAgent(project_id=project_id, db=db, api_key="dummy-key-for-reset")
+            agent.reset_discovery()
 
-        # Don't allow restart if discovery is completed
-        if status["state"] == "completed":
-            raise HTTPException(
-                status_code=400,
-                detail="Discovery is already completed. Cannot restart completed discovery.",
+            await manager.broadcast(
+                {
+                    "type": "discovery_reset",
+                    "project_id": project_id,
+                    "message": "Discovery has been reset. Click 'Start Discovery' to begin again.",
+                },
+                project_id=project_id,
             )
 
-        # Reset discovery state
-        agent.reset_discovery()
+            logger.info(f"Discovery reset for project {project_id} by user {current_user.id}")
 
-        # Broadcast discovery reset event
+            return {
+                "success": True,
+                "message": "Discovery has been reset. You can now start discovery again.",
+                "state": "idle",
+            }
+        except Exception as e:
+            logger.error(f"Failed to reset discovery for project {project_id}: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to reset discovery: {str(e)}"
+            )
+
+    # For other phases, check what data exists that would be deleted
+    prd = db.get_prd(project_id)
+    prd_exists = prd is not None
+
+    # Count discovery answers
+    answers = db.get_memories_by_category(project_id, "discovery_answers")
+    answer_count = len(answers)
+
+    # Count tasks and issues
+    tasks = db.get_project_tasks(project_id)
+    task_count = len(tasks)
+    issues = db.get_project_issues(project_id)
+    issue_count = len(issues)
+
+    # If not confirmed, return confirmation request
+    if not confirmed:
+        return {
+            "requires_confirmation": True,
+            "message": (
+                "This will permanently delete all discovery answers, the PRD, "
+                "and any generated tasks. You'll start from scratch. "
+                "Are you sure?"
+            ),
+            "data_to_be_deleted": {
+                "prd_exists": prd_exists,
+                "answer_count": answer_count,
+                "task_count": task_count,
+                "issue_count": issue_count,
+            },
+        }
+
+    # Confirmed - perform full reset
+    try:
+        # Initialize LeadAgent and perform full reset
+        agent = LeadAgent(project_id=project_id, db=db, api_key="dummy-key-for-reset")
+        reset_result = agent.full_reset_discovery()
+
+        # Delete PRD
+        prd_deleted = db.delete_prd(project_id)
+
+        # Delete tasks and issues
+        deleted_items = db.delete_project_tasks_and_issues(project_id)
+
+        # Reset project phase to discovery
+        db.update_project(project_id, {"phase": "discovery"})
+
+        # Broadcast discovery reset event with detailed information
         await manager.broadcast(
             {
                 "type": "discovery_reset",
                 "project_id": project_id,
-                "message": "Discovery has been reset. Click 'Start Discovery' to begin again.",
+                "phase": "discovery",
+                "message": (
+                    "Discovery has been fully reset. All answers, PRD, and tasks "
+                    "have been cleared. Click 'Start Discovery' to begin again."
+                ),
+                "cleared_items": {
+                    "answers": reset_result["answers"],
+                    "prd_existed": prd_deleted,
+                    "tasks": deleted_items["tasks"],
+                    "issues": deleted_items["issues"],
+                },
             },
             project_id=project_id,
         )
 
-        logger.info(f"Discovery reset for project {project_id} by user {current_user.id}")
+        logger.info(
+            f"Full discovery reset for project {project_id} by user {current_user.id}: "
+            f"phase {current_phase} -> discovery, "
+            f"cleared {reset_result['answers']} answers, "
+            f"prd={'yes' if prd_deleted else 'no'}, "
+            f"{deleted_items['tasks']} tasks, {deleted_items['issues']} issues"
+        )
 
         return {
             "success": True,
-            "message": "Discovery has been reset. You can now start discovery again.",
+            "message": (
+                "Discovery has been fully reset. All answers, PRD, and tasks "
+                "have been cleared. You can now start discovery again."
+            ),
             "state": "idle",
+            "cleared_items": {
+                "answers": reset_result["answers"],
+                "prd_existed": prd_deleted,
+                "tasks": deleted_items["tasks"],
+                "issues": deleted_items["issues"],
+            },
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Failed to restart discovery for project {project_id}: {e}")
+        logger.error(f"Failed to fully reset discovery for project {project_id}: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to restart discovery: {str(e)}"
         )

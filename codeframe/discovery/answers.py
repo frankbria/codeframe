@@ -22,6 +22,14 @@ class AnswerCapture:
         """Initialize the AnswerCapture instance."""
         self.answers: dict[str, dict[str, Any]] = {}
 
+    def clear(self) -> None:
+        """Clear all captured answers.
+
+        Resets the internal state to an empty dictionary, effectively
+        clearing all previously captured answers.
+        """
+        self.answers = {}
+
     def capture_answer(self, question_id: str, answer_text: str) -> bool:
         """Capture an answer for a specific question.
 

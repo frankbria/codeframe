@@ -918,5 +918,77 @@ class TaskRepository(BaseRepository):
             verification_errors=verification_errors if verification_errors else None,
         )
 
+    def delete_all_project_tasks(self, project_id: int, cursor: sqlite3.Cursor = None) -> int:
+        """Delete all tasks for a project, handling FK constraints.
+
+        This method deletes all dependent records before deleting tasks:
+        - task_dependencies (both task_id and depends_on_task_id)
+        - test_results
+        - correction_attempts
+
+        Note: code_reviews and task_evidence have ON DELETE CASCADE and are handled
+        automatically by the database.
+
+        Args:
+            project_id: Project ID to delete tasks for
+            cursor: Optional cursor for transaction support. If provided,
+                    the caller is responsible for commit/rollback.
+
+        Returns:
+            Number of tasks deleted
+        """
+        own_cursor = cursor is None
+        if own_cursor:
+            cursor = self.conn.cursor()
+
+        try:
+            # Get all task IDs for this project
+            cursor.execute(
+                "SELECT id FROM tasks WHERE project_id = ?",
+                (project_id,),
+            )
+            task_ids = [row[0] for row in cursor.fetchall()]
+
+            if not task_ids:
+                return 0
+
+            # Create placeholders for IN clause
+            placeholders = ",".join("?" * len(task_ids))
+
+            # Delete from task_dependencies (both FK columns)
+            cursor.execute(
+                f"DELETE FROM task_dependencies WHERE task_id IN ({placeholders}) OR depends_on_task_id IN ({placeholders})",
+                task_ids + task_ids,
+            )
+
+            # Delete from test_results
+            cursor.execute(
+                f"DELETE FROM test_results WHERE task_id IN ({placeholders})",
+                task_ids,
+            )
+
+            # Delete from correction_attempts
+            cursor.execute(
+                f"DELETE FROM correction_attempts WHERE task_id IN ({placeholders})",
+                task_ids,
+            )
+
+            # Now delete the tasks (code_reviews and task_evidence cascade automatically)
+            cursor.execute(
+                "DELETE FROM tasks WHERE project_id = ?",
+                (project_id,),
+            )
+            task_count = cursor.rowcount
+
+            if own_cursor:
+                self.conn.commit()
+
+            return task_count
+
+        except Exception:
+            if own_cursor:
+                self.conn.rollback()
+            raise
+
     # Code Review CRUD operations (Sprint 10: 015-review-polish)
 

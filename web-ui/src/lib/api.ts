@@ -90,9 +90,31 @@ export const projectsApi = {
     }),
   getDiscoveryProgress: (projectId: number | string) =>
     api.get<DiscoveryProgressResponse>(`/api/projects/${projectId}/discovery/progress`),
-  restartDiscovery: (projectId: number | string) =>
-    api.post<{ success: boolean; message: string; state: string }>(
-      `/api/projects/${projectId}/discovery/restart`
+  restartDiscovery: (
+    projectId: number | string,
+    confirmed?: boolean
+  ) =>
+    api.post<{
+      success?: boolean;
+      message: string;
+      state?: string;
+      requires_confirmation?: boolean;
+      data_to_be_deleted?: {
+        prd_exists: boolean;
+        answer_count: number;
+        task_count: number;
+        issue_count: number;
+      };
+      cleared_items?: {
+        answers: number;
+        prd_existed: boolean;
+        tasks: number;
+        issues: number;
+      };
+    }>(
+      `/api/projects/${projectId}/discovery/restart`,
+      {},
+      { params: confirmed !== undefined ? { confirmed } : undefined }
     ),
   retryPrdGeneration: (projectId: number | string) =>
     api.post<{ success: boolean; message: string }>(
