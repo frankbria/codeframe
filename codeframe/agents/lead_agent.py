@@ -389,7 +389,7 @@ class LeadAgent:
             return len(self._discovery_conversation_history)
 
     def _save_conversation_turn(self, question: str, answer: str) -> None:
-        """Save a discovery conversation turn to database.
+        """Save a discovery conversation turn to database with optimistic retry.
 
         Args:
             question: The question that was asked
@@ -397,24 +397,37 @@ class LeadAgent:
 
         Note: Uses 'discovery_state' category with 'conversation_turn_N' keys
         to avoid needing a schema migration for a new category.
+
+        Uses optimistic retry to handle race conditions when multiple instances
+        try to save with the same index (UNIQUE constraint violation).
         """
         turn = {"question": question, "answer": answer}
-        # Get next index from DB to prevent collision after restart
-        turn_index = self._get_next_conversation_turn_index()
+        max_retries = 3
 
-        try:
-            # Use discovery_state category (allowed by schema) with conversation_ prefix
-            self.db.create_memory(
-                project_id=self.project_id,
-                category="discovery_state",
-                key=f"conversation_turn_{turn_index}",
-                value=json.dumps(turn),
-            )
-            self._discovery_conversation_history.append(turn)
-            logger.debug(f"Saved conversation turn {turn_index}")
-        except Exception as e:
-            # Don't append to in-memory list on DB failure to keep indices synchronized
-            logger.warning(f"Failed to save conversation turn {turn_index}: {e}")
+        for attempt in range(max_retries):
+            # Get next index from DB to prevent collision after restart
+            turn_index = self._get_next_conversation_turn_index()
+
+            try:
+                # Use discovery_state category (allowed by schema) with conversation_ prefix
+                self.db.create_memory(
+                    project_id=self.project_id,
+                    category="discovery_state",
+                    key=f"conversation_turn_{turn_index}",
+                    value=json.dumps(turn),
+                )
+                self._discovery_conversation_history.append(turn)
+                logger.debug(f"Saved conversation turn {turn_index}")
+                return  # Success
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check for UNIQUE constraint violation (retry on collision)
+                if ("unique" in error_str or "constraint" in error_str) and attempt < max_retries - 1:
+                    logger.warning(f"Turn index collision at {turn_index}, retrying (attempt {attempt + 1})")
+                    continue
+                # Don't append to in-memory list on DB failure to keep indices synchronized
+                logger.warning(f"Failed to save conversation turn {turn_index}: {e}")
+                return
 
     def _get_category_coverage(self) -> Dict[str, str]:
         """Get coverage status for all required discovery categories.

@@ -495,6 +495,14 @@ class SchemaManager:
         """
         )
 
+        # Add unique constraint on memory table to prevent duplicate keys
+        cursor.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_unique_key
+            ON memory(project_id, category, key)
+        """
+        )
+
         # Context items table
         cursor.execute(
             """
