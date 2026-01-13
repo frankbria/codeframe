@@ -208,3 +208,33 @@ class GitRepository(BaseRepository):
         )
         return cursor.fetchone()[0]
 
+    def get_branch_by_name_and_issues(
+        self, branch_name: str, issue_ids: List[int]
+    ) -> Optional[Dict[str, Any]]:
+        """Get a branch by name that belongs to one of the given issues.
+
+        Single-query lookup for performance optimization.
+
+        Args:
+            branch_name: Git branch name to find
+            issue_ids: List of issue IDs the branch must belong to
+
+        Returns:
+            Branch dictionary or None if not found
+        """
+        if not issue_ids:
+            return None
+
+        cursor = self.conn.cursor()
+        placeholders = ",".join("?" * len(issue_ids))
+        cursor.execute(
+            f"""
+            SELECT * FROM git_branches
+            WHERE branch_name = ? AND issue_id IN ({placeholders})
+            LIMIT 1
+            """,
+            (branch_name, *issue_ids),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+

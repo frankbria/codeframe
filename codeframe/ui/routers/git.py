@@ -9,6 +9,7 @@ Endpoints follow the pattern: /api/projects/{project_id}/git/*
 """
 
 import logging
+import re
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import List, Optional
@@ -27,6 +28,42 @@ from codeframe.ui.websocket_broadcasts import (
     broadcast_branch_created,
     broadcast_commit_created,
 )
+
+# Git branch name validation pattern
+# Allows: alphanumeric, hyphens, underscores, forward slashes, dots (not leading/trailing)
+# Disallows: spaces, ~, ^, :, ?, *, [, \, .., @{, consecutive dots
+BRANCH_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9][-a-zA-Z0-9_./]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$')
+
+
+def validate_branch_name(branch_name: str) -> str:
+    """Validate git branch name for safety.
+
+    Args:
+        branch_name: Branch name to validate
+
+    Returns:
+        Validated branch name
+
+    Raises:
+        ValueError: If branch name contains invalid characters
+    """
+    if not branch_name:
+        raise ValueError("Branch name cannot be empty")
+
+    # Check for dangerous patterns
+    dangerous_patterns = ['..', '@{', '~', '^', ':', '?', '*', '[', '\\', ' ']
+    for pattern in dangerous_patterns:
+        if pattern in branch_name:
+            raise ValueError(f"Branch name contains invalid character sequence: {pattern}")
+
+    # Check against allowed pattern
+    if not BRANCH_NAME_PATTERN.match(branch_name):
+        raise ValueError(
+            "Branch name must start and end with alphanumeric characters "
+            "and contain only letters, numbers, hyphens, underscores, forward slashes, or dots"
+        )
+
+    return branch_name
 
 
 logger = logging.getLogger(__name__)
@@ -363,24 +400,28 @@ async def get_branch(
     get_project_or_404(db, project_id)
     check_project_access(db, current_user, project_id)
 
+    # Validate branch name
+    try:
+        validate_branch_name(branch_name)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Get project issues to verify branch belongs to project
     project_issues = db.get_project_issues(project_id)
-    project_issue_ids = {i.id for i in project_issues}
+    project_issue_ids = [i.id for i in project_issues]
 
-    # Search for branch in all statuses
-    for status_value in ["active", "merged", "abandoned"]:
-        branches = db.get_branches_by_status(status_value)
-        for b in branches:
-            if b["branch_name"] == branch_name and b.get("issue_id") in project_issue_ids:
-                return BranchResponse(
-                    id=b["id"],
-                    branch_name=b["branch_name"],
-                    issue_id=b["issue_id"],
-                    status=b["status"],
-                    created_at=b.get("created_at", ""),
-                    merged_at=b.get("merged_at"),
-                    merge_commit=b.get("merge_commit"),
-                )
+    # Single-query lookup for performance
+    branch = db.get_branch_by_name_and_issues(branch_name, project_issue_ids)
+    if branch:
+        return BranchResponse(
+            id=branch["id"],
+            branch_name=branch["branch_name"],
+            issue_id=branch["issue_id"],
+            status=branch["status"],
+            created_at=branch.get("created_at", ""),
+            merged_at=branch.get("merged_at"),
+            merge_commit=branch.get("merge_commit"),
+        )
 
     raise HTTPException(status_code=404, detail=f"Branch '{branch_name}' not found")
 
@@ -450,8 +491,8 @@ async def create_commit(
             request.agent_id
         )
 
-        # Get commit message from the repository
-        commit = workflow_manager.repo.head.commit
+        # Get commit message from the specific commit (not HEAD, which may have moved)
+        commit = workflow_manager.repo.commit(commit_hash)
         commit_message = commit.message.strip()
 
         # Broadcast event
@@ -515,6 +556,13 @@ async def list_commits(
     # Get workflow manager
     workflow_manager = get_git_workflow_manager(project, db)
 
+    # Validate branch name if provided
+    if branch:
+        try:
+            validate_branch_name(branch)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     try:
         # Get commit iterator
         if branch:
@@ -547,9 +595,13 @@ async def list_commits(
     except git.GitCommandError as e:
         logger.error(f"Git error listing commits: {e}")
         raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
-    except Exception as e:
-        logger.error(f"Error listing commits: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except git.BadName as e:
+        # Invalid branch/ref name
+        logger.warning(f"Invalid branch name in list_commits: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid branch reference: {branch}")
+    except (ValueError, KeyError) as e:
+        logger.error(f"Data error listing commits: {e}")
+        raise HTTPException(status_code=500, detail=f"Data error: {e}")
 
 
 # ============================================================================
@@ -615,6 +667,9 @@ async def get_git_status(
     except git.GitCommandError as e:
         logger.error(f"Git error getting status: {e}")
         raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
-    except Exception as e:
-        logger.error(f"Error getting git status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except git.InvalidGitRepositoryError as e:
+        logger.error(f"Invalid git repository: {e}")
+        raise HTTPException(status_code=500, detail="Invalid git repository")
+    except (ValueError, KeyError, AttributeError) as e:
+        logger.error(f"Data error getting git status: {e}")
+        raise HTTPException(status_code=500, detail=f"Data error: {e}")
