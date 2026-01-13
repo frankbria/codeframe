@@ -54,7 +54,7 @@ class MemoryRepository(BaseRepository):
     ) -> int:
         """Create or update a memory entry.
 
-        Uses INSERT OR REPLACE to handle UNIQUE constraint on (project_id, category, key).
+        Uses INSERT ... ON CONFLICT to preserve original id and created_at.
 
         Args:
             project_id: Project ID
@@ -63,18 +63,28 @@ class MemoryRepository(BaseRepository):
             value: Memory value (content)
 
         Returns:
-            Memory ID
+            Memory ID (existing or newly created)
         """
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT OR REPLACE INTO memory (project_id, category, key, value)
+            INSERT INTO memory (project_id, category, key, value)
             VALUES (?, ?, ?, ?)
+            ON CONFLICT(project_id, category, key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
             """,
             (project_id, category, key, value),
         )
         self.conn.commit()
-        return cursor.lastrowid
+
+        # Query the actual row id (lastrowid unreliable after conflict)
+        cursor.execute(
+            "SELECT id FROM memory WHERE project_id = ? AND category = ? AND key = ?",
+            (project_id, category, key),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else cursor.lastrowid
 
     def get_memory(self, memory_id: int) -> Optional[Dict[str, Any]]:
         """Get memory entry by ID.
