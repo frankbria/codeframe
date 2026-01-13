@@ -465,4 +465,53 @@ describe('TaskList', () => {
       expect(taskTitle).toHaveClass('truncate');
     });
   });
+
+  describe('Assign Tasks Banner (Issue #248)', () => {
+    // The mock data includes:
+    // - Task 2: status='in_progress' with agent_id (triggers hasTasksInProgress=true)
+    // - Task 4: status='pending' without agent_id (triggers hasPendingUnassigned=true)
+    // So: banner should appear, but button should be DISABLED
+
+    it('should show Assign Tasks banner when pending unassigned tasks exist', () => {
+      render(<TaskList {...defaultProps} />);
+
+      // The banner should be visible because mockTasks includes
+      // task 4 with status='pending' and no agent_id
+      const banner = screen.getByTestId('assign-tasks-banner');
+      expect(banner).toBeInTheDocument();
+    });
+
+    it('should show Assign Tasks button in the banner', () => {
+      render(<TaskList {...defaultProps} />);
+
+      const button = screen.getByTestId('assign-tasks-button');
+      expect(button).toBeInTheDocument();
+    });
+
+    it('should display informative text about pending tasks in banner', () => {
+      render(<TaskList {...defaultProps} />);
+
+      const banner = screen.getByTestId('assign-tasks-banner');
+      // Banner should mention pending or unassigned tasks
+      expect(banner).toHaveTextContent(/pending|unassigned/i);
+    });
+
+    it('should disable button when tasks are in progress', () => {
+      // The mock data has task id: 2 with status='in_progress'
+      // This should disable the Assign Tasks button
+      render(<TaskList {...defaultProps} />);
+
+      const button = screen.getByTestId('assign-tasks-button');
+      // Button should be disabled because there are in_progress tasks
+      expect(button).toBeDisabled();
+    });
+
+    it('should show count of pending unassigned tasks in banner', () => {
+      render(<TaskList {...defaultProps} />);
+
+      const banner = screen.getByTestId('assign-tasks-banner');
+      // The mock has 1 pending unassigned task (task 4)
+      expect(banner).toHaveTextContent(/1/);
+    });
+  });
 });

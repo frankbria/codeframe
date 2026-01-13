@@ -496,6 +496,31 @@ class SchemaManager:
         )
 
         # Add unique constraint on memory table to prevent duplicate keys
+        # First, check if the index already exists
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_memory_unique_key'"
+        )
+        index_exists = cursor.fetchone() is not None
+
+        if not index_exists:
+            # Migration: Clean up duplicate entries before creating unique index
+            # Keep the most recent entry (highest id) for each (project_id, category, key)
+            cursor.execute(
+                """
+                DELETE FROM memory
+                WHERE id NOT IN (
+                    SELECT MAX(id)
+                    FROM memory
+                    GROUP BY project_id, category, key
+                )
+            """
+            )
+            deleted_count = cursor.rowcount
+            if deleted_count > 0:
+                logger.info(
+                    f"Migration: Removed {deleted_count} duplicate memory entries"
+                )
+
         cursor.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_unique_key

@@ -182,6 +182,7 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
   // Assignment state (Issue #248 fix)
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
 
   // Filter tasks by project ID
   const projectTasks = useMemo(
@@ -241,12 +242,20 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
   const handleAssignTasks = useCallback(async () => {
     setIsAssigning(true);
     setAssignmentError(null);
+    setAssignmentSuccess(null);
     try {
       const response = await tasksApi.assignPending(projectId);
       if (!response.data.success) {
         setAssignmentError(response.data.message || 'Assignment failed');
+      } else {
+        // Show success feedback to user
+        const message = response.data.pending_count > 0
+          ? `Started assignment for ${response.data.pending_count} task${response.data.pending_count !== 1 ? 's' : ''}. Agents are being assigned...`
+          : 'No tasks need assignment at this time.';
+        setAssignmentSuccess(message);
+        // Auto-clear success message after 5 seconds
+        setTimeout(() => setAssignmentSuccess(null), 5000);
       }
-      // Success - the WebSocket will update the task list as agents are assigned
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to assign tasks';
       setAssignmentError(errorMessage);
@@ -330,7 +339,13 @@ const TaskList = memo(function TaskList({ projectId }: TaskListProps) {
             </button>
           </div>
           {assignmentError && (
-            <p className="mt-2 text-sm text-destructive">{assignmentError}</p>
+            <p data-testid="assignment-error" className="mt-2 text-sm text-destructive">{assignmentError}</p>
+          )}
+          {assignmentSuccess && (
+            <p data-testid="assignment-success" className="mt-2 text-sm text-secondary flex items-center gap-2">
+              <span className="inline-block w-2 h-2 bg-secondary rounded-full animate-pulse" />
+              {assignmentSuccess}
+            </p>
           )}
         </div>
       )}
