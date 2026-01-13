@@ -13,7 +13,16 @@ import type { DiscoveryProgressResponse } from '@/types/api';
 import type { WebSocketMessage } from '@/types';
 import ProgressBar from './ProgressBar';
 import PhaseIndicator from './PhaseIndicator';
-import { Cancel01Icon, CheckmarkCircle01Icon, Alert02Icon } from '@hugeicons/react';
+import { Cancel01Icon, CheckmarkCircle01Icon, Alert02Icon, AlertDiamondIcon } from '@hugeicons/react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -56,6 +65,15 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
   const [isRestarting, setIsRestarting] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
   const STUCK_TIMEOUT_MS = 30000; // 30 seconds without a question = stuck
+
+  // Confirmation dialog state (Issue #247)
+  const [showRestartConfirmation, setShowRestartConfirmation] = useState(false);
+  const [confirmationData, setConfirmationData] = useState<{
+    prd_exists: boolean;
+    answer_count: number;
+    task_count: number;
+    issue_count: number;
+  } | null>(null);
 
   // Ref to track if we should clear isStarting on next fetch
   const clearIsStartingOnFetch = useRef(false);
@@ -244,8 +262,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
     // Note: isStarting is cleared by fetchProgress() when data arrives (via clearIsStartingOnFetch ref)
   };
 
-  // Restart discovery when stuck
-  const handleRestartDiscovery = async () => {
+  // Restart discovery when stuck or from any phase (Issue #247)
+  // Internal function that handles the actual restart logic
+  const performRestartDiscovery = async (confirmed: boolean) => {
     if (isRestarting) return;
 
     setIsRestarting(true);
@@ -253,8 +272,21 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
     setIsStuck(false);
 
     try {
-      await projectsApi.restartDiscovery(projectId);
-      // This resets state to idle, so the Start Discovery button will appear
+      const response = await projectsApi.restartDiscovery(projectId, confirmed);
+      const result = response.data;
+
+      // Check if confirmation is required
+      if (result.requires_confirmation && result.data_to_be_deleted) {
+        // Show confirmation dialog
+        setConfirmationData(result.data_to_be_deleted);
+        setShowRestartConfirmation(true);
+        setIsRestarting(false);
+        return;
+      }
+
+      // Success - reset completed
+      setShowRestartConfirmation(false);
+      setConfirmationData(null);
       setWaitingForQuestionStart(null);
       fetchProgress();
     } catch (err) {
@@ -262,6 +294,24 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
       setRestartError('Failed to restart discovery. Please try again.');
       setIsRestarting(false);
     }
+  };
+
+  // Click handler for restart buttons (Issue #247)
+  const handleRestartDiscovery = () => {
+    performRestartDiscovery(false);
+  };
+
+  // Handle confirmed restart (Issue #247)
+  const handleConfirmedRestart = async () => {
+    setShowRestartConfirmation(false);
+    await performRestartDiscovery(true);
+  };
+
+  // Cancel restart confirmation dialog
+  const handleCancelRestart = () => {
+    setShowRestartConfirmation(false);
+    setConfirmationData(null);
+    setIsRestarting(false);
   };
 
   // Retry PRD generation when it fails
@@ -1052,6 +1102,59 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
           </div>
         </div>
       )}
+
+      {/* Restart Discovery Confirmation Dialog (Issue #247) */}
+      <Dialog open={showRestartConfirmation} onOpenChange={setShowRestartConfirmation}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <AlertDiamondIcon className="h-5 w-5 text-warning" aria-hidden="true" />
+              <DialogTitle>Restart Discovery?</DialogTitle>
+            </div>
+            <DialogDescription className="text-left pt-2">
+              This will permanently delete all discovery progress and start from scratch.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {confirmationData && (
+              <div className="space-y-2 text-sm">
+                <p className="font-medium text-foreground">The following will be deleted:</p>
+                <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                  {confirmationData.answer_count > 0 && (
+                    <li>{confirmationData.answer_count} discovery answer{confirmationData.answer_count !== 1 ? 's' : ''}</li>
+                  )}
+                  {confirmationData.prd_exists && (
+                    <li>The PRD (Product Requirements Document)</li>
+                  )}
+                  {confirmationData.task_count > 0 && (
+                    <li>{confirmationData.task_count} task{confirmationData.task_count !== 1 ? 's' : ''}</li>
+                  )}
+                  {confirmationData.issue_count > 0 && (
+                    <li>{confirmationData.issue_count} issue{confirmationData.issue_count !== 1 ? 's' : ''}</li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={handleCancelRestart}
+              data-testid="cancel-restart-button"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmedRestart}
+              disabled={isRestarting}
+              data-testid="confirm-restart-button"
+            >
+              {isRestarting ? 'Restarting...' : 'Restart Discovery'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });

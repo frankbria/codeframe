@@ -388,7 +388,7 @@ describe('PRD Button Synchronization', () => {
       fireEvent.click(restartButton);
 
       await waitFor(() => {
-        expect(api.projectsApi.restartDiscovery).toHaveBeenCalledWith(1);
+        expect(api.projectsApi.restartDiscovery).toHaveBeenCalledWith(1, false);
       });
     });
   });

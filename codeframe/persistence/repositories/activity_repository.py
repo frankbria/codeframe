@@ -124,4 +124,70 @@ class ActivityRepository(BaseRepository):
             "updated_at": updated_at,
         }
 
+    def delete_prd(self, project_id: int) -> bool:
+        """Delete PRD content for a project.
+
+        Removes all PRD-related entries from the memory table.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            True if PRD existed and was deleted, False if no PRD existed
+        """
+        cursor = self.conn.cursor()
+
+        # Check if PRD exists first
+        cursor.execute(
+            "SELECT COUNT(*) FROM memory WHERE project_id = ? AND category = 'prd'",
+            (project_id,),
+        )
+        count = cursor.fetchone()[0]
+
+        if count == 0:
+            return False
+
+        # Delete all PRD entries
+        cursor.execute(
+            "DELETE FROM memory WHERE project_id = ? AND category = 'prd'",
+            (project_id,),
+        )
+        self.conn.commit()
+
+        logger.info(f"Deleted PRD for project {project_id}")
+        return True
+
+    def delete_discovery_answers(self, project_id: int) -> int:
+        """Delete all discovery answers for a project.
+
+        Removes all discovery_answers entries from the memory table.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Number of answers deleted
+        """
+        cursor = self.conn.cursor()
+
+        # Count existing answers
+        cursor.execute(
+            "SELECT COUNT(*) FROM memory WHERE project_id = ? AND category = 'discovery_answers'",
+            (project_id,),
+        )
+        count = cursor.fetchone()[0]
+
+        if count == 0:
+            return 0
+
+        # Delete all discovery answers
+        cursor.execute(
+            "DELETE FROM memory WHERE project_id = ? AND category = 'discovery_answers'",
+            (project_id,),
+        )
+        self.conn.commit()
+
+        logger.info(f"Deleted {count} discovery answers for project {project_id}")
+        return count
+
     # Issues/Tasks methods (cf-26)

@@ -120,7 +120,7 @@ describe('DiscoveryProgress Error & Recovery', () => {
       fireEvent.click(restartButton);
 
       await waitFor(() => {
-        expect(mockRestartDiscovery).toHaveBeenCalledWith(1);
+        expect(mockRestartDiscovery).toHaveBeenCalledWith(1, false);
       });
     });
 
@@ -202,7 +202,7 @@ describe('DiscoveryProgress Error & Recovery', () => {
       });
 
       // Verify the function was called
-      expect(mockRestartDiscovery).toHaveBeenCalledWith(1);
+      expect(mockRestartDiscovery).toHaveBeenCalledWith(1, false);
 
       // Resolve the promise to clean up
       await act(async () => {

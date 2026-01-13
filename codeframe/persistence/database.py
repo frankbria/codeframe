@@ -531,6 +531,10 @@ class Database:
         """Delegate to memories.get_project_memories()."""
         return self.memories.get_project_memories(*args, **kwargs)
 
+    def get_memories_by_category(self, *args, **kwargs):
+        """Delegate to memories.get_memories_by_category()."""
+        return self.memories.get_memories_by_category(*args, **kwargs)
+
     def get_conversation(self, *args, **kwargs):
         """Delegate to memories.get_conversation()."""
         return self.memories.get_conversation(*args, **kwargs)
@@ -706,6 +710,56 @@ class Database:
     def get_prd(self, *args, **kwargs):
         """Delegate to activities.get_prd()."""
         return self.activities.get_prd(*args, **kwargs)
+
+    def delete_prd(self, *args, **kwargs):
+        """Delegate to activities.delete_prd()."""
+        return self.activities.delete_prd(*args, **kwargs)
+
+    def delete_discovery_answers(self, *args, **kwargs):
+        """Delegate to activities.delete_discovery_answers()."""
+        return self.activities.delete_discovery_answers(*args, **kwargs)
+
+    def delete_project_tasks_and_issues(self, project_id: int) -> dict:
+        """Delete all tasks and issues for a project.
+
+        Performs cascading delete: tasks first (due to FK constraint), then issues.
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dictionary with counts: {"tasks": int, "issues": int}
+        """
+        cursor = self.conn.cursor()
+
+        # Count tasks before deletion
+        cursor.execute(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
+            (project_id,),
+        )
+        task_count = cursor.fetchone()[0]
+
+        # Count issues before deletion
+        cursor.execute(
+            "SELECT COUNT(*) FROM issues WHERE project_id = ?",
+            (project_id,),
+        )
+        issue_count = cursor.fetchone()[0]
+
+        # Delete tasks first (due to FK constraint on issue_id)
+        cursor.execute(
+            "DELETE FROM tasks WHERE project_id = ?",
+            (project_id,),
+        )
+
+        # Then delete issues
+        cursor.execute(
+            "DELETE FROM issues WHERE project_id = ?",
+            (project_id,),
+        )
+
+        self.conn.commit()
+        return {"tasks": task_count, "issues": issue_count}
 
     def create_audit_log(self, *args, **kwargs):
         """Delegate to audit_logs.create_audit_log()."""

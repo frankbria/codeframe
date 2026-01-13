@@ -2552,7 +2552,7 @@ describe('DiscoveryProgress Component', () => {
       fireEvent.click(restartButton);
 
       await waitFor(() => {
-        expect(mockRestartDiscovery).toHaveBeenCalledWith(1);
+        expect(mockRestartDiscovery).toHaveBeenCalledWith(1, false);
       });
     });
 
@@ -2634,7 +2634,7 @@ describe('DiscoveryProgress Component', () => {
       });
 
       // Verify the function was called
-      expect(mockRestartDiscovery).toHaveBeenCalledWith(1);
+      expect(mockRestartDiscovery).toHaveBeenCalledWith(1, false);
 
       // Resolve the promise to clean up
       await act(async () => {

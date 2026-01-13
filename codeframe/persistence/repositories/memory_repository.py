@@ -119,6 +119,24 @@ class MemoryRepository(BaseRepository):
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+    def get_memories_by_category(self, project_id: int, category: str) -> List[Dict[str, Any]]:
+        """Get memory entries for a project filtered by category.
+
+        Args:
+            project_id: Project ID
+            category: Memory category to filter by
+
+        Returns:
+            List of memory dictionaries matching the category
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT * FROM memory WHERE project_id = ? AND category = ? ORDER BY created_at",
+            (project_id, category),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
 
 
     def get_conversation(self, project_id: int) -> List[Dict[str, Any]]:

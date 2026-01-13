@@ -685,6 +685,103 @@ Generate your next question:"""
             logger.error(f"Failed to reset discovery state: {e}")
             raise
 
+    def full_reset_discovery(self) -> dict:
+        """Fully reset discovery, clearing ALL discovery data.
+
+        This method performs a comprehensive reset that clears:
+        - Discovery answers (from discovery_answers category)
+        - Conversation history (conversation_turn_N entries)
+        - Category coverage data
+        - Discovery state (reset to idle)
+
+        Unlike reset_discovery(), this method clears all previously gathered
+        data, effectively starting discovery completely from scratch.
+
+        Returns:
+            Dictionary with counts of cleared items:
+            {"answers": int, "conversation_turns": int}
+        """
+        logger.info(f"Performing full discovery reset for project {self.project_id}")
+
+        # Clear discovery answers from database
+        answer_count = self.db.delete_discovery_answers(self.project_id)
+
+        # Clear conversation history from database
+        cursor = self.db.conn.cursor()
+
+        # Count conversation turns before deletion
+        cursor.execute(
+            """
+            SELECT COUNT(*) FROM memory
+            WHERE project_id = ? AND category = 'discovery_state'
+            AND key LIKE 'conversation_turn_%'
+            """,
+            (self.project_id,),
+        )
+        turn_count = cursor.fetchone()[0]
+
+        # Delete conversation turns
+        cursor.execute(
+            """
+            DELETE FROM memory
+            WHERE project_id = ? AND category = 'discovery_state'
+            AND key LIKE 'conversation_turn_%'
+            """,
+            (self.project_id,),
+        )
+
+        # Delete category coverage
+        cursor.execute(
+            """
+            DELETE FROM memory
+            WHERE project_id = ? AND category = 'discovery_state'
+            AND key = 'category_coverage'
+            """,
+            (self.project_id,),
+        )
+
+        self.db.conn.commit()
+
+        # Reset in-memory state completely
+        self._discovery_state = "idle"
+        self._current_question_id = None
+        self._current_question_text = None
+        self._discovery_answers = {}
+        self._discovery_conversation_history = []
+        self._category_coverage = {}
+        self._coverage_turn_count = 0
+
+        # Clear DiscoveryAnswerCapture state if it exists
+        if hasattr(self, "_answer_capture") and self._answer_capture:
+            self._answer_capture.clear()
+
+        # Reset state in database
+        self.db.upsert_memory(
+            project_id=self.project_id,
+            category="discovery_state",
+            key="state",
+            value="idle",
+        )
+        self.db.upsert_memory(
+            project_id=self.project_id,
+            category="discovery_state",
+            key="current_question_id",
+            value="",
+        )
+        self.db.upsert_memory(
+            project_id=self.project_id,
+            category="discovery_state",
+            key="current_question_text",
+            value="",
+        )
+
+        logger.info(
+            f"Full discovery reset complete for project {self.project_id}: "
+            f"cleared {answer_count} answers, {turn_count} conversation turns"
+        )
+
+        return {"answers": answer_count, "conversation_turns": turn_count}
+
     def start_discovery(self, project_description: Optional[str] = None) -> str:
         """
         Begin Socratic requirements discovery.

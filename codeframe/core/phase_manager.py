@@ -17,8 +17,8 @@ from codeframe.persistence.database import Database
 VALID_TRANSITIONS: Dict[str, List[str]] = {
     "discovery": ["planning"],
     "planning": ["active", "discovery"],
-    "active": ["review", "planning"],
-    "review": ["complete", "active"],
+    "active": ["review", "planning", "discovery"],  # Added discovery for restart
+    "review": ["complete", "active", "discovery"],  # Added discovery for restart
     "complete": [],  # Terminal state (could transition to "shipped" in future)
 }
 
