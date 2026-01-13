@@ -265,23 +265,28 @@ async def create_branch(
         HTTPException:
             - 400: Branch already exists or invalid parameters
             - 403: Access denied
-            - 404: Project not found
+            - 404: Project or issue not found
             - 500: Git operation failed
     """
     # Get project and check access
     project = get_project_or_404(db, project_id)
     check_project_access(db, current_user, project_id)
 
-    # Get workflow manager
-    workflow_manager = get_git_workflow_manager(project, db)
-
-    # Find the issue to get its ID
+    # Find the issue - must exist before creating branch
     issues = db.get_project_issues(project_id)
     matching_issue = next(
         (i for i in issues if i.issue_number == request.issue_number),
         None
     )
-    issue_id = matching_issue.id if matching_issue else None
+    if not matching_issue:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Issue '{request.issue_number}' not found in project"
+        )
+    issue_id = matching_issue.id
+
+    # Get workflow manager
+    workflow_manager = get_git_workflow_manager(project, db)
 
     try:
         # Create the branch
@@ -316,10 +321,14 @@ async def create_branch(
         raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
 
 
+# Valid branch status values
+VALID_BRANCH_STATUSES = {"active", "merged", "abandoned"}
+
+
 @router.get("/{project_id}/git/branches", response_model=BranchListResponse)
 async def list_branches(
     project_id: int,
-    status: Optional[str] = Query(default="active", description="Filter by status"),
+    status: Optional[str] = Query(default="active", description="Filter by status (active, merged, abandoned)"),
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -336,6 +345,7 @@ async def list_branches(
 
     Raises:
         HTTPException:
+            - 400: Invalid status value
             - 403: Access denied
             - 404: Project not found
     """
@@ -343,12 +353,19 @@ async def list_branches(
     get_project_or_404(db, project_id)
     check_project_access(db, current_user, project_id)
 
+    # Validate status parameter
+    if status is not None and status not in VALID_BRANCH_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{status}'. Must be one of: {', '.join(VALID_BRANCH_STATUSES)}"
+        )
+
     # Get project issues to filter branches
     project_issues = db.get_project_issues(project_id)
     project_issue_ids = {i.id for i in project_issues}
 
-    # Get branches by status
-    all_branches = db.get_branches_by_status(status) if status else []
+    # Get branches by status (use explicit None check)
+    all_branches = db.get_branches_by_status(status) if status is not None else []
 
     # Filter to only branches for this project's issues
     project_branches = [
@@ -373,7 +390,7 @@ async def list_branches(
     return BranchListResponse(branches=branches)
 
 
-@router.get("/{project_id}/git/branches/{branch_name}", response_model=BranchResponse)
+@router.get("/{project_id}/git/branches/{branch_name:path}", response_model=BranchResponse)
 async def get_branch(
     project_id: int,
     branch_name: str,
@@ -653,8 +670,16 @@ async def get_git_status(
         # Get untracked files
         untracked_files = repo.untracked_files
 
-        # Get staged files
-        staged_files = [item.a_path for item in repo.index.diff("HEAD")]
+        # Get staged files (handle repos with no commits/HEAD)
+        try:
+            if repo.head.is_valid():
+                staged_files = [item.a_path for item in repo.index.diff("HEAD")]
+            else:
+                # No HEAD yet - all indexed files are staged
+                staged_files = list(repo.index.entries.keys()) if repo.index.entries else []
+        except git.BadName:
+            # HEAD reference doesn't exist (empty repo)
+            staged_files = []
 
         return GitStatusResponse(
             current_branch=current_branch,

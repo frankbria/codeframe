@@ -282,6 +282,19 @@ class TestGitBranchCreation:
         )
         assert response.status_code == 400
 
+    def test_create_branch_issue_not_found(self, api_client, test_project_with_git):
+        """Test that creating branch with non-existent issue returns 404."""
+        project = test_project_with_git
+        response = api_client.post(
+            f"/api/projects/{project['id']}/git/branches",
+            json={
+                "issue_number": "999.999",
+                "issue_title": "Non-existent Issue",
+            },
+        )
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
 
 # ============================================================================
 # Branch Listing Tests
