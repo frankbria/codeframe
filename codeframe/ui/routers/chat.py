@@ -146,9 +146,12 @@ async def get_chat_history(
     # Format messages for API response
     messages = []
     for msg in paginated_messages:
+        # Keys are indexed like "user_0", "assistant_1" - extract role prefix
+        key = msg["key"]
+        role = key.rsplit("_", 1)[0] if "_" in key else key
         messages.append(
             {
-                "role": msg["key"],  # 'user' or 'assistant'
+                "role": role,
                 "content": msg["value"],
                 "timestamp": msg["created_at"],
             }

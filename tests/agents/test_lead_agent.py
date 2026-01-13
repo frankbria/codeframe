@@ -118,7 +118,8 @@ class TestLeadAgentChat:
 
         # ASSERT
         conversation = db.get_conversation(project_id)
-        user_messages = [m for m in conversation if m["key"] == "user"]
+        # Keys are indexed like "user_0", "user_2", etc.
+        user_messages = [m for m in conversation if m["key"].startswith("user")]
         assert len(user_messages) >= 1
         assert user_messages[-1]["value"] == "Hello!"
 
@@ -145,7 +146,8 @@ class TestLeadAgentChat:
 
         # ASSERT
         conversation = db.get_conversation(project_id)
-        assistant_messages = [m for m in conversation if m["key"] == "assistant"]
+        # Keys are indexed like "assistant_1", "assistant_3", etc.
+        assistant_messages = [m for m in conversation if m["key"].startswith("assistant")]
         assert len(assistant_messages) >= 1
         assert assistant_messages[-1]["value"] == "Hello! How can I help?"
 
@@ -184,14 +186,14 @@ class TestLeadAgentChat:
         conversation = db.get_conversation(project_id)
         assert len(conversation) == 4  # 2 user + 2 assistant
 
-        # Verify order
-        assert conversation[0]["key"] == "user"
+        # Verify order - keys are indexed like "user_0", "assistant_1"
+        assert conversation[0]["key"] == "user_0"
         assert conversation[0]["value"] == "Hello!"
-        assert conversation[1]["key"] == "assistant"
+        assert conversation[1]["key"] == "assistant_1"
         assert conversation[1]["value"] == "Hello! How can I help?"
-        assert conversation[2]["key"] == "user"
+        assert conversation[2]["key"] == "user_2"
         assert conversation[2]["value"] == "Can you help me?"
-        assert conversation[3]["key"] == "assistant"
+        assert conversation[3]["key"] == "assistant_3"
         assert conversation[3]["value"] == "Sure, I can help with that."
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
@@ -1012,11 +1014,11 @@ class TestLeadAgentIntegration:
         conversation = db.get_conversation(project_id)
         assert len(conversation) == 6  # 3 user + 3 assistant messages
 
-        # Verify order is correct
-        assert conversation[0]["key"] == "user"
-        assert conversation[1]["key"] == "assistant"
-        assert conversation[2]["key"] == "user"
-        assert conversation[3]["key"] == "assistant"
+        # Verify order is correct - keys are indexed like "user_0", "assistant_1"
+        assert conversation[0]["key"].startswith("user")
+        assert conversation[1]["key"].startswith("assistant")
+        assert conversation[2]["key"].startswith("user")
+        assert conversation[3]["key"].startswith("assistant")
 
     @patch("codeframe.agents.lead_agent.AnthropicProvider")
     def test_agent_restart_maintains_context(self, mock_provider_class, temp_db_path):

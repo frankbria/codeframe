@@ -45,7 +45,36 @@ class MemoryRepository(BaseRepository):
         self.conn.commit()
         return cursor.lastrowid
 
+    def upsert_memory(
+        self,
+        project_id: int,
+        category: str,
+        key: str,
+        value: str,
+    ) -> int:
+        """Create or update a memory entry.
 
+        Uses INSERT OR REPLACE to handle UNIQUE constraint on (project_id, category, key).
+
+        Args:
+            project_id: Project ID
+            category: Memory category
+            key: Memory key
+            value: Memory value (content)
+
+        Returns:
+            Memory ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO memory (project_id, category, key, value)
+            VALUES (?, ?, ?, ?)
+            """,
+            (project_id, category, key, value),
+        )
+        self.conn.commit()
+        return cursor.lastrowid
 
     def get_memory(self, memory_id: int) -> Optional[Dict[str, Any]]:
         """Get memory entry by ID.

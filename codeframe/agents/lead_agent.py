@@ -177,15 +177,31 @@ class LeadAgent:
         # Convert database format to provider format
         conversation = []
         for msg in db_messages:
+            # Keys are indexed like "user_0", "assistant_1" - extract role
+            key = msg["key"]
+            role = key.rsplit("_", 1)[0] if "_" in key else key
             conversation.append(
                 {
-                    "role": msg["key"],  # 'user' or 'assistant'
+                    "role": role,
                     "content": msg["value"],
                 }
             )
 
         logger.debug(f"Loaded {len(conversation)} messages from conversation history")
         return conversation
+
+    def _get_next_conversation_index(self) -> int:
+        """Get the next available conversation message index from database.
+
+        Returns:
+            Next available index for conversation messages
+        """
+        try:
+            db_messages = self.db.get_conversation(self.project_id)
+            return len(db_messages)
+        except Exception as e:
+            logger.warning(f"Failed to get conversation count: {e}")
+            return 0
 
     def chat(self, message: str) -> str:
         """Handle natural language interaction with user.
@@ -208,6 +224,9 @@ class LeadAgent:
             # Load conversation history
             conversation = self.get_conversation_history()
 
+            # Get next message index for unique keys
+            msg_index = self._get_next_conversation_index()
+
             # Append user message to conversation
             conversation.append(
                 {
@@ -216,11 +235,11 @@ class LeadAgent:
                 }
             )
 
-            # Save user message to database
+            # Save user message to database with indexed key
             self.db.create_memory(
                 project_id=self.project_id,
                 category="conversation",
-                key="user",
+                key=f"user_{msg_index}",
                 value=message,
             )
 
@@ -232,11 +251,11 @@ class LeadAgent:
             # Extract assistant response
             assistant_response = response["content"]
 
-            # Save assistant response to database
+            # Save assistant response to database with indexed key
             self.db.create_memory(
                 project_id=self.project_id,
                 category="conversation",
-                key="assistant",
+                key=f"assistant_{msg_index + 1}",
                 value=assistant_response,
             )
 
@@ -331,10 +350,13 @@ class LeadAgent:
             self._category_coverage = {}
 
     def _save_discovery_state(self) -> None:
-        """Save discovery state to database."""
+        """Save discovery state to database.
+
+        Uses upsert to handle updates to existing state values.
+        """
         try:
-            # Save current state
-            self.db.create_memory(
+            # Save current state (upsert to allow updates)
+            self.db.upsert_memory(
                 project_id=self.project_id,
                 category="discovery_state",
                 key="state",
@@ -343,7 +365,7 @@ class LeadAgent:
 
             # Save current question ID if exists
             if self._current_question_id:
-                self.db.create_memory(
+                self.db.upsert_memory(
                     project_id=self.project_id,
                     category="discovery_state",
                     key="current_question_id",
@@ -352,7 +374,7 @@ class LeadAgent:
 
             # Save current question text if exists (needed for fallback path)
             if self._current_question_text:
-                self.db.create_memory(
+                self.db.upsert_memory(
                     project_id=self.project_id,
                     category="discovery_state",
                     key="current_question_text",
@@ -455,9 +477,9 @@ class LeadAgent:
         self._category_coverage = coverage
         self._coverage_turn_count = current_turn_count
 
-        # Persist coverage to database
+        # Persist coverage to database (upsert to allow updates)
         try:
-            self.db.create_memory(
+            self.db.upsert_memory(
                 project_id=self.project_id,
                 category="discovery_state",
                 key="category_coverage",

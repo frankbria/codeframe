@@ -519,6 +519,10 @@ class Database:
         """Delegate to memories.create_memory()."""
         return self.memories.create_memory(*args, **kwargs)
 
+    def upsert_memory(self, *args, **kwargs):
+        """Delegate to memories.upsert_memory()."""
+        return self.memories.upsert_memory(*args, **kwargs)
+
     def get_memory(self, *args, **kwargs):
         """Delegate to memories.get_memory()."""
         return self.memories.get_memory(*args, **kwargs)
