@@ -904,13 +904,25 @@ class QualityGateFailure(BaseModel):
 
 
 class QualityGateResult(BaseModel):
-    """Result of running quality gates for a task (Sprint 10)."""
+    """Result of running quality gates for a task (Sprint 10).
+
+    Includes information about which gates were run based on task classification,
+    and which gates were skipped as not applicable.
+    """
 
     task_id: int
     status: str = Field(..., description="passed or failed")
     failures: List[QualityGateFailure] = Field(default_factory=list)
     execution_time_seconds: float = Field(..., ge=0.0)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    skipped_gates: List[str] = Field(
+        default_factory=list,
+        description="Gates that were skipped based on task classification"
+    )
+    task_category: Optional[str] = Field(
+        default=None,
+        description="Task category used for gate selection (e.g., 'design', 'code_implementation')"
+    )
 
     @property
     def passed(self) -> bool:
@@ -921,6 +933,11 @@ class QualityGateResult(BaseModel):
     def has_critical_failures(self) -> bool:
         """Whether any failures are critical."""
         return any(f.severity == Severity.CRITICAL for f in self.failures)
+
+    @property
+    def gates_skipped_count(self) -> int:
+        """Number of gates that were skipped."""
+        return len(self.skipped_gates)
 
 
 class CheckpointMetadata(BaseModel):

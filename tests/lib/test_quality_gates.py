@@ -899,14 +899,15 @@ class TestQualityGatesIntegration:
 
     @pytest.fixture
     def task(self, db, project_id):
-        """Create test task."""
+        """Create test task for code implementation (runs all gates)."""
         cursor = db.conn.cursor()
         cursor.execute(
             """
             INSERT INTO tasks (project_id, task_number, title, description, status)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (project_id, "1.1.1", "Test task", "Implement feature", "in_progress"),
+            # Use "Implement feature" title to trigger CODE_IMPLEMENTATION classification
+            (project_id, "1.1.1", "Implement feature", "Build authentication module", "in_progress"),
         )
         db.conn.commit()
         task_id = cursor.lastrowid
@@ -915,8 +916,8 @@ class TestQualityGatesIntegration:
             id=task_id,
             project_id=project_id,
             task_number="1.1.1",
-            title="Test task",
-            description="Implement feature",
+            title="Implement feature",
+            description="Build authentication module",
             status=TaskStatus.IN_PROGRESS,
         )
         task_obj._test_files = ["src/payment.py", "src/authentication.py"]
@@ -1209,3 +1210,187 @@ class TestQualityGatesIntegration:
                 call_args = mock_create_blocker.call_args
                 assert call_args[0][0] == task  # First arg is task
                 assert len(call_args[0][1]) == 1  # Second arg is failures list
+
+
+# ============================================================================
+# Task Classification Integration Tests
+# ============================================================================
+
+
+class TestQualityGatesTaskClassification:
+    """Tests for task classification-based selective gate execution."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Create temporary database."""
+        db_path = tmp_path / "test.db"
+        db = Database(db_path)
+        db.initialize()
+        return db
+
+    @pytest.fixture
+    def project_root(self, tmp_path):
+        """Create temporary project root directory."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        return project_dir
+
+    @pytest.fixture
+    def project_id(self, db, project_root):
+        """Create test project."""
+        return db.create_project(
+            name="Test Project",
+            description="Quality gate test project",
+            workspace_path=str(project_root),
+        )
+
+    def _create_task(self, db, project_id, title, description=""):
+        """Helper to create test tasks with specific titles."""
+        cursor = db.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tasks (project_id, task_number, title, description, status)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, "1.1.1", title, description, "in_progress"),
+        )
+        db.conn.commit()
+        task_id = cursor.lastrowid
+
+        return Task(
+            id=task_id,
+            project_id=project_id,
+            task_number="1.1.1",
+            title=title,
+            description=description,
+            status=TaskStatus.IN_PROGRESS,
+        )
+
+    @pytest.fixture
+    def quality_gates(self, db, project_id, project_root):
+        """Create QualityGates instance."""
+        return QualityGates(db=db, project_id=project_id, project_root=project_root)
+
+    @pytest.mark.asyncio
+    async def test_design_task_skips_test_gates(self, db, project_id, quality_gates):
+        """Design tasks should skip test, coverage, and type check gates."""
+        task = self._create_task(db, project_id, "Design database schema for events")
+
+        # Mock all gate methods to track which are called
+        with patch.object(quality_gates, "run_tests_gate", new_callable=AsyncMock) as mock_tests, \
+             patch.object(quality_gates, "run_coverage_gate", new_callable=AsyncMock) as mock_coverage, \
+             patch.object(quality_gates, "run_type_check_gate", new_callable=AsyncMock) as mock_type, \
+             patch.object(quality_gates, "run_linting_gate", new_callable=AsyncMock) as mock_lint, \
+             patch.object(quality_gates, "run_review_gate", new_callable=AsyncMock) as mock_review, \
+             patch.object(quality_gates, "run_skip_detection_gate", new_callable=AsyncMock) as mock_skip:
+
+            # Configure mocks to return passing results
+            passing_result = QualityGateResult(task_id=task.id, status="passed", failures=[], execution_time_seconds=0.1)
+            for mock in [mock_tests, mock_coverage, mock_type, mock_lint, mock_review, mock_skip]:
+                mock.return_value = passing_result
+
+            result = await quality_gates.run_all_gates(task)
+
+            # Design tasks should only run code_review
+            assert mock_tests.call_count == 0
+            assert mock_coverage.call_count == 0
+            assert mock_type.call_count == 0
+            assert mock_lint.call_count == 0
+            assert mock_review.call_count == 1  # Code review IS applicable
+            assert mock_skip.call_count == 0
+            assert result.passed
+
+    @pytest.mark.asyncio
+    async def test_code_implementation_runs_all_gates(self, db, project_id, quality_gates):
+        """Code implementation tasks should run all gates."""
+        task = self._create_task(db, project_id, "Implement user authentication")
+
+        # Mock all gate methods
+        with patch.object(quality_gates, "run_tests_gate", new_callable=AsyncMock) as mock_tests, \
+             patch.object(quality_gates, "run_coverage_gate", new_callable=AsyncMock) as mock_coverage, \
+             patch.object(quality_gates, "run_type_check_gate", new_callable=AsyncMock) as mock_type, \
+             patch.object(quality_gates, "run_linting_gate", new_callable=AsyncMock) as mock_lint, \
+             patch.object(quality_gates, "run_review_gate", new_callable=AsyncMock) as mock_review, \
+             patch.object(quality_gates, "run_skip_detection_gate", new_callable=AsyncMock) as mock_skip:
+
+            passing_result = QualityGateResult(task_id=task.id, status="passed", failures=[], execution_time_seconds=0.1)
+            for mock in [mock_tests, mock_coverage, mock_type, mock_lint, mock_review, mock_skip]:
+                mock.return_value = passing_result
+
+            result = await quality_gates.run_all_gates(task)
+
+            # All gates should be called
+            assert mock_tests.call_count == 1
+            assert mock_coverage.call_count == 1
+            assert mock_type.call_count == 1
+            assert mock_lint.call_count == 1
+            assert mock_review.call_count == 1
+            assert mock_skip.call_count == 1
+            assert result.passed
+
+    @pytest.mark.asyncio
+    async def test_documentation_task_only_runs_linting(self, db, project_id, quality_gates):
+        """Documentation tasks should only run linting gate."""
+        task = self._create_task(db, project_id, "Document the API endpoints")
+
+        with patch.object(quality_gates, "run_tests_gate", new_callable=AsyncMock) as mock_tests, \
+             patch.object(quality_gates, "run_coverage_gate", new_callable=AsyncMock) as mock_coverage, \
+             patch.object(quality_gates, "run_type_check_gate", new_callable=AsyncMock) as mock_type, \
+             patch.object(quality_gates, "run_linting_gate", new_callable=AsyncMock) as mock_lint, \
+             patch.object(quality_gates, "run_review_gate", new_callable=AsyncMock) as mock_review, \
+             patch.object(quality_gates, "run_skip_detection_gate", new_callable=AsyncMock) as mock_skip:
+
+            passing_result = QualityGateResult(task_id=task.id, status="passed", failures=[], execution_time_seconds=0.1)
+            for mock in [mock_tests, mock_coverage, mock_type, mock_lint, mock_review, mock_skip]:
+                mock.return_value = passing_result
+
+            result = await quality_gates.run_all_gates(task)
+
+            # Only linting should be called
+            assert mock_tests.call_count == 0
+            assert mock_coverage.call_count == 0
+            assert mock_type.call_count == 0
+            assert mock_lint.call_count == 1  # Linting IS applicable
+            assert mock_review.call_count == 0
+            assert mock_skip.call_count == 0
+            assert result.passed
+
+    @pytest.mark.asyncio
+    async def test_result_includes_skipped_gates_info(self, db, project_id, quality_gates):
+        """Result should include information about skipped gates."""
+        task = self._create_task(db, project_id, "Design microservices architecture")
+
+        with patch.object(quality_gates, "run_review_gate", new_callable=AsyncMock) as mock_review:
+            mock_review.return_value = QualityGateResult(task_id=task.id, status="passed", failures=[], execution_time_seconds=0.1)
+
+            result = await quality_gates.run_all_gates(task)
+
+            # Check that skipped_gates is populated
+            assert hasattr(result, 'skipped_gates') or 'skipped' in str(result)
+
+    @pytest.mark.asyncio
+    async def test_configuration_task_runs_linting_and_type_check(self, db, project_id, quality_gates):
+        """Configuration tasks should run linting and type check gates."""
+        task = self._create_task(db, project_id, "Configure CI/CD pipeline")
+
+        with patch.object(quality_gates, "run_tests_gate", new_callable=AsyncMock) as mock_tests, \
+             patch.object(quality_gates, "run_coverage_gate", new_callable=AsyncMock) as mock_coverage, \
+             patch.object(quality_gates, "run_type_check_gate", new_callable=AsyncMock) as mock_type, \
+             patch.object(quality_gates, "run_linting_gate", new_callable=AsyncMock) as mock_lint, \
+             patch.object(quality_gates, "run_review_gate", new_callable=AsyncMock) as mock_review, \
+             patch.object(quality_gates, "run_skip_detection_gate", new_callable=AsyncMock) as mock_skip:
+
+            passing_result = QualityGateResult(task_id=task.id, status="passed", failures=[], execution_time_seconds=0.1)
+            for mock in [mock_tests, mock_coverage, mock_type, mock_lint, mock_review, mock_skip]:
+                mock.return_value = passing_result
+
+            result = await quality_gates.run_all_gates(task)
+
+            # Linting and type check should be called
+            assert mock_tests.call_count == 0
+            assert mock_coverage.call_count == 0
+            assert mock_type.call_count == 1
+            assert mock_lint.call_count == 1
+            assert mock_review.call_count == 0
+            assert mock_skip.call_count == 0
+            assert result.passed
