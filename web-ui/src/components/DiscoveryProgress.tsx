@@ -1104,7 +1104,7 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
       )}
 
       {/* Restart Discovery Confirmation Dialog (Issue #247) */}
-      <Dialog open={showRestartConfirmation} onOpenChange={setShowRestartConfirmation}>
+      <Dialog open={showRestartConfirmation} onOpenChange={(open) => { if (!open) handleCancelRestart(); }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <div className="flex items-center gap-2">

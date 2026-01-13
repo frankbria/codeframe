@@ -751,9 +751,9 @@ Generate your next question:"""
         self._category_coverage = {}
         self._coverage_turn_count = 0
 
-        # Clear DiscoveryAnswerCapture state if it exists
-        if hasattr(self, "_answer_capture") and self._answer_capture:
-            self._answer_capture.clear()
+        # Clear AnswerCapture state if it exists
+        if hasattr(self, "answer_capture") and self.answer_capture:
+            self.answer_capture.clear()
 
         # Reset state in database
         self.db.upsert_memory(

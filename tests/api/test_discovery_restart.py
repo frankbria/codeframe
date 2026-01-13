@@ -471,19 +471,19 @@ class TestLeadAgentFullReset:
 class TestPhaseManagerTransitions:
     """Test phase manager allows transitions back to discovery from any phase."""
 
-    def test_active_to_discovery_transition_allowed(self, api_client):
+    def test_active_to_discovery_transition_allowed(self):
         """Test transition from active to discovery is allowed."""
         from codeframe.core.phase_manager import PhaseManager
 
         assert PhaseManager.can_transition("active", "discovery") is True
 
-    def test_review_to_discovery_transition_allowed(self, api_client):
+    def test_review_to_discovery_transition_allowed(self):
         """Test transition from review to discovery is allowed."""
         from codeframe.core.phase_manager import PhaseManager
 
         assert PhaseManager.can_transition("review", "discovery") is True
 
-    def test_planning_to_discovery_transition_already_allowed(self, api_client):
+    def test_planning_to_discovery_transition_already_allowed(self):
         """Test transition from planning to discovery is already allowed."""
         from codeframe.core.phase_manager import PhaseManager
 

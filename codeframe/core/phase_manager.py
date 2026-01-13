@@ -44,8 +44,8 @@ class PhaseManager:
     Phase Transition Rules:
         discovery → planning (forward only)
         planning → active, discovery (forward or back)
-        active → review, planning (forward or back)
-        review → complete, active (forward or back)
+        active → review, planning, discovery (forward or back to discovery for restart)
+        review → complete, active, discovery (forward or back to discovery for restart)
         complete → (terminal state)
 
     Example:

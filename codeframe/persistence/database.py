@@ -730,36 +730,37 @@ class Database:
         Returns:
             Dictionary with counts: {"tasks": int, "issues": int}
         """
-        cursor = self.conn.cursor()
+        with self._sync_lock:
+            cursor = self.conn.cursor()
 
-        # Count tasks before deletion
-        cursor.execute(
-            "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
-            (project_id,),
-        )
-        task_count = cursor.fetchone()[0]
+            # Count tasks before deletion
+            cursor.execute(
+                "SELECT COUNT(*) FROM tasks WHERE project_id = ?",
+                (project_id,),
+            )
+            task_count = cursor.fetchone()[0]
 
-        # Count issues before deletion
-        cursor.execute(
-            "SELECT COUNT(*) FROM issues WHERE project_id = ?",
-            (project_id,),
-        )
-        issue_count = cursor.fetchone()[0]
+            # Count issues before deletion
+            cursor.execute(
+                "SELECT COUNT(*) FROM issues WHERE project_id = ?",
+                (project_id,),
+            )
+            issue_count = cursor.fetchone()[0]
 
-        # Delete tasks first (due to FK constraint on issue_id)
-        cursor.execute(
-            "DELETE FROM tasks WHERE project_id = ?",
-            (project_id,),
-        )
+            # Delete tasks first (due to FK constraint on issue_id)
+            cursor.execute(
+                "DELETE FROM tasks WHERE project_id = ?",
+                (project_id,),
+            )
 
-        # Then delete issues
-        cursor.execute(
-            "DELETE FROM issues WHERE project_id = ?",
-            (project_id,),
-        )
+            # Then delete issues
+            cursor.execute(
+                "DELETE FROM issues WHERE project_id = ?",
+                (project_id,),
+            )
 
-        self.conn.commit()
-        return {"tasks": task_count, "issues": issue_count}
+            self.conn.commit()
+            return {"tasks": task_count, "issues": issue_count}
 
     def create_audit_log(self, *args, **kwargs):
         """Delegate to audit_logs.create_audit_log()."""
