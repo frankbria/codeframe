@@ -236,6 +236,41 @@ async def broadcast_commit_created(
         logger.error(f"Failed to broadcast commit: {e}")
 
 
+async def broadcast_branch_created(
+    manager,
+    project_id: int,
+    branch_name: str,
+    issue_number: str,
+    issue_id: Optional[int] = None,
+) -> None:
+    """
+    Broadcast git branch creation to connected clients.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        branch_name: Git branch name created
+        issue_number: Issue number the branch is for
+        issue_id: Optional issue ID
+    """
+    message = {
+        "type": "branch_created",
+        "project_id": project_id,
+        "branch_name": branch_name,
+        "issue_number": issue_number,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    if issue_id is not None:
+        message["issue_id"] = issue_id
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast branch_created: {branch_name} for issue {issue_number}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast branch creation: {e}")
+
+
 async def broadcast_activity_update(
     manager,
     project_id: int,

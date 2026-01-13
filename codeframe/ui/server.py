@@ -24,6 +24,7 @@ from codeframe.ui.routers import (
     checkpoints,
     context,
     discovery,
+    git,
     lint,
     metrics,
     projects,
@@ -330,6 +331,7 @@ app.include_router(chat.router)
 app.include_router(checkpoints.router)
 app.include_router(context.router)
 app.include_router(discovery.router)
+app.include_router(git.router)
 app.include_router(lint.router)
 app.include_router(metrics.router)
 app.include_router(projects.router)

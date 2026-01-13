@@ -212,7 +212,9 @@ def clean_database_between_tests(api_client: TestClient) -> Generator[None, None
         cursor.execute("DELETE FROM checkpoints")
         cursor.execute("DELETE FROM memory")
         cursor.execute("DELETE FROM blockers")
+        cursor.execute("DELETE FROM changelog")  # References projects, tasks
         cursor.execute("DELETE FROM tasks")
+        cursor.execute("DELETE FROM git_branches")  # Must be before issues (FK constraint)
         cursor.execute("DELETE FROM issues")
         cursor.execute("DELETE FROM project_agents")  # Multi-agent junction table
         cursor.execute("DELETE FROM agents")

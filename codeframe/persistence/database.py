@@ -631,6 +631,10 @@ class Database:
         """Delegate to git_branches.count_branches_for_issue()."""
         return self.git_branches.count_branches_for_issue(*args, **kwargs)
 
+    def get_branch_by_name_and_issues(self, *args, **kwargs):
+        """Delegate to git_branches.get_branch_by_name_and_issues()."""
+        return self.git_branches.get_branch_by_name_and_issues(*args, **kwargs)
+
     def create_test_result(self, *args, **kwargs):
         """Delegate to test_results.create_test_result()."""
         return self.test_results.create_test_result(*args, **kwargs)
