@@ -259,8 +259,8 @@ class TestGitBranchCreation:
         )
         assert response.status_code == 422
 
-    def test_create_duplicate_branch_returns_400(self, api_client, test_project_with_issue):
-        """Test that creating duplicate branch returns 400."""
+    def test_create_duplicate_branch_returns_409_conflict(self, api_client, test_project_with_issue):
+        """Test that creating duplicate branch returns 409 Conflict."""
         project = test_project_with_issue
 
         # Create branch first time
@@ -272,7 +272,7 @@ class TestGitBranchCreation:
             },
         )
 
-        # Try to create same branch again
+        # Try to create same branch again - should return 409 Conflict
         response = api_client.post(
             f"/api/projects/{project['project_id']}/git/branches",
             json={
@@ -280,7 +280,8 @@ class TestGitBranchCreation:
                 "issue_title": project["issue_title"],
             },
         )
-        assert response.status_code == 400
+        assert response.status_code == 409
+        assert "already exists" in response.json()["detail"].lower()
 
     def test_create_branch_issue_not_found(self, api_client, test_project_with_git):
         """Test that creating branch with non-existent issue returns 404."""
@@ -598,6 +599,49 @@ class TestGitCommitCreation:
             },
         )
         assert response.status_code == 404
+
+    def test_commit_rejects_absolute_paths(self, api_client, test_project_with_task):
+        """Test that absolute file paths are rejected (security)."""
+        project = test_project_with_task
+        response = api_client.post(
+            f"/api/projects/{project['project_id']}/git/commit",
+            json={
+                "task_id": project["task_id"],
+                "files_modified": ["/etc/passwd"],
+                "agent_id": "backend-worker-001",
+            },
+        )
+        assert response.status_code == 400
+        assert "absolute" in response.json()["detail"].lower()
+
+    def test_commit_rejects_path_traversal(self, api_client, test_project_with_task):
+        """Test that path traversal attempts are rejected (security)."""
+        project = test_project_with_task
+        response = api_client.post(
+            f"/api/projects/{project['project_id']}/git/commit",
+            json={
+                "task_id": project["task_id"],
+                "files_modified": ["../../../etc/passwd"],
+                "agent_id": "backend-worker-001",
+            },
+        )
+        assert response.status_code == 400
+        assert "traversal" in response.json()["detail"].lower()
+
+    def test_commit_rejects_workspace_escape(self, api_client, test_project_with_task):
+        """Test that paths escaping workspace are rejected (security)."""
+        project = test_project_with_task
+        # Use a path that doesn't have '..' but could resolve outside via symlinks
+        # This tests the commonpath check
+        response = api_client.post(
+            f"/api/projects/{project['project_id']}/git/commit",
+            json={
+                "task_id": project["task_id"],
+                "files_modified": ["subdir/../../../outside.txt"],
+                "agent_id": "backend-worker-001",
+            },
+        )
+        assert response.status_code == 400
 
 
 # ============================================================================

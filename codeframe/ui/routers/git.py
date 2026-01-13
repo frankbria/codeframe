@@ -9,6 +9,7 @@ Endpoints follow the pattern: /api/projects/{project_id}/git/*
 """
 
 import logging
+import os
 import re
 from datetime import datetime, UTC
 from pathlib import Path
@@ -64,6 +65,49 @@ def validate_branch_name(branch_name: str) -> str:
         )
 
     return branch_name
+
+
+def validate_file_paths(file_paths: List[str], repo_root: str) -> List[str]:
+    """Validate file paths to prevent directory traversal attacks.
+
+    Args:
+        file_paths: List of file paths to validate
+        repo_root: Repository root directory (working tree)
+
+    Returns:
+        List of validated, resolved file paths
+
+    Raises:
+        ValueError: If any path is invalid or attempts to escape the workspace
+    """
+    validated_paths = []
+    repo_root_resolved = os.path.realpath(repo_root)
+
+    for path in file_paths:
+        # Reject absolute paths
+        if os.path.isabs(path):
+            raise ValueError(f"Absolute paths not allowed: {path}")
+
+        # Reject paths with '..' segments (directory traversal)
+        if '..' in path.split(os.sep) or '..' in path.split('/'):
+            raise ValueError(f"Path traversal not allowed: {path}")
+
+        # Resolve the path against repo root
+        candidate = os.path.join(repo_root_resolved, path)
+        resolved = os.path.realpath(candidate)
+
+        # Ensure resolved path is within repo root
+        try:
+            common = os.path.commonpath([repo_root_resolved, resolved])
+            if common != repo_root_resolved:
+                raise ValueError(f"Path escapes workspace: {path}")
+        except ValueError:
+            # commonpath raises ValueError for paths on different drives (Windows)
+            raise ValueError(f"Path escapes workspace: {path}")
+
+        validated_paths.append(path)
+
+    return validated_paths
 
 
 logger = logging.getLogger(__name__)
@@ -263,9 +307,10 @@ async def create_branch(
 
     Raises:
         HTTPException:
-            - 400: Branch already exists or invalid parameters
+            - 400: Invalid parameters
             - 403: Access denied
             - 404: Project or issue not found
+            - 409: Branch already exists (including concurrent creation)
             - 500: Git operation failed
     """
     # Get project and check access
@@ -314,9 +359,20 @@ async def create_branch(
         )
 
     except ValueError as e:
-        # Branch already exists or validation error
+        # Branch already exists (pre-check) or validation error
+        error_msg = str(e).lower()
+        if "already exists" in error_msg:
+            raise HTTPException(status_code=409, detail=str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except git.GitCommandError as e:
+        # Handle race condition: branch created between check and create_head
+        error_msg = str(e).lower()
+        if "already exists" in error_msg or "cannot lock ref" in error_msg:
+            logger.warning(f"Branch creation race condition detected: {e}")
+            raise HTTPException(
+                status_code=409,
+                detail=f"Branch already exists (concurrent creation detected)"
+            )
         logger.error(f"Git error creating branch: {e}")
         raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
 
@@ -490,6 +546,12 @@ async def create_commit(
 
     # Get workflow manager
     workflow_manager = get_git_workflow_manager(project, db)
+
+    # Validate file paths to prevent directory traversal attacks
+    try:
+        validate_file_paths(request.files_modified, workflow_manager.repo.working_tree_dir)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     try:
         # Create task dict for commit_task_changes
