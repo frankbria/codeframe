@@ -280,6 +280,9 @@ test.describe('Checkpoint UI Workflow', () => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
     const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
 
+    // Wait for either checkpoint items OR empty state to be visible (prevents race condition)
+    await expect(checkpointItems.first().or(emptyState)).toBeVisible({ timeout: TIMEOUTS.DOM_UPDATE });
+
     const count = await checkpointItems.count();
 
     if (count > 0) {
@@ -309,6 +312,9 @@ test.describe('Checkpoint UI Workflow', () => {
   test('should display checkpoint diff preview', async ({ page }) => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
     const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
+
+    // Wait for either checkpoint items OR empty state to be visible (prevents race condition)
+    await expect(checkpointItems.first().or(emptyState)).toBeVisible({ timeout: TIMEOUTS.DOM_UPDATE });
 
     const count = await checkpointItems.count();
 
@@ -352,6 +358,9 @@ test.describe('Checkpoint UI Workflow', () => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
     const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
 
+    // Wait for either checkpoint items OR empty state to be visible (prevents race condition)
+    await expect(checkpointItems.first().or(emptyState)).toBeVisible({ timeout: TIMEOUTS.DOM_UPDATE });
+
     const count = await checkpointItems.count();
 
     if (count > 0) {
@@ -378,6 +387,9 @@ test.describe('Checkpoint UI Workflow', () => {
   test('should allow deleting checkpoint', async ({ page }) => {
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
     const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
+
+    // Wait for either checkpoint items OR empty state to be visible (prevents race condition)
+    await expect(checkpointItems.first().or(emptyState)).toBeVisible({ timeout: TIMEOUTS.DOM_UPDATE });
 
     const count = await checkpointItems.count();
 
