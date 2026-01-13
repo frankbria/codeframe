@@ -8,12 +8,27 @@
  * - Checkpoint metadata is visible
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, Response } from '@playwright/test';
 import { loginUser, createTestProject, setupErrorMonitoring, getAuthToken } from './test-utils';
 import { BACKEND_URL } from './e2e-config';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
+
+/**
+ * Timeout constants for checkpoint tests.
+ * Centralized for easier maintenance and clearer test expectations.
+ */
+const TIMEOUTS = {
+  /** Timeout for API responses */
+  API_RESPONSE: 10000,
+  /** Timeout for checkpoint API which may be slower */
+  CHECKPOINT_LOAD: 15000,
+  /** Timeout for DOM updates after API calls */
+  DOM_UPDATE: 5000,
+  /** Brief delay for UI rendering after API response */
+  UI_RENDER: 500,
+} as const;
 
 /**
  * API Health Check - Runs before the main test suite to verify
@@ -67,7 +82,7 @@ test.describe('Checkpoint API Health Check', () => {
 
 test.describe('Checkpoint UI Workflow', () => {
   // Store checkpoint response for tests that need it
-  let checkpointApiResponsePromise: Promise<any> | null = null;
+  let checkpointApiResponsePromise: Promise<Response> | null = null;
 
   test.beforeEach(async ({ page }) => {
     // Set up error monitoring
@@ -107,27 +122,27 @@ test.describe('Checkpoint UI Workflow', () => {
     // Note: Must use /api/projects/ to avoid matching the HTML page response at /projects/
     const projectResponse = await page.waitForResponse(response =>
       response.url().includes(`/api/projects/${PROJECT_ID}`) && response.status() === 200,
-      { timeout: 10000 }
+      { timeout: TIMEOUTS.API_RESPONSE }
     );
     expect(projectResponse.ok()).toBe(true);
 
     // Navigate to checkpoint section - tab MUST be visible
     const checkpointTab = page.locator('[data-testid="checkpoint-tab"]');
-    await checkpointTab.waitFor({ state: 'visible', timeout: 10000 });
+    await checkpointTab.waitFor({ state: 'visible', timeout: TIMEOUTS.API_RESPONSE });
     await expect(checkpointTab).toBeVisible();
 
     // CRITICAL: Set up response listener BEFORE clicking tab to avoid race condition
     // The checkpoint API call fires when the tab is clicked, so we need to listen first
     checkpointApiResponsePromise = page.waitForResponse(
       response => response.url().includes('/checkpoints') && !response.url().includes('/diff'),
-      { timeout: 15000 }
+      { timeout: TIMEOUTS.CHECKPOINT_LOAD }
     );
 
     await checkpointTab.click();
 
     // Wait for checkpoint panel to become visible after tab switch
     const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
-    await checkpointPanel.waitFor({ state: 'visible', timeout: 5000 });
+    await checkpointPanel.waitFor({ state: 'visible', timeout: TIMEOUTS.DOM_UPDATE });
 
     // Wait for the checkpoint API call to complete (set up before click)
     try {
@@ -169,7 +184,7 @@ test.describe('Checkpoint UI Workflow', () => {
 
     // API response was already captured in beforeEach
     // Give UI time to render the data
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(TIMEOUTS.UI_RENDER);
 
     // Wait for DOM to update - either checkpoint items or empty state MUST be visible
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');

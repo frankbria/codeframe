@@ -303,6 +303,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
           <button
             onClick={loadCheckpoints}
             className="mt-2 text-sm text-primary hover:underline"
+            aria-label="Retry loading checkpoints"
           >
             Retry
           </button>
@@ -421,7 +422,7 @@ export const CheckpointList: React.FC<CheckpointListProps> = ({
                     <div>
                       <span className="text-muted-foreground">Git Commit:</span>{' '}
                       <span className="font-mono text-foreground text-xs" data-testid="checkpoint-git-sha">
-                        {checkpoint.git_commit.substring(0, 7)}
+                        {checkpoint.git_commit ? checkpoint.git_commit.substring(0, 7) : 'N/A'}
                       </span>
                     </div>
                     <div>
