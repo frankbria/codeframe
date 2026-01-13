@@ -194,14 +194,16 @@ class LeadAgent:
         """Get the next available conversation message index from database.
 
         Returns:
-            Next available index for conversation messages
+            Next available index for conversation messages.
+            Falls back to timestamp-based index on DB failure to avoid collisions.
         """
         try:
             db_messages = self.db.get_conversation(self.project_id)
             return len(db_messages)
         except Exception as e:
             logger.warning(f"Failed to get conversation count: {e}")
-            return 0
+            # Use timestamp to avoid collision with existing keys
+            return int(datetime.now().timestamp())
 
     def chat(self, message: str) -> str:
         """Handle natural language interaction with user.
