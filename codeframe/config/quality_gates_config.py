@@ -6,6 +6,9 @@ are applied based on task classification.
 Environment Variables:
     QUALITY_GATES_ENABLE_TASK_CLASSIFICATION: Enable/disable task classification (default: true)
     QUALITY_GATES_STRICT_MODE: Run all gates regardless of task type (default: false)
+    QUALITY_GATES_CUSTOM_RULES: JSON string defining custom category-to-gates mapping.
+        Example: '{"design": ["code_review", "linting"], "documentation": ["linting"]}'
+        Valid gate names: tests, coverage, type_check, linting, code_review, skip_detection
 
 Usage:
     >>> from codeframe.config.quality_gates_config import get_quality_gates_config
@@ -15,6 +18,7 @@ Usage:
     ...     pass
 """
 
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -71,16 +75,27 @@ class QualityGatesConfig:
 
         # Convert string names to QualityGateType enum values
         gates = []
+        invalid_names = []
         for name in gate_names:
             try:
                 gates.append(QualityGateType(name))
             except ValueError:
-                # Invalid gate name - log warning and skip
-                valid_names = [g.value for g in QualityGateType]
-                logger.warning(
-                    f"Invalid gate name '{name}' in custom_category_rules for category '{category}'. "
-                    f"Valid gate names are: {valid_names}"
-                )
+                invalid_names.append(name)
+
+        # Log warning for any invalid gate names
+        if invalid_names:
+            valid_names = [g.value for g in QualityGateType]
+            logger.warning(
+                f"Invalid gate name(s) {invalid_names} in custom_category_rules for category '{category}'. "
+                f"Valid gate names are: {valid_names}"
+            )
+
+        # Warn if all gates were invalid (empty result)
+        if gate_names and not gates:
+            logger.warning(
+                f"All gate names in custom_category_rules for category '{category}' were invalid. "
+                f"Falling back to default rules for this category."
+            )
 
         return gates if gates else None
 
@@ -103,6 +118,63 @@ def _parse_bool_env(key: str, default: bool) -> bool:
     return default
 
 
+def _parse_json_env(key: str) -> Optional[Dict[str, List[str]]]:
+    """Parse JSON environment variable for custom category rules.
+
+    Expected format: '{"category": ["gate1", "gate2"], ...}'
+    Example: '{"design": ["code_review"], "documentation": ["linting"]}'
+
+    Args:
+        key: Environment variable name
+
+    Returns:
+        Parsed dictionary or None if not set or invalid
+    """
+    value = os.environ.get(key, "").strip()
+    if not value:
+        return None
+
+    try:
+        parsed = json.loads(value)
+
+        # Validate structure: must be dict with string keys and list values
+        if not isinstance(parsed, dict):
+            logger.warning(
+                f"Invalid {key}: expected JSON object, got {type(parsed).__name__}. "
+                "Custom rules will not be applied."
+            )
+            return None
+
+        # Validate each entry
+        validated: Dict[str, List[str]] = {}
+        for category, gates in parsed.items():
+            if not isinstance(category, str):
+                logger.warning(
+                    f"Invalid category key in {key}: expected string, got {type(category).__name__}. "
+                    f"Skipping entry."
+                )
+                continue
+
+            if not isinstance(gates, list):
+                logger.warning(
+                    f"Invalid gates for category '{category}' in {key}: expected list, got {type(gates).__name__}. "
+                    f"Skipping entry."
+                )
+                continue
+
+            # Ensure all gate names are strings
+            string_gates = [str(g) for g in gates]
+            validated[category] = string_gates
+
+        return validated if validated else None
+
+    except json.JSONDecodeError as e:
+        logger.warning(
+            f"Failed to parse {key} as JSON: {e}. Custom rules will not be applied."
+        )
+        return None
+
+
 # Singleton config instance
 _config: Optional[QualityGatesConfig] = None
 
@@ -115,6 +187,7 @@ def get_quality_gates_config() -> QualityGatesConfig:
     Environment Variables:
         QUALITY_GATES_ENABLE_TASK_CLASSIFICATION: Enable task classification (default: true)
         QUALITY_GATES_STRICT_MODE: Run all gates regardless of task type (default: false)
+        QUALITY_GATES_CUSTOM_RULES: JSON string for custom category-to-gates mapping
 
     Returns:
         QualityGatesConfig instance
@@ -127,6 +200,7 @@ def get_quality_gates_config() -> QualityGatesConfig:
                 "QUALITY_GATES_ENABLE_TASK_CLASSIFICATION", True
             ),
             strict_mode=_parse_bool_env("QUALITY_GATES_STRICT_MODE", False),
+            custom_category_rules=_parse_json_env("QUALITY_GATES_CUSTOM_RULES"),
         )
 
     return _config

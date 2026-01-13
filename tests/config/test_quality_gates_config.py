@@ -8,6 +8,7 @@ from codeframe.config.quality_gates_config import (
     get_quality_gates_config,
     reset_config,
     _parse_bool_env,
+    _parse_json_env,
 )
 from codeframe.core.models import QualityGateType
 
@@ -138,6 +139,93 @@ class TestGetQualityGatesConfig:
             config = get_quality_gates_config()
             assert config.enable_task_classification is True
             assert config.strict_mode is False
+
+
+class TestParseJsonEnv:
+    """Tests for _parse_json_env helper function."""
+
+    def test_parse_valid_json(self):
+        """Valid JSON should parse correctly."""
+        with patch.dict(os.environ, {
+            "TEST_JSON": '{"design": ["code_review"], "documentation": ["linting"]}'
+        }):
+            result = _parse_json_env("TEST_JSON")
+            assert result is not None
+            assert result["design"] == ["code_review"]
+            assert result["documentation"] == ["linting"]
+
+    def test_parse_empty_string(self):
+        """Empty string should return None."""
+        with patch.dict(os.environ, {"TEST_JSON": ""}):
+            assert _parse_json_env("TEST_JSON") is None
+
+    def test_parse_whitespace_only(self):
+        """Whitespace only should return None."""
+        with patch.dict(os.environ, {"TEST_JSON": "   "}):
+            assert _parse_json_env("TEST_JSON") is None
+
+    def test_parse_unset_var(self):
+        """Unset variable should return None."""
+        with patch.dict(os.environ, {}, clear=True):
+            assert _parse_json_env("NONEXISTENT_VAR") is None
+
+    def test_parse_invalid_json(self):
+        """Invalid JSON should return None and log warning."""
+        with patch.dict(os.environ, {"TEST_JSON": "not valid json"}):
+            result = _parse_json_env("TEST_JSON")
+            assert result is None
+
+    def test_parse_non_object_json(self):
+        """Non-object JSON (array, string) should return None."""
+        with patch.dict(os.environ, {"TEST_JSON": '["array", "not", "object"]'}):
+            result = _parse_json_env("TEST_JSON")
+            assert result is None
+
+    def test_parse_non_list_values(self):
+        """Non-list values should be skipped."""
+        with patch.dict(os.environ, {
+            "TEST_JSON": '{"design": "not_a_list", "documentation": ["linting"]}'
+        }):
+            result = _parse_json_env("TEST_JSON")
+            assert result is not None
+            assert "design" not in result
+            assert result["documentation"] == ["linting"]
+
+    def test_parse_empty_object(self):
+        """Empty object should return None."""
+        with patch.dict(os.environ, {"TEST_JSON": "{}"}):
+            result = _parse_json_env("TEST_JSON")
+            assert result is None
+
+
+class TestGetQualityGatesConfigWithCustomRules:
+    """Tests for custom rules via environment variable."""
+
+    def setup_method(self):
+        """Reset config before each test."""
+        reset_config()
+
+    def teardown_method(self):
+        """Reset config after each test."""
+        reset_config()
+
+    def test_reads_custom_rules_from_environment(self):
+        """Should read custom rules from QUALITY_GATES_CUSTOM_RULES."""
+        reset_config()
+        with patch.dict(os.environ, {
+            "QUALITY_GATES_CUSTOM_RULES": '{"design": ["tests", "coverage"]}'
+        }):
+            reset_config()
+            config = get_quality_gates_config()
+            assert config.custom_category_rules is not None
+            assert config.custom_category_rules["design"] == ["tests", "coverage"]
+
+    def test_custom_rules_none_when_not_set(self):
+        """Custom rules should be None when env var not set."""
+        reset_config()
+        with patch.dict(os.environ, {}, clear=True):
+            config = get_quality_gates_config()
+            assert config.custom_category_rules is None
 
 
 class TestResetConfig:
