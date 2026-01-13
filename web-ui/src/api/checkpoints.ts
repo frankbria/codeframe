@@ -14,13 +14,53 @@ import type {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 /**
+ * Error types for checkpoint API operations
+ */
+export class CheckpointApiError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+    public readonly endpoint: string
+  ) {
+    super(message);
+    this.name = 'CheckpointApiError';
+  }
+}
+
+/**
  * List all checkpoints for a project
+ *
+ * @throws CheckpointApiError with status code for debugging
  */
 export async function listCheckpoints(projectId: number): Promise<Checkpoint[]> {
-  const response = await authFetch<{ checkpoints: Checkpoint[] }>(
-    `${API_BASE_URL}/api/projects/${projectId}/checkpoints`
-  );
-  return response.checkpoints ?? [];
+  const endpoint = `${API_BASE_URL}/api/projects/${projectId}/checkpoints`;
+
+  try {
+    const response = await authFetch<{ checkpoints: Checkpoint[] }>(endpoint);
+    return response.checkpoints ?? [];
+  } catch (error) {
+    // Extract status code from error message if available
+    const statusMatch = (error as Error)?.message?.match(/Request failed: (\d+)/);
+    const statusCode = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+
+    // Log specific error types for debugging
+    if (statusCode === 401) {
+      console.warn('[Checkpoints API] Authentication required - token may be missing or expired');
+    } else if (statusCode === 403) {
+      console.warn('[Checkpoints API] Access denied - user may not have project access');
+    } else if (statusCode === 404) {
+      console.warn(`[Checkpoints API] Project ${projectId} not found`);
+    } else if (statusCode >= 500) {
+      console.error(`[Checkpoints API] Server error (${statusCode}) fetching checkpoints`);
+    }
+
+    // Re-throw with more context
+    throw new CheckpointApiError(
+      (error as Error)?.message || 'Failed to load checkpoints',
+      statusCode,
+      endpoint
+    );
+  }
 }
 
 /**

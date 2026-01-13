@@ -119,6 +119,68 @@ def seed_test_data(db_path: str, project_id: int):
         print("   Note: E2E tests will use real login flow via FastAPI Users JWT")
 
         # ========================================
+        # 0.5. Ensure Project 1 has proper user ownership
+        # ========================================
+        # The global-setup creates Project 1 via API, but we need to ensure:
+        # 1. The project exists with user_id=1 (test user)
+        # 2. The workspace path is set correctly
+        # 3. The status and phase are initialized
+        # This is critical for authorization checks in checkpoint API
+        print("📦 Ensuring project 1 ownership and configuration...")
+
+        workspace_path_p1 = os.path.join(E2E_TEST_ROOT, ".codeframe", "workspaces", str(project_id))
+        os.makedirs(workspace_path_p1, exist_ok=True)
+        print(f"   📁 Workspace: {workspace_path_p1}")
+
+        # Use UPDATE instead of INSERT OR REPLACE to preserve API-created fields
+        # But ensure user_id is set correctly for authorization
+        cursor.execute(
+            """
+            UPDATE projects
+            SET user_id = 1, workspace_path = ?, status = COALESCE(status, 'discovery'), phase = COALESCE(phase, 'discovery')
+            WHERE id = ?
+            """,
+            (workspace_path_p1, project_id),
+        )
+
+        # If no row was updated (project doesn't exist), insert it
+        if cursor.rowcount == 0:
+            cursor.execute(
+                """
+                INSERT INTO projects (id, name, description, user_id, workspace_path, status, phase, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    "e2e-test-project",
+                    "E2E Test Project (seeded)",
+                    1,  # test user
+                    workspace_path_p1,
+                    "discovery",
+                    "discovery",
+                    now_ts,
+                ),
+            )
+            print(f"✅ Created project {project_id} with user_id=1")
+        else:
+            print(f"✅ Updated project {project_id} to ensure user_id=1")
+
+        # Verify the update was successful
+        cursor.execute(
+            "SELECT user_id, workspace_path FROM projects WHERE id = ?",
+            (project_id,),
+        )
+        row = cursor.fetchone()
+        if row:
+            db_user_id, db_workspace = row
+            if db_user_id != 1:
+                print(f"⚠️  WARNING: Project {project_id} has user_id={db_user_id}, expected 1")
+            else:
+                print(f"   ✓ Verified: user_id=1, workspace={db_workspace}")
+        else:
+            print(f"❌ ERROR: Project {project_id} not found after insert/update!")
+
+        # ========================================
         # 1. Seed Agents (5)
         # ========================================
         print("👥 Seeding agents...")
@@ -1125,6 +1187,34 @@ def seed_test_data(db_path: str, project_id: int):
             )
             count = cursor.fetchone()[0]
             print(f"✅ Seeded {count}/3 checkpoints with files")
+
+            # Verify checkpoint records were created correctly
+            print("🔍 Verifying checkpoint records...")
+            cursor.execute(
+                """
+                SELECT id, name, project_id, database_backup_path, context_snapshot_path
+                FROM checkpoints
+                WHERE project_id = ?
+                ORDER BY id
+                """,
+                (project_id,),
+            )
+            checkpoint_rows = cursor.fetchall()
+            for cp_id, cp_name, cp_project_id, db_path, ctx_path in checkpoint_rows:
+                # Verify file paths exist
+                full_db_path = os.path.join(E2E_TEST_ROOT, db_path)
+                full_ctx_path = os.path.join(E2E_TEST_ROOT, ctx_path)
+                db_exists = os.path.exists(full_db_path)
+                ctx_exists = os.path.exists(full_ctx_path)
+                status = "✓" if (db_exists and ctx_exists) else "✗"
+                print(f"   {status} Checkpoint {cp_id}: '{cp_name}' (project={cp_project_id})")
+                if not db_exists:
+                    print(f"      ⚠️  Missing DB: {db_path}")
+                if not ctx_exists:
+                    print(f"      ⚠️  Missing context: {ctx_path}")
+
+            if count < 3:
+                print(f"⚠️  WARNING: Expected 3 checkpoints, only {count} created")
 
         # ========================================
         # 7. Seed Discovery State for E2E Tests

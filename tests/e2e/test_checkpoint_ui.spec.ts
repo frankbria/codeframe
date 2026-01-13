@@ -9,13 +9,93 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { loginUser, createTestProject } from './test-utils';
+import { loginUser, createTestProject, setupErrorMonitoring, getAuthToken } from './test-utils';
+import { BACKEND_URL } from './e2e-config';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 const PROJECT_ID = process.env.E2E_TEST_PROJECT_ID || '1';
 
+/**
+ * API Health Check - Runs before the main test suite to verify
+ * that the checkpoint API is accessible and working.
+ */
+test.describe('Checkpoint API Health Check', () => {
+  test('checkpoint API endpoint is accessible', async ({ page }) => {
+    // Login to get auth token
+    await loginUser(page);
+
+    // Get auth token from localStorage
+    const authToken = await getAuthToken(page);
+    expect(authToken).toBeTruthy();
+    console.log('[Health Check] Auth token obtained');
+
+    // Make direct API call to checkpoint endpoint
+    const response = await page.request.get(
+      `${BACKEND_URL}/api/projects/${PROJECT_ID}/checkpoints`,
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const status = response.status();
+    console.log(`[Health Check] Checkpoint API status: ${status}`);
+
+    // Log response body for debugging
+    const body = await response.text();
+    if (status !== 200) {
+      console.log(`[Health Check] Error response: ${body}`);
+    } else {
+      try {
+        const data = JSON.parse(body);
+        console.log(`[Health Check] Found ${data.checkpoints?.length || 0} checkpoints`);
+      } catch {
+        console.log(`[Health Check] Response: ${body.substring(0, 200)}`);
+      }
+    }
+
+    // Verify response
+    expect(status).toBe(200);
+
+    const data = await response.json();
+    expect(data).toHaveProperty('checkpoints');
+    expect(Array.isArray(data.checkpoints)).toBe(true);
+  });
+});
+
 test.describe('Checkpoint UI Workflow', () => {
+  // Store checkpoint response for tests that need it
+  let checkpointApiResponsePromise: Promise<any> | null = null;
+
   test.beforeEach(async ({ page }) => {
+    // Set up error monitoring
+    setupErrorMonitoring(page);
+
+    // Monitor all API responses for debugging
+    page.on('response', async (response) => {
+      if (response.url().includes('/checkpoints')) {
+        const status = response.status();
+        console.log(`[Checkpoint API] ${response.url()} - Status: ${status}`);
+        if (status !== 200) {
+          try {
+            const body = await response.text();
+            console.log(`[Checkpoint API] Error response: ${body}`);
+          } catch {
+            console.log('[Checkpoint API] Could not read error response body');
+          }
+        }
+      }
+    });
+
+    // Monitor failed requests
+    page.on('requestfailed', (request) => {
+      if (request.url().includes('/checkpoints')) {
+        console.log(`[Checkpoint API] Request failed: ${request.url()} - ${request.failure()?.errorText}`);
+      }
+    });
+
     // Login using real authentication flow
     await loginUser(page);
 
@@ -36,10 +116,31 @@ test.describe('Checkpoint UI Workflow', () => {
     await checkpointTab.waitFor({ state: 'visible', timeout: 10000 });
     await expect(checkpointTab).toBeVisible();
 
+    // CRITICAL: Set up response listener BEFORE clicking tab to avoid race condition
+    // The checkpoint API call fires when the tab is clicked, so we need to listen first
+    checkpointApiResponsePromise = page.waitForResponse(
+      response => response.url().includes('/checkpoints') && !response.url().includes('/diff'),
+      { timeout: 15000 }
+    );
+
     await checkpointTab.click();
+
     // Wait for checkpoint panel to become visible after tab switch
     const checkpointPanel = page.locator('[data-testid="checkpoint-panel"]');
     await checkpointPanel.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Wait for the checkpoint API call to complete (set up before click)
+    try {
+      const checkpointResponse = await checkpointApiResponsePromise;
+      const status = checkpointResponse.status();
+      console.log(`[beforeEach] Checkpoint API completed with status: ${status}`);
+      if (status !== 200) {
+        const body = await checkpointResponse.text();
+        console.log(`[beforeEach] Checkpoint API error: ${body}`);
+      }
+    } catch (error) {
+      console.log(`[beforeEach] Checkpoint API response not captured: ${error}`);
+    }
   });
 
   test('should display checkpoint panel', async ({ page }) => {
@@ -66,29 +167,44 @@ test.describe('Checkpoint UI Workflow', () => {
     await checkpointList.waitFor({ state: 'visible', timeout: 15000 });
     await expect(checkpointList).toBeVisible();
 
-    // Wait for checkpoints API response - MUST succeed
-    const checkpointsResponse = await page.waitForResponse(response =>
-      response.url().includes('/checkpoints') && response.status() === 200,
-      { timeout: 10000 }
-    );
-    expect(checkpointsResponse.ok()).toBe(true);
+    // API response was already captured in beforeEach
+    // Give UI time to render the data
+    await page.waitForTimeout(500);
 
     // Wait for DOM to update - either checkpoint items or empty state MUST be visible
     const checkpointItems = page.locator('[data-testid^="checkpoint-item-"]');
     const emptyState = page.locator('[data-testid="checkpoint-empty-state"]');
+    const loadingIndicator = page.locator('[data-testid="checkpoint-loading"]');
+    const errorIndicator = page.locator('[data-testid="checkpoint-error"]');
+
+    // Wait for loading to complete if it's visible
+    if (await loadingIndicator.isVisible()) {
+      console.log('[Test] Waiting for loading indicator to disappear...');
+      await loadingIndicator.waitFor({ state: 'hidden', timeout: 10000 });
+    }
+
+    // Check for error state first
+    if (await errorIndicator.isVisible()) {
+      const errorText = await errorIndicator.textContent();
+      console.log(`[Test] Error state detected: ${errorText}`);
+      throw new Error(`Checkpoint loading failed with error: ${errorText}`);
+    }
 
     // One of these MUST appear - if neither does, that's a bug
     await expect(checkpointItems.first().or(emptyState)).toBeVisible({ timeout: 5000 });
 
     // Check if checkpoints are displayed (or empty state)
     const count = await checkpointItems.count();
+    console.log(`[Test] Found ${count} checkpoint items`);
 
     if (count === 0) {
       // Empty state should be visible (already declared above)
       await expect(emptyState).toBeVisible();
+      console.log('[Test] Empty state displayed (expected for new projects)');
     } else {
       // At least one checkpoint should be visible
       expect(count).toBeGreaterThan(0);
+      console.log(`[Test] Displaying ${count} checkpoints`);
 
       // Verify checkpoint metadata
       const firstCheckpoint = checkpointItems.first();
