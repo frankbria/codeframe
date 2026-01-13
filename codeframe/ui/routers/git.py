@@ -371,7 +371,7 @@ async def create_branch(
             logger.warning(f"Branch creation race condition detected: {e}")
             raise HTTPException(
                 status_code=409,
-                detail=f"Branch already exists (concurrent creation detected)"
+                detail="Branch already exists (concurrent creation detected)"
             )
         logger.error(f"Git error creating branch: {e}")
         raise HTTPException(status_code=500, detail=f"Git operation failed: {e}")
