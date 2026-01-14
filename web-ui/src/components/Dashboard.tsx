@@ -37,6 +37,7 @@ import TaskStats from './tasks/TaskStats';
 import PhaseProgress from './PhaseProgress';
 import TaskList from './TaskList';
 import TaskReview from './TaskReview';
+import { GitSection } from './git';
 import {
   UserGroupIcon,
   Loading03Icon,
@@ -551,6 +552,15 @@ export default function Dashboard({ projectId }: DashboardProps) {
             <div className="mb-6">
               <SessionStatus projectId={projectId} />
             </div>
+
+            {/* Git Visualization Section (Ticket #272) */}
+            {(projectData.phase === 'active' ||
+              projectData.phase === 'review' ||
+              projectData.phase === 'complete') && (
+              <div className="mb-6" data-testid="git-section-container">
+                <GitSection projectId={projectId} maxCommits={5} />
+              </div>
+            )}
 
             {/* Chat Interface (cf-14.2) */}
             {showChat && (

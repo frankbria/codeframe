@@ -226,7 +226,6 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'test_result':
-    case 'commit_created':
     case 'correction_attempt': {
       // These are special activity message types
       // Map them to activity updates
@@ -240,6 +239,50 @@ export function mapWebSocketMessageToAction(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
           agent: msg.agent || 'system',
           message: msg.message || `${message.type} event`,
+        },
+      };
+    }
+
+    // ========================================================================
+    // Git Messages (Ticket #272)
+    // ========================================================================
+
+    case 'commit_created': {
+      const msg = message as WebSocketMessage;
+      // Create a GitCommit-compatible structure from the WebSocket message
+      return {
+        type: 'COMMIT_CREATED',
+        payload: {
+          commit: {
+            hash: msg.commit_hash || '',
+            short_hash: (msg.commit_hash || '').slice(0, 7),
+            message: msg.commit_message || 'Commit created',
+            author: msg.agent || 'Agent',
+            timestamp: message.timestamp.toString(),
+            files_changed: Array.isArray(msg.files_changed)
+              ? msg.files_changed.length
+              : undefined,
+          },
+          taskId: msg.task_id,
+          timestamp,
+        },
+      };
+    }
+
+    case 'branch_created': {
+      const msg = message as WebSocketMessage;
+      // Handle branch_created events for real-time UI updates
+      return {
+        type: 'BRANCH_CREATED',
+        payload: {
+          branch: {
+            id: msg.data?.id || 0,
+            branch_name: msg.data?.branch_name || '',
+            issue_id: msg.data?.issue_id || 0,
+            status: 'active' as const,
+            created_at: message.timestamp.toString(),
+          },
+          timestamp,
         },
       };
     }

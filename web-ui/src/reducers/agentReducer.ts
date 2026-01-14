@@ -10,6 +10,7 @@
  */
 
 import type { AgentState, AgentAction } from '@/types/agentState';
+import { INITIAL_GIT_STATE } from '@/types/git';
 
 // ============================================================================
 // Initial State
@@ -27,6 +28,7 @@ export function getInitialState(): AgentState {
     projectProgress: null,
     wsConnected: false,
     lastSyncTimestamp: 0,
+    gitState: null,
   };
 }
 
@@ -371,6 +373,116 @@ export function agentReducer(
 
       validateAgentCount(newState.agents.length);
       validateActivitySize(newState.activity.length);
+      break;
+    }
+
+    // ========================================================================
+    // Git Actions (Ticket #272)
+    // ========================================================================
+
+    case 'GIT_STATUS_LOADED': {
+      const { status } = action.payload;
+      const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
+
+      newState = {
+        ...state,
+        gitState: {
+          ...currentGitState,
+          status,
+          isLoading: false,
+          error: null,
+        },
+      };
+      break;
+    }
+
+    case 'GIT_COMMITS_LOADED': {
+      const { commits } = action.payload;
+      const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
+
+      newState = {
+        ...state,
+        gitState: {
+          ...currentGitState,
+          recentCommits: commits,
+          isLoading: false,
+          error: null,
+        },
+      };
+      break;
+    }
+
+    case 'GIT_BRANCHES_LOADED': {
+      const { branches } = action.payload;
+      const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
+
+      newState = {
+        ...state,
+        gitState: {
+          ...currentGitState,
+          branches,
+          isLoading: false,
+          error: null,
+        },
+      };
+      break;
+    }
+
+    case 'COMMIT_CREATED': {
+      const { commit } = action.payload;
+      const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
+
+      // Prepend new commit, keep only last 10 (FIFO)
+      const updatedCommits = [commit, ...currentGitState.recentCommits.slice(0, 9)];
+
+      newState = {
+        ...state,
+        gitState: {
+          ...currentGitState,
+          recentCommits: updatedCommits,
+        },
+      };
+      break;
+    }
+
+    case 'BRANCH_CREATED': {
+      const { branch } = action.payload;
+      const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
+
+      newState = {
+        ...state,
+        gitState: {
+          ...currentGitState,
+          branches: [...currentGitState.branches, branch],
+        },
+      };
+      break;
+    }
+
+    case 'GIT_LOADING': {
+      const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
+
+      newState = {
+        ...state,
+        gitState: {
+          ...currentGitState,
+          isLoading: action.payload,
+        },
+      };
+      break;
+    }
+
+    case 'GIT_ERROR': {
+      const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
+
+      newState = {
+        ...state,
+        gitState: {
+          ...currentGitState,
+          error: action.payload,
+          isLoading: false,
+        },
+      };
       break;
     }
 
