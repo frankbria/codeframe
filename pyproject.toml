@@ -70,8 +70,8 @@ dev = [
 ]
 
 [project.scripts]
-codeframe = "codeframe.cli:app"
-cf = "codeframe.cli:app"  # Short alias for convenience
+codeframe = "codeframe.cli.app:app"
+cf = "codeframe.cli.app:app"  # Short alias for convenience
 
 [project.urls]
 Homepage = "https://github.com/frankbria/codeframe"
