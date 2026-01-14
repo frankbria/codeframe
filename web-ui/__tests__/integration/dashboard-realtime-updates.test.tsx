@@ -205,7 +205,7 @@ describe('Dashboard Real-Time Updates Integration', () => {
 
       // Verify Dashboard updates with new agent
       await waitFor(() => {
-        expect(screen.getByText(/1 agents active/i)).toBeInTheDocument();
+        expect(screen.getByText(/1 agent active/i)).toBeInTheDocument();
         expect(screen.getByText(/backend-worker-1/i)).toBeInTheDocument();
       });
     });

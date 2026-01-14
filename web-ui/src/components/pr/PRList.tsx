@@ -24,6 +24,7 @@ import type {
   CIStatus,
   ReviewStatus,
 } from '@/types/pullRequest';
+import type { WebSocketMessage } from '@/types';
 import {
   GitPullRequestIcon,
   CheckmarkCircle01Icon,
@@ -348,8 +349,7 @@ export default function PRList({
   useEffect(() => {
     const ws = getWebSocketClient();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleMessage = (message: any) => {
+    const handleMessage = (message: WebSocketMessage) => {
       // Only handle PR events for this project
       if (message.project_id !== projectId) {
         return;

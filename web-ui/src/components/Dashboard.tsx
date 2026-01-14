@@ -672,7 +672,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     Agent State (Real-time)
                   </h2>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
-                    {agents.length} agents active
+                    {agents.length} {agents.length === 1 ? 'agent' : 'agents'} active
                   </span>
                 </div>
 

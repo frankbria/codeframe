@@ -121,7 +121,10 @@ export type WebSocketMessageType =
   | 'task_assigned'        // Sprint 4
   | 'task_blocked'         // Sprint 4
   | 'task_unblocked'       // Sprint 4
-  | 'branch_created';      // Ticket #272 - Git Visualization
+  | 'branch_created'       // Ticket #272 - Git Visualization
+  | 'pr_created'           // PR Management - new PR created
+  | 'pr_merged'            // PR Management - PR merged successfully
+  | 'pr_closed';           // PR Management - PR closed without merging
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
