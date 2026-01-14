@@ -219,13 +219,73 @@ def status(
 
 
 @app.command()
-def summary() -> None:
+def summary(
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
     """Print a short status report of the workspace.
 
-    Shows PRD title, tasks by status, open blockers, and latest artifacts.
+    Shows PRD title, tasks by status, open blockers, and recent activity.
+    More compact than 'status' - designed for quick overview.
+
+    Example:
+        codeframe summary
     """
-    # Stub for Phase 6
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 6.")
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd, tasks, blockers, events
+    from codeframe.core.blockers import BlockerStatus
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # PRD
+        latest_prd = prd.get_latest(workspace)
+        if latest_prd:
+            console.print(f"[bold]PRD:[/bold] {latest_prd.title}")
+        else:
+            console.print("[bold]PRD:[/bold] [dim]None[/dim]")
+
+        # Task counts
+        counts = tasks.count_by_status(workspace)
+        total = sum(counts.values())
+
+        if total > 0:
+            parts = []
+            for status in ["DONE", "IN_PROGRESS", "READY", "BACKLOG", "BLOCKED"]:
+                if counts.get(status, 0) > 0:
+                    parts.append(f"{counts[status]} {status.lower()}")
+            console.print(f"[bold]Tasks:[/bold] {', '.join(parts)} ({total} total)")
+        else:
+            console.print("[bold]Tasks:[/bold] [dim]None[/dim]")
+
+        # Open blockers
+        open_blockers = blockers.list_all(workspace, status=BlockerStatus.OPEN)
+        if open_blockers:
+            console.print(f"[bold]Blockers:[/bold] [yellow]{len(open_blockers)} open[/yellow]")
+            for b in open_blockers[:3]:
+                q = b.question[:50] + "..." if len(b.question) > 50 else b.question
+                console.print(f"  - {q}")
+            if len(open_blockers) > 3:
+                console.print(f"  ... and {len(open_blockers) - 3} more")
+        else:
+            console.print("[bold]Blockers:[/bold] [green]None[/green]")
+
+        # Emit summary viewed event (optional)
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.SUMMARY_VIEWED,
+            print_event=False,
+        )
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -1431,26 +1491,230 @@ checkpoint_app = typer.Typer(
 
 
 @checkpoint_app.command("create")
-def checkpoint_create(name: str = typer.Argument(..., help="Checkpoint name")) -> None:
-    """Create a state checkpoint."""
-    # Stub for Phase 6
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 6.")
+def checkpoint_create(
+    name: str = typer.Argument(..., help="Checkpoint name"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Create a state checkpoint.
+
+    Captures current task statuses, blockers, PRD, and git ref.
+
+    Example:
+        codeframe checkpoint create "before-refactor"
+        codeframe checkpoint create "v1.0-ready"
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import checkpoints
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        checkpoint = checkpoints.create(workspace, name)
+
+        summary = checkpoint.snapshot.get("summary", {})
+
+        console.print(f"\n[bold green]Checkpoint created[/bold green]")
+        console.print(f"  Name: {checkpoint.name}")
+        console.print(f"  ID: [dim]{checkpoint.id[:8]}[/dim]")
+        console.print(f"  Tasks: {summary.get('total_tasks', 0)}")
+
+        git_ref = checkpoint.snapshot.get("git_ref")
+        if git_ref:
+            console.print(f"  Git: {git_ref[:7]}")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
 
 
 @checkpoint_app.command("list")
-def checkpoint_list() -> None:
-    """List available checkpoints."""
-    # Stub for Phase 6
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 6.")
+def checkpoint_list(
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """List available checkpoints.
+
+    Example:
+        codeframe checkpoint list
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import checkpoints
+    from rich.table import Table
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        all_checkpoints = checkpoints.list_all(workspace)
+
+        if not all_checkpoints:
+            console.print("[dim]No checkpoints[/dim]")
+            return
+
+        table = Table(title="Checkpoints")
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Name", style="cyan")
+        table.add_column("Tasks", justify="right")
+        table.add_column("Git", style="dim", width=7)
+        table.add_column("Created", style="dim")
+
+        for cp in all_checkpoints:
+            summary = cp.snapshot.get("summary", {})
+            git_ref = cp.snapshot.get("git_ref", "")[:7] if cp.snapshot.get("git_ref") else "-"
+
+            table.add_row(
+                cp.id[:8],
+                cp.name,
+                str(summary.get("total_tasks", 0)),
+                git_ref,
+                cp.created_at.strftime("%Y-%m-%d %H:%M"),
+            )
+
+        console.print(table)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@checkpoint_app.command("show")
+def checkpoint_show(
+    name_or_id: str = typer.Argument(..., help="Checkpoint name or ID"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show checkpoint details.
+
+    Example:
+        codeframe checkpoint show before-refactor
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import checkpoints
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        checkpoint = checkpoints.get(workspace, name_or_id)
+
+        if not checkpoint:
+            console.print(f"[red]Error:[/red] Checkpoint not found: {name_or_id}")
+            raise typer.Exit(1)
+
+        summary = checkpoint.snapshot.get("summary", {})
+        tasks_by_status = summary.get("tasks_by_status", {})
+
+        console.print(f"\n[bold]Checkpoint:[/bold] {checkpoint.name}")
+        console.print(f"  ID: {checkpoint.id}")
+        console.print(f"  Created: {checkpoint.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        git_ref = checkpoint.snapshot.get("git_ref")
+        if git_ref:
+            console.print(f"  Git ref: {git_ref}")
+
+        if checkpoint.snapshot.get("prd"):
+            console.print(f"  PRD: {checkpoint.snapshot['prd'].get('title', 'Unknown')}")
+
+        console.print(f"\n[bold]Task Summary:[/bold]")
+        for status, count in tasks_by_status.items():
+            if count > 0:
+                console.print(f"  {status}: {count}")
+
+        console.print(f"  Open blockers: {summary.get('open_blockers', 0)}")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
 
 
 @checkpoint_app.command("restore")
 def checkpoint_restore(
     name_or_id: str = typer.Argument(..., help="Checkpoint name or ID"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
 ) -> None:
-    """Restore state from a checkpoint."""
-    # Stub for Phase 6
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 6.")
+    """Restore state from a checkpoint.
+
+    Restores task statuses from the checkpoint snapshot.
+    Does not modify files or git state.
+
+    Example:
+        codeframe checkpoint restore before-refactor
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import checkpoints
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        checkpoint = checkpoints.restore(workspace, name_or_id)
+
+        summary = checkpoint.snapshot.get("summary", {})
+
+        console.print(f"\n[bold green]Checkpoint restored[/bold green]")
+        console.print(f"  Name: {checkpoint.name}")
+        console.print(f"  Tasks restored: {summary.get('total_tasks', 0)}")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@checkpoint_app.command("delete")
+def checkpoint_delete(
+    name_or_id: str = typer.Argument(..., help="Checkpoint name or ID"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Delete a checkpoint.
+
+    Example:
+        codeframe checkpoint delete old-checkpoint
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import checkpoints
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        deleted = checkpoints.delete(workspace, name_or_id)
+
+        if deleted:
+            console.print(f"[green]Checkpoint deleted[/green]")
+        else:
+            console.print(f"[red]Error:[/red] Checkpoint not found: {name_or_id}")
+            raise typer.Exit(1)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
 
 
 # Gates commands (alternative to root 'review')
