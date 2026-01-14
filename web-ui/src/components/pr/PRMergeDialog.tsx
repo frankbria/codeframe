@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { pullRequestsApi } from '@/lib/api';
 import {
   Dialog,
@@ -87,6 +87,16 @@ export default function PRMergeDialog({
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reset form state when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setMergeMethod('squash');
+      setDeleteBranch(true);
+      setError(null);
+      setIsSubmitting(false);
+    }
+  }, [isOpen]);
 
   // Handle merge
   const handleMerge = useCallback(async () => {

@@ -207,13 +207,13 @@ export const INITIAL_PR_STATE: PRState = {
 };
 
 /**
- * Status badge color mapping
+ * Status badge color mapping using Nova design system variables
  */
 export const PR_STATUS_COLORS: Record<PRStatus, { bg: string; text: string }> = {
-  open: { bg: 'bg-green-100 dark:bg-green-900', text: 'text-green-800 dark:text-green-200' },
-  merged: { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-800 dark:text-purple-200' },
-  closed: { bg: 'bg-red-100 dark:bg-red-900', text: 'text-red-800 dark:text-red-200' },
-  draft: { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400' },
+  open: { bg: 'bg-success/10', text: 'text-success' },
+  merged: { bg: 'bg-primary/10', text: 'text-primary' },
+  closed: { bg: 'bg-destructive/10', text: 'text-destructive' },
+  draft: { bg: 'bg-muted', text: 'text-muted-foreground' },
 };
 
 /**
