@@ -6,6 +6,16 @@ import axios from 'axios';
 import type { Project, Agent, Blocker, ActivityItem, ProjectResponse, StartProjectResponse } from '@/types';
 import type { PRDResponse, IssuesResponse, DiscoveryProgressResponse } from '@/types/api';
 import type { Task } from '@/types/agentState';
+import type {
+  PRListResponse,
+  CreatePRRequest,
+  CreatePRResponse,
+  MergePRRequest,
+  MergePRResponse,
+  ClosePRResponse,
+  PullRequest,
+  PRStatus,
+} from '@/types/pullRequest';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
@@ -245,6 +255,69 @@ export const chatApi = {
       `/api/projects/${projectId}/chat/history`,
       { params: { limit, offset } }
     ),
+};
+
+/**
+ * Pull Request API client.
+ *
+ * Provides methods for creating, listing, merging, and closing pull requests.
+ * Maps to the backend PR router at /api/projects/{project_id}/prs.
+ *
+ * @see codeframe/ui/routers/prs.py for backend implementation
+ */
+export const pullRequestsApi = {
+  /**
+   * List pull requests for a project.
+   *
+   * @param projectId - Project ID
+   * @param status - Optional filter by status (open, merged, closed, draft)
+   * @returns List of PRs with total count
+   */
+  list: (projectId: number, status?: PRStatus) =>
+    api.get<PRListResponse>(`/api/projects/${projectId}/prs`, {
+      params: status ? { status } : {},
+    }),
+
+  /**
+   * Get a single pull request by PR number.
+   *
+   * @param projectId - Project ID
+   * @param prNumber - GitHub PR number
+   * @returns Pull request details
+   */
+  get: (projectId: number, prNumber: number) =>
+    api.get<PullRequest>(`/api/projects/${projectId}/prs/${prNumber}`),
+
+  /**
+   * Create a new pull request via GitHub API.
+   *
+   * @param projectId - Project ID
+   * @param request - PR creation details (branch, title, body, base)
+   * @returns Created PR details with GitHub URL
+   */
+  create: (projectId: number, request: CreatePRRequest) =>
+    api.post<CreatePRResponse>(`/api/projects/${projectId}/prs`, request),
+
+  /**
+   * Merge a pull request via GitHub API.
+   *
+   * @param projectId - Project ID
+   * @param prNumber - GitHub PR number to merge
+   * @param request - Merge options (method: squash/merge/rebase)
+   * @returns Merge result with commit SHA
+   */
+  merge: (projectId: number, prNumber: number, request: MergePRRequest) =>
+    api.post<MergePRResponse>(`/api/projects/${projectId}/prs/${prNumber}/merge`, request),
+
+  /**
+   * Close a pull request without merging.
+   *
+   * @param projectId - Project ID
+   * @param prNumber - GitHub PR number to close
+   * @returns Close result
+   */
+  close: (projectId: number, prNumber: number) =>
+    api.post<ClosePRResponse>(`/api/projects/${projectId}/prs/${prNumber}/close`),
 };
 
 export default api;
