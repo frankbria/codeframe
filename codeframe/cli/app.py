@@ -1212,11 +1212,160 @@ patch_app = typer.Typer(
 
 @patch_app.command("export")
 def patch_export(
-    out: Optional[Path] = typer.Option(None, "--out", "-o", help="Output file path"),
+    out: Optional[Path] = typer.Option(
+        None,
+        "--out",
+        "-o",
+        help="Output file path (auto-generated if not provided)",
+    ),
+    staged_only: bool = typer.Option(
+        False,
+        "--staged",
+        "-s",
+        help="Only include staged changes",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
 ) -> None:
-    """Export changes as a patch file."""
-    # Stub for Phase 5
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 5.")
+    """Export changes as a patch file.
+
+    Creates a .patch file with all uncommitted changes.
+    Patches are stored in .codeframe/patches/ by default.
+
+    Example:
+        codeframe patch export
+        codeframe patch export --out changes.patch
+        codeframe patch export --staged
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import artifacts
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        patch_info = artifacts.export_patch(workspace, out_path=out, staged_only=staged_only)
+
+        console.print(f"\n[bold green]Patch exported[/bold green]")
+        console.print(f"  Path: {patch_info.path}")
+        console.print(f"  Size: {patch_info.size_bytes} bytes")
+        console.print(
+            f"  Changes: {patch_info.files_changed} files, "
+            f"+{patch_info.insertions}/-{patch_info.deletions}"
+        )
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@patch_app.command("list")
+def patch_list(
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """List exported patches.
+
+    Example:
+        codeframe patch list
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import artifacts
+    from rich.table import Table
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        patches = artifacts.list_patches(workspace)
+
+        if not patches:
+            console.print("[dim]No patches found[/dim]")
+            return
+
+        table = Table(title="Exported Patches")
+        table.add_column("File", style="cyan")
+        table.add_column("Size", justify="right")
+        table.add_column("Changes", justify="right")
+        table.add_column("Created", style="dim")
+
+        for p in patches:
+            table.add_row(
+                p.path.name,
+                f"{p.size_bytes} B",
+                f"{p.files_changed} files",
+                p.created_at.strftime("%Y-%m-%d %H:%M"),
+            )
+
+        console.print(table)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@patch_app.command("status")
+def patch_status(
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show git status summary.
+
+    Example:
+        codeframe patch status
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import artifacts
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        status = artifacts.get_status(workspace.repo_path)
+
+        if status["clean"]:
+            console.print("[green]Working tree clean[/green]")
+            return
+
+        if status["staged"]:
+            console.print(f"\n[bold]Staged[/bold] ({len(status['staged'])} files)")
+            for f in status["staged"][:10]:
+                console.print(f"  [green]{f}[/green]")
+            if len(status["staged"]) > 10:
+                console.print(f"  ... and {len(status['staged']) - 10} more")
+
+        if status["unstaged"]:
+            console.print(f"\n[bold]Modified[/bold] ({len(status['unstaged'])} files)")
+            for f in status["unstaged"][:10]:
+                console.print(f"  [yellow]{f}[/yellow]")
+            if len(status["unstaged"]) > 10:
+                console.print(f"  ... and {len(status['unstaged']) - 10} more")
+
+        if status["untracked"]:
+            console.print(f"\n[bold]Untracked[/bold] ({len(status['untracked'])} files)")
+            for f in status["untracked"][:5]:
+                console.print(f"  [dim]{f}[/dim]")
+            if len(status["untracked"]) > 5:
+                console.print(f"  ... and {len(status['untracked']) - 5} more")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
 
 
 commit_app = typer.Typer(
@@ -1229,10 +1378,48 @@ commit_app = typer.Typer(
 @commit_app.command("create")
 def commit_create(
     message: str = typer.Option(..., "--message", "-m", help="Commit message"),
+    add_all: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Stage all changes before committing",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
 ) -> None:
-    """Create a git commit for completed work."""
-    # Stub for Phase 5
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 5.")
+    """Create a git commit for completed work.
+
+    Example:
+        codeframe commit create -m "feat: add user authentication"
+        codeframe commit create -m "fix: handle edge case" --all
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import artifacts
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        commit_info = artifacts.create_commit(workspace, message, add_all=add_all)
+
+        console.print(f"\n[bold green]Commit created[/bold green]")
+        console.print(f"  Hash: {commit_info.hash}")
+        console.print(f"  Message: {commit_info.message}")
+        console.print(
+            f"  Changes: {commit_info.files_changed} files, "
+            f"+{commit_info.insertions}/-{commit_info.deletions}"
+        )
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 # Checkpoint commands
