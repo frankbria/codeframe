@@ -393,20 +393,23 @@ async def close_pull_request(
         gh = GitHubIntegration(token=github_token, repo=github_repo)
         closed = await gh.close_pull_request(pr_number)
 
-        # Update database
-        db.pull_requests.update_pr_status(
-            pr_id=pr["id"],
-            status="closed",
-        )
+        # Update database only if close succeeded
+        if closed:
+            db.pull_requests.update_pr_status(
+                pr_id=pr["id"],
+                status="closed",
+            )
 
-        # Broadcast PR closed event
-        await broadcast_pr_closed(
-            manager=manager,
-            project_id=project_id,
-            pr_number=pr_number,
-        )
+            # Broadcast PR closed event
+            await broadcast_pr_closed(
+                manager=manager,
+                project_id=project_id,
+                pr_number=pr_number,
+            )
 
-        logger.info(f"Closed PR #{pr_number} for project {project_id}")
+            logger.info(f"Closed PR #{pr_number} for project {project_id}")
+        else:
+            logger.warning(f"PR #{pr_number} close returned closed=False")
 
         return ClosePRResponse(closed=closed)
 
