@@ -444,13 +444,7 @@ class Agent:
             "blocker_id": blocker.id,
             "question": question,
         })
-
-        # Update task status
-        tasks.update_status(
-            self.workspace,
-            self.state.task_id,
-            TaskStatus.BLOCKED,
-        )
+        # Note: task status update handled by runtime.block_run()
 
     def _create_verification_blocker(self, gate_result: GateResult) -> None:
         """Create a blocker from verification failure."""
@@ -482,12 +476,7 @@ class Agent:
             "blocker_id": blocker.id,
             "question": question,
         })
-
-        tasks.update_status(
-            self.workspace,
-            self.state.task_id,
-            TaskStatus.BLOCKED,
-        )
+        # Note: task status update handled by runtime.block_run()
 
     def _generate_blocker_question(
         self,
