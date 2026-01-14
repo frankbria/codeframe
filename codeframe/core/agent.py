@@ -287,7 +287,7 @@ class Agent:
                 # Run incremental verification for file changes
                 if step.type in {StepType.FILE_CREATE, StepType.FILE_EDIT}:
                     gate_result = self._run_incremental_verification()
-                    if gate_result and gate_result.status == GateStatus.FAILED:
+                    if gate_result and not gate_result.passed:
                         # Try to fix lint issues automatically
                         if not self._try_auto_fix(gate_result):
                             consecutive_failures += 1
@@ -343,7 +343,7 @@ class Agent:
             result = run_gates(self.workspace, verbose=False)
             self.state.gate_results.append(result)
 
-            if result.status == GateStatus.PASSED:
+            if result.passed:
                 self.state.status = AgentStatus.COMPLETED
                 self._emit_event("verification_passed", {})
 
@@ -461,7 +461,7 @@ class Agent:
     def _create_verification_blocker(self, gate_result: GateResult) -> None:
         """Create a blocker from verification failure."""
         failed_checks = [
-            c.gate for c in gate_result.checks
+            c.name for c in gate_result.checks
             if c.status == GateStatus.FAILED
         ]
 
