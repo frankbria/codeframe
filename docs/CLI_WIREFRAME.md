@@ -172,13 +172,26 @@ Each command:
 
 ---
 
-### `codeframe tasks set-status <task_id> <status>`
+### `codeframe tasks set status <task_id> <status>`
 **Purpose:** Manually transition state.
 
 **Core calls:**
 - `codeframe.core.state_machine.transition(task, new_status) -> Task`
 - `codeframe.core.tasks.update_status(workspace_id, task_id, new_status)`
 - `codeframe.core.events.emit(workspace_id, "TASK_STATUS_CHANGED", payload)`
+
+**Future state:**
+- Allow other task attributes to be set, like `provider`, etc.
+- `codeframe task set <attribute> <task_id> <attribute_value>`
+
+### `codeframe tasks get status <task_id>`
+**Purpose:** Get current state.
+
+**Core calls:**
+-`codeframe.core.tasks.get_status(workspace_id, task_id)`
+
+**Future state:**
+- Allow other task attributes to be retrieved
 
 ---
 
@@ -238,9 +251,9 @@ Each command:
 
 ---
 
-## Blockers: `codeframe blockers ...`
+## Blockers: `codeframe blocker ...`
 
-### `codeframe blockers`
+### `codeframe blocker list`
 **Purpose:** List open blockers.
 
 **CLI module:**
