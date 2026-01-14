@@ -229,14 +229,81 @@ def summary() -> None:
 
 
 @app.command()
-def review() -> None:
+def review(
+    gates_to_run: Optional[list[str]] = typer.Option(
+        None,
+        "--gate",
+        "-g",
+        help="Specific gate to run (can be repeated)",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show full output from gates",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
     """Run verification gates (tests, lint).
 
-    Alias for 'codeframe gates run'. Runs pytest and lint checks,
-    recording results in state.
+    Automatically detects available gates and runs them.
+    Use --gate to run specific gates only.
+
+    Available gates: pytest, ruff, mypy, npm-test, npm-lint
+
+    Example:
+        codeframe review
+        codeframe review --verbose
+        codeframe review --gate pytest --gate ruff
     """
-    # Stub for Phase 5
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 5.")
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import gates
+    from codeframe.core.gates import GateStatus
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        console.print("\n[bold]Running verification gates...[/bold]\n")
+
+        result = gates.run(workspace, gates=gates_to_run, verbose=verbose)
+
+        # Display results
+        for check in result.checks:
+            if check.status == GateStatus.PASSED:
+                status_str = "[green]PASSED[/green]"
+            elif check.status == GateStatus.FAILED:
+                status_str = "[red]FAILED[/red]"
+            elif check.status == GateStatus.SKIPPED:
+                status_str = "[dim]SKIPPED[/dim]"
+            else:
+                status_str = "[yellow]ERROR[/yellow]"
+
+            duration_str = f" ({check.duration_ms}ms)" if check.duration_ms else ""
+            console.print(f"  {check.name}: {status_str}{duration_str}")
+
+            # Show output for failures or verbose mode
+            if check.output and (check.status == GateStatus.FAILED or verbose):
+                console.print(f"    [dim]{check.output}[/dim]")
+
+        # Summary
+        console.print()
+        if result.passed:
+            console.print(f"[bold green]All gates passed[/bold green] ({result.summary})")
+        else:
+            console.print(f"[bold red]Gates failed[/bold red] ({result.summary})")
+            raise typer.Exit(1)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        console.print("Run 'codeframe init' to initialize a workspace first.")
+        raise typer.Exit(1)
 
 
 @app.command()
