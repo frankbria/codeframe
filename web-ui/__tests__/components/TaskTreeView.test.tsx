@@ -1,12 +1,31 @@
 /**
  * Tests for TaskTreeView Component
  * Migrated from src/components/TaskTreeView.test.tsx
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TaskTreeView from '@/components/TaskTreeView';
 import type { Issue, Task } from '@/types/api';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    BotIcon: createMockIcon('BotIcon'),
+    UserIcon: createMockIcon('UserIcon'),
+    Link01Icon: createMockIcon('Link01Icon'),
+    Cancel01Icon: createMockIcon('Cancel01Icon'),
+  };
+});
 
 // Mock QualityGateStatus component to avoid async issues in tests
 jest.mock('@/components/quality-gates/QualityGateStatus', () => {
@@ -108,8 +127,8 @@ describe('TaskTreeView', () => {
       render(<TaskTreeView issues={mockIssues} />);
 
       // Check for agent/human badges or icons
-      expect(screen.getByText(/🤖/)).toBeInTheDocument(); // Agent emoji
-      expect(screen.getByText(/👤/)).toBeInTheDocument(); // Human emoji
+      expect(screen.getByTestId('BotIcon')).toBeInTheDocument(); // Agent icon
+      expect(screen.getByTestId('UserIcon')).toBeInTheDocument(); // Human icon
     });
 
     it('should render empty state when no issues', () => {
@@ -238,8 +257,8 @@ describe('TaskTreeView', () => {
       await user.click(expandButton);
 
       // Should have multiple provenance indicators
-      const agentBadges = screen.getAllByText(/🤖/);
-      const humanBadges = screen.getAllByText(/👤/);
+      const agentBadges = screen.getAllByTestId('BotIcon');
+      const humanBadges = screen.getAllByTestId('UserIcon');
 
       expect(agentBadges.length).toBeGreaterThan(1); // Issue + Task
       expect(humanBadges.length).toBeGreaterThan(0); // Task
@@ -599,9 +618,9 @@ describe('TaskTreeView', () => {
       const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
       await user.click(expandButton);
 
-      // Task 2 has dependencies - should show link emoji
-      const linkEmojis = screen.getAllByText('🔗');
-      expect(linkEmojis.length).toBeGreaterThan(0);
+      // Task 2 has dependencies - should show Link01Icon
+      const linkIcons = screen.getAllByTestId('Link01Icon');
+      expect(linkIcons.length).toBeGreaterThan(0);
     });
 
     it('should show dependency count for tasks with dependencies', async () => {
@@ -658,10 +677,9 @@ describe('TaskTreeView', () => {
       const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
       await user.click(expandButton);
 
-      // Should show blocked badge
-      const blockedBadge = screen.getByText(/🚫 Blocked/i);
-      expect(blockedBadge).toBeInTheDocument();
-      expect(blockedBadge).toHaveClass('bg-destructive/10');
+      // Should show blocked icon
+      const blockedIcon = screen.getByTestId('Cancel01Icon');
+      expect(blockedIcon).toBeInTheDocument();
     });
 
     it('should not mark task as blocked when dependencies are completed', async () => {
@@ -673,9 +691,9 @@ describe('TaskTreeView', () => {
       const expandButton = screen.getAllByRole('button', { name: /expand/i })[0];
       await user.click(expandButton);
 
-      // Task 2 depends on completed task-1, so should not show blocked badge
-      const blockedBadges = screen.queryAllByText(/🚫 Blocked/i);
-      expect(blockedBadges.length).toBe(0);
+      // Task 2 depends on completed task-1, so should not show blocked icon
+      const blockedIcons = screen.queryAllByTestId('Cancel01Icon');
+      expect(blockedIcons.length).toBe(0);
     });
   });
 });

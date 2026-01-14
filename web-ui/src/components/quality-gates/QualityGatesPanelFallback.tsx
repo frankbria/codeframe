@@ -9,6 +9,7 @@
 'use client';
 
 import React from 'react';
+import { Alert02Icon, RefreshIcon } from '@hugeicons/react';
 
 /**
  * Props for QualityGatesPanelFallback component
@@ -56,7 +57,7 @@ export default function QualityGatesPanelFallback({
       {/* Header with icon and title */}
       <div className="flex items-center gap-3 mb-4">
         <div className="w-12 h-12 bg-destructive/20 rounded-full flex items-center justify-center flex-shrink-0">
-          <span className="text-2xl" aria-hidden="true">⚠️</span>
+          <Alert02Icon className="h-6 w-6 text-destructive" aria-hidden="true" />
         </div>
         <h3 className="text-lg font-semibold text-destructive">
           Quality Gates Panel Unavailable
@@ -94,10 +95,11 @@ export default function QualityGatesPanelFallback({
         {/* Retry button (primary action) */}
         <button
           onClick={onRetry}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium text-sm"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium text-sm inline-flex items-center gap-2"
           aria-label="Retry loading Quality Gates panel"
         >
-          🔄 Retry
+          <RefreshIcon className="h-4 w-4" aria-hidden="true" />
+          <span>Retry</span>
         </button>
 
         {/* Dismiss button (secondary action, only if onDismiss provided) */}

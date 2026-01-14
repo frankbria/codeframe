@@ -7,6 +7,16 @@
 'use client';
 
 import type { ReviewFinding, FindingSeverity } from '../../types/review';
+import {
+  LockIcon,
+  RepeatIcon,
+  SparklesIcon,
+  ChartBarLineIcon,
+  KnightShieldIcon,
+  FileEditIcon,
+  CheckmarkCircle01Icon,
+  Idea01Icon,
+} from '@hugeicons/react';
 
 interface ReviewFindingsListProps {
   findings: ReviewFinding[];
@@ -33,22 +43,23 @@ function getSeverityColor(severity: FindingSeverity): string {
 }
 
 /**
- * Get category icon
+ * Get category icon component
  */
-function getCategoryIcon(category: string): string {
+function getCategoryIcon(category: string): JSX.Element {
+  const iconProps = { className: 'h-5 w-5', 'aria-hidden': true as const };
   switch (category) {
     case 'security':
-      return '🔒';
+      return <LockIcon {...iconProps} />;
     case 'complexity':
-      return '🔄';
+      return <RepeatIcon {...iconProps} />;
     case 'style':
-      return '✨';
+      return <SparklesIcon {...iconProps} />;
     case 'coverage':
-      return '📊';
+      return <ChartBarLineIcon {...iconProps} />;
     case 'owasp':
-      return '🛡️';
+      return <KnightShieldIcon {...iconProps} />;
     default:
-      return '📝';
+      return <FileEditIcon {...iconProps} />;
   }
 }
 
@@ -56,7 +67,9 @@ export default function ReviewFindingsList({ findings }: ReviewFindingsListProps
   if (findings.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        <div className="text-4xl mb-2">✅</div>
+        <div className="mb-2 flex justify-center">
+          <CheckmarkCircle01Icon className="h-10 w-10 text-secondary" aria-hidden="true" />
+        </div>
         <p className="text-sm">No findings - excellent code quality!</p>
       </div>
     );
@@ -101,9 +114,12 @@ export default function ReviewFindingsList({ findings }: ReviewFindingsListProps
 
           {/* Suggestion (if available) */}
           {finding.suggestion && (
-            <div className="mt-2 p-2 bg-muted border border-border rounded text-sm">
-              <span className="font-medium text-foreground">💡 Suggestion: </span>
-              <span className="text-muted-foreground">{finding.suggestion}</span>
+            <div className="mt-2 p-2 bg-muted border border-border rounded text-sm flex items-start gap-2">
+              <Idea01Icon className="h-4 w-4 text-foreground flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <div>
+                <span className="font-medium text-foreground">Suggestion: </span>
+                <span className="text-muted-foreground">{finding.suggestion}</span>
+              </div>
             </div>
           )}
         </div>

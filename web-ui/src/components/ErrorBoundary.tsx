@@ -8,6 +8,7 @@
 'use client';
 
 import React, { Component, ReactNode } from 'react';
+import { Alert02Icon } from '@hugeicons/react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -80,7 +81,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
           <div className="max-w-md w-full bg-card rounded-lg shadow-lg p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center">
-                <span className="text-2xl text-destructive">⚠</span>
+                <Alert02Icon className="h-6 w-6 text-destructive" aria-hidden="true" />
               </div>
               <h2 className="text-xl font-semibold text-foreground">
                 Something went wrong

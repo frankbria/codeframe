@@ -12,6 +12,7 @@
 import React, { useState } from 'react';
 import { projectsApi } from '@/lib/api';
 import type { ProjectCreationFormProps, FormErrors } from '@/types/project';
+import { Alert02Icon } from '@hugeicons/react';
 
 const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
   onSuccess,
@@ -228,9 +229,9 @@ const ProjectCreationForm: React.FC<ProjectCreationFormProps> = ({
       {/* US3: Error Message Display */}
       {errors.submit && (
         <div className="mt-4 p-3 bg-destructive/10 border border-destructive rounded-md" data-testid="form-error-submit">
-          <p className="text-destructive text-sm">
-            <span className="mr-2">⚠️</span>
-            Error: {errors.submit}
+          <p className="text-destructive text-sm flex items-center gap-2">
+            <Alert02Icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+            <span>Error: {errors.submit}</span>
           </p>
         </div>
       )}

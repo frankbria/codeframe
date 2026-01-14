@@ -15,6 +15,7 @@ import { tasksApi } from '@/lib/api';
 import QualityGateStatus from '@/components/quality-gates/QualityGateStatus';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import type { Task, TaskStatus } from '@/types/agentState';
+import { Cancel01Icon } from '@hugeicons/react';
 
 export interface TaskListProps {
   projectId: number;
@@ -136,8 +137,9 @@ const TaskCard = memo(function TaskCard({
 
       {/* Blocked By Info (for blocked tasks) */}
       {isBlocked && task.blocked_by && task.blocked_by.length > 0 && (
-        <div className="text-sm text-destructive mb-2">
-          <span>🚫 Blocked by {task.blocked_by.length} task{task.blocked_by.length !== 1 ? 's' : ''}</span>
+        <div className="text-sm text-destructive mb-2 flex items-center gap-1">
+          <Cancel01Icon className="h-4 w-4" aria-hidden="true" />
+          <span>Blocked by {task.blocked_by.length} task{task.blocked_by.length !== 1 ? 's' : ''}</span>
         </div>
       )}
 

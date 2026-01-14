@@ -1,12 +1,42 @@
 /**
  * Tests for QualityGateStatus Component (T068)
  * Sprint 10 Phase 3 - Quality Gates Frontend
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  */
 
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import QualityGateStatus from '@/components/quality-gates/QualityGateStatus';
 import * as qualityGatesApi from '@/api/qualityGates';
 import type { QualityGateStatus as QualityGateStatusType } from '@/types/qualityGates';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    Alert02Icon: createMockIcon('Alert02Icon'),
+    CheckmarkCircle01Icon: createMockIcon('CheckmarkCircle01Icon'),
+    Cancel01Icon: createMockIcon('Cancel01Icon'),
+    Loading03Icon: createMockIcon('Loading03Icon'),
+    PauseIcon: createMockIcon('PauseIcon'),
+    HelpCircleIcon: createMockIcon('HelpCircleIcon'),
+    TestTube01Icon: createMockIcon('TestTube01Icon'),
+    ChartBarLineIcon: createMockIcon('ChartBarLineIcon'),
+    FileEditIcon: createMockIcon('FileEditIcon'),
+    SparklesIcon: createMockIcon('SparklesIcon'),
+    Search01Icon: createMockIcon('Search01Icon'),
+    Settings01Icon: createMockIcon('Settings01Icon'),
+    RefreshIcon: createMockIcon('RefreshIcon'),
+    InformationCircleIcon: createMockIcon('InformationCircleIcon'),
+    UserIcon: createMockIcon('UserIcon'),
+  };
+});
 
 // Mock the API module
 jest.mock('@/api/qualityGates');
@@ -60,13 +90,13 @@ describe('QualityGateStatus Component', () => {
       expect(screen.getByText(errorMessage)).toBeInTheDocument();
     });
 
-    it('should display error icon on error', async () => {
+    it('should display Alert02Icon on error', async () => {
       mockFetchQualityGateStatus.mockRejectedValue(new Error('Failed'));
 
       render(<QualityGateStatus taskId={1} />);
 
       await waitFor(() => {
-        expect(screen.getByText('⚠️')).toBeInTheDocument();
+        expect(screen.getByTestId('Alert02Icon')).toBeInTheDocument();
       });
     });
   });

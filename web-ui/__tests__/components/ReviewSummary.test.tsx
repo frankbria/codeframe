@@ -1,5 +1,6 @@
 /**
  * ReviewSummary Component Tests (Sprint 10 Phase 2 - T041)
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  *
  * Test coverage:
  * - Rendering summary statistics
@@ -18,6 +19,28 @@ import {
   mockReviewResultNonBlocking,
   mockReviewResultEmpty,
 } from '../fixtures/reviews';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    Alert02Icon: createMockIcon('Alert02Icon'),
+    CheckmarkCircle01Icon: createMockIcon('CheckmarkCircle01Icon'),
+    Idea01Icon: createMockIcon('Idea01Icon'),
+    LockIcon: createMockIcon('LockIcon'),
+    FlashIcon: createMockIcon('FlashIcon'),
+    SparklesIcon: createMockIcon('SparklesIcon'),
+    Settings01Icon: createMockIcon('Settings01Icon'),
+    PaintBrush01Icon: createMockIcon('PaintBrush01Icon'),
+  };
+});
 
 describe('ReviewSummary', () => {
   describe('loading state', () => {
@@ -86,10 +109,10 @@ describe('ReviewSummary', () => {
       expect(screen.getByTestId('blocking-banner')).toBeInTheDocument();
     });
 
-    it('shows warning emoji in blocking banner', () => {
+    it('shows Alert02Icon in blocking banner', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
       const banner = screen.getByTestId('blocking-banner');
-      expect(banner).toHaveTextContent('⚠️');
+      expect(banner.querySelector('[data-testid="Alert02Icon"]')).toBeInTheDocument();
     });
 
     it('displays correct blocking count (critical + high)', () => {
@@ -135,10 +158,10 @@ describe('ReviewSummary', () => {
       expect(screen.getByTestId('success-banner')).toBeInTheDocument();
     });
 
-    it('shows checkmark emoji in success banner', () => {
+    it('shows CheckmarkCircle01Icon in success banner', () => {
       render(<ReviewSummary reviewResult={mockReviewResultEmpty} />);
       const banner = screen.getByTestId('success-banner');
-      expect(banner).toHaveTextContent('✅');
+      expect(banner.querySelector('[data-testid="CheckmarkCircle01Icon"]')).toBeInTheDocument();
     });
 
     it('displays "Review Passed" message', () => {
@@ -260,10 +283,10 @@ describe('ReviewSummary', () => {
       render(<ReviewSummary reviewResult={mockReviewResultBlocking} />);
 
       const securityCard = screen.getByTestId('category-security');
-      expect(securityCard).toHaveTextContent('🔒');
+      expect(securityCard.querySelector('[data-testid="LockIcon"]')).toBeInTheDocument();
 
       const performanceCard = screen.getByTestId('category-performance');
-      expect(performanceCard).toHaveTextContent('⚡');
+      expect(performanceCard.querySelector('[data-testid="FlashIcon"]')).toBeInTheDocument();
     });
 
     it('displays zero counts when no findings in that category', () => {

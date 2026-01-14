@@ -5,6 +5,14 @@
  * Tasks: T039
  */
 
+import {
+  LockIcon,
+  FlashIcon,
+  SparklesIcon,
+  Settings01Icon,
+  PaintBrush01Icon,
+} from '@hugeicons/react';
+
 /**
  * Severity enum matching backend Severity enum
  */
@@ -115,7 +123,30 @@ export const SEVERITY_COLORS: Record<Severity, string> = {
 };
 
 /**
- * Category icon mapping for UI
+ * Category icon component mapping for UI
+ * Returns React components for each review category
+ */
+export function getCategoryIcon(category: ReviewCategory): JSX.Element {
+  const iconProps = { className: 'h-4 w-4', 'aria-hidden': true as const };
+  switch (category) {
+    case ReviewCategory.SECURITY:
+      return <LockIcon {...iconProps} />;
+    case ReviewCategory.PERFORMANCE:
+      return <FlashIcon {...iconProps} />;
+    case ReviewCategory.QUALITY:
+      return <SparklesIcon {...iconProps} />;
+    case ReviewCategory.MAINTAINABILITY:
+      return <Settings01Icon {...iconProps} />;
+    case ReviewCategory.STYLE:
+      return <PaintBrush01Icon {...iconProps} />;
+    default:
+      return <SparklesIcon {...iconProps} />;
+  }
+}
+
+/**
+ * Category icon mapping for UI (deprecated - use getCategoryIcon() instead)
+ * @deprecated Use getCategoryIcon() function for proper React component rendering
  */
 export const CATEGORY_ICONS: Record<ReviewCategory, string> = {
   [ReviewCategory.SECURITY]: "🔒",

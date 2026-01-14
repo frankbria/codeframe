@@ -1,6 +1,7 @@
 /**
  * Test suite for QualityGatesPanelFallback component
  * Target: 85%+ code coverage
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  *
  * Tests error display, retry mechanism, dismiss functionality, and accessibility
  */
@@ -8,6 +9,22 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import QualityGatesPanelFallback from '@/components/quality-gates/QualityGatesPanelFallback';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    Alert02Icon: createMockIcon('Alert02Icon'),
+    RefreshIcon: createMockIcon('RefreshIcon'),
+  };
+});
 
 describe('QualityGatesPanelFallback', () => {
   const mockError = new Error('Test error message');
@@ -31,7 +48,7 @@ describe('QualityGatesPanelFallback', () => {
       expect(screen.getByText('Quality Gates Panel Unavailable')).toBeInTheDocument();
     });
 
-    it('should render warning icon', () => {
+    it('should render Alert02Icon', () => {
       render(
         <QualityGatesPanelFallback
           error={mockError}
@@ -40,7 +57,7 @@ describe('QualityGatesPanelFallback', () => {
         />
       );
 
-      expect(screen.getByText('⚠️')).toBeInTheDocument();
+      expect(screen.getByTestId('Alert02Icon')).toBeInTheDocument();
     });
 
     it('should render descriptive error message', () => {

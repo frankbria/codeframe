@@ -8,6 +8,7 @@
 import { useState, memo } from 'react';
 import type { Issue, Task, WorkStatus } from '@/types/api';
 import QualityGateStatus from './quality-gates/QualityGateStatus';
+import { BotIcon, UserIcon, Link01Icon, Cancel01Icon } from '@hugeicons/react';
 
 interface TaskTreeViewProps {
   issues: Issue[];
@@ -72,7 +73,11 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
 
   // Get provenance icon
   const getProvenanceIcon = (proposedBy: 'agent' | 'human') => {
-    return proposedBy === 'agent' ? '🤖' : '👤';
+    return proposedBy === 'agent' ? (
+      <BotIcon className="h-4 w-4" aria-hidden="true" />
+    ) : (
+      <UserIcon className="h-4 w-4" aria-hidden="true" />
+    );
   };
 
   /**
@@ -204,10 +209,10 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                             {/* Dependency indicator */}
                             {hasDependencies && (
                               <span
-                                className="flex-shrink-0 text-sm"
+                                className="flex-shrink-0"
                                 title={`Depends on: ${task.depends_on.join(', ')}`}
                               >
-                                🔗
+                                <Link01Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                               </span>
                             )}
                             <span className="flex-shrink-0 text-xs font-mono text-muted-foreground">
@@ -233,10 +238,11 @@ const TaskTreeView = memo(function TaskTreeView({ issues }: TaskTreeViewProps) {
                             {/* Blocked badge */}
                             {blocked && (
                               <span
-                                className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive"
                                 title="Waiting for dependencies to complete"
                               >
-                                🚫 Blocked
+                                <Cancel01Icon className="h-3 w-3" aria-hidden="true" />
+                                <span>Blocked</span>
                               </span>
                             )}
 

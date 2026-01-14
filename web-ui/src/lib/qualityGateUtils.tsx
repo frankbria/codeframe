@@ -4,32 +4,46 @@
  */
 
 import type { GateTypeE2E, QualityGateStatusValue } from '@/types/qualityGates';
+import {
+  TestTube01Icon,
+  ChartBarLineIcon,
+  FileEditIcon,
+  SparklesIcon,
+  Search01Icon,
+  Settings01Icon,
+  CheckmarkCircle01Icon,
+  Cancel01Icon,
+  Loading03Icon,
+  PauseIcon,
+  HelpCircleIcon,
+} from '@hugeicons/react';
 
 /**
- * Get the icon emoji for a quality gate type
+ * Get the icon component for a quality gate type
  * @param gateType - The gate type (E2E or backend naming)
- * @returns Icon emoji string
+ * @returns Icon React component
  * @example
- * getGateIcon('tests') // returns '🧪'
- * getGateIcon('type_check') // returns '📝'
+ * getGateIcon('tests') // returns TestTube01Icon element
+ * getGateIcon('type_check') // returns FileEditIcon element
  */
-export function getGateIcon(gateType: GateTypeE2E | string): string {
+export function getGateIcon(gateType: GateTypeE2E | string): JSX.Element {
+  const iconProps = { className: 'h-5 w-5', 'aria-hidden': true as const };
   switch (gateType) {
     case 'tests':
-      return '🧪';
+      return <TestTube01Icon {...iconProps} />;
     case 'coverage':
-      return '📊';
+      return <ChartBarLineIcon {...iconProps} />;
     case 'type-check':
     case 'type_check':
-      return '📝';
+      return <FileEditIcon {...iconProps} />;
     case 'lint':
     case 'linting':
-      return '✨';
+      return <SparklesIcon {...iconProps} />;
     case 'review':
     case 'code_review':
-      return '🔍';
+      return <Search01Icon {...iconProps} />;
     default:
-      return '⚙️';
+      return <Settings01Icon {...iconProps} />;
   }
 }
 
@@ -85,26 +99,27 @@ export function getStatusClasses(status: QualityGateStatusValue): string {
 }
 
 /**
- * Get the icon emoji for a quality gate status
+ * Get the icon component for a quality gate status
  * @param status - The quality gate status value
- * @returns Icon emoji string representing the status
+ * @returns Icon React component representing the status
  * @example
- * getStatusIcon('passed') // returns '✅'
- * getStatusIcon('failed') // returns '❌'
- * getStatusIcon('running') // returns '⏳'
+ * getStatusIcon('passed') // returns CheckmarkCircle01Icon element
+ * getStatusIcon('failed') // returns Cancel01Icon element
+ * getStatusIcon('running') // returns Loading03Icon element
  */
-export function getStatusIcon(status: QualityGateStatusValue): string {
+export function getStatusIcon(status: QualityGateStatusValue): JSX.Element {
+  const iconProps = { className: 'h-5 w-5', 'aria-hidden': true as const };
   switch (status) {
     case 'passed':
-      return '✅';
+      return <CheckmarkCircle01Icon {...iconProps} className="h-5 w-5 text-secondary" />;
     case 'failed':
-      return '❌';
+      return <Cancel01Icon {...iconProps} className="h-5 w-5 text-destructive" />;
     case 'running':
-      return '⏳';
+      return <Loading03Icon {...iconProps} className="h-5 w-5 text-primary animate-spin" />;
     case 'pending':
-      return '⏸️';
+      return <PauseIcon {...iconProps} className="h-5 w-5 text-muted-foreground" />;
     default:
-      return '❓';
+      return <HelpCircleIcon {...iconProps} className="h-5 w-5 text-muted-foreground" />;
   }
 }
 

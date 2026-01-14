@@ -1,8 +1,9 @@
 /**
  * Test suite for quality gate utility functions
- * Target: 100% coverage for pure utility functions
+ * Updated for emoji-to-Hugeicons migration: functions now return JSX elements
  */
 
+import { render, screen } from '@testing-library/react';
 import {
   getGateIcon,
   getGateName,
@@ -14,44 +15,54 @@ import type { GateTypeE2E, QualityGateStatusValue } from '@/types/qualityGates';
 
 describe('qualityGateUtils', () => {
   describe('getGateIcon', () => {
-    it('should return correct icon for "tests" gate', () => {
-      expect(getGateIcon('tests')).toBe('🧪');
+    it('should return TestTube01Icon for "tests" gate', () => {
+      render(<div data-testid="icon-container">{getGateIcon('tests')}</div>);
+      expect(screen.getByTestId('TestTube01Icon')).toBeInTheDocument();
     });
 
-    it('should return correct icon for "coverage" gate', () => {
-      expect(getGateIcon('coverage')).toBe('📊');
+    it('should return ChartBarLineIcon for "coverage" gate', () => {
+      render(<div data-testid="icon-container">{getGateIcon('coverage')}</div>);
+      expect(screen.getByTestId('ChartBarLineIcon')).toBeInTheDocument();
     });
 
-    it('should return correct icon for "type_check" gate (backend naming)', () => {
-      expect(getGateIcon('type_check')).toBe('📝');
+    it('should return FileEditIcon for "type_check" gate (backend naming)', () => {
+      render(<div data-testid="icon-container">{getGateIcon('type_check')}</div>);
+      expect(screen.getByTestId('FileEditIcon')).toBeInTheDocument();
     });
 
-    it('should return correct icon for "type-check" gate (E2E naming)', () => {
-      expect(getGateIcon('type-check')).toBe('📝');
+    it('should return FileEditIcon for "type-check" gate (E2E naming)', () => {
+      render(<div data-testid="icon-container">{getGateIcon('type-check')}</div>);
+      expect(screen.getByTestId('FileEditIcon')).toBeInTheDocument();
     });
 
-    it('should return correct icon for "linting" gate (backend naming)', () => {
-      expect(getGateIcon('linting')).toBe('✨');
+    it('should return SparklesIcon for "linting" gate (backend naming)', () => {
+      render(<div data-testid="icon-container">{getGateIcon('linting')}</div>);
+      expect(screen.getByTestId('SparklesIcon')).toBeInTheDocument();
     });
 
-    it('should return correct icon for "lint" gate (E2E naming)', () => {
-      expect(getGateIcon('lint')).toBe('✨');
+    it('should return SparklesIcon for "lint" gate (E2E naming)', () => {
+      render(<div data-testid="icon-container">{getGateIcon('lint')}</div>);
+      expect(screen.getByTestId('SparklesIcon')).toBeInTheDocument();
     });
 
-    it('should return correct icon for "code_review" gate (backend naming)', () => {
-      expect(getGateIcon('code_review')).toBe('🔍');
+    it('should return Search01Icon for "code_review" gate (backend naming)', () => {
+      render(<div data-testid="icon-container">{getGateIcon('code_review')}</div>);
+      expect(screen.getByTestId('Search01Icon')).toBeInTheDocument();
     });
 
-    it('should return correct icon for "review" gate (E2E naming)', () => {
-      expect(getGateIcon('review')).toBe('🔍');
+    it('should return Search01Icon for "review" gate (E2E naming)', () => {
+      render(<div data-testid="icon-container">{getGateIcon('review')}</div>);
+      expect(screen.getByTestId('Search01Icon')).toBeInTheDocument();
     });
 
-    it('should return default icon for unknown gate type', () => {
-      expect(getGateIcon('unknown_gate')).toBe('⚙️');
+    it('should return default Settings01Icon for unknown gate type', () => {
+      render(<div data-testid="icon-container">{getGateIcon('unknown_gate')}</div>);
+      expect(screen.getByTestId('Settings01Icon')).toBeInTheDocument();
     });
 
-    it('should return default icon for empty string', () => {
-      expect(getGateIcon('')).toBe('⚙️');
+    it('should return default Settings01Icon for empty string', () => {
+      render(<div data-testid="icon-container">{getGateIcon('')}</div>);
+      expect(screen.getByTestId('Settings01Icon')).toBeInTheDocument();
     });
   });
 
@@ -142,32 +153,39 @@ describe('qualityGateUtils', () => {
   });
 
   describe('getStatusIcon', () => {
-    it('should return checkmark for "passed" status', () => {
-      expect(getStatusIcon('passed')).toBe('✅');
+    it('should return CheckmarkCircle01Icon for "passed" status', () => {
+      render(<div data-testid="icon-container">{getStatusIcon('passed')}</div>);
+      expect(screen.getByTestId('CheckmarkCircle01Icon')).toBeInTheDocument();
     });
 
-    it('should return X for "failed" status', () => {
-      expect(getStatusIcon('failed')).toBe('❌');
+    it('should return Cancel01Icon for "failed" status', () => {
+      render(<div data-testid="icon-container">{getStatusIcon('failed')}</div>);
+      expect(screen.getByTestId('Cancel01Icon')).toBeInTheDocument();
     });
 
-    it('should return hourglass for "running" status', () => {
-      expect(getStatusIcon('running')).toBe('⏳');
+    it('should return Loading03Icon for "running" status', () => {
+      render(<div data-testid="icon-container">{getStatusIcon('running')}</div>);
+      expect(screen.getByTestId('Loading03Icon')).toBeInTheDocument();
     });
 
-    it('should return pause icon for "pending" status', () => {
-      expect(getStatusIcon('pending')).toBe('⏸️');
+    it('should return PauseIcon for "pending" status', () => {
+      render(<div data-testid="icon-container">{getStatusIcon('pending')}</div>);
+      expect(screen.getByTestId('PauseIcon')).toBeInTheDocument();
     });
 
-    it('should return question mark for null status', () => {
-      expect(getStatusIcon(null)).toBe('❓');
+    it('should return HelpCircleIcon for null status', () => {
+      render(<div data-testid="icon-container">{getStatusIcon(null)}</div>);
+      expect(screen.getByTestId('HelpCircleIcon')).toBeInTheDocument();
     });
 
-    it('should return question mark for undefined status', () => {
-      expect(getStatusIcon(undefined as any)).toBe('❓');
+    it('should return HelpCircleIcon for undefined status', () => {
+      render(<div data-testid="icon-container">{getStatusIcon(undefined as any)}</div>);
+      expect(screen.getByTestId('HelpCircleIcon')).toBeInTheDocument();
     });
 
-    it('should return question mark for unknown status', () => {
-      expect(getStatusIcon('unknown' as any)).toBe('❓');
+    it('should return HelpCircleIcon for unknown status', () => {
+      render(<div data-testid="icon-container">{getStatusIcon('unknown' as any)}</div>);
+      expect(screen.getByTestId('HelpCircleIcon')).toBeInTheDocument();
     });
   });
 
@@ -216,7 +234,7 @@ describe('qualityGateUtils', () => {
   });
 
   describe('Type Safety', () => {
-    it('should accept all valid gate types', () => {
+    it('should accept all valid gate types without throwing', () => {
       const validTypes: GateTypeE2E[] = ['tests', 'coverage', 'type-check', 'lint', 'review'];
       validTypes.forEach((type) => {
         expect(() => getGateIcon(type)).not.toThrow();
@@ -224,7 +242,7 @@ describe('qualityGateUtils', () => {
       });
     });
 
-    it('should accept all valid status values', () => {
+    it('should accept all valid status values without throwing', () => {
       const validStatuses: QualityGateStatusValue[] = ['passed', 'failed', 'running', 'pending', null];
       validStatuses.forEach((status) => {
         expect(() => getStatusIcon(status)).not.toThrow();
@@ -233,7 +251,6 @@ describe('qualityGateUtils', () => {
     });
 
     it('should handle string inputs gracefully', () => {
-      // Test that string inputs don't cause runtime errors
       expect(() => getGateIcon('any-string')).not.toThrow();
       expect(() => getGateName('any-string')).not.toThrow();
       expect(() => getSeverityClasses('any-string')).not.toThrow();
@@ -241,23 +258,15 @@ describe('qualityGateUtils', () => {
   });
 
   describe('Consistency', () => {
-    it('should return consistent results for the same input', () => {
-      expect(getGateIcon('tests')).toBe(getGateIcon('tests'));
+    it('should return consistent class strings for the same input', () => {
       expect(getGateName('coverage')).toBe(getGateName('coverage'));
       expect(getStatusClasses('passed')).toBe(getStatusClasses('passed'));
-      expect(getStatusIcon('failed')).toBe(getStatusIcon('failed'));
       expect(getSeverityClasses('critical')).toBe(getSeverityClasses('critical'));
     });
 
     it('should handle both naming conventions for gates', () => {
-      // Backend (snake_case) and E2E (kebab-case) should return same results
-      expect(getGateIcon('type_check')).toBe(getGateIcon('type-check'));
       expect(getGateName('type_check')).toBe(getGateName('type-check'));
-
-      expect(getGateIcon('linting')).toBe(getGateIcon('lint'));
       expect(getGateName('linting')).toBe(getGateName('lint'));
-
-      expect(getGateIcon('code_review')).toBe(getGateIcon('review'));
       expect(getGateName('code_review')).toBe(getGateName('review'));
     });
   });
@@ -275,8 +284,9 @@ describe('qualityGateUtils', () => {
     });
 
     it('should handle whitespace in inputs', () => {
-      expect(getGateIcon('  tests  ')).toBe('⚙️'); // Whitespace makes it unmatched
-      expect(getGateName('  tests  ')).toBe('  tests  '); // Returns as-is
+      render(<div data-testid="icon-container">{getGateIcon('  tests  ')}</div>);
+      expect(screen.getByTestId('Settings01Icon')).toBeInTheDocument();
+      expect(getGateName('  tests  ')).toBe('  tests  ');
     });
 
     it('should handle unicode characters', () => {

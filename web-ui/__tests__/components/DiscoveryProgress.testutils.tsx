@@ -54,12 +54,31 @@ export const simulateWsMessage = (message: Record<string, unknown>) => {
 // Mock Modules Setup
 // =============================================================================
 
-// Mock Hugeicons
-jest.mock('@hugeicons/react', () => ({
-  Cancel01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="cancel-icon" />,
-  CheckmarkCircle01Icon: ({ className }: { className?: string }) => <span className={className} data-testid="checkmark-icon" />,
-  Alert02Icon: ({ className }: { className?: string }) => <span className={className} data-testid="alert-icon" />,
-}));
+// Mock Hugeicons - comprehensive mock for all icons used in DiscoveryProgress and shadcn/ui components
+jest.mock('@hugeicons/react', () => {
+  const createMockIcon = (name: string, testId: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg className={className} data-testid={testId} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+
+  return {
+    // DiscoveryProgress icons
+    Cancel01Icon: createMockIcon('Cancel01Icon', 'cancel-icon'),
+    CheckmarkCircle01Icon: createMockIcon('CheckmarkCircle01Icon', 'checkmark-icon'),
+    Alert02Icon: createMockIcon('Alert02Icon', 'alert-icon'),
+    AlertDiamondIcon: createMockIcon('AlertDiamondIcon', 'alert-diamond-icon'),
+    Idea01Icon: createMockIcon('Idea01Icon', 'idea-icon'),
+    // shadcn/ui Dialog component icons
+    Tick01Icon: createMockIcon('Tick01Icon', 'tick-icon'),
+    ArrowDown01Icon: createMockIcon('ArrowDown01Icon', 'arrow-down-icon'),
+    ArrowUp01Icon: createMockIcon('ArrowUp01Icon', 'arrow-up-icon'),
+    CheckmarkSquare01Icon: createMockIcon('CheckmarkSquare01Icon', 'checkmark-square-icon'),
+    CircleIcon: createMockIcon('CircleIcon', 'circle-icon'),
+  };
+});
 
 // Mock the API
 jest.mock('@/lib/api', () => ({

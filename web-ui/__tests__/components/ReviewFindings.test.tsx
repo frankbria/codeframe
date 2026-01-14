@@ -1,5 +1,6 @@
 /**
  * ReviewFindings Component Tests (Sprint 10 Phase 2 - T040)
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  *
  * Test coverage:
  * - Rendering with findings
@@ -20,6 +21,26 @@ import {
   mockCriticalSecurityFinding,
   mockHighPerformanceFinding,
 } from '../fixtures/reviews';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    CheckmarkCircle01Icon: createMockIcon('CheckmarkCircle01Icon'),
+    LockIcon: createMockIcon('LockIcon'),
+    FlashIcon: createMockIcon('FlashIcon'),
+    SparklesIcon: createMockIcon('SparklesIcon'),
+    Settings01Icon: createMockIcon('Settings01Icon'),
+    PaintBrush01Icon: createMockIcon('PaintBrush01Icon'),
+  };
+});
 
 describe('ReviewFindings', () => {
   describe('loading state', () => {
@@ -68,9 +89,9 @@ describe('ReviewFindings', () => {
       expect(screen.getByText(/Code looks good!/)).toBeInTheDocument();
     });
 
-    it('displays checkmark emoji in empty state', () => {
+    it('displays checkmark icon in empty state', () => {
       render(<ReviewFindings findings={[]} />);
-      expect(screen.getByText(/✅/)).toBeInTheDocument();
+      expect(screen.getByTestId('CheckmarkCircle01Icon')).toBeInTheDocument();
     });
   });
 
@@ -130,7 +151,7 @@ describe('ReviewFindings', () => {
 
     it('displays category icon and name', () => {
       render(<ReviewFindings findings={[mockCriticalSecurityFinding]} />);
-      expect(screen.getByText('🔒')).toBeInTheDocument(); // Security icon
+      expect(screen.getByTestId('LockIcon')).toBeInTheDocument(); // Security icon
       expect(screen.getByText('security')).toBeInTheDocument();
     });
 

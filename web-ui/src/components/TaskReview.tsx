@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { projectsApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { CheckmarkCircle01Icon } from '@hugeicons/react';
 import type { Issue } from '@/types/api';
 
 export interface TaskReviewProps {
@@ -455,8 +456,9 @@ const TaskReview = memo(function TaskReview({
       <div className="border-t border-border pt-4 space-y-4">
         {/* Selection Summary */}
         <div className="flex items-center gap-4 text-lg">
-          <span className="font-medium text-foreground">
-            ✅ {selectedTaskIds.size} task{selectedTaskIds.size !== 1 ? 's' : ''} selected
+          <span className="font-medium text-foreground inline-flex items-center gap-2">
+            <CheckmarkCircle01Icon className="h-5 w-5 text-secondary" aria-hidden="true" />
+            <span>{selectedTaskIds.size} task{selectedTaskIds.size !== 1 ? 's' : ''} selected</span>
           </span>
         </div>
 

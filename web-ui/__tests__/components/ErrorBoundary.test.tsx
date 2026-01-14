@@ -13,6 +13,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { ReactNode } from 'react';
 
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  return {
+    Alert02Icon: ({ className }: { className?: string }) => (
+      <svg data-testid="Alert02Icon" className={className} aria-hidden="true" />
+    ),
+  };
+});
+
 /**
  * Helper to set NODE_ENV for testing (process.env.NODE_ENV is read-only)
  */
@@ -204,8 +214,8 @@ describe('ErrorBoundary', () => {
         </ErrorBoundary>
       );
 
-      // Check for warning emoji
-      expect(screen.getByText('⚠')).toBeInTheDocument();
+      // Check for Alert02Icon
+      expect(screen.getByTestId('Alert02Icon')).toBeInTheDocument();
     });
 
     it('should display error details in development mode', () => {

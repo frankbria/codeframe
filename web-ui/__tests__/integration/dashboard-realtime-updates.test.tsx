@@ -67,6 +67,19 @@ jest.mock('@hugeicons/react', () => {
     // Other icons
     Download01Icon: createMockIcon('download-icon'),
     AlertDiamondIcon: createMockIcon('alert-diamond-icon'),
+    // Quality gate icons
+    ChartBarLineIcon: createMockIcon('chart-bar-line-icon'),
+    FileEditIcon: createMockIcon('file-edit-icon'),
+    SparklesIcon: createMockIcon('sparkles-icon'),
+    Settings01Icon: createMockIcon('settings-icon'),
+    PauseIcon: createMockIcon('pause-icon'),
+    RefreshIcon: createMockIcon('refresh-icon'),
+    InformationCircleIcon: createMockIcon('info-circle-icon'),
+    // AgentCard icons (agent type and maturity badges)
+    PaintBrush01Icon: createMockIcon('paint-brush-icon'),
+    SunriseIcon: createMockIcon('sunrise-icon'),
+    BookOpen01Icon: createMockIcon('book-open-icon'),
+    FlashIcon: createMockIcon('flash-icon'),
   };
 });
 
