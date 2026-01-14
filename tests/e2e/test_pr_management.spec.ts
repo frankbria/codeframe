@@ -184,7 +184,7 @@ test.describe('PR Management - PR List', () => {
     const prPanel = page.locator('[data-testid="pull-requests-panel"]');
 
     // Find Create PR button
-    const createButton = prPanel.getByRole('button', { name: /create pr/i });
+    const createButton = prPanel.locator('[data-testid="create-pr-button"]');
     await createButton.waitFor({ state: 'visible', timeout: 10000 });
     await expect(createButton).toBeVisible();
 
@@ -291,7 +291,7 @@ test.describe('PR Management - Create PR Dialog', () => {
 
   test('should open Create PR dialog when button is clicked @smoke', async () => {
     const prPanel = page.locator('[data-testid="pull-requests-panel"]');
-    const createButton = prPanel.getByRole('button', { name: /create pr/i });
+    const createButton = prPanel.locator('[data-testid="create-pr-button"]');
 
     await createButton.waitFor({ state: 'visible', timeout: 10000 });
     await createButton.click();
@@ -310,7 +310,7 @@ test.describe('PR Management - Create PR Dialog', () => {
 
   test('should display form fields in Create PR dialog', async () => {
     const prPanel = page.locator('[data-testid="pull-requests-panel"]');
-    const createButton = prPanel.getByRole('button', { name: /create pr/i });
+    const createButton = prPanel.locator('[data-testid="create-pr-button"]');
 
     await createButton.click();
 
@@ -344,7 +344,7 @@ test.describe('PR Management - Create PR Dialog', () => {
 
   test('should show validation errors for empty required fields', async () => {
     const prPanel = page.locator('[data-testid="pull-requests-panel"]');
-    const createButton = prPanel.getByRole('button', { name: /create pr/i });
+    const createButton = prPanel.locator('[data-testid="create-pr-button"]');
 
     await createButton.click();
 
@@ -369,7 +369,7 @@ test.describe('PR Management - Create PR Dialog', () => {
 
   test('should close dialog when Cancel is clicked', async () => {
     const prPanel = page.locator('[data-testid="pull-requests-panel"]');
-    const createButton = prPanel.getByRole('button', { name: /create pr/i });
+    const createButton = prPanel.locator('[data-testid="create-pr-button"]');
 
     await createButton.click();
 
@@ -387,7 +387,7 @@ test.describe('PR Management - Create PR Dialog', () => {
 
   test('should allow entering branch name and title', async () => {
     const prPanel = page.locator('[data-testid="pull-requests-panel"]');
-    const createButton = prPanel.getByRole('button', { name: /create pr/i });
+    const createButton = prPanel.locator('[data-testid="create-pr-button"]');
 
     await createButton.click();
 
