@@ -108,6 +108,12 @@ def status(
         dir_okay=True,
         resolve_path=True,
     ),
+    show_events: int = typer.Option(
+        5,
+        "--events",
+        "-e",
+        help="Number of recent events to show (0 to hide)",
+    ),
 ) -> None:
     """Show workspace status summary.
 
@@ -120,20 +126,88 @@ def status(
     Example:
         codeframe status
         codeframe status ./my-project
+        codeframe status --events 10
     """
     from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd, tasks, events
 
     path = repo_path or Path.cwd()
 
     try:
         workspace = get_workspace(path)
 
-        console.print(f"\n[bold]Workspace:[/bold] {workspace.repo_path}")
-        console.print(f"[bold]ID:[/bold] {workspace.id}")
-        console.print(f"[bold]Created:[/bold] {workspace.created_at}")
+        # Workspace header
+        console.print(f"\n[bold cyan]CodeFRAME Workspace[/bold cyan]")
+        console.print(f"  Path: {workspace.repo_path}")
+        console.print(f"  ID: [dim]{workspace.id}[/dim]")
+        console.print(f"  Created: {workspace.created_at.strftime('%Y-%m-%d %H:%M')}")
 
-        # TODO: Add task counts, PRD info, open blockers when those modules exist
-        console.print("\n[dim]Task and PRD status will appear here once implemented.[/dim]")
+        # PRD info
+        console.print(f"\n[bold]PRD[/bold]")
+        latest_prd = prd.get_latest(workspace)
+        if latest_prd:
+            console.print(f"  Title: [green]{latest_prd.title}[/green]")
+            console.print(f"  Added: {latest_prd.created_at.strftime('%Y-%m-%d %H:%M')}")
+        else:
+            console.print("  [dim]No PRD loaded. Run 'codeframe prd add <file>'[/dim]")
+
+        # Task counts
+        console.print(f"\n[bold]Tasks[/bold]")
+        counts = tasks.count_by_status(workspace)
+        total = sum(counts.values())
+
+        if total == 0:
+            console.print("  [dim]No tasks. Run 'codeframe tasks generate'[/dim]")
+        else:
+            # Define status display order and colors
+            status_display = [
+                ("BACKLOG", "white"),
+                ("READY", "blue"),
+                ("IN_PROGRESS", "yellow"),
+                ("BLOCKED", "red"),
+                ("DONE", "green"),
+                ("MERGED", "cyan"),
+            ]
+            for status_name, color in status_display:
+                count = counts.get(status_name, 0)
+                if count > 0:
+                    console.print(f"  [{color}]{status_name}[/{color}]: {count}")
+
+            console.print(f"  [bold]Total[/bold]: {total}")
+
+        # Recent events
+        if show_events > 0:
+            console.print(f"\n[bold]Recent Activity[/bold]")
+            recent = events.list_recent(workspace, limit=show_events)
+            if recent:
+                for event in recent:
+                    timestamp = event.created_at.strftime("%H:%M:%S")
+                    # Color code by event type
+                    if "FAILED" in event.event_type or "ERROR" in event.event_type:
+                        type_color = "red"
+                    elif "COMPLETED" in event.event_type or "CREATED" in event.event_type:
+                        type_color = "green"
+                    elif "STARTED" in event.event_type or "INIT" in event.event_type:
+                        type_color = "blue"
+                    elif "BLOCKED" in event.event_type:
+                        type_color = "yellow"
+                    else:
+                        type_color = "cyan"
+
+                    console.print(
+                        f"  [dim]{timestamp}[/dim] [{type_color}]{event.event_type}[/{type_color}]"
+                    )
+            else:
+                console.print("  [dim]No recent events[/dim]")
+
+        # Emit status viewed event (optional per spec)
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.STATUS_VIEWED,
+            print_event=False,
+        )
+
+        console.print()  # Final newline for cleaner output
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
