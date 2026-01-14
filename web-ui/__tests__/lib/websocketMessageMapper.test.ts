@@ -691,4 +691,209 @@ describe('mapWebSocketMessageToAction', () => {
       });
     });
   });
+
+  describe('commit_created message validation (Ticket #272)', () => {
+    it('should map commit_created message with all required fields', () => {
+      const message = {
+        type: 'commit_created' as const,
+        project_id: projectId,
+        timestamp: '2023-11-14T12:00:00Z',
+        commit_hash: 'abc123def456',
+        commit_message: 'feat: Add new feature',
+        agent: 'backend-worker-1',
+        task_id: 123,
+        files_changed: ['file1.ts', 'file2.ts'],
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toEqual({
+        type: 'COMMIT_CREATED',
+        payload: {
+          commit: {
+            hash: 'abc123def456',
+            short_hash: 'abc123d',
+            message: 'feat: Add new feature',
+            author: 'backend-worker-1',
+            timestamp: '2023-11-14T12:00:00Z',
+            files_changed: 2,
+          },
+          taskId: 123,
+          timestamp: new Date('2023-11-14T12:00:00Z').getTime(),
+        },
+      });
+    });
+
+    it('should return null when commit_hash is missing', () => {
+      const message = {
+        type: 'commit_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        commit_message: 'feat: Add new feature',
+        // Missing commit_hash
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeNull();
+    });
+
+    it('should return null when commit_message is missing', () => {
+      const message = {
+        type: 'commit_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        commit_hash: 'abc123def456',
+        // Missing commit_message
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeNull();
+    });
+
+    it('should log warning when required fields are missing in development', () => {
+      const originalEnv = process.env;
+      process.env = { ...originalEnv, NODE_ENV: 'development' };
+
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      const message = {
+        type: 'commit_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        // Missing required fields
+      };
+
+      mapWebSocketMessageToAction(message);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('commit_created message missing required fields'),
+        expect.anything()
+      );
+
+      consoleSpy.mockRestore();
+      process.env = originalEnv;
+    });
+  });
+
+  describe('branch_created message validation (Ticket #272)', () => {
+    it('should map branch_created message with all required fields', () => {
+      const message = {
+        type: 'branch_created' as const,
+        project_id: projectId,
+        timestamp: '2023-11-14T12:00:00Z',
+        data: {
+          id: 1,
+          branch_name: 'feature/auth',
+          issue_id: 42,
+        },
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toEqual({
+        type: 'BRANCH_CREATED',
+        payload: {
+          branch: {
+            id: 1,
+            branch_name: 'feature/auth',
+            issue_id: 42,
+            status: 'active',
+            created_at: '2023-11-14T12:00:00Z',
+          },
+          timestamp: new Date('2023-11-14T12:00:00Z').getTime(),
+        },
+      });
+    });
+
+    it('should return null when data.id is missing', () => {
+      const message = {
+        type: 'branch_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        data: {
+          branch_name: 'feature/auth',
+          // Missing id
+        },
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeNull();
+    });
+
+    it('should return null when data.branch_name is missing', () => {
+      const message = {
+        type: 'branch_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        data: {
+          id: 1,
+          // Missing branch_name
+        },
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeNull();
+    });
+
+    it('should return null when data is missing entirely', () => {
+      const message = {
+        type: 'branch_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        // Missing data
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeNull();
+    });
+
+    it('should default issue_id to 0 when not provided', () => {
+      const message = {
+        type: 'branch_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        data: {
+          id: 1,
+          branch_name: 'feature/auth',
+          // Missing issue_id
+        },
+      };
+
+      const action = mapWebSocketMessageToAction(message);
+
+      expect(action).toBeTruthy();
+      expect((action?.payload as any).branch.issue_id).toBe(0);
+    });
+
+    it('should log warning when required fields are missing in development', () => {
+      const originalEnv = process.env;
+      process.env = { ...originalEnv, NODE_ENV: 'development' };
+
+      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+      const message = {
+        type: 'branch_created' as const,
+        project_id: projectId,
+        timestamp: baseTimestamp,
+        data: {
+          // Missing required fields
+        },
+      };
+
+      mapWebSocketMessageToAction(message);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('branch_created message missing required fields'),
+        expect.anything()
+      );
+
+      consoleSpy.mockRestore();
+      process.env = originalEnv;
+    });
+  });
 });

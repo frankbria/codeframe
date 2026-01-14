@@ -50,13 +50,13 @@ const GitSection = memo(function GitSection({
     { refreshInterval }
   );
 
-  // Fetch recent commits
+  // Fetch recent commits (cache key includes maxCommits to invalidate on limit change)
   const {
     data: commits,
     error: commitsError,
     isLoading: commitsLoading,
   } = useSWR<GitCommit[]>(
-    `git-commits-${projectId}`,
+    `git-commits-${projectId}-${maxCommits}`,
     () => getCommits(projectId, { limit: maxCommits }),
     { refreshInterval }
   );

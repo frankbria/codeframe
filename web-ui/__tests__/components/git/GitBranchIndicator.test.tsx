@@ -124,6 +124,9 @@ describe('GitBranchIndicator', () => {
       render(<GitBranchIndicator status={status} />);
 
       const branchName = screen.getByText(/feature\/very-long/);
+      // First verify the element is rendered and visible
+      expect(branchName).toBeVisible();
+      // Then verify the truncation styling
       expect(branchName.closest('[data-testid="branch-indicator"]')).toHaveClass('truncate');
     });
   });

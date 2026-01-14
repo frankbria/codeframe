@@ -119,7 +119,7 @@ export async function getBranches(
  * Fetch a specific branch by name
  *
  * @param projectId - Project ID
- * @param branchName - Branch name
+ * @param branchName - Branch name (should NOT be URL-encoded; encoding is handled internally)
  * @returns Branch details
  * @throws Error if request fails, not found, or not authenticated
  */

@@ -249,14 +249,22 @@ export function mapWebSocketMessageToAction(
 
     case 'commit_created': {
       const msg = message as WebSocketMessage;
-      // Create a GitCommit-compatible structure from the WebSocket message
+
+      // Validate required fields - commits with empty hashes break downstream lookups
+      if (!msg.commit_hash || !msg.commit_message) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[WebSocketMapper] commit_created message missing required fields, skipping', msg);
+        }
+        return null;
+      }
+
       return {
         type: 'COMMIT_CREATED',
         payload: {
           commit: {
-            hash: msg.commit_hash || '',
-            short_hash: (msg.commit_hash || '').slice(0, 7),
-            message: msg.commit_message || 'Commit created',
+            hash: msg.commit_hash,
+            short_hash: msg.commit_hash.slice(0, 7),
+            message: msg.commit_message,
             author: msg.agent || 'Agent',
             timestamp: message.timestamp.toString(),
             files_changed: Array.isArray(msg.files_changed)
@@ -271,14 +279,22 @@ export function mapWebSocketMessageToAction(
 
     case 'branch_created': {
       const msg = message as WebSocketMessage;
-      // Handle branch_created events for real-time UI updates
+
+      // Validate required fields - branches with id=0 or empty names break React keys
+      if (!msg.data?.branch_name || !msg.data?.id) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[WebSocketMapper] branch_created message missing required fields, skipping', msg);
+        }
+        return null;
+      }
+
       return {
         type: 'BRANCH_CREATED',
         payload: {
           branch: {
-            id: msg.data?.id || 0,
-            branch_name: msg.data?.branch_name || '',
-            issue_id: msg.data?.issue_id || 0,
+            id: msg.data.id,
+            branch_name: msg.data.branch_name,
+            issue_id: msg.data.issue_id ?? 0,
             status: 'active' as const,
             created_at: message.timestamp.toString(),
           },

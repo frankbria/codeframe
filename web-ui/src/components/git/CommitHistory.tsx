@@ -75,7 +75,6 @@ const CommitItem = memo(function CommitItem({ commit, onClick }: CommitItemProps
           {commit.message}
         </p>
         <time
-          role="time"
           dateTime={commit.timestamp}
           className="text-xs text-muted-foreground"
         >

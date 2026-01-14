@@ -432,8 +432,10 @@ export function agentReducer(
       const { commit } = action.payload;
       const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
 
+      // Defensive: ensure recentCommits is an array even if state was partially initialized
+      const currentCommits = currentGitState.recentCommits || [];
       // Prepend new commit, keep only last 10 (FIFO)
-      const updatedCommits = [commit, ...currentGitState.recentCommits.slice(0, 9)];
+      const updatedCommits = [commit, ...currentCommits.slice(0, 9)];
 
       newState = {
         ...state,
@@ -449,11 +451,14 @@ export function agentReducer(
       const { branch } = action.payload;
       const currentGitState = state.gitState ?? { ...INITIAL_GIT_STATE };
 
+      // Defensive: ensure branches is an array even if state was partially initialized
+      const currentBranches = currentGitState.branches || [];
+
       newState = {
         ...state,
         gitState: {
           ...currentGitState,
-          branches: [...currentGitState.branches, branch],
+          branches: [...currentBranches, branch],
         },
       };
       break;
