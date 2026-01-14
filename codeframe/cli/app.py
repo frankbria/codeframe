@@ -614,27 +614,250 @@ work_app = typer.Typer(
 
 
 @work_app.command("start")
-def work_start(task_id: str = typer.Argument(..., help="Task ID to start")) -> None:
+def work_start(
+    task_id: str = typer.Argument(..., help="Task ID to start (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        "-x",
+        help="Run stub agent execution (for testing)",
+    ),
+) -> None:
     """Start working on a task.
 
-    Transitions task to IN_PROGRESS and launches agent execution.
+    Transitions task to IN_PROGRESS and creates a run record.
+
+    Example:
+        codeframe work start abc123
+        codeframe work start abc123 --execute
     """
-    # Stub for Phase 3
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 3.")
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module, runtime
+    from codeframe.core.state_machine import InvalidTransitionError
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find task by partial ID
+        all_tasks = tasks_module.list_tasks(workspace)
+        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            for t in matching[:5]:
+                console.print(f"  {t.id[:8]} - {t.title}")
+            raise typer.Exit(1)
+
+        task = matching[0]
+
+        # Start the run
+        run = runtime.start_task_run(workspace, task.id)
+
+        console.print(f"\n[bold green]Run started[/bold green]")
+        console.print(f"  Task: {task.title}")
+        console.print(f"  Run ID: [dim]{run.id}[/dim]")
+        console.print(f"  Status: [yellow]RUNNING[/yellow]")
+
+        # Optionally execute stub agent
+        if execute:
+            console.print("\n[dim]Executing stub agent...[/dim]")
+            runtime.execute_stub(workspace, run)
+            runtime.complete_run(workspace, run.id)
+            console.print("[green]Run completed (stub)[/green]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except InvalidTransitionError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 @work_app.command("resume")
-def work_resume(task_id: str = typer.Argument(..., help="Task ID to resume")) -> None:
-    """Resume work on a blocked or paused task."""
-    # Stub for Phase 3
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 3.")
+def work_resume(
+    task_id: str = typer.Argument(..., help="Task ID to resume (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Resume work on a blocked task.
+
+    Example:
+        codeframe work resume abc123
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module, runtime
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find task by partial ID
+        all_tasks = tasks_module.list_tasks(workspace)
+        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            for t in matching[:5]:
+                console.print(f"  {t.id[:8]} - {t.title}")
+            raise typer.Exit(1)
+
+        task = matching[0]
+
+        # Resume the run
+        run = runtime.resume_run(workspace, task.id)
+
+        console.print(f"\n[bold green]Run resumed[/bold green]")
+        console.print(f"  Task: {task.title}")
+        console.print(f"  Run ID: [dim]{run.id}[/dim]")
+        console.print(f"  Status: [yellow]RUNNING[/yellow]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 @work_app.command("stop")
-def work_stop(task_id: str = typer.Argument(..., help="Task ID to stop")) -> None:
-    """Stop work on a task (graceful)."""
-    # Stub for Phase 3
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 3.")
+def work_stop(
+    task_id: str = typer.Argument(..., help="Task ID to stop (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Stop work on a task (graceful).
+
+    Marks the run as stopped and returns the task to READY status.
+
+    Example:
+        codeframe work stop abc123
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module, runtime
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find task by partial ID
+        all_tasks = tasks_module.list_tasks(workspace)
+        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            for t in matching[:5]:
+                console.print(f"  {t.id[:8]} - {t.title}")
+            raise typer.Exit(1)
+
+        task = matching[0]
+
+        # Stop the run
+        run = runtime.stop_run(workspace, task.id)
+
+        console.print(f"\n[bold yellow]Run stopped[/bold yellow]")
+        console.print(f"  Task: {task.title}")
+        console.print(f"  Run ID: [dim]{run.id}[/dim]")
+        console.print(f"  Task returned to: [blue]READY[/blue]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@work_app.command("status")
+def work_status(
+    task_id: Optional[str] = typer.Argument(
+        None, help="Task ID to check (shows all active runs if omitted)"
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show status of running tasks.
+
+    Example:
+        codeframe work status           # Show all active runs
+        codeframe work status abc123    # Show run for specific task
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import runtime
+    from codeframe.core.runtime import RunStatus
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        if task_id:
+            # Show run for specific task
+            run = runtime.get_active_run(workspace, task_id)
+            if run:
+                console.print(f"\n[bold]Run Status[/bold]")
+                console.print(f"  Run ID: {run.id}")
+                console.print(f"  Task ID: {run.task_id}")
+                console.print(f"  Status: {run.status.value}")
+                console.print(f"  Started: {run.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                console.print(f"[dim]No active run for task {task_id}[/dim]")
+        else:
+            # Show all active runs
+            running = runtime.list_runs(workspace, status=RunStatus.RUNNING)
+            blocked = runtime.list_runs(workspace, status=RunStatus.BLOCKED)
+            active = running + blocked
+
+            if active:
+                console.print(f"\n[bold]Active Runs[/bold] ({len(active)})\n")
+                for run in active:
+                    status_color = "yellow" if run.status == RunStatus.RUNNING else "red"
+                    console.print(
+                        f"  [{status_color}]{run.status.value}[/{status_color}] "
+                        f"{run.task_id[:8]} (run: {run.id[:8]})"
+                    )
+            else:
+                console.print("[dim]No active runs[/dim]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
 
 
 # Events commands

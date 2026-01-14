@@ -1,0 +1,515 @@
+"""Runtime/orchestration for CodeFRAME v2.
+
+Manages task execution runs and the agent loop.
+
+This module is headless - no FastAPI or HTTP dependencies.
+"""
+
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Optional
+
+from codeframe.core.workspace import Workspace, get_db_connection
+from codeframe.core.state_machine import TaskStatus
+from codeframe.core import tasks, events
+
+
+def _utc_now() -> datetime:
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
+class RunStatus(str, Enum):
+    """Status of a task execution run."""
+
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    BLOCKED = "BLOCKED"
+
+
+@dataclass
+class Run:
+    """Represents a task execution run.
+
+    Attributes:
+        id: Unique run identifier (UUID)
+        workspace_id: Workspace this run belongs to
+        task_id: Task being executed
+        status: Current run status
+        started_at: When the run started
+        completed_at: When the run finished (if finished)
+    """
+
+    id: str
+    workspace_id: str
+    task_id: str
+    status: RunStatus
+    started_at: datetime
+    completed_at: Optional[datetime]
+
+
+def start_task_run(workspace: Workspace, task_id: str) -> Run:
+    """Start a new run for a task.
+
+    Transitions the task to IN_PROGRESS and creates a run record.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task to run
+
+    Returns:
+        Created Run
+
+    Raises:
+        ValueError: If task not found
+        InvalidTransitionError: If task can't transition to IN_PROGRESS
+    """
+    # Get the task
+    task = tasks.get(workspace, task_id)
+    if not task:
+        raise ValueError(f"Task not found: {task_id}")
+
+    # Check if there's already an active run
+    active = get_active_run(workspace, task_id)
+    if active:
+        raise ValueError(f"Task already has an active run: {active.id}")
+
+    # Transition task to IN_PROGRESS (validates the transition)
+    # If task is in BACKLOG, we need to go through READY first
+    if task.status == TaskStatus.BACKLOG:
+        tasks.update_status(workspace, task_id, TaskStatus.READY)
+
+    if task.status != TaskStatus.IN_PROGRESS:
+        tasks.update_status(workspace, task_id, TaskStatus.IN_PROGRESS)
+
+    # Create run record
+    run_id = str(uuid.uuid4())
+    now = _utc_now().isoformat()
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO runs (id, workspace_id, task_id, status, started_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (run_id, workspace.id, task_id, RunStatus.RUNNING.value, now),
+    )
+    conn.commit()
+    conn.close()
+
+    run = Run(
+        id=run_id,
+        workspace_id=workspace.id,
+        task_id=task_id,
+        status=RunStatus.RUNNING,
+        started_at=datetime.fromisoformat(now),
+        completed_at=None,
+    )
+
+    # Emit run started event
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.RUN_STARTED,
+        {"run_id": run_id, "task_id": task_id},
+        print_event=True,
+    )
+
+    return run
+
+
+def get_run(workspace: Workspace, run_id: str) -> Optional[Run]:
+    """Get a run by ID.
+
+    Args:
+        workspace: Workspace to query
+        run_id: Run identifier
+
+    Returns:
+        Run if found, None otherwise
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT id, workspace_id, task_id, status, started_at, completed_at
+        FROM runs
+        WHERE workspace_id = ? AND id = ?
+        """,
+        (workspace.id, run_id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return _row_to_run(row)
+
+
+def get_active_run(workspace: Workspace, task_id: str) -> Optional[Run]:
+    """Get the active (RUNNING or BLOCKED) run for a task.
+
+    Args:
+        workspace: Workspace to query
+        task_id: Task identifier
+
+    Returns:
+        Run if found, None otherwise
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT id, workspace_id, task_id, status, started_at, completed_at
+        FROM runs
+        WHERE workspace_id = ? AND task_id = ? AND status IN ('RUNNING', 'BLOCKED')
+        ORDER BY started_at DESC
+        LIMIT 1
+        """,
+        (workspace.id, task_id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return _row_to_run(row)
+
+
+def list_runs(
+    workspace: Workspace,
+    task_id: Optional[str] = None,
+    status: Optional[RunStatus] = None,
+    limit: int = 20,
+) -> list[Run]:
+    """List runs in a workspace.
+
+    Args:
+        workspace: Workspace to query
+        task_id: Optional task filter
+        status: Optional status filter
+        limit: Maximum runs to return
+
+    Returns:
+        List of Runs, newest first
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    query = """
+        SELECT id, workspace_id, task_id, status, started_at, completed_at
+        FROM runs
+        WHERE workspace_id = ?
+    """
+    params: list = [workspace.id]
+
+    if task_id:
+        query += " AND task_id = ?"
+        params.append(task_id)
+
+    if status:
+        query += " AND status = ?"
+        params.append(status.value)
+
+    query += " ORDER BY started_at DESC LIMIT ?"
+    params.append(limit)
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [_row_to_run(row) for row in rows]
+
+
+def complete_run(workspace: Workspace, run_id: str) -> Run:
+    """Mark a run as completed.
+
+    Also transitions the task to DONE.
+
+    Args:
+        workspace: Target workspace
+        run_id: Run to complete
+
+    Returns:
+        Updated Run
+
+    Raises:
+        ValueError: If run not found or not in RUNNING status
+    """
+    run = get_run(workspace, run_id)
+    if not run:
+        raise ValueError(f"Run not found: {run_id}")
+
+    if run.status != RunStatus.RUNNING:
+        raise ValueError(f"Run is not running: {run.status}")
+
+    now = _utc_now().isoformat()
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE runs
+        SET status = ?, completed_at = ?
+        WHERE id = ?
+        """,
+        (RunStatus.COMPLETED.value, now, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Transition task to DONE
+    tasks.update_status(workspace, run.task_id, TaskStatus.DONE)
+
+    # Emit run completed event
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.RUN_COMPLETED,
+        {"run_id": run_id, "task_id": run.task_id},
+        print_event=True,
+    )
+
+    run.status = RunStatus.COMPLETED
+    run.completed_at = datetime.fromisoformat(now)
+    return run
+
+
+def fail_run(workspace: Workspace, run_id: str, reason: str = "") -> Run:
+    """Mark a run as failed.
+
+    Args:
+        workspace: Target workspace
+        run_id: Run to fail
+        reason: Optional failure reason
+
+    Returns:
+        Updated Run
+
+    Raises:
+        ValueError: If run not found or not in RUNNING status
+    """
+    run = get_run(workspace, run_id)
+    if not run:
+        raise ValueError(f"Run not found: {run_id}")
+
+    if run.status not in (RunStatus.RUNNING, RunStatus.BLOCKED):
+        raise ValueError(f"Run is not active: {run.status}")
+
+    now = _utc_now().isoformat()
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE runs
+        SET status = ?, completed_at = ?
+        WHERE id = ?
+        """,
+        (RunStatus.FAILED.value, now, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Emit run failed event
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.RUN_FAILED,
+        {"run_id": run_id, "task_id": run.task_id, "reason": reason},
+        print_event=True,
+    )
+
+    run.status = RunStatus.FAILED
+    run.completed_at = datetime.fromisoformat(now)
+    return run
+
+
+def block_run(workspace: Workspace, run_id: str, blocker_id: str) -> Run:
+    """Mark a run as blocked.
+
+    Also transitions the task to BLOCKED.
+
+    Args:
+        workspace: Target workspace
+        run_id: Run to block
+        blocker_id: ID of the blocker that caused the block
+
+    Returns:
+        Updated Run
+
+    Raises:
+        ValueError: If run not found or not in RUNNING status
+    """
+    run = get_run(workspace, run_id)
+    if not run:
+        raise ValueError(f"Run not found: {run_id}")
+
+    if run.status != RunStatus.RUNNING:
+        raise ValueError(f"Run is not running: {run.status}")
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE runs
+        SET status = ?
+        WHERE id = ?
+        """,
+        (RunStatus.BLOCKED.value, run_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Transition task to BLOCKED
+    tasks.update_status(workspace, run.task_id, TaskStatus.BLOCKED)
+
+    run.status = RunStatus.BLOCKED
+    return run
+
+
+def resume_run(workspace: Workspace, task_id: str) -> Run:
+    """Resume a blocked run.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task whose run to resume
+
+    Returns:
+        Resumed Run
+
+    Raises:
+        ValueError: If no blocked run found for task
+    """
+    run = get_active_run(workspace, task_id)
+    if not run:
+        raise ValueError(f"No active run found for task: {task_id}")
+
+    if run.status != RunStatus.BLOCKED:
+        raise ValueError(f"Run is not blocked: {run.status}")
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE runs
+        SET status = ?
+        WHERE id = ?
+        """,
+        (RunStatus.RUNNING.value, run.id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Transition task back to IN_PROGRESS
+    tasks.update_status(workspace, task_id, TaskStatus.IN_PROGRESS)
+
+    run.status = RunStatus.RUNNING
+    return run
+
+
+def stop_run(workspace: Workspace, task_id: str) -> Run:
+    """Stop a running task gracefully.
+
+    Marks the run as failed and transitions task back to READY.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task whose run to stop
+
+    Returns:
+        Stopped Run
+
+    Raises:
+        ValueError: If no active run found for task
+    """
+    run = get_active_run(workspace, task_id)
+    if not run:
+        raise ValueError(f"No active run found for task: {task_id}")
+
+    now = _utc_now().isoformat()
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE runs
+        SET status = ?, completed_at = ?
+        WHERE id = ?
+        """,
+        (RunStatus.FAILED.value, now, run.id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Transition task back to READY so it can be restarted
+    tasks.update_status(workspace, task_id, TaskStatus.READY)
+
+    # Emit event
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.RUN_FAILED,
+        {"run_id": run.id, "task_id": task_id, "reason": "Stopped by user"},
+        print_event=True,
+    )
+
+    run.status = RunStatus.FAILED
+    run.completed_at = datetime.fromisoformat(now)
+    return run
+
+
+def execute_stub(workspace: Workspace, run: Run) -> None:
+    """Stub agent execution loop.
+
+    This is a placeholder that emits events but doesn't do real work.
+    Replace with actual agent orchestration in the future.
+
+    Args:
+        workspace: Target workspace
+        run: Run to execute
+    """
+    # Emit agent step started
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.AGENT_STEP_STARTED,
+        {"run_id": run.id, "step": 1, "description": "Analyzing task"},
+        print_event=True,
+    )
+
+    # In a real implementation, this would:
+    # 1. Load task context
+    # 2. Call LLM to plan approach
+    # 3. Execute steps (file edits, commands, etc.)
+    # 4. Handle blockers if stuck
+    # 5. Run verification gates
+
+    # Emit agent step completed
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.AGENT_STEP_COMPLETED,
+        {"run_id": run.id, "step": 1, "description": "Analysis complete (stub)"},
+        print_event=True,
+    )
+
+
+def _row_to_run(row: tuple) -> Run:
+    """Convert a database row to a Run object."""
+    return Run(
+        id=row[0],
+        workspace_id=row[1],
+        task_id=row[2],
+        status=RunStatus(row[3]),
+        started_at=datetime.fromisoformat(row[4]),
+        completed_at=datetime.fromisoformat(row[5]) if row[5] else None,
+    )
