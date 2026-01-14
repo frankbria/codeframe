@@ -14,6 +14,7 @@ on:
 jobs:
   opencode-review:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Prevent hanging - kill after 10 min
     permissions:
       id-token: write
       contents: read
@@ -105,4 +106,5 @@ jobs:
             Use the repository's CLAUDE.md for guidance on style and conventions.
             Be constructive and helpful in your feedback.
 
-            Use `gh pr comment` to leave your review as a comment on the PR.
+            IMPORTANT: Post exactly ONE comment using `gh pr comment`, then STOP.
+            Do not attempt additional actions after posting your review.
