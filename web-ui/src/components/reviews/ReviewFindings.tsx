@@ -15,12 +15,12 @@ import React, { useState, useMemo } from 'react';
 import type {
   CodeReview,
   Severity,
-
 } from '../../types/reviews';
 import {
   SEVERITY_COLORS,
-  CATEGORY_ICONS,
+  getCategoryIcon,
 } from '../../types/reviews';
+import { CheckmarkCircle01Icon } from '@hugeicons/react';
 
 interface ReviewFindingsProps {
   /** List of review findings to display */
@@ -142,8 +142,9 @@ export function ReviewFindings({
     return (
       <div className="review-findings" data-testid="review-findings">
         <h3 className="text-lg font-semibold mb-4">Code Review Findings</h3>
-        <div className="text-muted-foreground bg-muted p-8 rounded text-center">
-          No review findings. Code looks good! ✅
+        <div className="text-muted-foreground bg-muted p-8 rounded text-center flex items-center justify-center gap-2">
+          <span>No review findings. Code looks good!</span>
+          <CheckmarkCircle01Icon className="h-5 w-5 text-secondary inline-block" aria-hidden="true" />
         </div>
       </div>
     );
@@ -237,7 +238,7 @@ export function ReviewFindings({
                       </div>
                       <div className="flex items-center gap-2 ml-4">
                         <span className="text-lg" title={finding.category}>
-                          {CATEGORY_ICONS[finding.category]}
+                          {getCategoryIcon(finding.category)}
                         </span>
                         <span className="text-xs font-semibold uppercase px-2 py-1 bg-muted rounded">
                           {finding.severity}

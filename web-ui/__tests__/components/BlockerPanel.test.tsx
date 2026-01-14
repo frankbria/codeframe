@@ -1,6 +1,7 @@
 /**
  * BlockerPanel Component Tests
  * Tests for blocker list display and sorting (049-human-in-loop, T017)
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  */
 
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -19,6 +20,22 @@ import {
   mockMultipleAsyncBlockers,
 } from '../fixtures/blockers';
 
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    CheckmarkCircle01Icon: createMockIcon('CheckmarkCircle01Icon'),
+    BotIcon: createMockIcon('BotIcon'),
+  };
+});
+
 // Mock BlockerBadge component
 jest.mock('@/components/BlockerBadge', () => ({
   BlockerBadge: ({ type }: { type: string }) => (
@@ -31,7 +48,7 @@ describe('BlockerPanel', () => {
     it('renders empty state when blockers array is empty', () => {
       render(<BlockerPanel blockers={mockEmptyBlockersList} />);
       expect(screen.getByText('No blockers - agents are running smoothly!')).toBeInTheDocument();
-      expect(screen.getByText('✅')).toBeInTheDocument();
+      expect(screen.getByTestId('CheckmarkCircle01Icon')).toBeInTheDocument();
     });
 
     it('displays (0) count in empty state', () => {
@@ -246,12 +263,12 @@ describe('BlockerPanel', () => {
       // Skip first 3 filter buttons, get the first blocker button
       const blockerButton = buttons[3];
       // Should not have the '•' separator for task
-      expect(blockerButton.textContent).not.toMatch(/🤖.*•.*Implement/);
+      expect(blockerButton.textContent).not.toMatch(/•.*Implement/);
     });
 
-    it('displays robot emoji for agent', () => {
+    it('displays BotIcon for agent', () => {
       render(<BlockerPanel blockers={[mockSyncBlocker]} />);
-      expect(screen.getByText('🤖')).toBeInTheDocument();
+      expect(screen.getByTestId('BotIcon')).toBeInTheDocument();
     });
   });
 

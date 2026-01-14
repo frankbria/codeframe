@@ -1,4 +1,14 @@
 import React from 'react';
+import {
+  Settings01Icon,
+  PaintBrush01Icon,
+  TestTube01Icon,
+  BotIcon,
+  SunriseIcon,
+  BookOpen01Icon,
+  FlashIcon,
+  Award01Icon,
+} from '@hugeicons/react';
 
 export interface AgentMetrics {
   task_count?: number;
@@ -42,23 +52,23 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
   };
 
   // Agent type badge colors (Nova palette)
-  const agentTypeBadges: Record<string, { bg: string; text: string; icon: string }> = {
-    'backend': { bg: 'bg-primary/10', text: 'text-primary-foreground', icon: '⚙️' },
-    'backend-worker': { bg: 'bg-primary/10', text: 'text-primary-foreground', icon: '⚙️' },
-    'frontend': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🎨' },
-    'frontend-specialist': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🎨' },
-    'test': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🧪' },
-    'test-engineer': { bg: 'bg-secondary', text: 'text-secondary-foreground', icon: '🧪' },
+  const agentTypeBadges: Record<string, { bg: string; text: string; Icon: React.ComponentType<{ className?: string; 'data-testid'?: string }> }> = {
+    'backend': { bg: 'bg-primary/10', text: 'text-primary-foreground', Icon: Settings01Icon },
+    'backend-worker': { bg: 'bg-primary/10', text: 'text-primary-foreground', Icon: Settings01Icon },
+    'frontend': { bg: 'bg-secondary', text: 'text-secondary-foreground', Icon: PaintBrush01Icon },
+    'frontend-specialist': { bg: 'bg-secondary', text: 'text-secondary-foreground', Icon: PaintBrush01Icon },
+    'test': { bg: 'bg-secondary', text: 'text-secondary-foreground', Icon: TestTube01Icon },
+    'test-engineer': { bg: 'bg-secondary', text: 'text-secondary-foreground', Icon: TestTube01Icon },
   };
 
-  const agentTypeBadge = agentTypeBadges[agent.type] || { bg: 'bg-muted', text: 'text-foreground', icon: '🤖' };
+  const agentTypeBadge = agentTypeBadges[agent.type] || { bg: 'bg-muted', text: 'text-foreground', Icon: BotIcon };
 
   // Maturity level badges (Nova palette)
-  const maturityBadges: Record<string, { bg: string; text: string; icon: string; label: string }> = {
-    'directive': { bg: 'bg-muted', text: 'text-muted-foreground', icon: '🌱', label: 'Novice' },
-    'coaching': { bg: 'bg-primary/20', text: 'text-primary-foreground', icon: '📚', label: 'Intermediate' },
-    'supporting': { bg: 'bg-accent', text: 'text-accent-foreground', icon: '⚡', label: 'Advanced' },
-    'delegating': { bg: 'bg-primary', text: 'text-primary-foreground', icon: '🏆', label: 'Expert' },
+  const maturityBadges: Record<string, { bg: string; text: string; Icon: React.ComponentType<{ className?: string; 'data-testid'?: string }>; label: string }> = {
+    'directive': { bg: 'bg-muted', text: 'text-muted-foreground', Icon: SunriseIcon, label: 'Novice' },
+    'coaching': { bg: 'bg-primary/20', text: 'text-primary-foreground', Icon: BookOpen01Icon, label: 'Intermediate' },
+    'supporting': { bg: 'bg-accent', text: 'text-accent-foreground', Icon: FlashIcon, label: 'Advanced' },
+    'delegating': { bg: 'bg-primary', text: 'text-primary-foreground', Icon: Award01Icon, label: 'Expert' },
   };
 
   const maturityBadge = agent.maturityLevel
@@ -118,7 +128,7 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
       {/* Agent Type Badge */}
       <div className="mb-3 flex flex-wrap gap-2">
         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${agentTypeBadge.bg} ${agentTypeBadge.text}`}>
-          <span>{agentTypeBadge.icon}</span>
+          <agentTypeBadge.Icon className="h-3 w-3" aria-hidden="true" />
           <span>{formatAgentType(agent.type)}</span>
         </span>
 
@@ -128,7 +138,7 @@ const AgentCardComponent: React.FC<AgentCardProps> = ({ agent, onAgentClick }) =
             className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${maturityBadge.bg} ${maturityBadge.text}`}
             title={agent.metrics ? `Score: ${((agent.metrics.maturity_score || 0) * 100).toFixed(0)}%` : undefined}
           >
-            <span>{maturityBadge.icon}</span>
+            <maturityBadge.Icon className="h-3 w-3" aria-hidden="true" />
             <span>{maturityBadge.label}</span>
           </span>
         )}

@@ -11,6 +11,34 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { SWRConfig } from 'swr';
+
+// Mock Hugeicons - must be before component import
+// Include all icons used by AgentList and its child components (AgentAssignmentCard)
+jest.mock('@hugeicons/react', () => {
+  const createMockIcon = (name: string, testId: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg className={className} data-testid={testId} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+
+  return {
+    // AgentList icons
+    BotIcon: createMockIcon('BotIcon', 'bot-icon'),
+    CheckListIcon: createMockIcon('CheckListIcon', 'checklist-icon'),
+    Alert02Icon: createMockIcon('Alert02Icon', 'alert-icon'),
+    RefreshIcon: createMockIcon('RefreshIcon', 'refresh-icon'),
+    // AgentAssignmentCard icons
+    CrownIcon: createMockIcon('CrownIcon', 'crown-icon'),
+    Settings01Icon: createMockIcon('Settings01Icon', 'settings-icon'),
+    PaintBrush01Icon: createMockIcon('PaintBrush01Icon', 'paint-brush-icon'),
+    TestTube01Icon: createMockIcon('TestTube01Icon', 'test-tube-icon'),
+    Search01Icon: createMockIcon('Search01Icon', 'search-icon'),
+    CheckmarkCircle01Icon: createMockIcon('CheckmarkCircle01Icon', 'checkmark-icon'),
+  };
+});
+
 import { AgentList } from '../../src/components/AgentList';
 import * as agentAssignmentApi from '../../src/api/agentAssignment';
 import type { IssuesResponse } from '../../src/types/api';
