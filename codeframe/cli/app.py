@@ -753,16 +753,28 @@ def work_start(
         False,
         "--execute",
         "-x",
-        help="Run stub agent execution (for testing)",
+        help="Run the agent to execute the task (requires ANTHROPIC_API_KEY)",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview changes without applying them (use with --execute)",
+    ),
+    stub: bool = typer.Option(
+        False,
+        "--stub",
+        help="Run stub agent (for testing, does nothing real)",
     ),
 ) -> None:
     """Start working on a task.
 
     Transitions task to IN_PROGRESS and creates a run record.
+    Use --execute to run the AI agent, or --stub for testing.
 
     Example:
         codeframe work start abc123
         codeframe work start abc123 --execute
+        codeframe work start abc123 --execute --dry-run
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, runtime
@@ -797,8 +809,35 @@ def work_start(
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
         console.print(f"  Status: [yellow]RUNNING[/yellow]")
 
-        # Optionally execute stub agent
+        # Execute agent if requested
         if execute:
+            from codeframe.core.agent import AgentStatus
+
+            mode = "[dim](dry run)[/dim]" if dry_run else ""
+            console.print(f"\n[bold]Executing agent...{mode}[/bold]")
+
+            try:
+                state = runtime.execute_agent(workspace, run, dry_run=dry_run)
+
+                if state.status == AgentStatus.COMPLETED:
+                    console.print("[bold green]Task completed successfully![/bold green]")
+                elif state.status == AgentStatus.BLOCKED:
+                    console.print("[yellow]Task blocked - human input needed[/yellow]")
+                    if state.blocker:
+                        console.print(f"  Question: {state.blocker.question}")
+                    console.print("  Use 'codeframe blocker list' to see blockers")
+                elif state.status == AgentStatus.FAILED:
+                    console.print("[red]Task execution failed[/red]")
+                    if state.step_results:
+                        last_result = state.step_results[-1]
+                        if last_result.error:
+                            console.print(f"  Error: {last_result.error[:200]}")
+
+            except ValueError as e:
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1)
+
+        elif stub:
             console.print("\n[dim]Executing stub agent...[/dim]")
             runtime.execute_stub(workspace, run)
             runtime.complete_run(workspace, run.id)

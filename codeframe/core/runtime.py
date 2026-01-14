@@ -470,10 +470,10 @@ def stop_run(workspace: Workspace, task_id: str) -> Run:
 
 
 def execute_stub(workspace: Workspace, run: Run) -> None:
-    """Stub agent execution loop.
+    """Stub agent execution loop (deprecated).
 
-    This is a placeholder that emits events but doesn't do real work.
-    Replace with actual agent orchestration in the future.
+    This is a placeholder kept for backwards compatibility.
+    Use execute_agent() for real agent execution.
 
     Args:
         workspace: Target workspace
@@ -487,20 +487,81 @@ def execute_stub(workspace: Workspace, run: Run) -> None:
         print_event=True,
     )
 
-    # In a real implementation, this would:
-    # 1. Load task context
-    # 2. Call LLM to plan approach
-    # 3. Execute steps (file edits, commands, etc.)
-    # 4. Handle blockers if stuck
-    # 5. Run verification gates
-
-    # Emit agent step completed
+    # Emit agent step completed (stub does nothing real)
     events.emit_for_workspace(
         workspace,
         events.EventType.AGENT_STEP_COMPLETED,
         {"run_id": run.id, "step": 1, "description": "Analysis complete (stub)"},
         print_event=True,
     )
+
+
+def execute_agent(
+    workspace: Workspace,
+    run: Run,
+    dry_run: bool = False,
+) -> "AgentState":
+    """Execute a task using the agent orchestrator.
+
+    This is the main entry point for real agent execution.
+    It coordinates context loading, planning, execution, and verification.
+
+    Args:
+        workspace: Target workspace
+        run: Run to execute
+        dry_run: If True, don't make actual changes
+
+    Returns:
+        Final AgentState after execution
+
+    Raises:
+        ValueError: If ANTHROPIC_API_KEY is not set
+    """
+    import os
+    from codeframe.core.agent import Agent, AgentState, AgentStatus
+    from codeframe.adapters.llm import get_provider
+
+    # Get LLM provider
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise ValueError(
+            "ANTHROPIC_API_KEY environment variable is required for agent execution. "
+            "Set it with: export ANTHROPIC_API_KEY=your-key"
+        )
+
+    provider = get_provider("anthropic")
+
+    # Create event callback to emit workspace events
+    def on_agent_event(event_type: str, data: dict) -> None:
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.AGENT_STEP_STARTED if "started" in event_type else events.EventType.AGENT_STEP_COMPLETED,
+            {"run_id": run.id, "agent_event": event_type, **data},
+            print_event=True,
+        )
+
+    # Create and run agent
+    agent = Agent(
+        workspace=workspace,
+        llm_provider=provider,
+        dry_run=dry_run,
+        on_event=on_agent_event,
+    )
+
+    state = agent.run(run.task_id)
+
+    # Update run status based on agent result
+    if state.status == AgentStatus.COMPLETED:
+        complete_run(workspace, run.id)
+    elif state.status == AgentStatus.BLOCKED:
+        # Get blocker ID from state if available
+        blocker_id = ""
+        if state.blocker and hasattr(state, "_blocker_id"):
+            blocker_id = state._blocker_id
+        block_run(workspace, run.id, blocker_id)
+    elif state.status == AgentStatus.FAILED:
+        fail_run(workspace, run.id)
+
+    return state
 
 
 def _row_to_run(row: tuple) -> Run:
