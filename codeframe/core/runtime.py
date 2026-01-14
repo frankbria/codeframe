@@ -453,8 +453,10 @@ def stop_run(workspace: Workspace, task_id: str) -> Run:
     conn.commit()
     conn.close()
 
-    # Transition task back to READY so it can be restarted
-    tasks.update_status(workspace, task_id, TaskStatus.READY)
+    # Transition task back to READY so it can be restarted (if not already)
+    task = tasks.get(workspace, task_id)
+    if task and task.status != TaskStatus.READY:
+        tasks.update_status(workspace, task_id, TaskStatus.READY)
 
     # Emit event
     events.emit_for_workspace(
