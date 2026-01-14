@@ -35,3 +35,72 @@ jest.mock('react-markdown', () => {
     return children
   }
 })
+
+// Mock @hugeicons/react - create stub components for all icons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react')
+
+  // Generic icon component factory
+  const createIconMock = (name) => {
+    const IconComponent = React.forwardRef(({ className, ...props }, ref) =>
+      React.createElement('svg', {
+        ref,
+        className,
+        'data-testid': name,
+        'aria-hidden': 'true',
+        ...props
+      })
+    )
+    IconComponent.displayName = name
+    return IconComponent
+  }
+
+  // List of all icons used in the codebase
+  const iconNames = [
+    'Add01Icon',
+    'Alert02Icon',
+    'AlertCircleIcon',
+    'AlertDiamondIcon',
+    'AnalyticsUpIcon',
+    'ArrowDown01Icon',
+    'ArrowRight01Icon',
+    'ArrowUp01Icon',
+    'Award01Icon',
+    'BotIcon',
+    'Cancel01Icon',
+    'Cancel02Icon',
+    'CheckListIcon',
+    'CheckmarkCircle01Icon',
+    'CheckmarkSquare01Icon',
+    'CircleIcon',
+    'ClipboardIcon',
+    'Download01Icon',
+    'FloppyDiskIcon',
+    'GitBranchIcon',
+    'GitCommitIcon',
+    'GitPullRequestIcon',
+    'HelpCircleIcon',
+    'Idea01Icon',
+    'Link01Icon',
+    'Loading03Icon',
+    'Logout02Icon',
+    'RocketIcon',
+    'Search01Icon',
+    'Target02Icon',
+    'TaskEdit01Icon',
+    'TestTube01Icon',
+    'Tick01Icon',
+    'Time01Icon',
+    'UserGroupIcon',
+    'WorkHistoryIcon',
+    'Wrench01Icon',
+  ]
+
+  // Create mock object with all icons
+  const mocks = {}
+  iconNames.forEach(name => {
+    mocks[name] = createIconMock(name)
+  })
+
+  return mocks
+})

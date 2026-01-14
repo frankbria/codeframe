@@ -171,6 +171,16 @@ describe('PRCreationDialog', () => {
     });
 
     it('should show loading state during submission', async () => {
+      // Make the API call take time to show loading state
+      const { pullRequestsApi } = jest.requireMock('@/lib/api');
+      let resolvePromise: (value: unknown) => void;
+      pullRequestsApi.create.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePromise = resolve;
+          })
+      );
+
       const user = userEvent.setup();
       render(<PRCreationDialog {...defaultProps} />);
 
@@ -178,7 +188,14 @@ describe('PRCreationDialog', () => {
       await user.click(submitButton);
 
       // Button should show loading state
-      expect(screen.getByRole('button', { name: /creating/i })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /creating/i })).toBeInTheDocument();
+      });
+
+      // Cleanup: resolve the promise
+      resolvePromise!({
+        data: { pr_id: 1, pr_number: 42, pr_url: 'https://github.com/org/repo/pull/42', status: 'open' },
+      });
     });
   });
 

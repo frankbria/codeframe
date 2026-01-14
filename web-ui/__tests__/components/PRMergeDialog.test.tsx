@@ -75,7 +75,9 @@ describe('PRMergeDialog', () => {
       expect(screen.getByText(/#42/)).toBeInTheDocument();
       expect(screen.getByText('Add user authentication')).toBeInTheDocument();
       expect(screen.getByText(/feature\/auth/)).toBeInTheDocument();
-      expect(screen.getByText(/main/)).toBeInTheDocument();
+      // Use getAllByText since 'main' appears multiple times (in branch info and description)
+      const mainElements = screen.getAllByText(/main/);
+      expect(mainElements.length).toBeGreaterThan(0);
     });
   });
 
@@ -168,13 +170,29 @@ describe('PRMergeDialog', () => {
     });
 
     it('should show loading state during submission', async () => {
+      // Make the API call take time to show loading state
+      const { pullRequestsApi } = jest.requireMock('@/lib/api');
+      let resolvePromise: (value: unknown) => void;
+      pullRequestsApi.merge.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePromise = resolve;
+          })
+      );
+
       const user = userEvent.setup();
       render(<PRMergeDialog {...defaultProps} />);
 
       const confirmButton = screen.getByRole('button', { name: /confirm merge/i });
       await user.click(confirmButton);
 
-      expect(screen.getByRole('button', { name: /merging/i })).toBeInTheDocument();
+      // Button should show loading state
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /merging/i })).toBeInTheDocument();
+      });
+
+      // Cleanup: resolve the promise
+      resolvePromise!({ data: { merged: true, merge_commit_sha: 'def456' } });
     });
   });
 
