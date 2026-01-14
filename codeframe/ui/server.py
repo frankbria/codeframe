@@ -28,6 +28,7 @@ from codeframe.ui.routers import (
     lint,
     metrics,
     projects,
+    prs,
     quality_gates,
     review,
     session,
@@ -335,6 +336,7 @@ app.include_router(git.router)
 app.include_router(lint.router)
 app.include_router(metrics.router)
 app.include_router(projects.router)
+app.include_router(prs.router)
 app.include_router(quality_gates.router)
 app.include_router(review.router)
 app.include_router(session.router)

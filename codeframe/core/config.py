@@ -115,6 +115,10 @@ class GlobalConfig(BaseSettings):
     default_provider: str = "claude"
     default_model: str = "claude-sonnet-4"
 
+    # GitHub Integration (Sprint 11 - PR Management)
+    github_token: Optional[str] = Field(None, alias="GITHUB_TOKEN")
+    github_repo: Optional[str] = Field(None, alias="GITHUB_REPO")  # Format: "owner/repo"
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )

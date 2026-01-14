@@ -34,6 +34,7 @@ from codeframe.persistence.repositories import (
     CorrectionRepository,
     ActivityRepository,
     AuditRepository,
+    PRRepository,
 )
 
 if TYPE_CHECKING:
@@ -106,6 +107,7 @@ class Database:
         self.correction_attempts: Optional[CorrectionRepository] = None
         self.activities: Optional[ActivityRepository] = None
         self.audit_logs: Optional[AuditRepository] = None
+        self.pull_requests: Optional[PRRepository] = None
 
     def initialize(self) -> None:
         """Initialize database schema and repositories."""
@@ -151,6 +153,7 @@ class Database:
         self.correction_attempts = CorrectionRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.activities = ActivityRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.audit_logs = AuditRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.pull_requests = PRRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
 
     # Backward compatibility properties (maintain old *_repository naming)
     @property
@@ -211,7 +214,8 @@ class Database:
         for repo in [self.projects, self.issues, self.tasks, self.agents, self.blockers,
                      self.memories, self.context_items, self.checkpoints, self.git_branches,
                      self.test_results, self.lint_results, self.code_reviews, self.quality_gates,
-                     self.token_usage, self.correction_attempts, self.activities, self.audit_logs]:
+                     self.token_usage, self.correction_attempts, self.activities, self.audit_logs,
+                     self.pull_requests]:
             if repo:
                 repo._async_conn = self._async_conn
 

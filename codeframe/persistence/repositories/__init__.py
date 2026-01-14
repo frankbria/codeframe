@@ -22,6 +22,7 @@ from codeframe.persistence.repositories.token_repository import TokenRepository
 from codeframe.persistence.repositories.correction_repository import CorrectionRepository
 from codeframe.persistence.repositories.activity_repository import ActivityRepository
 from codeframe.persistence.repositories.audit_repository import AuditRepository
+from codeframe.persistence.repositories.pr_repository import PRRepository
 
 __all__ = [
     "BaseRepository",
@@ -42,4 +43,5 @@ __all__ = [
     "CorrectionRepository",
     "ActivityRepository",
     "AuditRepository",
+    "PRRepository",
 ]

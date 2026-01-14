@@ -1011,3 +1011,109 @@ async def broadcast_development_started(
         )
     except Exception as e:
         logger.error(f"Failed to broadcast development started: {e}")
+
+
+# ============================================================================
+# Sprint 11: Pull Request Management Broadcasts
+# ============================================================================
+
+
+async def broadcast_pr_created(
+    manager,
+    project_id: int,
+    pr_id: int,
+    pr_number: int,
+    pr_url: str,
+    title: str,
+    branch_name: str,
+) -> None:
+    """
+    Broadcast when a new pull request is created.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        pr_id: Local PR database ID
+        pr_number: GitHub PR number
+        pr_url: GitHub PR URL
+        title: PR title
+        branch_name: Source branch name
+    """
+    message = {
+        "type": "pr_created",
+        "project_id": project_id,
+        "pr_id": pr_id,
+        "pr_number": pr_number,
+        "pr_url": pr_url,
+        "title": title,
+        "branch_name": branch_name,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast pr_created: PR #{pr_number} for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast PR created: {e}")
+
+
+async def broadcast_pr_merged(
+    manager,
+    project_id: int,
+    pr_number: int,
+    merge_commit_sha: str,
+) -> None:
+    """
+    Broadcast when a pull request is merged.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        pr_number: GitHub PR number
+        merge_commit_sha: SHA of the merge commit
+    """
+    message = {
+        "type": "pr_merged",
+        "project_id": project_id,
+        "pr_number": pr_number,
+        "merge_commit_sha": merge_commit_sha,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast pr_merged: PR #{pr_number} for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast PR merged: {e}")
+
+
+async def broadcast_pr_closed(
+    manager,
+    project_id: int,
+    pr_number: int,
+    reason: Optional[str] = None,
+) -> None:
+    """
+    Broadcast when a pull request is closed without merging.
+
+    Args:
+        manager: ConnectionManager instance
+        project_id: Project ID
+        pr_number: GitHub PR number
+        reason: Optional reason for closing
+    """
+    message = {
+        "type": "pr_closed",
+        "project_id": project_id,
+        "pr_number": pr_number,
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
+
+    if reason:
+        message["reason"] = reason
+
+    try:
+        await manager.broadcast(message, project_id=project_id)
+        logger.debug(f"Broadcast pr_closed: PR #{pr_number} for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to broadcast PR closed: {e}")

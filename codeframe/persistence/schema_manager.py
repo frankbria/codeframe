@@ -631,6 +631,31 @@ class SchemaManager:
         """
         )
 
+        # Pull requests table (Sprint 11 - GitHub PR integration)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pull_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                issue_id INTEGER REFERENCES issues(id) ON DELETE SET NULL,
+                branch_name TEXT NOT NULL,
+                pr_number INTEGER,
+                pr_url TEXT,
+                title TEXT NOT NULL,
+                body TEXT,
+                base_branch TEXT DEFAULT 'main',
+                head_branch TEXT NOT NULL,
+                status TEXT CHECK(status IN ('draft', 'open', 'merged', 'closed')) DEFAULT 'open',
+                merge_commit_sha TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                merged_at TIMESTAMP,
+                closed_at TIMESTAMP,
+                github_created_at TIMESTAMP,
+                github_updated_at TIMESTAMP
+            )
+        """
+        )
+
     def _create_metrics_audit_tables(self, cursor: sqlite3.Cursor) -> None:
         """Create metrics, token usage, and audit log tables."""
         # Token usage table
@@ -775,6 +800,17 @@ class SchemaManager:
         # Checkpoints indexes
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_checkpoints_project ON checkpoints(project_id, created_at DESC)"
+        )
+
+        # Pull requests indexes (Sprint 11 - GitHub PR integration)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pull_requests_project ON pull_requests(project_id, status)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pull_requests_issue ON pull_requests(issue_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pull_requests_branch ON pull_requests(project_id, branch_name)"
         )
 
         # Audit logs indexes
