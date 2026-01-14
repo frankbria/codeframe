@@ -886,27 +886,253 @@ blocker_app = typer.Typer(
 
 
 @blocker_app.command("list")
-def blocker_list() -> None:
-    """List open blockers."""
-    # Stub for Phase 4
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 4.")
+def blocker_list(
+    all_blockers: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show all blockers (not just open)",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """List blockers.
+
+    By default shows only open blockers. Use --all to show all.
+
+    Example:
+        codeframe blocker list
+        codeframe blocker list --all
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import blockers
+    from codeframe.core.blockers import BlockerStatus
+    from rich.table import Table
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        if all_blockers:
+            blocker_list_data = blockers.list_all(workspace)
+        else:
+            blocker_list_data = blockers.list_open(workspace)
+
+        if not blocker_list_data:
+            if all_blockers:
+                console.print("[dim]No blockers[/dim]")
+            else:
+                console.print("[dim]No open blockers[/dim]")
+            return
+
+        table = Table(title="Blockers" if all_blockers else "Open Blockers")
+        table.add_column("ID", style="dim", width=8)
+        table.add_column("Status", width=10)
+        table.add_column("Task", style="dim", width=8)
+        table.add_column("Question", max_width=50)
+
+        for b in blocker_list_data:
+            # Status color
+            if b.status == BlockerStatus.OPEN:
+                status_str = "[yellow]OPEN[/yellow]"
+            elif b.status == BlockerStatus.ANSWERED:
+                status_str = "[blue]ANSWERED[/blue]"
+            else:
+                status_str = "[green]RESOLVED[/green]"
+
+            task_str = b.task_id[:8] if b.task_id else "-"
+            question_str = b.question[:50] + "..." if len(b.question) > 50 else b.question
+
+            table.add_row(b.id[:8], status_str, task_str, question_str)
+
+        console.print(table)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@blocker_app.command("show")
+def blocker_show(
+    blocker_id: str = typer.Argument(..., help="Blocker ID (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show details of a blocker.
+
+    Example:
+        codeframe blocker show abc123
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import blockers
+    from codeframe.core.blockers import BlockerStatus
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        blocker = blockers.get(workspace, blocker_id)
+
+        if not blocker:
+            console.print(f"[red]Error:[/red] Blocker not found: {blocker_id}")
+            raise typer.Exit(1)
+
+        # Status color
+        if blocker.status == BlockerStatus.OPEN:
+            status_str = "[yellow]OPEN[/yellow]"
+        elif blocker.status == BlockerStatus.ANSWERED:
+            status_str = "[blue]ANSWERED[/blue]"
+        else:
+            status_str = "[green]RESOLVED[/green]"
+
+        console.print(f"\n[bold]Blocker[/bold] {blocker.id[:8]}")
+        console.print(f"  Status: {status_str}")
+        console.print(f"  Task: {blocker.task_id[:8] if blocker.task_id else '-'}")
+        console.print(f"  Created: {blocker.created_at.strftime('%Y-%m-%d %H:%M')}")
+
+        console.print(f"\n[bold]Question:[/bold]")
+        console.print(f"  {blocker.question}")
+
+        if blocker.answer:
+            console.print(f"\n[bold]Answer:[/bold]")
+            console.print(f"  {blocker.answer}")
+            if blocker.answered_at:
+                console.print(f"  [dim]Answered: {blocker.answered_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@blocker_app.command("create")
+def blocker_create(
+    question: str = typer.Argument(..., help="Question to ask"),
+    task_id: Optional[str] = typer.Option(
+        None,
+        "--task",
+        "-t",
+        help="Associated task ID",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Create a blocker manually.
+
+    Blockers are normally created by the agent when it gets stuck,
+    but you can create them manually for testing or planning.
+
+    Example:
+        codeframe blocker create "What authentication method should we use?"
+        codeframe blocker create "API rate limit?" --task abc123
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import blockers
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        blocker = blockers.create(workspace, question, task_id=task_id)
+
+        console.print(f"\n[bold green]Blocker created[/bold green]")
+        console.print(f"  ID: {blocker.id[:8]}")
+        console.print(f"  Question: {question[:60]}{'...' if len(question) > 60 else ''}")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
 
 
 @blocker_app.command("answer")
 def blocker_answer(
-    blocker_id: str = typer.Argument(..., help="Blocker ID"),
+    blocker_id: str = typer.Argument(..., help="Blocker ID (can be partial)"),
     text: str = typer.Argument(..., help="Answer text"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
 ) -> None:
-    """Answer a blocker to unblock work."""
-    # Stub for Phase 4
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 4.")
+    """Answer a blocker to unblock work.
+
+    Example:
+        codeframe blocker answer abc123 "Use OAuth 2.0 with JWT tokens"
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import blockers
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        blocker = blockers.answer(workspace, blocker_id, text)
+
+        console.print(f"\n[bold green]Blocker answered[/bold green]")
+        console.print(f"  ID: {blocker.id[:8]}")
+        console.print(f"  Status: [blue]ANSWERED[/blue]")
+        console.print(f"\nUse 'codeframe blocker resolve {blocker.id[:8]}' to mark as resolved.")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 @blocker_app.command("resolve")
-def blocker_resolve(blocker_id: str = typer.Argument(..., help="Blocker ID")) -> None:
-    """Mark a blocker as resolved."""
-    # Stub for Phase 4
-    console.print("[yellow]Not yet implemented.[/yellow] Coming in Phase 4.")
+def blocker_resolve(
+    blocker_id: str = typer.Argument(..., help="Blocker ID (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Mark a blocker as resolved.
+
+    A blocker must be answered before it can be resolved.
+
+    Example:
+        codeframe blocker resolve abc123
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import blockers
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+        blocker = blockers.resolve(workspace, blocker_id)
+
+        console.print(f"\n[bold green]Blocker resolved[/bold green]")
+        console.print(f"  ID: {blocker.id[:8]}")
+        console.print(f"  Status: [green]RESOLVED[/green]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 # Patch/commit commands
