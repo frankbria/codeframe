@@ -346,13 +346,7 @@ class Agent:
             if result.passed:
                 self.state.status = AgentStatus.COMPLETED
                 self._emit_event("verification_passed", {})
-
-                # Update task status
-                tasks.update_status(
-                    self.workspace,
-                    self.state.task_id,
-                    TaskStatus.DONE,
-                )
+                # Note: task status update handled by runtime.complete_run()
 
             else:
                 # Verification failed - create blocker or fail
