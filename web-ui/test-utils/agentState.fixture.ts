@@ -85,6 +85,7 @@ export function createInitialAgentState(overrides?: Partial<AgentState>): AgentS
     projectProgress: null,
     wsConnected: false,
     lastSyncTimestamp: 0,
+    gitState: null,
     ...overrides,
   };
 }
@@ -157,6 +158,7 @@ export function createPopulatedAgentState(): AgentState {
     }),
     wsConnected: true,
     lastSyncTimestamp: Date.now(),
+    gitState: null,
   };
 }
 

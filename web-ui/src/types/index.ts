@@ -120,7 +120,8 @@ export type WebSocketMessageType =
   | 'agent_retired'        // Sprint 4
   | 'task_assigned'        // Sprint 4
   | 'task_blocked'         // Sprint 4
-  | 'task_unblocked';      // Sprint 4
+  | 'task_unblocked'       // Sprint 4
+  | 'branch_created';      // Ticket #272 - Git Visualization
 
 export interface WebSocketMessage {
   type: WebSocketMessageType;
@@ -243,3 +244,15 @@ export type {
   GetProjectsForAgentParams,
   UnassignAgentParams,
 } from './agentAssignment';
+
+// Re-export Git types (Git Visualization - Ticket #272)
+export type {
+  GitBranch,
+  GitCommit,
+  GitStatus,
+  GitState,
+  BranchStatus,
+  BranchListResponse,
+  CommitListResponse,
+} from './git';
+export { INITIAL_GIT_STATE, isBranchActive, isBranchMerged } from './git';

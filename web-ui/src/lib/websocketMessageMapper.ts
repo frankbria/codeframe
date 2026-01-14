@@ -226,7 +226,6 @@ export function mapWebSocketMessageToAction(
     }
 
     case 'test_result':
-    case 'commit_created':
     case 'correction_attempt': {
       // These are special activity message types
       // Map them to activity updates
@@ -240,6 +239,66 @@ export function mapWebSocketMessageToAction(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
           agent: msg.agent || 'system',
           message: msg.message || `${message.type} event`,
+        },
+      };
+    }
+
+    // ========================================================================
+    // Git Messages (Ticket #272)
+    // ========================================================================
+
+    case 'commit_created': {
+      const msg = message as WebSocketMessage;
+
+      // Validate required fields - commits with empty hashes break downstream lookups
+      if (!msg.commit_hash || !msg.commit_message) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[WebSocketMapper] commit_created message missing required fields, skipping', msg);
+        }
+        return null;
+      }
+
+      return {
+        type: 'COMMIT_CREATED',
+        payload: {
+          commit: {
+            hash: msg.commit_hash,
+            short_hash: msg.commit_hash.slice(0, 7),
+            message: msg.commit_message,
+            author: msg.agent || 'Agent',
+            timestamp: message.timestamp.toString(),
+            files_changed: Array.isArray(msg.files_changed)
+              ? msg.files_changed.length
+              : undefined,
+          },
+          taskId: msg.task_id,
+          timestamp,
+        },
+      };
+    }
+
+    case 'branch_created': {
+      const msg = message as WebSocketMessage;
+
+      // Validate required fields - branches with id=0 or empty names break React keys
+      if (!msg.data?.branch_name || !msg.data?.id) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[WebSocketMapper] branch_created message missing required fields, skipping', msg);
+        }
+        return null;
+      }
+
+      return {
+        type: 'BRANCH_CREATED',
+        payload: {
+          branch: {
+            id: msg.data.id,
+            branch_name: msg.data.branch_name,
+            issue_id: msg.data.issue_id ?? 0,
+            status: 'active' as const,
+            created_at: message.timestamp.toString(),
+          },
+          timestamp,
         },
       };
     }

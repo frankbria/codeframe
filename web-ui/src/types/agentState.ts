@@ -6,7 +6,10 @@
  *
  * Phase: 5.2 - Dashboard Multi-Agent State Management
  * Date: 2025-11-06
+ * Updated: Git Visualization (Ticket #272)
  */
+
+import type { GitState, GitStatus, GitCommit, GitBranch } from './git';
 
 // ============================================================================
 // Core Entity Types
@@ -246,6 +249,7 @@ export interface AgentState {
   projectProgress: ProjectProgress | null;  // Overall project progress
   wsConnected: boolean;             // WebSocket connection status
   lastSyncTimestamp: number;        // Unix ms of last full sync
+  gitState: GitState | null;        // Git visualization state (null before first load)
 }
 
 // ============================================================================
@@ -387,6 +391,82 @@ export interface FullResyncAction {
   };
 }
 
+// ============================================================================
+// Git Actions (Ticket #272)
+// ============================================================================
+
+/**
+ * Load Git status from API
+ */
+export interface GitStatusLoadedAction {
+  type: 'GIT_STATUS_LOADED';
+  payload: {
+    status: GitStatus;
+    timestamp: number;
+  };
+}
+
+/**
+ * Load Git commits from API
+ */
+export interface GitCommitsLoadedAction {
+  type: 'GIT_COMMITS_LOADED';
+  payload: {
+    commits: GitCommit[];
+    timestamp: number;
+  };
+}
+
+/**
+ * Load Git branches from API
+ */
+export interface GitBranchesLoadedAction {
+  type: 'GIT_BRANCHES_LOADED';
+  payload: {
+    branches: GitBranch[];
+    timestamp: number;
+  };
+}
+
+/**
+ * Handle new commit created via WebSocket
+ */
+export interface CommitCreatedAction {
+  type: 'COMMIT_CREATED';
+  payload: {
+    commit: GitCommit;
+    taskId?: number;
+    timestamp: number;
+  };
+}
+
+/**
+ * Handle branch created via WebSocket
+ */
+export interface BranchCreatedAction {
+  type: 'BRANCH_CREATED';
+  payload: {
+    branch: GitBranch;
+    timestamp: number;
+  };
+}
+
+/**
+ * Set Git loading state
+ */
+export interface GitLoadingAction {
+  type: 'GIT_LOADING';
+  payload: boolean;
+}
+
+/**
+ * Set Git error state
+ */
+export interface GitErrorAction {
+  type: 'GIT_ERROR';
+  payload: string | null;
+}
+
 /**
  * Discriminated union of all possible reducer actions
  */
@@ -403,7 +483,15 @@ export type AgentAction =
   | ActivityAddedAction
   | ProgressUpdatedAction
   | WebSocketConnectedAction
-  | FullResyncAction;
+  | FullResyncAction
+  // Git Actions (Ticket #272)
+  | GitStatusLoadedAction
+  | GitCommitsLoadedAction
+  | GitBranchesLoadedAction
+  | CommitCreatedAction
+  | BranchCreatedAction
+  | GitLoadingAction
+  | GitErrorAction;
 
 // ============================================================================
 // Utility Types
