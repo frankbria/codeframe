@@ -439,9 +439,61 @@ class Executor:
             )
 
     def _execute_verification(self, step: PlanStep) -> StepResult:
-        """Execute a verification step (tests, linting)."""
-        # Verification steps are essentially shell commands with specific handling
-        return self._execute_shell_command(step)
+        """Execute a verification step (tests, linting, file checks).
+
+        Handles different verification scenarios:
+        - If target is a .py file: verify it exists and has valid syntax
+        - If target looks like a command: run it as shell command
+        - Otherwise: check if target file/path exists
+        """
+        target = step.target
+
+        # If target is a Python file, verify it exists and check syntax
+        if target.endswith(".py"):
+            file_path = self.repo_path / target
+            if not file_path.exists():
+                return StepResult(
+                    step=step,
+                    status=ExecutionStatus.FAILED,
+                    error=f"File not found: {target}",
+                )
+
+            # Verify Python syntax
+            try:
+                import ast
+                content = file_path.read_text()
+                ast.parse(content)
+                return StepResult(
+                    step=step,
+                    status=ExecutionStatus.SUCCESS,
+                    output=f"Verified: {target} exists and has valid Python syntax",
+                )
+            except SyntaxError as e:
+                return StepResult(
+                    step=step,
+                    status=ExecutionStatus.FAILED,
+                    error=f"Syntax error in {target}: {e}",
+                )
+
+        # If target looks like a command (contains spaces or starts with known commands)
+        command_prefixes = ("python", "pytest", "ruff", "npm", "make", "bash", "sh")
+        if " " in target or target.split()[0] in command_prefixes:
+            return self._execute_shell_command(step)
+
+        # Otherwise just check if the path exists
+        target_path = self.repo_path / target
+        if target_path.exists():
+            return StepResult(
+                step=step,
+                status=ExecutionStatus.SUCCESS,
+                output=f"Verified: {target} exists",
+            )
+        else:
+            return StepResult(
+                step=step,
+                status=ExecutionStatus.FAILED,
+                error=f"Path not found: {target}",
+            )
 
     def _generate_file_content(
         self,
