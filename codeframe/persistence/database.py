@@ -214,7 +214,8 @@ class Database:
         for repo in [self.projects, self.issues, self.tasks, self.agents, self.blockers,
                      self.memories, self.context_items, self.checkpoints, self.git_branches,
                      self.test_results, self.lint_results, self.code_reviews, self.quality_gates,
-                     self.token_usage, self.correction_attempts, self.activities, self.audit_logs]:
+                     self.token_usage, self.correction_attempts, self.activities, self.audit_logs,
+                     self.pull_requests]:
             if repo:
                 repo._async_conn = self._async_conn
 

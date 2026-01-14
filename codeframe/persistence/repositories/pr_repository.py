@@ -4,7 +4,7 @@ Handles database operations for GitHub Pull Request tracking.
 Part of Sprint 11 - GitHub PR Integration.
 """
 
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 import logging
 
@@ -45,8 +45,7 @@ class PRRepository(BaseRepository):
         Raises:
             sqlite3.IntegrityError: If project_id doesn't exist
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        cursor = self._execute(
             """
             INSERT INTO pull_requests (
                 project_id, issue_id, branch_name, title, body,
@@ -56,7 +55,7 @@ class PRRepository(BaseRepository):
             """,
             (project_id, issue_id, branch_name, title, body, base_branch, head_branch, status),
         )
-        self.conn.commit()
+        self._commit()
         return cursor.lastrowid
 
     def get_pr(self, pr_id: int) -> Optional[Dict[str, Any]]:
@@ -68,13 +67,11 @@ class PRRepository(BaseRepository):
         Returns:
             PR dictionary or None if not found
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        row = self._fetchone(
             "SELECT * FROM pull_requests WHERE id = ?",
             (pr_id,),
         )
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_dict(row) if row else None
 
     def get_pr_by_number(self, project_id: int, pr_number: int) -> Optional[Dict[str, Any]]:
         """Get a pull request by its GitHub PR number.
@@ -86,16 +83,14 @@ class PRRepository(BaseRepository):
         Returns:
             PR dictionary or None if not found
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        row = self._fetchone(
             """
             SELECT * FROM pull_requests
             WHERE project_id = ? AND pr_number = ?
             """,
             (project_id, pr_number),
         )
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_dict(row) if row else None
 
     def list_prs(
         self, project_id: int, status: Optional[str] = None
@@ -109,10 +104,8 @@ class PRRepository(BaseRepository):
         Returns:
             List of PR dictionaries
         """
-        cursor = self.conn.cursor()
-
         if status:
-            cursor.execute(
+            rows = self._fetchall(
                 """
                 SELECT * FROM pull_requests
                 WHERE project_id = ? AND status = ?
@@ -121,7 +114,7 @@ class PRRepository(BaseRepository):
                 (project_id, status),
             )
         else:
-            cursor.execute(
+            rows = self._fetchall(
                 """
                 SELECT * FROM pull_requests
                 WHERE project_id = ?
@@ -130,8 +123,7 @@ class PRRepository(BaseRepository):
                 (project_id,),
             )
 
-        rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [self._row_to_dict(row) for row in rows]
 
     def update_pr_github_data(
         self,
@@ -147,9 +139,15 @@ class PRRepository(BaseRepository):
             pr_number: GitHub PR number
             pr_url: GitHub PR URL
             github_created_at: When PR was created on GitHub
+
+        Raises:
+            ValueError: If pr_id does not exist
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        # Ensure datetime is UTC-aware for consistent storage
+        if github_created_at.tzinfo is None:
+            github_created_at = github_created_at.replace(tzinfo=UTC)
+
+        cursor = self._execute(
             """
             UPDATE pull_requests
             SET pr_number = ?, pr_url = ?, github_created_at = ?
@@ -157,7 +155,9 @@ class PRRepository(BaseRepository):
             """,
             (pr_number, pr_url, github_created_at.isoformat(), pr_id),
         )
-        self.conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError(f"PR id {pr_id} not found")
+        self._commit()
 
     def update_pr_status(
         self,
@@ -173,13 +173,21 @@ class PRRepository(BaseRepository):
             status: New status (open, merged, closed, draft)
             merge_commit_sha: Merge commit SHA (for merged PRs)
             merged_at: When PR was merged (auto-set if not provided)
+
+        Raises:
+            ValueError: If pr_id does not exist
         """
-        cursor = self.conn.cursor()
-        now = datetime.now()
+        now = datetime.now(UTC)
 
         if status == "merged":
-            merged_at = merged_at or now
-            cursor.execute(
+            # Use provided merged_at or current time
+            if merged_at is None:
+                merged_at = now
+            # Ensure datetime is UTC-aware
+            elif merged_at.tzinfo is None:
+                merged_at = merged_at.replace(tzinfo=UTC)
+
+            cursor = self._execute(
                 """
                 UPDATE pull_requests
                 SET status = ?, merge_commit_sha = ?, merged_at = ?
@@ -188,7 +196,7 @@ class PRRepository(BaseRepository):
                 (status, merge_commit_sha, merged_at.isoformat(), pr_id),
             )
         elif status == "closed":
-            cursor.execute(
+            cursor = self._execute(
                 """
                 UPDATE pull_requests
                 SET status = ?, closed_at = ?
@@ -197,7 +205,7 @@ class PRRepository(BaseRepository):
                 (status, now.isoformat(), pr_id),
             )
         else:
-            cursor.execute(
+            cursor = self._execute(
                 """
                 UPDATE pull_requests
                 SET status = ?
@@ -206,7 +214,9 @@ class PRRepository(BaseRepository):
                 (status, pr_id),
             )
 
-        self.conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError(f"PR id {pr_id} not found")
+        self._commit()
 
     def get_pr_for_branch(
         self, project_id: int, branch_name: str
@@ -220,8 +230,7 @@ class PRRepository(BaseRepository):
         Returns:
             PR dictionary or None if not found
         """
-        cursor = self.conn.cursor()
-        cursor.execute(
+        row = self._fetchone(
             """
             SELECT * FROM pull_requests
             WHERE project_id = ? AND branch_name = ?
@@ -230,8 +239,7 @@ class PRRepository(BaseRepository):
             """,
             (project_id, branch_name),
         )
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        return self._row_to_dict(row) if row else None
 
     def delete_pr(self, pr_id: int) -> int:
         """Delete a pull request record.
@@ -242,7 +250,6 @@ class PRRepository(BaseRepository):
         Returns:
             Number of rows deleted
         """
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM pull_requests WHERE id = ?", (pr_id,))
-        self.conn.commit()
+        cursor = self._execute("DELETE FROM pull_requests WHERE id = ?", (pr_id,))
+        self._commit()
         return cursor.rowcount

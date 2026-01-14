@@ -9,7 +9,7 @@ Part of Sprint 11 - GitHub PR Integration.
 """
 
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -64,7 +64,9 @@ class CreatePRResponse(BaseModel):
 class MergePRRequest(BaseModel):
     """Request to merge a pull request."""
 
-    method: str = Field("squash", description="Merge method (squash, merge, rebase)")
+    method: Literal["squash", "merge", "rebase"] = Field(
+        "squash", description="Merge method (squash, merge, rebase)"
+    )
 
 
 class MergePRResponse(BaseModel):
@@ -168,9 +170,9 @@ async def create_pull_request(
     github_token, github_repo = validate_github_config(config)
 
     # Create PR via GitHub API
-    gh = GitHubIntegration(token=github_token, repo=github_repo)
-
+    gh: Optional[GitHubIntegration] = None
     try:
+        gh = GitHubIntegration(token=github_token, repo=github_repo)
         pr_details = await gh.create_pull_request(
             branch=request.branch,
             title=request.title,
@@ -222,7 +224,8 @@ async def create_pull_request(
         raise HTTPException(status_code=422, detail=str(e))
 
     finally:
-        await gh.close()
+        if gh is not None:
+            await gh.close()
 
 
 @router.get("", response_model=PRListResponse)
@@ -289,7 +292,7 @@ async def merge_pull_request(
     Args:
         project_id: Project ID
         pr_number: GitHub PR number to merge
-        request: Merge request with method
+        request: Merge request with method (squash, merge, rebase)
 
     Returns:
         Merge result with SHA
@@ -311,31 +314,34 @@ async def merge_pull_request(
     github_token, github_repo = validate_github_config(config)
 
     # Merge via GitHub API
-    gh = GitHubIntegration(token=github_token, repo=github_repo)
-
+    gh: Optional[GitHubIntegration] = None
     try:
+        gh = GitHubIntegration(token=github_token, repo=github_repo)
         result = await gh.merge_pull_request(
             pr_number=pr_number,
             method=request.method,
         )
 
-        # Update database
-        db.pull_requests.update_pr_status(
-            pr_id=pr["id"],
-            status="merged",
-            merge_commit_sha=result.sha,
-        )
-
-        # Broadcast PR merged event
-        if result.merged and result.sha:
-            await broadcast_pr_merged(
-                manager=manager,
-                project_id=project_id,
-                pr_number=pr_number,
+        # Update database only if merge succeeded
+        if result.merged:
+            db.pull_requests.update_pr_status(
+                pr_id=pr["id"],
+                status="merged",
                 merge_commit_sha=result.sha,
             )
 
-        logger.info(f"Merged PR #{pr_number} for project {project_id}")
+            # Broadcast PR merged event
+            if result.sha:
+                await broadcast_pr_merged(
+                    manager=manager,
+                    project_id=project_id,
+                    pr_number=pr_number,
+                    merge_commit_sha=result.sha,
+                )
+
+            logger.info(f"Merged PR #{pr_number} for project {project_id}")
+        else:
+            logger.warning(f"PR #{pr_number} merge returned merged=False")
 
         return MergePRResponse(
             merged=result.merged,
@@ -347,7 +353,8 @@ async def merge_pull_request(
         raise HTTPException(status_code=422, detail=str(e))
 
     finally:
-        await gh.close()
+        if gh is not None:
+            await gh.close()
 
 
 @router.post("/{pr_number}/close", response_model=ClosePRResponse)
@@ -381,9 +388,9 @@ async def close_pull_request(
     github_token, github_repo = validate_github_config(config)
 
     # Close via GitHub API
-    gh = GitHubIntegration(token=github_token, repo=github_repo)
-
+    gh: Optional[GitHubIntegration] = None
     try:
+        gh = GitHubIntegration(token=github_token, repo=github_repo)
         closed = await gh.close_pull_request(pr_number)
 
         # Update database
@@ -408,4 +415,5 @@ async def close_pull_request(
         raise HTTPException(status_code=422, detail=str(e))
 
     finally:
-        await gh.close()
+        if gh is not None:
+            await gh.close()

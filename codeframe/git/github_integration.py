@@ -72,14 +72,15 @@ class GitHubIntegration:
         Raises:
             ValueError: If repo format is invalid
         """
-        if "/" not in repo:
+        parts = repo.split("/", 1)
+        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
             raise ValueError(
                 f"Invalid repo format: '{repo}'. Expected 'owner/repo'"
             )
 
         self.token = token
         self.repo = repo
-        self.owner, self.repo_name = repo.split("/", 1)
+        self.owner, self.repo_name = parts[0].strip(), parts[1].strip()
 
         self._client = httpx.AsyncClient(
             headers={
