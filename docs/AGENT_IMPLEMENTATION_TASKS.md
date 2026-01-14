@@ -224,10 +224,31 @@ Recommended sequence:
 
 ---
 
+## Design Decisions
+
+### Model Selection Strategy
+
+**Approach:** Task-based heuristic with future per-task override.
+
+**Current (heuristic):**
+- Planning/complex reasoning → Opus or Sonnet
+- Code execution/editing → Sonnet
+- Simple generation → Haiku
+
+**Future:** `cf tasks set provider <id> <provider>` to override heuristic per-task.
+
+```python
+class ModelSelector:
+    def for_planning(self) -> str:      # complex reasoning
+    def for_execution(self) -> str:     # balanced
+    def for_generation(self) -> str:    # fast/cheap
+```
+
+---
+
 ## Open Questions
 
 - **Sandboxing:** How strict should command execution be?
-- **Model selection:** Should users configure which model to use?
 - **Context limits:** How to handle codebases larger than context window?
 - **Parallelism:** Should agent work on multiple files simultaneously?
 - **Recovery:** How to resume after crash mid-execution?
