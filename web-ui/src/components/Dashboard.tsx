@@ -38,6 +38,8 @@ import PhaseProgress from './PhaseProgress';
 import TaskList from './TaskList';
 import TaskReview from './TaskReview';
 import { GitSection } from './git';
+import { PRList, PRCreationDialog, PRMergeDialog } from './pr';
+import type { PullRequest } from '@/types/pullRequest';
 import {
   UserGroupIcon,
   Loading03Icon,
@@ -55,6 +57,7 @@ import {
   CheckListIcon,
   Target02Icon,
   FloppyDiskIcon,
+  GitPullRequestIcon,
 } from '@hugeicons/react';
 
 /**
@@ -109,6 +112,12 @@ export default function Dashboard({ projectId }: DashboardProps) {
   const [qualityGatesPanelKey, setQualityGatesPanelKey] = useState<number>(0);
   const [showQualityGatesPanel, setShowQualityGatesPanel] = useState<boolean>(true);
   const lastRetryTimeRef = useRef<number>(0);
+
+  // Pull Request management state (Feature: PR Management UI)
+  const [showPRCreationDialog, setShowPRCreationDialog] = useState(false);
+  const [prToMerge, setPrToMerge] = useState<PullRequest | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_selectedPRNumber, setSelectedPRNumber] = useState<number | null>(null);
 
   // Memoize filtered agent lists for performance (T111)
   const _activeAgents = useMemo(
@@ -521,6 +530,21 @@ export default function Dashboard({ projectId }: DashboardProps) {
             </button>
             <button
               role="tab"
+              aria-selected={activeTab === 'pull-requests'}
+              aria-controls="pull-requests-panel"
+              onClick={() => setActiveTab('pull-requests')}
+              data-testid="pull-requests-tab"
+              className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2 ${
+                activeTab === 'pull-requests'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
+            >
+              <GitPullRequestIcon className="h-4 w-4" />
+              Pull Requests
+            </button>
+            <button
+              role="tab"
               aria-selected={activeTab === 'context'}
               aria-controls="context-panel"
               onClick={() => setActiveTab('context')}
@@ -648,7 +672,7 @@ export default function Dashboard({ projectId }: DashboardProps) {
                     Agent State (Real-time)
                   </h2>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
-                    {agents.length} agents active
+                    {agents.length} {agents.length === 1 ? 'agent' : 'agents'} active
                   </span>
                 </div>
 
@@ -863,6 +887,27 @@ export default function Dashboard({ projectId }: DashboardProps) {
           </div>
         )}
 
+        {/* Pull Requests Tab Panel (Feature: PR Management UI) */}
+        {activeTab === 'pull-requests' && (
+          <div role="tabpanel" id="pull-requests-panel" aria-labelledby="pull-requests-tab" data-testid="pull-requests-panel">
+            <div className="bg-card rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <GitPullRequestIcon className="h-5 w-5" />
+                Pull Requests
+              </h2>
+              <PRList
+                projectId={projectId}
+                onCreatePR={() => setShowPRCreationDialog(true)}
+                onViewPR={(prNumber) => {
+                  setSelectedPRNumber(prNumber);
+                  // TODO: Open PR detail view or navigate
+                }}
+                onMergePR={(pr) => setPrToMerge(pr)}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Context Tab Panel (T011 - Feature 013) */}
         {activeTab === 'context' && (
           <div role="tabpanel" id="context-panel" aria-labelledby="context-tab">
@@ -939,6 +984,31 @@ export default function Dashboard({ projectId }: DashboardProps) {
         onClose={() => setSelectedBlocker(null)}
         onResolved={() => mutateBlockers()}
       />
+
+      {/* PR Creation Dialog (Feature: PR Management UI) */}
+      <PRCreationDialog
+        projectId={projectId}
+        isOpen={showPRCreationDialog}
+        onClose={() => setShowPRCreationDialog(false)}
+        onSuccess={() => {
+          setShowPRCreationDialog(false);
+          // The PRList will auto-refresh via WebSocket
+        }}
+      />
+
+      {/* PR Merge Dialog (Feature: PR Management UI) */}
+      {prToMerge && (
+        <PRMergeDialog
+          pr={prToMerge}
+          projectId={projectId}
+          isOpen={prToMerge !== null}
+          onClose={() => setPrToMerge(null)}
+          onSuccess={() => {
+            setPrToMerge(null);
+            // The PRList will auto-refresh via WebSocket
+          }}
+        />
+      )}
     </div>
   );
 }
