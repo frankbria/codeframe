@@ -145,9 +145,11 @@ test.describe('Task Approval API Contract', () => {
    * Test that 422 validation errors from task approval are properly handled.
    *
    * This test mocks a 422 response to verify the frontend handles it gracefully.
+   * NOTE: Since earlier tests may have transitioned the project to 'active' phase,
+   * we must mock the status endpoint to return 'planning' phase so TaskReview renders.
    */
   test('should handle 422 validation error gracefully', async ({ page }) => {
-    // Mock a 422 validation error response
+    // Mock a 422 validation error response for the approval API
     await page.route('**/api/projects/*/tasks/approve', async (route: Route) => {
       await route.fulfill({
         status: 422,
@@ -164,6 +166,48 @@ test.describe('Task Approval API Contract', () => {
       });
     });
 
+    // Mock project status to return 'planning' phase so TaskReview component renders
+    // (Earlier tests may have transitioned the project to 'active' phase)
+    await page.route('**/api/projects/*/status', async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: parseInt(PROJECT_ID),
+          name: 'e2e-planning-project',
+          description: 'Test project',
+          status: 'planning',
+          phase: 'planning',  // Critical: Must be 'planning' for TaskReview to render
+          workflow_step: 1,
+          progress: { completed_tasks: 0, total_tasks: 6, percentage: 0 }
+        })
+      });
+    });
+
+    // Mock issues endpoint to return test issues with tasks (required for TaskReview)
+    await page.route('**/api/projects/*/issues*', async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          issues: [
+            {
+              id: '1',
+              issue_number: '1.1',
+              title: 'Test Issue 1',
+              status: 'pending',
+              tasks: [
+                { id: '1', task_number: '1.1.1', title: 'Test Task 1', description: 'Description' },
+                { id: '2', task_number: '1.1.2', title: 'Test Task 2', description: 'Description' }
+              ]
+            }
+          ],
+          total_issues: 1,
+          total_tasks: 2
+        })
+      });
+    });
+
     // Navigate to project
     await page.goto(`${FRONTEND_URL}/projects/${PROJECT_ID}`);
     await page.waitForLoadState('networkidle');
@@ -173,7 +217,7 @@ test.describe('Task Approval API Contract', () => {
     await expect(tasksTab).toBeVisible({ timeout: 10000 });
     await tasksTab.click();
 
-    // Look for approve button - MUST be visible
+    // Look for approve button - MUST be visible (TaskReview renders because phase is mocked to 'planning')
     const approveButton = page.getByRole('button', { name: /approve/i });
     await expect(approveButton).toBeVisible({ timeout: 5000 });
 
@@ -190,14 +234,10 @@ test.describe('Task Approval API Contract', () => {
     expect(response.status()).toBe(422);
 
     // Verify UI shows error message (not a blank screen)
-    // Use explicit assertion - FAIL if no error UI appears
-    const errorIndicators = page.locator('[class*="destructive"], [class*="error"], [role="alert"]');
-    const errorText = page.getByText(/failed|error|try again/i);
-
-    // At least one error indicator must be visible
-    await expect(
-      errorIndicators.first().or(errorText.first())
-    ).toBeVisible({ timeout: 5000 });
+    // Look for the specific error message from TaskReview component
+    // Note: Exclude Next.js route announcer which also has role="alert"
+    const errorMessage = page.getByText('Failed to approve tasks');
+    await expect(errorMessage).toBeVisible({ timeout: 5000 });
   });
 
 });
