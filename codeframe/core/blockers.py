@@ -215,6 +215,19 @@ def list_all(
     return [_row_to_blocker(row) for row in rows]
 
 
+def list_for_task(workspace: Workspace, task_id: str) -> list[Blocker]:
+    """List all blockers for a specific task.
+
+    Args:
+        workspace: Workspace to query
+        task_id: Task to filter by
+
+    Returns:
+        List of Blockers for the task
+    """
+    return list_all(workspace, task_id=task_id)
+
+
 def answer(workspace: Workspace, blocker_id: str, text: str) -> Blocker:
     """Answer a blocker.
 
