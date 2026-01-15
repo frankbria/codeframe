@@ -1083,6 +1083,12 @@ def batch_run(
         "--dry-run",
         help="Show execution plan without running",
     ),
+    max_retries: int = typer.Option(
+        0,
+        "--retry",
+        "-r",
+        help="Max retry attempts for failed tasks (0 = no retries)",
+    ),
     workspace_path: Optional[Path] = typer.Option(
         None,
         "--workspace",
@@ -1094,12 +1100,14 @@ def batch_run(
 
     Execute a list of tasks sequentially (or in parallel in Phase 2).
     Use --all-ready to process all READY tasks, or specify task IDs.
+    Use --retry N to automatically retry failed tasks up to N times.
 
     Example:
         codeframe work batch run task1 task2 task3
         codeframe work batch run --all-ready
         codeframe work batch run --all-ready --strategy serial
         codeframe work batch run task1 task2 --dry-run
+        codeframe work batch run task1 task2 --retry 2
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, conductor
@@ -1152,7 +1160,10 @@ def batch_run(
             return
 
         # Execute batch
-        console.print(f"\n[bold cyan]Starting batch execution...[/bold cyan]\n")
+        if max_retries > 0:
+            console.print(f"\n[bold cyan]Starting batch execution (with up to {max_retries} retries)...[/bold cyan]\n")
+        else:
+            console.print(f"\n[bold cyan]Starting batch execution...[/bold cyan]\n")
 
         batch = conductor.start_batch(
             workspace=workspace,
@@ -1161,6 +1172,7 @@ def batch_run(
             max_parallel=max_parallel,
             on_failure=on_failure,
             dry_run=False,
+            max_retries=max_retries,
         )
 
         # Show summary
@@ -1177,6 +1189,8 @@ def batch_run(
             console.print(f"  Failed: {failed}")
         if blocked:
             console.print(f"  Blocked: {blocked}")
+        if max_retries > 0:
+            console.print(f"  Retries: up to {max_retries}")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")

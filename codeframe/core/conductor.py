@@ -81,6 +81,7 @@ def start_batch(
     max_parallel: int = 4,
     on_failure: str = "continue",
     dry_run: bool = False,
+    max_retries: int = 0,
     on_event: Optional[Callable[[str, dict], None]] = None,
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
@@ -92,6 +93,7 @@ def start_batch(
         max_parallel: Max concurrent tasks for parallel strategy
         on_failure: Behavior on task failure ("continue" or "stop")
         dry_run: If True, don't actually execute tasks
+        max_retries: Max retry attempts for failed tasks (0 = no retries)
         on_event: Optional callback for batch events
 
     Returns:
@@ -164,6 +166,10 @@ def start_batch(
         print(f"Warning: Parallel execution not yet implemented, using serial")
 
     _execute_serial(workspace, batch, on_event)
+
+    # Retry failed tasks if max_retries > 0
+    if max_retries > 0:
+        _execute_retries(workspace, batch, max_retries, on_event)
 
     return batch
 
@@ -508,6 +514,141 @@ def _execute_serial_resume(
         print(f"  Failed: {final_failed}")
     if final_blocked > 0:
         print(f"  Blocked: {final_blocked}")
+
+
+def _execute_retries(
+    workspace: Workspace,
+    batch: BatchRun,
+    max_retries: int,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> None:
+    """Retry failed tasks up to max_retries times.
+
+    After the initial execution pass, this function re-runs any failed
+    tasks, continuing until all tasks succeed or max_retries is exhausted.
+
+    Args:
+        workspace: Target workspace
+        batch: BatchRun with initial results
+        max_retries: Maximum retry attempts per task
+        on_event: Optional callback for events
+    """
+    failed_statuses = {RunStatus.FAILED.value}  # Only retry FAILED, not BLOCKED
+
+    for retry_num in range(1, max_retries + 1):
+        # Find tasks that failed
+        failed_tasks = [
+            tid for tid in batch.task_ids
+            if batch.results.get(tid) in failed_statuses
+        ]
+
+        if not failed_tasks:
+            # All tasks succeeded, no retries needed
+            break
+
+        print(f"\n{'='*60}")
+        print(f"Retry attempt {retry_num}/{max_retries}: {len(failed_tasks)} failed task(s)")
+        print(f"{'='*60}")
+
+        # Emit retry event
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_STARTED,  # Reuse for retry
+            {
+                "batch_id": batch.id,
+                "task_ids": failed_tasks,
+                "retry_attempt": retry_num,
+                "max_retries": max_retries,
+            },
+            print_event=True,
+        )
+
+        if on_event:
+            on_event("batch_retry_started", {
+                "batch_id": batch.id,
+                "retry_attempt": retry_num,
+                "task_count": len(failed_tasks),
+            })
+
+        # Re-run each failed task
+        for i, task_id in enumerate(failed_tasks):
+            # Check if batch was cancelled
+            current_batch = get_batch(workspace, batch.id)
+            if current_batch and current_batch.status == BatchStatus.CANCELLED:
+                return
+
+            task = tasks.get(workspace, task_id)
+            task_title = task.title if task else task_id
+            previous_status = batch.results.get(task_id, "N/A")
+
+            print(f"\n[Retry {retry_num}, {i + 1}/{len(failed_tasks)}] {task_id}: {task_title}")
+            print(f"      Previous: {previous_status}")
+
+            # Execute task
+            result_status = _execute_task_subprocess(workspace, task_id)
+
+            # Update result
+            batch.results[task_id] = result_status
+            _save_batch(workspace, batch)
+
+            if result_status == RunStatus.COMPLETED.value:
+                print(f"      ✓ Succeeded on retry {retry_num}")
+            else:
+                remaining = max_retries - retry_num
+                if remaining > 0:
+                    print(f"      ✗ Still failed ({remaining} retries left)")
+                else:
+                    print(f"      ✗ Failed after {max_retries} retries")
+
+            if on_event:
+                on_event("batch_task_retried", {
+                    "task_id": task_id,
+                    "retry_attempt": retry_num,
+                    "status": result_status,
+                })
+
+    # Recalculate final batch status after all retries
+    total = len(batch.task_ids)
+    final_completed = sum(1 for s in batch.results.values() if s == RunStatus.COMPLETED.value)
+    final_failed = sum(1 for s in batch.results.values() if s == RunStatus.FAILED.value)
+    final_blocked = sum(1 for s in batch.results.values() if s == RunStatus.BLOCKED.value)
+
+    if final_completed == total:
+        batch.status = BatchStatus.COMPLETED
+        event_type = events.EventType.BATCH_COMPLETED
+    elif final_completed == 0 and (final_failed > 0 or final_blocked > 0):
+        batch.status = BatchStatus.FAILED
+        event_type = events.EventType.BATCH_FAILED
+    elif final_completed > 0:
+        batch.status = BatchStatus.PARTIAL
+        event_type = events.EventType.BATCH_PARTIAL
+    else:
+        batch.status = BatchStatus.CANCELLED
+        event_type = events.EventType.BATCH_CANCELLED
+
+    batch.completed_at = _utc_now()
+    _save_batch(workspace, batch)
+
+    # Emit final status event
+    events.emit_for_workspace(
+        workspace,
+        event_type,
+        {
+            "batch_id": batch.id,
+            "completed": final_completed,
+            "failed": final_failed,
+            "blocked": final_blocked,
+            "total": total,
+            "retries_used": max_retries,
+        },
+        print_event=True,
+    )
+
+    # Print retry summary
+    if final_failed == 0:
+        print(f"\n✓ All tasks succeeded after retries")
+    else:
+        print(f"\n⚠ {final_failed} task(s) still failing after {max_retries} retries")
 
 
 def _execute_serial(

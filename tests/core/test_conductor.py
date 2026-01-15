@@ -759,3 +759,181 @@ class TestResumeBatch:
         assert resumed.results[task_ids[0]] == "COMPLETED"  # Preserved
         assert resumed.results[task_ids[1]] == "COMPLETED"  # Updated
         assert resumed.results[task_ids[2]] == "COMPLETED"  # Preserved
+
+
+class TestBatchRetry:
+    """Tests for batch retry functionality (--retry N flag)."""
+
+    def test_no_retry_by_default(self, workspace_with_tasks):
+        """Without --retry, failed tasks should not be retried."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        call_count = [0]
+        def mock_execute(ws, tid):
+            call_count[0] += 1
+            if tid == task_ids[1]:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=0)
+
+        # Should be called exactly 3 times (no retries)
+        assert call_count[0] == 3
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[1]] == "FAILED"
+
+    def test_retry_succeeds_on_first_retry(self, workspace_with_tasks):
+        """Task that fails initially should succeed on retry."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Track calls per task
+        call_counts = {tid: 0 for tid in task_ids}
+
+        def mock_execute(ws, tid):
+            call_counts[tid] += 1
+            # Task 1 fails first time, succeeds on retry
+            if tid == task_ids[1]:
+                return "COMPLETED" if call_counts[tid] > 1 else "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=2)
+
+        # Task 1 should have been called twice (initial + 1 retry)
+        assert call_counts[task_ids[1]] == 2
+        assert batch.status == BatchStatus.COMPLETED
+        assert all(s == "COMPLETED" for s in batch.results.values())
+
+    def test_retry_exhausted(self, workspace_with_tasks):
+        """Task that keeps failing should exhaust all retries."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        call_counts = {tid: 0 for tid in task_ids}
+
+        def mock_execute(ws, tid):
+            call_counts[tid] += 1
+            if tid == task_ids[1]:
+                return "FAILED"  # Always fails
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=3)
+
+        # Task 1: 1 initial + 3 retries = 4 calls
+        assert call_counts[task_ids[1]] == 4
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[1]] == "FAILED"
+
+    def test_retry_multiple_failed_tasks(self, workspace_with_tasks):
+        """Multiple failed tasks should all be retried."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        call_counts = {tid: 0 for tid in task_ids}
+
+        def mock_execute(ws, tid):
+            call_counts[tid] += 1
+            # Tasks 0 and 2 fail initially, succeed on retry
+            if tid in (task_ids[0], task_ids[2]):
+                return "COMPLETED" if call_counts[tid] > 1 else "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=2)
+
+        # Tasks 0 and 2 should be called twice each
+        assert call_counts[task_ids[0]] == 2
+        assert call_counts[task_ids[1]] == 1  # Never failed
+        assert call_counts[task_ids[2]] == 2
+        assert batch.status == BatchStatus.COMPLETED
+
+    def test_retry_stops_early_if_all_succeed(self, workspace_with_tasks):
+        """Should not use all retry attempts if tasks succeed early."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        call_counts = {tid: 0 for tid in task_ids}
+
+        def mock_execute(ws, tid):
+            call_counts[tid] += 1
+            # Task 1 succeeds on first retry
+            if tid == task_ids[1]:
+                return "COMPLETED" if call_counts[tid] > 1 else "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=5)
+
+        # Only 1 retry should have been used
+        assert call_counts[task_ids[1]] == 2
+        assert batch.status == BatchStatus.COMPLETED
+
+    def test_retry_does_not_retry_blocked_tasks(self, workspace_with_tasks):
+        """BLOCKED tasks should not be retried (only FAILED)."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        call_counts = {tid: 0 for tid in task_ids}
+
+        def mock_execute(ws, tid):
+            call_counts[tid] += 1
+            if tid == task_ids[1]:
+                return "BLOCKED"  # Blocked, not failed
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=3)
+
+        # Blocked task should only be called once (no retries)
+        assert call_counts[task_ids[1]] == 1
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[1]] == "BLOCKED"
+
+    def test_retry_with_on_failure_continue(self, workspace_with_tasks):
+        """Retry should work with on_failure=continue."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        call_counts = {tid: 0 for tid in task_ids}
+
+        def mock_execute(ws, tid):
+            call_counts[tid] += 1
+            # All tasks fail initially, task 0 and 2 succeed on retry
+            if call_counts[tid] == 1:
+                return "FAILED"
+            if tid == task_ids[1]:
+                return "FAILED"  # Task 1 keeps failing
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=2, on_failure="continue")
+
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[0]] == "COMPLETED"
+        assert batch.results[task_ids[1]] == "FAILED"
+        assert batch.results[task_ids[2]] == "COMPLETED"
+
+    def test_retry_event_callback(self, workspace_with_tasks):
+        """on_event callback should receive retry events."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list[:1]]
+
+        events_received = []
+        def on_event(event_type, payload):
+            events_received.append((event_type, payload))
+
+        call_count = [0]
+        def mock_execute(ws, tid):
+            call_count[0] += 1
+            return "COMPLETED" if call_count[0] > 1 else "FAILED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, max_retries=1, on_event=on_event)
+
+        event_types = [e[0] for e in events_received]
+        assert "batch_retry_started" in event_types
+        assert "batch_task_retried" in event_types

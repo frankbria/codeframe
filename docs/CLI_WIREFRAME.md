@@ -266,6 +266,7 @@ Each command:
 - `--max-parallel N`: Max concurrent tasks when parallel (default: 4)
 - `--dry-run`: Show execution plan without running
 - `--on-failure continue|stop`: Behavior on task failure (default: continue)
+- `--retry N, -r N`: Max retry attempts for failed tasks (default: 0, no retries)
 
 **Important constraint:**
 - Must work without FastAPI server running.
@@ -528,7 +529,7 @@ Output includes:
 15) Dependency graph analysis
 16) True parallel execution with worker pool
 17) `--strategy auto` with LLM-based dependency inference
-18) `work batch run --retry N` - automatic retry of failed tasks
+18) `work batch run --retry N` - automatic retry of failed tasks ✓ DONE
 
 ### Phase 3: Observability
 19) `work batch follow` - live streaming to terminal

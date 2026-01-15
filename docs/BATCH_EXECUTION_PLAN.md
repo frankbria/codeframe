@@ -460,16 +460,17 @@ Summary: 2/3 completed (67%)
 
 ### Planned: Batch-Level Retry (Phase 2+)
 
-#### Option A: Simple Retry Flag
+#### Option A: Simple Retry Flag ✓ IMPLEMENTED
 ```bash
 cf work batch run t1 t2 t3 --retry 2    # Retry failed tasks up to 2 times
 cf work batch run --all-ready --retry 1  # One retry attempt
 ```
 
-Implementation:
-- After all tasks complete, re-run failed tasks up to N times
-- Track retry count per task in results
-- Final status based on last attempt
+Implementation (DONE):
+- After all tasks complete in initial run, re-run FAILED tasks up to N times
+- Retries stop early if all tasks succeed before exhausting max_retries
+- BLOCKED tasks are NOT retried (they need human intervention)
+- Final batch status based on all results after retries complete
 
 #### Option B: Batch Resume Command ✓ IMPLEMENTED
 ```bash
@@ -492,7 +493,8 @@ When a task fails repeatedly:
 4. Final: Mark as BLOCKED with human review required
 
 ### Decision Points
-- [x] Which retry approach to implement first? → **Batch Resume (Option B)**
+- [x] Which retry approach to implement first? → **Batch Resume (Option B)** ✓
+- [x] Should we also implement --retry N flag? → **Yes (Option A)** ✓
 - [ ] Should retries use exponential backoff?
 - [ ] Should we track retry history for analytics?
 - [ ] Should blocked tasks prevent retries of dependent tasks?
