@@ -371,6 +371,7 @@ class Agent:
                 # For technical errors, try self-correction first
                 self_correction_attempts = 0
                 current_result = result
+                self_correction_succeeded = False
 
                 while self_correction_attempts < MAX_SELF_CORRECTION_ATTEMPTS:
                     self_correction_attempts += 1
@@ -379,7 +380,7 @@ class Agent:
                     )
 
                     if corrected_result is None:
-                        # Self-correction failed to even attempt
+                        # Self-correction failed to even attempt, stop trying
                         break
 
                     if corrected_result.status == ExecutionStatus.SUCCESS:
@@ -400,13 +401,15 @@ class Agent:
                                     consecutive_failures += 1
 
                         self.state.current_step += 1
+                        self_correction_succeeded = True
                         break
 
                     # Self-correction didn't succeed, try again
                     current_result = corrected_result
-                else:
-                    # Exhausted self-correction attempts
-                    # Now check if we should create a blocker
+
+                # Handle case where self-correction didn't succeed
+                if not self_correction_succeeded:
+                    # Check if we should create a blocker
                     if self._should_create_blocker(
                         consecutive_failures, current_result, self_correction_attempts
                     ):
@@ -421,7 +424,8 @@ class Agent:
                         })
                         return
 
-                    self.state.current_step += 1  # Skip and continue
+                    # Skip this step and continue to the next
+                    self.state.current_step += 1
 
             elif result.status == ExecutionStatus.SKIPPED:
                 self._emit_event("step_skipped", {"step": step.index})
