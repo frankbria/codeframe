@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from codeframe.core.state_machine import TaskStatus, validate_transition, parse_status
+from codeframe.core.state_machine import TaskStatus, validate_transition
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core.prd import PrdRecord
 
@@ -315,6 +315,63 @@ def get_dependents(workspace: Workspace, task_id: str) -> list[Task]:
     """
     all_tasks = list_tasks(workspace)
     return [t for t in all_tasks if task_id in t.depends_on]
+
+
+def delete(workspace: Workspace, task_id: str) -> bool:
+    """Delete a task by ID.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task ID to delete
+
+    Returns:
+        True if task was deleted, False if not found
+
+    Note:
+        This does NOT remove the task from other tasks' depends_on lists.
+        Use delete_cascade() if you need to clean up dependencies.
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM tasks
+        WHERE workspace_id = ? AND id = ?
+        """,
+        (workspace.id, task_id),
+    )
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+
+    return deleted
+
+
+def delete_all(workspace: Workspace) -> int:
+    """Delete all tasks in a workspace.
+
+    Args:
+        workspace: Target workspace
+
+    Returns:
+        Number of tasks deleted
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM tasks
+        WHERE workspace_id = ?
+        """,
+        (workspace.id,),
+    )
+    deleted_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+
+    return deleted_count
 
 
 def count_by_status(workspace: Workspace) -> dict[str, int]:

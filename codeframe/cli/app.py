@@ -515,11 +515,19 @@ def tasks_generate(
         "--no-llm",
         help="Use simple extraction instead of LLM",
     ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Delete existing tasks before generating new ones",
+    ),
 ) -> None:
     """Generate tasks from the PRD.
 
     Uses LLM to decompose the PRD into actionable tasks.
     Tasks are stored in state with BACKLOG status.
+
+    Use --overwrite to clear existing tasks first (useful for regeneration).
+    Without --overwrite, new tasks are appended (useful for multi-PRD projects).
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import prd, tasks
@@ -536,6 +544,13 @@ def tasks_generate(
             console.print("[red]Error:[/red] No PRD found.")
             console.print("Add one first: codeframe prd add <file.md>")
             raise typer.Exit(1)
+
+        # Handle --overwrite
+        if overwrite:
+            existing = tasks.list_tasks(workspace)
+            if existing:
+                deleted = tasks.delete_all(workspace)
+                console.print(f"[dim]Cleared {deleted} existing tasks[/dim]")
 
         console.print(f"Generating tasks from PRD: [bold]{prd_record.title}[/bold]")
 
@@ -786,6 +801,114 @@ def tasks_set(
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
     except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@tasks_app.command("delete")
+def tasks_delete(
+    task_id: Optional[str] = typer.Argument(None, help="Task ID to delete (can be partial)"),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    all_tasks_flag: bool = typer.Option(
+        False,
+        "--all",
+        help="Delete all tasks in the workspace",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force", "-f",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """Delete tasks from the workspace.
+
+    Example:
+        codeframe tasks delete abc123
+        codeframe tasks delete --all
+        codeframe tasks delete --all --force
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        if all_tasks_flag:
+            # Delete all tasks
+            task_list = tasks.list_tasks(workspace)
+            if not task_list:
+                console.print("[yellow]No tasks to delete[/yellow]")
+                raise typer.Exit(0)
+
+            if not force:
+                confirm = typer.confirm(
+                    f"Delete all {len(task_list)} tasks? This cannot be undone"
+                )
+                if not confirm:
+                    console.print("[dim]Cancelled[/dim]")
+                    raise typer.Exit(0)
+
+            deleted = tasks.delete_all(workspace)
+            console.print(f"[green]Deleted {deleted} tasks[/green]")
+
+        elif task_id:
+            # Delete single task
+            all_tasks = tasks.list_tasks(workspace)
+            matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+            if not matching:
+                console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+                raise typer.Exit(1)
+
+            if len(matching) > 1:
+                console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+                for t in matching:
+                    console.print(f"  {t.id}: {t.title[:40]}")
+                console.print("Please provide a more specific ID.")
+                raise typer.Exit(1)
+
+            task = matching[0]
+
+            if not force:
+                confirm = typer.confirm(f"Delete task '{task.title[:50]}'?")
+                if not confirm:
+                    console.print("[dim]Cancelled[/dim]")
+                    raise typer.Exit(0)
+
+            # Check for dependents
+            dependents = tasks.get_dependents(workspace, task.id)
+            if dependents:
+                console.print(
+                    f"[yellow]Warning:[/yellow] {len(dependents)} task(s) depend on this task"
+                )
+                for dep in dependents[:3]:
+                    console.print(f"  - {dep.id[:8]}: {dep.title[:40]}")
+                if len(dependents) > 3:
+                    console.print(f"  ... and {len(dependents) - 3} more")
+
+            deleted = tasks.delete(workspace, task.id)
+            if deleted:
+                console.print(f"[green]Deleted task:[/green] {task.title[:50]}")
+            else:
+                console.print("[red]Error:[/red] Failed to delete task")
+                raise typer.Exit(1)
+
+        else:
+            console.print("[red]Error:[/red] Specify a task ID or use --all")
+            raise typer.Exit(1)
+
+    except typer.Exit:
+        raise
+    except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
     except Exception as e:
