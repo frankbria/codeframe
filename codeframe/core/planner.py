@@ -170,7 +170,7 @@ You must return a valid JSON object with this structure:
             "index": 1,
             "type": "file_create|file_edit|file_delete|shell_command|verification",
             "description": "What this step accomplishes",
-            "target": "path/to/file.py or command",
+            "target": "see target rules below",
             "details": "Specific changes or command arguments",
             "depends_on": []
         }
@@ -180,6 +180,14 @@ You must return a valid JSON object with this structure:
     "estimated_complexity": "low|medium|high",
     "considerations": ["Important note or warning"]
 }
+
+TARGET RULES (critical - follow exactly):
+- file_create: target = file path to create (e.g., "src/utils.py")
+- file_edit: target = file path to edit (e.g., "main.py")
+- file_delete: target = file path to delete
+- shell_command: target = the actual command to run (e.g., "python main.py --help", "pytest tests/")
+- verification: target = the actual command to run (e.g., "python script.py --help", "pytest -v")
+  DO NOT put "shell_command" as the target. Put the actual command string.
 
 Guidelines:
 1. Break work into small, focused steps (each step should do ONE thing)

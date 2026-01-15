@@ -4,6 +4,7 @@ Defines the protocol that all LLM providers must implement,
 along with shared data structures for requests and responses.
 """
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,19 +17,47 @@ class Purpose(str, Enum):
     PLANNING = "planning"  # Complex reasoning, architecture decisions
     EXECUTION = "execution"  # Code generation, editing
     GENERATION = "generation"  # Simple text generation, summaries
+    CORRECTION = "correction"  # Self-correction after errors (uses stronger model)
+
+
+# Default model aliases (use latest versions automatically)
+DEFAULT_PLANNING_MODEL = "claude-sonnet-4-5"
+DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-5"
+DEFAULT_GENERATION_MODEL = "claude-haiku-4-5"
+DEFAULT_CORRECTION_MODEL = "claude-opus-4-5"  # Step up for fixing errors
 
 
 @dataclass
 class ModelSelector:
     """Task-based model selection heuristics.
 
-    Maps operation purposes to appropriate models. Can be overridden
-    per-task in the future via `cf tasks set provider <id> <provider>`.
+    Maps operation purposes to appropriate models. Model names can be
+    overridden via environment variables:
+    - CODEFRAME_PLANNING_MODEL
+    - CODEFRAME_EXECUTION_MODEL
+    - CODEFRAME_GENERATION_MODEL
+    - CODEFRAME_CORRECTION_MODEL
     """
 
-    planning_model: str = "claude-sonnet-4-20250514"
-    execution_model: str = "claude-sonnet-4-20250514"
-    generation_model: str = "claude-haiku-4-20250514"
+    planning_model: str = ""
+    execution_model: str = ""
+    generation_model: str = ""
+    correction_model: str = ""
+
+    def __post_init__(self):
+        """Load model names from environment or use defaults."""
+        self.planning_model = os.getenv(
+            "CODEFRAME_PLANNING_MODEL", DEFAULT_PLANNING_MODEL
+        )
+        self.execution_model = os.getenv(
+            "CODEFRAME_EXECUTION_MODEL", DEFAULT_EXECUTION_MODEL
+        )
+        self.generation_model = os.getenv(
+            "CODEFRAME_GENERATION_MODEL", DEFAULT_GENERATION_MODEL
+        )
+        self.correction_model = os.getenv(
+            "CODEFRAME_CORRECTION_MODEL", DEFAULT_CORRECTION_MODEL
+        )
 
     def for_purpose(self, purpose: Purpose) -> str:
         """Get the model for a given purpose.
@@ -45,6 +74,8 @@ class ModelSelector:
             return self.execution_model
         elif purpose == Purpose.GENERATION:
             return self.generation_model
+        elif purpose == Purpose.CORRECTION:
+            return self.correction_model
         else:
             return self.execution_model  # Default fallback
 

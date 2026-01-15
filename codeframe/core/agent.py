@@ -12,8 +12,12 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Optional, Callable
+
+import re
 
 from codeframe.core.workspace import Workspace
 from codeframe.core.context import ContextLoader, TaskContext
@@ -23,6 +27,34 @@ from codeframe.core.gates import run as run_gates, GateResult, GateStatus
 from codeframe.core import blockers, events
 from codeframe.core.events import EventType
 from codeframe.adapters.llm import LLMProvider, Purpose
+
+
+def _extract_file_from_command(command: str) -> Optional[str]:
+    """Extract a file path from a verification command.
+
+    Examples:
+        "python task_tracker.py --help" -> "task_tracker.py"
+        "pytest tests/test_foo.py" -> "tests/test_foo.py"
+        "ruff check main.py" -> "main.py"
+        "python -m mymodule" -> None
+
+    Args:
+        command: The shell command to parse
+
+    Returns:
+        The file path if found, None otherwise
+    """
+    if not command:
+        return None
+
+    # Common patterns for Python file references
+    # Match .py files in the command
+    py_match = re.search(r'(\S+\.py)', command)
+    if py_match:
+        return py_match.group(1)
+
+    # No file found
+    return None
 
 
 class AgentStatus(str, Enum):
@@ -192,6 +224,7 @@ class Agent:
         max_context_tokens: int = 100_000,
         dry_run: bool = False,
         on_event: Optional[Callable[[str, dict], None]] = None,
+        debug: bool = False,
     ):
         """Initialize the agent.
 
@@ -201,16 +234,24 @@ class Agent:
             max_context_tokens: Maximum tokens for context loading
             dry_run: If True, don't make actual changes
             on_event: Optional callback for agent events
+            debug: If True, write detailed debug log to workspace
         """
         self.workspace = workspace
         self.llm = llm_provider
         self.max_context_tokens = max_context_tokens
         self.dry_run = dry_run
         self.on_event = on_event
+        self.debug = debug
 
         self.state = AgentState()
         self.context: Optional[TaskContext] = None
         self.executor: Optional[Executor] = None
+
+        # Debug logging setup
+        self._debug_log_path: Optional[Path] = None
+        self._failure_count = 0  # Track failures for verbose logging
+        if debug:
+            self._setup_debug_log()
 
     def run(self, task_id: str) -> AgentState:
         """Run the agent on a task.
@@ -323,8 +364,27 @@ class Agent:
 
         consecutive_failures = 0
 
+        self._debug_log(
+            f"Starting plan execution with {len(self.state.plan.steps)} steps",
+            level="INFO",
+            always=True,
+        )
+
         while self.state.current_step < len(self.state.plan.steps):
             step = self.state.plan.steps[self.state.current_step]
+
+            self._debug_log(
+                f"=== STEP {step.index} ({step.type.value}) ===",
+                level="INFO",
+                data={
+                    "target": step.target,
+                    "description": step.description,
+                    "details_length": len(step.details) if step.details else 0,
+                    "current_step_index": self.state.current_step,
+                    "consecutive_failures": consecutive_failures,
+                },
+                always=True,
+            )
 
             self._emit_event("step_started", {
                 "step": step.index,
@@ -335,6 +395,16 @@ class Agent:
             # Execute the step
             result = self.executor.execute_step(step, self.context)
             self.state.step_results.append(result)
+
+            self._debug_log(
+                f"Step {step.index} execution result: {result.status.value}",
+                level="INFO" if result.status == ExecutionStatus.SUCCESS else "WARN",
+                data={
+                    "output_preview": result.output[:200] if result.output else None,
+                    "error": result.error if result.error else None,
+                },
+                always=True,
+            )
 
             if result.status == ExecutionStatus.SUCCESS:
                 consecutive_failures = 0
@@ -408,6 +478,15 @@ class Agent:
 
             elif result.status == ExecutionStatus.FAILED:
                 consecutive_failures += 1
+                self._failure_count += 1  # Track for debug logging verbosity
+
+                self._debug_log(
+                    f"STEP FAILED: consecutive_failures={consecutive_failures}, total_failures={self._failure_count}",
+                    level="WARN",
+                    data={"error": result.error},
+                    always=True,
+                )
+
                 self._emit_event("step_failed", {
                     "step": step.index,
                     "error": result.error[:200],
@@ -417,17 +496,31 @@ class Agent:
                 # When verification fails (e.g., syntax error), we need to fix the TARGET file
                 # not "self-correct" the verification step itself
                 if step.type == StepType.VERIFICATION:
-                    # Create a FILE_EDIT step to fix the target file
-                    fix_step = PlanStep(
-                        index=step.index,
-                        type=StepType.FILE_EDIT,
-                        target=step.target,
-                        description=f"Fix {step.target} - {result.error[:100]}",
-                        details=f"The verification found an error: {result.error}. Fix this error.",
-                        depends_on=[],
-                    )
-                    # Replace step with the fix step for self-correction
-                    step = fix_step
+                    # Extract the actual file path from the verification command
+                    # e.g., "python task_tracker.py --help" -> "task_tracker.py"
+                    file_path = _extract_file_from_command(step.target)
+
+                    if file_path:
+                        # Create a FILE_EDIT step to fix the target file
+                        fix_step = PlanStep(
+                            index=step.index,
+                            type=StepType.FILE_EDIT,
+                            target=file_path,
+                            description=f"Fix {file_path} - {result.error[:100]}",
+                            details=f"The verification command '{step.target}' failed with error: {result.error}. Fix this error in {file_path}.",
+                            depends_on=[],
+                        )
+                        # Replace step with the fix step for self-correction
+                        step = fix_step
+                    else:
+                        # Can't determine which file to fix, create blocker
+                        self._debug_log(
+                            f"Cannot extract file path from verification command: {step.target}",
+                            level="WARN",
+                            always=True,
+                        )
+                        self._create_blocker_from_failure(step, result)
+                        return
 
                 # Classify the error
                 error_type = self._classify_error(result.error)
@@ -487,6 +580,11 @@ class Agent:
 
                     # Give up on this step if too many consecutive failures
                     if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                        self._debug_log(
+                            f"GIVING UP: Too many consecutive failures ({consecutive_failures})",
+                            level="ERROR",
+                            always=True,
+                        )
                         self.state.status = AgentStatus.FAILED
                         self._emit_event("execution_failed", {
                             "reason": "Too many consecutive failures after self-correction",
@@ -494,11 +592,23 @@ class Agent:
                         return
 
                     # Skip this step and continue to the next
+                    self._debug_log(
+                        f"Skipping failed step {step.index}, advancing to next step",
+                        level="WARN",
+                        always=True,
+                    )
                     self.state.current_step += 1
 
             elif result.status == ExecutionStatus.SKIPPED:
+                self._debug_log(f"Step {step.index} SKIPPED", level="INFO", always=True)
                 self._emit_event("step_skipped", {"step": step.index})
                 self.state.current_step += 1
+
+        self._debug_log(
+            f"Plan execution completed. Final step index: {self.state.current_step}",
+            level="INFO",
+            always=True,
+        )
 
     def _run_incremental_verification(self) -> Optional[GateResult]:
         """Run quick verification after file changes."""
@@ -650,6 +760,18 @@ class Agent:
             "error": result.error[:200],
         })
 
+        self._debug_log(
+            f"SELF-CORRECTION attempt {attempt} for step {step.index}",
+            level="INFO",
+            data={
+                "step_type": step.type.value,
+                "target": step.target,
+                "description": step.description,
+                "error": result.error,
+            },
+            always=True,
+        )
+
         prompt = f"""A code execution step failed. Analyze the error and provide a corrected approach.
 
 Step Description: {step.description}
@@ -670,15 +792,44 @@ Please provide a corrected version that fixes this error. Consider:
 
 Respond with ONLY the corrected code/content, no explanation."""
 
+        # Log the full prompt for debugging
+        self._debug_log_llm_interaction(
+            f"Self-correction attempt {attempt} for step {step.index}",
+            prompt,
+        )
+
         try:
+            # Use CORRECTION purpose to step up to a stronger model (Opus)
+            # for better error analysis and code fixing
+            correction_model = self.llm.get_model(Purpose.CORRECTION)
+            self._debug_log(
+                f"Using stepped-up model for self-correction: {correction_model}",
+                level="INFO",
+                always=True,
+            )
+
             response = self.llm.complete(
                 messages=[{"role": "user", "content": prompt}],
-                purpose=Purpose.GENERATION,
+                purpose=Purpose.CORRECTION,
                 max_tokens=4000,
                 temperature=0.0,
             )
 
             corrected_details = response.content.strip()
+
+            # Log the full response for debugging
+            self._debug_log_llm_interaction(
+                f"Self-correction response {attempt} for step {step.index}",
+                prompt,
+                response=corrected_details,
+            )
+
+            self._debug_log(
+                f"Self-correction LLM response received ({len(corrected_details)} chars)",
+                level="DEBUG",
+                data={"first_100_chars": corrected_details[:100]},
+                always=True,
+            )
 
             # Create a corrected step with the new details
             corrected_step = PlanStep(
@@ -691,7 +842,23 @@ Respond with ONLY the corrected code/content, no explanation."""
             )
 
             # Re-execute with corrected step
+            self._debug_log(
+                f"Executing corrected step {step.index}",
+                level="DEBUG",
+                always=True,
+            )
             corrected_result = self.executor.execute_step(corrected_step, self.context)
+
+            self._debug_log(
+                f"Corrected step result: {corrected_result.status.value}",
+                level="INFO",
+                data={
+                    "success": corrected_result.status == ExecutionStatus.SUCCESS,
+                    "error": corrected_result.error if corrected_result.error else None,
+                    "output": corrected_result.output[:200] if corrected_result.output else None,
+                },
+                always=True,
+            )
 
             self._emit_event("self_correction_completed", {
                 "step": step.index,
@@ -702,6 +869,11 @@ Respond with ONLY the corrected code/content, no explanation."""
             return corrected_result
 
         except Exception as e:
+            self._debug_log(
+                f"Self-correction EXCEPTION: {str(e)}",
+                level="ERROR",
+                always=True,
+            )
             self._emit_event("self_correction_failed", {
                 "step": step.index,
                 "attempt": attempt,
@@ -829,3 +1001,84 @@ Question:"""
             )
         except Exception:
             pass  # Don't fail on event emission
+
+    def _setup_debug_log(self) -> None:
+        """Set up the debug log file in workspace directory."""
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self._debug_log_path = self.workspace.repo_path / f".codeframe_debug_{timestamp}.log"
+
+        # Write header
+        with open(self._debug_log_path, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write("CodeFRAME Agent Debug Log\n")
+            f.write(f"Started: {datetime.now(timezone.utc).isoformat()}\n")
+            f.write(f"Workspace: {self.workspace.id}\n")
+            f.write(f"Repo Path: {self.workspace.repo_path}\n")
+            f.write("=" * 80 + "\n\n")
+
+    def _debug_log(
+        self,
+        message: str,
+        level: str = "INFO",
+        data: Optional[dict] = None,
+        always: bool = False,
+    ) -> None:
+        """Write to the debug log file.
+
+        Args:
+            message: Log message
+            level: Log level (INFO, WARN, ERROR, DEBUG)
+            data: Optional structured data to include
+            always: If True, log even if failure count is low
+        """
+        if not self._debug_log_path:
+            return
+
+        # Only log detailed info after first failure, unless always=True
+        if not always and self._failure_count == 0 and level == "DEBUG":
+            return
+
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        line = f"[{timestamp}] [{level}] {message}\n"
+
+        with open(self._debug_log_path, "a") as f:
+            f.write(line)
+            if data:
+                for key, value in data.items():
+                    # Truncate long values for readability
+                    val_str = str(value)
+                    if len(val_str) > 500:
+                        val_str = val_str[:500] + "... [TRUNCATED]"
+                    f.write(f"  {key}: {val_str}\n")
+                f.write("\n")
+
+    def _debug_log_llm_interaction(
+        self,
+        label: str,
+        prompt: str,
+        response: Optional[str] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Log a full LLM interaction (prompt + response) for debugging."""
+        if not self._debug_log_path:
+            return
+
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+
+        with open(self._debug_log_path, "a") as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"[{timestamp}] LLM INTERACTION: {label}\n")
+            f.write(f"{'='*60}\n\n")
+
+            f.write(f"--- PROMPT ({len(prompt)} chars) ---\n")
+            f.write(prompt)
+            f.write("\n\n")
+
+            if response:
+                f.write(f"--- RESPONSE ({len(response)} chars) ---\n")
+                f.write(response)
+                f.write("\n\n")
+            elif error:
+                f.write(f"--- ERROR ---\n{error}\n\n")
+
+            f.write(f"{'='*60}\n\n")

@@ -448,6 +448,19 @@ class Executor:
         """
         target = step.target
 
+        # Check for common planner mistakes - these are step types, not valid targets
+        invalid_targets = ("shell_command", "file_edit", "file_create", "verification")
+        if target in invalid_targets:
+            return StepResult(
+                step=step,
+                status=ExecutionStatus.FAILED,
+                error=(
+                    f"Invalid verification target '{target}'. "
+                    f"The target should be a command to run (e.g., 'python script.py --help') "
+                    f"or a file path to verify, not the step type name."
+                ),
+            )
+
         # If target is a Python file, verify it exists and check syntax
         if target.endswith(".py"):
             file_path = self.repo_path / target

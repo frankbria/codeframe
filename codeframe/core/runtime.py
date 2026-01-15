@@ -9,11 +9,15 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
+
 from codeframe.core.state_machine import TaskStatus
 from codeframe.core import tasks, events
+
+if TYPE_CHECKING:
+    from codeframe.core.agent import AgentState
 
 
 def _utc_now() -> datetime:
@@ -502,6 +506,7 @@ def execute_agent(
     workspace: Workspace,
     run: Run,
     dry_run: bool = False,
+    debug: bool = False,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -512,6 +517,7 @@ def execute_agent(
         workspace: Target workspace
         run: Run to execute
         dry_run: If True, don't make actual changes
+        debug: If True, write detailed debug log to workspace
 
     Returns:
         Final AgentState after execution
@@ -520,7 +526,7 @@ def execute_agent(
         ValueError: If ANTHROPIC_API_KEY is not set
     """
     import os
-    from codeframe.core.agent import Agent, AgentState, AgentStatus
+    from codeframe.core.agent import Agent, AgentStatus
     from codeframe.adapters.llm import get_provider
 
     # Get LLM provider
@@ -547,6 +553,7 @@ def execute_agent(
         llm_provider=provider,
         dry_run=dry_run,
         on_event=on_agent_event,
+        debug=debug,
     )
 
     state = agent.run(run.task_id)
