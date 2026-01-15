@@ -413,6 +413,22 @@ class Agent:
                     "error": result.error[:200],
                 })
 
+                # Special handling for verification step failures
+                # When verification fails (e.g., syntax error), we need to fix the TARGET file
+                # not "self-correct" the verification step itself
+                if step.type == StepType.VERIFICATION:
+                    # Create a FILE_EDIT step to fix the target file
+                    fix_step = PlanStep(
+                        index=step.index,
+                        type=StepType.FILE_EDIT,
+                        target=step.target,
+                        description=f"Fix {step.target} - {result.error[:100]}",
+                        details=f"The verification found an error: {result.error}. Fix this error.",
+                        depends_on=[],
+                    )
+                    # Replace step with the fix step for self-correction
+                    step = fix_step
+
                 # Classify the error
                 error_type = self._classify_error(result.error)
 
