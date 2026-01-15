@@ -21,6 +21,7 @@ from typing import Callable, Optional
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core import events, tasks
 from codeframe.core.dependency_graph import create_execution_plan, CycleDetectedError
+from codeframe.core.dependency_analyzer import analyze_dependencies, apply_inferred_dependencies
 from codeframe.core.runtime import RunStatus, get_active_run, get_run
 
 
@@ -161,7 +162,42 @@ def start_batch(
     _save_batch(workspace, batch)
 
     # Execute based on strategy
-    if strategy == "parallel" and max_parallel > 1:
+    if strategy == "auto":
+        # Use LLM to infer dependencies, then execute in parallel
+        try:
+            print(f"\nAnalyzing task dependencies with LLM...")
+            dependencies = analyze_dependencies(workspace, task_ids)
+
+            # Show inferred dependencies
+            deps_with_values = {k: v for k, v in dependencies.items() if v}
+            if deps_with_values:
+                print(f"Inferred dependencies:")
+                for tid, deps in deps_with_values.items():
+                    task = tasks.get(workspace, tid)
+                    task_title = task.title[:40] if task else tid[:8]
+                    dep_titles = []
+                    for d in deps:
+                        dep_task = tasks.get(workspace, d)
+                        dep_titles.append(dep_task.title[:30] if dep_task else d[:8])
+                    print(f"  {task_title} <- {', '.join(dep_titles)}")
+            else:
+                print(f"No dependencies inferred - tasks appear independent")
+
+            # Apply dependencies temporarily for this execution
+            # (doesn't persist to database unless explicitly requested)
+            apply_inferred_dependencies(workspace, dependencies)
+
+            # Execute with parallel strategy
+            _execute_parallel(workspace, batch, on_event)
+        except CycleDetectedError as e:
+            print(f"Error: {e}")
+            print(f"Falling back to serial execution")
+            _execute_serial(workspace, batch, on_event)
+        except Exception as e:
+            print(f"Dependency analysis failed: {e}")
+            print(f"Falling back to serial execution")
+            _execute_serial(workspace, batch, on_event)
+    elif strategy == "parallel" and max_parallel > 1:
         try:
             _execute_parallel(workspace, batch, on_event)
         except CycleDetectedError as e:

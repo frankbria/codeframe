@@ -1065,7 +1065,7 @@ def batch_run(
         "serial",
         "--strategy",
         "-s",
-        help="Execution strategy: serial or parallel",
+        help="Execution strategy: serial, parallel, or auto (LLM-inferred dependencies)",
     ),
     max_parallel: int = typer.Option(
         4,
