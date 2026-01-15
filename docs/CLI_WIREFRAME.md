@@ -245,7 +245,7 @@ Each command:
 
 ---
 
-### `codeframe work batch <task_ids...>` (Phase 1)
+### `codeframe work batch run <task_ids...>` (Phase 1)
 **Purpose:** Execute multiple tasks in sequence (or parallel in Phase 2).
 
 **CLI module:**
@@ -492,8 +492,8 @@ Output includes:
 8) patch export (preferred before commit)
 9) checkpoint + summary
 
-### Phase 1: Batch Execution (NEXT)
-10) `work batch` - serial execution of multiple tasks
+### Phase 1: Batch Execution (COMPLETE)
+10) `work batch run` - serial execution of multiple tasks
 11) `work batch status` - batch status monitoring
 12) `work batch cancel` - batch cancellation
 

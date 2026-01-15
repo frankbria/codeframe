@@ -1,6 +1,6 @@
 # Batch Execution Implementation Plan
 
-**Status**: Planning
+**Status**: Phase 1 Complete
 **Created**: 2025-01-15
 **Last Updated**: 2025-01-15
 
@@ -30,9 +30,9 @@ Enable users to submit multiple tasks to the coding agent at once. A conductor o
 ### Component Hierarchy
 
 ```
-cf work batch <task-ids...>
+cf work batch run <task-ids...>
     │
-    └── conductor.start_batch()          # NEW: Batch orchestrator
+    └── conductor.start_batch()          # Batch orchestrator
             │
             ├── Create BatchRun record
             ├── Build execution plan
@@ -112,15 +112,15 @@ CREATE TABLE IF NOT EXISTS batch_runs (
 
 ## CLI Commands
 
-### Phase 1 Commands
+### Phase 1 Commands (Implemented)
 
 ```bash
 # Start batch (blocks until complete)
-cf work batch <task-ids...>
-cf work batch --all-ready
-cf work batch t1 t2 t3 --strategy serial    # Explicit serial (default)
-cf work batch t1 t2 t3 --strategy parallel  # Force parallel
-cf work batch --dry-run                     # Preview execution plan
+cf work batch run <task-ids...>
+cf work batch run --all-ready
+cf work batch run t1 t2 t3 --strategy serial    # Explicit serial (default)
+cf work batch run t1 t2 t3 --strategy parallel  # Force parallel (runs serial in Phase 1)
+cf work batch run --dry-run                     # Preview execution plan
 
 # Monitor batch
 cf work batch status                        # List active/recent batches
@@ -190,7 +190,7 @@ class EventType:
    - Handle failures (continue vs stop)
 
 4. **Add CLI commands** (`cli/app.py`)
-   - `cf work batch` - start batch
+   - `cf work batch run` - start batch
    - `cf work batch status` - show status
    - `cf work batch cancel` - cancel batch
 
@@ -202,11 +202,11 @@ class EventType:
    - Integration test with mock subprocess
 
 #### Acceptance Criteria
-- [ ] `cf work batch t1 t2 t3` executes tasks sequentially
-- [ ] `cf work batch status` shows progress
-- [ ] `cf work batch cancel <id>` stops execution
-- [ ] Events emitted for batch lifecycle
-- [ ] Batch state persisted to SQLite
+- [x] `cf work batch run t1 t2 t3` executes tasks sequentially
+- [x] `cf work batch status` shows progress
+- [x] `cf work batch cancel <id>` stops execution
+- [x] Events emitted for batch lifecycle
+- [x] Batch state persisted to SQLite
 
 ### Phase 2: Parallelization & Dependency Analysis
 
@@ -407,7 +407,7 @@ User can:
 ### Batch Start
 
 ```
-$ cf work batch t1 t2 t3
+$ cf work batch run t1 t2 t3
 
 Starting batch 7a3b...
 Strategy: serial

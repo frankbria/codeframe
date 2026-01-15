@@ -1041,12 +1041,18 @@ def work_status(
 
 
 # =============================================================================
-# Batch execution commands
+# Batch execution commands (subcommand group: cf work batch <cmd>)
 # =============================================================================
 
+batch_app = typer.Typer(
+    name="batch",
+    help="Batch task execution",
+    no_args_is_help=True,
+)
 
-@work_app.command("batch")
-def work_batch(
+
+@batch_app.command("run")
+def batch_run(
     task_ids: Optional[list[str]] = typer.Argument(
         None, help="Task IDs to execute (space-separated)"
     ),
@@ -1090,10 +1096,10 @@ def work_batch(
     Use --all-ready to process all READY tasks, or specify task IDs.
 
     Example:
-        codeframe work batch task1 task2 task3
-        codeframe work batch --all-ready
-        codeframe work batch --all-ready --strategy serial
-        codeframe work batch task1 task2 --dry-run
+        codeframe work batch run task1 task2 task3
+        codeframe work batch run --all-ready
+        codeframe work batch run --all-ready --strategy serial
+        codeframe work batch run task1 task2 --dry-run
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, conductor
@@ -1180,8 +1186,8 @@ def work_batch(
         raise typer.Exit(1)
 
 
-@work_app.command("batch-status")
-def work_batch_status(
+@batch_app.command("status")
+def batch_status(
     batch_id: Optional[str] = typer.Argument(
         None, help="Batch ID to check (shows recent batches if omitted)"
     ),
@@ -1195,8 +1201,8 @@ def work_batch_status(
     """Show batch execution status.
 
     Example:
-        codeframe work batch-status           # Show recent batches
-        codeframe work batch-status abc123    # Show specific batch
+        codeframe work batch status           # Show recent batches
+        codeframe work batch status abc123    # Show specific batch
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import conductor, tasks as tasks_module
@@ -1301,8 +1307,8 @@ def work_batch_status(
         raise typer.Exit(1)
 
 
-@work_app.command("batch-cancel")
-def work_batch_cancel(
+@batch_app.command("cancel")
+def batch_cancel(
     batch_id: str = typer.Argument(..., help="Batch ID to cancel (can be partial)"),
     workspace_path: Optional[Path] = typer.Option(
         None,
@@ -1314,7 +1320,7 @@ def work_batch_cancel(
     """Cancel a running batch.
 
     Example:
-        codeframe work batch-cancel abc123
+        codeframe work batch cancel abc123
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import conductor
@@ -1347,6 +1353,10 @@ def work_batch_cancel(
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+
+# Add batch subcommand group to work
+work_app.add_typer(batch_app, name="batch")
 
 
 # Events commands
