@@ -1,9 +1,9 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Agent%20Implementation%20Complete-brightgreen)
+![Status](https://img.shields.io/badge/status-v2%20Phase%202%20Complete-brightgreen)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-1498%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-3043%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
@@ -23,9 +23,41 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ---
 
-## What's New (Updated: 2026-01-14)
+## What's New (Updated: 2026-01-15)
 
-### v2 Agent Implementation Complete
+### v2 Phase 2 Complete: Parallel Batch Execution
+
+**Multi-task batch execution** — Run multiple tasks with intelligent parallelization.
+
+```bash
+# Execute multiple tasks in parallel
+cf work batch run task1 task2 task3 --strategy parallel
+
+# Execute all READY tasks with LLM-inferred dependencies
+cf work batch run --all-ready --strategy auto
+
+# Automatic retry on failure
+cf work batch run --all-ready --retry 3
+```
+
+**New Batch Capabilities:**
+- **Parallel Execution** — ThreadPoolExecutor-based concurrent task execution
+- **Dependency Graph** — DAG-based task ordering with cycle detection
+- **LLM Dependency Inference** — `--strategy auto` analyzes task descriptions to infer dependencies
+- **Automatic Retry** — `--retry N` retries failed tasks up to N times
+- **Batch Resume** — `cf work batch resume <batch-id>` re-runs failed/blocked tasks
+
+**New Modules:**
+- `codeframe/core/conductor.py` — Batch orchestration with worker pool
+- `codeframe/core/dependency_graph.py` — DAG operations and execution planning
+- `codeframe/core/dependency_analyzer.py` — LLM-based dependency inference
+
+---
+
+### Previous: v2 Agent Implementation
+
+<details>
+<summary>Agent System (2026-01-14)</summary>
 
 **Autonomous Agent Execution** — The full agent loop is now functional via the CLI.
 
@@ -37,7 +69,7 @@ cf work start <task-id> --execute
 cf work start <task-id> --execute --dry-run
 ```
 
-**New Components:**
+**Components:**
 - **LLM Adapter Interface** — Pluggable provider system with Anthropic Claude support
 - **Task Context Loader** — Intelligent codebase scanning with relevance scoring
 - **Implementation Planner** — LLM-powered task decomposition into executable steps
@@ -49,6 +81,8 @@ cf work start <task-id> --execute --dry-run
 - Automatic blocker creation when agent needs human input
 - Incremental verification with ruff after each file change
 - State persistence for pause/resume across sessions
+
+</details>
 
 ---
 
@@ -266,6 +300,18 @@ cf work stop <id>           # Stop current run
 cf work resume <id>         # Resume blocked work
 ```
 
+### Batch Execution
+```bash
+cf work batch run <id1> <id2> ...     # Execute multiple tasks
+cf work batch run --all-ready         # Execute all READY tasks
+cf work batch run --strategy parallel # Parallel execution
+cf work batch run --strategy auto     # LLM-inferred dependencies
+cf work batch run --retry 3           # Auto-retry failed tasks
+cf work batch status [batch_id]       # Show batch status
+cf work batch cancel <batch_id>       # Cancel running batch
+cf work batch resume <batch_id>       # Re-run failed tasks
+```
+
 ### Blockers
 ```bash
 cf blocker list             # List open blockers
@@ -376,7 +422,8 @@ uv run pytest --cov=codeframe --cov-report=html
 
 ### Test Statistics
 
-- **Total Tests**: 1498+
+- **Total Tests**: 3000+
+  - Core module tests: ~400
   - Unit tests: ~900 (Python + TypeScript)
   - Integration tests: ~500
   - E2E tests: 85+ (Backend + Playwright)
@@ -432,14 +479,20 @@ We welcome contributions! To get started:
 ## Roadmap
 
 ### Completed
-- ✅ CLI-first Golden Path workflow
+- ✅ **Phase 0**: CLI-first Golden Path workflow
+- ✅ **Phase 1**: Batch execution (serial), status monitoring, cancellation
+- ✅ **Phase 2**: Parallel execution, dependency graphs, LLM inference, auto-retry
 - ✅ Autonomous agent execution with blocker detection
 - ✅ Verification gates integration
 - ✅ Task-based model selection
 
+### In Progress (Phase 3: Observability)
+- **Live streaming**: `cf work batch follow` for real-time terminal output
+- **WebSocket adapter**: Batch events for dashboard integration
+- **Progress estimation**: ETA and completion forecasting
+
 ### Planned Features
 - **Per-task model override**: `cf tasks set provider <id> <provider>`
-- **Multi-file parallel execution**: Agent works on multiple files simultaneously
 - **LLM Provider Abstraction**: Support for OpenAI, Gemini, local models
 - **Advanced Git Workflows**: PR creation, branch management, merge conflict resolution
 - **Custom Agent Types**: Plugin system for domain-specific agents

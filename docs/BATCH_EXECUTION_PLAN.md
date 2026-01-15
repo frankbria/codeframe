@@ -1,8 +1,8 @@
 # Batch Execution Implementation Plan
 
-**Status**: Phase 1 Complete
+**Status**: Phase 2 Complete
 **Created**: 2025-01-15
-**Last Updated**: 2025-01-15
+**Last Updated**: 2026-01-15
 
 This document outlines the implementation plan for multi-task batch execution in CodeFRAME v2.
 
@@ -246,11 +246,11 @@ class EventType:
    - Let user review before committing
 
 #### Acceptance Criteria
-- [ ] Tasks with `depends_on=[]` run in parallel
-- [ ] Tasks with dependencies wait for predecessors
-- [ ] `--strategy auto` infers and uses dependencies
-- [ ] `--analyze` shows graph preview
-- [ ] Max parallel limit respected
+- [x] Tasks with `depends_on=[]` run in parallel
+- [x] Tasks with dependencies wait for predecessors
+- [x] `--strategy auto` infers and uses dependencies
+- [ ] `--analyze` shows graph preview (moved to Phase 3)
+- [x] Max parallel limit respected
 
 ### Phase 3: Observability & Streaming
 

@@ -1,10 +1,10 @@
 # CodeFRAME Development Guidelines (v2 Reset)
 
-Last updated: 2026-01-14
+Last updated: 2026-01-15
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: v2 Agent Implementation Complete** - The full agent loop is now functional via CLI.
+**Status: v2 Phase 2 Complete** - Agent execution + parallel batch orchestration with LLM-inferred dependencies.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -36,6 +36,11 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 - **Blocker detection**: Agent creates blockers when stuck
 - **Verification gates**: Ruff checks after file changes
 - **State persistence**: Pause/resume across sessions
+- **Batch execution**: `cf work batch run` with serial/parallel/auto strategies
+- **Task dependencies**: `depends_on` field with dependency graph analysis
+- **LLM dependency inference**: `--strategy auto` analyzes task descriptions
+- **Automatic retry**: `--retry N` for failed task recovery
+- **Batch resume**: Re-run failed/blocked tasks from previous batches
 
 ### v2 Architecture (current)
 - **Core-first**: Domain logic lives in `codeframe/core/` (headless, no FastAPI imports)
@@ -58,9 +63,12 @@ codeframe/
 │   ├── planner.py          # LLM-powered implementation planning
 │   ├── executor.py         # Code execution engine with rollback
 │   ├── context.py          # Task context loader with relevance scoring
-│   ├── tasks.py            # Task management and state machine
+│   ├── tasks.py            # Task management with depends_on field
 │   ├── blockers.py         # Human-in-the-loop blocker system
 │   ├── runtime.py          # Run lifecycle management
+│   ├── conductor.py        # Batch orchestration with worker pool
+│   ├── dependency_graph.py # DAG operations and execution planning
+│   ├── dependency_analyzer.py # LLM-based dependency inference
 │   ├── gates.py            # Verification gates (ruff, pytest)
 │   ├── workspace.py        # Workspace initialization
 │   ├── prd.py              # PRD management
@@ -84,6 +92,10 @@ tests/
 │   ├── test_executor.py
 │   ├── test_planner.py
 │   ├── test_context.py
+│   ├── test_conductor.py
+│   ├── test_dependency_graph.py
+│   ├── test_dependency_analyzer.py
+│   ├── test_task_dependencies.py
 │   └── ...
 └── adapters/
     └── test_llm.py
@@ -147,6 +159,9 @@ At all times:
 | Executor | `core/executor.py` | File ops, shell commands, rollback |
 | Agent | `core/agent.py` | Orchestration loop, blocker detection |
 | Runtime | `core/runtime.py` | Run lifecycle, agent invocation |
+| Conductor | `core/conductor.py` | Batch orchestration, worker pool |
+| Dependency Graph | `core/dependency_graph.py` | DAG operations, topological sort |
+| Dependency Analyzer | `core/dependency_analyzer.py` | LLM-based dependency inference |
 
 ### Model Selection Strategy
 Task-based heuristic via `Purpose` enum:
@@ -206,12 +221,24 @@ cf tasks list
 cf tasks list --status READY
 cf tasks show <id>
 
-# Work execution
+# Work execution (single task)
 cf work start <task-id>                    # Creates run record
 cf work start <task-id> --execute          # Runs AI agent
 cf work start <task-id> --execute --dry-run  # Preview changes
 cf work stop <task-id>                     # Cancel stale run
 cf work resume <task-id>                   # Resume blocked work
+
+# Batch execution (multiple tasks)
+cf work batch run <id1> <id2> ...          # Execute multiple tasks
+cf work batch run --all-ready              # All READY tasks
+cf work batch run --strategy serial        # Serial (default)
+cf work batch run --strategy parallel      # Parallel execution
+cf work batch run --strategy auto          # LLM-inferred dependencies
+cf work batch run --max-parallel 4         # Concurrent limit
+cf work batch run --retry 3                # Auto-retry failures
+cf work batch status [batch_id]            # Show batch status
+cf work batch cancel <batch_id>            # Cancel running batch
+cf work batch resume <batch_id>            # Re-run failed tasks
 
 # Blockers
 cf blocker list
@@ -288,7 +315,26 @@ If you are unsure which direction to take, default to:
 
 ---
 
-## Recent Updates (2026-01-14)
+## Recent Updates (2026-01-15)
+
+### Phase 2 Complete: Parallel Batch Execution
+All 6 Phase 2 items from `CLI_WIREFRAME.md` are done:
+
+1. ✅ `work batch resume <batch-id>` - re-run failed/blocked tasks
+2. ✅ `depends_on` field on Task model
+3. ✅ Dependency graph analysis (DAG, cycle detection, topological sort)
+4. ✅ True parallel execution with ThreadPoolExecutor worker pool
+5. ✅ `--strategy auto` with LLM-based dependency inference
+6. ✅ `--retry N` automatic retry of failed tasks
+
+### Key Phase 2 Modules
+- **conductor.py**: Batch orchestration with serial/parallel/auto strategies
+- **dependency_graph.py**: DAG operations, level-based grouping for parallelization
+- **dependency_analyzer.py**: LLM analyzes task descriptions to infer dependencies
+
+---
+
+## Previous Updates (2026-01-14)
 
 ### Agent Implementation Complete
 All 8 implementation tasks from `AGENT_IMPLEMENTATION_TASKS.md` are done:
