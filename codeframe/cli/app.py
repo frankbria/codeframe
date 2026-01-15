@@ -618,6 +618,7 @@ def tasks_list(
         table.add_column("ID", style="dim", max_width=8)
         table.add_column("Status", style="cyan")
         table.add_column("Pri", justify="center")
+        table.add_column("Deps", justify="center", style="dim")
         table.add_column("Title", style="white")
 
         status_colors = {
@@ -631,11 +632,21 @@ def tasks_list(
 
         for task in task_list:
             status_style = status_colors.get(task.status, "white")
+            # Format dependencies: show short IDs or count
+            deps = task.depends_on or []
+            if not deps:
+                deps_str = "-"
+            elif len(deps) <= 2:
+                deps_str = ", ".join(d[:6] for d in deps)
+            else:
+                deps_str = f"{len(deps)} tasks"
+
             table.add_row(
                 task.id[:8],
                 f"[{status_style}]{task.status.value}[/{status_style}]",
                 str(task.priority),
-                task.title[:60] + ("..." if len(task.title) > 60 else ""),
+                deps_str,
+                task.title[:55] + ("..." if len(task.title) > 55 else ""),
             )
 
         console.print(table)
