@@ -567,7 +567,8 @@ def tasks_generate(
         console.print()
         console.print("Next steps:")
         console.print("  codeframe tasks list              View all tasks")
-        console.print("  codeframe tasks set status <id> READY   Mark task ready")
+        console.print("  codeframe tasks set status READY <id>   Mark task ready")
+        console.print("  codeframe tasks set status READY --all  Mark all tasks ready")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
@@ -658,19 +659,30 @@ def tasks_list(
 @tasks_app.command("set")
 def tasks_set(
     attribute: str = typer.Argument(..., help="Attribute to set (e.g., 'status')"),
-    task_id: str = typer.Argument(..., help="Task ID (can be partial)"),
     value: str = typer.Argument(..., help="New value"),
+    task_id: Optional[str] = typer.Argument(None, help="Task ID (can be partial, omit with --all)"),
     repo_path: Optional[Path] = typer.Option(
         None,
         "--workspace", "-w",
         help="Workspace path (defaults to current directory)",
     ),
+    all_tasks_flag: bool = typer.Option(
+        False,
+        "--all",
+        help="Apply to all tasks (or filtered by --from)",
+    ),
+    from_status: Optional[str] = typer.Option(
+        None,
+        "--from",
+        help="Only update tasks with this status (use with --all)",
+    ),
 ) -> None:
     """Set a task attribute.
 
     Example:
-        codeframe tasks set status abc123 READY
-        codeframe tasks set status abc123 in_progress
+        codeframe tasks set status READY abc123
+        codeframe tasks set status READY --all
+        codeframe tasks set status READY --all --from BACKLOG
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks
@@ -687,39 +699,75 @@ def tasks_set(
             console.print("Supported attributes: status")
             raise typer.Exit(1)
 
-        # Find task by ID (support partial match)
-        all_tasks = tasks.list_tasks(workspace)
-        matching = [t for t in all_tasks if t.id.startswith(task_id)]
-
-        if not matching:
-            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
-            raise typer.Exit(1)
-
-        if len(matching) > 1:
-            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
-            for t in matching:
-                console.print(f"  {t.id}: {t.title[:40]}")
-            console.print("Please provide a more specific ID.")
-            raise typer.Exit(1)
-
-        task = matching[0]
         new_status = parse_status(value)
+        all_workspace_tasks = tasks.list_tasks(workspace)
 
-        # Update status
-        old_status = task.status
-        updated = tasks.update_status(workspace, task.id, new_status)
+        # Determine which tasks to update
+        if all_tasks_flag:
+            # Bulk update mode
+            if from_status:
+                filter_status = parse_status(from_status)
+                matching = [t for t in all_workspace_tasks if t.status == filter_status]
+                if not matching:
+                    console.print(f"[yellow]No tasks with status {filter_status.value}[/yellow]")
+                    raise typer.Exit(0)
+            else:
+                matching = all_workspace_tasks
+                if not matching:
+                    console.print("[yellow]No tasks in workspace[/yellow]")
+                    raise typer.Exit(0)
+        elif task_id:
+            # Single task mode
+            matching = [t for t in all_workspace_tasks if t.id.startswith(task_id)]
+            if not matching:
+                console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+                raise typer.Exit(1)
+            if len(matching) > 1:
+                console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+                for t in matching:
+                    console.print(f"  {t.id}: {t.title[:40]}")
+                console.print("Please provide a more specific ID.")
+                raise typer.Exit(1)
+        else:
+            console.print("[red]Error:[/red] Specify a task ID or use --all")
+            raise typer.Exit(1)
 
-        # Emit event
-        emit_for_workspace(
-            workspace,
-            EventType.TASK_STATUS_CHANGED,
-            {"task_id": task.id, "old_status": old_status.value, "new_status": new_status.value},
-            print_event=False,
-        )
+        # Update tasks
+        updated_count = 0
+        skipped_count = 0
+        for task in matching:
+            if task.status == new_status:
+                skipped_count += 1
+                continue
 
-        console.print("[green]Task updated[/green]")
-        console.print(f"  {task.title[:50]}")
-        console.print(f"  Status: {old_status.value} -> {new_status.value}")
+            old_status = task.status
+            tasks.update_status(workspace, task.id, new_status)
+
+            emit_for_workspace(
+                workspace,
+                EventType.TASK_STATUS_CHANGED,
+                {
+                    "task_id": task.id,
+                    "old_status": old_status.value,
+                    "new_status": new_status.value,
+                },
+                print_event=False,
+            )
+            updated_count += 1
+
+        # Report results
+        if len(matching) == 1:
+            task = matching[0]
+            if updated_count:
+                console.print("[green]Task updated[/green]")
+                console.print(f"  {task.title[:50]}")
+                console.print(f"  Status: {task.status.value} -> {new_status.value}")
+            else:
+                console.print(f"[yellow]Task already {new_status.value}[/yellow]")
+        else:
+            console.print(f"[green]Updated {updated_count} tasks to {new_status.value}[/green]")
+            if skipped_count:
+                console.print(f"[dim]Skipped {skipped_count} (already {new_status.value})[/dim]")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
