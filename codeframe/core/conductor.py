@@ -286,6 +286,230 @@ def cancel_batch(workspace: Workspace, batch_id: str) -> BatchRun:
     return batch
 
 
+def resume_batch(
+    workspace: Workspace,
+    batch_id: str,
+    force: bool = False,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> BatchRun:
+    """Resume a batch by re-running failed/blocked tasks.
+
+    Args:
+        workspace: Target workspace
+        batch_id: Batch to resume
+        force: If True, re-run all tasks including completed ones
+        on_event: Optional callback for batch events
+
+    Returns:
+        Updated BatchRun with new results
+
+    Raises:
+        ValueError: If batch not found or not in a resumable state
+    """
+    batch = get_batch(workspace, batch_id)
+    if not batch:
+        raise ValueError(f"Batch not found: {batch_id}")
+
+    # Check if batch is in a resumable state
+    resumable_statuses = (
+        BatchStatus.PARTIAL,
+        BatchStatus.FAILED,
+        BatchStatus.CANCELLED,
+    )
+    if batch.status not in resumable_statuses:
+        raise ValueError(
+            f"Batch cannot be resumed (status={batch.status}). "
+            f"Only {', '.join(s.value for s in resumable_statuses)} batches can be resumed."
+        )
+
+    # Determine which tasks to re-run
+    if force:
+        # Re-run all tasks
+        tasks_to_run = batch.task_ids
+        print(f"Resuming batch {batch_id[:8]}... (force mode: re-running all {len(tasks_to_run)} tasks)")
+    else:
+        # Only re-run failed/blocked tasks
+        failed_statuses = {"FAILED", "BLOCKED"}
+        tasks_to_run = [
+            tid for tid in batch.task_ids
+            if batch.results.get(tid) in failed_statuses or tid not in batch.results
+        ]
+        if not tasks_to_run:
+            print(f"No failed or blocked tasks to resume in batch {batch_id[:8]}")
+            return batch
+        print(f"Resuming batch {batch_id[:8]}... (re-running {len(tasks_to_run)} failed/blocked tasks)")
+
+    # Emit batch resumed event
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_STARTED,  # Reuse BATCH_STARTED for resume
+        {
+            "batch_id": batch_id,
+            "task_ids": tasks_to_run,
+            "strategy": batch.strategy,
+            "task_count": len(tasks_to_run),
+            "is_resume": True,
+        },
+        print_event=True,
+    )
+
+    if on_event:
+        on_event("batch_resumed", {"batch_id": batch_id, "task_count": len(tasks_to_run)})
+
+    # Update status to running
+    batch.status = BatchStatus.RUNNING
+    batch.completed_at = None  # Clear completed_at since we're running again
+    _save_batch(workspace, batch)
+
+    # Execute the tasks
+    _execute_serial_resume(workspace, batch, tasks_to_run, on_event)
+
+    return batch
+
+
+def _execute_serial_resume(
+    workspace: Workspace,
+    batch: BatchRun,
+    tasks_to_run: list[str],
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> None:
+    """Execute a subset of tasks serially for resume.
+
+    Similar to _execute_serial but only runs specified tasks and
+    merges results with existing batch results.
+    """
+    completed_count = 0
+    failed_count = 0
+    blocked_count = 0
+
+    # Count existing successful results (tasks not being re-run)
+    for task_id in batch.task_ids:
+        if task_id not in tasks_to_run:
+            if batch.results.get(task_id) == RunStatus.COMPLETED.value:
+                completed_count += 1
+
+    for i, task_id in enumerate(tasks_to_run):
+        # Check if batch was cancelled
+        current_batch = get_batch(workspace, batch.id)
+        if current_batch and current_batch.status == BatchStatus.CANCELLED:
+            break
+
+        # Emit task queued event
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_TASK_QUEUED,
+            {"batch_id": batch.id, "task_id": task_id, "position": i + 1},
+            print_event=True,
+        )
+
+        # Get task info for display
+        task = tasks.get(workspace, task_id)
+        task_title = task.title if task else task_id
+        previous_status = batch.results.get(task_id, "N/A")
+
+        print(f"\n[{i + 1}/{len(tasks_to_run)}] Retrying task {task_id}: {task_title}")
+        print(f"      Previous status: {previous_status}")
+
+        # Emit task started event
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_TASK_STARTED,
+            {"batch_id": batch.id, "task_id": task_id, "is_retry": True},
+            print_event=True,
+        )
+
+        if on_event:
+            on_event("batch_task_started", {"task_id": task_id, "position": i + 1, "is_retry": True})
+
+        # Execute task via subprocess
+        result_status = _execute_task_subprocess(workspace, task_id)
+
+        # Record result (overwrites previous result)
+        batch.results[task_id] = result_status
+        _save_batch(workspace, batch)
+
+        # Emit appropriate event based on result
+        if result_status == RunStatus.COMPLETED.value:
+            completed_count += 1
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_TASK_COMPLETED,
+                {"batch_id": batch.id, "task_id": task_id},
+                print_event=True,
+            )
+            print(f"      ✓ Completed (was: {previous_status})")
+        elif result_status == RunStatus.BLOCKED.value:
+            blocked_count += 1
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_TASK_BLOCKED,
+                {"batch_id": batch.id, "task_id": task_id},
+                print_event=True,
+            )
+            print(f"      ⊘ Still blocked")
+        else:
+            failed_count += 1
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.BATCH_TASK_FAILED,
+                {"batch_id": batch.id, "task_id": task_id, "status": result_status},
+                print_event=True,
+            )
+            print(f"      ✗ Still failed: {result_status}")
+
+            # Note: resume doesn't stop on failure, always continues
+            # to give all failed tasks a chance
+
+        if on_event:
+            on_event("batch_task_completed", {"task_id": task_id, "status": result_status})
+
+    # Determine final batch status based on ALL results
+    total = len(batch.task_ids)
+
+    # Recount from results
+    final_completed = sum(1 for s in batch.results.values() if s == RunStatus.COMPLETED.value)
+    final_failed = sum(1 for s in batch.results.values() if s == RunStatus.FAILED.value)
+    final_blocked = sum(1 for s in batch.results.values() if s == RunStatus.BLOCKED.value)
+
+    if final_completed == total:
+        batch.status = BatchStatus.COMPLETED
+        event_type = events.EventType.BATCH_COMPLETED
+    elif final_completed == 0 and (final_failed > 0 or final_blocked > 0):
+        batch.status = BatchStatus.FAILED
+        event_type = events.EventType.BATCH_FAILED
+    elif final_completed > 0:
+        batch.status = BatchStatus.PARTIAL
+        event_type = events.EventType.BATCH_PARTIAL
+    else:
+        batch.status = BatchStatus.CANCELLED
+        event_type = events.EventType.BATCH_CANCELLED
+
+    batch.completed_at = _utc_now()
+    _save_batch(workspace, batch)
+
+    # Emit batch completion event
+    events.emit_for_workspace(
+        workspace,
+        event_type,
+        {
+            "batch_id": batch.id,
+            "completed": final_completed,
+            "failed": final_failed,
+            "blocked": final_blocked,
+            "total": total,
+            "is_resume": True,
+        },
+        print_event=True,
+    )
+
+    # Print summary
+    print(f"\nBatch resume {batch.status.value.lower()}: {final_completed}/{total} tasks completed")
+    if final_failed > 0:
+        print(f"  Failed: {final_failed}")
+    if final_blocked > 0:
+        print(f"  Blocked: {final_blocked}")
+
+
 def _execute_serial(
     workspace: Workspace,
     batch: BatchRun,

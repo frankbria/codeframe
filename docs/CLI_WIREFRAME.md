@@ -302,6 +302,31 @@ Each command:
 
 ---
 
+### `codeframe work batch resume <batch_id>` (Phase 2)
+**Purpose:** Re-run failed/blocked tasks from a previous batch.
+
+**Core calls:**
+- `codeframe.core.conductor.resume_batch(workspace_id, batch_id, force)`
+- `codeframe.core.events.emit(workspace_id, "BATCH_STARTED", payload)` with `is_resume=True`
+
+**CLI options:**
+- `--force, -f`: Re-run all tasks including completed ones
+
+**Behavior:**
+- Loads existing BatchRun record
+- Identifies tasks with FAILED or BLOCKED status
+- Re-executes only those tasks (or all with --force)
+- Merges new results into existing batch
+- Updates batch status based on final results
+
+**Example:**
+```bash
+cf work batch resume abc123           # Re-run failed/blocked only
+cf work batch resume abc123 --force   # Re-run all tasks
+```
+
+---
+
 ### `codeframe events tail`
 **Purpose:** Tail event log in terminal.
 
@@ -497,13 +522,13 @@ Output includes:
 11) `work batch status` - batch status monitoring
 12) `work batch cancel` - batch cancellation
 
-### Phase 2: Parallel Execution & Retry
-13) `depends_on` field on Task model
-14) Dependency graph analysis
-15) True parallel execution with worker pool
-16) `--strategy auto` with LLM-based dependency inference
-17) `work batch run --retry N` - automatic retry of failed tasks
-18) `work batch resume <batch-id>` - re-run failed/blocked tasks
+### Phase 2: Parallel Execution & Retry (IN PROGRESS)
+13) `work batch resume <batch-id>` - re-run failed/blocked tasks ✓ DONE
+14) `depends_on` field on Task model
+15) Dependency graph analysis
+16) True parallel execution with worker pool
+17) `--strategy auto` with LLM-based dependency inference
+18) `work batch run --retry N` - automatic retry of failed tasks
 
 ### Phase 3: Observability
 19) `work batch follow` - live streaming to terminal

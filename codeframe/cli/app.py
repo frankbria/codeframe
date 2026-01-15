@@ -1355,6 +1355,93 @@ def batch_cancel(
         raise typer.Exit(1)
 
 
+@batch_app.command("resume")
+def batch_resume(
+    batch_id: str = typer.Argument(..., help="Batch ID to resume (can be partial)"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Re-run all tasks, including completed ones",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Resume a batch by re-running failed/blocked tasks.
+
+    Re-executes tasks that failed or became blocked in a previous batch run.
+    Use --force to re-run all tasks including completed ones.
+
+    Example:
+        codeframe work batch resume abc123           # Re-run failed/blocked only
+        codeframe work batch resume abc123 --force  # Re-run all tasks
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import conductor
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find by partial ID
+        all_batches = conductor.list_batches(workspace, limit=100)
+        matching = [b for b in all_batches if b.id.startswith(batch_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[yellow]Warning:[/yellow] Multiple batches match '{batch_id}':")
+            for b in matching[:5]:
+                console.print(f"  - {b.id[:8]} ({b.status.value})")
+            console.print("Using the most recent match.")
+
+        batch = matching[0]
+
+        # Show what we're about to do
+        failed_count = sum(1 for s in batch.results.values() if s in ("FAILED", "BLOCKED"))
+        completed_count = sum(1 for s in batch.results.values() if s == "COMPLETED")
+
+        if not force and failed_count == 0:
+            console.print(f"[green]Batch {batch.id[:8]} has no failed/blocked tasks to resume.[/green]")
+            console.print(f"  Status: {batch.status.value}")
+            console.print(f"  Completed: {completed_count}/{len(batch.task_ids)}")
+            return
+
+        if force:
+            console.print(f"[cyan]Resuming batch {batch.id[:8]} (force mode)[/cyan]")
+            console.print(f"  Re-running all {len(batch.task_ids)} tasks")
+        else:
+            console.print(f"[cyan]Resuming batch {batch.id[:8]}[/cyan]")
+            console.print(f"  Re-running {failed_count} failed/blocked tasks")
+            console.print(f"  Keeping {completed_count} completed tasks")
+
+        # Execute resume
+        batch = conductor.resume_batch(workspace, batch.id, force=force)
+
+        # Show final status
+        if batch.status == conductor.BatchStatus.COMPLETED:
+            console.print(f"\n[green]✓ Batch completed successfully![/green]")
+        elif batch.status == conductor.BatchStatus.PARTIAL:
+            final_failed = sum(1 for s in batch.results.values() if s in ("FAILED", "BLOCKED"))
+            console.print(f"\n[yellow]⚠ Batch partially completed ({final_failed} still failing)[/yellow]")
+        else:
+            console.print(f"\n[red]✗ Batch {batch.status.value.lower()}[/red]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 # Add batch subcommand group to work
 work_app.add_typer(batch_app, name="batch")
 

@@ -13,6 +13,7 @@ from codeframe.core.conductor import (
     get_batch,
     list_batches,
     cancel_batch,
+    resume_batch,
     _save_batch,
     _row_to_batch,
 )
@@ -567,3 +568,194 @@ class TestSaveBatch:
         loaded = get_batch(workspace, "update-batch-123")
         assert loaded.status == BatchStatus.COMPLETED
         assert loaded.results[task_list[0].id] == "COMPLETED"
+
+
+class TestResumeBatch:
+    """Tests for resume_batch function."""
+
+    def test_resume_nonexistent_batch_raises(self, temp_workspace):
+        """Should raise ValueError for non-existent batch."""
+        with pytest.raises(ValueError, match="Batch not found"):
+            resume_batch(temp_workspace, "non-existent-id")
+
+    def test_resume_completed_batch_raises(self, workspace_with_tasks):
+        """Should raise ValueError for completed batch."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Create a completed batch
+        batch = start_batch(workspace, task_ids, dry_run=True)
+        # Batch is COMPLETED after dry run
+
+        with pytest.raises(ValueError, match="cannot be resumed"):
+            resume_batch(workspace, batch.id)
+
+    def test_resume_partial_batch(self, workspace_with_tasks):
+        """Should resume a PARTIAL batch, re-running only failed tasks."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Create a batch with some failures
+        def mock_execute_first_run(ws, tid):
+            if tid == task_ids[1]:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute_first_run):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[0]] == "COMPLETED"
+        assert batch.results[task_ids[1]] == "FAILED"
+        assert batch.results[task_ids[2]] == "COMPLETED"
+
+        # Now resume - the failed task should succeed this time
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            resumed = resume_batch(workspace, batch.id)
+
+        # Only task_ids[1] should have been re-run
+        assert mock_exec.call_count == 1
+        assert resumed.status == BatchStatus.COMPLETED
+        assert resumed.results[task_ids[1]] == "COMPLETED"
+
+    def test_resume_failed_batch(self, workspace_with_tasks):
+        """Should resume a FAILED batch."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Create a batch where all tasks fail
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "FAILED"
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.FAILED
+
+        # Resume with all tasks succeeding
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            resumed = resume_batch(workspace, batch.id)
+
+        assert resumed.status == BatchStatus.COMPLETED
+        assert all(s == "COMPLETED" for s in resumed.results.values())
+
+    def test_resume_with_force(self, workspace_with_tasks):
+        """Should re-run all tasks when force=True."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Create a partial batch (2 completed, 1 failed)
+        def mock_execute_first_run(ws, tid):
+            if tid == task_ids[2]:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute_first_run):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.PARTIAL
+
+        # Resume with force - should re-run all 3 tasks
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            resumed = resume_batch(workspace, batch.id, force=True)
+
+        assert mock_exec.call_count == 3  # All tasks re-run
+        assert resumed.status == BatchStatus.COMPLETED
+
+    def test_resume_blocked_tasks(self, workspace_with_tasks):
+        """Should resume blocked tasks."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Create a batch with blocked tasks
+        def mock_execute_first_run(ws, tid):
+            if tid == task_ids[1]:
+                return "BLOCKED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute_first_run):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[1]] == "BLOCKED"
+
+        # Resume - blocked task now completes
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            resumed = resume_batch(workspace, batch.id)
+
+        assert mock_exec.call_count == 1  # Only blocked task re-run
+        assert resumed.status == BatchStatus.COMPLETED
+
+    def test_resume_still_fails(self, workspace_with_tasks):
+        """Resumed tasks can still fail."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Create a failed batch
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "FAILED"
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.FAILED
+
+        # Resume but tasks still fail
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "FAILED"
+            resumed = resume_batch(workspace, batch.id)
+
+        assert resumed.status == BatchStatus.FAILED
+
+    def test_resume_no_failed_tasks(self, workspace_with_tasks, capsys):
+        """Should handle batch with no failed tasks gracefully."""
+        workspace, task_list = workspace_with_tasks
+        from datetime import datetime, timezone
+
+        # Manually create a PARTIAL batch with no failed tasks
+        # (edge case - maybe cancelled mid-way)
+        now = datetime.now(timezone.utc)
+        batch = BatchRun(
+            id="edge-case-batch",
+            workspace_id=workspace.id,
+            task_ids=[task_list[0].id],
+            status=BatchStatus.PARTIAL,  # Resumable status
+            strategy="serial",
+            max_parallel=4,
+            on_failure=OnFailure.CONTINUE,
+            started_at=now,
+            completed_at=now,
+            results={task_list[0].id: "COMPLETED"},  # All completed
+        )
+        _save_batch(workspace, batch)
+
+        # Resume should detect nothing to do
+        resumed = resume_batch(workspace, batch.id)
+
+        captured = capsys.readouterr()
+        assert "No failed or blocked tasks to resume" in captured.out
+        assert resumed.status == BatchStatus.PARTIAL  # Unchanged
+
+    def test_resume_preserves_completed_results(self, workspace_with_tasks):
+        """Resume should preserve completed task results."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Create batch: task 0 completes, task 1 fails, task 2 completes
+        def mock_first_run(ws, tid):
+            if tid == task_ids[1]:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_first_run):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        # Resume with task 1 now completing
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            resumed = resume_batch(workspace, batch.id)
+
+        # All should now be completed, including preserved results
+        assert resumed.results[task_ids[0]] == "COMPLETED"  # Preserved
+        assert resumed.results[task_ids[1]] == "COMPLETED"  # Updated
+        assert resumed.results[task_ids[2]] == "COMPLETED"  # Preserved

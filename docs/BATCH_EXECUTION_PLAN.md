@@ -471,17 +471,18 @@ Implementation:
 - Track retry count per task in results
 - Final status based on last attempt
 
-#### Option B: Batch Resume Command
+#### Option B: Batch Resume Command ✓ IMPLEMENTED
 ```bash
 cf work batch resume <batch-id>         # Re-run only failed/blocked tasks
 cf work batch resume <batch-id> --force # Re-run even completed tasks
 ```
 
-Implementation:
-- Load existing BatchRun
+Implementation (DONE):
+- Load existing BatchRun via `resume_batch()`
 - Filter to tasks with FAILED or BLOCKED status
-- Execute only those tasks
+- Execute only those tasks (or all with --force)
 - Merge results into existing batch record
+- Update batch status based on final results
 
 #### Option C: Self-Correction Escalation
 When a task fails repeatedly:
@@ -491,7 +492,7 @@ When a task fails repeatedly:
 4. Final: Mark as BLOCKED with human review required
 
 ### Decision Points
-- [ ] Which retry approach to implement first?
+- [x] Which retry approach to implement first? → **Batch Resume (Option B)**
 - [ ] Should retries use exponential backoff?
 - [ ] Should we track retry history for analytics?
 - [ ] Should blocked tasks prevent retries of dependent tasks?
