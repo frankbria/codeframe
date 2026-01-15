@@ -1,6 +1,6 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-Sprint%2011%20In%20Progress-blue)
+![Status](https://img.shields.io/badge/status-v2%20Agent%20Implementation%20Complete-brightgreen)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-1498%20passing-brightgreen)
@@ -13,71 +13,60 @@
 
 ## Overview
 
-CodeFRAME is an autonomous AI development system where multiple specialized agents collaborate to build software features end-to-end. It combines multi-agent orchestration, human-in-the-loop blockers, and intelligent context management to enable truly autonomous software development cycles.
+CodeFRAME is an autonomous AI development system where specialized agents collaborate to build software features end-to-end. It combines multi-agent orchestration, human-in-the-loop blockers, and intelligent context management to enable truly autonomous software development cycles.
 
 Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME agents work independently on tasks, ask questions when blocked, and coordinate with each other to ship complete features—day and night.
 
----
-
-## Key Features
-
-### Multi-Agent System
-- **Multi-Agent Orchestra** - Lead agent coordinates backend, frontend, test, and review specialists
-- **Human-in-the-Loop Blockers** - Agents pause and ask questions when they need human decisions
-- **Async/Await Architecture** - Non-blocking agent execution with true concurrency
-- **Self-Correction Loops** - Agents automatically fix failing tests (up to 3 attempts)
-- **WebSocket Agent Broadcasting** - Real-time agent status updates pushed to all connected clients
-
-### Quality & Review
-- **AI Quality Enforcement** - Dual-layer quality system preventing test skipping and enforcing 85%+ coverage
-- **Quality Gates** - Pre-completion checks block bad code (tests, types, coverage, review)
-- **Automated Code Review** - Security scanning, OWASP pattern detection, and complexity analysis
-- **Lint Enforcement** - Multi-language linting with trend tracking and automatic fixes
-
-### State & Context Management
-- **Context-Aware Memory** - Tiered HOT/WARM/COLD memory system reduces token usage by 30-50%
-- **Session Lifecycle** - Auto-save/restore work context across CLI restarts
-- **Checkpoint & Recovery** - Git + DB snapshots enable project state rollback
-- **Phase-Aware Components** - UI intelligently selects data sources based on project phase
-
-### Developer Experience
-- **Real-time Dashboard** - WebSocket-powered UI with agent status, blockers, and progress tracking
-- **Proactive WebSocket Messaging** - Backend pushes updates without client polling
-- **Multi-Channel Notifications** - Desktop notifications, webhooks, and custom routing for agent events
-- **Auto-Commit Workflows** - Git integration with automatic commits after successful test passes
-- **Cost Tracking** - Real-time token usage and cost analytics per agent/task with timeseries API
+**Two modes of operation:**
+- **CLI-first (v2)** — Complete Golden Path workflow from the command line, no server required
+- **Dashboard (v1)** — Real-time web UI with WebSocket updates for monitoring and interaction
 
 ---
 
-## What's New (Updated: 2026-01-09)
+## What's New (Updated: 2026-01-14)
 
-### Late-Joining User Bug Fixes
+### v2 Agent Implementation Complete
+
+**Autonomous Agent Execution** — The full agent loop is now functional via the CLI.
+
+```bash
+# Execute a task with the AI agent
+cf work start <task-id> --execute
+
+# Preview changes without applying (dry run)
+cf work start <task-id> --execute --dry-run
+```
+
+**New Components:**
+- **LLM Adapter Interface** — Pluggable provider system with Anthropic Claude support
+- **Task Context Loader** — Intelligent codebase scanning with relevance scoring
+- **Implementation Planner** — LLM-powered task decomposition into executable steps
+- **Code Execution Engine** — File operations, shell commands, and rollback capability
+- **Agent Orchestrator** — Full execution loop with blocker detection and verification gates
+
+**Key Features:**
+- Task-based model selection (Sonnet for planning/execution, Haiku for generation)
+- Automatic blocker creation when agent needs human input
+- Incremental verification with ruff after each file change
+- State persistence for pause/resume across sessions
+
+---
+
+### Previous Updates
+
+<details>
+<summary>Late-Joining User Bug Fixes (2026-01-09)</summary>
 
 **Phase-Aware Data Source Selection** - Components now correctly display data for users who navigate to a project after events have occurred.
 
-- **TaskStats Phase-Awareness** - Fixed bug where TaskStats showed 0 tasks during planning phase (#233, PR #234)
-- **State Reconciliation Tests** - Comprehensive E2E tests validate UI state for late-joining users (#229)
-- **Duplicate Button Prevention** - Fixed duplicate "Generate Tasks" button appearing for late-joining users (#228)
+- **TaskStats Phase-Awareness** - Fixed bug where TaskStats showed 0 tasks during planning phase
+- **State Reconciliation Tests** - Comprehensive E2E tests validate UI state for late-joining users
+- **Duplicate Button Prevention** - Fixed duplicate "Generate Tasks" button appearing for late-joining users
 
-### New API Endpoints
+</details>
 
-- **Token Usage Timeseries** - `GET /api/projects/{id}/metrics/tokens/timeseries` for charting token usage over time (#225)
-- **Manual Task Generation** - `POST /api/projects/{id}/discovery/generate-tasks` for triggering task breakdown (#221)
-
-### WebSocket Improvements
-
-- **Proactive Messaging System** - Backend now sends proactive updates without client requests (#224)
-- **Agent Status Broadcasting** - Agent status changes broadcast via WebSocket to all connected clients (#217)
-
-### Testing Infrastructure
-
-- **State Reconciliation Tests** - New test suite validates UI for "late-joining users" who miss WebSocket events
-- **Test Project Seeding** - Five pre-configured projects in different lifecycle phases for E2E testing
-- **Error Monitoring** - Comprehensive console error and network error monitoring in E2E tests
-
----
-
-### Authentication System (Sprint 11)
+<details>
+<summary>Authentication System (Sprint 11)</summary>
 
 **FastAPI Users Migration** - Complete auth system redesign for production security.
 
@@ -86,36 +75,55 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 - **WebSocket Auth**: Connections require `?token=TOKEN` query parameter
 - **Session Management**: Secure session tokens with SQLite-backed storage
 
+</details>
+
+<details>
+<summary>Sprint 10: MVP Complete</summary>
+
+**Production-Ready Quality System** - Comprehensive quality gates, checkpoint recovery, and cost tracking.
+
+- **Quality Gates System** - Multi-stage gates: Tests → Type Check → Coverage → Code Review
+- **Checkpoint & Recovery** - Hybrid snapshot: Git commit + SQLite backup + context JSON
+- **Metrics & Cost Tracking** - Per-call tracking for every LLM API interaction
+- **End-to-End Testing** - 85+ E2E tests with full workflow validation
+
+</details>
+
 ---
 
-### Sprint 10: MVP Complete
+## Key Features
 
-**Production-Ready Quality System** - Comprehensive quality gates, checkpoint recovery, and cost tracking complete the MVP.
+### CLI-First Agent System (v2)
+- **Autonomous Execution** — `cf work start --execute` runs the full agent loop
+- **Human-in-the-Loop Blockers** — Agents pause and ask questions when they need decisions
+- **Verification Gates** — Automatic ruff/pytest checks after changes
+- **Dry Run Mode** — Preview changes without applying them
+- **State Persistence** — Resume work across sessions
 
-#### Major Features
+### Multi-Agent Orchestration
+- **Multi-Agent Orchestra** — Lead agent coordinates backend, frontend, test, and review specialists
+- **Async/Await Architecture** — Non-blocking agent execution with true concurrency
+- **Self-Correction Loops** — Agents automatically fix failing tests (up to 3 attempts)
+- **WebSocket Agent Broadcasting** — Real-time agent status updates to all connected clients
 
-**Quality Gates System** - Automated pre-completion checks
-- Multi-stage gates: Tests → Type Check → Coverage → Code Review
-- Automatic blocking of critical failures
-- Human approval workflow for risky changes
+### Quality & Review
+- **AI Quality Enforcement** — Dual-layer quality system preventing test skipping and enforcing 85%+ coverage
+- **Quality Gates** — Pre-completion checks block bad code (tests, types, coverage, review)
+- **Automated Code Review** — Security scanning, OWASP pattern detection, and complexity analysis
+- **Lint Enforcement** — Multi-language linting with trend tracking and automatic fixes
 
-**Checkpoint & Recovery** - Save and restore project state
-- Hybrid snapshot format: Git commit + SQLite backup + context JSON
-- Manual checkpoints: `codeframe checkpoint create <name>`
-- Restore with diff preview
+### State & Context Management
+- **Context-Aware Memory** — Tiered HOT/WARM/COLD memory system reduces token usage by 30-50%
+- **Session Lifecycle** — Auto-save/restore work context across CLI restarts
+- **Checkpoint & Recovery** — Git + DB snapshots enable project state rollback
+- **Phase-Aware Components** — UI intelligently selects data sources based on project phase
 
-**Metrics & Cost Tracking** - Real-time analytics
-- Per-call tracking for every LLM API interaction
-- Multi-model pricing (Sonnet 4.5, Opus 4, Haiku 4)
-- Cost breakdowns by agent, task, model, and time period
-- Timeseries API for charting usage trends
-
-**End-to-End Testing** - Comprehensive E2E coverage
-- 85+ E2E tests: Backend (Pytest) + Frontend (Playwright)
-- Full workflow validation: Discovery → Planning → Execution → Completion
-- State reconciliation tests for late-joining users
-
-**Full Sprint**: [Sprint 10 Documentation](sprints/sprint-10-review-polish.md)
+### Developer Experience
+- **Real-time Dashboard** — WebSocket-powered UI with agent status, blockers, and progress tracking
+- **Proactive WebSocket Messaging** — Backend pushes updates without client polling
+- **Multi-Channel Notifications** — Desktop notifications, webhooks, and custom routing for agent events
+- **Auto-Commit Workflows** — Git integration with automatic commits after successful test passes
+- **Cost Tracking** — Real-time token usage and cost analytics per agent/task with timeseries API
 
 ---
 
@@ -123,11 +131,10 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Lead Agent                             │
-│  • PRD → tasks decomposition                                │
-│  • Multi-agent task assignment                              │
-│  • Async agent coordination (await pattern)                 │
-│  • Blocker escalation (sync/async)                          │
+│                    CLI / Agent Orchestrator                  │
+│  • cf work start --execute                                   │
+│  • Context loading → Planning → Execution → Verification    │
+│  • Blocker detection and human-in-loop                      │
 └─────────────┬──────────────┬──────────────┬────────────┬────┘
               │              │              │            │
       ┌───────▼───┐   ┌──────▼──────┐  ┌───▼────────┐  ┌▼────────┐
@@ -156,7 +163,7 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ### Prerequisites
 - Python 3.11+
-- Node.js 18+ (for frontend)
+- Node.js 18+ (for frontend, optional)
 - Anthropic API key
 - SQLite 3 (included with Python)
 
@@ -177,13 +184,40 @@ uv sync
 
 # Set up environment
 export ANTHROPIC_API_KEY="your-api-key-here"
-
-# Set up frontend
-cd web-ui
-npm install
 ```
 
-### Running CodeFRAME
+### CLI-First Workflow (v2 — Recommended)
+
+```bash
+# 1. Initialize workspace in a target repo
+cd /path/to/your/project
+cf init .
+
+# 2. Add a PRD (Product Requirements Document)
+cf prd add requirements.md
+
+# 3. Generate tasks from PRD
+cf tasks generate
+
+# 4. List tasks
+cf tasks list
+
+# 5. Start work on a task (with AI agent)
+cf work start <task-id> --execute
+
+# 6. Check for blockers (questions the agent needs answered)
+cf blocker list
+cf blocker answer <blocker-id> "Your answer here"
+
+# 7. Resume work after answering blockers
+cf work resume <task-id>
+
+# 8. Review changes and create checkpoint
+cf review
+cf checkpoint create "Feature complete"
+```
+
+### Dashboard Mode (v1)
 
 ```bash
 # Start the dashboard (from project root)
@@ -194,86 +228,64 @@ codeframe serve
 uv run uvicorn codeframe.ui.server:app --reload --port 8080
 
 # Terminal 2: Frontend
-cd web-ui && npm run dev
+cd web-ui && npm install && npm run dev
 
 # Access dashboard at http://localhost:3000
 ```
 
 ---
 
-## Usage
+## CLI Commands
 
-### 1. Create a Project
-
+### Workspace Management
 ```bash
-curl -X POST http://localhost:8080/api/projects \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{
-    "name": "My AI Project",
-    "description": "Building a REST API with AI agents"
-  }'
+cf init <path>              # Initialize workspace for a repo
+cf status                   # Show workspace status
 ```
 
-### 2. Start Discovery (Automatic)
-
-Discovery now starts automatically after project creation. You can also manually trigger it:
-
+### PRD (Product Requirements)
 ```bash
-curl -X POST http://localhost:8080/api/projects/1/discovery/start \
-  -H "Authorization: Bearer YOUR_TOKEN"
+cf prd add <file.md>        # Add/update PRD
+cf prd show                 # Display current PRD
 ```
 
-### 3. Generate Task Breakdown
-
-After discovery completes, generate tasks from the PRD:
-
+### Task Management
 ```bash
-curl -X POST http://localhost:8080/api/projects/1/discovery/generate-tasks \
-  -H "Authorization: Bearer YOUR_TOKEN"
+cf tasks generate           # Generate tasks from PRD (uses LLM)
+cf tasks list               # List all tasks
+cf tasks list --status READY  # Filter by status
+cf tasks show <id>          # Show task details
 ```
 
-### 4. Watch Agents Work
-
-Navigate to `http://localhost:3000` to see:
-- **Agent Pool**: Active agents and their current tasks
-- **Task Progress**: Real-time task completion updates (via WebSocket)
-- **Blockers**: Questions agents need answered
-- **Context Stats**: Memory usage and tier distribution
-- **Lint Results**: Code quality metrics and trends
-- **Review Findings**: Security vulnerabilities and quality issues
-- **Cost Metrics**: Token usage and spending by agent/task
-
-### 5. Answer Blockers
-
+### Work Execution
 ```bash
-# List current blockers
-curl http://localhost:8080/api/projects/1/blockers \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# Answer a blocker
-curl -X POST http://localhost:8080/api/blockers/1/answer \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"answer": "Use bcrypt for password hashing with salt rounds=12"}'
+cf work start <id>          # Start work (creates run record)
+cf work start <id> --execute     # Start with AI agent execution
+cf work start <id> --execute --dry-run  # Preview changes only
+cf work stop <id>           # Stop current run
+cf work resume <id>         # Resume blocked work
 ```
 
-### 6. Manage Checkpoints
-
+### Blockers
 ```bash
-# Create checkpoint
-curl -X POST http://localhost:8080/api/projects/1/checkpoints \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"name": "Before async refactor", "description": "Stable state"}'
+cf blocker list             # List open blockers
+cf blocker show <id>        # Show blocker details
+cf blocker answer <id> "answer"  # Answer a blocker
+```
 
-# List checkpoints
-curl http://localhost:8080/api/projects/1/checkpoints \
-  -H "Authorization: Bearer YOUR_TOKEN"
+### Quality & Review
+```bash
+cf review                   # Run verification gates
+cf patch export             # Export changes as patch
+cf commit                   # Commit changes
+```
 
-# Restore to checkpoint
-curl -X POST http://localhost:8080/api/projects/1/checkpoints/5/restore \
-  -H "Authorization: Bearer YOUR_TOKEN"
+### Checkpoints
+```bash
+cf checkpoint create <name>  # Create checkpoint
+cf checkpoint list          # List checkpoints
+cf checkpoint restore <id>  # Restore to checkpoint
+cf summary                  # Show session summary
 ```
 
 ---
@@ -335,42 +347,6 @@ GET    /api/tasks/{id}                        # Get task details
 POST   /api/tasks/approve                     # Approve tasks for development
 ```
 
-### Discovery & Planning
-
-```
-POST   /api/projects/{id}/discovery/start     # Start discovery process
-POST   /api/projects/{id}/discovery/answer    # Answer discovery question
-POST   /api/projects/{id}/discovery/generate-tasks  # Generate task breakdown from PRD
-GET    /api/projects/{id}/discovery/progress  # Get discovery progress
-```
-
-### Quality & Review
-
-```
-POST   /api/agents/{agent_id}/review          # Trigger code review
-GET    /api/agents/{agent_id}/review/latest   # Get latest review
-
-POST   /api/agents/{agent_id}/lint            # Run linting
-GET    /api/agents/{agent_id}/lint/results    # Get lint results
-
-GET    /api/tasks/{task_id}/quality-gates     # Get quality gate status
-```
-
-### Context & Metrics
-
-```
-GET    /api/agents/{agent_id}/context/stats   # Context statistics
-POST   /api/agents/{agent_id}/flash-save      # Trigger flash save
-
-GET    /api/projects/{id}/checkpoints         # List checkpoints
-POST   /api/projects/{id}/checkpoints         # Create checkpoint
-POST   /api/projects/{id}/checkpoints/{cid}/restore  # Restore
-
-GET    /api/projects/{id}/metrics/tokens      # Token usage metrics
-GET    /api/projects/{id}/metrics/tokens/timeseries  # Token usage over time
-GET    /api/projects/{id}/metrics/costs       # Cost metrics
-```
-
 ### WebSocket
 
 ```
@@ -390,39 +366,12 @@ For detailed API documentation, see `/docs` (Swagger UI) or `/redoc` (ReDoc) whe
 uv run pytest
 
 # Run specific test suite
-uv run pytest tests/agents/        # Agent tests
-uv run pytest tests/api/           # API endpoint tests
-uv run pytest tests/integration/   # Integration tests
-
-# Run backend E2E tests
-uv run pytest tests/e2e/           # End-to-end tests
-
-# Run frontend E2E tests (Playwright)
-cd tests/e2e
-npx playwright test                # Backend auto-starts!
-
-# Run smoke tests only
-npm run test:smoke
+uv run pytest tests/core/           # Core module tests
+uv run pytest tests/agents/         # Agent tests
+uv run pytest tests/api/            # API endpoint tests
 
 # Run with coverage
 uv run pytest --cov=codeframe --cov-report=html
-```
-
-**E2E Testing Note**: Frontend Playwright tests now auto-start the backend server on port 8080. No manual server startup needed! See [tests/e2e/README.md](tests/e2e/README.md) for details.
-
-### State Reconciliation Testing
-
-E2E tests include "late-joining user" scenarios that validate UI state for users who navigate to a project after events have occurred:
-
-```typescript
-import { TEST_PROJECT_IDS } from './e2e-config';
-
-// Navigate to pre-seeded project in planning phase
-const projectId = TEST_PROJECT_IDS.PLANNING;
-await page.goto(`${FRONTEND_URL}/projects/${projectId}`);
-
-// Verify UI shows correct state without WebSocket history
-await expect(page.locator('[data-testid="task-stats"]')).toContainText('24');
 ```
 
 ### Test Statistics
@@ -436,61 +385,18 @@ await expect(page.locator('[data-testid="task-stats"]')).toContainText('24');
 
 ---
 
-## CLI Commands
-
-CodeFRAME includes a comprehensive CLI for all API operations:
-
-```bash
-# Project management
-codeframe project create "My Project" --description "Description"
-codeframe project list
-codeframe project status 1
-
-# Discovery
-codeframe discovery start 1
-codeframe discovery answer 1 "Your answer here"
-
-# Agents
-codeframe agents list 1
-codeframe agents create 1 --type backend
-
-# Tasks
-codeframe tasks list 1
-codeframe tasks approve 1 --task-ids 1,2,3
-
-# Blockers
-codeframe blockers list 1
-codeframe blockers answer 1 "Your answer"
-
-# Checkpoints
-codeframe checkpoint create 1 --name "Before refactor"
-codeframe checkpoint list 1
-codeframe checkpoint restore 1 5
-
-# Metrics
-codeframe metrics tokens 1
-codeframe metrics costs 1
-
-# Authentication
-codeframe auth login
-codeframe auth status
-```
-
----
-
 ## Documentation
 
 For detailed documentation, see:
 
+- **Golden Path (v2)**: [docs/GOLDEN_PATH.md](docs/GOLDEN_PATH.md) - CLI-first workflow contract
+- **Agent Implementation**: [docs/AGENT_IMPLEMENTATION_TASKS.md](docs/AGENT_IMPLEMENTATION_TASKS.md) - Agent system details
+- **CLI Wireframe**: [docs/CLI_WIREFRAME.md](docs/CLI_WIREFRAME.md) - Command structure
 - **Product Requirements**: [PRD.md](PRD.md)
 - **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
-- **Authentication & Authorization**: [docs/authentication.md](docs/authentication.md) - Complete guide to security features
-- **Architecture Decisions**: [`docs/architecture/`](docs/architecture/) - Technical design decisions and data model semantics
-- **E2E Testing Guide**: [tests/e2e/README.md](tests/e2e/README.md) - Comprehensive E2E testing documentation
+- **Authentication**: [docs/authentication.md](docs/authentication.md) - Security guide
 - **Sprint Planning**: [SPRINTS.md](SPRINTS.md)
-- **Feature Specs**: `specs/{feature}/spec.md`
 - **Agent Guide**: [AGENTS.md](AGENTS.md)
-- **Quality Guide**: [AI_Development_Enforcement_Guide.md](AI_Development_Enforcement_Guide.md)
 
 ---
 
@@ -525,9 +431,15 @@ We welcome contributions! To get started:
 
 ## Roadmap
 
-### Planned Features
+### Completed
+- ✅ CLI-first Golden Path workflow
+- ✅ Autonomous agent execution with blocker detection
+- ✅ Verification gates integration
+- ✅ Task-based model selection
 
-- **Observability**: OpenTelemetry integration for distributed tracing
+### Planned Features
+- **Per-task model override**: `cf tasks set provider <id> <provider>`
+- **Multi-file parallel execution**: Agent works on multiple files simultaneously
 - **LLM Provider Abstraction**: Support for OpenAI, Gemini, local models
 - **Advanced Git Workflows**: PR creation, branch management, merge conflict resolution
 - **Custom Agent Types**: Plugin system for domain-specific agents
