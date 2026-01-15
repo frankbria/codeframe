@@ -11,21 +11,16 @@ Coordinates the full agent execution loop:
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
-import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Optional, Callable
 
 from codeframe.core.workspace import Workspace
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.planner import Planner, ImplementationPlan, PlanStep, StepType
-from codeframe.core.executor import Executor, ExecutionResult, ExecutionStatus, StepResult
+from codeframe.core.executor import Executor, ExecutionStatus, StepResult
 from codeframe.core.gates import run as run_gates, GateResult, GateStatus
-from codeframe.core import tasks, blockers, events
-from codeframe.core.tasks import Task, TaskStatus
-from codeframe.core.blockers import BlockerStatus
+from codeframe.core import blockers, events
 from codeframe.core.events import EventType
 from codeframe.adapters.llm import LLMProvider, Purpose
 
@@ -113,6 +108,70 @@ class AgentState:
 # Blocker detection thresholds
 MAX_CONSECUTIVE_FAILURES = 3
 MAX_STEP_RETRIES = 2
+MAX_SELF_CORRECTION_ATTEMPTS = 2
+
+# Error patterns that indicate the agent needs human input
+# These are situations where the agent genuinely cannot proceed without a human decision
+HUMAN_INPUT_PATTERNS = [
+    # Requirements/specification issues
+    "unclear",
+    "ambiguous",
+    "which approach",
+    "should i use",
+    "please clarify",
+    "need clarification",
+    "multiple options",
+    "design decision",
+    # Access/credentials issues
+    "permission denied",
+    "access denied",
+    "authentication required",
+    "api key",
+    "credentials",
+    "secret",
+    "token required",
+    # External dependencies requiring human action
+    "service unavailable",
+    "rate limited",
+    "quota exceeded",
+]
+
+# Error patterns that are technical and the agent should self-correct
+# These are coding/execution errors the agent can fix by trying a different approach
+TECHNICAL_ERROR_PATTERNS = [
+    # File/path issues - agent can find correct path or create file
+    "file not found",
+    "no such file",
+    "directory not found",
+    "path does not exist",
+    "filenotfounderror",
+    # Import/module issues - agent can fix imports
+    "module not found",
+    "import error",
+    "no module named",
+    "cannot find module",
+    "modulenotfounderror",
+    # Syntax/code issues - agent can fix code
+    "syntax error",
+    "syntaxerror",
+    "indentation error",
+    "name error",
+    "nameerror",
+    "type error",
+    "typeerror",
+    "attribute error",
+    "attributeerror",
+    "undefined",
+    "not defined",
+    # Command execution issues - agent can try different command
+    "command not found",
+    "exit code",
+    "non-zero exit",
+    # General coding issues
+    "missing",  # usually missing import, argument, etc.
+    "expected",
+    "invalid",
+]
 
 
 class Agent:
@@ -301,20 +360,68 @@ class Agent:
                     "error": result.error[:200],
                 })
 
-                # Check if we should create a blocker
-                if self._should_create_blocker(consecutive_failures, result):
+                # Classify the error
+                error_type = self._classify_error(result.error)
+
+                # For human-input-needed errors, create blocker immediately
+                if error_type == "human":
                     self._create_blocker_from_failure(step, result)
                     return
 
-                # Try to recover or give up
-                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    self.state.status = AgentStatus.FAILED
-                    self._emit_event("execution_failed", {
-                        "reason": "Too many consecutive failures",
-                    })
-                    return
+                # For technical errors, try self-correction first
+                self_correction_attempts = 0
+                current_result = result
 
-                self.state.current_step += 1  # Skip and continue
+                while self_correction_attempts < MAX_SELF_CORRECTION_ATTEMPTS:
+                    self_correction_attempts += 1
+                    corrected_result = self._attempt_self_correction(
+                        step, current_result, self_correction_attempts
+                    )
+
+                    if corrected_result is None:
+                        # Self-correction failed to even attempt
+                        break
+
+                    if corrected_result.status == ExecutionStatus.SUCCESS:
+                        # Self-correction worked! Update state and continue
+                        self.state.step_results[-1] = corrected_result  # Replace failed result
+                        consecutive_failures = 0
+                        self._emit_event("step_completed", {
+                            "step": step.index,
+                            "output": corrected_result.output[:200],
+                            "self_corrected": True,
+                        })
+
+                        # Run incremental verification for file changes
+                        if step.type in {StepType.FILE_CREATE, StepType.FILE_EDIT}:
+                            gate_result = self._run_incremental_verification()
+                            if gate_result and not gate_result.passed:
+                                if not self._try_auto_fix(gate_result):
+                                    consecutive_failures += 1
+
+                        self.state.current_step += 1
+                        break
+
+                    # Self-correction didn't succeed, try again
+                    current_result = corrected_result
+                else:
+                    # Exhausted self-correction attempts
+                    # Now check if we should create a blocker
+                    if self._should_create_blocker(
+                        consecutive_failures, current_result, self_correction_attempts
+                    ):
+                        self._create_blocker_from_failure(step, current_result)
+                        return
+
+                    # Give up on this step if too many consecutive failures
+                    if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                        self.state.status = AgentStatus.FAILED
+                        self._emit_event("execution_failed", {
+                            "reason": "Too many consecutive failures after self-correction",
+                        })
+                        return
+
+                    self.state.current_step += 1  # Skip and continue
 
             elif result.status == ExecutionStatus.SKIPPED:
                 self._emit_event("step_skipped", {"step": step.index})
@@ -386,36 +493,148 @@ class Agent:
                 pass
         return False
 
+    def _classify_error(self, error: str) -> str:
+        """Classify an error as technical or human-input-needed.
+
+        Args:
+            error: Error message to classify
+
+        Returns:
+            "technical" if agent can self-correct, "human" if needs human input
+        """
+        error_lower = error.lower()
+
+        # Check human-input patterns first (they take priority)
+        for pattern in HUMAN_INPUT_PATTERNS:
+            if pattern in error_lower:
+                return "human"
+
+        # Check technical patterns
+        for pattern in TECHNICAL_ERROR_PATTERNS:
+            if pattern in error_lower:
+                return "technical"
+
+        # Default to technical - agent should try to fix it first
+        return "technical"
+
     def _should_create_blocker(
         self,
         consecutive_failures: int,
         result: StepResult,
+        self_correction_attempts: int = 0,
     ) -> bool:
         """Determine if we should create a blocker.
 
-        Blockers are created when:
-        - Multiple consecutive failures
-        - Error suggests missing information
-        - Error suggests ambiguous requirements
+        Blockers are only created for genuine human-input-needed situations.
+        Technical errors should be handled by self-correction first.
+
+        Args:
+            consecutive_failures: Number of consecutive step failures
+            result: The failed step result
+            self_correction_attempts: How many self-correction attempts were made
+
+        Returns:
+            True if a blocker should be created
         """
-        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+        error_type = self._classify_error(result.error)
+
+        # Human-input-needed errors always create blockers
+        if error_type == "human":
             return True
 
-        # Check for patterns suggesting human input needed
-        error_lower = result.error.lower()
-        needs_human_patterns = [
-            "not found",
-            "missing",
-            "undefined",
-            "unclear",
-            "ambiguous",
-            "permission denied",
-            "authentication",
-            "api key",
-            "credentials",
-        ]
+        # Technical errors only create blockers after exhausting self-correction
+        if error_type == "technical":
+            # Only block if we've tried self-correction and still failing
+            if self_correction_attempts >= MAX_SELF_CORRECTION_ATTEMPTS:
+                # After multiple self-correction attempts, the agent is truly stuck
+                return True
+            # Otherwise, don't block - let the caller try self-correction
+            return False
 
-        return any(pattern in error_lower for pattern in needs_human_patterns)
+        return False
+
+    def _attempt_self_correction(
+        self,
+        step: PlanStep,
+        result: StepResult,
+        attempt: int,
+    ) -> Optional[StepResult]:
+        """Attempt to self-correct a failed step using LLM.
+
+        Uses the LLM to analyze the error and generate a corrected approach.
+
+        Args:
+            step: The step that failed
+            result: The failure result
+            attempt: Which self-correction attempt this is (1-based)
+
+        Returns:
+            New StepResult if correction was attempted, None if can't correct
+        """
+        self._emit_event("self_correction_started", {
+            "step": step.index,
+            "attempt": attempt,
+            "error": result.error[:200],
+        })
+
+        prompt = f"""A code execution step failed. Analyze the error and provide a corrected approach.
+
+Step Description: {step.description}
+Step Type: {step.type.value}
+Target: {step.target}
+
+Error:
+{result.error}
+
+Previous approach that failed:
+{step.details[:2000] if step.details else "No details"}
+
+Please provide a corrected version that fixes this error. Consider:
+1. If it's a file path issue, find the correct path or create the file
+2. If it's an import issue, add the missing import
+3. If it's a syntax error, fix the syntax
+4. If it's a logic error, fix the logic
+
+Respond with ONLY the corrected code/content, no explanation."""
+
+        try:
+            response = self.llm.complete(
+                messages=[{"role": "user", "content": prompt}],
+                purpose=Purpose.GENERATION,
+                max_tokens=4000,
+                temperature=0.0,
+            )
+
+            corrected_details = response.content.strip()
+
+            # Create a corrected step with the new details
+            corrected_step = PlanStep(
+                index=step.index,
+                type=step.type,
+                target=step.target,
+                description=f"{step.description} (self-corrected, attempt {attempt})",
+                details=corrected_details,
+                depends_on=step.depends_on,
+            )
+
+            # Re-execute with corrected step
+            corrected_result = self.executor.execute_step(corrected_step, self.context)
+
+            self._emit_event("self_correction_completed", {
+                "step": step.index,
+                "attempt": attempt,
+                "success": corrected_result.status == ExecutionStatus.SUCCESS,
+            })
+
+            return corrected_result
+
+        except Exception as e:
+            self._emit_event("self_correction_failed", {
+                "step": step.index,
+                "attempt": attempt,
+                "error": str(e),
+            })
+            return None
 
     def _create_blocker_from_failure(
         self,

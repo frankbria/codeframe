@@ -13,7 +13,7 @@ from codeframe.core.agent import (
     BlockerInfo,
     MAX_CONSECUTIVE_FAILURES,
 )
-from codeframe.core.planner import ImplementationPlan, PlanStep, StepType, Complexity
+from codeframe.core.planner import ImplementationPlan, PlanStep, StepType
 from codeframe.core.executor import StepResult, ExecutionStatus
 from codeframe.core.context import TaskContext
 from codeframe.core.tasks import Task, TaskStatus
@@ -105,7 +105,9 @@ class TestAgentBlockerDetection:
         return provider
 
     def test_should_create_blocker_consecutive_failures(self, mock_provider):
-        """Creates blocker after consecutive failures."""
+        """Creates blocker after consecutive failures ONLY after self-correction attempts."""
+        from codeframe.core.agent import MAX_SELF_CORRECTION_ATTEMPTS
+
         workspace = MagicMock()
         workspace.repo_path = Path("/tmp")
         agent = Agent(workspace, mock_provider)
@@ -113,15 +115,18 @@ class TestAgentBlockerDetection:
         result = StepResult(
             step=PlanStep(1, StepType.FILE_EDIT, "Edit", "a.py"),
             status=ExecutionStatus.FAILED,
-            error="Something went wrong",
+            error="Something went wrong",  # Generic technical error
         )
 
-        # Should create blocker after MAX_CONSECUTIVE_FAILURES
-        assert agent._should_create_blocker(MAX_CONSECUTIVE_FAILURES, result)
-        assert not agent._should_create_blocker(1, result)
+        # Technical errors should NOT create blocker until self-correction is exhausted
+        assert not agent._should_create_blocker(MAX_CONSECUTIVE_FAILURES, result, self_correction_attempts=0)
+        assert not agent._should_create_blocker(1, result, self_correction_attempts=0)
 
-    def test_should_create_blocker_missing_file(self, mock_provider):
-        """Creates blocker for 'not found' errors."""
+        # After exhausting self-correction attempts, should create blocker
+        assert agent._should_create_blocker(1, result, self_correction_attempts=MAX_SELF_CORRECTION_ATTEMPTS)
+
+    def test_should_not_create_blocker_for_technical_errors(self, mock_provider):
+        """Technical errors like 'file not found' should NOT create blockers immediately."""
         workspace = MagicMock()
         workspace.repo_path = Path("/tmp")
         agent = Agent(workspace, mock_provider)
@@ -132,8 +137,14 @@ class TestAgentBlockerDetection:
             error="File not found: config.yaml",
         )
 
-        # Should trigger blocker on first failure for 'not found'
-        assert agent._should_create_blocker(1, result)
+        # Technical errors should NOT trigger blocker on first failure
+        # Agent should attempt self-correction instead
+        assert not agent._should_create_blocker(1, result, self_correction_attempts=0)
+
+        # Classify the error
+        assert agent._classify_error("File not found: config.yaml") == "technical"
+        assert agent._classify_error("Module not found") == "technical"
+        assert agent._classify_error("SyntaxError: invalid syntax") == "technical"
 
     def test_should_create_blocker_credentials(self, mock_provider):
         """Creates blocker for credential-related errors."""
@@ -236,9 +247,12 @@ class TestAgentPlanExecution:
         assert len(agent.state.step_results) == 1
         assert agent.state.step_results[0].status == ExecutionStatus.SUCCESS
 
-    def test_execute_plan_handles_failure(self, mock_provider, mock_workspace, mock_context, tmp_path):
-        """Handles step failure gracefully."""
-        # Add response for blocker question generation
+    def test_execute_plan_handles_failure_with_self_correction(self, mock_provider, mock_workspace, mock_context, tmp_path):
+        """Handles step failure by attempting self-correction first."""
+        # Add responses for self-correction attempts (these will also fail since file doesn't exist)
+        mock_provider.add_text_response("# Corrected code attempt 1")
+        mock_provider.add_text_response("# Corrected code attempt 2")
+        # Add response for blocker question generation (after self-correction exhausted)
         mock_provider.add_text_response("What is the correct file path?")
 
         agent = Agent(mock_workspace, mock_provider)
@@ -254,16 +268,19 @@ class TestAgentPlanExecution:
         )
 
         # Mock blocker creation to avoid database access
+        # Note: We no longer patch tasks.update_status since agent doesn't update task status
+        # (that's handled by runtime - see state separation pattern in CLAUDE.md)
         with patch("codeframe.core.agent.blockers.create") as mock_create:
             mock_blocker = MagicMock()
             mock_blocker.id = "blocker-1"
             mock_create.return_value = mock_blocker
 
-            with patch("codeframe.core.agent.tasks.update_status"):
-                # Execute - should not raise, handle failure
-                agent._execute_plan()
+            # Execute - should not raise, handle failure after self-correction attempts
+            agent._execute_plan()
 
-        assert len(agent.state.step_results) == 1
+        # Should have attempted self-correction before creating blocker
+        # The step will fail, agent tries self-correction, and eventually gives up
+        assert len(agent.state.step_results) >= 1
         assert agent.state.step_results[0].status == ExecutionStatus.FAILED
 
 
