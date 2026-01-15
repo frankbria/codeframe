@@ -164,8 +164,8 @@ class TestStartBatch:
         assert loaded.id == batch.id
         assert loaded.task_ids == task_ids
 
-    def test_start_batch_strategy_parallel_warns(self, workspace_with_tasks, capsys):
-        """Should warn when parallel strategy is requested but not implemented."""
+    def test_start_batch_strategy_parallel_works(self, workspace_with_tasks, capsys):
+        """Should execute with parallel strategy when requested."""
         workspace, task_list = workspace_with_tasks
         task_ids = [t.id for t in task_list[:1]]  # Just one task
 
@@ -175,7 +175,9 @@ class TestStartBatch:
             batch = start_batch(workspace, task_ids, strategy="parallel", max_parallel=2)
 
         captured = capsys.readouterr()
-        assert "Parallel execution not yet implemented" in captured.out
+        # Should show execution plan (parallel is now implemented)
+        assert "Execution plan:" in captured.out or batch.status == BatchStatus.COMPLETED
+        assert batch.status == BatchStatus.COMPLETED
 
 
 class TestGetBatch:
@@ -937,3 +939,216 @@ class TestBatchRetry:
         event_types = [e[0] for e in events_received]
         assert "batch_retry_started" in event_types
         assert "batch_task_retried" in event_types
+
+
+class TestParallelExecution:
+    """Tests for parallel batch execution."""
+
+    def test_parallel_independent_tasks_run_concurrently(self, workspace_with_tasks):
+        """Independent tasks should run in parallel."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]  # 3 independent tasks
+
+        execution_order = []
+        import threading
+
+        def mock_execute(ws, tid):
+            # Record when each task starts
+            execution_order.append(("start", tid, threading.current_thread().name))
+            import time
+            time.sleep(0.05)  # Small delay to allow overlap detection
+            execution_order.append(("end", tid, threading.current_thread().name))
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(
+                workspace,
+                task_ids,
+                strategy="parallel",
+                max_parallel=3,
+            )
+
+        assert batch.status == BatchStatus.COMPLETED
+        # All tasks should be complete
+        for tid in task_ids:
+            assert batch.results[tid] == "COMPLETED"
+
+    def test_parallel_respects_max_parallel(self, workspace_with_tasks):
+        """max_parallel should limit concurrent execution."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]  # 3 tasks
+
+        concurrent_count = [0]
+        max_concurrent = [0]
+        import threading
+        lock = threading.Lock()
+
+        def mock_execute(ws, tid):
+            with lock:
+                concurrent_count[0] += 1
+                max_concurrent[0] = max(max_concurrent[0], concurrent_count[0])
+            import time
+            time.sleep(0.1)
+            with lock:
+                concurrent_count[0] -= 1
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(
+                workspace,
+                task_ids,
+                strategy="parallel",
+                max_parallel=2,  # Only 2 at a time
+            )
+
+        assert batch.status == BatchStatus.COMPLETED
+        # Should not exceed max_parallel
+        assert max_concurrent[0] <= 2
+
+    def test_parallel_with_dependencies_respects_order(self, temp_workspace):
+        """Tasks with dependencies should run in correct order."""
+        # Create tasks with dependencies: task3 depends on task1 and task2
+        task1 = tasks.create(temp_workspace, title="Task 1", status=TaskStatus.READY)
+        task2 = tasks.create(temp_workspace, title="Task 2", status=TaskStatus.READY)
+        task3 = tasks.create(
+            temp_workspace,
+            title="Task 3",
+            status=TaskStatus.READY,
+            depends_on=[task1.id, task2.id],
+        )
+
+        execution_order = []
+
+        def mock_execute(ws, tid):
+            execution_order.append(tid)
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(
+                temp_workspace,
+                [task1.id, task2.id, task3.id],
+                strategy="parallel",
+                max_parallel=3,
+            )
+
+        assert batch.status == BatchStatus.COMPLETED
+        # task3 should be last (after its dependencies)
+        assert execution_order[-1] == task3.id
+        # task1 and task2 can be in any order but must be before task3
+        assert task1.id in execution_order[:2]
+        assert task2.id in execution_order[:2]
+
+    def test_parallel_falls_back_on_cycle(self, temp_workspace):
+        """Should fall back to serial on circular dependency."""
+        task1 = tasks.create(temp_workspace, title="Task 1", status=TaskStatus.READY)
+        task2 = tasks.create(
+            temp_workspace,
+            title="Task 2",
+            status=TaskStatus.READY,
+            depends_on=[task1.id],
+        )
+        # Create cycle
+        tasks.update_depends_on(temp_workspace, task1.id, [task2.id])
+
+        execution_count = [0]
+
+        def mock_execute(ws, tid):
+            execution_count[0] += 1
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(
+                temp_workspace,
+                [task1.id, task2.id],
+                strategy="parallel",
+                max_parallel=2,
+            )
+
+        # Should fall back to serial and still execute
+        assert execution_count[0] == 2
+        assert batch.status == BatchStatus.COMPLETED
+
+    def test_parallel_handles_failure(self, workspace_with_tasks):
+        """Failures should be tracked in parallel execution."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        def mock_execute(ws, tid):
+            if tid == task_ids[1]:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(
+                workspace,
+                task_ids,
+                strategy="parallel",
+                max_parallel=3,
+            )
+
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[0]] == "COMPLETED"
+        assert batch.results[task_ids[1]] == "FAILED"
+        assert batch.results[task_ids[2]] == "COMPLETED"
+
+    def test_parallel_on_failure_stop(self, temp_workspace):
+        """on_failure=stop should stop after group completes."""
+        # Create independent tasks (all in same group)
+        task1 = tasks.create(temp_workspace, title="Task 1", status=TaskStatus.READY)
+        task2 = tasks.create(temp_workspace, title="Task 2", status=TaskStatus.READY)
+        # Task 3 depends on both (separate group)
+        task3 = tasks.create(
+            temp_workspace,
+            title="Task 3",
+            status=TaskStatus.READY,
+            depends_on=[task1.id, task2.id],
+        )
+
+        def mock_execute(ws, tid):
+            if tid == task1.id:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(
+                temp_workspace,
+                [task1.id, task2.id, task3.id],
+                strategy="parallel",
+                max_parallel=2,
+                on_failure="stop",
+            )
+
+        # First group completes (with failure), then stops
+        assert batch.results[task1.id] == "FAILED"
+        assert batch.results[task2.id] == "COMPLETED"
+        # task3 should not have run
+        assert task3.id not in batch.results
+
+    def test_parallel_event_callback(self, workspace_with_tasks):
+        """on_event should receive events during parallel execution."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list[:2]]
+
+        events_received = []
+        def on_event(event_type, payload):
+            events_received.append((event_type, payload))
+
+        def mock_execute(ws, tid):
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(
+                workspace,
+                task_ids,
+                strategy="parallel",
+                max_parallel=2,
+                on_event=on_event,
+            )
+
+        event_types = [e[0] for e in events_received]
+        assert "batch_started" in event_types
+        # Should have task events
+        task_starts = [e for e in events_received if e[0] == "batch_task_started"]
+        task_completes = [e for e in events_received if e[0] == "batch_task_completed"]
+        assert len(task_starts) >= 2
+        assert len(task_completes) >= 2

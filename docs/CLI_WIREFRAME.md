@@ -527,7 +527,7 @@ Output includes:
 13) `work batch resume <batch-id>` - re-run failed/blocked tasks ✓ DONE
 14) `depends_on` field on Task model ✓ DONE
 15) Dependency graph analysis ✓ DONE
-16) True parallel execution with worker pool
+16) True parallel execution with worker pool ✓ DONE
 17) `--strategy auto` with LLM-based dependency inference
 18) `work batch run --retry N` - automatic retry of failed tasks ✓ DONE
 

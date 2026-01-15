@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -19,6 +20,7 @@ from typing import Callable, Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core import events, tasks
+from codeframe.core.dependency_graph import create_execution_plan, CycleDetectedError
 from codeframe.core.runtime import RunStatus, get_active_run, get_run
 
 
@@ -159,13 +161,15 @@ def start_batch(
     _save_batch(workspace, batch)
 
     # Execute based on strategy
-    # Phase 1: Only serial execution is implemented
-    # Phase 2 will add parallel execution
     if strategy == "parallel" and max_parallel > 1:
-        # For now, fall back to serial with a warning
-        print(f"Warning: Parallel execution not yet implemented, using serial")
-
-    _execute_serial(workspace, batch, on_event)
+        try:
+            _execute_parallel(workspace, batch, on_event)
+        except CycleDetectedError as e:
+            print(f"Error: {e}")
+            print(f"Falling back to serial execution")
+            _execute_serial(workspace, batch, on_event)
+    else:
+        _execute_serial(workspace, batch, on_event)
 
     # Retry failed tasks if max_retries > 0
     if max_retries > 0:
@@ -780,6 +784,321 @@ def _execute_serial(
         print(f"  Failed: {failed_count}")
     if blocked_count > 0:
         print(f"  Blocked: {blocked_count}")
+
+
+def _execute_parallel(
+    workspace: Workspace,
+    batch: BatchRun,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> None:
+    """Execute tasks in parallel using dependency-aware groups.
+
+    Creates an execution plan from task dependencies and executes each group
+    in sequence. Tasks within a group run in parallel, up to max_parallel.
+
+    Args:
+        workspace: Target workspace
+        batch: BatchRun to execute
+        on_event: Optional callback for batch events
+
+    Raises:
+        CycleDetectedError: If circular dependencies are detected
+    """
+    # Create execution plan based on dependencies
+    plan = create_execution_plan(workspace, batch.task_ids)
+
+    print(f"\nExecution plan: {plan.num_groups} groups, {plan.total_tasks} tasks")
+    if plan.can_run_parallel():
+        print(f"Parallelizable groups found - using max {batch.max_parallel} workers")
+    else:
+        print(f"All tasks are sequential (chain dependencies)")
+
+    completed_count = 0
+    failed_count = 0
+    blocked_count = 0
+    task_index = 0  # Global task counter for progress display
+
+    for group_idx, group in enumerate(plan.groups):
+        # Check if batch was cancelled
+        current_batch = get_batch(workspace, batch.id)
+        if current_batch and current_batch.status == BatchStatus.CANCELLED:
+            break
+
+        # Check if any previous failure should stop execution
+        if batch.on_failure == OnFailure.STOP and failed_count > 0:
+            print(f"\nStopping batch due to --on-failure=stop")
+            break
+
+        group_size = len(group)
+        print(f"\n{'─'*60}")
+        print(f"Group {group_idx + 1}/{plan.num_groups}: {group_size} task(s)")
+
+        if group_size == 1:
+            # Single task - run directly
+            task_id = group[0]
+            task_index += 1
+            result = _execute_single_task(
+                workspace, batch, task_id, task_index, len(batch.task_ids), on_event
+            )
+            if result == RunStatus.COMPLETED.value:
+                completed_count += 1
+            elif result == RunStatus.BLOCKED.value:
+                blocked_count += 1
+            else:
+                failed_count += 1
+        else:
+            # Multiple tasks - run in parallel
+            effective_workers = min(group_size, batch.max_parallel)
+            print(f"Running {group_size} tasks with {effective_workers} workers")
+
+            # Execute group in parallel
+            results = _execute_group_parallel(
+                workspace, batch, group, task_index, len(batch.task_ids),
+                effective_workers, on_event
+            )
+
+            # Process results
+            for task_id, result_status in results.items():
+                task_index += 1
+                if result_status == RunStatus.COMPLETED.value:
+                    completed_count += 1
+                elif result_status == RunStatus.BLOCKED.value:
+                    blocked_count += 1
+                else:
+                    failed_count += 1
+
+                # Check stop on failure within parallel group
+                if batch.on_failure == OnFailure.STOP and failed_count > 0:
+                    # Can't stop mid-group, but will stop after group completes
+                    pass
+
+    # Determine final batch status
+    total = len(batch.task_ids)
+    executed = completed_count + failed_count + blocked_count
+
+    if completed_count == total:
+        batch.status = BatchStatus.COMPLETED
+        event_type = events.EventType.BATCH_COMPLETED
+    elif completed_count == 0 and (failed_count > 0 or blocked_count > 0):
+        batch.status = BatchStatus.FAILED
+        event_type = events.EventType.BATCH_FAILED
+    elif completed_count > 0:
+        batch.status = BatchStatus.PARTIAL
+        event_type = events.EventType.BATCH_PARTIAL
+    else:
+        batch.status = BatchStatus.CANCELLED
+        event_type = events.EventType.BATCH_CANCELLED
+
+    batch.completed_at = _utc_now()
+    _save_batch(workspace, batch)
+
+    # Emit batch completion event
+    events.emit_for_workspace(
+        workspace,
+        event_type,
+        {
+            "batch_id": batch.id,
+            "completed": completed_count,
+            "failed": failed_count,
+            "blocked": blocked_count,
+            "total": total,
+            "strategy": "parallel",
+            "groups": plan.num_groups,
+        },
+        print_event=True,
+    )
+
+    # Print summary
+    print(f"\nBatch {batch.status.value.lower()}: {completed_count}/{total} tasks completed")
+    print(f"  Execution: {plan.num_groups} groups (parallel strategy)")
+    if failed_count > 0:
+        print(f"  Failed: {failed_count}")
+    if blocked_count > 0:
+        print(f"  Blocked: {blocked_count}")
+
+
+def _execute_single_task(
+    workspace: Workspace,
+    batch: BatchRun,
+    task_id: str,
+    position: int,
+    total: int,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> str:
+    """Execute a single task and update batch results.
+
+    Helper for parallel execution that handles one task.
+
+    Returns:
+        RunStatus value string
+    """
+    # Emit task queued event
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_TASK_QUEUED,
+        {"batch_id": batch.id, "task_id": task_id, "position": position},
+        print_event=True,
+    )
+
+    # Get task info for display
+    task = tasks.get(workspace, task_id)
+    task_title = task.title if task else task_id
+
+    print(f"\n[{position}/{total}] Starting task {task_id}: {task_title}")
+
+    # Emit task started event
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_TASK_STARTED,
+        {"batch_id": batch.id, "task_id": task_id},
+        print_event=True,
+    )
+
+    if on_event:
+        on_event("batch_task_started", {"task_id": task_id, "position": position})
+
+    # Execute task via subprocess
+    result_status = _execute_task_subprocess(workspace, task_id)
+
+    # Record result
+    batch.results[task_id] = result_status
+    _save_batch(workspace, batch)
+
+    # Emit appropriate event based on result
+    if result_status == RunStatus.COMPLETED.value:
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_TASK_COMPLETED,
+            {"batch_id": batch.id, "task_id": task_id},
+            print_event=True,
+        )
+        print(f"      ✓ Completed")
+    elif result_status == RunStatus.BLOCKED.value:
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_TASK_BLOCKED,
+            {"batch_id": batch.id, "task_id": task_id},
+            print_event=True,
+        )
+        print(f"      ⊘ Blocked")
+    else:
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_TASK_FAILED,
+            {"batch_id": batch.id, "task_id": task_id, "status": result_status},
+            print_event=True,
+        )
+        print(f"      ✗ Failed: {result_status}")
+
+    if on_event:
+        on_event("batch_task_completed", {"task_id": task_id, "status": result_status})
+
+    return result_status
+
+
+def _execute_group_parallel(
+    workspace: Workspace,
+    batch: BatchRun,
+    group: list[str],
+    start_index: int,
+    total: int,
+    max_workers: int,
+    on_event: Optional[Callable[[str, dict], None]] = None,
+) -> dict[str, str]:
+    """Execute a group of tasks in parallel.
+
+    Args:
+        workspace: Target workspace
+        batch: BatchRun being executed
+        group: List of task IDs to execute concurrently
+        start_index: Starting task index for progress display
+        total: Total tasks in batch
+        max_workers: Maximum concurrent workers
+        on_event: Optional callback for events
+
+    Returns:
+        Dict mapping task_id -> RunStatus value
+    """
+    results: dict[str, str] = {}
+
+    # Show which tasks are starting
+    for i, task_id in enumerate(group):
+        task = tasks.get(workspace, task_id)
+        task_title = task.title if task else task_id
+        print(f"  [{start_index + i + 1}/{total}] Queued: {task_id}: {task_title}")
+
+        # Emit task queued event
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_TASK_QUEUED,
+            {"batch_id": batch.id, "task_id": task_id, "position": start_index + i + 1, "parallel": True},
+            print_event=True,
+        )
+
+    def execute_task(task_id: str) -> tuple[str, str]:
+        """Execute a single task and return (task_id, status)."""
+        # Emit task started event
+        events.emit_for_workspace(
+            workspace,
+            events.EventType.BATCH_TASK_STARTED,
+            {"batch_id": batch.id, "task_id": task_id, "parallel": True},
+            print_event=True,
+        )
+
+        if on_event:
+            on_event("batch_task_started", {"task_id": task_id, "parallel": True})
+
+        # Execute via subprocess
+        result_status = _execute_task_subprocess(workspace, task_id)
+
+        # Record result (thread-safe due to GIL for simple dict operations)
+        batch.results[task_id] = result_status
+        _save_batch(workspace, batch)
+
+        return task_id, result_status
+
+    # Execute tasks in parallel using thread pool
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(execute_task, tid): tid for tid in group}
+
+        for future in as_completed(futures):
+            task_id, result_status = future.result()
+            results[task_id] = result_status
+
+            # Get task info for display
+            task = tasks.get(workspace, task_id)
+            task_title = task.title if task else task_id
+
+            # Emit appropriate event and print result
+            if result_status == RunStatus.COMPLETED.value:
+                events.emit_for_workspace(
+                    workspace,
+                    events.EventType.BATCH_TASK_COMPLETED,
+                    {"batch_id": batch.id, "task_id": task_id, "parallel": True},
+                    print_event=True,
+                )
+                print(f"  ✓ {task_id}: Completed")
+            elif result_status == RunStatus.BLOCKED.value:
+                events.emit_for_workspace(
+                    workspace,
+                    events.EventType.BATCH_TASK_BLOCKED,
+                    {"batch_id": batch.id, "task_id": task_id, "parallel": True},
+                    print_event=True,
+                )
+                print(f"  ⊘ {task_id}: Blocked")
+            else:
+                events.emit_for_workspace(
+                    workspace,
+                    events.EventType.BATCH_TASK_FAILED,
+                    {"batch_id": batch.id, "task_id": task_id, "status": result_status, "parallel": True},
+                    print_event=True,
+                )
+                print(f"  ✗ {task_id}: Failed ({result_status})")
+
+            if on_event:
+                on_event("batch_task_completed", {"task_id": task_id, "status": result_status, "parallel": True})
+
+    return results
 
 
 def _execute_task_subprocess(workspace: Workspace, task_id: str) -> str:
