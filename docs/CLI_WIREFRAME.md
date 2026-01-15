@@ -497,16 +497,18 @@ Output includes:
 11) `work batch status` - batch status monitoring
 12) `work batch cancel` - batch cancellation
 
-### Phase 2: Parallel Execution
+### Phase 2: Parallel Execution & Retry
 13) `depends_on` field on Task model
 14) Dependency graph analysis
 15) True parallel execution with worker pool
 16) `--strategy auto` with LLM-based dependency inference
+17) `work batch run --retry N` - automatic retry of failed tasks
+18) `work batch resume <batch-id>` - re-run failed/blocked tasks
 
 ### Phase 3: Observability
-17) `work batch follow` - live streaming to terminal
-18) WebSocket adapter for batch events
-19) Progress estimation and ETA
+19) `work batch follow` - live streaming to terminal
+20) WebSocket adapter for batch events
+21) Progress estimation and ETA
 
 Only after these are stable:
 - server adapter improvements

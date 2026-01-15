@@ -450,10 +450,59 @@ Summary: 2/3 completed (67%)
 
 ---
 
+## Future Enhancements: Retry & Self-Correction
+
+### Current State (Phase 1)
+- Individual agents have self-correction: when verification fails, the agent
+  can re-attempt with a stronger model (Opus) via the `CORRECTION` purpose
+- Batch conductor does NOT retry failed tasks automatically
+- Failed tasks are recorded in `batch.results` with status `FAILED`
+
+### Planned: Batch-Level Retry (Phase 2+)
+
+#### Option A: Simple Retry Flag
+```bash
+cf work batch run t1 t2 t3 --retry 2    # Retry failed tasks up to 2 times
+cf work batch run --all-ready --retry 1  # One retry attempt
+```
+
+Implementation:
+- After all tasks complete, re-run failed tasks up to N times
+- Track retry count per task in results
+- Final status based on last attempt
+
+#### Option B: Batch Resume Command
+```bash
+cf work batch resume <batch-id>         # Re-run only failed/blocked tasks
+cf work batch resume <batch-id> --force # Re-run even completed tasks
+```
+
+Implementation:
+- Load existing BatchRun
+- Filter to tasks with FAILED or BLOCKED status
+- Execute only those tasks
+- Merge results into existing batch record
+
+#### Option C: Self-Correction Escalation
+When a task fails repeatedly:
+1. First attempt: Normal execution
+2. Retry 1: Use `CORRECTION` purpose (stronger model)
+3. Retry 2: Add previous error context to prompt
+4. Final: Mark as BLOCKED with human review required
+
+### Decision Points
+- [ ] Which retry approach to implement first?
+- [ ] Should retries use exponential backoff?
+- [ ] Should we track retry history for analytics?
+- [ ] Should blocked tasks prevent retries of dependent tasks?
+
+---
+
 ## Open Questions
 
 1. **Retry logic**: Should failed tasks auto-retry? How many times?
    - Recommendation: No auto-retry in Phase 1. Add `--retry N` in Phase 2.
+   - See "Future Enhancements" section above for detailed options.
 
 2. **Resource limits**: Should we limit total LLM tokens across batch?
    - Recommendation: Defer. Let each task manage its own budget.
@@ -461,10 +510,14 @@ Summary: 2/3 completed (67%)
 3. **Batch resume**: If batch is interrupted (Ctrl+C), resume from where it left off?
    - Recommendation: Yes, track which tasks completed and skip them on resume.
 
+4. **Self-correction integration**: How should batch leverage agent self-correction?
+   - Current: Agent already self-corrects within a single run
+   - Future: Batch could escalate failed tasks to stronger models
+
 ---
 
 ## References
 
 - [GOLDEN_PATH.md](./GOLDEN_PATH.md) - CLI-first workflow contract
 - [CLI_WIREFRAME.md](./CLI_WIREFRAME.md) - Command structure
-- [AGENT_IMPLEMENTATION_TASKS.md](./AGENT_IMPLEMENTATION_TASKS.md) - Agent architecture
+- [finished/AGENT_IMPLEMENTATION_TASKS.md](./finished/AGENT_IMPLEMENTATION_TASKS.md) - Agent architecture
