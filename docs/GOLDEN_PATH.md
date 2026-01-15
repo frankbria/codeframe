@@ -200,14 +200,16 @@ UIs (web/electron) are views over this state machine, not the source of truth.
 
 ## Acceptance Checklist (must pass)
 
-- [ ] `codeframe init` creates durable state for a repo
-- [ ] `codeframe prd add` stores PRD
-- [ ] `codeframe tasks generate` creates tasks in state machine
-- [ ] `codeframe work start <id>` runs an agent workflow and logs events
-- [ ] `codeframe blockers` + `codeframe blocker answer` works
-- [ ] `codeframe review` runs gates and records results
-- [ ] `codeframe patch export` or `codeframe commit create` produces an artifact
-- [ ] `codeframe checkpoint create` snapshots state
-- [ ] No UI is required at any point
+**Status: ✅ Golden Path Complete (2025-01-14)**
 
-If any item is not met, do not add new features outside this list.
+- [x] `codeframe init` creates durable state for a repo
+- [x] `codeframe prd add` stores PRD
+- [x] `codeframe tasks generate` creates tasks in state machine
+- [x] `codeframe work start <id>` runs an agent workflow and logs events
+- [x] `codeframe blockers` + `codeframe blocker answer` works
+- [x] `codeframe review` runs gates and records results
+- [x] `codeframe patch export` or `codeframe commit create` produces an artifact
+- [x] `codeframe checkpoint create` snapshots state
+- [x] No UI is required at any point
+
+All Golden Path requirements are met. Next phase: Batch execution (see `BATCH_EXECUTION_PLAN.md`).
