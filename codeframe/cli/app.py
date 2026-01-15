@@ -81,9 +81,9 @@ def init(
         )
 
         if already_existed:
-            console.print(f"[blue]Workspace already initialized[/blue]")
+            console.print("[blue]Workspace already initialized[/blue]")
         else:
-            console.print(f"[green]Workspace initialized[/green]")
+            console.print("[green]Workspace initialized[/green]")
 
         console.print(f"  Path: {repo_path}")
         console.print(f"  ID: {workspace.id}")
@@ -137,13 +137,13 @@ def status(
         workspace = get_workspace(path)
 
         # Workspace header
-        console.print(f"\n[bold cyan]CodeFRAME Workspace[/bold cyan]")
+        console.print("\n[bold cyan]CodeFRAME Workspace[/bold cyan]")
         console.print(f"  Path: {workspace.repo_path}")
         console.print(f"  ID: [dim]{workspace.id}[/dim]")
         console.print(f"  Created: {workspace.created_at.strftime('%Y-%m-%d %H:%M')}")
 
         # PRD info
-        console.print(f"\n[bold]PRD[/bold]")
+        console.print("\n[bold]PRD[/bold]")
         latest_prd = prd.get_latest(workspace)
         if latest_prd:
             console.print(f"  Title: [green]{latest_prd.title}[/green]")
@@ -152,7 +152,7 @@ def status(
             console.print("  [dim]No PRD loaded. Run 'codeframe prd add <file>'[/dim]")
 
         # Task counts
-        console.print(f"\n[bold]Tasks[/bold]")
+        console.print("\n[bold]Tasks[/bold]")
         counts = tasks.count_by_status(workspace)
         total = sum(counts.values())
 
@@ -177,7 +177,7 @@ def status(
 
         # Recent events
         if show_events > 0:
-            console.print(f"\n[bold]Recent Activity[/bold]")
+            console.print("\n[bold]Recent Activity[/bold]")
             recent = events.list_recent(workspace, limit=show_events)
             if recent:
                 for event in recent:
@@ -434,7 +434,7 @@ def prd_add(
             print_event=False,
         )
 
-        console.print(f"[green]PRD added[/green]")
+        console.print("[green]PRD added[/green]")
         console.print(f"  Title: {record.title}")
         console.print(f"  ID: {record.id}")
         console.print(f"  Source: {file_path}")
@@ -717,7 +717,7 @@ def tasks_set(
             print_event=False,
         )
 
-        console.print(f"[green]Task updated[/green]")
+        console.print("[green]Task updated[/green]")
         console.print(f"  {task.title[:50]}")
         console.print(f"  Status: {old_status.value} -> {new_status.value}")
 
@@ -809,10 +809,10 @@ def work_start(
         # Start the run
         run = runtime.start_task_run(workspace, task.id)
 
-        console.print(f"\n[bold green]Run started[/bold green]")
+        console.print("\n[bold green]Run started[/bold green]")
         console.print(f"  Task: {task.title}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
-        console.print(f"  Status: [yellow]RUNNING[/yellow]")
+        console.print("  Status: [yellow]RUNNING[/yellow]")
 
         # Execute agent if requested
         if execute:
@@ -910,10 +910,10 @@ def work_resume(
         # Resume the run
         run = runtime.resume_run(workspace, task.id)
 
-        console.print(f"\n[bold green]Run resumed[/bold green]")
+        console.print("\n[bold green]Run resumed[/bold green]")
         console.print(f"  Task: {task.title}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
-        console.print(f"  Status: [yellow]RUNNING[/yellow]")
+        console.print("  Status: [yellow]RUNNING[/yellow]")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
@@ -967,10 +967,10 @@ def work_stop(
         # Stop the run
         run = runtime.stop_run(workspace, task.id)
 
-        console.print(f"\n[bold yellow]Run stopped[/bold yellow]")
+        console.print("\n[bold yellow]Run stopped[/bold yellow]")
         console.print(f"  Task: {task.title}")
         console.print(f"  Run ID: [dim]{run.id}[/dim]")
-        console.print(f"  Task returned to: [blue]READY[/blue]")
+        console.print("  Task returned to: [blue]READY[/blue]")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
@@ -1011,7 +1011,7 @@ def work_status(
             # Show run for specific task
             run = runtime.get_active_run(workspace, task_id)
             if run:
-                console.print(f"\n[bold]Run Status[/bold]")
+                console.print("\n[bold]Run Status[/bold]")
                 console.print(f"  Run ID: {run.id}")
                 console.print(f"  Task ID: {run.task_id}")
                 console.print(f"  Status: {run.status.value}")
@@ -1146,13 +1146,13 @@ def batch_run(
             raise typer.Exit(1)
 
         # Show execution plan
-        console.print(f"\n[bold]Batch Execution Plan[/bold]")
+        console.print("\n[bold]Batch Execution Plan[/bold]")
         console.print(f"  Strategy: {strategy}")
         console.print(f"  Tasks: {len(ids_to_execute)}")
         console.print(f"  On failure: {on_failure}")
 
         if dry_run:
-            console.print(f"\n[dim]Dry run - showing tasks without executing:[/dim]")
+            console.print("\n[dim]Dry run - showing tasks without executing:[/dim]")
             for i, tid in enumerate(ids_to_execute):
                 task = tasks_module.get(workspace, tid)
                 title = task.title if task else tid
@@ -1163,7 +1163,7 @@ def batch_run(
         if max_retries > 0:
             console.print(f"\n[bold cyan]Starting batch execution (with up to {max_retries} retries)...[/bold cyan]\n")
         else:
-            console.print(f"\n[bold cyan]Starting batch execution...[/bold cyan]\n")
+            console.print("\n[bold cyan]Starting batch execution...[/bold cyan]\n")
 
         batch = conductor.start_batch(
             workspace=workspace,
@@ -1176,7 +1176,7 @@ def batch_run(
         )
 
         # Show summary
-        console.print(f"\n[bold]Batch Summary[/bold]")
+        console.print("\n[bold]Batch Summary[/bold]")
         console.print(f"  Batch ID: {batch.id[:8]}")
         console.print(f"  Status: {batch.status.value}")
 
@@ -1259,7 +1259,7 @@ def batch_status(
                 console.print(f"  Duration: {duration}")
 
             # Show task results
-            console.print(f"\n  [bold]Tasks:[/bold]")
+            console.print("\n  [bold]Tasks:[/bold]")
             for tid in batch.task_ids:
                 task = tasks_module.get(workspace, tid)
                 title = task.title[:40] if task else tid
@@ -1441,7 +1441,7 @@ def batch_resume(
 
         # Show final status
         if batch.status == conductor.BatchStatus.COMPLETED:
-            console.print(f"\n[green]✓ Batch completed successfully![/green]")
+            console.print("\n[green]✓ Batch completed successfully![/green]")
         elif batch.status == conductor.BatchStatus.PARTIAL:
             final_failed = sum(1 for s in batch.results.values() if s in ("FAILED", "BLOCKED"))
             console.print(f"\n[yellow]⚠ Batch partially completed ({final_failed} still failing)[/yellow]")
@@ -1453,6 +1453,254 @@ def batch_resume(
         raise typer.Exit(1)
     except ValueError as e:
         console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@batch_app.command("follow")
+def batch_follow(
+    batch_id: str = typer.Argument(..., help="Batch ID to follow (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    no_progress: bool = typer.Option(
+        False,
+        "--no-progress",
+        help="Plain event log only (no progress bar)",
+    ),
+) -> None:
+    """Follow a batch execution in real-time.
+
+    Streams batch events to terminal until batch completes or is cancelled.
+    Shows progress bar with ETA based on task completion times.
+
+    Example:
+        codeframe work batch follow abc123
+        codeframe work batch follow abc123 --no-progress
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import conductor, events
+    from codeframe.core.progress import BatchProgress
+    from rich.live import Live
+    from rich.panel import Panel
+
+    path = workspace_path or Path.cwd()
+
+    # Terminal event types - stop following when these occur
+    TERMINAL_EVENTS = {
+        events.EventType.BATCH_COMPLETED,
+        events.EventType.BATCH_PARTIAL,
+        events.EventType.BATCH_FAILED,
+        events.EventType.BATCH_CANCELLED,
+    }
+
+    def _get_event_color(event_type: str) -> str:
+        """Get the Rich color for an event type."""
+        if "ERROR" in event_type or "FAILED" in event_type:
+            return "red"
+        if "COMPLETED" in event_type:
+            return "green"
+        if "STARTED" in event_type:
+            return "blue"
+        if "BLOCKED" in event_type:
+            return "yellow"
+        if "QUEUED" in event_type:
+            return "dim"
+        return "cyan"
+
+    def _print_batch_event(event: events.Event) -> None:
+        """Print a batch event to console."""
+        timestamp = event.created_at.strftime("%H:%M:%S")
+        color = _get_event_color(event.event_type)
+
+        # Extract key info from payload
+        task_id = event.payload.get("task_id", "")
+        position = event.payload.get("position", "")
+
+        # Short event name (remove BATCH_ prefix for cleaner output)
+        event_name = event.event_type.replace("BATCH_", "")
+
+        # Format based on event type
+        if "TASK" in event.event_type and task_id:
+            detail = f"task={task_id[:8]}"
+            if position:
+                detail += f" ({position})"
+        elif event.event_type in TERMINAL_EVENTS:
+            # Batch completion event
+            completed = event.payload.get("completed", 0)
+            total = event.payload.get("total", 0)
+            detail = f"{completed}/{total} completed"
+        else:
+            detail = ""
+
+        console.print(
+            f"[dim]{timestamp}[/dim] [{color}]{event_name}[/{color}]"
+            + (f" {detail}" if detail else "")
+        )
+
+    def _generate_progress_display(progress: BatchProgress, batch_id_short: str) -> Panel:
+        """Generate Rich panel showing progress."""
+        # Build status line
+        parts = []
+        if progress.completed_tasks:
+            parts.append(f"[green]{progress.completed_tasks} completed[/green]")
+        if progress.failed_tasks:
+            parts.append(f"[red]{progress.failed_tasks} failed[/red]")
+        if progress.blocked_tasks:
+            parts.append(f"[yellow]{progress.blocked_tasks} blocked[/yellow]")
+        if progress.running_tasks:
+            parts.append(f"[blue]{progress.running_tasks} running[/blue]")
+        remaining = progress.remaining_tasks - progress.running_tasks
+        if remaining > 0:
+            parts.append(f"[dim]{remaining} pending[/dim]")
+
+        status_line = " | ".join(parts) if parts else "Starting..."
+
+        # Progress info
+        percent = progress.progress_percent
+        eta = progress.format_eta()
+        elapsed = progress.format_elapsed()
+
+        content = f"""{status_line}
+Progress: {progress.processed_tasks}/{progress.total_tasks} ({percent:.0f}%)
+ETA: {eta} | Elapsed: {elapsed}"""
+
+        return Panel(
+            content,
+            title=f"[bold]Batch {batch_id_short}[/bold]",
+            border_style="blue",
+        )
+
+    def _update_progress(progress: BatchProgress, event: events.Event) -> None:
+        """Update progress tracker based on event."""
+        task_id = event.payload.get("task_id", "")
+
+        if event.event_type == events.EventType.BATCH_TASK_STARTED:
+            progress.record_task_start(task_id)
+        elif event.event_type == events.EventType.BATCH_TASK_COMPLETED:
+            progress.record_task_complete(task_id)
+        elif event.event_type == events.EventType.BATCH_TASK_FAILED:
+            progress.record_task_failed(task_id)
+        elif event.event_type == events.EventType.BATCH_TASK_BLOCKED:
+            progress.record_task_blocked(task_id)
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find batch by partial ID
+        all_batches = conductor.list_batches(workspace, limit=100)
+        matching = [b for b in all_batches if b.id.startswith(batch_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            raise typer.Exit(1)
+
+        batch = matching[0]
+        batch_id_short = batch.id[:8]
+
+        # Check if already in terminal state
+        if batch.status in (
+            conductor.BatchStatus.COMPLETED,
+            conductor.BatchStatus.PARTIAL,
+            conductor.BatchStatus.FAILED,
+            conductor.BatchStatus.CANCELLED,
+        ):
+            console.print(f"[dim]Batch {batch_id_short} already {batch.status.value}[/dim]")
+
+            # Show final summary
+            completed = sum(1 for s in batch.results.values() if s == "COMPLETED")
+            failed = sum(1 for s in batch.results.values() if s == "FAILED")
+            blocked = sum(1 for s in batch.results.values() if s == "BLOCKED")
+
+            console.print(f"\n  [green]{completed} completed[/green]", end="")
+            if failed:
+                console.print(f" | [red]{failed} failed[/red]", end="")
+            if blocked:
+                console.print(f" | [yellow]{blocked} blocked[/yellow]", end="")
+            console.print()
+            return
+
+        # Initialize progress tracker
+        completed_count = sum(1 for s in batch.results.values() if s == "COMPLETED")
+        failed_count = sum(1 for s in batch.results.values() if s == "FAILED")
+        blocked_count = sum(1 for s in batch.results.values() if s == "BLOCKED")
+
+        progress = BatchProgress(
+            total_tasks=len(batch.task_ids),
+            completed_tasks=completed_count,
+            failed_tasks=failed_count,
+            blocked_tasks=blocked_count,
+            started_at=batch.started_at,
+        )
+
+        # Get starting event ID (find batch's first event or latest)
+        recent_events = events.list_recent(workspace, limit=100)
+        batch_events = [e for e in recent_events if e.payload.get("batch_id") == batch.id]
+        since_id = batch_events[-1].id - 1 if batch_events else 0
+
+        console.print(f"[cyan]Following batch {batch_id_short}...[/cyan]")
+        console.print("[dim]Press Ctrl+C to stop following[/dim]\n")
+
+        try:
+            if no_progress:
+                # Simple mode: just print events
+                for event in events.tail(workspace, since_id):
+                    if event.payload.get("batch_id") != batch.id:
+                        continue
+
+                    _update_progress(progress, event)
+                    _print_batch_event(event)
+
+                    if event.event_type in TERMINAL_EVENTS:
+                        break
+            else:
+                # Rich mode: live progress display
+                with Live(
+                    _generate_progress_display(progress, batch_id_short),
+                    refresh_per_second=2,
+                    console=console,
+                ) as live:
+                    for event in events.tail(workspace, since_id):
+                        if event.payload.get("batch_id") != batch.id:
+                            continue
+
+                        _update_progress(progress, event)
+
+                        # Print event below progress panel
+                        live.console.print()  # Clear line
+                        _print_batch_event(event)
+
+                        # Update progress display
+                        live.update(_generate_progress_display(progress, batch_id_short))
+
+                        if event.event_type in TERMINAL_EVENTS:
+                            break
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Follow cancelled[/yellow]")
+            return
+
+        # Final summary
+        batch = conductor.get_batch(workspace, batch.id)  # Refresh
+        console.print()
+
+        if batch.status == conductor.BatchStatus.COMPLETED:
+            console.print(f"[green]✓ Batch {batch_id_short} completed successfully![/green]")
+        elif batch.status == conductor.BatchStatus.PARTIAL:
+            final_failed = sum(1 for s in batch.results.values() if s in ("FAILED", "BLOCKED"))
+            console.print(
+                f"[yellow]⚠ Batch {batch_id_short} partially completed "
+                f"({final_failed} failed/blocked)[/yellow]"
+            )
+        elif batch.status == conductor.BatchStatus.CANCELLED:
+            console.print(f"[red]✗ Batch {batch_id_short} was cancelled[/red]")
+        else:
+            console.print(f"[red]✗ Batch {batch_id_short} {batch.status.value.lower()}[/red]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
         raise typer.Exit(1)
 
 
@@ -1599,11 +1847,11 @@ def blocker_show(
         console.print(f"  Task: {blocker.task_id[:8] if blocker.task_id else '-'}")
         console.print(f"  Created: {blocker.created_at.strftime('%Y-%m-%d %H:%M')}")
 
-        console.print(f"\n[bold]Question:[/bold]")
+        console.print("\n[bold]Question:[/bold]")
         console.print(f"  {blocker.question}")
 
         if blocker.answer:
-            console.print(f"\n[bold]Answer:[/bold]")
+            console.print("\n[bold]Answer:[/bold]")
             console.print(f"  {blocker.answer}")
             if blocker.answered_at:
                 console.print(f"  [dim]Answered: {blocker.answered_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
@@ -1650,7 +1898,7 @@ def blocker_create(
         workspace = get_workspace(path)
         blocker = blockers.create(workspace, question, task_id=task_id)
 
-        console.print(f"\n[bold green]Blocker created[/bold green]")
+        console.print("\n[bold green]Blocker created[/bold green]")
         console.print(f"  ID: {blocker.id[:8]}")
         console.print(f"  Question: {question[:60]}{'...' if len(question) > 60 else ''}")
 
@@ -1684,9 +1932,9 @@ def blocker_answer(
         workspace = get_workspace(path)
         blocker = blockers.answer(workspace, blocker_id, text)
 
-        console.print(f"\n[bold green]Blocker answered[/bold green]")
+        console.print("\n[bold green]Blocker answered[/bold green]")
         console.print(f"  ID: {blocker.id[:8]}")
-        console.print(f"  Status: [blue]ANSWERED[/blue]")
+        console.print("  Status: [blue]ANSWERED[/blue]")
         console.print(f"\nUse 'codeframe blocker resolve {blocker.id[:8]}' to mark as resolved.")
 
     except FileNotFoundError:
@@ -1723,9 +1971,9 @@ def blocker_resolve(
         workspace = get_workspace(path)
         blocker = blockers.resolve(workspace, blocker_id)
 
-        console.print(f"\n[bold green]Blocker resolved[/bold green]")
+        console.print("\n[bold green]Blocker resolved[/bold green]")
         console.print(f"  ID: {blocker.id[:8]}")
-        console.print(f"  Status: [green]RESOLVED[/green]")
+        console.print("  Status: [green]RESOLVED[/green]")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
@@ -1783,7 +2031,7 @@ def patch_export(
         workspace = get_workspace(path)
         patch_info = artifacts.export_patch(workspace, out_path=out, staged_only=staged_only)
 
-        console.print(f"\n[bold green]Patch exported[/bold green]")
+        console.print("\n[bold green]Patch exported[/bold green]")
         console.print(f"  Path: {patch_info.path}")
         console.print(f"  Size: {patch_info.size_bytes} bytes")
         console.print(
@@ -1939,7 +2187,7 @@ def commit_create(
         workspace = get_workspace(path)
         commit_info = artifacts.create_commit(workspace, message, add_all=add_all)
 
-        console.print(f"\n[bold green]Commit created[/bold green]")
+        console.print("\n[bold green]Commit created[/bold green]")
         console.print(f"  Hash: {commit_info.hash}")
         console.print(f"  Message: {commit_info.message}")
         console.print(
@@ -1992,7 +2240,7 @@ def checkpoint_create(
 
         summary = checkpoint.snapshot.get("summary", {})
 
-        console.print(f"\n[bold green]Checkpoint created[/bold green]")
+        console.print("\n[bold green]Checkpoint created[/bold green]")
         console.print(f"  Name: {checkpoint.name}")
         console.print(f"  ID: [dim]{checkpoint.id[:8]}[/dim]")
         console.print(f"  Tasks: {summary.get('total_tasks', 0)}")
@@ -2102,7 +2350,7 @@ def checkpoint_show(
         if checkpoint.snapshot.get("prd"):
             console.print(f"  PRD: {checkpoint.snapshot['prd'].get('title', 'Unknown')}")
 
-        console.print(f"\n[bold]Task Summary:[/bold]")
+        console.print("\n[bold]Task Summary:[/bold]")
         for status, count in tasks_by_status.items():
             if count > 0:
                 console.print(f"  {status}: {count}")
@@ -2143,7 +2391,7 @@ def checkpoint_restore(
 
         summary = checkpoint.snapshot.get("summary", {})
 
-        console.print(f"\n[bold green]Checkpoint restored[/bold green]")
+        console.print("\n[bold green]Checkpoint restored[/bold green]")
         console.print(f"  Name: {checkpoint.name}")
         console.print(f"  Tasks restored: {summary.get('total_tasks', 0)}")
 
@@ -2180,7 +2428,7 @@ def checkpoint_delete(
         deleted = checkpoints.delete(workspace, name_or_id)
 
         if deleted:
-            console.print(f"[green]Checkpoint deleted[/green]")
+            console.print("[green]Checkpoint deleted[/green]")
         else:
             console.print(f"[red]Error:[/red] Checkpoint not found: {name_or_id}")
             raise typer.Exit(1)

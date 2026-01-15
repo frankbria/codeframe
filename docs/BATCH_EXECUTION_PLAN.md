@@ -1,6 +1,6 @@
 # Batch Execution Implementation Plan
 
-**Status**: Phase 2 Complete
+**Status**: Phase 3 In Progress (CLI Observability Complete)
 **Created**: 2025-01-15
 **Last Updated**: 2026-01-15
 
@@ -277,9 +277,9 @@ class EventType:
    - Estimate remaining time
 
 #### Acceptance Criteria
-- [ ] `cf work batch follow <id>` shows live updates
-- [ ] Websocket pushes events to subscribers
-- [ ] Progress includes ETA
+- [x] `cf work batch follow <id>` shows live updates
+- [ ] Websocket pushes events to subscribers (deferred - infrastructure exists)
+- [x] Progress includes ETA
 
 ---
 
@@ -290,18 +290,22 @@ codeframe/
 ├── core/
 │   ├── conductor.py           # NEW: Batch orchestration
 │   ├── dependency_analyzer.py # NEW (Phase 2): LLM-based analysis
+│   ├── dependency_graph.py    # NEW (Phase 2): DAG construction
+│   ├── progress.py            # NEW (Phase 3): ETA/progress tracking
 │   ├── runtime.py             # Existing (unchanged)
 │   ├── agent.py               # Existing (unchanged)
 │   ├── tasks.py               # Modified: add depends_on field
 │   └── events.py              # Modified: add batch events
 ├── cli/
-│   └── app.py                 # Modified: add batch subcommands
+│   └── app.py                 # Modified: add batch subcommands + follow
 ├── server/
-│   └── batch_ws.py            # NEW (Phase 3): WebSocket adapter
+│   └── batch_ws.py            # NEW (Phase 3): WebSocket adapter (deferred)
 └── tests/
     └── core/
-        ├── test_conductor.py  # NEW
-        └── test_dependency_analyzer.py  # NEW (Phase 2)
+        ├── test_conductor.py            # NEW
+        ├── test_dependency_analyzer.py  # NEW (Phase 2)
+        ├── test_dependency_graph.py     # NEW (Phase 2)
+        └── test_progress.py             # NEW (Phase 3)
 ```
 
 ---

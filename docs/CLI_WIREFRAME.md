@@ -531,10 +531,10 @@ Output includes:
 17) `--strategy auto` with LLM-based dependency inference ✓ DONE
 18) `work batch run --retry N` - automatic retry of failed tasks ✓ DONE
 
-### Phase 3: Observability
-19) `work batch follow` - live streaming to terminal
-20) WebSocket adapter for batch events
-21) Progress estimation and ETA
+### Phase 3: Observability (IN PROGRESS)
+19) `work batch follow` - live streaming to terminal ✓ DONE
+20) WebSocket adapter for batch events (deferred - infrastructure exists)
+21) Progress estimation and ETA ✓ DONE
 
 Only after these are stable:
 - server adapter improvements
