@@ -13,7 +13,8 @@ from enum import Enum
 from typing import Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
-from codeframe.core import events
+from codeframe.core import events, runtime, tasks
+from codeframe.core.state_machine import TaskStatus
 
 
 def _utc_now() -> datetime:
@@ -276,6 +277,22 @@ def answer(workspace: Workspace, blocker_id: str, text: str) -> Blocker:
     blocker.answer = text
     blocker.status = BlockerStatus.ANSWERED
     blocker.answered_at = datetime.fromisoformat(now)
+
+    # Automatically reset the associated task to READY so it can be restarted
+    # This eliminates the need for separate "work stop" and "work resume" commands
+    if blocker.task_id:
+        try:
+            # Stop the blocked run (marks it as FAILED)
+            active_run = runtime.get_active_run(workspace, blocker.task_id)
+            if active_run and active_run.status == runtime.RunStatus.BLOCKED:
+                runtime.stop_run(workspace, blocker.task_id)
+            # Task is now READY and can be restarted with `cf work start <id> --execute`
+        except ValueError:
+            # No active run found, just ensure task is READY
+            task = tasks.get(workspace, blocker.task_id)
+            if task and task.status == TaskStatus.BLOCKED:
+                tasks.update_status(workspace, blocker.task_id, TaskStatus.READY)
+
     return blocker
 
 
