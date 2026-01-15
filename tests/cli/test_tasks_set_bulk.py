@@ -158,7 +158,7 @@ class TestTasksSetSingleTask:
         task = created[2]  # A BACKLOG task
 
         result = runner.invoke(
-            app, ["tasks", "set", "status", "READY", task.id[:8], "-w", str(repo)]
+            app, ["tasks", "set", "status", task.id[:8], "READY", "-w", str(repo)]
         )
 
         assert result.exit_code == 0
@@ -175,7 +175,7 @@ class TestTasksSetSingleTask:
         task = created[2]
 
         result = runner.invoke(
-            app, ["tasks", "set", "status", "READY", task.id[:6], "-w", str(repo)]
+            app, ["tasks", "set", "status", task.id[:6], "READY", "-w", str(repo)]
         )
 
         assert result.exit_code == 0
@@ -186,7 +186,7 @@ class TestTasksSetSingleTask:
         task = created[0]  # Already READY
 
         result = runner.invoke(
-            app, ["tasks", "set", "status", "READY", task.id[:8], "-w", str(repo)]
+            app, ["tasks", "set", "status", task.id[:8], "READY", "-w", str(repo)]
         )
 
         assert result.exit_code == 0
@@ -201,11 +201,11 @@ class TestTasksSetErrors:
         ws, repo, created = workspace_with_tasks
 
         result = runner.invoke(
-            app, ["tasks", "set", "status", "READY", "-w", str(repo)]
+            app, ["tasks", "set", "status", "-w", str(repo)]
         )
 
         assert result.exit_code == 1
-        assert "Specify a task ID or use --all" in result.output
+        assert "Missing task ID" in result.output
 
     def test_invalid_status_value(self, runner, workspace_with_tasks):
         """Invalid status should error."""
@@ -222,7 +222,7 @@ class TestTasksSetErrors:
         ws, repo, created = workspace_with_tasks
 
         result = runner.invoke(
-            app, ["tasks", "set", "status", "READY", "nonexistent123", "-w", str(repo)]
+            app, ["tasks", "set", "status", "nonexistent123", "READY", "-w", str(repo)]
         )
 
         assert result.exit_code == 1

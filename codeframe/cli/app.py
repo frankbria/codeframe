@@ -685,8 +685,8 @@ def tasks_list(
 @tasks_app.command("set")
 def tasks_set(
     attribute: str = typer.Argument(..., help="Attribute to set (e.g., 'status')"),
-    value: str = typer.Argument(..., help="New value"),
     task_id: Optional[str] = typer.Argument(None, help="Task ID (can be partial, omit with --all)"),
+    value: Optional[str] = typer.Argument(None, help="New value"),
     repo_path: Optional[Path] = typer.Option(
         None,
         "--workspace", "-w",
@@ -705,10 +705,10 @@ def tasks_set(
 ) -> None:
     """Set a task attribute.
 
-    Example:
-        codeframe tasks set status READY abc123
-        codeframe tasks set status READY --all
-        codeframe tasks set status READY --all --from BACKLOG
+    Examples:
+        cf tasks set status abc123 READY       # Single task
+        cf tasks set status READY --all        # All tasks
+        cf tasks set status READY --all --from BACKLOG  # Only BACKLOG tasks
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks
@@ -725,7 +725,33 @@ def tasks_set(
             console.print("Supported attributes: status")
             raise typer.Exit(1)
 
-        new_status = parse_status(value)
+        # Handle argument parsing based on --all flag
+        # With --all: tasks set status --all READY (task_id slot holds value)
+        # Without --all: tasks set status <task_id> READY
+        if all_tasks_flag:
+            # In --all mode, task_id position holds the value
+            if task_id and not value:
+                actual_value = task_id
+                actual_task_id = None
+            elif value:
+                actual_value = value
+                actual_task_id = None
+            else:
+                console.print("[red]Error:[/red] Missing value. Usage: tasks set status --all READY")
+                raise typer.Exit(1)
+        else:
+            # Single task mode: need both task_id and value
+            if not task_id:
+                console.print("[red]Error:[/red] Missing task ID. Usage: tasks set status <task_id> READY")
+                console.print("Or use --all to update all tasks.")
+                raise typer.Exit(1)
+            if not value:
+                console.print(f"[red]Error:[/red] Missing value. Usage: tasks set status {task_id} READY")
+                raise typer.Exit(1)
+            actual_value = value
+            actual_task_id = task_id
+
+        new_status = parse_status(actual_value)
         all_workspace_tasks = tasks.list_tasks(workspace)
 
         # Determine which tasks to update
@@ -742,14 +768,14 @@ def tasks_set(
                 if not matching:
                     console.print("[yellow]No tasks in workspace[/yellow]")
                     raise typer.Exit(0)
-        elif task_id:
+        elif actual_task_id:
             # Single task mode
-            matching = [t for t in all_workspace_tasks if t.id.startswith(task_id)]
+            matching = [t for t in all_workspace_tasks if t.id.startswith(actual_task_id)]
             if not matching:
-                console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+                console.print(f"[red]Error:[/red] No task found matching '{actual_task_id}'")
                 raise typer.Exit(1)
             if len(matching) > 1:
-                console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+                console.print(f"[red]Error:[/red] Multiple tasks match '{actual_task_id}':")
                 for t in matching:
                     console.print(f"  {t.id}: {t.title[:40]}")
                 console.print("Please provide a more specific ID.")
