@@ -369,6 +369,18 @@ All 8 implementation tasks from `AGENT_IMPLEMENTATION_TASKS.md` are done:
 uv run pytest
 ```
 
+### Run v2 tests only
+```bash
+uv run pytest -m v2           # All v2 tests (~411 tests)
+uv run pytest -m v2 -q        # Quiet mode
+```
+
+The `v2` marker identifies tests for CLI-first, headless functionality:
+- All tests in `tests/core/` are automatically marked v2 (via conftest.py)
+- v2 CLI tests have `pytestmark = pytest.mark.v2` at the top
+
+**Convention**: When adding new v2 functionality, mark tests with `@pytest.mark.v2` or add `pytestmark = pytest.mark.v2` at module level for CLI tests that use `codeframe.cli.app`.
+
 ### Run core module tests
 ```bash
 uv run pytest tests/core/
