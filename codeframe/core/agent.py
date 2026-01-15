@@ -347,9 +347,62 @@ class Agent:
                 if step.type in {StepType.FILE_CREATE, StepType.FILE_EDIT}:
                     gate_result = self._run_incremental_verification()
                     if gate_result and not gate_result.passed:
-                        # Try to fix lint issues automatically
+                        # Try to fix lint issues automatically (works for style, not syntax)
                         if not self._try_auto_fix(gate_result):
-                            consecutive_failures += 1
+                            # Auto-fix failed - need to self-correct the code
+                            self._emit_event("verification_failed", {
+                                "step": step.index,
+                                "error": "Code verification failed after file change",
+                            })
+
+                            # Trigger self-correction for the verification failure
+                            failed_checks = [
+                                c.name for c in gate_result.checks
+                                if c.status != GateStatus.PASSED
+                            ]
+                            failed_result = StepResult(
+                                step=step,
+                                status=ExecutionStatus.FAILED,
+                                error=f"Verification failed: {failed_checks}",
+                            )
+
+                            # Try self-correction to fix the code
+                            self_correction_attempts = 0
+                            current_result = failed_result
+                            self_correction_succeeded = False
+
+                            while self_correction_attempts < MAX_SELF_CORRECTION_ATTEMPTS:
+                                self_correction_attempts += 1
+                                corrected_result = self._attempt_self_correction(
+                                    step, current_result, self_correction_attempts
+                                )
+
+                                if corrected_result is None:
+                                    break
+
+                                if corrected_result.status == ExecutionStatus.SUCCESS:
+                                    # Re-verify the corrected code
+                                    recheck = self._run_incremental_verification()
+                                    if recheck is None or recheck.passed:
+                                        self._emit_event("step_completed", {
+                                            "step": step.index,
+                                            "output": "Code fixed via self-correction",
+                                            "self_corrected": True,
+                                        })
+                                        self_correction_succeeded = True
+                                        break
+
+                                current_result = corrected_result
+
+                            if not self_correction_succeeded:
+                                # Couldn't fix the verification error
+                                consecutive_failures += 1
+                                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                                    # Create blocker asking for help with the code
+                                    self._create_blocker_from_failure(step, current_result)
+                                    return
+                                # Otherwise, we continue to next step with broken file
+                                # (not ideal, but prevents infinite loop)
 
                 self.state.current_step += 1
 
