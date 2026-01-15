@@ -760,6 +760,11 @@ def work_start(
         "--dry-run",
         help="Preview changes without applying them (use with --execute)",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Write detailed debug log to .codeframe_debug_<timestamp>.log in repo",
+    ),
     stub: bool = typer.Option(
         False,
         "--stub",
@@ -814,10 +819,11 @@ def work_start(
             from codeframe.core.agent import AgentStatus
 
             mode = "[dim](dry run)[/dim]" if dry_run else ""
-            console.print(f"\n[bold]Executing agent...{mode}[/bold]")
+            debug_mode = " [dim](debug logging enabled)[/dim]" if debug else ""
+            console.print(f"\n[bold]Executing agent...{mode}{debug_mode}[/bold]")
 
             try:
-                state = runtime.execute_agent(workspace, run, dry_run=dry_run)
+                state = runtime.execute_agent(workspace, run, dry_run=dry_run, debug=debug)
 
                 if state.status == AgentStatus.COMPLETED:
                     console.print("[bold green]Task completed successfully![/bold green]")
@@ -832,6 +838,14 @@ def work_start(
                         last_result = state.step_results[-1]
                         if last_result.error:
                             console.print(f"  Error: {last_result.error[:200]}")
+
+                # Show debug log location if debugging was enabled
+                if debug:
+                    # Find the most recent debug log in the repo
+                    debug_logs = list(workspace.repo_path.glob(".codeframe_debug_*.log"))
+                    if debug_logs:
+                        latest_log = max(debug_logs, key=lambda p: p.stat().st_mtime)
+                        console.print(f"\n[dim]Debug log written to: {latest_log}[/dim]")
 
             except ValueError as e:
                 console.print(f"[red]Error:[/red] {e}")
@@ -1023,6 +1037,315 @@ def work_status(
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# Batch execution commands
+# =============================================================================
+
+
+@work_app.command("batch")
+def work_batch(
+    task_ids: Optional[list[str]] = typer.Argument(
+        None, help="Task IDs to execute (space-separated)"
+    ),
+    all_ready: bool = typer.Option(
+        False,
+        "--all-ready",
+        help="Execute all tasks with READY status",
+    ),
+    strategy: str = typer.Option(
+        "serial",
+        "--strategy",
+        "-s",
+        help="Execution strategy: serial or parallel",
+    ),
+    max_parallel: int = typer.Option(
+        4,
+        "--max-parallel",
+        "-p",
+        help="Max concurrent tasks for parallel strategy",
+    ),
+    on_failure: str = typer.Option(
+        "continue",
+        "--on-failure",
+        help="Behavior on task failure: continue or stop",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show execution plan without running",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Execute multiple tasks in batch.
+
+    Execute a list of tasks sequentially (or in parallel in Phase 2).
+    Use --all-ready to process all READY tasks, or specify task IDs.
+
+    Example:
+        codeframe work batch task1 task2 task3
+        codeframe work batch --all-ready
+        codeframe work batch --all-ready --strategy serial
+        codeframe work batch task1 task2 --dry-run
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module, conductor
+    from codeframe.core.state_machine import TaskStatus
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Determine which tasks to execute
+        if all_ready:
+            ready_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.READY)
+            if not ready_tasks:
+                console.print("[yellow]No READY tasks found[/yellow]")
+                return
+            ids_to_execute = [t.id for t in ready_tasks]
+            console.print(f"Found {len(ids_to_execute)} READY tasks")
+        elif task_ids:
+            # Resolve partial IDs
+            all_tasks = tasks_module.list_tasks(workspace)
+            ids_to_execute = []
+            for partial_id in task_ids:
+                matching = [t for t in all_tasks if t.id.startswith(partial_id)]
+                if not matching:
+                    console.print(f"[red]Error:[/red] No task found matching '{partial_id}'")
+                    raise typer.Exit(1)
+                if len(matching) > 1:
+                    console.print(f"[red]Error:[/red] Multiple tasks match '{partial_id}':")
+                    for t in matching[:3]:
+                        console.print(f"  {t.id[:8]} - {t.title}")
+                    raise typer.Exit(1)
+                ids_to_execute.append(matching[0].id)
+        else:
+            console.print("[red]Error:[/red] Specify task IDs or use --all-ready")
+            raise typer.Exit(1)
+
+        # Show execution plan
+        console.print(f"\n[bold]Batch Execution Plan[/bold]")
+        console.print(f"  Strategy: {strategy}")
+        console.print(f"  Tasks: {len(ids_to_execute)}")
+        console.print(f"  On failure: {on_failure}")
+
+        if dry_run:
+            console.print(f"\n[dim]Dry run - showing tasks without executing:[/dim]")
+            for i, tid in enumerate(ids_to_execute):
+                task = tasks_module.get(workspace, tid)
+                title = task.title if task else tid
+                console.print(f"  [{i + 1}] {tid[:8]} - {title}")
+            return
+
+        # Execute batch
+        console.print(f"\n[bold cyan]Starting batch execution...[/bold cyan]\n")
+
+        batch = conductor.start_batch(
+            workspace=workspace,
+            task_ids=ids_to_execute,
+            strategy=strategy,
+            max_parallel=max_parallel,
+            on_failure=on_failure,
+            dry_run=False,
+        )
+
+        # Show summary
+        console.print(f"\n[bold]Batch Summary[/bold]")
+        console.print(f"  Batch ID: {batch.id[:8]}")
+        console.print(f"  Status: {batch.status.value}")
+
+        completed = sum(1 for s in batch.results.values() if s == "COMPLETED")
+        failed = sum(1 for s in batch.results.values() if s == "FAILED")
+        blocked = sum(1 for s in batch.results.values() if s == "BLOCKED")
+
+        console.print(f"  Completed: {completed}/{len(ids_to_execute)}")
+        if failed:
+            console.print(f"  Failed: {failed}")
+        if blocked:
+            console.print(f"  Blocked: {blocked}")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@work_app.command("batch-status")
+def work_batch_status(
+    batch_id: Optional[str] = typer.Argument(
+        None, help="Batch ID to check (shows recent batches if omitted)"
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show batch execution status.
+
+    Example:
+        codeframe work batch-status           # Show recent batches
+        codeframe work batch-status abc123    # Show specific batch
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import conductor, tasks as tasks_module
+    from rich.table import Table
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        if batch_id:
+            # Show specific batch
+            # Find by partial ID
+            all_batches = conductor.list_batches(workspace, limit=100)
+            matching = [b for b in all_batches if b.id.startswith(batch_id)]
+
+            if not matching:
+                console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+                raise typer.Exit(1)
+
+            batch = matching[0]
+
+            # Status color
+            status_colors = {
+                "COMPLETED": "green",
+                "PARTIAL": "yellow",
+                "FAILED": "red",
+                "CANCELLED": "red",
+                "RUNNING": "cyan",
+                "PENDING": "dim",
+            }
+            color = status_colors.get(batch.status.value, "white")
+
+            console.print(f"\n[bold]Batch {batch.id[:8]}[/bold]")
+            console.print(f"  Status: [{color}]{batch.status.value}[/{color}]")
+            console.print(f"  Strategy: {batch.strategy}")
+            console.print(f"  Started: {batch.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            if batch.completed_at:
+                duration = batch.completed_at - batch.started_at
+                console.print(f"  Duration: {duration}")
+
+            # Show task results
+            console.print(f"\n  [bold]Tasks:[/bold]")
+            for tid in batch.task_ids:
+                task = tasks_module.get(workspace, tid)
+                title = task.title[:40] if task else tid
+                result = batch.results.get(tid, "pending")
+
+                if result == "COMPLETED":
+                    icon = "[green]✓[/green]"
+                elif result == "BLOCKED":
+                    icon = "[yellow]⊘[/yellow]"
+                elif result == "FAILED":
+                    icon = "[red]✗[/red]"
+                else:
+                    icon = "[dim]○[/dim]"
+
+                console.print(f"    {icon} {tid[:8]} - {title}")
+
+        else:
+            # List recent batches
+            batches = conductor.list_batches(workspace, limit=10)
+
+            if not batches:
+                console.print("[dim]No batch runs found[/dim]")
+                return
+
+            table = Table(title="Recent Batch Runs")
+            table.add_column("ID", style="dim", width=8)
+            table.add_column("Status", width=10)
+            table.add_column("Tasks", width=8)
+            table.add_column("Completed", width=10)
+            table.add_column("Started", width=18)
+
+            for batch in batches:
+                status_colors = {
+                    "COMPLETED": "green",
+                    "PARTIAL": "yellow",
+                    "FAILED": "red",
+                    "CANCELLED": "red",
+                    "RUNNING": "cyan",
+                    "PENDING": "dim",
+                }
+                color = status_colors.get(batch.status.value, "white")
+                status_str = f"[{color}]{batch.status.value}[/{color}]"
+
+                completed = sum(1 for s in batch.results.values() if s == "COMPLETED")
+                completed_str = f"{completed}/{len(batch.task_ids)}"
+
+                table.add_row(
+                    batch.id[:8],
+                    status_str,
+                    str(len(batch.task_ids)),
+                    completed_str,
+                    batch.started_at.strftime("%Y-%m-%d %H:%M"),
+                )
+
+            console.print(table)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+
+
+@work_app.command("batch-cancel")
+def work_batch_cancel(
+    batch_id: str = typer.Argument(..., help="Batch ID to cancel (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Cancel a running batch.
+
+    Example:
+        codeframe work batch-cancel abc123
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import conductor
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find by partial ID
+        all_batches = conductor.list_batches(workspace, limit=100)
+        matching = [b for b in all_batches if b.id.startswith(batch_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            raise typer.Exit(1)
+
+        batch = matching[0]
+
+        if batch.status.value not in ("PENDING", "RUNNING"):
+            console.print(f"[yellow]Batch is already {batch.status.value}[/yellow]")
+            return
+
+        batch = conductor.cancel_batch(workspace, batch.id)
+        console.print(f"[green]Batch {batch.id[:8]} cancelled[/green]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
 

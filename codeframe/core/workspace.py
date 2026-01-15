@@ -163,14 +163,71 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
+    # Batch runs (multi-task orchestration)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS batch_runs (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            task_ids TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            strategy TEXT NOT NULL DEFAULT 'serial',
+            max_parallel INTEGER NOT NULL DEFAULT 4,
+            on_failure TEXT NOT NULL DEFAULT 'continue',
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            results TEXT,
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+            CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
+        )
+    """)
+
     # Create indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_workspace ON events(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_workspace ON blockers(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_status ON blockers(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_workspace ON batch_runs(workspace_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
 
     conn.commit()
+    conn.close()
+
+
+def _ensure_schema_upgrades(db_path: Path) -> None:
+    """Ensure schema upgrades for existing databases.
+
+    This function is idempotent and adds any new tables/columns
+    that were added after the initial schema creation.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Check if batch_runs table exists, if not create it
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='batch_runs'"
+    )
+    if not cursor.fetchone():
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS batch_runs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                task_ids TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                strategy TEXT NOT NULL DEFAULT 'serial',
+                max_parallel INTEGER NOT NULL DEFAULT 4,
+                on_failure TEXT NOT NULL DEFAULT 'continue',
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                results TEXT,
+                FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+                CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_workspace ON batch_runs(workspace_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
+        conn.commit()
+
     conn.close()
 
 
@@ -250,6 +307,9 @@ def get_workspace(repo_path: Path) -> Workspace:
 
     if not state_dir.exists() or not db_path.exists():
         raise FileNotFoundError(f"No workspace found at {repo_path}")
+
+    # Ensure schema is up to date for existing workspaces
+    _ensure_schema_upgrades(db_path)
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
