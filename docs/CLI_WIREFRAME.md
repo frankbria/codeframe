@@ -29,7 +29,9 @@ Add these subpackages under `codeframe/`:
   - `prd.py` (PRD store + parsing)
   - `tasks.py` (task generation + CRUD)
   - `blockers.py` (blocker store + answering)
-  - `runtime.py` (orchestrator/worker loop)
+  - `runtime.py` (single-task orchestrator/worker loop)
+  - `conductor.py` (batch orchestration, multi-task execution)
+  - `dependency_analyzer.py` (Phase 2: LLM-based dependency inference)
   - `checkpoints.py` (snapshot + restore)
   - `gates.py` (review/test runners)
 - `codeframe/adapters/` (optional but recommended)
@@ -243,6 +245,63 @@ Each command:
 
 ---
 
+### `codeframe work batch <task_ids...>` (Phase 1)
+**Purpose:** Execute multiple tasks in sequence (or parallel in Phase 2).
+
+**CLI module:**
+- `codeframe/cli/commands/work.py` (batch subcommand group)
+
+**Core calls:**
+- `batch = codeframe.core.conductor.start_batch(workspace_id, task_ids, strategy, max_parallel)`
+- `codeframe.core.events.emit(workspace_id, "BATCH_STARTED", payload)`
+- For each task: spawns subprocess `cf work start <task_id> --execute`
+- `codeframe.core.events.emit(workspace_id, "BATCH_COMPLETED", payload)`
+
+**State writes:**
+- BatchRun record (id, task_ids, status, strategy, results)
+
+**CLI options:**
+- `--all-ready`: Process all READY tasks instead of specifying IDs
+- `--strategy serial|parallel`: Execution strategy (default: serial)
+- `--max-parallel N`: Max concurrent tasks when parallel (default: 4)
+- `--dry-run`: Show execution plan without running
+- `--on-failure continue|stop`: Behavior on task failure (default: continue)
+
+**Important constraint:**
+- Must work without FastAPI server running.
+- Phase 1: Serial execution only (parallel flag accepted but runs serial)
+- Phase 2: True parallel execution with dependency analysis
+
+---
+
+### `codeframe work batch status [batch_id]`
+**Purpose:** Show batch execution status.
+
+**Core calls:**
+- `codeframe.core.conductor.list_batches(workspace_id)` (if no batch_id)
+- `codeframe.core.conductor.get_batch(workspace_id, batch_id)` (if batch_id provided)
+
+**Output:**
+- Batch ID, status, strategy
+- Task progress (completed/total)
+- Per-task status and duration
+
+---
+
+### `codeframe work batch cancel <batch_id>`
+**Purpose:** Cancel a running batch.
+
+**Core calls:**
+- `codeframe.core.conductor.cancel_batch(workspace_id, batch_id)`
+- `codeframe.core.events.emit(workspace_id, "BATCH_CANCELLED", payload)`
+
+**Behavior:**
+- Sends SIGTERM to running subprocesses
+- Marks batch as CANCELLED
+- Does not affect already-completed tasks
+
+---
+
 ### `codeframe events tail`
 **Purpose:** Tail event log in terminal.
 
@@ -422,6 +481,7 @@ Output includes:
 
 ## Implementation order (do not reorder)
 
+### Phase 0: Golden Path (COMPLETE)
 1) `init` + durable state
 2) `prd add`
 3) `tasks generate`
@@ -431,6 +491,22 @@ Output includes:
 7) review/gates
 8) patch export (preferred before commit)
 9) checkpoint + summary
+
+### Phase 1: Batch Execution (NEXT)
+10) `work batch` - serial execution of multiple tasks
+11) `work batch status` - batch status monitoring
+12) `work batch cancel` - batch cancellation
+
+### Phase 2: Parallel Execution
+13) `depends_on` field on Task model
+14) Dependency graph analysis
+15) True parallel execution with worker pool
+16) `--strategy auto` with LLM-based dependency inference
+
+### Phase 3: Observability
+17) `work batch follow` - live streaming to terminal
+18) WebSocket adapter for batch events
+19) Progress estimation and ETA
 
 Only after these are stable:
 - server adapter improvements
