@@ -99,6 +99,7 @@ def _init_database(db_path: Path) -> None:
             description TEXT,
             status TEXT NOT NULL DEFAULT 'BACKLOG',
             priority INTEGER DEFAULT 0,
+            depends_on TEXT DEFAULT '[]',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
@@ -106,6 +107,13 @@ def _init_database(db_path: Path) -> None:
             CHECK (status IN ('BACKLOG', 'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'MERGED'))
         )
     """)
+
+    # Migration: Add depends_on column to existing tasks table
+    # SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
+    cursor.execute("PRAGMA table_info(tasks)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "depends_on" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN depends_on TEXT DEFAULT '[]'")
 
     # Append-only event log
     cursor.execute("""
