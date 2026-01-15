@@ -769,6 +769,8 @@ def tasks_set(
             if skipped_count:
                 console.print(f"[dim]Skipped {skipped_count} (already {new_status.value})[/dim]")
 
+    except typer.Exit:
+        raise  # Re-raise typer.Exit to preserve exit code
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
