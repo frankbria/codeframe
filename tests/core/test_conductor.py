@@ -347,6 +347,165 @@ class TestRowToBatch:
         assert batch.results == {}
 
 
+class TestBatchExecution:
+    """Integration tests for batch execution with various failure scenarios."""
+
+    def test_all_tasks_succeed(self, workspace_with_tasks):
+        """Batch should be COMPLETED when all tasks succeed."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            batch = start_batch(workspace, task_ids)
+
+        assert batch.status == BatchStatus.COMPLETED
+        assert len(batch.results) == 3
+        assert all(status == "COMPLETED" for status in batch.results.values())
+
+    def test_some_tasks_fail_continue(self, workspace_with_tasks):
+        """Batch should be PARTIAL when some tasks fail with on_failure=continue."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # First task succeeds, second fails, third succeeds
+        def mock_execute(ws, tid):
+            if tid == task_ids[1]:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[0]] == "COMPLETED"
+        assert batch.results[task_ids[1]] == "FAILED"
+        assert batch.results[task_ids[2]] == "COMPLETED"
+
+    def test_task_fails_stop(self, workspace_with_tasks, capsys):
+        """Batch should stop immediately when task fails with on_failure=stop."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # First task succeeds, second fails
+        def mock_execute(ws, tid):
+            if tid == task_ids[1]:
+                return "FAILED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, on_failure="stop")
+
+        # Should stop after second task fails
+        assert batch.status == BatchStatus.PARTIAL
+        assert len(batch.results) == 2  # Only 2 tasks executed
+        assert batch.results[task_ids[0]] == "COMPLETED"
+        assert batch.results[task_ids[1]] == "FAILED"
+        assert task_ids[2] not in batch.results  # Third task never ran
+
+        captured = capsys.readouterr()
+        assert "Stopping batch due to --on-failure=stop" in captured.out
+
+    def test_all_tasks_fail(self, workspace_with_tasks):
+        """Batch should be FAILED when all tasks fail."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "FAILED"
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.FAILED
+        assert len(batch.results) == 3
+        assert all(status == "FAILED" for status in batch.results.values())
+
+    def test_task_blocked(self, workspace_with_tasks):
+        """Batch should handle BLOCKED tasks and continue."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Second task becomes blocked
+        def mock_execute(ws, tid):
+            if tid == task_ids[1]:
+                return "BLOCKED"
+            return "COMPLETED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[0]] == "COMPLETED"
+        assert batch.results[task_ids[1]] == "BLOCKED"
+        assert batch.results[task_ids[2]] == "COMPLETED"
+
+    def test_mixed_results(self, workspace_with_tasks):
+        """Batch should track mixed COMPLETED, FAILED, and BLOCKED results."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        # Task 1: COMPLETED, Task 2: BLOCKED, Task 3: FAILED
+        def mock_execute(ws, tid):
+            if tid == task_ids[0]:
+                return "COMPLETED"
+            elif tid == task_ids[1]:
+                return "BLOCKED"
+            else:
+                return "FAILED"
+
+        with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
+            batch = start_batch(workspace, task_ids, on_failure="continue")
+
+        assert batch.status == BatchStatus.PARTIAL
+        assert batch.results[task_ids[0]] == "COMPLETED"
+        assert batch.results[task_ids[1]] == "BLOCKED"
+        assert batch.results[task_ids[2]] == "FAILED"
+
+    def test_first_task_fails_stop(self, workspace_with_tasks):
+        """Batch should stop after first task if it fails with on_failure=stop."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "FAILED"
+            batch = start_batch(workspace, task_ids, on_failure="stop")
+
+        # Only one task should have been executed
+        assert batch.status == BatchStatus.FAILED
+        assert len(batch.results) == 1
+        assert batch.results[task_ids[0]] == "FAILED"
+
+    def test_batch_completed_at_set(self, workspace_with_tasks):
+        """Batch should have completed_at timestamp after execution."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list[:1]]
+
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            batch = start_batch(workspace, task_ids)
+
+        assert batch.completed_at is not None
+        assert batch.completed_at >= batch.started_at
+
+    def test_on_event_callback_called(self, workspace_with_tasks):
+        """on_event callback should be called during execution."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list[:2]]
+
+        events_received = []
+        def on_event(event_type, payload):
+            events_received.append((event_type, payload))
+
+        with patch('codeframe.core.conductor._execute_task_subprocess') as mock_exec:
+            mock_exec.return_value = "COMPLETED"
+            batch = start_batch(workspace, task_ids, on_event=on_event)
+
+        # Should have batch_started + 2x (task_started + task_completed)
+        event_types = [e[0] for e in events_received]
+        assert "batch_started" in event_types
+        assert event_types.count("batch_task_started") == 2
+        assert event_types.count("batch_task_completed") == 2
+
+
 class TestSaveBatch:
     """Tests for _save_batch function."""
 
