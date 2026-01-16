@@ -1041,10 +1041,66 @@ Respond with ONLY the corrected code/content, no explanation."""
         step: PlanStep,
         result: StepResult,
     ) -> None:
-        """Create a blocker from a step failure."""
+        """Create a blocker from a step failure.
+
+        May resolve autonomously if the LLM determines the issue is tactical.
+        Only creates actual blockers for issues requiring human input.
+        """
         question = self._generate_blocker_question(step, result)
 
-        # Create blocker in database
+        # Check if LLM determined this should be resolved autonomously
+        if question.startswith("RESOLVE_AUTONOMOUSLY:"):
+            self._debug_log(
+                f"Auto-resolving tactical decision: {question}",
+                level="INFO",
+                always=True,
+            )
+            # Don't create a blocker - let the agent continue with self-correction
+            self._emit_event("tactical_resolved", {
+                "step": step.index,
+                "resolution": question,
+            })
+            return
+
+        # Check if LLM determined this is a technical fix
+        if question.startswith("TECHNICAL_FIX:"):
+            self._debug_log(
+                f"Technical issue identified: {question}",
+                level="INFO",
+                always=True,
+            )
+            # Don't create a blocker - mark as needing retry
+            self._emit_event("technical_fix_needed", {
+                "step": step.index,
+                "fix": question,
+            })
+            return
+
+        # Also check for tactical patterns in the question itself
+        question_lower = question.lower()
+        tactical_indicators = [
+            "virtual environment", "venv", "virtualenv",
+            "would you like me to", "would you prefer",
+            "should i create", "should i use",
+            "pip install", "npm install", "uv sync",
+            "break-system-packages", "pipx",
+            "pytest.ini", "pyproject.toml", "asyncio_default_fixture_loop_scope",
+            "fixture scope", "loop scope",
+        ]
+
+        if any(indicator in question_lower for indicator in tactical_indicators):
+            self._debug_log(
+                f"Detected tactical question pattern, auto-resolving: {question[:100]}...",
+                level="INFO",
+                always=True,
+            )
+            self._emit_event("tactical_resolved", {
+                "step": step.index,
+                "resolution": "Auto-resolved tactical decision",
+            })
+            return
+
+        # This is a legitimate blocker that requires human input
         blocker = blockers.create(
             workspace=self.workspace,
             question=question,
@@ -1066,43 +1122,46 @@ Respond with ONLY the corrected code/content, no explanation."""
         # Note: task status update handled by runtime.block_run()
 
     def _create_verification_blocker(self, gate_result: GateResult) -> None:
-        """Create a blocker from verification failure."""
+        """Handle verification failure.
+
+        Verification failures (pytest, ruff, etc.) are TECHNICAL issues,
+        not human decision points. We mark the task as FAILED instead of
+        BLOCKED so the retry mechanism can handle it.
+
+        This prevents tactical questions like "pytest failed, what should I do?"
+        from becoming blockers that require human intervention.
+        """
         failed_checks = [
             c.name for c in gate_result.checks
             if c.status == GateStatus.FAILED
         ]
 
-        question = (
+        self._debug_log(
             f"Verification failed for: {', '.join(failed_checks)}. "
-            "Please review the changes and advise on how to fix the issues, "
-            "or confirm the changes are acceptable."
+            "Marking as FAILED (not BLOCKED) for retry.",
+            level="WARN",
+            always=True,
         )
 
-        blocker = blockers.create(
-            workspace=self.workspace,
-            question=question,
-            task_id=self.state.task_id,
-        )
-
-        self.state.status = AgentStatus.BLOCKED
-        self.state.blocker = BlockerInfo(
-            reason="Verification failed",
-            question=question,
-            context=f"Failed checks: {failed_checks}",
-        )
-
-        self._emit_event("blocker_created", {
-            "blocker_id": blocker.id,
-            "question": question,
+        # Mark as FAILED, not BLOCKED - verification failures are technical
+        # issues that should be retried, not human decision points
+        self.state.status = AgentStatus.FAILED
+        self._emit_event("verification_failed", {
+            "failed_checks": failed_checks,
+            "reason": "Verification failed - technical issue for retry",
         })
-        # Note: task status update handled by runtime.block_run()
+        # Note: task status update handled by runtime.fail_run()
 
     def _generate_blocker_question(
         self,
         step: PlanStep,
         result: StepResult,
     ) -> str:
-        """Generate a helpful question for the blocker."""
+        """Generate a helpful question for the blocker.
+
+        Only generates questions for issues that truly require human input.
+        Tactical decisions are auto-resolved, not turned into blockers.
+        """
         # Use LLM to generate a clear question
         prompt = f"""A code execution step failed. Generate a clear, specific question to ask the user for help.
 
@@ -1110,14 +1169,35 @@ Step: {step.description}
 Target: {step.target}
 Error: {result.error}
 
-Generate a single question that would help resolve this issue. Be specific about what information or decision is needed.
-Question:"""
+CRITICAL INSTRUCTIONS:
+1. ONLY generate a question if human input is TRULY required
+2. Do NOT ask about tactical decisions - these should be resolved autonomously:
+   - Virtual environments (always create one)
+   - Package managers (use uv/pip/npm as appropriate)
+   - Test frameworks (use pytest/jest)
+   - File handling (overwrite existing files)
+   - Configuration options (use sensible defaults)
+   - Asyncio fixture scopes (use function scope)
+
+3. DO ask about:
+   - Conflicting requirements in the specification
+   - Missing API keys or credentials
+   - Business logic that requires domain expertise
+   - Security policy clarifications
+
+4. If the error is a tactical decision, respond with: "RESOLVE_AUTONOMOUSLY: [your decision]"
+   For example: "RESOLVE_AUTONOMOUSLY: Create virtual environment and install dependencies"
+
+5. If the error is a technical issue (syntax error, import error, test failure), respond with:
+   "TECHNICAL_FIX: [what to fix]"
+
+Generate a single question OR a RESOLVE_AUTONOMOUSLY/TECHNICAL_FIX directive:"""
 
         try:
             response = self.llm.complete(
                 messages=[{"role": "user", "content": prompt}],
                 purpose=Purpose.GENERATION,
-                max_tokens=200,
+                max_tokens=300,
                 temperature=0.0,
             )
             return response.content.strip()
