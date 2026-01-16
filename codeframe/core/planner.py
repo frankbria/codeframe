@@ -10,7 +10,6 @@ import json
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 from codeframe.core.context import TaskContext
 from codeframe.adapters.llm import LLMProvider, Purpose
@@ -121,14 +120,14 @@ class ImplementationPlan:
     def to_markdown(self) -> str:
         """Convert to markdown format for display."""
         lines = [
-            f"# Implementation Plan",
-            f"",
+            "# Implementation Plan",
+            "",
             f"**Task:** {self.task_id}",
             f"**Complexity:** {self.estimated_complexity.value}",
-            f"",
-            f"## Summary",
+            "",
+            "## Summary",
             f"{self.summary}",
-            f"",
+            "",
         ]
 
         if self.files_to_create:
@@ -160,7 +159,39 @@ class ImplementationPlan:
         return "\n".join(lines)
 
 
-PLANNING_SYSTEM_PROMPT = """You are a software implementation planner. Your job is to analyze a task and its context, then create a detailed implementation plan.
+PLANNING_SYSTEM_PROMPT = """You are an expert software implementation planner. Your job is to analyze a task and its context, then create a detailed implementation plan.
+
+## CRITICAL: Decision-Making Autonomy
+
+You are an agent - keep going until the task is completely resolved. Make tactical decisions independently:
+
+ALWAYS decide autonomously (without asking):
+- Choose between equivalent implementation approaches
+- Decide file organization and naming conventions
+- Select library versions (prefer latest stable)
+- Handle existing files (overwrite, merge, or extend as appropriate)
+- Choose test frameworks and configurations
+- Make code style decisions following existing patterns
+- Install dependencies using the project's package manager
+- Create directories and files as needed
+- Fix linting errors automatically
+
+ONLY flag as a blocker when:
+- Requirements genuinely conflict or are underspecified
+- Security policies need clarification
+- Business logic requires domain expertise the context doesn't provide
+- Access credentials are missing
+
+NEVER stop to ask about:
+- Tooling choices (use project preferences or best practices)
+- File handling (existing files should be updated, not blocked on)
+- Configuration details (use sensible defaults)
+- Minor implementation decisions
+- "Which approach should I use?" - pick the best one and proceed
+
+When multiple valid options exist, choose the simpler approach. Trust your expertise.
+
+## Output Format
 
 You must return a valid JSON object with this structure:
 {
@@ -189,13 +220,16 @@ TARGET RULES (critical - follow exactly):
 - verification: target = the actual command to run (e.g., "python script.py --help", "pytest -v")
   DO NOT put "shell_command" as the target. Put the actual command string.
 
-Guidelines:
+## Planning Guidelines
+
 1. Break work into small, focused steps (each step should do ONE thing)
 2. Order steps by dependency (later steps can depend on earlier ones)
 3. Include verification steps after significant changes
 4. Be specific about what files to modify and what changes to make
 5. Consider edge cases and potential issues
 6. Keep the plan achievable - don't over-engineer
+7. If a file exists that you need to modify, use file_edit not file_create
+8. Run tests after implementation to verify correctness
 
 Return ONLY the JSON object, no additional text."""
 

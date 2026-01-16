@@ -1,0 +1,94 @@
+# AGENTS.md - Project Instructions for AI Coding Agents
+
+This file provides instructions for AI coding agents working in this repository.
+For more information, see: https://agents.md/
+
+---
+
+## Tooling
+
+- **package_manager**: uv (for Python), npm (for JavaScript)
+- **test_runner**: pytest (Python), jest (JavaScript)
+- **linter**: ruff (Python), eslint (JavaScript)
+- **formatter**: black (Python), prettier (JavaScript)
+
+## Commands
+
+- **install**: `uv sync` or `npm install`
+- **test**: `uv run pytest` or `npm test`
+- **lint**: `uv run ruff check --fix .` or `npm run lint`
+- **build**: `uv run python -m build` or `npm run build`
+
+## Always Do
+
+These actions are safe and the agent should perform autonomously:
+
+- Choose between equivalent implementation approaches
+- Decide file organization and naming conventions
+- Select library versions (prefer latest stable)
+- Handle existing files appropriately (overwrite, merge, or extend)
+- Choose test frameworks and configurations based on project patterns
+- Make code style decisions following existing codebase conventions
+- Install dependencies using the project's package manager
+- Create directories and files as needed
+- Fix linting and formatting errors automatically
+- Run tests after making changes
+- Use type hints in Python code
+- Follow existing import ordering patterns
+
+## Ask First
+
+These decisions require user confirmation before proceeding:
+
+- Delete critical configuration files (.env, package.json, pyproject.toml)
+- Make breaking changes to public APIs
+- Modify security-sensitive code (auth, encryption, access control)
+- Remove or disable existing tests
+- Change database schemas or migrations
+- Upgrade major versions of core dependencies
+- Refactor code outside the immediate scope of the task
+
+## Never Do
+
+These actions are forbidden:
+
+- Commit secrets, API keys, passwords, or credentials to the repository
+- Delete the .git directory or git history
+- Push directly to main/master branch without explicit permission
+- Modify files outside the workspace directory
+- Execute commands that could cause data loss (rm -rf /, DROP DATABASE)
+- Bypass security validation or access controls
+- Install packages from untrusted sources
+- Disable or ignore security warnings
+- Access external services without explicit permission
+- Make network requests to unknown hosts
+
+## Code Style
+
+- **python_imports**: isort with black profile, absolute imports preferred
+- **python_docstrings**: Google style docstrings for public functions
+- **python_type_hints**: Required for function signatures
+- **javascript_modules**: ES modules (import/export)
+- **line_length**: 88 for Python, 100 for JavaScript
+- **indentation**: 4 spaces for Python, 2 spaces for JavaScript
+
+## Project Structure
+
+Describe your project structure here:
+
+```
+project/
+├── src/           # Source code
+├── tests/         # Test files
+├── docs/          # Documentation
+├── scripts/       # Utility scripts
+└── README.md      # Project documentation
+```
+
+## Notes
+
+Add any project-specific notes for the agent here:
+
+- Describe any unusual patterns or conventions
+- Note any known issues or quirks
+- Explain any domain-specific terminology

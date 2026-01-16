@@ -18,6 +18,7 @@ class Purpose(str, Enum):
     EXECUTION = "execution"  # Code generation, editing
     GENERATION = "generation"  # Simple text generation, summaries
     CORRECTION = "correction"  # Self-correction after errors (uses stronger model)
+    SUPERVISION = "supervision"  # Supervisor decisions (blocker triage, tactical resolution)
 
 
 # Default model aliases (use latest versions automatically)
@@ -25,6 +26,7 @@ DEFAULT_PLANNING_MODEL = "claude-sonnet-4-5"
 DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-5"
 DEFAULT_GENERATION_MODEL = "claude-haiku-4-5"
 DEFAULT_CORRECTION_MODEL = "claude-opus-4-5"  # Step up for fixing errors
+DEFAULT_SUPERVISION_MODEL = "claude-opus-4-5"  # Strong model for supervisor decisions
 
 
 @dataclass
@@ -37,12 +39,14 @@ class ModelSelector:
     - CODEFRAME_EXECUTION_MODEL
     - CODEFRAME_GENERATION_MODEL
     - CODEFRAME_CORRECTION_MODEL
+    - CODEFRAME_SUPERVISION_MODEL
     """
 
     planning_model: str = ""
     execution_model: str = ""
     generation_model: str = ""
     correction_model: str = ""
+    supervision_model: str = ""
 
     def __post_init__(self):
         """Load model names from environment or use defaults."""
@@ -57,6 +61,9 @@ class ModelSelector:
         )
         self.correction_model = os.getenv(
             "CODEFRAME_CORRECTION_MODEL", DEFAULT_CORRECTION_MODEL
+        )
+        self.supervision_model = os.getenv(
+            "CODEFRAME_SUPERVISION_MODEL", DEFAULT_SUPERVISION_MODEL
         )
 
     def for_purpose(self, purpose: Purpose) -> str:
@@ -76,6 +83,8 @@ class ModelSelector:
             return self.generation_model
         elif purpose == Purpose.CORRECTION:
             return self.correction_model
+        elif purpose == Purpose.SUPERVISION:
+            return self.supervision_model
         else:
             return self.execution_model  # Default fallback
 

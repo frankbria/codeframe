@@ -1271,6 +1271,11 @@ def batch_run(
         "--all-ready",
         help="Execute all tasks with READY status",
     ),
+    all_blocked: bool = typer.Option(
+        False,
+        "--all-blocked",
+        help="Execute all tasks with BLOCKED status (resets blocked runs first)",
+    ),
     strategy: str = typer.Option(
         "serial",
         "--strategy",
@@ -1336,6 +1341,18 @@ def batch_run(
                 return
             ids_to_execute = [t.id for t in ready_tasks]
             console.print(f"Found {len(ids_to_execute)} READY tasks")
+        elif all_blocked:
+            from codeframe.core import runtime
+            blocked_tasks = tasks_module.list_tasks(workspace, status=TaskStatus.BLOCKED)
+            if not blocked_tasks:
+                console.print("[yellow]No BLOCKED tasks found[/yellow]")
+                return
+            ids_to_execute = [t.id for t in blocked_tasks]
+            console.print(f"Found {len(ids_to_execute)} BLOCKED tasks")
+            # Reset blocked runs so tasks can be re-run
+            console.print("[dim]Resetting blocked runs...[/dim]")
+            for task_id in ids_to_execute:
+                runtime.reset_blocked_run(workspace, task_id)
         elif task_ids:
             # Resolve partial IDs
             all_tasks = tasks_module.list_tasks(workspace)
@@ -1352,7 +1369,7 @@ def batch_run(
                     raise typer.Exit(1)
                 ids_to_execute.append(matching[0].id)
         else:
-            console.print("[red]Error:[/red] Specify task IDs or use --all-ready")
+            console.print("[red]Error:[/red] Specify task IDs or use --all-ready/--all-blocked")
             raise typer.Exit(1)
 
         # Show execution plan
@@ -1588,6 +1605,11 @@ def batch_resume(
         "-f",
         help="Re-run all tasks, including completed ones",
     ),
+    reset: bool = typer.Option(
+        False,
+        "--reset",
+        help="Reset blocked runs and task statuses before re-running",
+    ),
     workspace_path: Optional[Path] = typer.Option(
         None,
         "--workspace",
@@ -1599,10 +1621,12 @@ def batch_resume(
 
     Re-executes tasks that failed or became blocked in a previous batch run.
     Use --force to re-run all tasks including completed ones.
+    Use --reset to clear blocked run status so tasks can start fresh.
 
     Example:
         codeframe work batch resume abc123           # Re-run failed/blocked only
         codeframe work batch resume abc123 --force  # Re-run all tasks
+        codeframe work batch resume abc123 --reset  # Reset blocked runs first
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import conductor
@@ -1627,6 +1651,18 @@ def batch_resume(
             console.print("Using the most recent match.")
 
         batch = matching[0]
+
+        # Reset blocked runs if requested
+        if reset:
+            from codeframe.core import runtime
+            blocked_task_ids = [
+                tid for tid, status in batch.results.items()
+                if status == "BLOCKED"
+            ]
+            if blocked_task_ids:
+                console.print(f"[dim]Resetting {len(blocked_task_ids)} blocked runs...[/dim]")
+                for task_id in blocked_task_ids:
+                    runtime.reset_blocked_run(workspace, task_id)
 
         # Show what we're about to do
         failed_count = sum(1 for s in batch.results.values() if s in ("FAILED", "BLOCKED"))

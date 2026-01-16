@@ -142,31 +142,89 @@ MAX_CONSECUTIVE_FAILURES = 3
 MAX_STEP_RETRIES = 2
 MAX_SELF_CORRECTION_ATTEMPTS = 2
 
-# Error patterns that indicate the agent needs human input
-# These are situations where the agent genuinely cannot proceed without a human decision
-HUMAN_INPUT_PATTERNS = [
-    # Requirements/specification issues
-    "unclear",
-    "ambiguous",
-    "which approach",
-    "should i use",
-    "please clarify",
-    "need clarification",
-    "multiple options",
-    "design decision",
-    # Access/credentials issues
+# TRUE requirements ambiguity - create blocker immediately
+# These are situations where the agent genuinely cannot proceed without human input
+REQUIREMENTS_AMBIGUITY_PATTERNS = [
+    # True requirements conflicts
+    "conflicting requirements",
+    "spec unclear",
+    "specification unclear",
+    "requirements conflict",
+    "contradictory requirements",
+    # Business logic requiring domain knowledge
+    "business decision",
+    "business logic unclear",
+    "domain knowledge required",
+    "stakeholder decision",
+    # Security policy ambiguity
+    "security policy unclear",
+    "compliance requirement unclear",
+    "regulatory requirement",
+]
+
+# Access/credentials issues - always create blocker
+# These truly require human intervention
+ACCESS_PATTERNS = [
     "permission denied",
     "access denied",
     "authentication required",
-    "api key",
-    "credentials",
-    "secret",
+    "api key",  # Covers "api key missing", "api key not configured", etc.
+    "credentials",  # Covers "credentials missing", "credentials required", etc.
+    "secret required",
     "token required",
-    # External dependencies requiring human action
+    "unauthorized",
+    "forbidden",
+]
+
+# External service issues - create blocker after retry
+EXTERNAL_SERVICE_PATTERNS = [
     "service unavailable",
     "rate limited",
     "quota exceeded",
+    "connection refused",
+    "timeout exceeded",
 ]
+
+# TACTICAL decisions - agent should resolve autonomously, NEVER block
+# These patterns indicate the agent is asking about implementation details
+# it should decide on its own using project preferences or best practices
+TACTICAL_DECISION_PATTERNS = [
+    # Implementation choices
+    "which approach",
+    "should i use",
+    "multiple options",
+    "design decision",
+    "please clarify",
+    "need clarification",
+    # File handling
+    "file already exists",
+    "overwrite",
+    "should i create",
+    "should i delete",
+    # Tooling choices
+    "which version",
+    "which package",
+    "which framework",
+    "install method",
+    "package manager",
+    # Configuration choices
+    "which configuration",
+    "which setting",
+    "default value",
+    "fixture scope",
+    "loop scope",
+    # Generic decision patterns
+    "what do you",
+    "do you want",
+    "would you like",
+    "prefer",
+]
+
+# Combined pattern for human input (requirements + access + external)
+# NOTE: Tactical patterns are explicitly EXCLUDED - agent handles these autonomously
+HUMAN_INPUT_PATTERNS = (
+    REQUIREMENTS_AMBIGUITY_PATTERNS + ACCESS_PATTERNS + EXTERNAL_SERVICE_PATTERNS
+)
 
 # Error patterns that are technical and the agent should self-correct
 # These are coding/execution errors the agent can fix by trying a different approach
@@ -677,17 +735,30 @@ class Agent:
         return False
 
     def _classify_error(self, error: str) -> str:
-        """Classify an error as technical or human-input-needed.
+        """Classify an error as technical, tactical, or human-input-needed.
+
+        Error classification hierarchy:
+        1. TACTICAL - Agent asking about implementation details it should decide itself
+        2. HUMAN - True requirements ambiguity or access issues
+        3. TECHNICAL - Coding errors the agent can self-correct
 
         Args:
             error: Error message to classify
 
         Returns:
-            "technical" if agent can self-correct, "human" if needs human input
+            "tactical" if agent should decide autonomously (no blocker)
+            "technical" if agent can self-correct
+            "human" if genuinely needs human input (create blocker)
         """
         error_lower = error.lower()
 
-        # Check human-input patterns first (they take priority)
+        # Check tactical patterns FIRST - these should NEVER create blockers
+        # Agent should resolve these using preferences or best judgment
+        for pattern in TACTICAL_DECISION_PATTERNS:
+            if pattern in error_lower:
+                return "tactical"
+
+        # Check true human-input patterns (requirements ambiguity + access issues)
         for pattern in HUMAN_INPUT_PATTERNS:
             if pattern in error_lower:
                 return "human"
@@ -700,6 +771,79 @@ class Agent:
         # Default to technical - agent should try to fix it first
         return "technical"
 
+    def _resolve_tactical_decision(self, error: str, context: "TaskContext") -> str:
+        """Resolve a tactical decision using preferences and best judgment.
+
+        When the agent encounters a tactical question (implementation detail,
+        tooling choice, file handling, etc.), this method resolves it
+        autonomously instead of creating a blocker.
+
+        Args:
+            error: The error/question that triggered this
+            context: Task context with preferences
+
+        Returns:
+            Resolution instruction for the agent to follow
+        """
+        self._emit_event("tactical_resolution_started", {"question": error[:200]})
+
+        # Build resolution prompt using preferences
+        prefs = context.preferences
+        pref_section = prefs.to_prompt_section() if prefs.has_preferences() else ""
+
+        prompt = f"""You encountered a tactical implementation decision that should be resolved autonomously.
+
+## The Question/Decision
+{error}
+
+{pref_section}
+
+## Resolution Guidelines
+
+As an expert software engineer, resolve this decision using:
+1. Project preferences (above) if they apply
+2. Industry best practices if no preference
+3. The simpler approach when multiple options are equivalent
+4. Common conventions for this type of project
+
+IMPORTANT: This is a tactical decision you MUST resolve yourself. Do NOT ask the user.
+Do NOT say you need clarification. Make the best decision and proceed.
+
+Respond with a brief, clear instruction on what to do. For example:
+- "Use pytest as the test framework"
+- "Overwrite the existing file with the new implementation"
+- "Use the latest stable version of the library"
+- "Install using uv (the project's package manager)"
+
+Your decision:"""
+
+        try:
+            response = self.llm.complete(
+                messages=[{"role": "user", "content": prompt}],
+                purpose=Purpose.GENERATION,
+                max_tokens=256,
+                temperature=0.0,
+            )
+
+            resolution = response.strip()
+            self._emit_event(
+                "tactical_resolution_completed",
+                {"question": error[:200], "resolution": resolution[:200]},
+            )
+            self._debug_log(
+                f"TACTICAL DECISION RESOLVED: {resolution[:100]}",
+                level="INFO",
+                data={"question": error, "resolution": resolution},
+            )
+            return resolution
+
+        except Exception as e:
+            # On LLM failure, use a sensible default
+            self._emit_event(
+                "tactical_resolution_failed", {"question": error[:200], "error": str(e)}
+            )
+            return "Proceed with the most common/standard approach for this situation."
+
     def _should_create_blocker(
         self,
         consecutive_failures: int,
@@ -710,6 +854,7 @@ class Agent:
 
         Blockers are only created for genuine human-input-needed situations.
         Technical errors should be handled by self-correction first.
+        Tactical decisions should NEVER create blockers - agent resolves them.
 
         Args:
             consecutive_failures: Number of consecutive step failures
@@ -720,6 +865,16 @@ class Agent:
             True if a blocker should be created
         """
         error_type = self._classify_error(result.error)
+
+        # TACTICAL decisions NEVER create blockers
+        # The agent should resolve these autonomously using preferences
+        if error_type == "tactical":
+            self._debug_log(
+                "TACTICAL decision detected - will resolve autonomously, NOT creating blocker",
+                level="INFO",
+                data={"error": result.error[:200]},
+            )
+            return False
 
         # Human-input-needed errors always create blockers
         if error_type == "human":

@@ -188,6 +188,50 @@ def get_active_run(workspace: Workspace, task_id: str) -> Optional[Run]:
     return _row_to_run(row)
 
 
+def reset_blocked_run(workspace: Workspace, task_id: str) -> bool:
+    """Reset a blocked run so the task can be re-executed.
+
+    Marks the blocked run as FAILED and resets the task status to READY.
+    This allows the task to be started fresh with a new run.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task to reset
+
+    Returns:
+        True if a blocked run was reset, False if no blocked run existed
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    # Find and update blocked run
+    cursor.execute(
+        """
+        UPDATE runs
+        SET status = ?, completed_at = ?
+        WHERE workspace_id = ? AND task_id = ? AND status = ?
+        """,
+        (
+            RunStatus.FAILED.value,
+            _utc_now().isoformat(),
+            workspace.id,
+            task_id,
+            RunStatus.BLOCKED.value,
+        ),
+    )
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+
+    if updated:
+        # Reset task status to READY
+        task = tasks.get(workspace, task_id)
+        if task and task.status == TaskStatus.BLOCKED:
+            tasks.update_status(workspace, task_id, TaskStatus.READY)
+
+    return updated
+
+
 def list_runs(
     workspace: Workspace,
     task_id: Optional[str] = None,

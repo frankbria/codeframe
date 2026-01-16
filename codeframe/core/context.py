@@ -18,6 +18,11 @@ from codeframe.core import tasks, prd, blockers
 from codeframe.core.tasks import Task
 from codeframe.core.prd import PrdRecord
 from codeframe.core.blockers import Blocker, BlockerStatus
+from codeframe.core.agents_config import (
+    AgentPreferences,
+    load_preferences,
+    get_default_preferences,
+)
 
 
 # Approximate tokens per character (conservative estimate)
@@ -101,6 +106,7 @@ class TaskContext:
         task: The task to execute
         prd: Associated PRD (if any)
         blockers: Blockers related to this task
+        preferences: Agent preferences from AGENTS.md/CLAUDE.md
         file_tree: List of files in the repository
         relevant_files: Files identified as relevant to the task
         loaded_files: Files with content loaded
@@ -111,6 +117,7 @@ class TaskContext:
     task: Task
     prd: Optional[PrdRecord] = None
     blockers: list[Blocker] = field(default_factory=list)
+    preferences: AgentPreferences = field(default_factory=get_default_preferences)
     file_tree: list[FileInfo] = field(default_factory=list)
     relevant_files: list[FileInfo] = field(default_factory=list)
     loaded_files: list[FileContent] = field(default_factory=list)
@@ -164,6 +171,13 @@ class TaskContext:
             sections.append("")
             sections.append(self.prd.content[:10000])  # Limit PRD content
             sections.append("")
+
+        # Project preferences section (from AGENTS.md/CLAUDE.md)
+        if self.preferences and self.preferences.has_preferences():
+            pref_section = self.preferences.to_prompt_section()
+            if pref_section:
+                sections.append(pref_section)
+                sections.append("")
 
         # Blockers section (answered ones are useful context)
         if self.answered_blockers:
@@ -247,6 +261,9 @@ class ContextLoader:
             raise ValueError(f"Task not found: {task_id}")
 
         context = TaskContext(task=task, max_tokens=self.max_tokens)
+
+        # Load agent preferences from AGENTS.md/CLAUDE.md
+        context.preferences = load_preferences(self.workspace.repo_path)
 
         # Load PRD if associated
         if task.prd_id:

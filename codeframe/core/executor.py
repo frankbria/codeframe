@@ -6,10 +6,7 @@ Handles file operations, shell commands, and tracks changes for rollback.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
-import os
-import shutil
 import subprocess
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -100,24 +97,59 @@ class ExecutionResult:
 
 
 # System prompt for code generation
-CODE_GENERATION_PROMPT = """You are a code generator. Generate clean, well-structured code based on the requirements.
+CODE_GENERATION_PROMPT = """You are an expert code generator. Generate clean, well-structured code based on the requirements.
 
-Guidelines:
+## Decision-Making Autonomy
+
+When you encounter a decision point:
+1. Check project preferences (if provided in context) first
+2. If no preference, use industry best practices
+3. If truly ambiguous, pick the simpler approach
+4. NEVER stop or ask for trivial tactical decisions
+
+You MUST make decisions autonomously about:
+- Import organization and ordering
+- Variable and function naming (following existing patterns)
+- Error handling strategies
+- Code organization within files
+- Choice between equivalent implementations
+
+## Code Guidelines
+
 1. Follow the existing code style in the project
 2. Include appropriate error handling
-3. Add brief comments for complex logic
+3. Add brief comments for complex logic only
 4. Use type hints for Python code
 5. Keep code focused and minimal - don't over-engineer
+6. If a file exists, build on existing patterns
+7. Use existing imports and utilities where appropriate
 
 Return ONLY the code, no explanations or markdown formatting."""
 
-EDIT_GENERATION_PROMPT = """You are a code editor. Given the current file content and requested changes, generate the updated file content.
+EDIT_GENERATION_PROMPT = """You are an expert code editor. Given the current file content and requested changes, generate the updated file content.
 
-Guidelines:
+## Decision-Making Autonomy
+
+When you encounter a decision point:
+1. Check project preferences (if provided in context) first
+2. If no preference, follow existing patterns in the file
+3. If truly ambiguous, pick the approach that minimizes changes
+4. NEVER stop or ask for trivial tactical decisions
+
+You MUST make decisions autonomously about:
+- Where to insert new code
+- How to integrate changes with existing code
+- Import organization
+- Minor refactoring needed for integration
+
+## Edit Guidelines
+
 1. Preserve the existing code style and formatting
 2. Make minimal changes to achieve the goal
 3. Don't change unrelated code
 4. Maintain all imports and dependencies
+5. If adding new functionality, integrate naturally with existing code
+6. Fix any linting issues in the modified sections
 
 Return ONLY the complete updated file content, no explanations or markdown formatting."""
 
