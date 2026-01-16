@@ -1,11 +1,287 @@
-"""Configuration management for CodeFRAME."""
+"""Configuration management for CodeFRAME.
+
+This module provides two configuration systems:
+1. Legacy v1 config (JSON-based): ProjectConfig, GlobalConfig
+2. v2 environment config (YAML-based): EnvironmentConfig
+
+v2 environment config is stored in .codeframe/config.yaml and controls:
+- Package manager (uv, pip, poetry, npm, etc.)
+- Language versions (Python, Node)
+- Test framework (pytest, jest, vitest)
+- Lint tools (ruff, eslint, prettier)
+"""
 
 import json
+from dataclasses import dataclass, field as dataclass_field, asdict
+from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
+
+import yaml
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
+
+
+# =============================================================================
+# v2 Environment Configuration (YAML-based)
+# =============================================================================
+
+
+class PackageManager(str, Enum):
+    """Supported package managers."""
+
+    UV = "uv"
+    PIP = "pip"
+    POETRY = "poetry"
+    NPM = "npm"
+    PNPM = "pnpm"
+    YARN = "yarn"
+
+
+class TestFramework(str, Enum):
+    """Supported test frameworks."""
+
+    PYTEST = "pytest"
+    JEST = "jest"
+    VITEST = "vitest"
+    UNITTEST = "unittest"
+    MOCHA = "mocha"
+
+
+class LintTool(str, Enum):
+    """Supported lint tools."""
+
+    RUFF = "ruff"
+    PYLINT = "pylint"
+    FLAKE8 = "flake8"
+    MYPY = "mypy"
+    ESLINT = "eslint"
+    PRETTIER = "prettier"
+    BIOME = "biome"
+
+
+@dataclass
+class ContextConfig:
+    """Context loading configuration."""
+
+    max_files: int = 20
+    max_file_size: int = 5000  # lines
+    max_total_tokens: int = 50000
+
+
+@dataclass
+class EnvironmentConfig:
+    """v2 project environment configuration.
+
+    Stored in .codeframe/config.yaml. Controls how the agent
+    interacts with the project's development environment.
+    """
+
+    # Package management
+    package_manager: str = "uv"
+    python_version: Optional[str] = None  # e.g., "3.11"
+    node_version: Optional[str] = None  # e.g., "18"
+
+    # Testing
+    test_framework: str = "pytest"
+    test_command: Optional[str] = None  # Override, e.g., "pytest -v tests/"
+
+    # Linting
+    lint_tools: list[str] = dataclass_field(default_factory=lambda: ["ruff"])
+    lint_command: Optional[str] = None  # Override, e.g., "ruff check ."
+
+    # Context loading
+    context: ContextConfig = dataclass_field(default_factory=ContextConfig)
+
+    # Custom command overrides
+    custom_commands: dict[str, str] = dataclass_field(default_factory=dict)
+
+    def validate(self) -> list[str]:
+        """Validate configuration values.
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+
+        # Validate package manager
+        valid_pkg_managers = [pm.value for pm in PackageManager]
+        if self.package_manager not in valid_pkg_managers:
+            errors.append(
+                f"Invalid package_manager '{self.package_manager}'. "
+                f"Must be one of: {', '.join(valid_pkg_managers)}"
+            )
+
+        # Validate test framework
+        valid_test_frameworks = [tf.value for tf in TestFramework]
+        if self.test_framework not in valid_test_frameworks:
+            errors.append(
+                f"Invalid test_framework '{self.test_framework}'. "
+                f"Must be one of: {', '.join(valid_test_frameworks)}"
+            )
+
+        # Validate lint tools
+        valid_lint_tools = [lt.value for lt in LintTool]
+        for tool in self.lint_tools:
+            if tool not in valid_lint_tools:
+                errors.append(
+                    f"Invalid lint tool '{tool}'. "
+                    f"Must be one of: {', '.join(valid_lint_tools)}"
+                )
+
+        return errors
+
+    def get_install_command(self, package: str) -> str:
+        """Get the install command for a package.
+
+        Args:
+            package: Package name to install
+
+        Returns:
+            Full install command string
+        """
+        if self.package_manager == "uv":
+            return f"uv pip install {package}"
+        elif self.package_manager == "pip":
+            return f"pip install {package}"
+        elif self.package_manager == "poetry":
+            return f"poetry add {package}"
+        elif self.package_manager in ("npm", "pnpm", "yarn"):
+            return f"{self.package_manager} install {package}"
+        else:
+            return f"pip install {package}"  # fallback
+
+    def get_test_command(self) -> str:
+        """Get the test command for this project.
+
+        Returns:
+            Test command string
+        """
+        if self.test_command:
+            return self.test_command
+
+        if self.test_framework == "pytest":
+            return "pytest"
+        elif self.test_framework == "jest":
+            return "npm test" if self.package_manager == "npm" else "jest"
+        elif self.test_framework == "vitest":
+            return "npm test" if self.package_manager == "npm" else "vitest"
+        elif self.test_framework == "unittest":
+            return "python -m unittest discover"
+        elif self.test_framework == "mocha":
+            return "npm test" if self.package_manager == "npm" else "mocha"
+        else:
+            return "pytest"  # fallback
+
+    def get_lint_command(self) -> str:
+        """Get the lint command for this project.
+
+        Returns:
+            Lint command string
+        """
+        if self.lint_command:
+            return self.lint_command
+
+        if not self.lint_tools:
+            return "ruff check ."  # default
+
+        # Use the first lint tool
+        tool = self.lint_tools[0]
+        if tool == "ruff":
+            return "ruff check ."
+        elif tool == "pylint":
+            return "pylint ."
+        elif tool == "flake8":
+            return "flake8 ."
+        elif tool == "mypy":
+            return "mypy ."
+        elif tool == "eslint":
+            return "eslint ."
+        elif tool == "prettier":
+            return "prettier --check ."
+        elif tool == "biome":
+            return "biome check ."
+        else:
+            return "ruff check ."  # fallback
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for YAML serialization."""
+        data = asdict(self)
+        # Convert ContextConfig to dict
+        if isinstance(data.get("context"), dict):
+            pass  # already a dict from asdict
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EnvironmentConfig":
+        """Create from dictionary (YAML deserialization)."""
+        # Handle nested ContextConfig
+        if "context" in data and isinstance(data["context"], dict):
+            data["context"] = ContextConfig(**data["context"])
+        return cls(**data)
+
+
+# Environment config file name
+ENV_CONFIG_FILE = "config.yaml"
+
+
+def load_environment_config(workspace_path: Path) -> Optional[EnvironmentConfig]:
+    """Load environment configuration from workspace.
+
+    Args:
+        workspace_path: Path to the workspace root
+
+    Returns:
+        EnvironmentConfig if file exists, None otherwise
+    """
+    config_file = workspace_path / ".codeframe" / ENV_CONFIG_FILE
+    if not config_file.exists():
+        return None
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f)
+
+    if data is None:
+        return EnvironmentConfig()  # empty file = defaults
+
+    return EnvironmentConfig.from_dict(data)
+
+
+def save_environment_config(workspace_path: Path, config: EnvironmentConfig) -> None:
+    """Save environment configuration to workspace.
+
+    Args:
+        workspace_path: Path to the workspace root
+        config: Configuration to save
+    """
+    config_dir = workspace_path / ".codeframe"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    config_file = config_dir / ENV_CONFIG_FILE
+
+    with open(config_file, "w") as f:
+        yaml.dump(
+            config.to_dict(),
+            f,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+
+
+def get_default_environment_config() -> EnvironmentConfig:
+    """Get default environment configuration.
+
+    Returns:
+        EnvironmentConfig with sensible defaults
+    """
+    return EnvironmentConfig()
+
+
+# =============================================================================
+# v1 Legacy Configuration (JSON-based)
+# =============================================================================
 
 
 class ProviderConfig(BaseModel):
