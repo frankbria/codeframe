@@ -2809,8 +2809,18 @@ def config_init(
 
         if detect:
             # Auto-detect from project files
-            config = _detect_environment_config(workspace.repo_path)
-            console.print("[blue]Auto-detected configuration:[/blue]")
+            config, detected = _detect_environment_config(workspace.repo_path)
+
+            if detected:
+                console.print("[blue]Detected from project files:[/blue]")
+                for item in detected:
+                    console.print(f"  • {item}")
+                console.print()
+            else:
+                console.print("[yellow]No project files found to detect from.[/yellow]")
+                console.print("[dim]Using sensible defaults for a new Python project.[/dim]")
+                console.print("[dim]You can customize with 'cf config set <key> <value>' or run 'cf config init' for interactive setup.[/dim]")
+                console.print()
         else:
             # Interactive setup
             config = _interactive_config_setup(workspace.repo_path)
@@ -2957,8 +2967,13 @@ def _print_config(config) -> None:
     console.print(f"  [bold]context.max_total_tokens:[/bold] {config.context.max_total_tokens}")
 
 
-def _detect_environment_config(repo_path: Path):
-    """Auto-detect environment configuration from project files."""
+def _detect_environment_config(repo_path: Path) -> tuple:
+    """Auto-detect environment configuration from project files.
+
+    Returns:
+        Tuple of (EnvironmentConfig, detected_items: list[str])
+        detected_items lists what was actually detected vs defaulted.
+    """
     from codeframe.core.config import EnvironmentConfig
 
     package_manager = "uv"  # default
@@ -2966,69 +2981,90 @@ def _detect_environment_config(repo_path: Path):
     node_version = None
     test_framework = "pytest"
     lint_tools = ["ruff"]
+    detected = []  # Track what we actually detected
 
     # Detect Python package manager
     if (repo_path / "pyproject.toml").exists():
         pyproject = (repo_path / "pyproject.toml").read_text()
         if "[tool.poetry]" in pyproject:
             package_manager = "poetry"
-        elif "[tool.uv]" in pyproject or "uv.lock" in [f.name for f in repo_path.iterdir()]:
+            detected.append("package_manager (poetry from pyproject.toml)")
+        elif "[tool.uv]" in pyproject or (repo_path / "uv.lock").exists():
             package_manager = "uv"
+            detected.append("package_manager (uv from pyproject.toml/uv.lock)")
         else:
             package_manager = "pip"
+            detected.append("package_manager (pip from pyproject.toml)")
 
         # Check for test framework
         if "pytest" in pyproject:
             test_framework = "pytest"
+            detected.append("test_framework (pytest from pyproject.toml)")
 
         # Check for lint tools
         if "[tool.ruff]" in pyproject:
             lint_tools = ["ruff"]
+            detected.append("lint_tools (ruff from pyproject.toml)")
         if "[tool.mypy]" in pyproject and "mypy" not in lint_tools:
             lint_tools.append("mypy")
+            detected.append("lint_tools (mypy from pyproject.toml)")
 
     elif (repo_path / "requirements.txt").exists():
         package_manager = "pip"
+        detected.append("package_manager (pip from requirements.txt)")
 
     # Detect Node.js package manager
     if (repo_path / "package.json").exists():
         if (repo_path / "pnpm-lock.yaml").exists():
             package_manager = "pnpm"
+            detected.append("package_manager (pnpm from pnpm-lock.yaml)")
         elif (repo_path / "yarn.lock").exists():
             package_manager = "yarn"
+            detected.append("package_manager (yarn from yarn.lock)")
         elif (repo_path / "package-lock.json").exists():
             package_manager = "npm"
+            detected.append("package_manager (npm from package-lock.json)")
         else:
             package_manager = "npm"
+            detected.append("package_manager (npm from package.json)")
 
         # Check package.json for test framework
         pkg_json = (repo_path / "package.json").read_text()
         if "jest" in pkg_json:
             test_framework = "jest"
+            detected.append("test_framework (jest from package.json)")
         elif "vitest" in pkg_json:
             test_framework = "vitest"
+            detected.append("test_framework (vitest from package.json)")
         elif "mocha" in pkg_json:
             test_framework = "mocha"
+            detected.append("test_framework (mocha from package.json)")
 
         # Check for lint tools
         if "eslint" in pkg_json:
             lint_tools = ["eslint"]
+            detected.append("lint_tools (eslint from package.json)")
         if "prettier" in pkg_json and "prettier" not in lint_tools:
             lint_tools.append("prettier")
+            detected.append("lint_tools (prettier from package.json)")
         if "biome" in pkg_json:
             lint_tools = ["biome"]
+            detected.append("lint_tools (biome from package.json)")
 
     # Detect Python version
     if (repo_path / ".python-version").exists():
         python_version = (repo_path / ".python-version").read_text().strip()
+        detected.append(f"python_version ({python_version} from .python-version)")
 
     # Detect Node version
     if (repo_path / ".nvmrc").exists():
         node_version = (repo_path / ".nvmrc").read_text().strip()
+        detected.append(f"node_version ({node_version} from .nvmrc)")
     elif (repo_path / ".node-version").exists():
         node_version = (repo_path / ".node-version").read_text().strip()
+        detected.append(f"node_version ({node_version} from .node-version)")
 
-    return EnvironmentConfig(
+    config = EnvironmentConfig(
         package_manager=package_manager,
         python_version=python_version,
         node_version=node_version,
@@ -3036,29 +3072,34 @@ def _detect_environment_config(repo_path: Path):
         lint_tools=lint_tools,
     )
 
+    return config, detected
+
 
 def _interactive_config_setup(repo_path: Path):
     """Interactive configuration setup with prompts."""
     from codeframe.core.config import EnvironmentConfig, PackageManager, TestFramework
 
     # Start with auto-detected values as defaults
-    detected = _detect_environment_config(repo_path)
+    detected_config, detected_items = _detect_environment_config(repo_path)
 
     console.print("[bold]Project Environment Configuration[/bold]")
-    console.print("Press Enter to accept detected values.\n")
+    if detected_items:
+        console.print("[dim]Pre-filled from detected project files. Press Enter to accept.[/dim]\n")
+    else:
+        console.print("[dim]No project files detected. Configure your new project.[/dim]\n")
 
     # Package manager
     pkg_managers = [pm.value for pm in PackageManager]
     console.print(f"[dim]Options: {', '.join(pkg_managers)}[/dim]")
     package_manager = typer.prompt(
         "Package manager",
-        default=detected.package_manager,
+        default=detected_config.package_manager,
     )
 
     # Python version (optional)
     python_version = typer.prompt(
         "Python version (e.g., 3.11, or empty to skip)",
-        default=detected.python_version or "",
+        default=detected_config.python_version or "",
     )
     python_version = python_version if python_version else None
 
@@ -3067,13 +3108,13 @@ def _interactive_config_setup(repo_path: Path):
     console.print(f"[dim]Options: {', '.join(test_frameworks)}[/dim]")
     test_framework = typer.prompt(
         "Test framework",
-        default=detected.test_framework,
+        default=detected_config.test_framework,
     )
 
     # Lint tools
     lint_tools_str = typer.prompt(
         "Lint tools (comma-separated)",
-        default=",".join(detected.lint_tools),
+        default=",".join(detected_config.lint_tools),
     )
     lint_tools = [t.strip() for t in lint_tools_str.split(",") if t.strip()]
 
