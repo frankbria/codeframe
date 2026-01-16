@@ -602,6 +602,25 @@ def execute_agent(
 
     state = agent.run(run.task_id)
 
+    # If agent is BLOCKED, try supervisor resolution
+    if state.status == AgentStatus.BLOCKED:
+        from codeframe.core.conductor import get_supervisor
+
+        supervisor = get_supervisor(workspace)
+        if supervisor.try_resolve_blocked_task(run.task_id):
+            # Supervisor resolved the blocker - retry the agent
+            print("[Supervisor] Retrying task after auto-resolution...")
+
+            # Create a new agent instance and retry
+            agent = Agent(
+                workspace=workspace,
+                llm_provider=provider,
+                dry_run=dry_run,
+                on_event=on_agent_event,
+                debug=debug,
+            )
+            state = agent.run(run.task_id)
+
     # Update run status based on agent result
     if state.status == AgentStatus.COMPLETED:
         complete_run(workspace, run.id)

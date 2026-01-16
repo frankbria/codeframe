@@ -19,10 +19,198 @@ from enum import Enum
 from typing import Callable, Optional
 
 from codeframe.core.workspace import Workspace, get_db_connection
-from codeframe.core import events, tasks
+from codeframe.core import events, tasks, blockers
 from codeframe.core.dependency_graph import create_execution_plan, CycleDetectedError
 from codeframe.core.dependency_analyzer import analyze_dependencies, apply_inferred_dependencies
-from codeframe.core.runtime import RunStatus, get_active_run, get_run
+from codeframe.core.runtime import RunStatus, get_active_run, get_run, reset_blocked_run
+
+
+# Tactical patterns that the supervisor should auto-resolve
+SUPERVISOR_TACTICAL_PATTERNS = [
+    # Virtual environment / package management
+    "virtual environment", "venv", "virtualenv",
+    "pip install", "npm install", "uv sync",
+    "break-system-packages", "pipx",
+    "package manager", "dependency installation",
+    # Configuration
+    "pytest.ini", "pyproject.toml", "asyncio_default_fixture_loop_scope",
+    "fixture scope", "loop scope", "configuration file",
+    # Common tactical questions
+    "would you like me to", "would you prefer",
+    "should i create", "should i use",
+    "which approach", "which version",
+    "overwrite", "existing file",
+]
+
+# Cache of resolved decisions to avoid duplicate LLM calls
+_decision_cache: dict[str, str] = {}
+
+
+class SupervisorResolver:
+    """Resolves tactical blockers at the conductor level.
+
+    Instead of each worker agent independently creating blockers,
+    the conductor uses this resolver to:
+    1. Evaluate blockers with the supervision model (stronger)
+    2. Auto-resolve tactical decisions
+    3. Deduplicate similar questions across workers
+    4. Only surface true human-required decisions
+    """
+
+    def __init__(self, workspace: Workspace):
+        self.workspace = workspace
+        self._llm = None  # Lazy initialization
+
+    @property
+    def llm(self):
+        """Lazy-load LLM provider."""
+        if self._llm is None:
+            from codeframe.adapters.llm import get_llm_provider
+            self._llm = get_llm_provider()
+        return self._llm
+
+    def try_resolve_blocked_task(self, task_id: str) -> bool:
+        """Try to resolve a blocked task's blocker autonomously.
+
+        Args:
+            task_id: The blocked task ID
+
+        Returns:
+            True if blocker was resolved (task should retry),
+            False if blocker requires human input
+        """
+        # Get the task's open blockers
+        task_blockers = blockers.list_all(
+            self.workspace,
+            task_id=task_id,
+            status=blockers.BlockerStatus.OPEN,
+        )
+
+        if not task_blockers:
+            return False
+
+        blocker = task_blockers[0]  # Most recent open blocker
+        question = blocker.question.lower()
+
+        # Check cache first
+        cache_key = self._get_cache_key(question)
+        if cache_key in _decision_cache:
+            print(f"      [Supervisor] Using cached decision for similar question")
+            self._auto_answer_blocker(blocker, _decision_cache[cache_key])
+            return True
+
+        # Check if question matches tactical patterns
+        if self._is_tactical_question(question):
+            print(f"      [Supervisor] Detected tactical question, auto-resolving")
+            resolution = self._generate_tactical_resolution(blocker.question)
+            _decision_cache[cache_key] = resolution
+            self._auto_answer_blocker(blocker, resolution)
+            return True
+
+        # Use supervision model to classify if uncertain
+        classification = self._classify_with_supervision(blocker.question)
+
+        if classification == "tactical":
+            print(f"      [Supervisor] Model classified as tactical, auto-resolving")
+            resolution = self._generate_tactical_resolution(blocker.question)
+            _decision_cache[cache_key] = resolution
+            self._auto_answer_blocker(blocker, resolution)
+            return True
+
+        # This is a genuine human-required decision
+        print(f"      [Supervisor] Question requires human input")
+        return False
+
+    def _is_tactical_question(self, question: str) -> bool:
+        """Check if question matches known tactical patterns."""
+        return any(pattern in question for pattern in SUPERVISOR_TACTICAL_PATTERNS)
+
+    def _get_cache_key(self, question: str) -> str:
+        """Generate a cache key for deduplication.
+
+        Normalizes similar questions to the same key.
+        """
+        # Simple normalization - could be improved with embeddings
+        q = question.lower()
+        if "virtual environment" in q or "venv" in q:
+            return "venv_creation"
+        if "fixture scope" in q or "asyncio" in q:
+            return "asyncio_fixture_scope"
+        if "package manager" in q or "pip" in q or "npm" in q:
+            return "package_manager"
+        if "pytest" in q and ("fail" in q or "verification" in q):
+            return "pytest_failure"
+        # Fallback to hash of first 50 chars
+        return f"blocker_{hash(q[:50])}"
+
+    def _classify_with_supervision(self, question: str) -> str:
+        """Use supervision model to classify the blocker question."""
+        from codeframe.adapters.llm import Purpose
+
+        prompt = f"""Classify this blocker question from a coding agent:
+
+Question: {question}
+
+Is this:
+1. TACTICAL - A decision the agent should make autonomously (venv, package manager, config options, test framework, file handling)
+2. HUMAN - Genuinely requires human input (conflicting requirements, missing credentials, business logic, security policy)
+
+Respond with exactly one word: TACTICAL or HUMAN"""
+
+        try:
+            response = self.llm.complete(
+                messages=[{"role": "user", "content": prompt}],
+                purpose=Purpose.SUPERVISION,
+                max_tokens=10,
+                temperature=0.0,
+            )
+            result = response.content.strip().upper()
+            return "tactical" if "TACTICAL" in result else "human"
+        except Exception as e:
+            print(f"      [Supervisor] Classification failed: {e}")
+            # Default to tactical for common patterns
+            return "tactical" if self._is_tactical_question(question.lower()) else "human"
+
+    def _generate_tactical_resolution(self, question: str) -> str:
+        """Generate an autonomous resolution for tactical questions."""
+        q = question.lower()
+
+        # Common resolutions
+        if "virtual environment" in q or "venv" in q:
+            return "Create a Python virtual environment and install dependencies."
+        if "fixture scope" in q or "asyncio" in q:
+            return "Use function scope for asyncio fixtures."
+        if "package manager" in q:
+            return "Use the project's default package manager (uv for Python, npm for JS)."
+        if "pytest" in q and "fail" in q:
+            return "Fix the failing tests and retry."
+        if "overwrite" in q or "existing file" in q:
+            return "Overwrite the existing file with the new content."
+        if "which version" in q:
+            return "Use the latest stable version."
+
+        # Generic resolution
+        return "Proceed with the most appropriate approach based on best practices."
+
+    def _auto_answer_blocker(self, blocker: blockers.Blocker, answer: str) -> None:
+        """Auto-answer a blocker and reset the task for retry."""
+        # Answer the blocker
+        blockers.answer(self.workspace, blocker.id, f"[Auto-resolved by supervisor] {answer}")
+
+        # Reset the blocked run so task can retry
+        if blocker.task_id:
+            reset_blocked_run(self.workspace, blocker.task_id)
+
+
+# Global supervisor instance per workspace (created lazily)
+_supervisors: dict[str, SupervisorResolver] = {}
+
+
+def get_supervisor(workspace: Workspace) -> SupervisorResolver:
+    """Get or create a supervisor resolver for a workspace."""
+    if workspace.id not in _supervisors:
+        _supervisors[workspace.id] = SupervisorResolver(workspace)
+    return _supervisors[workspace.id]
 
 
 def _utc_now() -> datetime:
@@ -738,6 +926,14 @@ def _execute_serial(
         # Execute task via subprocess
         result_status = _execute_task_subprocess(workspace, task_id)
 
+        # If task is BLOCKED, try supervisor resolution
+        if result_status == RunStatus.BLOCKED.value:
+            supervisor = get_supervisor(workspace)
+            if supervisor.try_resolve_blocked_task(task_id):
+                # Supervisor resolved the blocker - retry the task
+                print(f"      [Supervisor] Retrying task after auto-resolution...")
+                result_status = _execute_task_subprocess(workspace, task_id)
+
         # Record result
         batch.results[task_id] = result_status
         _save_batch(workspace, batch)
@@ -760,7 +956,7 @@ def _execute_serial(
                 {"batch_id": batch.id, "task_id": task_id},
                 print_event=True,
             )
-            print(f"      ⊘ Blocked")
+            print(f"      ⊘ Blocked (requires human input)")
         else:
             failed_count += 1
             events.emit_for_workspace(
@@ -996,6 +1192,14 @@ def _execute_single_task(
     # Execute task via subprocess
     result_status = _execute_task_subprocess(workspace, task_id)
 
+    # If task is BLOCKED, try supervisor resolution
+    if result_status == RunStatus.BLOCKED.value:
+        supervisor = get_supervisor(workspace)
+        if supervisor.try_resolve_blocked_task(task_id):
+            # Supervisor resolved the blocker - retry the task
+            print(f"      [Supervisor] Retrying task after auto-resolution...")
+            result_status = _execute_task_subprocess(workspace, task_id)
+
     # Record result
     batch.results[task_id] = result_status
     _save_batch(workspace, batch)
@@ -1016,7 +1220,7 @@ def _execute_single_task(
             {"batch_id": batch.id, "task_id": task_id},
             print_event=True,
         )
-        print(f"      ⊘ Blocked")
+        print(f"      ⊘ Blocked (requires human input)")
     else:
         events.emit_for_workspace(
             workspace,
