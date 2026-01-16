@@ -26,6 +26,8 @@ from codeframe.core.executor import Executor, ExecutionStatus, StepResult
 from codeframe.core.gates import run as run_gates, GateResult, GateStatus
 from codeframe.core import blockers, events
 from codeframe.core.events import EventType
+from codeframe.core.fix_tracker import FixAttemptTracker, FixOutcome, EscalationDecision
+from codeframe.core.quick_fixes import find_quick_fix, apply_quick_fix
 from codeframe.adapters.llm import LLMProvider, Purpose
 
 
@@ -307,6 +309,9 @@ class Agent:
         self.state = AgentState()
         self.context: Optional[TaskContext] = None
         self.executor: Optional[Executor] = None
+
+        # Fix attempt tracking for loop prevention and escalation
+        self.fix_tracker = FixAttemptTracker()
 
         # Debug logging setup
         self._debug_log_path: Optional[Path] = None
@@ -761,7 +766,7 @@ class Agent:
                     break  # Exit loop, fall through to FAILED
 
                 # Attempt self-correction
-                self._verbose_print(f"[VERIFY] Attempting self-correction...")
+                self._verbose_print("[VERIFY] Attempting self-correction...")
                 self._emit_event("self_correction_started", {
                     "attempt": attempt_num,
                     "failed_checks": failed_checks,
@@ -769,7 +774,7 @@ class Agent:
 
                 fixed = self._attempt_verification_fix(result)
                 if not fixed:
-                    self._verbose_print(f"[VERIFY] Self-correction FAILED, giving up")
+                    self._verbose_print("[VERIFY] Self-correction FAILED, giving up")
                     self._debug_log(
                         "Self-correction failed, giving up",
                         level="ERROR",
@@ -777,7 +782,7 @@ class Agent:
                     )
                     break  # Can't fix, fall through to FAILED
 
-                self._verbose_print(f"[VERIFY] Self-correction applied, re-running verification...")
+                self._verbose_print("[VERIFY] Self-correction applied, re-running verification...")
                 self._debug_log(
                     "Self-correction applied, re-running verification",
                     level="INFO",
@@ -829,10 +834,12 @@ class Agent:
 
         Strategy:
         1. Try ruff --fix for quick lint fixes
-        2. Collect error messages from failed checks
-        3. Use LLM to generate a fix plan
-        4. Execute the fix plan steps
-        5. Return True if fixes were applied (caller will re-verify)
+        2. Try pattern-based quick fixes (no LLM needed)
+        3. Collect error messages from failed checks
+        4. Check if we should escalate to blocker
+        5. Use LLM to generate a fix plan
+        6. Execute the fix plan steps
+        7. Return True if fixes were applied (caller will re-verify)
 
         Args:
             gate_result: Result of failed verification gates
@@ -840,11 +847,11 @@ class Agent:
         Returns:
             True if fixes were applied, False if unable to fix
         """
-        self._verbose_print(f"[SELFCORRECT] Starting verification fix attempt")
+        self._verbose_print("[SELFCORRECT] Starting verification fix attempt")
         self._debug_log("Attempting self-correction", level="INFO", always=True)
 
         # Step 1: Try ruff --fix for quick lint fixes
-        self._verbose_print(f"[SELFCORRECT] Running ruff --fix...")
+        self._verbose_print("[SELFCORRECT] Running ruff --fix...")
         self._try_auto_fix(gate_result)
 
         # Step 2: Collect error messages from failed checks
@@ -854,7 +861,7 @@ class Agent:
                 errors.append(f"{check.name}: {check.output[:1000]}")
 
         if not errors:
-            self._verbose_print(f"[SELFCORRECT] No error messages to fix")
+            self._verbose_print("[SELFCORRECT] No error messages to fix")
             self._debug_log("No error messages to fix", level="WARN")
             return False
 
@@ -862,7 +869,54 @@ class Agent:
         error_summary = "\n\n".join(errors)
         self._debug_log(f"Errors to fix:\n{error_summary[:500]}...", level="INFO")
 
-        # Step 3: Use LLM to generate a fix plan
+        # Step 3: Try pattern-based quick fixes first (no LLM needed)
+        quick_fix_applied = False
+        for error in errors:
+            quick_fix = find_quick_fix(
+                error,
+                repo_path=self.workspace.repo_path,
+            )
+            if quick_fix:
+                # Check if we already tried this fix
+                if self.fix_tracker.was_attempted(error, quick_fix.description):
+                    self._verbose_print(f"[SELFCORRECT] Skipping already-tried fix: {quick_fix.description}")
+                    self._debug_log(f"Skipping duplicate fix: {quick_fix.description}", level="INFO")
+                    continue
+
+                # Record the attempt
+                self.fix_tracker.record_attempt(error, quick_fix.description)
+
+                self._verbose_print(f"[SELFCORRECT] Trying quick fix: {quick_fix.description}")
+                success, msg = apply_quick_fix(quick_fix, self.workspace.repo_path, self.dry_run)
+
+                if success:
+                    self.fix_tracker.record_outcome(error, quick_fix.description, FixOutcome.SUCCESS)
+                    self._verbose_print(f"[SELFCORRECT] Quick fix applied: {msg}")
+                    self._debug_log(f"Quick fix applied: {msg}", level="INFO", always=True)
+                    quick_fix_applied = True
+                else:
+                    self.fix_tracker.record_outcome(error, quick_fix.description, FixOutcome.FAILED)
+                    self._verbose_print(f"[SELFCORRECT] Quick fix failed: {msg}")
+                    self._debug_log(f"Quick fix failed: {msg}", level="WARN")
+
+        if quick_fix_applied:
+            return True  # Let caller re-verify
+
+        # Step 4: Check if we should escalate to blocker
+        escalation = self.fix_tracker.should_escalate(error_summary)
+        if escalation.should_escalate:
+            self._verbose_print(f"[SELFCORRECT] Escalating to blocker: {escalation.reason}")
+            self._debug_log(f"Escalating to blocker: {escalation.reason}", level="WARN", always=True)
+            self._create_escalation_blocker(error_summary, escalation)
+            return False  # Stop trying, blocker created
+
+        # Step 5: Use LLM to generate a fix plan
+        # Include info about already-tried fixes to avoid repetition
+        attempted_fixes = self.fix_tracker.get_attempted_fixes(error_summary)
+        already_tried = ""
+        if attempted_fixes:
+            already_tried = "\n\nALREADY TRIED (DO NOT REPEAT):\n" + "\n".join(f"- {f}" for f in attempted_fixes)
+
         fix_prompt = f"""You are fixing verification errors in code you wrote. The following checks failed:
 
 {error_summary}
@@ -885,10 +939,10 @@ IMPORTANT:
 - Only fix errors shown above, don't refactor unrelated code
 - For missing files, use action: "create" with "content" instead of old_code/new_code
 - Be precise with old_code - it must match exactly what's in the file
-- Return valid JSON only, no additional text"""
+- Return valid JSON only, no additional text{already_tried}"""
 
         try:
-            self._verbose_print(f"[SELFCORRECT] Asking LLM for fixes...")
+            self._verbose_print("[SELFCORRECT] Asking LLM for fixes...")
             response = self.llm.complete(
                 messages=[{"role": "user", "content": fix_prompt}],
                 purpose=Purpose.EXECUTION,
@@ -901,7 +955,7 @@ IMPORTANT:
             import json
             json_match = re.search(r"\{[\s\S]*\}", response.content)
             if not json_match:
-                self._verbose_print(f"[SELFCORRECT] No JSON found in LLM response")
+                self._verbose_print("[SELFCORRECT] No JSON found in LLM response")
                 self._debug_log("No JSON found in fix response", level="ERROR")
                 return False
 
@@ -909,7 +963,7 @@ IMPORTANT:
             fixes = fix_plan.get("fixes", [])
 
             if not fixes:
-                self._verbose_print(f"[SELFCORRECT] LLM returned empty fixes list")
+                self._verbose_print("[SELFCORRECT] LLM returned empty fixes list")
                 self._debug_log("No fixes generated", level="WARN")
                 return False
 
@@ -921,13 +975,21 @@ IMPORTANT:
                 always=True,
             )
 
-            # Step 4: Execute the fix plan
+            # Step 6: Execute the fix plan with tracking
             applied = 0
             for fix in fixes:
                 file_path = self.workspace.repo_path / fix.get("file", "")
                 action = fix.get("action", "edit")
+                fix_desc = fix.get("description", f"{action} {fix.get('file', 'unknown')}")
+
+                # Track the attempt
+                self.fix_tracker.record_attempt(
+                    error_summary, fix_desc, file_path=str(file_path)
+                )
 
                 try:
+                    fix_succeeded = False
+
                     if action == "create":
                         # Create new file
                         content = fix.get("content", "")
@@ -936,6 +998,7 @@ IMPORTANT:
                             file_path.write_text(content)
                             self._debug_log(f"Created {file_path}", level="INFO")
                             applied += 1
+                            fix_succeeded = True
 
                     elif action == "edit":
                         # Edit existing file
@@ -944,25 +1007,21 @@ IMPORTANT:
 
                         if not file_path.exists():
                             self._debug_log(f"File not found: {file_path}", level="WARN")
-                            continue
-
-                        if not old_code:
+                        elif not old_code:
                             self._debug_log(f"No old_code for {file_path}", level="WARN")
-                            continue
-
-                        content = file_path.read_text()
-                        if old_code not in content:
-                            self._debug_log(
-                                f"old_code not found in {file_path}",
-                                level="WARN",
-                            )
-                            continue
-
-                        if not self.dry_run:
-                            new_content = content.replace(old_code, new_code, 1)
-                            file_path.write_text(new_content)
-                            self._debug_log(f"Fixed {file_path}", level="INFO")
-                            applied += 1
+                        else:
+                            content = file_path.read_text()
+                            if old_code not in content:
+                                self._debug_log(
+                                    f"old_code not found in {file_path}",
+                                    level="WARN",
+                                )
+                            elif not self.dry_run:
+                                new_content = content.replace(old_code, new_code, 1)
+                                file_path.write_text(new_content)
+                                self._debug_log(f"Fixed {file_path}", level="INFO")
+                                applied += 1
+                                fix_succeeded = True
 
                     elif action == "delete":
                         # Delete file
@@ -970,9 +1029,17 @@ IMPORTANT:
                             file_path.unlink()
                             self._debug_log(f"Deleted {file_path}", level="INFO")
                             applied += 1
+                            fix_succeeded = True
+
+                    # Record outcome
+                    self.fix_tracker.record_outcome(
+                        error_summary, fix_desc,
+                        FixOutcome.SUCCESS if fix_succeeded else FixOutcome.FAILED
+                    )
 
                 except Exception as e:
                     self._debug_log(f"Fix failed for {file_path}: {e}", level="ERROR")
+                    self.fix_tracker.record_outcome(error_summary, fix_desc, FixOutcome.FAILED)
 
             self._verbose_print(f"[SELFCORRECT] Applied {applied}/{len(fixes)} fixes")
             self._debug_log(
@@ -1408,6 +1475,76 @@ Respond with ONLY the corrected code/content, no explanation."""
             "reason": "Verification failed - technical issue for retry",
         })
         # Note: task status update handled by runtime.fail_run()
+
+    def _create_escalation_blocker(
+        self,
+        error_summary: str,
+        escalation: EscalationDecision,
+    ) -> None:
+        """Create a blocker when self-correction has been exhausted.
+
+        Unlike regular blockers which ask for guidance, escalation blockers
+        provide detailed context about what was tried and why we're stuck.
+
+        Args:
+            error_summary: Summary of the errors being fixed
+            escalation: EscalationDecision from FixAttemptTracker
+        """
+
+        # Build a detailed, informative question
+        context = self.fix_tracker.get_blocker_context(error_summary)
+
+        # Format attempted fixes
+        fixes_list = ""
+        if escalation.attempted_fixes:
+            fixes_list = "\n".join(f"  - {f}" for f in escalation.attempted_fixes[:10])
+
+        question = f"""Task failed after multiple self-correction attempts.
+
+**Error:** {context.get('error_type', 'Unknown error')}
+
+**Problem:** {escalation.error_summary[:300]}
+
+**Attempted fixes ({context.get('attempt_count', 0)} total):**
+{fixes_list}
+
+**Reason for escalation:** {escalation.reason}
+
+**How should I proceed?** Please provide guidance on:
+1. What might be causing this persistent error?
+2. Is there a different approach I should try?
+3. Are there any missing dependencies or configuration?"""
+
+        # Create the blocker
+        blocker = blockers.create(
+            workspace=self.workspace,
+            question=question,
+            task_id=self.state.task_id,
+        )
+
+        self.state.status = AgentStatus.BLOCKED
+        self.state.blocker = BlockerInfo(
+            reason=escalation.reason,
+            question=question,
+            context=f"Self-correction exhausted after {context.get('attempt_count', 0)} attempts",
+        )
+
+        self._emit_event("escalation_blocker_created", {
+            "blocker_id": blocker.id,
+            "reason": escalation.reason,
+            "attempt_count": context.get("attempt_count", 0),
+            "attempted_fixes": escalation.attempted_fixes,
+        })
+
+        self._debug_log(
+            f"Created escalation blocker: {blocker.id}",
+            level="INFO",
+            data={
+                "reason": escalation.reason,
+                "attempt_count": context.get("attempt_count", 0),
+            },
+            always=True,
+        )
 
     def _generate_blocker_question(
         self,

@@ -75,6 +75,8 @@ codeframe/
 │   ├── dependency_graph.py # DAG operations and execution planning
 │   ├── dependency_analyzer.py # LLM-based dependency inference
 │   ├── gates.py            # Verification gates (ruff, pytest)
+│   ├── fix_tracker.py      # Fix attempt tracking for loop prevention
+│   ├── quick_fixes.py      # Pattern-based fixes without LLM
 │   ├── agents_config.py    # AGENTS.md/CLAUDE.md preference loading
 │   ├── workspace.py        # Workspace initialization
 │   ├── prd.py              # PRD management
@@ -366,9 +368,51 @@ Improved agent reliability with automatic error recovery:
 4. ✅ **Project preferences** - agent loads AGENTS.md/CLAUDE.md for per-project config
 5. ✅ **Fixed `fail_run()`** - now properly transitions task status (was leaving tasks stuck)
 
-### New Self-Correction Methods
+### Enhanced Self-Correction (Phase 3.4)
+Advanced error recovery with loop prevention and smart escalation:
+
+1. ✅ **Fix Attempt Tracker** (`core/fix_tracker.py`) - prevents repeating failed fixes
+   - Normalizes errors for comparison (removes line numbers, memory addresses)
+   - Tracks (error_signature, fix_description) pairs with outcomes
+   - Detects escalation patterns (same error 3+ times, same file 3+ times)
+
+2. ✅ **Pattern-Based Quick Fixes** (`core/quick_fixes.py`) - fixes common errors without LLM
+   - `ModuleNotFoundError` → auto-install package (detects package manager)
+   - `ImportError` → add missing import statement
+   - `NameError` → add common imports (Optional, dataclass, Path, etc.)
+   - `SyntaxError` → fix missing colons, f-string prefixes
+   - `IndentationError` → normalize mixed tabs/spaces
+
+3. ✅ **Escalation to Blocker** - creates informative blockers when stuck
+   - Triggered after MAX_SAME_ERROR_ATTEMPTS (3) failures on same error
+   - Triggered after MAX_SAME_FILE_ATTEMPTS (3) failures on same file
+   - Triggered after MAX_TOTAL_FAILURES (5) in a run
+   - Blocker includes error type, attempted fixes, and guidance questions
+
+### Self-Correction Flow
+```
+Error occurs
+    │
+    ├── Try ruff --fix (auto-lint)
+    │
+    ├── Try pattern-based quick fix (no LLM)
+    │   ├── Check if fix already attempted → skip
+    │   ├── Apply fix
+    │   └── Record outcome in tracker
+    │
+    ├── Check escalation threshold
+    │   └── If exceeded → create escalation blocker
+    │
+    └── Use LLM to generate fix plan
+        ├── Include already-tried fixes to avoid repetition
+        ├── Execute fix steps with tracking
+        └── Re-verify
+```
+
+### Key Self-Correction Methods
 - **`_run_final_verification()`**: While loop that re-runs gates after self-correction
-- **`_attempt_verification_fix()`**: LLM-based error analysis and fix generation
+- **`_attempt_verification_fix()`**: Orchestrates quick fixes, escalation check, LLM fixes
+- **`_create_escalation_blocker()`**: Creates detailed blocker with context
 - **`_verbose_print()`**: Conditional stdout output for observability
 
 ---
