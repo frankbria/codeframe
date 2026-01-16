@@ -662,7 +662,6 @@ def execute_agent(
                 workspace,
                 task_id=run.task_id,
                 question=f"Technical error: {error_msg[:500]}",
-                context="Agent failed with a technical error that may be resolvable.",
             )
             blockers.answer(workspace, blocker.id, resolution)
 
