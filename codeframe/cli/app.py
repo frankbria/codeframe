@@ -975,6 +975,12 @@ def work_start(
         "--debug",
         help="Write detailed debug log to .codeframe_debug_<timestamp>.log in repo",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Print detailed progress (verification, self-correction) to stdout",
+    ),
     stub: bool = typer.Option(
         False,
         "--stub",
@@ -990,6 +996,7 @@ def work_start(
         codeframe work start abc123
         codeframe work start abc123 --execute
         codeframe work start abc123 --execute --dry-run
+        codeframe work start abc123 --execute --verbose
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import tasks as tasks_module, runtime
@@ -1030,10 +1037,11 @@ def work_start(
 
             mode = "[dim](dry run)[/dim]" if dry_run else ""
             debug_mode = " [dim](debug logging enabled)[/dim]" if debug else ""
-            console.print(f"\n[bold]Executing agent...{mode}{debug_mode}[/bold]")
+            verbose_mode = " [dim](verbose)[/dim]" if verbose else ""
+            console.print(f"\n[bold]Executing agent...{mode}{debug_mode}{verbose_mode}[/bold]")
 
             try:
-                state = runtime.execute_agent(workspace, run, dry_run=dry_run, debug=debug)
+                state = runtime.execute_agent(workspace, run, dry_run=dry_run, debug=debug, verbose=verbose)
 
                 if state.status == AgentStatus.COMPLETED:
                     console.print("[bold green]Task completed successfully![/bold green]")

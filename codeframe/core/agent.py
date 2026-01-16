@@ -283,6 +283,7 @@ class Agent:
         dry_run: bool = False,
         on_event: Optional[Callable[[str, dict], None]] = None,
         debug: bool = False,
+        verbose: bool = False,
     ):
         """Initialize the agent.
 
@@ -293,6 +294,7 @@ class Agent:
             dry_run: If True, don't make actual changes
             on_event: Optional callback for agent events
             debug: If True, write detailed debug log to workspace
+            verbose: If True, print detailed progress to stdout
         """
         self.workspace = workspace
         self.llm = llm_provider
@@ -300,6 +302,7 @@ class Agent:
         self.dry_run = dry_run
         self.on_event = on_event
         self.debug = debug
+        self.verbose = verbose
 
         self.state = AgentState()
         self.context: Optional[TaskContext] = None
@@ -310,6 +313,11 @@ class Agent:
         self._failure_count = 0  # Track failures for verbose logging
         if debug:
             self._setup_debug_log()
+
+    def _verbose_print(self, message: str) -> None:
+        """Print message only if verbose mode is enabled."""
+        if self.verbose:
+            print(message)
 
     def run(self, task_id: str) -> AgentState:
         """Run the agent on a task.
@@ -707,7 +715,7 @@ class Agent:
 
         while self.state.attempt_count < self.state.max_attempts:
             attempt_num = self.state.attempt_count + 1
-            print(f"[VERIFY] Attempt {attempt_num}/{self.state.max_attempts}")
+            self._verbose_print(f"[VERIFY] Attempt {attempt_num}/{self.state.max_attempts}")
             self._debug_log(
                 f"Verification attempt {attempt_num}/{self.state.max_attempts}",
                 level="INFO",
@@ -720,7 +728,7 @@ class Agent:
                 if result.passed:
                     self.state.status = AgentStatus.COMPLETED
                     self._emit_event("verification_passed", {"attempt": attempt_num})
-                    print(f"[VERIFY] PASSED on attempt {attempt_num}")
+                    self._verbose_print(f"[VERIFY] PASSED on attempt {attempt_num}")
                     self._debug_log(
                         f"Verification PASSED on attempt {attempt_num}",
                         level="INFO",
@@ -733,7 +741,7 @@ class Agent:
                     c.name for c in result.checks
                     if c.status == GateStatus.FAILED
                 ]
-                print(f"[VERIFY] FAILED: {', '.join(failed_checks)}")
+                self._verbose_print(f"[VERIFY] FAILED: {', '.join(failed_checks)}")
                 self._debug_log(
                     f"Verification failed: {', '.join(failed_checks)}",
                     level="WARN",
@@ -753,7 +761,7 @@ class Agent:
                     break  # Exit loop, fall through to FAILED
 
                 # Attempt self-correction
-                print(f"[VERIFY] Attempting self-correction...")
+                self._verbose_print(f"[VERIFY] Attempting self-correction...")
                 self._emit_event("self_correction_started", {
                     "attempt": attempt_num,
                     "failed_checks": failed_checks,
@@ -761,7 +769,7 @@ class Agent:
 
                 fixed = self._attempt_verification_fix(result)
                 if not fixed:
-                    print(f"[VERIFY] Self-correction FAILED, giving up")
+                    self._verbose_print(f"[VERIFY] Self-correction FAILED, giving up")
                     self._debug_log(
                         "Self-correction failed, giving up",
                         level="ERROR",
@@ -769,7 +777,7 @@ class Agent:
                     )
                     break  # Can't fix, fall through to FAILED
 
-                print(f"[VERIFY] Self-correction applied, re-running verification...")
+                self._verbose_print(f"[VERIFY] Self-correction applied, re-running verification...")
                 self._debug_log(
                     "Self-correction applied, re-running verification",
                     level="INFO",
@@ -778,7 +786,7 @@ class Agent:
                 # Loop back to re-run gates
 
             except Exception as e:
-                print(f"[VERIFY] Exception: {e}")
+                self._verbose_print(f"[VERIFY] Exception: {e}")
                 self._emit_event("verification_error", {"error": str(e)})
                 self._debug_log(
                     f"Verification error: {e}",
@@ -788,7 +796,7 @@ class Agent:
                 break  # Exit on exception
 
         # Max attempts exceeded or couldn't fix
-        print(f"[VERIFY] Final result: FAILED after {self.state.attempt_count} attempts")
+        self._verbose_print(f"[VERIFY] Final result: FAILED after {self.state.attempt_count} attempts")
         self.state.status = AgentStatus.FAILED
         self._emit_event("verification_failed", {
             "reason": "Max verification attempts exceeded or self-correction failed",
@@ -832,11 +840,11 @@ class Agent:
         Returns:
             True if fixes were applied, False if unable to fix
         """
-        print(f"[SELFCORRECT] Starting verification fix attempt")
+        self._verbose_print(f"[SELFCORRECT] Starting verification fix attempt")
         self._debug_log("Attempting self-correction", level="INFO", always=True)
 
         # Step 1: Try ruff --fix for quick lint fixes
-        print(f"[SELFCORRECT] Running ruff --fix...")
+        self._verbose_print(f"[SELFCORRECT] Running ruff --fix...")
         self._try_auto_fix(gate_result)
 
         # Step 2: Collect error messages from failed checks
@@ -846,11 +854,11 @@ class Agent:
                 errors.append(f"{check.name}: {check.output[:1000]}")
 
         if not errors:
-            print(f"[SELFCORRECT] No error messages to fix")
+            self._verbose_print(f"[SELFCORRECT] No error messages to fix")
             self._debug_log("No error messages to fix", level="WARN")
             return False
 
-        print(f"[SELFCORRECT] Collected {len(errors)} error(s) to fix")
+        self._verbose_print(f"[SELFCORRECT] Collected {len(errors)} error(s) to fix")
         error_summary = "\n\n".join(errors)
         self._debug_log(f"Errors to fix:\n{error_summary[:500]}...", level="INFO")
 
@@ -880,7 +888,7 @@ IMPORTANT:
 - Return valid JSON only, no additional text"""
 
         try:
-            print(f"[SELFCORRECT] Asking LLM for fixes...")
+            self._verbose_print(f"[SELFCORRECT] Asking LLM for fixes...")
             response = self.llm.complete(
                 messages=[{"role": "user", "content": fix_prompt}],
                 purpose=Purpose.EXECUTION,
@@ -893,7 +901,7 @@ IMPORTANT:
             import json
             json_match = re.search(r"\{[\s\S]*\}", response.content)
             if not json_match:
-                print(f"[SELFCORRECT] No JSON found in LLM response")
+                self._verbose_print(f"[SELFCORRECT] No JSON found in LLM response")
                 self._debug_log("No JSON found in fix response", level="ERROR")
                 return False
 
@@ -901,12 +909,12 @@ IMPORTANT:
             fixes = fix_plan.get("fixes", [])
 
             if not fixes:
-                print(f"[SELFCORRECT] LLM returned empty fixes list")
+                self._verbose_print(f"[SELFCORRECT] LLM returned empty fixes list")
                 self._debug_log("No fixes generated", level="WARN")
                 return False
 
             analysis = fix_plan.get('analysis', 'no analysis')
-            print(f"[SELFCORRECT] LLM generated {len(fixes)} fix(es): {analysis[:100]}...")
+            self._verbose_print(f"[SELFCORRECT] LLM generated {len(fixes)} fix(es): {analysis[:100]}...")
             self._debug_log(
                 f"Generated {len(fixes)} fixes: {analysis}",
                 level="INFO",
@@ -966,7 +974,7 @@ IMPORTANT:
                 except Exception as e:
                     self._debug_log(f"Fix failed for {file_path}: {e}", level="ERROR")
 
-            print(f"[SELFCORRECT] Applied {applied}/{len(fixes)} fixes")
+            self._verbose_print(f"[SELFCORRECT] Applied {applied}/{len(fixes)} fixes")
             self._debug_log(
                 f"Applied {applied}/{len(fixes)} fixes",
                 level="INFO",
@@ -975,11 +983,11 @@ IMPORTANT:
             return applied > 0
 
         except json.JSONDecodeError as e:
-            print(f"[SELFCORRECT] JSON parse error: {e}")
+            self._verbose_print(f"[SELFCORRECT] JSON parse error: {e}")
             self._debug_log(f"Failed to parse fix plan JSON: {e}", level="ERROR")
             return False
         except Exception as e:
-            print(f"[SELFCORRECT] Error: {e}")
+            self._verbose_print(f"[SELFCORRECT] Error: {e}")
             self._debug_log(f"Self-correction error: {e}", level="ERROR")
             return False
 

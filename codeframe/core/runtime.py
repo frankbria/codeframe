@@ -556,6 +556,7 @@ def execute_agent(
     run: Run,
     dry_run: bool = False,
     debug: bool = False,
+    verbose: bool = False,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -567,6 +568,7 @@ def execute_agent(
         run: Run to execute
         dry_run: If True, don't make actual changes
         debug: If True, write detailed debug log to workspace
+        verbose: If True, print detailed progress to stdout
 
     Returns:
         Final AgentState after execution
@@ -603,6 +605,7 @@ def execute_agent(
         dry_run=dry_run,
         on_event=on_agent_event,
         debug=debug,
+        verbose=verbose,
     )
 
     state = agent.run(run.task_id)
