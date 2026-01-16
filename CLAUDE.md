@@ -1,10 +1,10 @@
 # CodeFRAME Development Guidelines (v2 Reset)
 
-Last updated: 2026-01-15
+Last updated: 2026-01-16
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: v2 Phase 2 Complete** - Agent execution + parallel batch orchestration with LLM-inferred dependencies.
+**Status: v2 Phase 2+ Complete** - Agent execution + parallel batch orchestration + self-correction loop + observability.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -32,9 +32,13 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 ### What's Working Now
 - **Full agent execution**: `cf work start <task-id> --execute`
+- **Verbose mode**: `cf work start <task-id> --execute --verbose` shows detailed progress
 - **Dry run mode**: `cf work start <task-id> --execute --dry-run`
+- **Self-correction loop**: Agent automatically fixes failing verification gates (up to 3 attempts)
+- **FAILED task status**: Tasks can transition to FAILED for proper error visibility
+- **Project preferences**: Agent loads AGENTS.md or CLAUDE.md for per-project configuration
 - **Blocker detection**: Agent creates blockers when stuck
-- **Verification gates**: Ruff checks after file changes
+- **Verification gates**: Ruff/pytest checks after file changes
 - **State persistence**: Pause/resume across sessions
 - **Batch execution**: `cf work batch run` with serial/parallel/auto strategies
 - **Task dependencies**: `depends_on` field with dependency graph analysis
@@ -173,24 +177,30 @@ Future: `cf tasks set provider <id> <provider>` for per-task override.
 
 ### Execution Flow
 ```
-cf work start <id> --execute
+cf work start <id> --execute [--verbose]
     │
     ├── runtime.start_task_run()      # Creates run, transitions task→IN_PROGRESS
     │
-    └── runtime.execute_agent()
+    └── runtime.execute_agent(verbose=True/False)
             │
             ├── agent.run(task_id)
-            │   ├── Load context (PRD, codebase, blockers)
+            │   ├── Load context (PRD, codebase, blockers, AGENTS.md)
             │   ├── Create plan via LLM
             │   ├── Execute steps (file create/edit, shell commands)
             │   ├── Run incremental verification (ruff)
             │   ├── Detect blockers (consecutive failures, missing files)
-            │   └── Run final verification gates
+            │   └── Run final verification with SELF-CORRECTION LOOP:
+            │       ├── Run all gates (pytest, ruff)
+            │       ├── If failed: _attempt_verification_fix()
+            │       │   ├── Try ruff --fix for quick lint fixes
+            │       │   ├── Use LLM to generate fix plan from errors
+            │       │   └── Execute fix steps
+            │       └── Retry up to max_attempts (default: 3)
             │
             └── Update run/task status based on agent result
                 ├── COMPLETED → complete_run() → task→DONE
                 ├── BLOCKED → block_run() → task→BLOCKED
-                └── FAILED → fail_run()
+                └── FAILED → fail_run() → task→FAILED
 ```
 
 ---
@@ -224,6 +234,7 @@ cf tasks show <id>
 # Work execution (single task)
 cf work start <task-id>                    # Creates run record
 cf work start <task-id> --execute          # Runs AI agent
+cf work start <task-id> --execute --verbose  # With detailed output
 cf work start <task-id> --execute --dry-run  # Preview changes
 cf work stop <task-id>                     # Cancel stale run
 cf work resume <task-id>                   # Resume blocked work
@@ -315,7 +326,25 @@ If you are unsure which direction to take, default to:
 
 ---
 
-## Recent Updates (2026-01-15)
+## Recent Updates (2026-01-16)
+
+### Agent Self-Correction & Observability
+Improved agent reliability with automatic error recovery:
+
+1. ✅ **Self-correction loop** in `_run_final_verification()` - agent retries up to 3 times
+2. ✅ **Verbose mode** (`--verbose` / `-v`) - shows detailed verification/self-correction progress
+3. ✅ **FAILED task status** - tasks transition to FAILED for proper error visibility
+4. ✅ **Project preferences** - agent loads AGENTS.md/CLAUDE.md for per-project config
+5. ✅ **Fixed `fail_run()`** - now properly transitions task status (was leaving tasks stuck)
+
+### New Self-Correction Methods
+- **`_run_final_verification()`**: While loop that re-runs gates after self-correction
+- **`_attempt_verification_fix()`**: LLM-based error analysis and fix generation
+- **`_verbose_print()`**: Conditional stdout output for observability
+
+---
+
+## Previous Updates (2026-01-15)
 
 ### Phase 2 Complete: Parallel Batch Execution
 All 6 Phase 2 items from `CLI_WIREFRAME.md` are done:
