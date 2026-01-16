@@ -630,28 +630,48 @@ def execute_agent(
     if state.status == AgentStatus.FAILED:
         from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
 
+        print(f"\n{'='*60}")
+        print(f"[DIAG] Agent FAILED - analyzing for supervisor intervention")
+        print(f"[DIAG] state.blocker: {state.blocker}")
+        print(f"[DIAG] state.step_results count: {len(state.step_results) if state.step_results else 0}")
+        print(f"[DIAG] state.gate_results count: {len(state.gate_results) if state.gate_results else 0}")
+
         # Extract error message from available sources
         error_msg = ""
+        error_source = "none"
         if state.blocker:
             error_msg = state.blocker.reason or state.blocker.question or ""
+            error_source = "blocker"
         elif state.step_results:
             # Check last step result for error info
             last_result = state.step_results[-1]
+            print(f"[DIAG] Last step result: status={last_result.status}, error={last_result.error[:200] if last_result.error else 'None'}")
             if hasattr(last_result, 'error') and last_result.error:
                 error_msg = last_result.error
+                error_source = "step_result.error"
             elif hasattr(last_result, 'output') and last_result.output:
                 error_msg = last_result.output
+                error_source = "step_result.output"
         elif state.gate_results:
             # Check gate results for failure info
             for gate in state.gate_results:
+                print(f"[DIAG] Gate result: passed={gate.passed}")
                 if not gate.passed:
                     for check in gate.checks:
+                        print(f"[DIAG]   Check: {check.name} status={check.status} output={check.output[:100] if check.output else 'None'}")
                         if check.output:
                             error_msg = check.output
+                            error_source = f"gate.{check.name}"
                             break
 
+        print(f"[DIAG] Extracted error from: {error_source}")
+        print(f"[DIAG] Error message (first 300 chars): {error_msg[:300] if error_msg else 'EMPTY'}")
+
         error_msg_lower = error_msg.lower()
-        if error_msg and any(pattern in error_msg_lower for pattern in SUPERVISOR_TACTICAL_PATTERNS):
+        matched_patterns = [p for p in SUPERVISOR_TACTICAL_PATTERNS if p in error_msg_lower]
+        print(f"[DIAG] Matched tactical patterns: {matched_patterns}")
+
+        if error_msg and matched_patterns:
             supervisor = get_supervisor(workspace)
             resolution = supervisor._generate_tactical_resolution(error_msg)
             print(f"[Supervisor] Detected recoverable error, providing guidance: {resolution[:100]}...")
@@ -664,6 +684,7 @@ def execute_agent(
                 question=f"Technical error: {error_msg[:500]}",
             )
             blockers.answer(workspace, blocker.id, resolution)
+            print(f"[DIAG] Created blocker {blocker.id[:8]} and answered with resolution")
 
             # Retry the agent with the new context
             print("[Supervisor] Retrying task with guidance...")
@@ -675,6 +696,10 @@ def execute_agent(
                 debug=debug,
             )
             state = agent.run(run.task_id)
+            print(f"[DIAG] Retry completed with status: {state.status}")
+        else:
+            print(f"[DIAG] No supervisor intervention - error_msg empty={not error_msg}, no pattern match={not matched_patterns}")
+        print(f"{'='*60}\n")
 
     # Update run status based on agent result
     if state.status == AgentStatus.COMPLETED:

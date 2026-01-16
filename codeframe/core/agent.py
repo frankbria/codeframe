@@ -683,35 +683,117 @@ class Agent:
             return None
 
     def _run_final_verification(self) -> None:
-        """Run full verification gates at the end."""
+        """Run full verification gates with self-correction loop.
+
+        This method implements a retry loop that:
+        1. Runs verification gates (pytest, ruff)
+        2. If gates pass, marks task as COMPLETED
+        3. If gates fail, attempts self-correction:
+           a. Try ruff --fix for lint issues
+           b. Use LLM to generate fix plan for remaining errors
+           c. Execute fix steps
+           d. Re-run verification
+        4. Repeats until max_attempts or gives up
+        """
         self.state.status = AgentStatus.VERIFYING
         self._emit_event("verification_started", {})
 
-        try:
-            result = run_gates(self.workspace, verbose=False)
-            self.state.gate_results.append(result)
+        print(f"\n[VERIFY] Starting final verification (max {self.state.max_attempts} attempts)")
+        self._debug_log(
+            f"Starting final verification (max {self.state.max_attempts} attempts)",
+            level="INFO",
+            always=True,
+        )
 
-            if result.passed:
-                self.state.status = AgentStatus.COMPLETED
-                self._emit_event("verification_passed", {})
-                # Note: task status update handled by runtime.complete_run()
+        while self.state.attempt_count < self.state.max_attempts:
+            attempt_num = self.state.attempt_count + 1
+            print(f"[VERIFY] Attempt {attempt_num}/{self.state.max_attempts}")
+            self._debug_log(
+                f"Verification attempt {attempt_num}/{self.state.max_attempts}",
+                level="INFO",
+            )
 
-            else:
-                # Verification failed - create blocker or fail
+            try:
+                result = run_gates(self.workspace, verbose=False)
+                self.state.gate_results.append(result)
+
+                if result.passed:
+                    self.state.status = AgentStatus.COMPLETED
+                    self._emit_event("verification_passed", {"attempt": attempt_num})
+                    print(f"[VERIFY] PASSED on attempt {attempt_num}")
+                    self._debug_log(
+                        f"Verification PASSED on attempt {attempt_num}",
+                        level="INFO",
+                        always=True,
+                    )
+                    return  # Success!
+
+                # Verification failed - log details
+                failed_checks = [
+                    c.name for c in result.checks
+                    if c.status == GateStatus.FAILED
+                ]
+                print(f"[VERIFY] FAILED: {', '.join(failed_checks)}")
+                self._debug_log(
+                    f"Verification failed: {', '.join(failed_checks)}",
+                    level="WARN",
+                    always=True,
+                )
+
+                # Increment attempt count
                 self.state.attempt_count += 1
 
-                if self.state.attempt_count < self.state.max_attempts:
-                    # Create blocker for human review
-                    self._create_verification_blocker(result)
-                else:
-                    self.state.status = AgentStatus.FAILED
-                    self._emit_event("verification_failed", {
-                        "reason": "Max attempts exceeded",
-                    })
+                # Check if we have retries left
+                if self.state.attempt_count >= self.state.max_attempts:
+                    self._debug_log(
+                        f"Max attempts ({self.state.max_attempts}) exceeded",
+                        level="ERROR",
+                        always=True,
+                    )
+                    break  # Exit loop, fall through to FAILED
 
-        except Exception as e:
-            self._emit_event("verification_error", {"error": str(e)})
-            self.state.status = AgentStatus.COMPLETED  # Best effort
+                # Attempt self-correction
+                print(f"[VERIFY] Attempting self-correction...")
+                self._emit_event("self_correction_started", {
+                    "attempt": attempt_num,
+                    "failed_checks": failed_checks,
+                })
+
+                fixed = self._attempt_verification_fix(result)
+                if not fixed:
+                    print(f"[VERIFY] Self-correction FAILED, giving up")
+                    self._debug_log(
+                        "Self-correction failed, giving up",
+                        level="ERROR",
+                        always=True,
+                    )
+                    break  # Can't fix, fall through to FAILED
+
+                print(f"[VERIFY] Self-correction applied, re-running verification...")
+                self._debug_log(
+                    "Self-correction applied, re-running verification",
+                    level="INFO",
+                    always=True,
+                )
+                # Loop back to re-run gates
+
+            except Exception as e:
+                print(f"[VERIFY] Exception: {e}")
+                self._emit_event("verification_error", {"error": str(e)})
+                self._debug_log(
+                    f"Verification error: {e}",
+                    level="ERROR",
+                    always=True,
+                )
+                break  # Exit on exception
+
+        # Max attempts exceeded or couldn't fix
+        print(f"[VERIFY] Final result: FAILED after {self.state.attempt_count} attempts")
+        self.state.status = AgentStatus.FAILED
+        self._emit_event("verification_failed", {
+            "reason": "Max verification attempts exceeded or self-correction failed",
+            "attempts": self.state.attempt_count,
+        })
 
     def _try_auto_fix(self, gate_result: GateResult) -> bool:
         """Try to automatically fix lint issues.
@@ -733,6 +815,173 @@ class Agent:
             except Exception:
                 pass
         return False
+
+    def _attempt_verification_fix(self, gate_result: GateResult) -> bool:
+        """Attempt to self-correct verification failures.
+
+        Strategy:
+        1. Try ruff --fix for quick lint fixes
+        2. Collect error messages from failed checks
+        3. Use LLM to generate a fix plan
+        4. Execute the fix plan steps
+        5. Return True if fixes were applied (caller will re-verify)
+
+        Args:
+            gate_result: Result of failed verification gates
+
+        Returns:
+            True if fixes were applied, False if unable to fix
+        """
+        print(f"[SELFCORRECT] Starting verification fix attempt")
+        self._debug_log("Attempting self-correction", level="INFO", always=True)
+
+        # Step 1: Try ruff --fix for quick lint fixes
+        print(f"[SELFCORRECT] Running ruff --fix...")
+        self._try_auto_fix(gate_result)
+
+        # Step 2: Collect error messages from failed checks
+        errors = []
+        for check in gate_result.checks:
+            if check.status == GateStatus.FAILED and check.output:
+                errors.append(f"{check.name}: {check.output[:1000]}")
+
+        if not errors:
+            print(f"[SELFCORRECT] No error messages to fix")
+            self._debug_log("No error messages to fix", level="WARN")
+            return False
+
+        print(f"[SELFCORRECT] Collected {len(errors)} error(s) to fix")
+        error_summary = "\n\n".join(errors)
+        self._debug_log(f"Errors to fix:\n{error_summary[:500]}...", level="INFO")
+
+        # Step 3: Use LLM to generate a fix plan
+        fix_prompt = f"""You are fixing verification errors in code you wrote. The following checks failed:
+
+{error_summary}
+
+Generate specific file edits to fix these errors. Return a JSON object:
+{{
+    "analysis": "Brief explanation of what went wrong",
+    "fixes": [
+        {{
+            "file": "path/to/file.py",
+            "action": "edit",
+            "description": "What to fix",
+            "old_code": "exact code to find",
+            "new_code": "replacement code"
+        }}
+    ]
+}}
+
+IMPORTANT:
+- Only fix errors shown above, don't refactor unrelated code
+- For missing files, use action: "create" with "content" instead of old_code/new_code
+- Be precise with old_code - it must match exactly what's in the file
+- Return valid JSON only, no additional text"""
+
+        try:
+            print(f"[SELFCORRECT] Asking LLM for fixes...")
+            response = self.llm.complete(
+                messages=[{"role": "user", "content": fix_prompt}],
+                purpose=Purpose.EXECUTION,
+                system="You are a code fixer. Return only valid JSON.",
+                max_tokens=4096,
+                temperature=0.0,
+            )
+
+            # Parse the fix plan
+            import json
+            json_match = re.search(r"\{[\s\S]*\}", response.content)
+            if not json_match:
+                print(f"[SELFCORRECT] No JSON found in LLM response")
+                self._debug_log("No JSON found in fix response", level="ERROR")
+                return False
+
+            fix_plan = json.loads(json_match.group())
+            fixes = fix_plan.get("fixes", [])
+
+            if not fixes:
+                print(f"[SELFCORRECT] LLM returned empty fixes list")
+                self._debug_log("No fixes generated", level="WARN")
+                return False
+
+            analysis = fix_plan.get('analysis', 'no analysis')
+            print(f"[SELFCORRECT] LLM generated {len(fixes)} fix(es): {analysis[:100]}...")
+            self._debug_log(
+                f"Generated {len(fixes)} fixes: {analysis}",
+                level="INFO",
+                always=True,
+            )
+
+            # Step 4: Execute the fix plan
+            applied = 0
+            for fix in fixes:
+                file_path = self.workspace.repo_path / fix.get("file", "")
+                action = fix.get("action", "edit")
+
+                try:
+                    if action == "create":
+                        # Create new file
+                        content = fix.get("content", "")
+                        if content and not self.dry_run:
+                            file_path.parent.mkdir(parents=True, exist_ok=True)
+                            file_path.write_text(content)
+                            self._debug_log(f"Created {file_path}", level="INFO")
+                            applied += 1
+
+                    elif action == "edit":
+                        # Edit existing file
+                        old_code = fix.get("old_code", "")
+                        new_code = fix.get("new_code", "")
+
+                        if not file_path.exists():
+                            self._debug_log(f"File not found: {file_path}", level="WARN")
+                            continue
+
+                        if not old_code:
+                            self._debug_log(f"No old_code for {file_path}", level="WARN")
+                            continue
+
+                        content = file_path.read_text()
+                        if old_code not in content:
+                            self._debug_log(
+                                f"old_code not found in {file_path}",
+                                level="WARN",
+                            )
+                            continue
+
+                        if not self.dry_run:
+                            new_content = content.replace(old_code, new_code, 1)
+                            file_path.write_text(new_content)
+                            self._debug_log(f"Fixed {file_path}", level="INFO")
+                            applied += 1
+
+                    elif action == "delete":
+                        # Delete file
+                        if file_path.exists() and not self.dry_run:
+                            file_path.unlink()
+                            self._debug_log(f"Deleted {file_path}", level="INFO")
+                            applied += 1
+
+                except Exception as e:
+                    self._debug_log(f"Fix failed for {file_path}: {e}", level="ERROR")
+
+            print(f"[SELFCORRECT] Applied {applied}/{len(fixes)} fixes")
+            self._debug_log(
+                f"Applied {applied}/{len(fixes)} fixes",
+                level="INFO",
+                always=True,
+            )
+            return applied > 0
+
+        except json.JSONDecodeError as e:
+            print(f"[SELFCORRECT] JSON parse error: {e}")
+            self._debug_log(f"Failed to parse fix plan JSON: {e}", level="ERROR")
+            return False
+        except Exception as e:
+            print(f"[SELFCORRECT] Error: {e}")
+            self._debug_log(f"Self-correction error: {e}", level="ERROR")
+            return False
 
     def _classify_error(self, error: str) -> str:
         """Classify an error as technical, tactical, or human-input-needed.
