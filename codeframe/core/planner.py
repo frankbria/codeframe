@@ -293,6 +293,13 @@ class Planner:
             sections.append(f"Description: {context.task.description}")
         sections.append("")
 
+        # Project preferences from AGENTS.md/CLAUDE.md
+        if context.preferences and context.preferences.has_preferences():
+            pref_section = context.preferences.to_prompt_section()
+            if pref_section:
+                sections.append(pref_section)
+                sections.append("")
+
         # PRD if available
         if context.prd:
             sections.append("## Product Requirements")
