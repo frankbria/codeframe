@@ -104,7 +104,7 @@ def _init_database(db_path: Path) -> None:
             updated_at TEXT NOT NULL,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
             FOREIGN KEY (prd_id) REFERENCES prds(id),
-            CHECK (status IN ('BACKLOG', 'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'MERGED'))
+            CHECK (status IN ('BACKLOG', 'READY', 'IN_PROGRESS', 'BLOCKED', 'FAILED', 'DONE', 'MERGED'))
         )
     """)
 
