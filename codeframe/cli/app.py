@@ -1548,54 +1548,6 @@ def batch_status(
         raise typer.Exit(1)
 
 
-@batch_app.command("cancel")
-def batch_cancel(
-    batch_id: str = typer.Argument(..., help="Batch ID to cancel (can be partial)"),
-    workspace_path: Optional[Path] = typer.Option(
-        None,
-        "--workspace",
-        "-w",
-        help="Workspace path (defaults to current directory)",
-    ),
-) -> None:
-    """Cancel a running batch.
-
-    Example:
-        codeframe work batch cancel abc123
-    """
-    from codeframe.core.workspace import get_workspace
-    from codeframe.core import conductor
-
-    path = workspace_path or Path.cwd()
-
-    try:
-        workspace = get_workspace(path)
-
-        # Find by partial ID
-        all_batches = conductor.list_batches(workspace, limit=100)
-        matching = [b for b in all_batches if b.id.startswith(batch_id)]
-
-        if not matching:
-            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
-            raise typer.Exit(1)
-
-        batch = matching[0]
-
-        if batch.status.value not in ("PENDING", "RUNNING"):
-            console.print(f"[yellow]Batch is already {batch.status.value}[/yellow]")
-            return
-
-        batch = conductor.cancel_batch(workspace, batch.id)
-        console.print(f"[green]Batch {batch.id[:8]} cancelled[/green]")
-
-    except FileNotFoundError:
-        console.print(f"[red]Error:[/red] No workspace found at {path}")
-        raise typer.Exit(1)
-    except ValueError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-
-
 @batch_app.command("stop")
 def batch_stop(
     batch_id: str = typer.Argument(..., help="Batch ID to stop (can be partial)"),
