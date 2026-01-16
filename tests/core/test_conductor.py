@@ -13,9 +13,11 @@ from codeframe.core.conductor import (
     get_batch,
     list_batches,
     cancel_batch,
+    stop_batch,
     resume_batch,
     _save_batch,
     _row_to_batch,
+    _active_processes,
 )
 from codeframe.core.workspace import create_or_load_workspace
 from codeframe.core import tasks
@@ -300,6 +302,169 @@ class TestCancelBatch:
         assert cancelled.completed_at is not None
 
 
+class TestStopBatch:
+    """Tests for stop_batch function."""
+
+    def test_stop_nonexistent_batch_raises(self, temp_workspace):
+        """Should raise ValueError for non-existent batch."""
+        with pytest.raises(ValueError, match="Batch not found"):
+            stop_batch(temp_workspace, "non-existent-id")
+
+    def test_stop_completed_batch_raises(self, workspace_with_tasks):
+        """Should raise ValueError for completed batch."""
+        workspace, task_list = workspace_with_tasks
+        task_ids = [t.id for t in task_list]
+
+        batch = start_batch(workspace, task_ids, dry_run=True)
+        # Batch is COMPLETED after dry run
+
+        with pytest.raises(ValueError, match="cannot be stopped"):
+            stop_batch(workspace, batch.id)
+
+    def test_graceful_stop_sets_cancelled(self, workspace_with_tasks):
+        """Graceful stop should set batch status to CANCELLED."""
+        workspace, task_list = workspace_with_tasks
+
+        # Create a batch and manually set it to RUNNING
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+
+        batch = BatchRun(
+            id="test-stop-batch",
+            workspace_id=workspace.id,
+            task_ids=[task_list[0].id],
+            status=BatchStatus.RUNNING,
+            strategy="serial",
+            max_parallel=4,
+            on_failure=OnFailure.CONTINUE,
+            started_at=now,
+            completed_at=None,
+            results={},
+        )
+        _save_batch(workspace, batch)
+
+        stopped = stop_batch(workspace, batch.id, force=False)
+
+        assert stopped.status == BatchStatus.CANCELLED
+        assert stopped.completed_at is not None
+
+    def test_force_stop_terminates_processes(self, workspace_with_tasks):
+        """Force stop should terminate tracked processes."""
+        workspace, task_list = workspace_with_tasks
+
+        # Create a batch and manually set it to RUNNING
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+
+        batch_id = "test-force-stop-batch"
+        batch = BatchRun(
+            id=batch_id,
+            workspace_id=workspace.id,
+            task_ids=[task_list[0].id],
+            status=BatchStatus.RUNNING,
+            strategy="serial",
+            max_parallel=4,
+            on_failure=OnFailure.CONTINUE,
+            started_at=now,
+            completed_at=None,
+            results={},
+        )
+        _save_batch(workspace, batch)
+
+        # Simulate tracked processes
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Still running
+        _active_processes[batch_id] = {"task-1": mock_process}
+
+        try:
+            stopped = stop_batch(workspace, batch_id, force=True)
+
+            # Process should have been terminated
+            mock_process.terminate.assert_called_once()
+            assert stopped.status == BatchStatus.CANCELLED
+
+            # Process tracking should be cleaned up
+            assert batch_id not in _active_processes
+        finally:
+            # Cleanup in case of test failure
+            _active_processes.pop(batch_id, None)
+
+    def test_force_stop_handles_already_exited_process(self, workspace_with_tasks):
+        """Force stop should handle processes that already exited gracefully."""
+        workspace, task_list = workspace_with_tasks
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+
+        batch_id = "test-force-stop-exited"
+        batch = BatchRun(
+            id=batch_id,
+            workspace_id=workspace.id,
+            task_ids=[task_list[0].id],
+            status=BatchStatus.RUNNING,
+            strategy="serial",
+            max_parallel=4,
+            on_failure=OnFailure.CONTINUE,
+            started_at=now,
+            completed_at=None,
+            results={},
+        )
+        _save_batch(workspace, batch)
+
+        # Simulate process that already exited
+        mock_process = MagicMock()
+        mock_process.poll.return_value = 0  # Already exited
+        _active_processes[batch_id] = {"task-1": mock_process}
+
+        try:
+            stopped = stop_batch(workspace, batch_id, force=True)
+
+            # terminate should not be called for exited process
+            mock_process.terminate.assert_not_called()
+            assert stopped.status == BatchStatus.CANCELLED
+        finally:
+            _active_processes.pop(batch_id, None)
+
+    def test_graceful_stop_does_not_terminate_processes(self, workspace_with_tasks):
+        """Graceful stop (force=False) should not terminate processes."""
+        workspace, task_list = workspace_with_tasks
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+
+        batch_id = "test-graceful-no-terminate"
+        batch = BatchRun(
+            id=batch_id,
+            workspace_id=workspace.id,
+            task_ids=[task_list[0].id],
+            status=BatchStatus.RUNNING,
+            strategy="serial",
+            max_parallel=4,
+            on_failure=OnFailure.CONTINUE,
+            started_at=now,
+            completed_at=None,
+            results={},
+        )
+        _save_batch(workspace, batch)
+
+        # Simulate tracked processes
+        mock_process = MagicMock()
+        mock_process.poll.return_value = None  # Still running
+        _active_processes[batch_id] = {"task-1": mock_process}
+
+        try:
+            stopped = stop_batch(workspace, batch_id, force=False)
+
+            # terminate should NOT be called for graceful stop
+            mock_process.terminate.assert_not_called()
+            assert stopped.status == BatchStatus.CANCELLED
+
+            # Process tracking should still exist (not cleaned up by graceful stop)
+            assert batch_id in _active_processes
+        finally:
+            _active_processes.pop(batch_id, None)
+
+
 class TestRowToBatch:
     """Tests for _row_to_batch function."""
 
@@ -372,7 +537,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # First task succeeds, second fails, third succeeds
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -391,7 +556,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # First task succeeds, second fails
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -428,7 +593,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # Second task becomes blocked
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             if tid == task_ids[1]:
                 return "BLOCKED"
             return "COMPLETED"
@@ -447,7 +612,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # Task 1: COMPLETED, Task 2: BLOCKED, Task 3: FAILED
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             if tid == task_ids[0]:
                 return "COMPLETED"
             elif tid == task_ids[1]:
@@ -598,7 +763,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create a batch with some failures
-        def mock_execute_first_run(ws, tid):
+        def mock_execute_first_run(ws, tid, batch_id=None):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -647,7 +812,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create a partial batch (2 completed, 1 failed)
-        def mock_execute_first_run(ws, tid):
+        def mock_execute_first_run(ws, tid, batch_id=None):
             if tid == task_ids[2]:
                 return "FAILED"
             return "COMPLETED"
@@ -671,7 +836,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create a batch with blocked tasks
-        def mock_execute_first_run(ws, tid):
+        def mock_execute_first_run(ws, tid, batch_id=None):
             if tid == task_ids[1]:
                 return "BLOCKED"
             return "COMPLETED"
@@ -744,7 +909,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create batch: task 0 completes, task 1 fails, task 2 completes
-        def mock_first_run(ws, tid):
+        def mock_first_run(ws, tid, batch_id=None):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -772,7 +937,7 @@ class TestBatchRetry:
         task_ids = [t.id for t in task_list]
 
         call_count = [0]
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_count[0] += 1
             if tid == task_ids[1]:
                 return "FAILED"
@@ -794,7 +959,7 @@ class TestBatchRetry:
         # Track calls per task
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_counts[tid] += 1
             # Task 1 fails first time, succeeds on retry
             if tid == task_ids[1]:
@@ -816,7 +981,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_counts[tid] += 1
             if tid == task_ids[1]:
                 return "FAILED"  # Always fails
@@ -837,7 +1002,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_counts[tid] += 1
             # Tasks 0 and 2 fail initially, succeed on retry
             if tid in (task_ids[0], task_ids[2]):
@@ -860,7 +1025,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_counts[tid] += 1
             # Task 1 succeeds on first retry
             if tid == task_ids[1]:
@@ -881,7 +1046,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_counts[tid] += 1
             if tid == task_ids[1]:
                 return "BLOCKED"  # Blocked, not failed
@@ -902,7 +1067,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_counts[tid] += 1
             # All tasks fail initially, task 0 and 2 succeed on retry
             if call_counts[tid] == 1:
@@ -929,7 +1094,7 @@ class TestBatchRetry:
             events_received.append((event_type, payload))
 
         call_count = [0]
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             call_count[0] += 1
             return "COMPLETED" if call_count[0] > 1 else "FAILED"
 
@@ -952,7 +1117,7 @@ class TestParallelExecution:
         execution_order = []
         import threading
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             # Record when each task starts
             execution_order.append(("start", tid, threading.current_thread().name))
             import time
@@ -983,7 +1148,7 @@ class TestParallelExecution:
         import threading
         lock = threading.Lock()
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             with lock:
                 concurrent_count[0] += 1
                 max_concurrent[0] = max(max_concurrent[0], concurrent_count[0])
@@ -1019,7 +1184,7 @@ class TestParallelExecution:
 
         execution_order = []
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             execution_order.append(tid)
             return "COMPLETED"
 
@@ -1052,7 +1217,7 @@ class TestParallelExecution:
 
         execution_count = [0]
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             execution_count[0] += 1
             return "COMPLETED"
 
@@ -1073,7 +1238,7 @@ class TestParallelExecution:
         workspace, task_list = workspace_with_tasks
         task_ids = [t.id for t in task_list]
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -1104,7 +1269,7 @@ class TestParallelExecution:
             depends_on=[task1.id, task2.id],
         )
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             if tid == task1.id:
                 return "FAILED"
             return "COMPLETED"
@@ -1133,7 +1298,7 @@ class TestParallelExecution:
         def on_event(event_type, payload):
             events_received.append((event_type, payload))
 
-        def mock_execute(ws, tid):
+        def mock_execute(ws, tid, batch_id=None):
             return "COMPLETED"
 
         with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):

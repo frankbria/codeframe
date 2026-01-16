@@ -1596,6 +1596,75 @@ def batch_cancel(
         raise typer.Exit(1)
 
 
+@batch_app.command("stop")
+def batch_stop(
+    batch_id: str = typer.Argument(..., help="Batch ID to stop (can be partial)"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force stop: terminate running processes immediately (SIGTERM)",
+    ),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Stop a running batch gracefully or forcefully.
+
+    Graceful stop (default):
+        - Marks batch as cancelled
+        - Current tasks finish before stopping
+        - No data loss or corruption
+
+    Force stop (--force):
+        - Marks batch as cancelled immediately
+        - Terminates running processes with SIGTERM
+        - Use when tasks are stuck or unresponsive
+
+    Example:
+        codeframe work batch stop abc123           # Graceful stop
+        codeframe work batch stop abc123 --force   # Force terminate
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import conductor
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find by partial ID
+        all_batches = conductor.list_batches(workspace, limit=100)
+        matching = [b for b in all_batches if b.id.startswith(batch_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No batch found matching '{batch_id}'")
+            raise typer.Exit(1)
+
+        batch = matching[0]
+
+        if batch.status.value not in ("PENDING", "RUNNING"):
+            console.print(f"[yellow]Batch is already {batch.status.value}[/yellow]")
+            return
+
+        batch = conductor.stop_batch(workspace, batch.id, force=force)
+
+        if force:
+            console.print(f"[green]Batch {batch.id[:8]} force stopped[/green]")
+        else:
+            console.print(f"[green]Batch {batch.id[:8]} stopping (will finish current tasks)[/green]")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 @batch_app.command("resume")
 def batch_resume(
     batch_id: str = typer.Argument(..., help="Batch ID to resume (can be partial)"),

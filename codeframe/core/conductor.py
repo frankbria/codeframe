@@ -45,6 +45,10 @@ SUPERVISOR_TACTICAL_PATTERNS = [
 # Cache of resolved decisions to avoid duplicate LLM calls
 _decision_cache: dict[str, str] = {}
 
+# Track running subprocesses for force stop capability
+# Structure: {batch_id: {task_id: Popen}}
+_active_processes: dict[str, dict[str, subprocess.Popen]] = {}
+
 
 class SupervisorResolver:
     """Resolves tactical blockers at the conductor level.
@@ -520,6 +524,72 @@ def cancel_batch(workspace: Workspace, batch_id: str) -> BatchRun:
     return batch
 
 
+def stop_batch(workspace: Workspace, batch_id: str, force: bool = False) -> BatchRun:
+    """Stop a running batch.
+
+    Graceful stop (force=False):
+        - Marks batch as CANCELLED
+        - Execution loops will exit after current task completes
+        - Running tasks are allowed to finish naturally
+
+    Force stop (force=True):
+        - Marks batch as CANCELLED immediately
+        - Sends SIGTERM to all running subprocesses
+        - Processes have a brief window to cleanup before termination
+
+    Args:
+        workspace: Target workspace
+        batch_id: Batch to stop
+        force: If True, terminate running processes immediately
+
+    Returns:
+        Updated BatchRun
+
+    Raises:
+        ValueError: If batch not found or not stoppable
+    """
+    batch = get_batch(workspace, batch_id)
+    if not batch:
+        raise ValueError(f"Batch not found: {batch_id}")
+
+    if batch.status not in (BatchStatus.PENDING, BatchStatus.RUNNING):
+        raise ValueError(f"Batch cannot be stopped (status={batch.status})")
+
+    # Update status first - execution loops check this
+    batch.status = BatchStatus.CANCELLED
+    batch.completed_at = _utc_now()
+    _save_batch(workspace, batch)
+
+    terminated_count = 0
+    if force and batch_id in _active_processes:
+        # Terminate all running processes for this batch
+        processes = _active_processes.get(batch_id, {})
+        for task_id, process in list(processes.items()):
+            try:
+                if process.poll() is None:  # Still running
+                    process.terminate()  # SIGTERM
+                    terminated_count += 1
+            except (ProcessLookupError, OSError):
+                pass  # Process already exited
+
+        # Cleanup tracking
+        _active_processes.pop(batch_id, None)
+
+    # Emit event
+    event_data = {"batch_id": batch_id, "force": force}
+    if terminated_count > 0:
+        event_data["terminated_processes"] = terminated_count
+
+    events.emit_for_workspace(
+        workspace,
+        events.EventType.BATCH_CANCELLED,
+        event_data,
+        print_event=True,
+    )
+
+    return batch
+
+
 def resume_batch(
     workspace: Workspace,
     batch_id: str,
@@ -656,7 +726,7 @@ def _execute_serial_resume(
             on_event("batch_task_started", {"task_id": task_id, "position": i + 1, "is_retry": True})
 
         # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
         # Record result (overwrites previous result)
         batch.results[task_id] = result_status
@@ -813,7 +883,7 @@ def _execute_retries(
             print(f"      Previous: {previous_status}")
 
             # Execute task
-            result_status = _execute_task_subprocess(workspace, task_id)
+            result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
             # Update result
             batch.results[task_id] = result_status
@@ -924,7 +994,7 @@ def _execute_serial(
             on_event("batch_task_started", {"task_id": task_id, "position": i + 1})
 
         # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
         # If task is BLOCKED, try supervisor resolution
         if result_status == RunStatus.BLOCKED.value:
@@ -932,7 +1002,7 @@ def _execute_serial(
             if supervisor.try_resolve_blocked_task(task_id):
                 # Supervisor resolved the blocker - retry the task
                 print(f"      [Supervisor] Retrying task after auto-resolution...")
-                result_status = _execute_task_subprocess(workspace, task_id)
+                result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
         # Record result
         batch.results[task_id] = result_status
@@ -1190,7 +1260,7 @@ def _execute_single_task(
         on_event("batch_task_started", {"task_id": task_id, "position": position})
 
     # Execute task via subprocess
-    result_status = _execute_task_subprocess(workspace, task_id)
+    result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
     # If task is BLOCKED, try supervisor resolution
     if result_status == RunStatus.BLOCKED.value:
@@ -1198,7 +1268,7 @@ def _execute_single_task(
         if supervisor.try_resolve_blocked_task(task_id):
             # Supervisor resolved the blocker - retry the task
             print(f"      [Supervisor] Retrying task after auto-resolution...")
-            result_status = _execute_task_subprocess(workspace, task_id)
+            result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
     # Record result
     batch.results[task_id] = result_status
@@ -1289,7 +1359,7 @@ def _execute_group_parallel(
             on_event("batch_task_started", {"task_id": task_id, "parallel": True})
 
         # Execute via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
         # Record result (thread-safe due to GIL for simple dict operations)
         batch.results[task_id] = result_status
@@ -1341,7 +1411,11 @@ def _execute_group_parallel(
     return results
 
 
-def _execute_task_subprocess(workspace: Workspace, task_id: str) -> str:
+def _execute_task_subprocess(
+    workspace: Workspace,
+    task_id: str,
+    batch_id: Optional[str] = None,
+) -> str:
     """Execute a single task via subprocess.
 
     Runs `cf work start <task_id> --execute` as a subprocess.
@@ -1349,6 +1423,7 @@ def _execute_task_subprocess(workspace: Workspace, task_id: str) -> str:
     Args:
         workspace: Target workspace
         task_id: Task to execute
+        batch_id: Optional batch ID for process tracking (enables force stop)
 
     Returns:
         RunStatus value string (COMPLETED, FAILED, BLOCKED)
@@ -1359,14 +1434,31 @@ def _execute_task_subprocess(workspace: Workspace, task_id: str) -> str:
         "work", "start", task_id, "--execute"
     ]
 
+    process = None
     try:
-        # Run subprocess
-        result = subprocess.run(
+        # Use Popen instead of run for process tracking
+        process = subprocess.Popen(
             cmd,
             cwd=workspace.repo_path,
-            capture_output=False,  # Let output flow to terminal
+            stdout=None,  # Let output flow to terminal
+            stderr=None,
             text=True,
         )
+
+        # Track process if batch_id provided
+        if batch_id:
+            if batch_id not in _active_processes:
+                _active_processes[batch_id] = {}
+            _active_processes[batch_id][task_id] = process
+
+        # Wait for completion
+        returncode = process.wait()
+
+        # Untrack process
+        if batch_id and batch_id in _active_processes:
+            _active_processes[batch_id].pop(task_id, None)
+            if not _active_processes[batch_id]:
+                _active_processes.pop(batch_id, None)
 
         # Check the run status from database
         # The subprocess should have updated the run record
@@ -1382,13 +1474,18 @@ def _execute_task_subprocess(workspace: Workspace, task_id: str) -> str:
             return runs[0].status.value
 
         # Fallback based on subprocess exit code
-        if result.returncode == 0:
+        if returncode == 0:
             return RunStatus.COMPLETED.value
         else:
             return RunStatus.FAILED.value
 
     except Exception as e:
         print(f"      Error executing task: {e}")
+        # Cleanup on exception
+        if batch_id and batch_id in _active_processes:
+            _active_processes[batch_id].pop(task_id, None)
+            if not _active_processes[batch_id]:
+                _active_processes.pop(batch_id, None)
         return RunStatus.FAILED.value
 
 
