@@ -23,9 +23,40 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ---
 
-## What's New (Updated: 2026-01-15)
+## What's New (Updated: 2026-01-16)
 
-### v2 Phase 2 Complete: Parallel Batch Execution
+### Agent Self-Correction & Observability
+
+**Verification self-correction loop** — Agent now automatically attempts to fix failing verification gates.
+
+```bash
+# Execute with verbose output to see self-correction progress
+cf work start <task-id> --execute --verbose
+
+# Watch the agent attempt fixes in real-time
+[VERIFY] Running final verification (attempt 1/3)
+[VERIFY] Gates failed: pytest, ruff
+[SELFCORRECT] Attempting to fix verification failures
+[SELFCORRECT] Applied 2/2 fixes, re-verifying...
+```
+
+**New Capabilities:**
+- **Self-Correction Loop** — Agent analyzes gate errors and generates fix plans using LLM
+- **Verbose Mode** — `--verbose` / `-v` flag shows detailed verification and self-correction progress
+- **FAILED Task Status** — Tasks can now transition to FAILED state for proper error visibility
+- **Project Preferences** — Agent loads AGENTS.md or CLAUDE.md for per-project configuration
+
+**Bug Fixes:**
+- Fixed `fail_run()` not updating task status (tasks stuck in IN_PROGRESS)
+- Fixed task state transitions for proper failure recovery
+- Added diagnostic output for debugging agent behavior
+
+---
+
+### Previous: v2 Phase 2 - Parallel Batch Execution
+
+<details>
+<summary>Batch Execution (2026-01-15)</summary>
 
 **Multi-task batch execution** — Run multiple tasks with intelligent parallelization.
 
@@ -40,17 +71,19 @@ cf work batch run --all-ready --strategy auto
 cf work batch run --all-ready --retry 3
 ```
 
-**New Batch Capabilities:**
+**Batch Capabilities:**
 - **Parallel Execution** — ThreadPoolExecutor-based concurrent task execution
 - **Dependency Graph** — DAG-based task ordering with cycle detection
 - **LLM Dependency Inference** — `--strategy auto` analyzes task descriptions to infer dependencies
 - **Automatic Retry** — `--retry N` retries failed tasks up to N times
 - **Batch Resume** — `cf work batch resume <batch-id>` re-runs failed/blocked tasks
 
-**New Modules:**
+**Modules:**
 - `codeframe/core/conductor.py` — Batch orchestration with worker pool
 - `codeframe/core/dependency_graph.py` — DAG operations and execution planning
 - `codeframe/core/dependency_analyzer.py` — LLM-based dependency inference
+
+</details>
 
 ---
 
@@ -129,8 +162,10 @@ cf work start <task-id> --execute --dry-run
 
 ### CLI-First Agent System (v2)
 - **Autonomous Execution** — `cf work start --execute` runs the full agent loop
+- **Self-Correction Loop** — Agent automatically fixes failing verification gates (up to 3 attempts)
 - **Human-in-the-Loop Blockers** — Agents pause and ask questions when they need decisions
 - **Verification Gates** — Automatic ruff/pytest checks after changes
+- **Verbose Mode** — `--verbose` flag shows detailed progress and self-correction activity
 - **Dry Run Mode** — Preview changes without applying them
 - **State Persistence** — Resume work across sessions
 
@@ -295,6 +330,7 @@ cf tasks show <id>          # Show task details
 ```bash
 cf work start <id>          # Start work (creates run record)
 cf work start <id> --execute     # Start with AI agent execution
+cf work start <id> --execute --verbose  # Execute with detailed output
 cf work start <id> --execute --dry-run  # Preview changes only
 cf work stop <id>           # Stop current run
 cf work resume <id>         # Resume blocked work
@@ -436,9 +472,11 @@ uv run pytest --cov=codeframe --cov-report=html
 
 For detailed documentation, see:
 
+- **Quick Start (v2)**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Get started in 5 minutes
 - **Golden Path (v2)**: [docs/GOLDEN_PATH.md](docs/GOLDEN_PATH.md) - CLI-first workflow contract
 - **Agent Implementation**: [docs/AGENT_IMPLEMENTATION_TASKS.md](docs/AGENT_IMPLEMENTATION_TASKS.md) - Agent system details
 - **CLI Wireframe**: [docs/CLI_WIREFRAME.md](docs/CLI_WIREFRAME.md) - Command structure
+- **CLI Test Report**: [docs/CLI_V2_TEST_REPORT.md](docs/CLI_V2_TEST_REPORT.md) - End-to-end test results
 - **Product Requirements**: [PRD.md](PRD.md)
 - **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
 - **Authentication**: [docs/authentication.md](docs/authentication.md) - Security guide
@@ -485,8 +523,11 @@ We welcome contributions! To get started:
 - ✅ Autonomous agent execution with blocker detection
 - ✅ Verification gates integration
 - ✅ Task-based model selection
+- ✅ Self-correction loop for verification failures
+- ✅ Verbose mode for observability
 
-### In Progress (Phase 3: Observability)
+### In Progress (Phase 3: Reliability & Polish)
+- **Environment detection**: Automatic `uv` vs `pip` detection
 - **Live streaming**: `cf work batch follow` for real-time terminal output
 - **WebSocket adapter**: Batch events for dashboard integration
 - **Progress estimation**: ETA and completion forecasting
