@@ -16,7 +16,6 @@ from codeframe.core.context import (
 from codeframe.core.tasks import Task, TaskStatus
 from codeframe.core.prd import PrdRecord
 from codeframe.core.blockers import Blocker, BlockerStatus
-from codeframe.core.config import EnvironmentConfig
 from datetime import datetime, timezone
 
 
@@ -98,16 +97,15 @@ class TestTaskContext:
         ctx = TaskContext(task=sample_task, blockers=[blocker])
         assert ctx.has_blockers
 
-    def test_has_environment_config_false(self, sample_task):
-        """has_environment_config returns False by default."""
+    def test_has_tech_stack_false(self, sample_task):
+        """has_tech_stack returns False by default."""
         ctx = TaskContext(task=sample_task)
-        assert ctx.has_environment_config is False
+        assert ctx.has_tech_stack is False
 
-    def test_has_environment_config_true(self, sample_task):
-        """has_environment_config returns True when config exists."""
-        config = EnvironmentConfig(package_manager="uv", test_framework="pytest")
-        ctx = TaskContext(task=sample_task, environment_config=config)
-        assert ctx.has_environment_config is True
+    def test_has_tech_stack_true(self, sample_task):
+        """has_tech_stack returns True when tech_stack is set."""
+        ctx = TaskContext(task=sample_task, tech_stack="Python with uv, pytest")
+        assert ctx.has_tech_stack is True
 
     def test_open_blockers_filter(self, sample_task):
         """open_blockers returns only OPEN blockers."""
@@ -195,25 +193,15 @@ class TestTaskContext:
         assert "## Requirements (PRD)" in output
         assert "Auth System" in output
 
-    def test_to_prompt_context_with_environment_config(self, sample_task):
-        """to_prompt_context includes environment config when present."""
-        config = EnvironmentConfig(
-            package_manager="uv",
-            test_framework="pytest",
-            lint_tools=["ruff", "mypy"],
-            python_version="3.11",
+    def test_to_prompt_context_with_tech_stack(self, sample_task):
+        """to_prompt_context includes tech stack when present."""
+        ctx = TaskContext(
+            task=sample_task,
+            tech_stack="Python 3.11 with uv, pytest, ruff for linting"
         )
-        ctx = TaskContext(task=sample_task, environment_config=config)
         output = ctx.to_prompt_context()
-        assert "## Project Environment" in output
-        assert "Package Manager:" in output
-        assert "uv" in output
-        assert "Test Framework:" in output
-        assert "pytest" in output
-        assert "Lint Tools:" in output
-        assert "ruff" in output
-        assert "Python Version:" in output
-        assert "3.11" in output
+        assert "## Project Tech Stack" in output
+        assert "Python 3.11 with uv, pytest, ruff for linting" in output
 
 
 class TestContextLoaderKeywords:

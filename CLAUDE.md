@@ -4,7 +4,7 @@ Last updated: 2026-01-16
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: v2 Phase 3 In Progress** - Agent execution + parallel batch orchestration + self-correction + environment configuration.
+**Status: v2 Phase 3 Complete** - Agent execution + parallel batch orchestration + self-correction + tech stack configuration.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -36,7 +36,7 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 - **Dry run mode**: `cf work start <task-id> --execute --dry-run`
 - **Self-correction loop**: Agent automatically fixes failing verification gates (up to 3 attempts)
 - **FAILED task status**: Tasks can transition to FAILED for proper error visibility
-- **Environment configuration**: `cf config init --detect` auto-detects package manager, test framework, lint tools
+- **Tech stack configuration**: `cf init . --detect` auto-detects tech stack from project files
 - **Project preferences**: Agent loads AGENTS.md or CLAUDE.md for per-project configuration
 - **Blocker detection**: Agent creates blockers when stuck
 - **Verification gates**: Ruff/pytest checks after file changes
@@ -75,7 +75,7 @@ codeframe/
 │   ├── dependency_graph.py # DAG operations and execution planning
 │   ├── dependency_analyzer.py # LLM-based dependency inference
 │   ├── gates.py            # Verification gates (ruff, pytest)
-│   ├── config.py           # Environment configuration (package manager, test framework)
+│   ├── agents_config.py    # AGENTS.md/CLAUDE.md preference loading
 │   ├── workspace.py        # Workspace initialization
 │   ├── prd.py              # PRD management
 │   ├── events.py           # Event emission
@@ -220,15 +220,11 @@ uv run ruff check .
 ### CLI (Golden Path)
 ```bash
 # Workspace
-cf init <repo>
+cf init <repo>                                    # Initialize workspace
+cf init <repo> --detect                           # Initialize + auto-detect tech stack
+cf init <repo> --tech-stack "Python with uv"      # Initialize + explicit tech stack
+cf init <repo> --tech-stack-interactive           # Initialize + interactive setup
 cf status
-
-# Configuration
-cf config init              # Interactive config setup
-cf config init --detect     # Auto-detect from project files
-cf config init --force      # Overwrite existing config
-cf config show              # Display current configuration
-cf config set <key> <value> # Set a config value
 
 # PRD
 cf prd add <file.md>
@@ -337,23 +333,27 @@ If you are unsure which direction to take, default to:
 
 ## Recent Updates (2026-01-16)
 
-### Phase 3.1: Environment Configuration
-Project environment configuration for reliable agent execution:
+### Phase 3.1: Tech Stack Configuration
+Simplified tech stack configuration using natural language descriptions:
 
-1. ✅ **Config schema** in `core/config.py` - EnvironmentConfig dataclass with validation
-2. ✅ **CLI commands** - `cf config init|show|set` for managing project config
-3. ✅ **Auto-detection** - `--detect` flag scans pyproject.toml, package.json, lock files
-4. ✅ **Agent integration** - Context loader includes config in TaskContext
-5. ✅ **Planner integration** - Config included in LLM planning prompt
+1. ✅ **`tech_stack` field** on Workspace model - stores natural language description
+2. ✅ **`--detect` flag** - auto-detects from pyproject.toml, package.json, Cargo.toml, go.mod
+3. ✅ **`--tech-stack` flag** - explicit tech stack description (e.g., "Rust project with cargo")
+4. ✅ **`--tech-stack-interactive` flag** - simple prompt for user input (stub for future multi-round)
+5. ✅ **Agent integration** - TaskContext and Planner include tech_stack in LLM prompts
+6. ✅ **Removed `cf config` subcommand** - tech stack is now part of workspace init
 
-**Supported settings:**
-- `package_manager`: uv, pip, poetry, npm, pnpm, yarn
-- `test_framework`: pytest, jest, vitest, mocha
-- `lint_tools`: ruff, eslint, prettier, mypy, biome
-- `python_version`, `node_version`: Version constraints
-- `test_command`, `lint_command`: Custom command overrides
+**Design philosophy:** Instead of structured configuration with specific package managers and frameworks, users describe their stack in natural language. The agent interprets and adapts.
 
-**Config file:** `.codeframe/config.yaml`
+**Examples:**
+```bash
+cf init . --detect                           # Auto-detect: "Python with uv, pytest, ruff for linting"
+cf init . --tech-stack "Rust project using cargo"
+cf init . --tech-stack "TypeScript monorepo with pnpm, Next.js, jest"
+cf init . --tech-stack-interactive           # Prompts user for description
+```
+
+**Future work:** Multi-round interactive discovery (bead: codeframe-8d80)
 
 ---
 

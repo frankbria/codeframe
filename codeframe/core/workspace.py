@@ -34,12 +34,14 @@ class Workspace:
         repo_path: Absolute path to the repository
         state_dir: Path to .codeframe/ directory
         created_at: When the workspace was initialized
+        tech_stack: Natural language description of the project's technology stack
     """
 
     id: str
     repo_path: Path
     state_dir: Path
     created_at: datetime
+    tech_stack: Optional[str] = None
 
     @property
     def db_path(self) -> Path:
@@ -71,6 +73,7 @@ def _init_database(db_path: Path) -> None:
         CREATE TABLE IF NOT EXISTS workspace (
             id TEXT PRIMARY KEY,
             repo_path TEXT NOT NULL,
+            tech_stack TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
@@ -236,17 +239,25 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
         conn.commit()
 
+    # Add tech_stack column to workspace table if it doesn't exist
+    cursor.execute("PRAGMA table_info(workspace)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "tech_stack" not in columns:
+        cursor.execute("ALTER TABLE workspace ADD COLUMN tech_stack TEXT")
+        conn.commit()
+
     conn.close()
 
 
-def create_or_load_workspace(repo_path: Path) -> Workspace:
+def create_or_load_workspace(repo_path: Path, tech_stack: Optional[str] = None) -> Workspace:
     """Create a new workspace or load an existing one.
 
     This is idempotent - calling it on an already-initialized repo
-    will return the existing workspace.
+    will return the existing workspace (tech_stack is ignored if workspace exists).
 
     Args:
         repo_path: Path to the repository (must exist)
+        tech_stack: Optional natural language description of the project's tech stack
 
     Returns:
         Workspace object with metadata
@@ -283,8 +294,8 @@ def create_or_load_workspace(repo_path: Path) -> Workspace:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO workspace (id, repo_path, created_at, updated_at) VALUES (?, ?, ?, ?)",
-        (workspace_id, str(repo_path), now, now),
+        "INSERT INTO workspace (id, repo_path, tech_stack, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        (workspace_id, str(repo_path), tech_stack, now, now),
     )
     conn.commit()
     conn.close()
@@ -294,6 +305,7 @@ def create_or_load_workspace(repo_path: Path) -> Workspace:
         repo_path=repo_path,
         state_dir=state_dir,
         created_at=datetime.fromisoformat(now),
+        tech_stack=tech_stack,
     )
 
 
@@ -321,18 +333,19 @@ def get_workspace(repo_path: Path) -> Workspace:
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, repo_path, created_at FROM workspace LIMIT 1")
+    cursor.execute("SELECT id, repo_path, tech_stack, created_at FROM workspace LIMIT 1")
     row = cursor.fetchone()
     conn.close()
 
     if not row:
-        raise FileNotFoundError(f"Workspace database exists but contains no workspace record")
+        raise FileNotFoundError("Workspace database exists but contains no workspace record")
 
     return Workspace(
         id=row[0],
         repo_path=Path(row[1]),
         state_dir=state_dir,
-        created_at=datetime.fromisoformat(row[2]),
+        created_at=datetime.fromisoformat(row[3]),
+        tech_stack=row[2],
     )
 
 
@@ -362,3 +375,37 @@ def workspace_exists(repo_path: Path) -> bool:
     state_dir = _get_state_dir(repo_path.resolve())
     db_path = state_dir / STATE_DB_NAME
     return state_dir.exists() and db_path.exists()
+
+
+def update_workspace_tech_stack(repo_path: Path, tech_stack: Optional[str]) -> Workspace:
+    """Update the tech_stack for an existing workspace.
+
+    Args:
+        repo_path: Path to the repository
+        tech_stack: New tech stack description (or None to clear)
+
+    Returns:
+        Updated Workspace object
+
+    Raises:
+        FileNotFoundError: If no workspace exists at this path
+    """
+    repo_path = repo_path.resolve()
+    state_dir = _get_state_dir(repo_path)
+    db_path = state_dir / STATE_DB_NAME
+
+    if not state_dir.exists() or not db_path.exists():
+        raise FileNotFoundError(f"No workspace found at {repo_path}")
+
+    now = _utc_now().isoformat()
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE workspace SET tech_stack = ?, updated_at = ?",
+        (tech_stack, now),
+    )
+    conn.commit()
+    conn.close()
+
+    return get_workspace(repo_path)

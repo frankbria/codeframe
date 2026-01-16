@@ -58,22 +58,73 @@ def init(
         dir_okay=True,
         resolve_path=True,
     ),
+    tech_stack: Optional[str] = typer.Option(
+        None,
+        "--tech-stack", "-t",
+        help="Tech stack description (e.g., 'Python 3.11 with FastAPI, uv, pytest')",
+    ),
+    detect: bool = typer.Option(
+        False,
+        "--detect", "-d",
+        help="Auto-detect tech stack from project files",
+    ),
+    tech_stack_interactive: bool = typer.Option(
+        False,
+        "--tech-stack-interactive", "-i",
+        help="Interactively configure tech stack",
+    ),
 ) -> None:
     """Initialize a CodeFRAME workspace for a repository.
 
     Creates a .codeframe/ directory with state storage and configuration.
     This is idempotent - safe to run multiple times on the same repo.
 
-    Example:
-        codeframe init ./my-project
+    Tech stack can be configured during init:
+    - --tech-stack: Provide a description directly
+    - --detect: Auto-detect from project files
+    - --tech-stack-interactive: Answer prompts to describe your stack
+
+    Examples:
         codeframe init .
+        codeframe init . --detect
+        codeframe init . --tech-stack "Rust project using cargo"
+        codeframe init . --tech-stack "TypeScript monorepo with pnpm, Next.js frontend, FastAPI backend"
+        codeframe init . --tech-stack-interactive
     """
-    from codeframe.core.workspace import create_or_load_workspace, workspace_exists
+    from codeframe.core.workspace import (
+        create_or_load_workspace,
+        workspace_exists,
+        update_workspace_tech_stack,
+    )
     from codeframe.core.events import emit_for_workspace, EventType
+
+    # Validate mutually exclusive options
+    options_set = sum([bool(tech_stack), detect, tech_stack_interactive])
+    if options_set > 1:
+        console.print("[red]Error:[/red] Only one of --tech-stack, --detect, or --tech-stack-interactive can be used")
+        raise typer.Exit(1)
 
     try:
         already_existed = workspace_exists(repo_path)
-        workspace = create_or_load_workspace(repo_path)
+
+        # Determine tech stack value
+        final_tech_stack = None
+
+        if tech_stack:
+            final_tech_stack = tech_stack
+        elif detect:
+            final_tech_stack = _detect_tech_stack(repo_path)
+        elif tech_stack_interactive:
+            final_tech_stack = _interactive_tech_stack()
+
+        # Create or load workspace
+        if already_existed:
+            workspace = create_or_load_workspace(repo_path)
+            # Update tech stack if provided for existing workspace
+            if final_tech_stack:
+                workspace = update_workspace_tech_stack(repo_path, final_tech_stack)
+        else:
+            workspace = create_or_load_workspace(repo_path, tech_stack=final_tech_stack)
 
         # Emit event (suppress print since we'll print our own message)
         emit_for_workspace(
@@ -88,6 +139,8 @@ def init(
         console.print(f"  Path: {repo_path}")
         console.print(f"  ID: {workspace.id}")
         console.print(f"  State: {workspace.state_dir}")
+        if workspace.tech_stack:
+            console.print(f"  Tech Stack: {workspace.tech_stack}")
         console.print()
         console.print("Next steps:")
         console.print("  codeframe prd add <file.md>   Add a PRD")
@@ -96,6 +149,143 @@ def init(
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+
+
+def _detect_tech_stack(repo_path: Path) -> str:
+    """Auto-detect tech stack from project files and return a description.
+
+    Returns a natural language description of the detected tech stack.
+    """
+    detected_parts = []
+
+    # Python detection
+    if (repo_path / "pyproject.toml").exists():
+        pyproject = (repo_path / "pyproject.toml").read_text()
+
+        # Detect Python version
+        python_version = None
+        if (repo_path / ".python-version").exists():
+            python_version = (repo_path / ".python-version").read_text().strip()
+
+        # Detect package manager
+        if "[tool.poetry]" in pyproject:
+            pkg_mgr = "poetry"
+        elif "[tool.uv]" in pyproject or (repo_path / "uv.lock").exists():
+            pkg_mgr = "uv"
+        else:
+            pkg_mgr = "pip"
+
+        python_part = f"Python{' ' + python_version if python_version else ''} with {pkg_mgr}"
+
+        # Detect test framework
+        if "pytest" in pyproject:
+            python_part += ", pytest"
+
+        # Detect lint tools
+        lint_parts = []
+        if "[tool.ruff]" in pyproject:
+            lint_parts.append("ruff")
+        if "[tool.mypy]" in pyproject:
+            lint_parts.append("mypy")
+        if lint_parts:
+            python_part += f", {'/'.join(lint_parts)} for linting"
+
+        detected_parts.append(python_part)
+
+    elif (repo_path / "requirements.txt").exists():
+        python_version = None
+        if (repo_path / ".python-version").exists():
+            python_version = (repo_path / ".python-version").read_text().strip()
+        detected_parts.append(f"Python{' ' + python_version if python_version else ''} with pip")
+
+    # Node.js/TypeScript detection
+    if (repo_path / "package.json").exists():
+        try:
+            pkg_json_text = (repo_path / "package.json").read_text()
+            import json
+            pkg_json = json.loads(pkg_json_text)
+        except (json.JSONDecodeError, FileNotFoundError):
+            pkg_json = {}
+            pkg_json_text = ""
+
+        # Detect Node version
+        node_version = None
+        if (repo_path / ".nvmrc").exists():
+            node_version = (repo_path / ".nvmrc").read_text().strip()
+        elif (repo_path / ".node-version").exists():
+            node_version = (repo_path / ".node-version").read_text().strip()
+
+        # Detect package manager
+        if (repo_path / "pnpm-lock.yaml").exists():
+            pkg_mgr = "pnpm"
+        elif (repo_path / "yarn.lock").exists():
+            pkg_mgr = "yarn"
+        else:
+            pkg_mgr = "npm"
+
+        # Detect if TypeScript
+        is_ts = (repo_path / "tsconfig.json").exists() or "typescript" in pkg_json_text
+
+        lang = "TypeScript" if is_ts else "JavaScript"
+        node_part = f"{lang}{' (Node ' + node_version + ')' if node_version else ''} with {pkg_mgr}"
+
+        # Detect framework
+        deps = pkg_json.get("dependencies", {})
+        dev_deps = pkg_json.get("devDependencies", {})
+        all_deps = {**deps, **dev_deps}
+
+        if "next" in all_deps:
+            node_part += ", Next.js"
+        elif "react" in all_deps:
+            node_part += ", React"
+        elif "vue" in all_deps:
+            node_part += ", Vue"
+        elif "svelte" in all_deps:
+            node_part += ", Svelte"
+
+        # Detect test framework
+        if "jest" in all_deps:
+            node_part += ", jest"
+        elif "vitest" in all_deps:
+            node_part += ", vitest"
+        elif "mocha" in all_deps:
+            node_part += ", mocha"
+
+        detected_parts.append(node_part)
+
+    # Rust detection
+    if (repo_path / "Cargo.toml").exists():
+        detected_parts.append("Rust with cargo")
+
+    # Go detection
+    if (repo_path / "go.mod").exists():
+        detected_parts.append("Go")
+
+    # Build the final description
+    if not detected_parts:
+        return ""
+
+    if len(detected_parts) == 1:
+        return detected_parts[0]
+
+    # Multiple languages/stacks (monorepo)
+    return "Monorepo: " + "; ".join(detected_parts)
+
+
+def _interactive_tech_stack() -> str:
+    """Interactively ask user about their tech stack.
+
+    Returns a natural language description of the tech stack.
+    """
+    console.print("[bold]Tech Stack Configuration[/bold]")
+    console.print("[dim]Describe your project's technology stack.[/dim]")
+    console.print("[dim]Examples: 'Python 3.11 with FastAPI, uv, pytest'[/dim]")
+    console.print("[dim]          'TypeScript monorepo with pnpm and Next.js'[/dim]")
+    console.print("[dim]          'Rust project using cargo'[/dim]")
+    console.print()
+
+    tech_stack = typer.prompt("What's your tech stack?")
+    return tech_stack
 
 
 @app.command()
@@ -2746,386 +2936,6 @@ def checkpoint_delete(
         raise typer.Exit(1)
 
 
-# Gates commands (alternative to root 'review')
-# =============================================================================
-# Config sub-application (v2 environment configuration)
-# =============================================================================
-
-config_app = typer.Typer(
-    name="config",
-    help="Project environment configuration",
-    no_args_is_help=True,
-)
-
-
-@config_app.command("init")
-def config_init(
-    repo_path: Optional[Path] = typer.Option(
-        None,
-        "--workspace", "-w",
-        help="Workspace path (defaults to current directory)",
-    ),
-    detect: bool = typer.Option(
-        False,
-        "--detect",
-        help="Auto-detect settings from project files without prompts",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Overwrite existing config file",
-    ),
-) -> None:
-    """Initialize project environment configuration.
-
-    Creates .codeframe/config.yaml with environment settings like
-    package manager, test framework, and lint tools.
-
-    Examples:
-        codeframe config init              # Interactive setup
-        codeframe config init --detect     # Auto-detect from project
-        codeframe config init --force      # Overwrite existing
-    """
-    from codeframe.core.workspace import get_workspace
-    from codeframe.core.config import (
-        load_environment_config,
-        save_environment_config,
-    )
-
-    workspace_path = repo_path or Path.cwd()
-
-    try:
-        workspace = get_workspace(workspace_path)
-
-        # Check if config already exists
-        existing = load_environment_config(workspace.repo_path)
-        if existing and not force:
-            console.print("[yellow]Config already exists.[/yellow]")
-            console.print("Use --force to overwrite.")
-            console.print()
-            console.print("Current config:")
-            _print_config(existing)
-            return
-
-        if detect:
-            # Auto-detect from project files
-            config, detected = _detect_environment_config(workspace.repo_path)
-
-            if detected:
-                console.print("[blue]Detected from project files:[/blue]")
-                for item in detected:
-                    console.print(f"  • {item}")
-                console.print()
-            else:
-                console.print("[yellow]No project files found to detect from.[/yellow]")
-                console.print("[dim]Using sensible defaults for a new Python project.[/dim]")
-                console.print("[dim]You can customize with 'cf config set <key> <value>' or run 'cf config init' for interactive setup.[/dim]")
-                console.print()
-        else:
-            # Interactive setup
-            config = _interactive_config_setup(workspace.repo_path)
-
-        # Save config
-        save_environment_config(workspace.repo_path, config)
-
-        console.print("[green]Configuration saved[/green]")
-        console.print(f"  File: {workspace.repo_path / '.codeframe' / 'config.yaml'}")
-        console.print()
-        _print_config(config)
-
-    except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        console.print("Run 'codeframe init' first to initialize the workspace.")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-
-
-@config_app.command("show")
-def config_show(
-    repo_path: Optional[Path] = typer.Option(
-        None,
-        "--workspace", "-w",
-        help="Workspace path (defaults to current directory)",
-    ),
-) -> None:
-    """Display current project configuration.
-
-    Example:
-        codeframe config show
-    """
-    from codeframe.core.workspace import get_workspace
-    from codeframe.core.config import load_environment_config, get_default_environment_config
-
-    workspace_path = repo_path or Path.cwd()
-
-    try:
-        workspace = get_workspace(workspace_path)
-        config = load_environment_config(workspace.repo_path)
-
-        if config is None:
-            console.print("[yellow]No config file found.[/yellow]")
-            console.print("Using defaults:")
-            console.print()
-            config = get_default_environment_config()
-
-        _print_config(config)
-
-    except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-
-
-@config_app.command("set")
-def config_set(
-    key: str = typer.Argument(
-        ...,
-        help="Configuration key (e.g., package_manager, test_framework)",
-    ),
-    value: str = typer.Argument(
-        ...,
-        help="Value to set",
-    ),
-    repo_path: Optional[Path] = typer.Option(
-        None,
-        "--workspace", "-w",
-        help="Workspace path (defaults to current directory)",
-    ),
-) -> None:
-    """Set a configuration value.
-
-    Examples:
-        codeframe config set package_manager uv
-        codeframe config set test_framework pytest
-        codeframe config set python_version 3.11
-    """
-    from codeframe.core.workspace import get_workspace
-    from codeframe.core.config import (
-        load_environment_config,
-        save_environment_config,
-        get_default_environment_config,
-    )
-
-    workspace_path = repo_path or Path.cwd()
-
-    try:
-        workspace = get_workspace(workspace_path)
-
-        # Load existing or create default
-        config = load_environment_config(workspace.repo_path)
-        if config is None:
-            config = get_default_environment_config()
-
-        # Update the value
-        valid_keys = [
-            "package_manager", "python_version", "node_version",
-            "test_framework", "test_command", "lint_command",
-        ]
-
-        if key == "lint_tools":
-            # Handle list values
-            config.lint_tools = [v.strip() for v in value.split(",")]
-        elif key in valid_keys:
-            setattr(config, key, value)
-        else:
-            console.print(f"[red]Unknown key:[/red] {key}")
-            console.print(f"Valid keys: {', '.join(valid_keys)}, lint_tools")
-            raise typer.Exit(1)
-
-        # Validate
-        errors = config.validate()
-        if errors:
-            console.print("[red]Validation errors:[/red]")
-            for error in errors:
-                console.print(f"  - {error}")
-            raise typer.Exit(1)
-
-        # Save
-        save_environment_config(workspace.repo_path, config)
-        console.print(f"[green]Set {key} = {value}[/green]")
-
-    except FileNotFoundError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-
-
-def _print_config(config) -> None:
-    """Print configuration in a formatted way."""
-    console.print(f"  [bold]package_manager:[/bold] {config.package_manager}")
-    if config.python_version:
-        console.print(f"  [bold]python_version:[/bold] {config.python_version}")
-    if config.node_version:
-        console.print(f"  [bold]node_version:[/bold] {config.node_version}")
-    console.print(f"  [bold]test_framework:[/bold] {config.test_framework}")
-    if config.test_command:
-        console.print(f"  [bold]test_command:[/bold] {config.test_command}")
-    console.print(f"  [bold]lint_tools:[/bold] {', '.join(config.lint_tools)}")
-    if config.lint_command:
-        console.print(f"  [bold]lint_command:[/bold] {config.lint_command}")
-    console.print(f"  [bold]context.max_files:[/bold] {config.context.max_files}")
-    console.print(f"  [bold]context.max_total_tokens:[/bold] {config.context.max_total_tokens}")
-
-
-def _detect_environment_config(repo_path: Path) -> tuple:
-    """Auto-detect environment configuration from project files.
-
-    Returns:
-        Tuple of (EnvironmentConfig, detected_items: list[str])
-        detected_items lists what was actually detected vs defaulted.
-    """
-    from codeframe.core.config import EnvironmentConfig
-
-    package_manager = "uv"  # default
-    python_version = None
-    node_version = None
-    test_framework = "pytest"
-    lint_tools = ["ruff"]
-    detected = []  # Track what we actually detected
-
-    # Detect Python package manager
-    if (repo_path / "pyproject.toml").exists():
-        pyproject = (repo_path / "pyproject.toml").read_text()
-        if "[tool.poetry]" in pyproject:
-            package_manager = "poetry"
-            detected.append("package_manager (poetry from pyproject.toml)")
-        elif "[tool.uv]" in pyproject or (repo_path / "uv.lock").exists():
-            package_manager = "uv"
-            detected.append("package_manager (uv from pyproject.toml/uv.lock)")
-        else:
-            package_manager = "pip"
-            detected.append("package_manager (pip from pyproject.toml)")
-
-        # Check for test framework
-        if "pytest" in pyproject:
-            test_framework = "pytest"
-            detected.append("test_framework (pytest from pyproject.toml)")
-
-        # Check for lint tools
-        if "[tool.ruff]" in pyproject:
-            lint_tools = ["ruff"]
-            detected.append("lint_tools (ruff from pyproject.toml)")
-        if "[tool.mypy]" in pyproject and "mypy" not in lint_tools:
-            lint_tools.append("mypy")
-            detected.append("lint_tools (mypy from pyproject.toml)")
-
-    elif (repo_path / "requirements.txt").exists():
-        package_manager = "pip"
-        detected.append("package_manager (pip from requirements.txt)")
-
-    # Detect Node.js package manager
-    if (repo_path / "package.json").exists():
-        if (repo_path / "pnpm-lock.yaml").exists():
-            package_manager = "pnpm"
-            detected.append("package_manager (pnpm from pnpm-lock.yaml)")
-        elif (repo_path / "yarn.lock").exists():
-            package_manager = "yarn"
-            detected.append("package_manager (yarn from yarn.lock)")
-        elif (repo_path / "package-lock.json").exists():
-            package_manager = "npm"
-            detected.append("package_manager (npm from package-lock.json)")
-        else:
-            package_manager = "npm"
-            detected.append("package_manager (npm from package.json)")
-
-        # Check package.json for test framework
-        pkg_json = (repo_path / "package.json").read_text()
-        if "jest" in pkg_json:
-            test_framework = "jest"
-            detected.append("test_framework (jest from package.json)")
-        elif "vitest" in pkg_json:
-            test_framework = "vitest"
-            detected.append("test_framework (vitest from package.json)")
-        elif "mocha" in pkg_json:
-            test_framework = "mocha"
-            detected.append("test_framework (mocha from package.json)")
-
-        # Check for lint tools
-        if "eslint" in pkg_json:
-            lint_tools = ["eslint"]
-            detected.append("lint_tools (eslint from package.json)")
-        if "prettier" in pkg_json and "prettier" not in lint_tools:
-            lint_tools.append("prettier")
-            detected.append("lint_tools (prettier from package.json)")
-        if "biome" in pkg_json:
-            lint_tools = ["biome"]
-            detected.append("lint_tools (biome from package.json)")
-
-    # Detect Python version
-    if (repo_path / ".python-version").exists():
-        python_version = (repo_path / ".python-version").read_text().strip()
-        detected.append(f"python_version ({python_version} from .python-version)")
-
-    # Detect Node version
-    if (repo_path / ".nvmrc").exists():
-        node_version = (repo_path / ".nvmrc").read_text().strip()
-        detected.append(f"node_version ({node_version} from .nvmrc)")
-    elif (repo_path / ".node-version").exists():
-        node_version = (repo_path / ".node-version").read_text().strip()
-        detected.append(f"node_version ({node_version} from .node-version)")
-
-    config = EnvironmentConfig(
-        package_manager=package_manager,
-        python_version=python_version,
-        node_version=node_version,
-        test_framework=test_framework,
-        lint_tools=lint_tools,
-    )
-
-    return config, detected
-
-
-def _interactive_config_setup(repo_path: Path):
-    """Interactive configuration setup with prompts."""
-    from codeframe.core.config import EnvironmentConfig, PackageManager, TestFramework
-
-    # Start with auto-detected values as defaults
-    detected_config, detected_items = _detect_environment_config(repo_path)
-
-    console.print("[bold]Project Environment Configuration[/bold]")
-    if detected_items:
-        console.print("[dim]Pre-filled from detected project files. Press Enter to accept.[/dim]\n")
-    else:
-        console.print("[dim]No project files detected. Configure your new project.[/dim]\n")
-
-    # Package manager
-    pkg_managers = [pm.value for pm in PackageManager]
-    console.print(f"[dim]Options: {', '.join(pkg_managers)}[/dim]")
-    package_manager = typer.prompt(
-        "Package manager",
-        default=detected_config.package_manager,
-    )
-
-    # Python version (optional)
-    python_version = typer.prompt(
-        "Python version (e.g., 3.11, or empty to skip)",
-        default=detected_config.python_version or "",
-    )
-    python_version = python_version if python_version else None
-
-    # Test framework
-    test_frameworks = [tf.value for tf in TestFramework]
-    console.print(f"[dim]Options: {', '.join(test_frameworks)}[/dim]")
-    test_framework = typer.prompt(
-        "Test framework",
-        default=detected_config.test_framework,
-    )
-
-    # Lint tools
-    lint_tools_str = typer.prompt(
-        "Lint tools (comma-separated)",
-        default=",".join(detected_config.lint_tools),
-    )
-    lint_tools = [t.strip() for t in lint_tools_str.split(",") if t.strip()]
-
-    return EnvironmentConfig(
-        package_manager=package_manager,
-        python_version=python_version,
-        test_framework=test_framework,
-        lint_tools=lint_tools,
-    )
-
-
 # =============================================================================
 # Gates sub-application (quality gates)
 # =============================================================================
@@ -3156,7 +2966,6 @@ app.add_typer(blocker_app, name="blocker")
 app.add_typer(patch_app, name="patch")
 app.add_typer(commit_app, name="commit")
 app.add_typer(checkpoint_app, name="checkpoint")
-app.add_typer(config_app, name="config")
 app.add_typer(gates_app, name="gates")
 
 

@@ -25,33 +25,33 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ## What's New (Updated: 2026-01-16)
 
-### Project Environment Configuration (NEW)
+### Tech Stack Configuration (Simplified)
 
-**Configure your project's tooling** — Tell CodeFRAME which package manager, test framework, and lint tools to use.
+**Describe your tech stack** — Tell CodeFRAME what technologies your project uses during initialization.
 
 ```bash
-# Auto-detect from project files (pyproject.toml, package.json, etc.)
-cf config init --detect
+# Auto-detect from project files (pyproject.toml, package.json, Cargo.toml, etc.)
+cf init . --detect
 
-# Show current configuration
-cf config show
+# Provide explicit tech stack description
+cf init . --tech-stack "Python 3.11 with FastAPI, uv, pytest"
+cf init . --tech-stack "TypeScript monorepo with pnpm, Next.js frontend"
+cf init . --tech-stack "Rust project using cargo"
 
-# Set individual values
-cf config set package_manager uv
-cf config set test_framework pytest
+# Interactive setup
+cf init . --tech-stack-interactive
 ```
 
 **Example output:**
 ```
-Auto-detected configuration:
-  package_manager: uv
-  test_framework: pytest
-  lint_tools: ruff, mypy
-  context.max_files: 20
-  context.max_total_tokens: 50000
+Workspace initialized
+  Path: /home/user/projects/my-project
+  ID: abc123...
+  State: .codeframe/
+  Tech Stack: Python with uv, pytest, ruff for linting
 ```
 
-**Why this matters:** The agent now uses your exact tooling commands. No more guessing `pip` vs `uv` or `npm` vs `yarn`. Configuration is stored in `.codeframe/config.yaml`.
+**Why this matters:** The agent uses your tech stack description to determine appropriate commands and patterns. Works with any stack — Python, TypeScript, Rust, Go, monorepos, or mixed environments.
 
 ---
 
@@ -288,34 +288,31 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 ### CLI-First Workflow (v2 — Recommended)
 
 ```bash
-# 1. Initialize workspace in a target repo
+# 1. Initialize workspace (with optional tech stack detection)
 cd /path/to/your/project
-cf init .
+cf init . --detect
+# Or explicit: cf init . --tech-stack "Python with FastAPI, uv, pytest"
 
-# 2. Configure your environment (auto-detect recommended)
-cf config init --detect
-# Or interactive: cf config init
-
-# 3. Add a PRD (Product Requirements Document)
+# 2. Add a PRD (Product Requirements Document)
 cf prd add requirements.md
 
-# 4. Generate tasks from PRD
+# 3. Generate tasks from PRD
 cf tasks generate
 
-# 5. List tasks
+# 4. List tasks
 cf tasks list
 
-# 6. Start work on a task (with AI agent)
+# 5. Start work on a task (with AI agent)
 cf work start <task-id> --execute
 
-# 7. Check for blockers (questions the agent needs answered)
+# 6. Check for blockers (questions the agent needs answered)
 cf blocker list
 cf blocker answer <blocker-id> "Your answer here"
 
-# 8. Resume work after answering blockers
+# 7. Resume work after answering blockers
 cf work resume <task-id>
 
-# 9. Review changes and create checkpoint
+# 8. Review changes and create checkpoint
 cf review
 cf checkpoint create "Feature complete"
 ```
@@ -342,26 +339,12 @@ cd web-ui && npm install && npm run dev
 
 ### Workspace Management
 ```bash
-cf init <path>              # Initialize workspace for a repo
-cf status                   # Show workspace status
+cf init <path>                           # Initialize workspace for a repo
+cf init <path> --detect                  # Initialize + auto-detect tech stack
+cf init <path> --tech-stack "description"  # Initialize + explicit tech stack
+cf init <path> --tech-stack-interactive  # Initialize + interactive setup
+cf status                                # Show workspace status
 ```
-
-### Configuration
-```bash
-cf config init              # Interactive config setup
-cf config init --detect     # Auto-detect from project files
-cf config init --force      # Overwrite existing config
-cf config show              # Display current configuration
-cf config set <key> <value> # Set a config value
-```
-
-**Supported config keys:**
-- `package_manager` — uv, pip, poetry, npm, pnpm, yarn
-- `python_version` — e.g., 3.11
-- `test_framework` — pytest, jest, vitest, mocha
-- `lint_tools` — comma-separated, e.g., "ruff,mypy" or "eslint,prettier"
-- `test_command` — custom test command override
-- `lint_command` — custom lint command override
 
 ### PRD (Product Requirements)
 ```bash

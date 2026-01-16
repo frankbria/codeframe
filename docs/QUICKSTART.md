@@ -14,12 +14,14 @@ Get your project built with AI agents in minutes.
 
 ### Step 1: Initialize Your Workspace
 
-Navigate to your project directory and initialize CodeFRAME:
+Navigate to your project directory and initialize CodeFRAME with tech stack detection:
 
 ```bash
 cd ~/projects/my-project
-codeframe init .
+codeframe init . --detect
 ```
+
+This scans your project files (pyproject.toml, package.json, Cargo.toml, go.mod) and describes your tech stack.
 
 **Output:**
 ```
@@ -27,54 +29,22 @@ Workspace initialized
   Path: /home/user/projects/my-project
   ID: abc123...
   State: .codeframe/
+  Tech Stack: Python with uv, pytest, ruff for linting
 ```
 
-### Step 2: Configure Your Environment
-
-Tell CodeFRAME what tools your project uses. This ensures the agent runs the correct commands (e.g., `uv pip install` vs `pip install`).
-
-**Option A: Auto-detect (Recommended)**
+**Alternative: Explicit Tech Stack**
 ```bash
-codeframe config init --detect
+# Describe your stack directly
+codeframe init . --tech-stack "Rust project using cargo"
+codeframe init . --tech-stack "TypeScript monorepo with pnpm, Next.js, jest"
+
+# Or use interactive mode
+codeframe init . --tech-stack-interactive
 ```
 
-This scans your project files (pyproject.toml, package.json, lock files) and detects:
-- Package manager (uv, pip, poetry, npm, yarn, pnpm)
-- Test framework (pytest, jest, vitest, mocha)
-- Lint tools (ruff, eslint, prettier, mypy)
+**Why this matters:** The agent uses your tech stack description to choose appropriate commands and patterns. This works with any technology — Python, TypeScript, Rust, Go, Java, or mixed monorepos.
 
-**Output:**
-```
-Auto-detected configuration:
-Configuration saved
-  File: /home/user/projects/my-project/.codeframe/config.yaml
-
-  package_manager: uv
-  test_framework: pytest
-  lint_tools: ruff, mypy
-  context.max_files: 20
-  context.max_total_tokens: 50000
-```
-
-**Option B: Interactive Setup**
-```bash
-codeframe config init
-```
-Prompts you for each setting with sensible defaults.
-
-**Option C: Manual Tweaks**
-```bash
-codeframe config set package_manager uv
-codeframe config set test_framework pytest
-codeframe config set lint_tools "ruff,mypy"
-```
-
-**Check your config anytime:**
-```bash
-codeframe config show
-```
-
-### Step 3: Add Your PRD
+### Step 2: Add Your PRD
 
 Create a markdown file describing what you want to build (e.g., `requirements.md`):
 
@@ -100,7 +70,7 @@ Add it to CodeFRAME:
 codeframe prd add requirements.md
 ```
 
-### Step 4: Generate Tasks
+### Step 3: Generate Tasks
 
 Let the LLM break down your PRD into actionable tasks:
 
@@ -117,7 +87,7 @@ Generated 12 tasks
   ...
 ```
 
-### Step 5: Review and Approve Tasks
+### Step 4: Review and Approve Tasks
 
 See what was generated:
 
@@ -132,7 +102,7 @@ All tasks start in `BACKLOG`. Move them to `READY` when you're satisfied:
 codeframe tasks set status READY --all --from BACKLOG
 ```
 
-### Step 6: Execute Tasks
+### Step 5: Execute Tasks
 
 #### Option A: Run All Ready Tasks (Recommended)
 
@@ -151,7 +121,7 @@ This will:
 codeframe work batch run task-id-1 task-id-2 task-id-3
 ```
 
-### Step 7: Monitor Progress
+### Step 6: Monitor Progress
 
 While the batch runs, you can check status in another terminal:
 
@@ -160,7 +130,7 @@ codeframe work batch status
 codeframe status
 ```
 
-### Step 8: Handle Blockers
+### Step 7: Handle Blockers
 
 If agents get stuck, they'll create blockers:
 
@@ -175,7 +145,7 @@ codeframe blocker answer <blocker-id> "Use JWT tokens for auth"
 codeframe work batch resume <batch-id>
 ```
 
-### Step 9: Verify and Commit
+### Step 8: Verify and Commit
 
 Once complete, run verification:
 
@@ -197,17 +167,11 @@ codeframe checkpoint create "MVP complete"
 | Command | Description |
 |---------|-------------|
 | `codeframe init <path>` | Initialize workspace |
+| `codeframe init <path> --detect` | Initialize + auto-detect tech stack |
+| `codeframe init <path> --tech-stack "desc"` | Initialize + explicit tech stack |
+| `codeframe init <path> -i` | Initialize + interactive tech stack |
 | `codeframe status` | Show workspace overview |
 | `codeframe summary` | Concise status report |
-
-### Configuration Commands
-| Command | Description |
-|---------|-------------|
-| `codeframe config init` | Interactive config setup |
-| `codeframe config init --detect` | Auto-detect from project files |
-| `codeframe config init --force` | Overwrite existing config |
-| `codeframe config show` | Display current configuration |
-| `codeframe config set <key> <value>` | Set a config value |
 
 ### PRD Commands
 | Command | Description |

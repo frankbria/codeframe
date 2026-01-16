@@ -300,23 +300,13 @@ class Planner:
                 sections.append(pref_section)
                 sections.append("")
 
-        # Environment configuration
-        if context.has_environment_config:
-            cfg = context.environment_config
-            sections.append("## Project Environment Configuration")
-            sections.append("IMPORTANT: Use these exact commands for this project:")
-            sections.append(f"- Package Manager: {cfg.package_manager}")
-            sections.append(f"  - To install packages: {cfg.get_install_command('<package>')}")
-            sections.append(f"- Test Framework: {cfg.test_framework}")
-            sections.append(f"  - To run tests: {cfg.get_test_command()}")
-            sections.append(f"- Lint Tools: {', '.join(cfg.lint_tools)}")
-            sections.append(f"  - To run lint: {cfg.get_lint_command()}")
-            if cfg.python_version:
-                sections.append(f"- Python Version: {cfg.python_version}")
-            if cfg.node_version:
-                sections.append(f"- Node Version: {cfg.node_version}")
+        # Tech stack configuration
+        if context.has_tech_stack:
+            sections.append("## Project Tech Stack")
+            sections.append(f"**Technology:** {context.tech_stack}")
             sections.append("")
-            sections.append("When generating shell_command steps, use these exact commands.")
+            sections.append("Use appropriate commands and patterns for this technology stack.")
+            sections.append("When generating shell_command steps, use the correct tools for this stack.")
             sections.append("")
 
         # PRD if available
