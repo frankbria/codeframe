@@ -312,13 +312,19 @@ class TestLoadPreferences:
             # Child takes precedence
             assert prefs.tooling.get("package_manager") == "uv"
 
-    def test_no_preferences_file(self):
-        """Should return empty preferences when no files exist."""
+    def test_no_preferences_file_returns_defaults(self):
+        """Should return sensible defaults when no config files exist in workspace.
+
+        Note: This may pick up global config from ~/.codeframe/AGENTS.md if it exists.
+        If no config exists anywhere, returns get_default_preferences() instead of empty.
+        """
         with TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir)
             prefs = load_preferences(workspace)
-            # Should not have loaded any preferences
-            assert not prefs.source_files or prefs.source_files == []
+            # Should have preferences (either from global config or defaults)
+            assert prefs.has_preferences()
+            # Should have tooling/commands for autonomous operation
+            assert prefs.tooling or prefs.commands
 
 
 class TestGetDefaultPreferences:

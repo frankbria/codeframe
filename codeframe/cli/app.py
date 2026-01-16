@@ -1310,12 +1310,18 @@ def batch_run(
         "-w",
         help="Workspace path (defaults to current directory)",
     ),
+    review: bool = typer.Option(
+        False,
+        "--review",
+        help="Run verification gates (pytest, ruff) after successful batch completion",
+    ),
 ) -> None:
     """Execute multiple tasks in batch.
 
     Execute a list of tasks sequentially (or in parallel in Phase 2).
     Use --all-ready to process all READY tasks, or specify task IDs.
     Use --retry N to automatically retry failed tasks up to N times.
+    Use --review to run verification gates after all tasks complete.
 
     Example:
         codeframe work batch run task1 task2 task3
@@ -1418,6 +1424,33 @@ def batch_run(
             console.print(f"  Blocked: {blocked}")
         if max_retries > 0:
             console.print(f"  Retries: up to {max_retries}")
+
+        # Run verification gates if --review is passed
+        if review:
+            from codeframe.core import gates
+
+            if completed == len(ids_to_execute):
+                console.print("\n[bold cyan]Running verification gates...[/bold cyan]")
+                gate_result = gates.run(workspace, verbose=True)
+
+                console.print("\n[bold]Code Review Results[/bold]")
+                for check in gate_result.checks:
+                    status_color = "green" if check.status.value == "PASSED" else "red"
+                    console.print(f"  [{status_color}]{check.name}[/{status_color}]: {check.status.value}")
+                    if check.output and check.status.value != "PASSED":
+                        # Show truncated output for failures
+                        output_lines = check.output.strip().split("\n")[:5]
+                        for line in output_lines:
+                            console.print(f"    [dim]{line}[/dim]")
+                        if len(check.output.strip().split("\n")) > 5:
+                            console.print("    [dim]...[/dim]")
+
+                if gate_result.passed:
+                    console.print("\n[bold green]✓ All verification gates passed[/bold green]")
+                else:
+                    console.print("\n[bold yellow]⚠ Some verification gates failed[/bold yellow]")
+            else:
+                console.print("\n[dim]Skipping review - not all tasks completed successfully[/dim]")
 
     except FileNotFoundError:
         console.print(f"[red]Error:[/red] No workspace found at {path}")

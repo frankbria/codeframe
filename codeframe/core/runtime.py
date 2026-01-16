@@ -334,6 +334,8 @@ def complete_run(workspace: Workspace, run_id: str) -> Run:
 def fail_run(workspace: Workspace, run_id: str, reason: str = "") -> Run:
     """Mark a run as failed.
 
+    Also transitions the task to FAILED status.
+
     Args:
         workspace: Target workspace
         run_id: Run to fail
@@ -375,6 +377,9 @@ def fail_run(workspace: Workspace, run_id: str, reason: str = "") -> Run:
         {"run_id": run_id, "task_id": run.task_id, "reason": reason},
         print_event=True,
     )
+
+    # Update task status to FAILED
+    tasks.update_status(workspace, run.task_id, TaskStatus.FAILED)
 
     run.status = RunStatus.FAILED
     run.completed_at = datetime.fromisoformat(now)
@@ -612,6 +617,38 @@ def execute_agent(
             print("[Supervisor] Retrying task after auto-resolution...")
 
             # Create a new agent instance and retry
+            agent = Agent(
+                workspace=workspace,
+                llm_provider=provider,
+                dry_run=dry_run,
+                on_event=on_agent_event,
+                debug=debug,
+            )
+            state = agent.run(run.task_id)
+
+    # If agent FAILED, check if supervisor can help with common technical issues
+    if state.status == AgentStatus.FAILED:
+        from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
+
+        # Check if error matches tactical patterns the supervisor could resolve
+        error_msg = (state.error or "").lower()
+        if any(pattern in error_msg for pattern in SUPERVISOR_TACTICAL_PATTERNS):
+            supervisor = get_supervisor(workspace)
+            resolution = supervisor._generate_tactical_resolution(state.error or "")
+            print(f"[Supervisor] Detected recoverable error, providing guidance: {resolution[:100]}...")
+
+            # Create a blocker with the resolution for the agent's next run
+            from codeframe.core import blockers
+            blocker = blockers.create(
+                workspace,
+                task_id=run.task_id,
+                question=f"Technical error: {state.error or 'Unknown error'}",
+                context="Agent failed with a technical error that may be resolvable.",
+            )
+            blockers.answer(workspace, blocker.id, resolution)
+
+            # Retry the agent with the new context
+            print("[Supervisor] Retrying task with guidance...")
             agent = Agent(
                 workspace=workspace,
                 llm_provider=provider,

@@ -32,6 +32,11 @@ SUPERVISOR_TACTICAL_PATTERNS = [
     "pip install", "npm install", "uv sync",
     "break-system-packages", "pipx",
     "package manager", "dependency installation",
+    "externally-managed",  # PEP 668 error - use venv or uv
+    "externally managed",
+    # Module/import issues
+    "no module named", "__main__", "cannot be directly executed",
+    "modulenotfounderror", "importerror",
     # Configuration
     "pytest.ini", "pyproject.toml", "asyncio_default_fixture_loop_scope",
     "fixture scope", "loop scope", "configuration file",
@@ -181,11 +186,19 @@ Respond with exactly one word: TACTICAL or HUMAN"""
 
         # Common resolutions
         if "virtual environment" in q or "venv" in q:
-            return "Create a Python virtual environment and install dependencies."
-        if "fixture scope" in q or "asyncio" in q:
-            return "Use function scope for asyncio fixtures."
+            return "Create a Python virtual environment using 'python -m venv .venv' or 'uv venv', then activate it and install dependencies."
+        if "externally-managed" in q or "externally managed" in q:
+            return "This system uses an externally-managed Python. Use 'uv pip install' instead of 'pip install', or create a virtual environment first with 'uv venv' then 'source .venv/bin/activate'."
+        if "__main__" in q or "cannot be directly executed" in q:
+            return "Create a __main__.py file in the package directory with the entry point code (e.g., 'from .cli import main; main()' or similar)."
+        if "no module named" in q or "modulenotfounderror" in q:
+            return "Install the missing module using 'uv pip install <module>' or add it to requirements.txt and run 'uv pip install -r requirements.txt'."
+        if "importerror" in q:
+            return "Check that the module is installed and the import path is correct. For local modules, ensure __init__.py exists in the package directory."
+        if "fixture scope" in q or "asyncio" in q or "asyncio_default_fixture_loop_scope" in q:
+            return "Add '[tool.pytest.ini_options]\nasyncio_default_fixture_loop_scope = \"function\"' to pyproject.toml or 'asyncio_default_fixture_loop_scope = function' to pytest.ini."
         if "package manager" in q:
-            return "Use the project's default package manager (uv for Python, npm for JS)."
+            return "Use the project's default package manager (uv for Python, npm for JS). For Python, prefer 'uv pip install' or 'uv sync'."
         if "pytest" in q and "fail" in q:
             return "Fix the failing tests and retry."
         if "overwrite" in q or "existing file" in q:

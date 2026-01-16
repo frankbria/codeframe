@@ -354,6 +354,10 @@ def load_preferences(workspace_path: Path) -> AgentPreferences:
             # Log but don't fail on file read errors
             pass
 
+    # If no config files were found, use sensible defaults
+    if not prefs.has_preferences():
+        return get_default_preferences()
+
     return prefs
 
 

@@ -28,6 +28,7 @@ class TaskStatus(str, Enum):
     READY = "READY"
     IN_PROGRESS = "IN_PROGRESS"
     BLOCKED = "BLOCKED"
+    FAILED = "FAILED"  # Task execution failed (technical error, needs retry)
     DONE = "DONE"
     MERGED = "MERGED"
 
@@ -36,8 +37,9 @@ class TaskStatus(str, Enum):
 ALLOWED_TRANSITIONS: dict[TaskStatus, Set[TaskStatus]] = {
     TaskStatus.BACKLOG: {TaskStatus.READY},
     TaskStatus.READY: {TaskStatus.IN_PROGRESS, TaskStatus.BACKLOG},
-    TaskStatus.IN_PROGRESS: {TaskStatus.BLOCKED, TaskStatus.DONE, TaskStatus.READY},
+    TaskStatus.IN_PROGRESS: {TaskStatus.BLOCKED, TaskStatus.DONE, TaskStatus.READY, TaskStatus.FAILED},
     TaskStatus.BLOCKED: {TaskStatus.IN_PROGRESS, TaskStatus.READY},
+    TaskStatus.FAILED: {TaskStatus.READY, TaskStatus.IN_PROGRESS},  # Can retry from FAILED
     TaskStatus.DONE: {TaskStatus.READY, TaskStatus.MERGED},
     TaskStatus.MERGED: set(),  # Terminal state
 }

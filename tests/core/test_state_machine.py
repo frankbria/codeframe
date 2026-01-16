@@ -18,7 +18,7 @@ class TestTaskStatus:
 
     def test_all_statuses_exist(self):
         """Verify all expected statuses are defined."""
-        expected = {"BACKLOG", "READY", "IN_PROGRESS", "BLOCKED", "DONE", "MERGED"}
+        expected = {"BACKLOG", "READY", "IN_PROGRESS", "BLOCKED", "FAILED", "DONE", "MERGED"}
         actual = {s.value for s in TaskStatus}
         assert actual == expected
 
@@ -71,6 +71,18 @@ class TestCanTransition:
         """Can't complete without doing work."""
         assert can_transition(TaskStatus.READY, TaskStatus.DONE) is False
 
+    def test_in_progress_to_failed(self):
+        """Can fail from in progress."""
+        assert can_transition(TaskStatus.IN_PROGRESS, TaskStatus.FAILED) is True
+
+    def test_failed_to_ready(self):
+        """Can retry a failed task."""
+        assert can_transition(TaskStatus.FAILED, TaskStatus.READY) is True
+
+    def test_failed_to_in_progress(self):
+        """Can resume a failed task directly."""
+        assert can_transition(TaskStatus.FAILED, TaskStatus.IN_PROGRESS) is True
+
 
 class TestValidateTransition:
     """Tests for validate_transition function."""
@@ -117,6 +129,13 @@ class TestGetAllowedTransitions:
         assert TaskStatus.BLOCKED in allowed
         assert TaskStatus.DONE in allowed
         assert TaskStatus.READY in allowed
+        assert TaskStatus.FAILED in allowed
+
+    def test_failed_allowed(self):
+        """FAILED can transition to READY or IN_PROGRESS for retry."""
+        allowed = get_allowed_transitions(TaskStatus.FAILED)
+        assert TaskStatus.READY in allowed
+        assert TaskStatus.IN_PROGRESS in allowed
 
     def test_merged_allowed_empty(self):
         allowed = get_allowed_transitions(TaskStatus.MERGED)

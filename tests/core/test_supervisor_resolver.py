@@ -164,7 +164,9 @@ class TestSupervisorTacticalResolution:
         question = "which asyncio fixture scope?"
         resolution = supervisor._generate_tactical_resolution(question)
 
-        assert "function scope" in resolution.lower()
+        # Should recommend function scope and mention config location
+        assert "function" in resolution.lower()
+        assert "pyproject.toml" in resolution.lower() or "pytest.ini" in resolution.lower()
 
     def test_overwrite_resolution(self, supervisor):
         """Overwrite questions should resolve to overwrite."""
