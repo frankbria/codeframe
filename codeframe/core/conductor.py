@@ -132,7 +132,7 @@ class SupervisorResolver:
         """
         # Simple normalization - could be improved with embeddings
         q = question.lower()
-        if "virtual environment" in q or "venv" in q:
+        if "virtual environment" in q or "venv" in q or "virtualenv" in q:
             return "venv_creation"
         if "fixture scope" in q or "asyncio" in q:
             return "asyncio_fixture_scope"
