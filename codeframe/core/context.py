@@ -23,6 +23,11 @@ from codeframe.core.agents_config import (
     load_preferences,
     get_default_preferences,
 )
+from codeframe.core.config import (
+    EnvironmentConfig,
+    load_environment_config,
+    get_default_environment_config,
+)
 
 
 # Approximate tokens per character (conservative estimate)
@@ -107,6 +112,7 @@ class TaskContext:
         prd: Associated PRD (if any)
         blockers: Blockers related to this task
         preferences: Agent preferences from AGENTS.md/CLAUDE.md
+        environment_config: Project environment configuration (package manager, etc.)
         file_tree: List of files in the repository
         relevant_files: Files identified as relevant to the task
         loaded_files: Files with content loaded
@@ -118,6 +124,7 @@ class TaskContext:
     prd: Optional[PrdRecord] = None
     blockers: list[Blocker] = field(default_factory=list)
     preferences: AgentPreferences = field(default_factory=get_default_preferences)
+    environment_config: Optional[EnvironmentConfig] = None
     file_tree: list[FileInfo] = field(default_factory=list)
     relevant_files: list[FileInfo] = field(default_factory=list)
     loaded_files: list[FileContent] = field(default_factory=list)
@@ -133,6 +140,11 @@ class TaskContext:
     def has_blockers(self) -> bool:
         """Check if there are any blockers."""
         return len(self.blockers) > 0
+
+    @property
+    def has_environment_config(self) -> bool:
+        """Check if environment config is loaded."""
+        return self.environment_config is not None
 
     @property
     def open_blockers(self) -> list[Blocker]:
@@ -178,6 +190,22 @@ class TaskContext:
             if pref_section:
                 sections.append(pref_section)
                 sections.append("")
+
+        # Environment configuration section
+        if self.environment_config:
+            sections.append("## Project Environment")
+            sections.append("**IMPORTANT:** Use these exact commands for this project:")
+            sections.append(f"- **Package Manager:** {self.environment_config.package_manager}")
+            sections.append(f"  - Install command: `{self.environment_config.get_install_command('<package>')}`")
+            sections.append(f"- **Test Framework:** {self.environment_config.test_framework}")
+            sections.append(f"  - Run tests: `{self.environment_config.get_test_command()}`")
+            sections.append(f"- **Lint Tools:** {', '.join(self.environment_config.lint_tools)}")
+            sections.append(f"  - Run lint: `{self.environment_config.get_lint_command()}`")
+            if self.environment_config.python_version:
+                sections.append(f"- **Python Version:** {self.environment_config.python_version}")
+            if self.environment_config.node_version:
+                sections.append(f"- **Node Version:** {self.environment_config.node_version}")
+            sections.append("")
 
         # Blockers section (answered ones are useful context)
         if self.answered_blockers:
@@ -264,6 +292,14 @@ class ContextLoader:
 
         # Load agent preferences from AGENTS.md/CLAUDE.md
         context.preferences = load_preferences(self.workspace.repo_path)
+
+        # Load environment configuration
+        env_config = load_environment_config(self.workspace.repo_path)
+        if env_config:
+            context.environment_config = env_config
+        else:
+            # Use defaults but don't fail
+            context.environment_config = get_default_environment_config()
 
         # Load PRD if associated
         if task.prd_id:
