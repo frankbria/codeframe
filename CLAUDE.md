@@ -4,7 +4,7 @@ Last updated: 2026-01-16
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: v2 Phase 2+ Complete** - Agent execution + parallel batch orchestration + self-correction loop + observability.
+**Status: v2 Phase 3 In Progress** - Agent execution + parallel batch orchestration + self-correction + environment configuration.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -36,6 +36,7 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 - **Dry run mode**: `cf work start <task-id> --execute --dry-run`
 - **Self-correction loop**: Agent automatically fixes failing verification gates (up to 3 attempts)
 - **FAILED task status**: Tasks can transition to FAILED for proper error visibility
+- **Environment configuration**: `cf config init --detect` auto-detects package manager, test framework, lint tools
 - **Project preferences**: Agent loads AGENTS.md or CLAUDE.md for per-project configuration
 - **Blocker detection**: Agent creates blockers when stuck
 - **Verification gates**: Ruff/pytest checks after file changes
@@ -74,6 +75,7 @@ codeframe/
 │   ├── dependency_graph.py # DAG operations and execution planning
 │   ├── dependency_analyzer.py # LLM-based dependency inference
 │   ├── gates.py            # Verification gates (ruff, pytest)
+│   ├── config.py           # Environment configuration (package manager, test framework)
 │   ├── workspace.py        # Workspace initialization
 │   ├── prd.py              # PRD management
 │   ├── events.py           # Event emission
@@ -221,6 +223,13 @@ uv run ruff check .
 cf init <repo>
 cf status
 
+# Configuration
+cf config init              # Interactive config setup
+cf config init --detect     # Auto-detect from project files
+cf config init --force      # Overwrite existing config
+cf config show              # Display current configuration
+cf config set <key> <value> # Set a config value
+
 # PRD
 cf prd add <file.md>
 cf prd show
@@ -327,6 +336,26 @@ If you are unsure which direction to take, default to:
 ---
 
 ## Recent Updates (2026-01-16)
+
+### Phase 3.1: Environment Configuration
+Project environment configuration for reliable agent execution:
+
+1. ✅ **Config schema** in `core/config.py` - EnvironmentConfig dataclass with validation
+2. ✅ **CLI commands** - `cf config init|show|set` for managing project config
+3. ✅ **Auto-detection** - `--detect` flag scans pyproject.toml, package.json, lock files
+4. ✅ **Agent integration** - Context loader includes config in TaskContext
+5. ✅ **Planner integration** - Config included in LLM planning prompt
+
+**Supported settings:**
+- `package_manager`: uv, pip, poetry, npm, pnpm, yarn
+- `test_framework`: pytest, jest, vitest, mocha
+- `lint_tools`: ruff, eslint, prettier, mypy, biome
+- `python_version`, `node_version`: Version constraints
+- `test_command`, `lint_command`: Custom command overrides
+
+**Config file:** `.codeframe/config.yaml`
+
+---
 
 ### Agent Self-Correction & Observability
 Improved agent reliability with automatic error recovery:

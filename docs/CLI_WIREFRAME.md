@@ -26,6 +26,7 @@ Add these subpackages under `codeframe/`:
   - `state_machine.py` (authoritative transitions)
   - `events.py` (event log interface + event types)
   - `workspace.py` (workspace registration + config)
+  - `config.py` (environment configuration: package manager, test framework, lint tools)
   - `prd.py` (PRD store + parsing)
   - `tasks.py` (task generation + CRUD)
   - `blockers.py` (blocker store + answering)
@@ -115,6 +116,61 @@ Each command:
 
 **State reads only.**
 **Emits:** optional `STATUS_VIEWED` event (not required).
+
+---
+
+## Configuration: `codeframe config ...`
+
+### `codeframe config init [--detect] [--force]`
+**Purpose:** Initialize project environment configuration.
+
+**CLI module:**
+- `codeframe/cli/app.py` (config_app subgroup)
+
+**Core calls:**
+- `codeframe.core.config.load_environment_config(workspace_path) -> EnvironmentConfig | None`
+- `codeframe.core.config.save_environment_config(workspace_path, config) -> None`
+- Auto-detection reads: pyproject.toml, package.json, lock files
+
+**Options:**
+- `--detect`: Auto-detect settings from project files (non-interactive)
+- `--force`: Overwrite existing config file
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State writes:**
+- `.codeframe/config.yaml`
+
+---
+
+### `codeframe config show`
+**Purpose:** Display current project configuration.
+
+**Core calls:**
+- `codeframe.core.config.load_environment_config(workspace_path) -> EnvironmentConfig | None`
+- `codeframe.core.config.get_default_environment_config() -> EnvironmentConfig` (fallback)
+
+**State reads only.**
+
+---
+
+### `codeframe config set <key> <value>`
+**Purpose:** Set individual configuration values.
+
+**Core calls:**
+- `codeframe.core.config.load_environment_config(workspace_path) -> EnvironmentConfig | None`
+- `codeframe.core.config.save_environment_config(workspace_path, config) -> None`
+- `config.validate() -> list[str]` (validation errors)
+
+**Valid keys:**
+- `package_manager`: uv, pip, poetry, npm, pnpm, yarn
+- `python_version`: e.g., 3.11
+- `test_framework`: pytest, jest, vitest, mocha
+- `lint_tools`: comma-separated, e.g., "ruff,mypy"
+- `test_command`: custom test command override
+- `lint_command`: custom lint command override
+
+**State writes:**
+- `.codeframe/config.yaml`
 
 ---
 

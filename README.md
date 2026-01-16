@@ -1,6 +1,6 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Phase%202%20Complete-brightgreen)
+![Status](https://img.shields.io/badge/status-v2%20Phase%203%20In%20Progress-yellow)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-3043%20passing-brightgreen)
@@ -24,6 +24,36 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 ---
 
 ## What's New (Updated: 2026-01-16)
+
+### Project Environment Configuration (NEW)
+
+**Configure your project's tooling** — Tell CodeFRAME which package manager, test framework, and lint tools to use.
+
+```bash
+# Auto-detect from project files (pyproject.toml, package.json, etc.)
+cf config init --detect
+
+# Show current configuration
+cf config show
+
+# Set individual values
+cf config set package_manager uv
+cf config set test_framework pytest
+```
+
+**Example output:**
+```
+Auto-detected configuration:
+  package_manager: uv
+  test_framework: pytest
+  lint_tools: ruff, mypy
+  context.max_files: 20
+  context.max_total_tokens: 50000
+```
+
+**Why this matters:** The agent now uses your exact tooling commands. No more guessing `pip` vs `uv` or `npm` vs `yarn`. Configuration is stored in `.codeframe/config.yaml`.
+
+---
 
 ### Agent Self-Correction & Observability
 
@@ -262,26 +292,30 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 cd /path/to/your/project
 cf init .
 
-# 2. Add a PRD (Product Requirements Document)
+# 2. Configure your environment (auto-detect recommended)
+cf config init --detect
+# Or interactive: cf config init
+
+# 3. Add a PRD (Product Requirements Document)
 cf prd add requirements.md
 
-# 3. Generate tasks from PRD
+# 4. Generate tasks from PRD
 cf tasks generate
 
-# 4. List tasks
+# 5. List tasks
 cf tasks list
 
-# 5. Start work on a task (with AI agent)
+# 6. Start work on a task (with AI agent)
 cf work start <task-id> --execute
 
-# 6. Check for blockers (questions the agent needs answered)
+# 7. Check for blockers (questions the agent needs answered)
 cf blocker list
 cf blocker answer <blocker-id> "Your answer here"
 
-# 7. Resume work after answering blockers
+# 8. Resume work after answering blockers
 cf work resume <task-id>
 
-# 8. Review changes and create checkpoint
+# 9. Review changes and create checkpoint
 cf review
 cf checkpoint create "Feature complete"
 ```
@@ -311,6 +345,23 @@ cd web-ui && npm install && npm run dev
 cf init <path>              # Initialize workspace for a repo
 cf status                   # Show workspace status
 ```
+
+### Configuration
+```bash
+cf config init              # Interactive config setup
+cf config init --detect     # Auto-detect from project files
+cf config init --force      # Overwrite existing config
+cf config show              # Display current configuration
+cf config set <key> <value> # Set a config value
+```
+
+**Supported config keys:**
+- `package_manager` — uv, pip, poetry, npm, pnpm, yarn
+- `python_version` — e.g., 3.11
+- `test_framework` — pytest, jest, vitest, mocha
+- `lint_tools` — comma-separated, e.g., "ruff,mypy" or "eslint,prettier"
+- `test_command` — custom test command override
+- `lint_command` — custom lint command override
 
 ### PRD (Product Requirements)
 ```bash
