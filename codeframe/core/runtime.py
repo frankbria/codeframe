@@ -630,11 +630,30 @@ def execute_agent(
     if state.status == AgentStatus.FAILED:
         from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
 
-        # Check if error matches tactical patterns the supervisor could resolve
-        error_msg = (state.error or "").lower()
-        if any(pattern in error_msg for pattern in SUPERVISOR_TACTICAL_PATTERNS):
+        # Extract error message from available sources
+        error_msg = ""
+        if state.blocker:
+            error_msg = state.blocker.reason or state.blocker.question or ""
+        elif state.step_results:
+            # Check last step result for error info
+            last_result = state.step_results[-1]
+            if hasattr(last_result, 'error') and last_result.error:
+                error_msg = last_result.error
+            elif hasattr(last_result, 'output') and last_result.output:
+                error_msg = last_result.output
+        elif state.gate_results:
+            # Check gate results for failure info
+            for gate in state.gate_results:
+                if not gate.passed:
+                    for check in gate.checks:
+                        if check.output:
+                            error_msg = check.output
+                            break
+
+        error_msg_lower = error_msg.lower()
+        if error_msg and any(pattern in error_msg_lower for pattern in SUPERVISOR_TACTICAL_PATTERNS):
             supervisor = get_supervisor(workspace)
-            resolution = supervisor._generate_tactical_resolution(state.error or "")
+            resolution = supervisor._generate_tactical_resolution(error_msg)
             print(f"[Supervisor] Detected recoverable error, providing guidance: {resolution[:100]}...")
 
             # Create a blocker with the resolution for the agent's next run
@@ -642,7 +661,7 @@ def execute_agent(
             blocker = blockers.create(
                 workspace,
                 task_id=run.task_id,
-                question=f"Technical error: {state.error or 'Unknown error'}",
+                question=f"Technical error: {error_msg[:500]}",
                 context="Agent failed with a technical error that may be resolvable.",
             )
             blockers.answer(workspace, blocker.id, resolution)
