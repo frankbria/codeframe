@@ -78,7 +78,7 @@ cf events search --type GATE_FAILED
 - Improved file relevance scoring
 - Option to explicitly include/exclude files
 
-### 3.4 Enhanced Self-Correction
+### 3.4 Enhanced Self-Correction ✅
 - Pattern-based quick fixes:
   - Import errors → add import
   - Missing dependency → install it
@@ -86,6 +86,16 @@ cf events search --type GATE_FAILED
 - Learn from previous fix attempts in same run
 - Escalate to blocker after N similar failures
 - Better error message parsing
+- **Shell command execution** during self-correction (uv pip install, etc.)
+- **FixScope classification** (LOCAL vs GLOBAL) for parallel coordination
+
+### 3.5 Agent Tool System (Future - see codeframe-p77g)
+Current: Agents can create/edit files and run shell commands during self-correction.
+Future: Formalized tool interface with:
+- Tool protocol (name, description, parameters, execute)
+- MCP server integration for external tools
+- Permission system for dangerous operations
+- Full rollback support
 
 ---
 
