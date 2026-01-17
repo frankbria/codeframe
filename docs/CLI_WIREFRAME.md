@@ -27,17 +27,18 @@ Add these subpackages under `codeframe/`:
   - `events.py` (event log interface + event types)
   - `workspace.py` (workspace registration + config)
   - `config.py` (environment configuration: package manager, test framework, lint tools)
-  - `prd.py` (PRD store + parsing)
-  - `tasks.py` (task generation + CRUD)
-  - `blockers.py` (blocker store + answering)
+  - `prd.py` (PRD store + AI-driven generation)
+  - `tasks.py` (task generation + CRUD with dependencies)
+  - `blockers.py` (blocker store + AI-powered resolution)
   - `runtime.py` (single-task orchestrator/worker loop)
   - `conductor.py` (batch orchestration, multi-task execution)
-  - `dependency_analyzer.py` (Phase 2: LLM-based dependency inference)
-  - `checkpoints.py` (snapshot + restore)
-  - `gates.py` (review/test runners)
+  - `dependency_analyzer.py` (LLM-based dependency inference)
+  - `checkpoints.py` (snapshot + restore with git refs)
+  - `gates.py` (enhanced review/test runners)
+  - `git_integration.py` (Git workflow and PR management)
 - `codeframe/adapters/` (optional but recommended)
   - `llm/` (provider-specific clients)
-  - `git/` (branch/worktree/patch utilities)
+  - `git/` (branch/worktree/patch utilities + PR operations)
   - `fs/` (file operations)
   - `persistence/` (SQLite/filesystem implementations)
 - `codeframe/server/` (FastAPI wrapper; optional during Golden Path)
@@ -176,7 +177,31 @@ Each command:
 
 ## PRD: `codeframe prd ...`
 
-### `codeframe prd add <file.md>`
+### `codeframe prd generate` (Enhanced - Primary)
+**Purpose:** AI-driven interactive PRD generation.
+
+**CLI module:**
+- `codeframe/cli/commands/prd.py`
+
+**Core calls:**
+- `codeframe.core.prd.start_discovery_session(workspace_id) -> DiscoverySession`
+- `codeframe.core.prd.ask_followup_questions(session, context) -> DiscoverySession`
+- `codeframe.core.prd.generate_prd(session) -> PrdRecord`
+- `codeframe.core.prd.refine_prd(prd_id, feedback) -> PrdRecord`
+- `codeframe.core.events.emit(workspace_id, "PRD_GENERATED", payload)`
+
+**State writes:**
+- Discovery session records
+- Comprehensive PRD record with technical specs
+- Version history and change tracking
+
+**Adapter usage:**
+- LLM adapter for interactive discovery and content generation
+- Analysis adapter for technical requirement extraction
+
+---
+
+### `codeframe prd add <file.md>` (Legacy Support)
 **Purpose:** Store PRD text + metadata.
 
 **CLI module:**
@@ -189,6 +214,24 @@ Each command:
 
 **State writes:**
 - PRD record (id, title, text, created_at)
+
+---
+
+### `codeframe prd refine <prd-id>`
+**Purpose:** Iterative PRD improvement based on feedback.
+
+**CLI module:**
+- `codeframe/cli/commands/prd.py`
+
+**Core calls:**
+- `codeframe.core.prd.get(workspace_id, prd_id) -> PrdRecord`
+- `codeframe.core.prd.suggest_improvements(prd) -> list[Suggestion]`
+- `codeframe.core.prd.apply_feedback(prd_id, feedback) -> PrdRecord`
+- `codeframe.core.events.emit(workspace_id, "PRD_REFINED", payload)`
+
+**State writes:**
+- Updated PRD record
+- Suggestion and feedback history
 
 ---
 
@@ -474,6 +517,86 @@ cf work batch resume abc123 --force   # Re-run all tasks
 
 ---
 
+## Git Integration & PR Management: `codeframe git ...` / `codeframe pr ...`
+
+### `codeframe work start <task_id> --create-branch`
+**Purpose:** Begin task execution with automatic branch creation.
+
+**CLI module:**
+- `codeframe/cli/commands/work.py`
+
+**Core calls:**
+- `branch_name = codeframe.core.git.create_feature_branch(workspace_id, task_id)`
+- `run = codeframe.core.runtime.start_task_run(workspace_id, task_id, branch=branch_name)`
+- `emit(..., "TASK_STARTED_WITH_BRANCH", payload)`
+
+**Adapter usage:**
+- git adapter for branch management
+
+---
+
+### `codeframe pr create` (Enhanced)
+**Purpose:** Create pull request with AI-generated description.
+
+**CLI module:**
+- `codeframe/cli/commands/pr.py`
+
+**Core calls:**
+- `pr = codeframe.core.git.create_pull_request(workspace_id, branch_name, base_branch)`
+- `description = codeframe.core.prd.generate_pr_description(workspace_id, task_ids)`
+- `codeframe.core.git.update_pr_description(pr.id, description)`
+- `emit(..., "PR_CREATED", payload)`
+
+**State writes:**
+- PR record with task associations
+- Transition of associated tasks to IN_REVIEW status
+
+**Adapter usage:**
+- git adapter for PR operations
+- LLM adapter for description generation
+
+---
+
+### `codeframe pr list [--status open|closed|merged]`
+**Purpose:** List pull requests and their status.
+
+**CLI module:**
+- `codeframe/cli/commands/pr.py`
+
+**Core calls:**
+- `prs = codeframe.core.git.list_pull_requests(workspace_id, status_filter)`
+
+---
+
+### `codeframe pr merge <pr-id> [--strategy squash|merge|rebase]`
+**Purpose:** Merge pull request with verification.
+
+**CLI module:**
+- `codeframe/cli/commands/pr.py`
+
+**Core calls:**
+- `codeframe.core.gates.run_pr_checks(workspace_id, pr_id)`
+- `merge_result = codeframe.core.git.merge_pull_request(pr_id, strategy)`
+- `codeframe.core.tasks.transition_to_merged(workspace_id, pr.task_ids)`
+- `emit(..., "PR_MERGED", payload)`
+
+**State writes:**
+- Transition of associated tasks to MERGED status
+- PR record with merge details
+
+---
+
+### `codeframe git status` (Enhanced)
+**Purpose:** Show git status summary with CodeFRAME context.
+
+**CLI module:**
+- `codeframe/cli/commands/git.py`
+
+**Core calls:**
+- `status = codeframe.core.git.get_enhanced_status(workspace_id)`
+
+---
+
 ## Checkpoints: `codeframe checkpoint ...`
 
 ### `codeframe checkpoint create "<name>"`
@@ -561,40 +684,71 @@ Output includes:
 
 ---
 
-## Implementation order (do not reorder)
+## Implementation order (reordered for Enhanced MVP)
 
-### Phase 0: Golden Path (COMPLETE)
-1) `init` + durable state
-2) `prd add`
-3) `tasks generate`
-4) `status`
-5) `work start` (stubbed run loop ok initially, but must emit events)
-6) blockers list/answer
-7) review/gates
-8) patch export (preferred before commit)
-9) checkpoint + summary
+### Enhanced MVP Priority Order
 
-### Phase 1: Batch Execution (COMPLETE)
-10) `work batch run` - serial execution of multiple tasks
-11) `work batch status` - batch status monitoring
-12) `work batch cancel` - batch cancellation
+### Phase 0: Enhanced PRD & Discovery (NEW HIGH PRIORITY)
+1) `prd generate` - AI-driven interactive PRD generation with follow-up questions
+2) `prd refine` - iterative PRD improvement based on user feedback
+3) Enhanced `init` with auto-discovery and environment configuration
+4) PRD versioning and change tracking
 
-### Phase 2: Parallel Execution & Retry (COMPLETE)
-13) `work batch resume <batch-id>` - re-run failed/blocked tasks ✓ DONE
-14) `depends_on` field on Task model ✓ DONE
-15) Dependency graph analysis ✓ DONE
-16) True parallel execution with worker pool ✓ DONE
-17) `--strategy auto` with LLM-based dependency inference ✓ DONE
-18) `work batch run --retry N` - automatic retry of failed tasks ✓ DONE
+### Phase 1: Enhanced Task Generation (NEW HIGH PRIORITY)
+5) Enhanced `tasks generate` with dependency analysis and effort estimation
+6) Task template system for common implementation patterns
+7) Critical path identification and workstream grouping
+8) `tasks analyze` - dependency graph visualization and analysis
 
-### Phase 3: Observability (IN PROGRESS)
-19) `work batch follow` - live streaming to terminal ✓ DONE
-20) WebSocket adapter for batch events (deferred - infrastructure exists)
-21) Progress estimation and ETA ✓ DONE
+### Phase 2: Git Integration & PR Workflow (NEW HIGH PRIORITY)
+9) `codeframe git_integration` module implementation
+10) Enhanced `work start --create-branch` with automatic branch management
+11) `pr create` with AI-generated comprehensive descriptions
+12) `pr merge` with automated verification and merge strategies
+13) Git adapter for branch/worktree/patch operations
 
-Only after these are stable:
-- server adapter improvements
-- UI rebuilding
+### Phase 3: Enhanced Quality Gates (UPGRADED)
+14) Enhanced `gates.run` with comprehensive test suite
+15) AI-assisted code review and best practices checking
+16) Quality metrics tracking and trend analysis
+17) Technical debt accumulation monitoring
+18) Security and performance regression detection
+
+### Phase 4: Advanced Blocker Resolution (ENHANCED)
+19) Enhanced blocker system with AI-powered suggestions
+20) Contextual blocker display with rich background information
+21) Learning system for blocker pattern recognition
+22) Similar past blocker solutions and recommendations
+
+### Phase 5: Advanced Checkpointing (ENHANCED)
+23) Rich checkpoint snapshots with complete workspace state
+24) Cross-environment checkpoint portability
+25) Seamless workflow resumption from any checkpoint
+26) Executive reporting with progress and risk metrics
+
+### Legacy Phase Completion (MAINTAINED)
+**Basic Golden Path (already complete):**
+- Basic `init` + durable state ✓ DONE
+- Basic `prd add` ✓ DONE (superseded by `prd generate`)
+- Basic `tasks generate` ✓ DONE (enhanced above)
+- Basic `work start` ✓ DONE (enhanced with git integration)
+- Basic blockers ✓ DONE (enhanced above)
+- Basic review/gates ✓ DONE (enhanced above)
+- Basic patch/commit ✓ DONE (enhanced with PR workflow)
+- Basic checkpoint + summary ✓ DONE (enhanced above)
+
+**Batch Execution (already complete):**
+- `work batch run` ✓ DONE (enhanced with git integration)
+- `work batch status` ✓ DONE
+- `work batch cancel` ✓ DONE
+- Parallel execution & retry ✓ DONE
+- Observability ✓ DONE
+
+Only after Enhanced MVP phases are complete:
+- Production readiness features
+- Advanced multi-provider support
+- Performance optimization at scale
+- Enterprise security and compliance features
 - multi-provider switching
 
 ---

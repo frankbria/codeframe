@@ -11,19 +11,50 @@ This applies to both humans and agentic coding assistants.
 
 ## Goals
 
-### What “done” looks like (MVP definition)
-CodeFRAME can run a complete end-to-end workflow **from the CLI** on a small repo:
+### What "done" looks like (Enhanced MVP definition)
+CodeFRAME can run a complete end-to-end AI-driven development workflow **from the CLI** on a target repo:
 
-1) Initialize a workspace for a target repo
-2) Add a PRD
-3) Generate tasks
-4) Execute one task via agents
-5) Handle blockers (human-in-loop)
-6) Produce a patch/commit and run gates (tests/lint)
-7) Summarize results and checkpoint the state
+1) **Initialize workspace with project discovery**
+   - Analyze codebase and detect tech stack
+   - Configure environment and tooling automatically
+   - Create durable state storage
+
+2) **AI-driven PRD generation and refinement**
+   - Interactive AI session gathers project requirements
+   - AI asks follow-up questions about scope, users, constraints
+   - Generates comprehensive PRD + technical specs + user stories
+   - Iterative refinement based on user feedback
+
+3) **Intelligent task generation with dependency analysis**
+   - Decompose PRD into actionable tasks with dependencies
+   - Prioritize tasks and group by functionality
+   - Generate implementation strategies per task
+
+4) **Batch task execution with orchestration**
+   - Execute multiple tasks in sequence or parallel
+   - Handle inter-task dependencies automatically
+   - Main agent coordinates entire batch workflow
+   - Real-time progress monitoring and event streaming
+
+5) **Human-in-the-loop blocker resolution**
+   - Interactive blocker handling with contextual AI suggestions
+   - Resume execution after blocker resolution
+   - Learning from blocker patterns
+
+6) **Integrated Git workflow and PR management**
+   - Automatic branch creation per task/batch
+   - AI-generated commit messages and PR descriptions
+   - Automated verification gate execution
+   - PR creation, review, and merging workflows
+
+7) **Comprehensive checkpointing and state management**
+   - Snapshots of workspace state with git refs
+   - Resume interrupted workflows from checkpoints
+   - Multi-environment state isolation
 
 **No UI is required.**
 **A FastAPI server is not required for the Golden Path to work.**
+**All Git operations are integrated into the CLI workflow.**
 
 ---
 
@@ -63,116 +94,224 @@ Required behavior:
 Artifacts:
 - Local state created (DB/file), e.g. `.codeframe/` and/or `codeframe.db`.
 
-### 2) Add a PRD
-Command:
-- `codeframe prd add <file.md>` (or `codeframe prd set <file.md>`)
-
-Required behavior:
-- Stores PRD text in state.
-- Parses minimal metadata if available (title, optional tags).
-- Confirms PRD stored.
-
-### 3) Generate tasks from PRD
-Command:
-- `codeframe tasks generate`
-
-Required behavior:
-- Produces a task list in durable state.
-- Tasks have at minimum:
-  - `id`, `title`, `description`, `status`
-- Status values must be from the state machine below.
-
-### 4) Start work on a task (agents run)
-Command:
-- `codeframe work start <task-id>`
-
-Required behavior:
-- Transitions task status to `IN_PROGRESS`.
-- Launches agent execution for that task (synchronously or via a worker loop).
-- Writes events to an event log (stdout + durable log).
-- Uses a working directory strategy (can be simple at MVP):
-  - either worktree/branch OR plain git branch OR patch staging
-- Must not require any web UI to observe progress.
-
-### 5) Observe status and events (human-in-loop visibility)
+### 2) AI-driven PRD generation and refinement
 Commands:
-- `codeframe status`
-- `codeframe events tail` (optional, but strongly recommended)
-- `codeframe work status <task-id>` (optional)
+- `codeframe prd generate` (primary - interactive AI session)
+- `codeframe prd add <file.md>` (secondary - existing file support)
+- `codeframe prd refine` (iterative improvement)
 
-Required behavior:
-- Shows current tasks grouped by status.
-- Shows most recent events for active task.
-- Makes blockers visible.
+Required behavior for `prd generate`:
+- AI conducts interactive discovery session asking:
+  - Project scope, objectives, and success criteria
+  - Target users, use cases, and user stories
+  - Technical constraints, preferences, and requirements
+  - Timeline, priorities, and MVP boundaries
+- Generates comprehensive PRD with:
+  - Executive summary and problem statement
+  - Functional requirements with acceptance criteria
+  - Technical specifications and architecture guidance
+  - User stories with priority ranking
+  - Success metrics and validation criteria
+- Provides iterative refinement based on user feedback
+- Stores PRD in durable state with versioning
+- Supports multiple PRD versions with change tracking
 
-### 6) Blockers (human-in-loop)
+### 3) Intelligent task generation with dependency analysis
 Commands:
-- `codeframe blockers`
-- `codeframe blocker answer <blocker-id> "<text>"`
-- `codeframe blocker resolve <blocker-id>` (optional)
+- `codeframe tasks generate` (enhanced with dependencies)
+- `codeframe tasks analyze` (dependency graph analysis)
 
 Required behavior:
-- Agents can emit blockers into state.
-- Human can answer.
-- Agent run continues after answer OR can be resumed with:
-  - `codeframe work resume <task-id>`
+- Decomposes PRD into granular, actionable tasks
+- Automatically detects and assigns task dependencies
+- Estimates effort and complexity for each task
+- Groups related tasks into logical workstreams
+- Prioritizes tasks based on dependencies and value delivery
+- Supports task templates for common patterns (setup, implementation, testing, deployment)
+- Generates implementation strategy per task (files to modify, approaches to consider)
+- Creates task dependency graph with critical path identification
 
-### 7) Gates / verification
-Command:
-- `codeframe review` OR `codeframe gates run`
-
-Required behavior:
-- Runs basic gates (minimal viable set):
-  - `pytest` (if present)
-  - lint (optional if already in repo)
-- Records results in state and event log.
-
-### 8) Produce an output artifact (patch or commit)
-Command:
-- `codeframe patch export` OR `codeframe commit create -m "<message>"`
-
-Required behavior:
-- Produces either:
-  - a patch file (preferred early for safety), OR
-  - a git commit on a branch
-- Records artifact path/commit hash in state.
-
-### 9) Checkpoint + summary
+### 4) Batch task execution with orchestration
 Commands:
-- `codeframe checkpoint create "<name>"`
-- `codeframe summary`
+- `codeframe work batch run` (primary - main execution pathway)
+- `codeframe work start <task-id>` (secondary - single task fallback)
+- `codeframe work batch status <batch-id>` (monitoring)
+- `codeframe work batch follow <batch-id>` (real-time streaming)
+
+Required behavior for batch execution:
+- Executes multiple tasks with intelligent scheduling:
+  - Serial execution for dependent tasks
+  - Parallel execution for independent tasks
+  - Auto-strategy using dependency graph analysis
+- Main orchestrator agent coordinates entire batch:
+  - Resource allocation and task scheduling
+  - Inter-task communication and data sharing
+  - Failure handling and retry logic
+  - Progress tracking and milestone reporting
+- Real-time event streaming with:
+  - Task start/completion events
+  - Progress indicators and ETAs
+  - Blocker detection and notification
+  - Dependency resolution updates
+- Supports execution strategies:
+  - `--strategy serial`: Linear execution
+  - `--strategy parallel`: Max parallelization
+  - `--strategy auto`: AI-optimized based on dependencies
+
+### 5) Enhanced human-in-loop blocker resolution
+Commands:
+- `codeframe blockers list` (enhanced with context)
+- `codeframe blocker answer <blocker-id> "<text>"` (with AI suggestions)
+- `codeframe blocker resolve <blocker-id>` (automated resolution options)
 
 Required behavior:
-- Creates a checkpoint snapshot of state.
-- Produces a short summary:
-  - PRD title
-  - tasks and statuses
-  - completed work and artifacts
-  - open blockers
+- AI provides contextual blocker resolution suggestions:
+  - Similar past blockers and their solutions
+  - Multiple solution approaches with trade-offs
+  - Impact analysis of resolution choices
+- Interactive blocker handling with:
+  - Rich context display (related code, PRD sections, task dependencies)
+  - Suggested responses ranked by confidence
+  - Impact on task timeline and dependencies
+- Learning system that:
+  - Records blocker patterns and resolutions
+  - Improves future blocker handling suggestions
+  - Reduces human intervention over time
+
+### 6) Integrated Git workflow and PR management
+Commands:
+- `codeframe work start <task-id> --create-branch` (branch management)
+- `codeframe pr create` (PR creation with AI descriptions)
+- `codeframe pr list` (PR status monitoring)
+- `codeframe pr merge <pr-id>` (PR merging with verification)
+
+Required behavior:
+- **Branch Management**:
+  - Automatic feature branch creation per task/batch
+  - Branch naming conventions with task/batch IDs
+  - Branch cleanup and organization utilities
+  - Conflict detection and resolution assistance
+- **PR Creation**:
+  - AI generates comprehensive PR descriptions:
+    - Summary of changes and business impact
+    - Technical implementation details
+    - Testing performed and results
+    - Breaking changes and migration notes
+  - Automated PR labeling and categorization
+  - Reviewer assignment based on code expertise
+- **PR Workflow**:
+  - Automated gate execution before merge (tests, lint, security scans)
+  - Integration with CI/CD pipelines
+  - Merge strategies (squash, merge, rebase) based on team preferences
+  - Post-merge cleanup and notification
+
+### 7) Enhanced verification and quality gates
+Commands:
+- `codeframe review` (comprehensive code review)
+- `codeframe gates run` (automated quality checks)
+- `codeframe quality report` (quality metrics and trends)
+
+Required behavior:
+- **Comprehensive Gate Suite**:
+  - Unit tests with coverage reporting
+  - Integration and end-to-end tests
+  - Static code analysis (lint, security, complexity)
+  - Performance regression tests
+  - Documentation and API specification validation
+- **AI-Assisted Code Review**:
+  - Automated code quality assessment
+  - Best practices compliance checking
+  - Potential bug detection and suggestions
+  - Code style and maintainability analysis
+- **Quality Tracking**:
+  - Trend analysis of code quality metrics
+  - Technical debt accumulation tracking
+  - Gate failure pattern identification
+
+### 8) Integrated artifact and commit management
+Commands:
+- `codeframe commit create -m "<message>"` (AI-generated commits)
+- `codeframe patch export` (safe patch generation)
+- `codeframe artifacts list` (artifact tracking)
+
+Required behavior:
+- **Smart Commits**:
+  - AI generates meaningful commit messages:
+    - Conventional commit format compliance
+    - Contextual change descriptions
+    - References to tasks/PRDs/issues
+    - Breaking change highlights
+  - Atomic commit boundaries and logical grouping
+- **Artifact Management**:
+  - Automatic patch generation for safety
+  - Commit linking to tasks and batches
+  - Rollback points and recovery procedures
+  - Integration with external artifact repositories
+
+### 9) Comprehensive checkpointing and state management
+Commands:
+- `codeframe checkpoint create "<name>"` (enhanced snapshots)
+- `codeframe checkpoint restore <checkpoint-id>` (workflow resume)
+- `codeframe summary` (comprehensive reporting)
+
+Required behavior:
+- **Rich Checkpoints**:
+  - Complete workspace state capture:
+    - Task statuses and progress
+    - Git refs and working directory state
+    - PRD versions and requirements
+    - Configuration and environment settings
+  - Incremental checkpoint optimization
+  - Cross-environment checkpoint portability
+- **Workflow Resume**:
+  - Seamless resumption from any checkpoint
+  - Context restoration for active agents
+  - Branch and working directory restoration
+  - Event log continuity and replay
+- **Comprehensive Reporting**:
+  - Executive summaries with progress metrics
+  - Detailed task completion reports
+  - Quality gate performance tracking
+  - Resource utilization and timing analysis
+  - Risk assessment and mitigation recommendations
 
 ---
 
 ## State Machine (authoritative)
 
 Statuses:
-- `BACKLOG`
-- `READY`
-- `IN_PROGRESS`
-- `BLOCKED`
-- `DONE`
-- `MERGED` (optional for later)
+- `BACKLOG` - Task identified but not ready for execution
+- `READY` - Task prepared and ready to start
+- `IN_PROGRESS` - Task actively being worked on
+- `BLOCKED` - Task waiting for human input or external dependency
+- `DONE` - Task completed locally, ready for review/integration
+- `IN_REVIEW` - Task changes in PR review process
+- `MERGED` - Task changes integrated into main branch
+- `FAILED` - Task execution failed (can be retried)
 
-Allowed transitions (minimal):
-- BACKLOG -> READY
-- READY -> IN_PROGRESS
-- IN_PROGRESS -> BLOCKED
-- BLOCKED -> IN_PROGRESS
-- IN_PROGRESS -> DONE
-- DONE -> READY (reopen)
-- DONE -> MERGED (later)
+Allowed transitions (comprehensive):
+- BACKLOG -> READY (task preparation complete)
+- READY -> IN_PROGRESS (work started)
+- IN_PROGRESS -> BLOCKED (awaiting input/dependency)
+- BLOCKED -> IN_PROGRESS (blocker resolved)
+- BLOCKED -> READY (returned to queue)
+- IN_PROGRESS -> DONE (local completion)
+- IN_PROGRESS -> FAILED (execution failure)
+- DONE -> IN_REVIEW (PR created/under review)
+- IN_REVIEW -> DONE (PR rejected, needs work)
+- IN_REVIEW -> MERGED (PR approved and merged)
+- DONE -> READY (reopened for additional work)
+- FAILED -> READY (retry after failure)
+- MERGED -> BACKLOG (reopened for enhancement)
 
 The CLI is the authority for transitions.
 UIs (web/electron) are views over this state machine, not the source of truth.
+
+**PR Workflow Integration:**
+- Tasks automatically transition to IN_REVIEW when `codeframe pr create` is run
+- PR status changes trigger corresponding task state updates
+- Merge actions transition tasks to MERGED status
+- Failed or rejected PRs return tasks to DONE for additional work
 
 ---
 
@@ -198,18 +337,77 @@ UIs (web/electron) are views over this state machine, not the source of truth.
 
 ---
 
-## Acceptance Checklist (must pass)
+## Acceptance Checklist (Enhanced MVP - must pass)
 
-**Status: ✅ Golden Path Complete (2025-01-14)**
+**Status: 🔄 Enhanced MVP In Progress**
 
-- [x] `codeframe init` creates durable state for a repo
-- [x] `codeframe prd add` stores PRD
-- [x] `codeframe tasks generate` creates tasks in state machine
-- [x] `codeframe work start <id>` runs an agent workflow and logs events
-- [x] `codeframe blockers` + `codeframe blocker answer` works
-- [x] `codeframe review` runs gates and records results
-- [x] `codeframe patch export` or `codeframe commit create` produces an artifact
-- [x] `codeframe checkpoint create` snapshots state
-- [x] No UI is required at any point
+### Phase 1: AI-Driven Project Discovery & PRD Generation
+- [ ] `codeframe init` with auto tech stack detection and environment setup
+- [ ] `codeframe prd generate` conducts interactive AI discovery session
+- [ ] AI asks contextual follow-up questions about requirements and constraints
+- [ ] Generates comprehensive PRD with technical specs and user stories
+- [ ] Supports iterative PRD refinement based on user feedback
+- [ ] PRD versioning and change tracking
 
-All Golden Path requirements are met. Next phase: Batch execution (see `BATCH_EXECUTION_PLAN.md`).
+### Phase 2: Intelligent Task Generation & Dependency Management
+- [ ] `codeframe tasks generate` creates dependency-aware task graphs
+- [ ] Automatic task prioritization and workstream grouping
+- [ ] Effort estimation and complexity analysis
+- [ ] Critical path identification and scheduling
+- [ ] Task template system for common implementation patterns
+
+### Phase 3: Batch Execution & Orchestration
+- [ ] `codeframe work batch run` as primary execution pathway
+- [ ] Serial, parallel, and auto-strategy execution modes
+- [ ] Real-time progress monitoring with event streaming
+- [ ] Inter-task dependency management and coordination
+- [ ] Main orchestrator agent manages entire batch workflow
+- [ ] Failure handling and automatic retry logic
+
+### Phase 4: Enhanced Human-in-the-Loop Blocker Resolution
+- [ ] Contextual blocker display with rich background information
+- [ ] AI-powered blocker resolution suggestions
+- [ ] Learning system for blocker pattern recognition
+- [ ] Similar past blocker solutions and recommendations
+- [ ] Impact analysis for different resolution approaches
+
+### Phase 5: Integrated Git Workflow & PR Management
+- [ ] Automatic branch creation per task/batch with naming conventions
+- [ ] AI-generated comprehensive PR descriptions with business impact
+- [ ] Automated PR labeling and reviewer assignment
+- [ ] Integration with CI/CD pipelines and gate execution
+- [ ] Multiple merge strategies (squash, merge, rebase) support
+- [ ] Post-merge cleanup and notification automation
+
+### Phase 6: Comprehensive Quality Gates & Verification
+- [ ] Expanded gate suite: unit tests, integration tests, security scans
+- [ ] AI-assisted code review with best practices checking
+- [ ] Quality metrics tracking and trend analysis
+- [ ] Technical debt accumulation monitoring
+- [ ] Automated regression detection and prevention
+
+### Phase 7: Advanced Checkpointing & State Management
+- [ ] Rich checkpoint snapshots with complete workspace state
+- [ ] Cross-environment checkpoint portability
+- [ ] Seamless workflow resumption from any checkpoint
+- [ ] Incremental checkpoint optimization
+- [ ] Executive reporting with progress and risk metrics
+
+### Cross-Cutting Requirements
+- [ ] All functionality works without FastAPI server running
+- [ ] No UI required at any point in the workflow
+- [ ] Event logging and streaming for observability
+- [ ] Comprehensive error handling and recovery procedures
+- [ ] Performance optimization for large repositories
+- [ ] Security best practices and credential management
+- [ ] Documentation and help commands for all new features
+
+**Definition of Done:**
+- All acceptance criteria must be satisfied
+- End-to-end workflow tested on real project repositories
+- Performance benchmarks meet minimum standards
+- Security audit passes all compliance checks
+- Documentation is complete and accurate
+- User feedback collected from beta testing validates approach
+
+Next phase: Production Readiness & Advanced Features (see roadmap planning).
