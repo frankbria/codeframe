@@ -6,11 +6,12 @@ and coordinating results.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import hashlib
 import json
-import os
-import signal
+import re
 import subprocess
 import sys
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -22,7 +23,7 @@ from codeframe.core.workspace import Workspace, get_db_connection
 from codeframe.core import events, tasks, blockers
 from codeframe.core.dependency_graph import create_execution_plan, CycleDetectedError
 from codeframe.core.dependency_analyzer import analyze_dependencies, apply_inferred_dependencies
-from codeframe.core.runtime import RunStatus, get_active_run, get_run, reset_blocked_run
+from codeframe.core.runtime import RunStatus, get_active_run, reset_blocked_run
 
 
 # Tactical patterns that the supervisor should auto-resolve
@@ -104,13 +105,13 @@ class SupervisorResolver:
         # Check cache first
         cache_key = self._get_cache_key(question)
         if cache_key in _decision_cache:
-            print(f"      [Supervisor] Using cached decision for similar question")
+            print("      [Supervisor] Using cached decision for similar question")
             self._auto_answer_blocker(blocker, _decision_cache[cache_key])
             return True
 
         # Check if question matches tactical patterns
         if self._is_tactical_question(question):
-            print(f"      [Supervisor] Detected tactical question, auto-resolving")
+            print("      [Supervisor] Detected tactical question, auto-resolving")
             resolution = self._generate_tactical_resolution(blocker.question)
             _decision_cache[cache_key] = resolution
             self._auto_answer_blocker(blocker, resolution)
@@ -120,14 +121,14 @@ class SupervisorResolver:
         classification = self._classify_with_supervision(blocker.question)
 
         if classification == "tactical":
-            print(f"      [Supervisor] Model classified as tactical, auto-resolving")
+            print("      [Supervisor] Model classified as tactical, auto-resolving")
             resolution = self._generate_tactical_resolution(blocker.question)
             _decision_cache[cache_key] = resolution
             self._auto_answer_blocker(blocker, resolution)
             return True
 
         # This is a genuine human-required decision
-        print(f"      [Supervisor] Question requires human input")
+        print("      [Supervisor] Question requires human input")
         return False
 
     def _is_tactical_question(self, question: str) -> bool:
@@ -228,6 +229,177 @@ def get_supervisor(workspace: Workspace) -> SupervisorResolver:
     if workspace.id not in _supervisors:
         _supervisors[workspace.id] = SupervisorResolver(workspace)
     return _supervisors[workspace.id]
+
+
+@dataclass
+class GlobalFix:
+    """A global fix that affects project-wide state.
+
+    Attributes:
+        error_signature: Hash of the normalized error
+        fix_description: What the fix does
+        fix_type: Type of fix (shell, edit, create)
+        command: Shell command (for shell type)
+        file_path: File to modify (for edit/create)
+        status: pending, executing, completed, failed
+    """
+    error_signature: str
+    fix_description: str
+    fix_type: str
+    command: Optional[str] = None
+    file_path: Optional[str] = None
+    status: str = "pending"
+    result: Optional[str] = None
+
+
+class GlobalFixCoordinator:
+    """Coordinates global fixes across parallel agents.
+
+    When multiple agents hit the same global issue (e.g., missing local package),
+    this coordinator ensures:
+    1. Only ONE fix is executed (not N times for N agents)
+    2. Other agents wait for the fix to complete
+    3. Completed fixes are cached to skip redundant work
+
+    Thread-safe for parallel batch execution.
+    """
+
+    def __init__(self, workspace: Workspace):
+        self.workspace = workspace
+        self._lock = threading.Lock()
+        self._pending: dict[str, GlobalFix] = {}   # error_sig -> GlobalFix
+        self._completed: dict[str, GlobalFix] = {} # error_sig -> GlobalFix (succeeded)
+        self._condition = threading.Condition(self._lock)
+
+    def _hash_error(self, error: str) -> str:
+        """Create a stable hash for an error message.
+
+        Normalizes variable parts (line numbers, paths) before hashing.
+        """
+        # Remove line numbers
+        normalized = re.sub(r"line \d+", "line N", error)
+        # Remove specific file paths but keep filename
+        normalized = re.sub(r"/[^\s:]+/([^/\s:]+)", r"\1", normalized)
+        # Remove memory addresses
+        normalized = re.sub(r"0x[0-9a-fA-F]+", "0xADDR", normalized)
+        return hashlib.sha256(normalized.encode()).hexdigest()[:16]
+
+    def request_fix(
+        self,
+        error: str,
+        fix_type: str,
+        fix_description: str,
+        command: Optional[str] = None,
+        file_path: Optional[str] = None,
+        task_id: Optional[str] = None,
+    ) -> tuple[str, bool]:
+        """Request a global fix from the coordinator.
+
+        Returns:
+            Tuple of (status, should_execute):
+            - ("already_completed", False): Fix was already done, just retry verification
+            - ("pending", False): Another agent is handling it, wait and retry
+            - ("execute", True): You are responsible for executing this fix
+        """
+        error_sig = self._hash_error(error)
+
+        with self._lock:
+            # Already completed successfully?
+            if error_sig in self._completed:
+                print("  [GlobalFix] Fix already completed for this error")
+                return ("already_completed", False)
+
+            # Already being worked on?
+            if error_sig in self._pending:
+                print("  [GlobalFix] Another agent is fixing this, waiting...")
+                # Wait for completion (with timeout)
+                return ("pending", False)
+
+            # This agent will handle it
+            fix = GlobalFix(
+                error_signature=error_sig,
+                fix_description=fix_description,
+                fix_type=fix_type,
+                command=command,
+                file_path=file_path,
+                status="executing",
+            )
+            self._pending[error_sig] = fix
+            print(f"  [GlobalFix] Agent taking ownership: {fix_description[:60]}...")
+            return ("execute", True)
+
+    def report_fix_result(
+        self,
+        error: str,
+        success: bool,
+        result_message: Optional[str] = None,
+    ) -> None:
+        """Report the result of executing a global fix.
+
+        Args:
+            error: Original error message
+            success: Whether the fix succeeded
+            result_message: Optional details about the result
+        """
+        error_sig = self._hash_error(error)
+
+        with self._lock:
+            if error_sig not in self._pending:
+                return  # Not our fix
+
+            fix = self._pending.pop(error_sig)
+            fix.status = "completed" if success else "failed"
+            fix.result = result_message
+
+            if success:
+                self._completed[error_sig] = fix
+                print("  [GlobalFix] Fix completed successfully")
+            else:
+                print(f"  [GlobalFix] Fix failed: {result_message}")
+
+            # Notify any waiting agents
+            self._condition.notify_all()
+
+    def wait_for_fix(self, error: str, timeout: float = 60.0) -> bool:
+        """Wait for another agent to complete a fix.
+
+        Args:
+            error: Error message we're waiting on
+            timeout: Max seconds to wait
+
+        Returns:
+            True if fix was completed successfully, False otherwise
+        """
+        error_sig = self._hash_error(error)
+
+        with self._condition:
+            start = datetime.now(timezone.utc)
+            while error_sig in self._pending:
+                remaining = timeout - (datetime.now(timezone.utc) - start).total_seconds()
+                if remaining <= 0:
+                    print("  [GlobalFix] Timeout waiting for fix")
+                    return False
+                self._condition.wait(timeout=remaining)
+
+            # Check if it completed successfully
+            return error_sig in self._completed
+
+    def is_fixed(self, error: str) -> bool:
+        """Check if an error has already been fixed."""
+        error_sig = self._hash_error(error)
+        with self._lock:
+            return error_sig in self._completed
+
+
+# Global coordinator instances per workspace
+_coordinators: dict[str, GlobalFixCoordinator] = {}
+
+
+def get_fix_coordinator(workspace: Workspace) -> GlobalFixCoordinator:
+    """Get or create a global fix coordinator for a workspace."""
+    if workspace.id not in _coordinators:
+        _coordinators[workspace.id] = GlobalFixCoordinator(workspace)
+    return _coordinators[workspace.id]
 
 
 def _utc_now() -> datetime:
@@ -370,13 +542,13 @@ def start_batch(
     if strategy == "auto":
         # Use LLM to infer dependencies, then execute in parallel
         try:
-            print(f"\nAnalyzing task dependencies with LLM...")
+            print("\nAnalyzing task dependencies with LLM...")
             dependencies = analyze_dependencies(workspace, task_ids)
 
             # Show inferred dependencies
             deps_with_values = {k: v for k, v in dependencies.items() if v}
             if deps_with_values:
-                print(f"Inferred dependencies:")
+                print("Inferred dependencies:")
                 for tid, deps in deps_with_values.items():
                     task = tasks.get(workspace, tid)
                     task_title = task.title[:40] if task else tid[:8]
@@ -386,7 +558,7 @@ def start_batch(
                         dep_titles.append(dep_task.title[:30] if dep_task else d[:8])
                     print(f"  {task_title} <- {', '.join(dep_titles)}")
             else:
-                print(f"No dependencies inferred - tasks appear independent")
+                print("No dependencies inferred - tasks appear independent")
 
             # Apply dependencies temporarily for this execution
             # (doesn't persist to database unless explicitly requested)
@@ -396,18 +568,18 @@ def start_batch(
             _execute_parallel(workspace, batch, on_event)
         except CycleDetectedError as e:
             print(f"Error: {e}")
-            print(f"Falling back to serial execution")
+            print("Falling back to serial execution")
             _execute_serial(workspace, batch, on_event)
         except Exception as e:
             print(f"Dependency analysis failed: {e}")
-            print(f"Falling back to serial execution")
+            print("Falling back to serial execution")
             _execute_serial(workspace, batch, on_event)
     elif strategy == "parallel" and max_parallel > 1:
         try:
             _execute_parallel(workspace, batch, on_event)
         except CycleDetectedError as e:
             print(f"Error: {e}")
-            print(f"Falling back to serial execution")
+            print("Falling back to serial execution")
             _execute_serial(workspace, batch, on_event)
     else:
         _execute_serial(workspace, batch, on_event)
@@ -763,7 +935,7 @@ def _execute_serial_resume(
                 {"batch_id": batch.id, "task_id": task_id},
                 print_event=True,
             )
-            print(f"      ⊘ Still blocked")
+            print("      ⊘ Still blocked")
         else:
             failed_count += 1
             events.emit_for_workspace(
@@ -957,7 +1129,7 @@ def _execute_retries(
 
     # Print retry summary
     if final_failed == 0:
-        print(f"\n✓ All tasks succeeded after retries")
+        print("\n✓ All tasks succeeded after retries")
     else:
         print(f"\n⚠ {final_failed} task(s) still failing after {max_retries} retries")
 
@@ -1014,7 +1186,7 @@ def _execute_serial(
             supervisor = get_supervisor(workspace)
             if supervisor.try_resolve_blocked_task(task_id):
                 # Supervisor resolved the blocker - retry the task
-                print(f"      [Supervisor] Retrying task after auto-resolution...")
+                print("      [Supervisor] Retrying task after auto-resolution...")
                 result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
         # Record result
@@ -1030,7 +1202,7 @@ def _execute_serial(
                 {"batch_id": batch.id, "task_id": task_id},
                 print_event=True,
             )
-            print(f"      ✓ Completed")
+            print("      ✓ Completed")
         elif result_status == RunStatus.BLOCKED.value:
             blocked_count += 1
             events.emit_for_workspace(
@@ -1039,7 +1211,7 @@ def _execute_serial(
                 {"batch_id": batch.id, "task_id": task_id},
                 print_event=True,
             )
-            print(f"      ⊘ Blocked (requires human input)")
+            print("      ⊘ Blocked (requires human input)")
         else:
             failed_count += 1
             events.emit_for_workspace(
@@ -1052,7 +1224,7 @@ def _execute_serial(
 
             # Check on_failure behavior
             if batch.on_failure == OnFailure.STOP:
-                print(f"\nStopping batch due to --on-failure=stop")
+                print("\nStopping batch due to --on-failure=stop")
                 break
 
         if on_event:
@@ -1060,7 +1232,7 @@ def _execute_serial(
 
     # Determine final batch status
     total = len(batch.task_ids)
-    executed = completed_count + failed_count + blocked_count
+    completed_count + failed_count + blocked_count
 
     if completed_count == total:
         batch.status = BatchStatus.COMPLETED
@@ -1126,7 +1298,7 @@ def _execute_parallel(
     if plan.can_run_parallel():
         print(f"Parallelizable groups found - using max {batch.max_parallel} workers")
     else:
-        print(f"All tasks are sequential (chain dependencies)")
+        print("All tasks are sequential (chain dependencies)")
 
     completed_count = 0
     failed_count = 0
@@ -1141,7 +1313,7 @@ def _execute_parallel(
 
         # Check if any previous failure should stop execution
         if batch.on_failure == OnFailure.STOP and failed_count > 0:
-            print(f"\nStopping batch due to --on-failure=stop")
+            print("\nStopping batch due to --on-failure=stop")
             break
 
         group_size = len(group)
@@ -1189,7 +1361,7 @@ def _execute_parallel(
 
     # Determine final batch status
     total = len(batch.task_ids)
-    executed = completed_count + failed_count + blocked_count
+    completed_count + failed_count + blocked_count
 
     if completed_count == total:
         batch.status = BatchStatus.COMPLETED
@@ -1280,7 +1452,7 @@ def _execute_single_task(
         supervisor = get_supervisor(workspace)
         if supervisor.try_resolve_blocked_task(task_id):
             # Supervisor resolved the blocker - retry the task
-            print(f"      [Supervisor] Retrying task after auto-resolution...")
+            print("      [Supervisor] Retrying task after auto-resolution...")
             result_status = _execute_task_subprocess(workspace, task_id, batch.id)
 
     # Record result
@@ -1295,7 +1467,7 @@ def _execute_single_task(
             {"batch_id": batch.id, "task_id": task_id},
             print_event=True,
         )
-        print(f"      ✓ Completed")
+        print("      ✓ Completed")
     elif result_status == RunStatus.BLOCKED.value:
         events.emit_for_workspace(
             workspace,
@@ -1303,7 +1475,7 @@ def _execute_single_task(
             {"batch_id": batch.id, "task_id": task_id},
             print_event=True,
         )
-        print(f"      ⊘ Blocked (requires human input)")
+        print("      ⊘ Blocked (requires human input)")
     else:
         events.emit_for_workspace(
             workspace,

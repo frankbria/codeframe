@@ -15,9 +15,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, TYPE_CHECKING
 
 import re
+
+if TYPE_CHECKING:
+    from codeframe.core.conductor import GlobalFixCoordinator
 
 from codeframe.core.workspace import Workspace
 from codeframe.core.context import ContextLoader, TaskContext
@@ -69,6 +72,35 @@ class AgentStatus(str, Enum):
     VERIFYING = "verifying"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class FixScope(str, Enum):
+    """Scope of a proposed fix - determines coordination requirements.
+
+    LOCAL: Agent can execute autonomously (files it created, its own tests)
+    GLOBAL: Requires Conductor coordination (config files, installs, shared code)
+    """
+
+    LOCAL = "local"
+    GLOBAL = "global"
+
+
+# Files that require global coordination when modified
+GLOBAL_SCOPE_FILES = {
+    "pyproject.toml",
+    "package.json",
+    "tsconfig.json",
+    "Cargo.toml",
+    "go.mod",
+    "requirements.txt",
+    "setup.py",
+    "setup.cfg",
+    ".env",
+    ".env.example",
+    "Dockerfile",
+    "docker-compose.yml",
+    "Makefile",
+}
 
 
 @dataclass
@@ -286,6 +318,7 @@ class Agent:
         on_event: Optional[Callable[[str, dict], None]] = None,
         debug: bool = False,
         verbose: bool = False,
+        fix_coordinator: Optional["GlobalFixCoordinator"] = None,
     ):
         """Initialize the agent.
 
@@ -297,6 +330,7 @@ class Agent:
             on_event: Optional callback for agent events
             debug: If True, write detailed debug log to workspace
             verbose: If True, print detailed progress to stdout
+            fix_coordinator: Optional coordinator for global fixes (for parallel execution)
         """
         self.workspace = workspace
         self.llm = llm_provider
@@ -305,6 +339,7 @@ class Agent:
         self.on_event = on_event
         self.debug = debug
         self.verbose = verbose
+        self.fix_coordinator = fix_coordinator
 
         self.state = AgentState()
         self.context: Optional[TaskContext] = None
@@ -829,6 +864,117 @@ class Agent:
                 pass
         return False
 
+    def _build_self_correction_context(self) -> str:
+        """Build rich context for intelligent self-correction.
+
+        Provides the LLM with project structure, config files, and file tree
+        so it can reason about local vs external packages, project layout, etc.
+
+        Returns:
+            Formatted context string for the self-correction prompt
+        """
+        sections = []
+
+        # Project structure overview
+        sections.append("## Project Structure")
+        if self.context and self.context.file_tree:
+            # Group files by directory
+            dirs: dict[str, list[str]] = {}
+            for f in self.context.file_tree[:50]:  # Limit to 50 files
+                from pathlib import Path as P
+                dir_path = str(P(f.path).parent)
+                if dir_path not in dirs:
+                    dirs[dir_path] = []
+                dirs[dir_path].append(P(f.path).name)
+
+            for dir_path in sorted(dirs.keys())[:15]:
+                sections.append(f"  {dir_path}/")
+                for filename in dirs[dir_path][:8]:
+                    sections.append(f"    {filename}")
+                if len(dirs[dir_path]) > 8:
+                    sections.append(f"    ... ({len(dirs[dir_path]) - 8} more)")
+        sections.append("")
+
+        # Key config files content
+        config_files = ["pyproject.toml", "package.json", "Cargo.toml", "go.mod", "setup.py"]
+        for config_name in config_files:
+            config_path = self.workspace.repo_path / config_name
+            if config_path.exists():
+                try:
+                    content = config_path.read_text()[:2000]  # Limit size
+                    sections.append(f"## {config_name}")
+                    sections.append("```")
+                    sections.append(content)
+                    sections.append("```")
+                    sections.append("")
+                except Exception:
+                    pass
+
+        # Tech stack info if available
+        if self.context and self.context.tech_stack:
+            sections.append("## Tech Stack")
+            sections.append(self.context.tech_stack)
+            sections.append("")
+
+        # Files this agent created/modified in this run
+        if self.state.step_results:
+            modified_files = set()
+            for result in self.state.step_results:
+                for change in result.file_changes:
+                    modified_files.add(str(change.path))
+            if modified_files:
+                sections.append("## Files Modified by This Task")
+                for f in sorted(modified_files)[:20]:
+                    sections.append(f"  - {f}")
+                sections.append("")
+
+        return "\n".join(sections)
+
+    def _classify_fix_scope(self, fix: dict) -> FixScope:
+        """Classify whether a fix is local or global.
+
+        Args:
+            fix: Fix dictionary with 'file', 'action', 'command' keys
+
+        Returns:
+            FixScope.LOCAL or FixScope.GLOBAL
+        """
+        action = fix.get("action", "")
+        file_path = fix.get("file", "")
+        command = fix.get("command", "")
+
+        # Shell commands that modify project state are global
+        if action == "shell":
+            global_commands = ["pip install", "npm install", "uv add", "cargo add",
+                               "go get", "yarn add", "pnpm add", "poetry add"]
+            for gc in global_commands:
+                if gc in command:
+                    return FixScope.GLOBAL
+
+        # Creating new directories at project root is global
+        if action == "create_directory":
+            # Root-level or src/ directories are global
+            if "/" not in file_path or file_path.startswith("src/"):
+                return FixScope.GLOBAL
+
+        # Modifying config files is always global
+        from pathlib import Path as P
+        filename = P(file_path).name if file_path else ""
+        if filename in GLOBAL_SCOPE_FILES:
+            return FixScope.GLOBAL
+
+        # Check if file was created by this agent in this run
+        if self.state.step_results:
+            files_this_run = set()
+            for result in self.state.step_results:
+                for change in result.file_changes:
+                    files_this_run.add(str(change.path))
+            if file_path in files_this_run:
+                return FixScope.LOCAL
+
+        # Default to global for safety
+        return FixScope.GLOBAL
+
     def _attempt_verification_fix(self, gate_result: GateResult) -> bool:
         """Attempt to self-correct verification failures.
 
@@ -910,36 +1056,64 @@ class Agent:
             self._create_escalation_blocker(error_summary, escalation)
             return False  # Stop trying, blocker created
 
-        # Step 5: Use LLM to generate a fix plan
+        # Step 5: Use LLM to generate a fix plan with full context
+        # Build rich context so LLM can reason about project structure
+        project_context = self._build_self_correction_context()
+
         # Include info about already-tried fixes to avoid repetition
         attempted_fixes = self.fix_tracker.get_attempted_fixes(error_summary)
         already_tried = ""
         if attempted_fixes:
             already_tried = "\n\nALREADY TRIED (DO NOT REPEAT):\n" + "\n".join(f"- {f}" for f in attempted_fixes)
 
-        fix_prompt = f"""You are fixing verification errors in code you wrote. The following checks failed:
+        fix_prompt = f"""You are an intelligent agent fixing verification errors. You have access to the full project context below.
+
+{project_context}
+
+## Errors to Fix
 
 {error_summary}
 
-Generate specific file edits to fix these errors. Return a JSON object:
+## Instructions
+
+Analyze the errors and the project structure. Determine the root cause and propose fixes.
+
+You can use ANY of these actions:
+- "edit": Modify existing file (requires old_code, new_code)
+- "create": Create new file (requires content)
+- "shell": Run a shell command (requires command)
+
+Return a JSON object:
 {{
-    "analysis": "Brief explanation of what went wrong",
+    "analysis": "What's the root cause? Is this a local code issue or a project configuration issue?",
     "fixes": [
         {{
+            "action": "edit|create|shell",
+            "scope": "local|global",
+            "description": "What this fix does",
             "file": "path/to/file.py",
-            "action": "edit",
-            "description": "What to fix",
-            "old_code": "exact code to find",
-            "new_code": "replacement code"
+            "old_code": "for edits only",
+            "new_code": "for edits only",
+            "content": "for creates only",
+            "command": "for shell only"
         }}
     ]
 }}
 
+## Scope Classification (IMPORTANT for parallel execution)
+- "local": Fixes to files YOU created in this task, your own tests, formatting fixes
+- "global": Config files (pyproject.toml, package.json), install commands, new packages, shared code
+
+## Common Patterns
+- ModuleNotFoundError for LOCAL package (src/foo exists): Use "uv pip install -e ." or fix pyproject.toml
+- ModuleNotFoundError for EXTERNAL package: Use "uv pip install <package>"
+- Import errors in your code: Edit the file to fix imports
+- Syntax errors: Edit the file to fix syntax
+
 IMPORTANT:
-- Only fix errors shown above, don't refactor unrelated code
-- For missing files, use action: "create" with "content" instead of old_code/new_code
-- Be precise with old_code - it must match exactly what's in the file
-- Return valid JSON only, no additional text{already_tried}"""
+- Check if the module exists locally before trying to install it
+- Be precise with old_code - it must match exactly
+- Return valid JSON only{already_tried}"""
 
         try:
             self._verbose_print("[SELFCORRECT] Asking LLM for fixes...")
@@ -1030,6 +1204,85 @@ IMPORTANT:
                             self._debug_log(f"Deleted {file_path}", level="INFO")
                             applied += 1
                             fix_succeeded = True
+
+                    elif action == "shell":
+                        # Run shell command
+                        command = fix.get("command", "")
+                        if command and not self.dry_run:
+                            import subprocess
+                            scope = self._classify_fix_scope(fix)
+                            self._verbose_print(f"[SELFCORRECT] Running shell ({scope.value}): {command[:80]}...")
+
+                            # Global scope commands should go through Coordinator
+                            if scope == FixScope.GLOBAL and self.fix_coordinator:
+                                status, should_execute = self.fix_coordinator.request_fix(
+                                    error=error_summary,
+                                    fix_type="shell",
+                                    fix_description=fix_desc,
+                                    command=command,
+                                    task_id=self.state.task_id,
+                                )
+                                if status == "already_completed":
+                                    # Another agent already fixed this
+                                    self._verbose_print("[SELFCORRECT] Fix already done by another agent")
+                                    applied += 1
+                                    fix_succeeded = True
+                                elif status == "pending":
+                                    # Wait for another agent to finish
+                                    self._verbose_print("[SELFCORRECT] Waiting for another agent's fix...")
+                                    if self.fix_coordinator.wait_for_fix(error_summary, timeout=60.0):
+                                        applied += 1
+                                        fix_succeeded = True
+                                    else:
+                                        self._debug_log("Timeout waiting for global fix", level="WARN")
+                                elif should_execute:
+                                    # We are responsible for executing
+                                    try:
+                                        result = subprocess.run(
+                                            command,
+                                            shell=True,
+                                            cwd=self.workspace.repo_path,
+                                            capture_output=True,
+                                            text=True,
+                                            timeout=120,
+                                        )
+                                        success = result.returncode == 0
+                                        self.fix_coordinator.report_fix_result(
+                                            error_summary, success, result.stderr[:200] if not success else None
+                                        )
+                                        if success:
+                                            self._debug_log(f"Global shell command succeeded: {command}", level="INFO")
+                                            applied += 1
+                                            fix_succeeded = True
+                                        else:
+                                            self._debug_log(f"Global shell command failed: {result.stderr[:200]}", level="WARN")
+                                    except Exception as shell_err:
+                                        self.fix_coordinator.report_fix_result(error_summary, False, str(shell_err))
+                                        self._debug_log(f"Global shell error: {shell_err}", level="WARN")
+                            else:
+                                # Local scope - execute directly
+                                try:
+                                    result = subprocess.run(
+                                        command,
+                                        shell=True,
+                                        cwd=self.workspace.repo_path,
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=120,
+                                    )
+                                    if result.returncode == 0:
+                                        self._debug_log(f"Shell command succeeded: {command}", level="INFO")
+                                        applied += 1
+                                        fix_succeeded = True
+                                    else:
+                                        self._debug_log(
+                                            f"Shell command failed: {result.stderr[:200]}",
+                                            level="WARN"
+                                        )
+                                except subprocess.TimeoutExpired:
+                                    self._debug_log(f"Shell command timed out: {command}", level="WARN")
+                                except Exception as shell_err:
+                                    self._debug_log(f"Shell command error: {shell_err}", level="WARN")
 
                     # Record outcome
                     self.fix_tracker.record_outcome(

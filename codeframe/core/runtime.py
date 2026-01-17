@@ -18,6 +18,7 @@ from codeframe.core import tasks, events
 
 if TYPE_CHECKING:
     from codeframe.core.agent import AgentState
+    from codeframe.core.conductor import GlobalFixCoordinator
 
 
 def _utc_now() -> datetime:
@@ -557,6 +558,7 @@ def execute_agent(
     dry_run: bool = False,
     debug: bool = False,
     verbose: bool = False,
+    fix_coordinator: Optional["GlobalFixCoordinator"] = None,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -569,6 +571,7 @@ def execute_agent(
         dry_run: If True, don't make actual changes
         debug: If True, write detailed debug log to workspace
         verbose: If True, print detailed progress to stdout
+        fix_coordinator: Optional coordinator for global fixes (for parallel execution)
 
     Returns:
         Final AgentState after execution
@@ -606,6 +609,7 @@ def execute_agent(
         on_event=on_agent_event,
         debug=debug,
         verbose=verbose,
+        fix_coordinator=fix_coordinator,
     )
 
     state = agent.run(run.task_id)
@@ -626,6 +630,7 @@ def execute_agent(
                 dry_run=dry_run,
                 on_event=on_agent_event,
                 debug=debug,
+                fix_coordinator=fix_coordinator,
             )
             state = agent.run(run.task_id)
 
@@ -634,7 +639,7 @@ def execute_agent(
         from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
 
         print(f"\n{'='*60}")
-        print(f"[DIAG] Agent FAILED - analyzing for supervisor intervention")
+        print("[DIAG] Agent FAILED - analyzing for supervisor intervention")
         print(f"[DIAG] state.blocker: {state.blocker}")
         print(f"[DIAG] state.step_results count: {len(state.step_results) if state.step_results else 0}")
         print(f"[DIAG] state.gate_results count: {len(state.gate_results) if state.gate_results else 0}")
@@ -697,6 +702,7 @@ def execute_agent(
                 dry_run=dry_run,
                 on_event=on_agent_event,
                 debug=debug,
+                fix_coordinator=fix_coordinator,
             )
             state = agent.run(run.task_id)
             print(f"[DIAG] Retry completed with status: {state.status}")

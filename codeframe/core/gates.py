@@ -178,8 +178,8 @@ def _detect_available_gates(repo_path: Path) -> list[str]:
        (repo_path / "tests").is_dir():
         gates.append("pytest")
 
-    # Python: ruff
-    if shutil.which("ruff") and (
+    # Python: ruff (available via direct command or via uv)
+    if (shutil.which("ruff") or shutil.which("uv")) and (
         (repo_path / "pyproject.toml").exists() or
         (repo_path / "ruff.toml").exists() or
         any(repo_path.glob("*.py"))
@@ -270,7 +270,8 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
 
     start = time.time()
 
-    if not shutil.which("ruff"):
+    # Check if ruff is available (either directly or via uv)
+    if not shutil.which("ruff") and not shutil.which("uv"):
         return GateCheck(
             name="ruff",
             status=GateStatus.SKIPPED,
@@ -278,8 +279,15 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
         )
 
     try:
+        # Use uv run ruff if uv is available (runs in target project's environment)
+        # This ensures ruff runs with the target project's dependencies
+        if shutil.which("uv"):
+            cmd = ["uv", "run", "ruff", "check", "."]
+        else:
+            cmd = ["ruff", "check", "."]
+
         result = subprocess.run(
-            ["ruff", "check", "."],
+            cmd,
             cwd=repo_path,
             capture_output=True,
             text=True,
