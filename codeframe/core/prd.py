@@ -565,7 +565,7 @@ def diff_versions(
         lines2,
         fromfile=f"Version {version1}",
         tofile=f"Version {version2}",
-        lineterm="",
+        lineterm="\n",
     )
 
     return "".join(diff)
