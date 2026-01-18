@@ -79,7 +79,7 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
-    # PRD storage
+    # PRD storage with versioning support
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS prds (
             id TEXT PRIMARY KEY,
@@ -88,7 +88,11 @@ def _init_database(db_path: Path) -> None:
             content TEXT NOT NULL,
             metadata TEXT,
             created_at TEXT NOT NULL,
-            FOREIGN KEY (workspace_id) REFERENCES workspace(id)
+            version INTEGER DEFAULT 1,
+            parent_id TEXT,
+            change_summary TEXT,
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+            FOREIGN KEY (parent_id) REFERENCES prds(id)
         )
     """)
 
@@ -244,6 +248,19 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     columns = {row[1] for row in cursor.fetchall()}
     if "tech_stack" not in columns:
         cursor.execute("ALTER TABLE workspace ADD COLUMN tech_stack TEXT")
+        conn.commit()
+
+    # Add versioning columns to prds table if they don't exist
+    cursor.execute("PRAGMA table_info(prds)")
+    prd_columns = {row[1] for row in cursor.fetchall()}
+    if "version" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN version INTEGER DEFAULT 1")
+        conn.commit()
+    if "parent_id" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN parent_id TEXT")
+        conn.commit()
+    if "change_summary" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN change_summary TEXT")
         conn.commit()
 
     conn.close()

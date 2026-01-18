@@ -641,6 +641,10 @@ def prd_add(
 
 @prd_app.command("show")
 def prd_show(
+    prd_id: Optional[str] = typer.Argument(
+        None,
+        help="PRD ID to show (defaults to latest)",
+    ),
     repo_path: Optional[Path] = typer.Option(
         None,
         "--workspace", "-w",
@@ -648,7 +652,14 @@ def prd_show(
     ),
     full: bool = typer.Option(False, "--full", "-f", help="Show full PRD content"),
 ) -> None:
-    """Display the current PRD."""
+    """Display a PRD.
+
+    Shows the latest PRD by default, or a specific PRD by ID.
+
+    Example:
+        codeframe prd show
+        codeframe prd show abc123-def456 --full
+    """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import prd
 
@@ -656,7 +667,14 @@ def prd_show(
 
     try:
         workspace = get_workspace(workspace_path)
-        record = prd.get_latest(workspace)
+
+        if prd_id:
+            record = prd.get_by_id(workspace, prd_id)
+            if not record:
+                console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+                raise typer.Exit(1)
+        else:
+            record = prd.get_latest(workspace)
 
         if not record:
             console.print("[yellow]No PRD found.[/yellow]")
@@ -680,6 +698,387 @@ def prd_show(
     except FileNotFoundError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@prd_app.command("list")
+def prd_list(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """List all PRDs in the workspace.
+
+    Example:
+        codeframe prd list
+        codeframe prd list -w ./my-project
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+        records = prd.list_all(workspace)
+
+        if not records:
+            console.print("[yellow]No PRDs found.[/yellow]")
+            console.print("Add one with: codeframe prd add <file.md>")
+            return
+
+        console.print(f"\n[bold]PRDs ({len(records)}):[/bold]\n")
+        for record in records:
+            console.print(f"  {record.id[:8]}...  [bold]{record.title}[/bold]")
+            console.print(f"           [dim]Added: {record.created_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
+            console.print()
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@prd_app.command("delete")
+def prd_delete(
+    prd_id: str = typer.Argument(
+        ...,
+        help="PRD ID to delete",
+    ),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force", "-f",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """Delete a PRD from the workspace.
+
+    Example:
+        codeframe prd delete abc123-def456
+        codeframe prd delete abc123-def456 --force
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd
+    from codeframe.core.events import emit_for_workspace, EventType
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Get the PRD first to show title
+        record = prd.get_by_id(workspace, prd_id)
+        if not record:
+            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            raise typer.Exit(1)
+
+        # Confirm unless --force
+        if not force:
+            confirm = typer.confirm(f"Delete PRD '{record.title}'?")
+            if not confirm:
+                console.print("Cancelled.")
+                return
+
+        # Delete
+        prd.delete(workspace, prd_id)
+
+        # Emit event
+        emit_for_workspace(
+            workspace,
+            EventType.PRD_DELETED,
+            {"prd_id": prd_id, "title": record.title},
+            print_event=False,
+        )
+
+        console.print(f"[green]PRD deleted:[/green] {record.title}")
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@prd_app.command("export")
+def prd_export(
+    prd_id: str = typer.Argument(
+        ...,
+        help="PRD ID to export (use 'latest' for most recent)",
+    ),
+    file_path: Path = typer.Argument(
+        ...,
+        help="Output file path",
+    ),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force", "-f",
+        help="Overwrite existing file",
+    ),
+) -> None:
+    """Export a PRD to a file.
+
+    Use 'latest' as the PRD ID to export the most recent PRD.
+
+    Example:
+        codeframe prd export abc123-def456 ./output.md
+        codeframe prd export latest ./prd-backup.md
+        codeframe prd export abc123 ./output.md --force
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Handle 'latest' as special case
+        if prd_id.lower() == "latest":
+            record = prd.get_latest(workspace)
+            if not record:
+                console.print("[red]Error:[/red] No PRDs found in workspace")
+                raise typer.Exit(1)
+            actual_id = record.id
+        else:
+            actual_id = prd_id
+
+        # Check if file exists
+        if file_path.exists() and not force:
+            console.print(f"[red]Error:[/red] File already exists: {file_path}")
+            console.print("Use --force to overwrite")
+            raise typer.Exit(1)
+
+        # Export
+        success = prd.export_to_file(workspace, actual_id, file_path, force=force)
+
+        if not success:
+            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            raise typer.Exit(1)
+
+        console.print(f"[green]PRD exported:[/green] {file_path}")
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@prd_app.command("versions")
+def prd_versions(
+    prd_id: str = typer.Argument(
+        ...,
+        help="PRD ID to show version history for",
+    ),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show version history for a PRD.
+
+    Example:
+        codeframe prd versions abc123-def456
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+        versions = prd.get_versions(workspace, prd_id)
+
+        if not versions:
+            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold]Version History ({len(versions)} versions):[/bold]\n")
+        for v in versions:
+            is_latest = v == versions[0]
+            marker = " [green](latest)[/green]" if is_latest else ""
+            console.print(f"  v{v.version}{marker}")
+            console.print(f"    [dim]ID: {v.id[:8]}...[/dim]")
+            console.print(f"    [dim]Date: {v.created_at.strftime('%Y-%m-%d %H:%M')}[/dim]")
+            if v.change_summary:
+                console.print(f"    [dim]Changes: {v.change_summary}[/dim]")
+            console.print()
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@prd_app.command("diff")
+def prd_diff(
+    prd_id: str = typer.Argument(
+        ...,
+        help="PRD ID",
+    ),
+    version1: int = typer.Argument(
+        ...,
+        help="First version number",
+    ),
+    version2: int = typer.Argument(
+        ...,
+        help="Second version number",
+    ),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Show diff between two PRD versions.
+
+    Example:
+        codeframe prd diff abc123-def456 1 2
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+        diff = prd.diff_versions(workspace, prd_id, version1, version2)
+
+        if diff is None:
+            console.print(f"[red]Error:[/red] Version not found for PRD {prd_id}")
+            raise typer.Exit(1)
+
+        if not diff:
+            console.print("[yellow]No differences between versions.[/yellow]")
+            return
+
+        console.print(f"\n[bold]Diff: v{version1} → v{version2}[/bold]\n")
+        # Color the diff output
+        for line in diff.splitlines():
+            if line.startswith("+") and not line.startswith("+++"):
+                console.print(f"[green]{line}[/green]")
+            elif line.startswith("-") and not line.startswith("---"):
+                console.print(f"[red]{line}[/red]")
+            elif line.startswith("@@"):
+                console.print(f"[cyan]{line}[/cyan]")
+            else:
+                console.print(line)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@prd_app.command("update")
+def prd_update(
+    prd_id: str = typer.Argument(
+        ...,
+        help="PRD ID to update",
+    ),
+    file_path: Path = typer.Argument(
+        ...,
+        help="Path to new PRD content file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+    message: str = typer.Option(
+        ...,
+        "--message", "-m",
+        help="Change summary describing the update",
+    ),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Create a new version of a PRD with updated content.
+
+    Example:
+        codeframe prd update abc123-def456 ./updated.md -m "Added user stories"
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd
+    from codeframe.core.events import emit_for_workspace, EventType
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Check if PRD exists
+        existing = prd.get_by_id(workspace, prd_id)
+        if not existing:
+            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            raise typer.Exit(1)
+
+        # Load new content
+        new_content = prd.load_file(file_path)
+
+        # Create new version
+        new_version = prd.create_new_version(workspace, prd_id, new_content, message)
+
+        if not new_version:
+            console.print("[red]Error:[/red] Failed to create new version")
+            raise typer.Exit(1)
+
+        # Emit event
+        emit_for_workspace(
+            workspace,
+            EventType.PRD_UPDATED,
+            {
+                "prd_id": new_version.id,
+                "parent_id": prd_id,
+                "version": new_version.version,
+                "change_summary": message,
+            },
+            print_event=False,
+        )
+
+        console.print(f"[green]PRD updated to version {new_version.version}[/green]")
+        console.print(f"  New ID: {new_version.id}")
+        console.print(f"  Changes: {message}")
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
