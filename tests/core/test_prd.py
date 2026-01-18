@@ -3,7 +3,7 @@
 Tests for PRD management including storage, retrieval, deletion, and export.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -509,3 +509,189 @@ class TestDiffVersions:
 
         assert diff is not None
         assert "-" in diff  # Should show removals
+
+
+# ============================================================================
+# Tests for chain_id field (code review fix)
+# ============================================================================
+
+
+class TestChainId:
+    """Tests for chain_id field on PRD records."""
+
+    def test_store_sets_chain_id_to_prd_id(self, workspace: Workspace, sample_prd_file: Path):
+        """store() should set chain_id equal to the new PRD's id."""
+        content = prd.load_file(sample_prd_file)
+        record = prd.store(workspace, content)
+
+        assert record.chain_id is not None
+        assert record.chain_id == record.id
+
+    def test_new_version_copies_parent_chain_id(self, workspace: Workspace, sample_prd_file: Path):
+        """create_new_version() should copy the parent's chain_id."""
+        content = prd.load_file(sample_prd_file)
+        v1 = prd.store(workspace, content)
+        v2 = prd.create_new_version(workspace, v1.id, "v2 content", "change 1")
+
+        assert v2.chain_id == v1.chain_id
+
+    def test_chain_id_persists_across_versions(self, workspace: Workspace, sample_prd_file: Path):
+        """All versions in a chain should share the same chain_id."""
+        content = prd.load_file(sample_prd_file)
+        v1 = prd.store(workspace, content)
+        v2 = prd.create_new_version(workspace, v1.id, "v2", "c1")
+        v3 = prd.create_new_version(workspace, v2.id, "v3", "c2")
+
+        assert v1.chain_id == v2.chain_id == v3.chain_id
+
+    def test_different_prds_have_different_chain_ids(
+        self, workspace: Workspace, sample_prd_file: Path, second_prd_file: Path
+    ):
+        """Independent PRDs should have different chain_ids."""
+        content1 = prd.load_file(sample_prd_file)
+        prd1 = prd.store(workspace, content1)
+
+        content2 = prd.load_file(second_prd_file)
+        prd2 = prd.store(workspace, content2)
+
+        assert prd1.chain_id != prd2.chain_id
+
+
+class TestListChains:
+    """Tests for prd.list_chains() - list unique PRD chains."""
+
+    def test_returns_empty_when_no_prds(self, workspace: Workspace):
+        """Should return empty list when no PRDs exist."""
+        chains = prd.list_chains(workspace)
+
+        assert chains == []
+
+    def test_returns_chain_for_single_prd(self, workspace: Workspace, sample_prd_file: Path):
+        """Should return one chain for a single PRD."""
+        content = prd.load_file(sample_prd_file)
+        stored = prd.store(workspace, content)
+
+        chains = prd.list_chains(workspace)
+
+        assert len(chains) == 1
+        assert chains[0].chain_id == stored.chain_id
+
+    def test_groups_versions_under_same_chain(self, workspace: Workspace, sample_prd_file: Path):
+        """Versions should be grouped under the same chain."""
+        content = prd.load_file(sample_prd_file)
+        v1 = prd.store(workspace, content)
+        v2 = prd.create_new_version(workspace, v1.id, "v2", "c1")
+        prd.create_new_version(workspace, v2.id, "v3", "c2")
+
+        chains = prd.list_chains(workspace)
+
+        # Should still be just one chain despite 3 versions
+        assert len(chains) == 1
+
+    def test_returns_latest_version_per_chain(self, workspace: Workspace, sample_prd_file: Path):
+        """list_chains should return the latest version for each chain."""
+        content = prd.load_file(sample_prd_file)
+        v1 = prd.store(workspace, content)
+        v2 = prd.create_new_version(workspace, v1.id, "v2", "c1")
+        v3 = prd.create_new_version(workspace, v2.id, "v3", "c2")
+
+        chains = prd.list_chains(workspace)
+
+        assert len(chains) == 1
+        assert chains[0].version == 3  # latest version
+
+    def test_returns_multiple_chains(
+        self, workspace: Workspace, sample_prd_file: Path, second_prd_file: Path
+    ):
+        """Should return multiple chains for independent PRDs."""
+        content1 = prd.load_file(sample_prd_file)
+        prd.store(workspace, content1)
+
+        content2 = prd.load_file(second_prd_file)
+        prd.store(workspace, content2)
+
+        chains = prd.list_chains(workspace)
+
+        assert len(chains) == 2
+
+
+class TestGetVersionsOptimized:
+    """Tests that get_versions uses chain_id for efficient querying."""
+
+    def test_get_versions_uses_chain_id(self, workspace: Workspace, sample_prd_file: Path):
+        """get_versions should use chain_id for single-query lookup."""
+        content = prd.load_file(sample_prd_file)
+        v1 = prd.store(workspace, content)
+        v2 = prd.create_new_version(workspace, v1.id, "v2", "c1")
+        v3 = prd.create_new_version(workspace, v2.id, "v3", "c2")
+
+        # Get versions - should work efficiently with chain_id
+        versions = prd.get_versions(workspace, v3.id)
+
+        assert len(versions) == 3
+        # Verify all have same chain_id
+        chain_ids = {v.chain_id for v in versions}
+        assert len(chain_ids) == 1
+
+
+# ============================================================================
+# Tests for delete validation (code review fix)
+# ============================================================================
+
+
+class TestDeleteValidation:
+    """Tests for delete validation checking dependent tasks."""
+
+    def test_delete_fails_when_tasks_reference_prd(self, workspace: Workspace, sample_prd_file: Path):
+        """Should prevent deletion when tasks depend on the PRD."""
+        from codeframe.core import tasks
+
+        content = prd.load_file(sample_prd_file)
+        stored = prd.store(workspace, content)
+
+        # Create a task that references this PRD
+        tasks.create(
+            workspace,
+            title="Implement feature",
+            description="Based on PRD",
+            prd_id=stored.id,
+        )
+
+        # Attempt to delete should fail
+        with pytest.raises(prd.PrdHasDependentTasksError) as exc_info:
+            prd.delete(workspace, stored.id, check_dependencies=True)
+
+        assert stored.id in str(exc_info.value)
+
+    def test_delete_succeeds_when_no_dependent_tasks(
+        self, workspace: Workspace, sample_prd_file: Path
+    ):
+        """Should succeed when no tasks depend on the PRD."""
+        content = prd.load_file(sample_prd_file)
+        stored = prd.store(workspace, content)
+
+        # Delete with check should succeed
+        result = prd.delete(workspace, stored.id, check_dependencies=True)
+
+        assert result is True
+
+    def test_delete_force_ignores_dependencies(self, workspace: Workspace, sample_prd_file: Path):
+        """force=True should delete even with dependent tasks."""
+        from codeframe.core import tasks
+
+        content = prd.load_file(sample_prd_file)
+        stored = prd.store(workspace, content)
+
+        # Create a task that references this PRD
+        tasks.create(
+            workspace,
+            title="Implement feature",
+            description="Based on PRD",
+            prd_id=stored.id,
+        )
+
+        # Force delete should succeed
+        result = prd.delete(workspace, stored.id, check_dependencies=False)
+
+        assert result is True
+        assert prd.get_by_id(workspace, stored.id) is None

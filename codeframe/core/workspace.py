@@ -91,8 +91,10 @@ def _init_database(db_path: Path) -> None:
             version INTEGER DEFAULT 1,
             parent_id TEXT,
             change_summary TEXT,
+            chain_id TEXT,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
-            FOREIGN KEY (parent_id) REFERENCES prds(id)
+            FOREIGN KEY (parent_id) REFERENCES prds(id),
+            FOREIGN KEY (chain_id) REFERENCES prds(id)
         )
     """)
 
@@ -204,6 +206,8 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_status ON blockers(status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_workspace ON batch_runs(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
 
     conn.commit()
     conn.close()
@@ -262,6 +266,19 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     if "change_summary" not in prd_columns:
         cursor.execute("ALTER TABLE prds ADD COLUMN change_summary TEXT")
         conn.commit()
+    if "chain_id" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN chain_id TEXT")
+        # Backfill chain_id for existing PRDs (set to their own id if no parent)
+        cursor.execute("""
+            UPDATE prds SET chain_id = id
+            WHERE chain_id IS NULL AND parent_id IS NULL
+        """)
+        conn.commit()
+
+    # Add indexes for PRD version chain queries
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
+    conn.commit()
 
     conn.close()
 

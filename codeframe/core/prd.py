@@ -22,6 +22,18 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class PrdHasDependentTasksError(Exception):
+    """Raised when attempting to delete a PRD that has dependent tasks."""
+
+    def __init__(self, prd_id: str, task_count: int):
+        self.prd_id = prd_id
+        self.task_count = task_count
+        super().__init__(
+            f"Cannot delete PRD {prd_id}: {task_count} task(s) depend on it. "
+            "Use check_dependencies=False to force deletion."
+        )
+
+
 @dataclass
 class PrdRecord:
     """Represents a stored PRD.
@@ -36,6 +48,7 @@ class PrdRecord:
         version: Version number (starts at 1)
         parent_id: ID of the previous version (None for first version)
         change_summary: Description of changes from parent version
+        chain_id: ID that groups all versions of a PRD together (equals id for v1)
     """
 
     id: str
@@ -47,6 +60,7 @@ class PrdRecord:
     version: int = 1
     parent_id: Optional[str] = None
     change_summary: Optional[str] = None
+    chain_id: Optional[str] = None
 
 
 def load_file(file_path: Path) -> str:
@@ -134,6 +148,9 @@ def store(
         meta["source_file"] = str(source_path)
     meta_json = json.dumps(meta)
 
+    # For new PRDs, chain_id equals the PRD's own id
+    chain_id = prd_id
+
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
 
@@ -141,10 +158,10 @@ def store(
         """
         INSERT INTO prds
             (id, workspace_id, title, content, metadata, created_at,
-             version, parent_id, change_summary)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             version, parent_id, change_summary, chain_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (prd_id, workspace.id, title, content, meta_json, now, 1, None, None),
+        (prd_id, workspace.id, title, content, meta_json, now, 1, None, None, chain_id),
     )
     conn.commit()
     conn.close()
@@ -159,6 +176,7 @@ def store(
         version=1,
         parent_id=None,
         change_summary=None,
+        chain_id=chain_id,
     )
 
 
@@ -177,7 +195,7 @@ def get_latest(workspace: Workspace) -> Optional[PrdRecord]:
     cursor.execute(
         """
         SELECT id, workspace_id, title, content, metadata, created_at,
-               version, parent_id, change_summary
+               version, parent_id, change_summary, chain_id
         FROM prds
         WHERE workspace_id = ?
         ORDER BY created_at DESC
@@ -201,6 +219,7 @@ def get_latest(workspace: Workspace) -> Optional[PrdRecord]:
         version=row[6] or 1,
         parent_id=row[7],
         change_summary=row[8],
+        chain_id=row[9],
     )
 
 
@@ -220,7 +239,7 @@ def get_by_id(workspace: Workspace, prd_id: str) -> Optional[PrdRecord]:
     cursor.execute(
         """
         SELECT id, workspace_id, title, content, metadata, created_at,
-               version, parent_id, change_summary
+               version, parent_id, change_summary, chain_id
         FROM prds
         WHERE workspace_id = ? AND id = ?
         """,
@@ -242,6 +261,7 @@ def get_by_id(workspace: Workspace, prd_id: str) -> Optional[PrdRecord]:
         version=row[6] or 1,
         parent_id=row[7],
         change_summary=row[8],
+        chain_id=row[9],
     )
 
 
@@ -260,7 +280,7 @@ def list_all(workspace: Workspace) -> list[PrdRecord]:
     cursor.execute(
         """
         SELECT id, workspace_id, title, content, metadata, created_at,
-               version, parent_id, change_summary
+               version, parent_id, change_summary, chain_id
         FROM prds
         WHERE workspace_id = ?
         ORDER BY created_at DESC
@@ -281,23 +301,95 @@ def list_all(workspace: Workspace) -> list[PrdRecord]:
             version=row[6] or 1,
             parent_id=row[7],
             change_summary=row[8],
+            chain_id=row[9],
         )
         for row in rows
     ]
 
 
-def delete(workspace: Workspace, prd_id: str) -> bool:
+def list_chains(workspace: Workspace) -> list[PrdRecord]:
+    """List unique PRD chains, returning the latest version of each.
+
+    A chain represents a PRD and all its versions. This function returns
+    one entry per chain (the most recent version).
+
+    Args:
+        workspace: Workspace to query
+
+    Returns:
+        List of PrdRecords (latest version per chain), newest first
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    # Get the latest version for each unique chain_id
+    cursor.execute(
+        """
+        SELECT p.id, p.workspace_id, p.title, p.content, p.metadata, p.created_at,
+               p.version, p.parent_id, p.change_summary, p.chain_id
+        FROM prds p
+        INNER JOIN (
+            SELECT chain_id, MAX(version) as max_version
+            FROM prds
+            WHERE workspace_id = ?
+            GROUP BY chain_id
+        ) latest ON p.chain_id = latest.chain_id AND p.version = latest.max_version
+        WHERE p.workspace_id = ?
+        ORDER BY p.created_at DESC
+        """,
+        (workspace.id, workspace.id),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [
+        PrdRecord(
+            id=row[0],
+            workspace_id=row[1],
+            title=row[2],
+            content=row[3],
+            metadata=json.loads(row[4]) if row[4] else {},
+            created_at=datetime.fromisoformat(row[5]),
+            version=row[6] or 1,
+            parent_id=row[7],
+            change_summary=row[8],
+            chain_id=row[9],
+        )
+        for row in rows
+    ]
+
+
+def delete(
+    workspace: Workspace,
+    prd_id: str,
+    check_dependencies: bool = False,
+) -> bool:
     """Delete a PRD from the workspace.
 
     Args:
         workspace: Workspace containing the PRD
         prd_id: PRD identifier to delete
+        check_dependencies: If True, check for dependent tasks and raise error
 
     Returns:
         True if a PRD was deleted, False if not found
+
+    Raises:
+        PrdHasDependentTasksError: If check_dependencies=True and tasks depend on this PRD
     """
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
+
+    # Check for dependent tasks if requested
+    if check_dependencies:
+        cursor.execute(
+            "SELECT COUNT(*) FROM tasks WHERE workspace_id = ? AND prd_id = ?",
+            (workspace.id, prd_id),
+        )
+        task_count = cursor.fetchone()[0]
+        if task_count > 0:
+            conn.close()
+            raise PrdHasDependentTasksError(prd_id, task_count)
 
     cursor.execute(
         """
@@ -365,6 +457,8 @@ def create_new_version(
 ) -> Optional[PrdRecord]:
     """Create a new version of an existing PRD.
 
+    Uses an explicit transaction to ensure atomic version number increment.
+
     Args:
         workspace: Workspace containing the PRD
         parent_prd_id: ID of the PRD to create a new version from
@@ -374,57 +468,87 @@ def create_new_version(
     Returns:
         New PrdRecord if successful, None if parent not found
     """
-    # Get the parent PRD
-    parent = get_by_id(workspace, parent_prd_id)
-    if not parent:
-        return None
-
-    prd_id = str(uuid.uuid4())
-    now = _utc_now().isoformat()
-    new_version = parent.version + 1
-
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        INSERT INTO prds
-            (id, workspace_id, title, content, metadata, created_at,
-             version, parent_id, change_summary)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            prd_id,
-            workspace.id,
-            parent.title,  # Keep same title
-            new_content,
-            json.dumps(parent.metadata),
-            now,
-            new_version,
-            parent_prd_id,
-            change_summary,
-        ),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        # Start explicit transaction for atomic version increment
+        cursor.execute("BEGIN IMMEDIATE")
 
-    return PrdRecord(
-        id=prd_id,
-        workspace_id=workspace.id,
-        title=parent.title,
-        content=new_content,
-        metadata=parent.metadata,
-        created_at=datetime.fromisoformat(now),
-        version=new_version,
-        parent_id=parent_prd_id,
-        change_summary=change_summary,
-    )
+        # Get the parent PRD within the transaction
+        cursor.execute(
+            """
+            SELECT id, workspace_id, title, content, metadata, created_at,
+                   version, parent_id, change_summary, chain_id
+            FROM prds
+            WHERE workspace_id = ? AND id = ?
+            """,
+            (workspace.id, parent_prd_id),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            cursor.execute("ROLLBACK")
+            conn.close()
+            return None
+
+        parent_title = row[2]
+        parent_metadata = json.loads(row[4]) if row[4] else {}
+        parent_version = row[6] or 1
+        parent_chain_id = row[9]
+
+        prd_id = str(uuid.uuid4())
+        now = _utc_now().isoformat()
+        new_version = parent_version + 1
+
+        # Copy chain_id from parent (maintains version grouping)
+        chain_id = parent_chain_id or parent_prd_id
+
+        cursor.execute(
+            """
+            INSERT INTO prds
+                (id, workspace_id, title, content, metadata, created_at,
+                 version, parent_id, change_summary, chain_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                prd_id,
+                workspace.id,
+                parent_title,  # Keep same title
+                new_content,
+                json.dumps(parent_metadata),
+                now,
+                new_version,
+                parent_prd_id,
+                change_summary,
+                chain_id,
+            ),
+        )
+        conn.commit()
+
+        return PrdRecord(
+            id=prd_id,
+            workspace_id=workspace.id,
+            title=parent_title,
+            content=new_content,
+            metadata=parent_metadata,
+            created_at=datetime.fromisoformat(now),
+            version=new_version,
+            parent_id=parent_prd_id,
+            change_summary=change_summary,
+            chain_id=chain_id,
+        )
+    except Exception:
+        cursor.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
 
 
 def get_versions(workspace: Workspace, prd_id: str) -> list[PrdRecord]:
     """Get all versions of a PRD.
 
-    Finds the version chain by following parent_id links in both directions.
+    Uses chain_id for efficient single-query lookup of all versions.
 
     Args:
         workspace: Workspace to query
@@ -433,80 +557,55 @@ def get_versions(workspace: Workspace, prd_id: str) -> list[PrdRecord]:
     Returns:
         List of PrdRecords for all versions, newest first
     """
-    # Get the starting PRD
-    start = get_by_id(workspace, prd_id)
-    if not start:
-        return []
-
+    # First, get the chain_id for this PRD
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
 
-    # Find all PRDs in the chain by collecting IDs in both directions
-    # First, find the root (oldest version) by following parent_id back
-    current_id = prd_id
-    while True:
-        cursor.execute(
-            "SELECT parent_id FROM prds WHERE workspace_id = ? AND id = ?",
-            (workspace.id, current_id),
-        )
-        row = cursor.fetchone()
-        if not row or not row[0]:
-            break
-        current_id = row[0]
+    cursor.execute(
+        "SELECT chain_id FROM prds WHERE workspace_id = ? AND id = ?",
+        (workspace.id, prd_id),
+    )
+    row = cursor.fetchone()
 
-    root_id = current_id
+    if not row:
+        conn.close()
+        return []
 
-    # Now collect all versions starting from root
-    versions = []
-    visited = set()
-    to_visit = [root_id]
+    chain_id = row[0]
 
-    while to_visit:
-        current_id = to_visit.pop(0)
-        if current_id in visited:
-            continue
-        visited.add(current_id)
+    # If chain_id is None (legacy data), fall back to the PRD's own id
+    if chain_id is None:
+        chain_id = prd_id
 
-        cursor.execute(
-            """
-            SELECT id, workspace_id, title, content, metadata, created_at,
-               version, parent_id, change_summary
-            FROM prds
-            WHERE workspace_id = ? AND id = ?
-            """,
-            (workspace.id, current_id),
-        )
-        row = cursor.fetchone()
-        if row:
-            versions.append(
-                PrdRecord(
-                    id=row[0],
-                    workspace_id=row[1],
-                    title=row[2],
-                    content=row[3],
-                    metadata=json.loads(row[4]) if row[4] else {},
-                    created_at=datetime.fromisoformat(row[5]),
-                    version=row[6] or 1,
-                    parent_id=row[7],
-                    change_summary=row[8],
-                )
-            )
-
-            # Find children (PRDs that have this as parent)
-            cursor.execute(
-                "SELECT id FROM prds WHERE workspace_id = ? AND parent_id = ?",
-                (workspace.id, current_id),
-            )
-            children = cursor.fetchall()
-            for child in children:
-                if child[0] not in visited:
-                    to_visit.append(child[0])
-
+    # Single query to get all versions in the chain
+    cursor.execute(
+        """
+        SELECT id, workspace_id, title, content, metadata, created_at,
+               version, parent_id, change_summary, chain_id
+        FROM prds
+        WHERE workspace_id = ? AND chain_id = ?
+        ORDER BY version DESC
+        """,
+        (workspace.id, chain_id),
+    )
+    rows = cursor.fetchall()
     conn.close()
 
-    # Sort by version descending (newest first)
-    versions.sort(key=lambda v: v.version, reverse=True)
-    return versions
+    return [
+        PrdRecord(
+            id=row[0],
+            workspace_id=row[1],
+            title=row[2],
+            content=row[3],
+            metadata=json.loads(row[4]) if row[4] else {},
+            created_at=datetime.fromisoformat(row[5]),
+            version=row[6] or 1,
+            parent_id=row[7],
+            change_summary=row[8],
+            chain_id=row[9],
+        )
+        for row in rows
+    ]
 
 
 def get_version(
