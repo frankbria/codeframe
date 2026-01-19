@@ -793,7 +793,10 @@ def prd_delete(
                 return
 
         # Delete
-        prd.delete(workspace, prd_id)
+        deleted = prd.delete(workspace, prd_id)
+        if not deleted:
+            console.print(f"[red]Error:[/red] PRD not found: {prd_id}")
+            raise typer.Exit(1)
 
         # Emit event
         emit_for_workspace(
