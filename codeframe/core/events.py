@@ -37,6 +37,7 @@ class EventType:
     # PRD events
     PRD_ADDED = "PRD_ADDED"
     PRD_UPDATED = "PRD_UPDATED"
+    PRD_DELETED = "PRD_DELETED"
 
     # Task events
     TASKS_GENERATED = "TASKS_GENERATED"

@@ -79,7 +79,7 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
-    # PRD storage
+    # PRD storage with versioning support
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS prds (
             id TEXT PRIMARY KEY,
@@ -88,7 +88,13 @@ def _init_database(db_path: Path) -> None:
             content TEXT NOT NULL,
             metadata TEXT,
             created_at TEXT NOT NULL,
-            FOREIGN KEY (workspace_id) REFERENCES workspace(id)
+            version INTEGER DEFAULT 1,
+            parent_id TEXT,
+            change_summary TEXT,
+            chain_id TEXT,
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+            FOREIGN KEY (parent_id) REFERENCES prds(id),
+            FOREIGN KEY (chain_id) REFERENCES prds(id)
         )
     """)
 
@@ -200,6 +206,8 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_blockers_status ON blockers(status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_workspace ON batch_runs(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
 
     conn.commit()
     conn.close()
@@ -245,6 +253,32 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     if "tech_stack" not in columns:
         cursor.execute("ALTER TABLE workspace ADD COLUMN tech_stack TEXT")
         conn.commit()
+
+    # Add versioning columns to prds table if they don't exist
+    cursor.execute("PRAGMA table_info(prds)")
+    prd_columns = {row[1] for row in cursor.fetchall()}
+    if "version" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN version INTEGER DEFAULT 1")
+        conn.commit()
+    if "parent_id" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN parent_id TEXT")
+        conn.commit()
+    if "change_summary" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN change_summary TEXT")
+        conn.commit()
+    if "chain_id" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN chain_id TEXT")
+        # Backfill chain_id for existing PRDs (set to their own id if no parent)
+        cursor.execute("""
+            UPDATE prds SET chain_id = id
+            WHERE chain_id IS NULL AND parent_id IS NULL
+        """)
+        conn.commit()
+
+    # Add indexes for PRD version chain queries
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
+    conn.commit()
 
     conn.close()
 

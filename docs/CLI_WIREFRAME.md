@@ -235,11 +235,126 @@ Each command:
 
 ---
 
-### `codeframe prd show`
-**Purpose:** Print PRD summary/title and location.
+### `codeframe prd show [prd-id]`
+**Purpose:** Print PRD content. Without ID shows latest; with ID shows specific PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
 
 **Core calls:**
-- `codeframe.core.prd.get_latest(workspace_id) -> PrdRecord`
+- `codeframe.core.prd.get_latest(workspace_id) -> PrdRecord` (if no ID)
+- `codeframe.core.prd.get_by_id(workspace_id, prd_id) -> PrdRecord` (if ID provided)
+
+**CLI options:**
+- `--full`: Show complete content (default truncates long PRDs)
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+---
+
+### `codeframe prd list`
+**Purpose:** List all PRDs in the workspace.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.list_all(workspace_id) -> list[PrdRecord]`
+
+**Output:**
+- Table showing: ID (truncated), Title, Version, Created date
+
+---
+
+### `codeframe prd delete <prd-id>`
+**Purpose:** Delete a PRD from the workspace.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.get_by_id(workspace_id, prd_id) -> PrdRecord`
+- `codeframe.core.prd.delete(workspace_id, prd_id, check_dependencies) -> bool`
+- `codeframe.core.events.emit(workspace_id, "PRD_DELETED", payload)`
+
+**CLI options:**
+- `--force, -f`: Skip confirmation prompt
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State writes:**
+- Removes PRD record from database
+
+**Validation:**
+- Checks for dependent tasks (raises `PrdHasDependentTasksError` if found with `check_dependencies=True`)
+
+---
+
+### `codeframe prd export <prd-id> <file-path>`
+**Purpose:** Export a PRD to a file.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.export_to_file(workspace_id, prd_id, file_path, force) -> bool`
+
+**CLI options:**
+- `--latest`: Export the latest PRD instead of requiring ID
+- `--force, -f`: Overwrite existing file
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State reads only** (exports content to file)
+
+---
+
+### `codeframe prd versions <prd-id>`
+**Purpose:** Show version history for a PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.get_versions(workspace_id, prd_id) -> list[PrdRecord]`
+
+**Output:**
+- Table showing: Version number, ID (truncated), Change summary, Created date
+- Versions sorted by version number descending (newest first)
+
+---
+
+### `codeframe prd diff <prd-id> <version1> <version2>`
+**Purpose:** Show diff between two versions of a PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.diff_versions(workspace_id, prd_id, v1, v2) -> str`
+
+**Output:**
+- Unified diff format showing additions (+) and removals (-)
+
+---
+
+### `codeframe prd update <prd-id>`
+**Purpose:** Create a new version of an existing PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.load_file(file_path) -> str`
+- `codeframe.core.prd.create_new_version(workspace_id, prd_id, content, change_summary) -> PrdRecord`
+- `codeframe.core.events.emit(workspace_id, "PRD_UPDATED", payload)`
+
+**CLI options:**
+- `--file, -f`: Path to file with new content (required)
+- `--message, -m`: Change summary message (required)
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State writes:**
+- New PRD record with incremented version
+- Links to parent via `parent_id`
+- Shares `chain_id` with all versions in the chain
 
 ---
 
