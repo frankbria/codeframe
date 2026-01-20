@@ -647,8 +647,8 @@ def rotate_credential(
         raise typer.Exit(1)
 
     # Check if credential exists
-    existing = manager.get_credential(provider_enum)
-    if not existing:
+    source = manager.get_credential_source(provider_enum)
+    if source == CredentialSource.NOT_FOUND:
         console.print(f"[yellow]Note:[/yellow] No existing credential for {provider_enum.display_name}")
         console.print("Use 'codeframe auth setup' to create a new credential.")
         raise typer.Exit(1)
