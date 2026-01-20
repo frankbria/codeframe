@@ -56,6 +56,17 @@ SALT_FILE_NAME = "salt"
 DEFAULT_STORAGE_DIR = Path.home() / ".codeframe"
 
 
+class CredentialStoreError(Exception):
+    """Raised when the credential store cannot be read or decrypted.
+
+    This exception indicates that the credential store file exists but cannot
+    be accessed properly. Callers should NOT proceed with write operations
+    when this is raised, as doing so could result in data loss.
+    """
+
+    pass
+
+
 class CredentialSource(str, Enum):
     """Source of a credential."""
 
@@ -364,9 +375,11 @@ class CredentialStore:
         Returns:
             Dictionary of stored credentials, or empty dict if file doesn't exist.
 
-        Note:
-            Returns empty dict on decryption failure (e.g., machine ID changed).
-            This is intentional - credentials become inaccessible on new machines.
+        Raises:
+            CredentialStoreError: If decryption fails (e.g., machine ID changed,
+                file corrupted). Callers must NOT proceed with write operations.
+            PermissionError: If file cannot be read due to permissions.
+            OSError: If file cannot be read due to other I/O errors.
         """
         file_path = self._get_encrypted_file_path()
         if not file_path.exists():
@@ -381,22 +394,18 @@ class CredentialStore:
             return json.loads(decrypted.decode())
         except InvalidToken:
             # Decryption failed - likely machine ID changed or file corrupted
-            logger.error(
+            raise CredentialStoreError(
                 "Failed to decrypt credentials file. This can happen if the machine ID "
                 "changed (e.g., new machine, VM clone). Stored credentials are inaccessible. "
                 "Re-run 'cf auth setup' to reconfigure credentials."
             )
-            return {}
         except json.JSONDecodeError as e:
             # Decryption succeeded but JSON is invalid - file corruption
-            logger.error(f"Credentials file corrupted (invalid JSON): {e}")
-            return {}
-        except PermissionError as e:
-            logger.error(f"Permission denied reading credentials file: {e}")
-            return {}
-        except OSError as e:
-            logger.error(f"Failed to read credentials file: {e}")
-            return {}
+            raise CredentialStoreError(f"Credentials file corrupted (invalid JSON): {e}")
+        except PermissionError:
+            raise
+        except OSError:
+            raise
 
     def _save_encrypted_store(self, store: dict[str, dict]) -> None:
         """Save all credentials to encrypted file."""
@@ -429,6 +438,11 @@ class CredentialStore:
 
         Args:
             credential: The credential to store
+
+        Raises:
+            CredentialStoreError: If the credential store cannot be read.
+            PermissionError: If the credential store cannot be accessed.
+            OSError: If there's an I/O error accessing the credential store.
         """
         key = credential.provider.name
         data = json.dumps(credential.to_dict())
@@ -444,7 +458,11 @@ class CredentialStore:
                 self._keyring_available = False
 
         # Fall back to encrypted file
-        store = self._load_encrypted_store()
+        try:
+            store = self._load_encrypted_store()
+        except (CredentialStoreError, PermissionError, OSError) as e:
+            logger.error(f"Cannot store credential: failed to read existing store: {e}")
+            raise
         store[key] = credential.to_dict()
         self._save_encrypted_store(store)
         logger.debug(f"Stored {key} in encrypted file")
@@ -458,7 +476,7 @@ class CredentialStore:
             provider: The provider type to retrieve
 
         Returns:
-            Credential if found, None otherwise
+            Credential if found, None otherwise (including on read errors)
         """
         key = provider.name
 
@@ -472,7 +490,11 @@ class CredentialStore:
                 logger.debug(f"Keyring retrieval failed: {e}")
 
         # Fall back to encrypted file
-        store = self._load_encrypted_store()
+        try:
+            store = self._load_encrypted_store()
+        except (CredentialStoreError, PermissionError, OSError) as e:
+            logger.error(f"Cannot retrieve credential: failed to read store: {e}")
+            return None
         if key in store:
             try:
                 return Credential.from_dict(store[key])
@@ -498,7 +520,11 @@ class CredentialStore:
                 logger.debug(f"Keyring deletion failed: {e}")
 
         # Also remove from encrypted file (if exists)
-        store = self._load_encrypted_store()
+        try:
+            store = self._load_encrypted_store()
+        except (CredentialStoreError, PermissionError, OSError) as e:
+            logger.warning(f"Cannot delete from encrypted store: failed to read store: {e}")
+            return
         if key in store:
             del store[key]
             self._save_encrypted_store(store)
@@ -515,12 +541,17 @@ class CredentialStore:
             checks all known provider types and will find keyring entries.
 
         Returns:
-            List of providers that have stored credentials in encrypted file
+            List of providers that have stored credentials in encrypted file,
+            or empty list if store cannot be read.
         """
         providers = []
 
         # Check encrypted file only - keyring doesn't support enumeration
-        store = self._load_encrypted_store()
+        try:
+            store = self._load_encrypted_store()
+        except (CredentialStoreError, PermissionError, OSError) as e:
+            logger.error(f"Cannot list providers: failed to read store: {e}")
+            return []
         for key in store:
             try:
                 providers.append(CredentialProvider[key])
