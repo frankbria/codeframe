@@ -75,7 +75,10 @@ class CredentialAuditLogger:
 
         # Ensure log directory exists
         if self.enabled:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                self.log_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.warning(f"Failed to create audit log dir {self.log_dir}: {e}")
 
     def _get_log_path(self) -> Path:
         """Get the path to the audit log file."""
