@@ -512,7 +512,8 @@ class CredentialStore:
                 keyring.delete_password(KEYRING_SERVICE_NAME, key)
                 logger.debug(f"Deleted {key} from keyring")
             except Exception as e:
-                logger.debug(f"Keyring deletion failed: {e}")
+                logger.warning(f"Keyring deletion failed: {e}")
+                raise
 
         # Also remove from encrypted file (if exists)
         store = self._load_encrypted_store()
