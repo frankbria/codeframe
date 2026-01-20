@@ -455,7 +455,6 @@ class CredentialStore:
                 return
             except Exception as e:
                 logger.warning(f"Keyring storage failed, using encrypted file: {e}")
-                self._keyring_available = False
 
         # Fall back to encrypted file
         try:
