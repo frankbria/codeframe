@@ -735,5 +735,10 @@ def remove_credential(
             return
 
     # Delete credential
-    manager.delete_credential(provider_enum)
-    console.print(f"[green]Removed stored credential for {provider_enum.display_name}[/green]")
+    try:
+        manager.delete_credential(provider_enum)
+        console.print(f"[green]Removed stored credential for {provider_enum.display_name}[/green]")
+    except Exception as e:
+        logger.debug(f"Credential deletion error: {e}")
+        console.print("[red]Error:[/red] Failed to remove stored credential")
+        raise typer.Exit(1)
