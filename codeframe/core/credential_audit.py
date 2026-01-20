@@ -137,11 +137,15 @@ class CredentialAuditLogger:
         }
 
         if details:
-            # Ensure we never log sensitive values
-            safe_details = {k: v for k, v in details.items()
-                           if k.lower() not in ("value", "credential", "password", "secret", "token", "key")}
-            entry["details"] = safe_details
-
+            # Ensure we never log sensitive values (including nested)
+            def _scrub(obj):
+                if isinstance(obj, dict):
+                    return {k: _scrub(v) for k, v in obj.items() if k.lower() not in ("value", "credential", "password", "secret", "token", "key")}
+                elif isinstance(obj, list):
+                    return [_scrub(v) for v in obj]
+                else:
+                    return obj
+            entry["details"] = _scrub(details)
         self._write_entry(entry)
         logger.debug(f"Audit log: {action.value} {provider.name} ({source}) - {'success' if success else 'failure'}")
 
