@@ -42,7 +42,7 @@ except ImportError:
     keyring = None
     KeyringError = Exception
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
@@ -226,13 +226,50 @@ def derive_encryption_key(salt_file: Path) -> bytes:
 
 
 def _get_machine_id() -> str:
-    """Get a machine-specific identifier."""
-    # Try to get a stable machine ID
-    components = [
-        platform.node(),
-        platform.machine(),
-        str(uuid.getnode()),  # MAC address
-    ]
+    """Get a machine-specific identifier.
+
+    Uses platform-specific stable identifiers when available:
+    - Linux: /etc/machine-id
+    - Windows: MachineGuid from registry
+    - Fallback: hostname + machine type + MAC address
+
+    Note: MAC address (uuid.getnode) can be randomized on WiFi adapters
+    on privacy-focused systems, so we prefer OS-level machine IDs.
+    """
+    components = []
+
+    # Try Linux machine-id first (most stable)
+    machine_id_path = Path("/etc/machine-id")
+    if machine_id_path.exists():
+        try:
+            machine_id = machine_id_path.read_text().strip()
+            if machine_id:
+                components.append(machine_id)
+        except (PermissionError, OSError):
+            pass
+
+    # Try Windows MachineGuid
+    if platform.system() == "Windows" and not components:
+        try:
+            import winreg
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Cryptography"
+            ) as key:
+                machine_guid, _ = winreg.QueryValueEx(key, "MachineGuid")
+                if machine_guid:
+                    components.append(machine_guid)
+        except (ImportError, OSError, FileNotFoundError):
+            pass
+
+    # Fallback: use portable identifiers
+    if not components:
+        components = [
+            platform.node(),
+            platform.machine(),
+            str(uuid.getnode()),  # MAC address (less stable on some systems)
+        ]
+
     combined = "-".join(components)
     return hashlib.sha256(combined.encode()).hexdigest()
 
@@ -254,12 +291,12 @@ def validate_credential_format(
         return False
 
     if provider == CredentialProvider.LLM_ANTHROPIC:
-        # Anthropic keys start with "sk-ant-"
-        return len(value) >= 10
+        # Anthropic keys start with "sk-ant-" (e.g., sk-ant-api03-...)
+        return len(value) >= 20 and value.startswith("sk-ant-")
 
     elif provider == CredentialProvider.LLM_OPENAI:
-        # OpenAI keys start with "sk-"
-        return len(value) >= 10
+        # OpenAI keys start with "sk-" (legacy) or "sk-proj-" (project-scoped)
+        return len(value) >= 20 and value.startswith("sk-")
 
     elif provider == CredentialProvider.GIT_GITHUB:
         # GitHub PATs: ghp_ (classic) or github_pat_ (fine-grained)
@@ -271,8 +308,8 @@ def validate_credential_format(
         )
 
     elif provider == CredentialProvider.GIT_GITLAB:
-        # GitLab tokens: glpat- prefix
-        return len(value) >= 10
+        # GitLab tokens start with "glpat-"
+        return len(value) >= 20 and value.startswith("glpat-")
 
     # Default: just check minimum length
     return len(value) >= 5
@@ -322,7 +359,15 @@ class CredentialStore:
         return self.storage_dir / ENCRYPTED_FILE_NAME
 
     def _load_encrypted_store(self) -> dict[str, dict]:
-        """Load all credentials from encrypted file."""
+        """Load all credentials from encrypted file.
+
+        Returns:
+            Dictionary of stored credentials, or empty dict if file doesn't exist.
+
+        Note:
+            Returns empty dict on decryption failure (e.g., machine ID changed).
+            This is intentional - credentials become inaccessible on new machines.
+        """
         file_path = self._get_encrypted_file_path()
         if not file_path.exists():
             return {}
@@ -334,8 +379,23 @@ class CredentialStore:
             fernet = self._get_fernet()
             decrypted = fernet.decrypt(encrypted_data)
             return json.loads(decrypted.decode())
-        except Exception as e:
-            logger.error(f"Failed to load encrypted credentials: {e}")
+        except InvalidToken:
+            # Decryption failed - likely machine ID changed or file corrupted
+            logger.error(
+                "Failed to decrypt credentials file. This can happen if the machine ID "
+                "changed (e.g., new machine, VM clone). Stored credentials are inaccessible. "
+                "Re-run 'cf auth setup' to reconfigure credentials."
+            )
+            return {}
+        except json.JSONDecodeError as e:
+            # Decryption succeeded but JSON is invalid - file corruption
+            logger.error(f"Credentials file corrupted (invalid JSON): {e}")
+            return {}
+        except PermissionError as e:
+            logger.error(f"Permission denied reading credentials file: {e}")
+            return {}
+        except OSError as e:
+            logger.error(f"Failed to read credentials file: {e}")
             return {}
 
     def _save_encrypted_store(self, store: dict[str, dict]) -> None:
@@ -354,6 +414,8 @@ class CredentialStore:
             f.write(encrypted)
         temp_path.chmod(0o600)
         temp_path.replace(file_path)
+        # Ensure final file has correct permissions (replace may not preserve on all filesystems)
+        file_path.chmod(0o600)
 
     def store(self, credential: Credential) -> None:
         """Store a credential securely.
@@ -435,23 +497,27 @@ class CredentialStore:
             logger.debug(f"Deleted {key} from encrypted file")
 
     def list_providers(self) -> list[CredentialProvider]:
-        """List all stored provider types.
+        """List all stored provider types from encrypted file storage.
+
+        Note:
+            This only returns credentials stored in the encrypted file.
+            Credentials stored directly in the system keyring (when keyring
+            is available and working) are not enumerable due to keyring API
+            limitations. However, CredentialManager.list_credentials()
+            checks all known provider types and will find keyring entries.
 
         Returns:
-            List of providers that have stored credentials
+            List of providers that have stored credentials in encrypted file
         """
         providers = []
 
-        # Check encrypted file
+        # Check encrypted file only - keyring doesn't support enumeration
         store = self._load_encrypted_store()
         for key in store:
             try:
                 providers.append(CredentialProvider[key])
             except KeyError:
                 logger.warning(f"Unknown provider in store: {key}")
-
-        # Note: We can't easily enumerate keyring entries
-        # Encrypted file is the source of truth for listing
 
         return providers
 

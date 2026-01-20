@@ -107,6 +107,7 @@ def validate_anthropic_credential(api_key: str) -> Tuple[bool, str]:
     """
     try:
         from anthropic import Anthropic, AuthenticationError as AnthropicAuthError
+        from anthropic import APIConnectionError, RateLimitError, APIStatusError
 
         client = Anthropic(api_key=api_key)
         # Make a minimal request to validate
@@ -117,9 +118,18 @@ def validate_anthropic_credential(api_key: str) -> Tuple[bool, str]:
         )
         return True, "API key is valid"
     except AnthropicAuthError:
-        return False, "Authentication failed - invalid API key"
+        return False, "Invalid API key - authentication failed"
+    except APIConnectionError as e:
+        return False, f"Unable to validate - network error: {e}"
+    except RateLimitError:
+        # Rate limited but key is valid (they wouldn't rate limit invalid keys)
+        return True, "API key appears valid (rate limited)"
+    except APIStatusError as e:
+        return False, f"Unable to validate - API error (HTTP {e.status_code})"
+    except ImportError:
+        return False, "Unable to validate - anthropic package not installed"
     except Exception as e:
-        return False, f"Validation failed: {str(e)}"
+        return False, f"Unable to validate - unexpected error: {type(e).__name__}: {e}"
 
 
 def validate_openai_credential(api_key: str) -> Tuple[bool, str]:
@@ -133,15 +143,25 @@ def validate_openai_credential(api_key: str) -> Tuple[bool, str]:
     """
     try:
         from openai import OpenAI, AuthenticationError as OpenAIAuthError
+        from openai import APIConnectionError, RateLimitError, APIStatusError
 
         client = OpenAI(api_key=api_key)
         # List models is a cheap validation
         client.models.list()
         return True, "API key is valid"
     except OpenAIAuthError:
-        return False, "Authentication failed - invalid API key"
+        return False, "Invalid API key - authentication failed"
+    except APIConnectionError as e:
+        return False, f"Unable to validate - network error: {e}"
+    except RateLimitError:
+        # Rate limited but key is valid
+        return True, "API key appears valid (rate limited)"
+    except APIStatusError as e:
+        return False, f"Unable to validate - API error (HTTP {e.status_code})"
+    except ImportError:
+        return False, "Unable to validate - openai package not installed"
     except Exception as e:
-        return False, f"Validation failed: {str(e)}"
+        return False, f"Unable to validate - unexpected error: {type(e).__name__}: {e}"
 
 
 def validate_github_credential(token: str) -> Tuple[bool, str]:
@@ -166,11 +186,23 @@ def validate_github_credential(token: str) -> Tuple[bool, str]:
             user = response.json()
             return True, f"Token valid for user: {user.get('login', 'unknown')}"
         elif response.status_code == 401:
-            return False, "Authentication failed - invalid token"
+            return False, "Invalid token - authentication failed"
+        elif response.status_code == 403:
+            # Forbidden - token may be valid but rate limited or lacking permissions
+            return False, "Token rejected - rate limited or insufficient permissions"
+        elif response.status_code == 429:
+            # Rate limited but token format was accepted
+            return True, "Token appears valid (rate limited)"
         else:
-            return False, f"Validation failed: HTTP {response.status_code}"
+            return False, f"Unable to validate - GitHub API returned HTTP {response.status_code}"
+    except requests.ConnectionError:
+        return False, "Unable to validate - network error (cannot reach GitHub)"
+    except requests.Timeout:
+        return False, "Unable to validate - request timed out"
+    except requests.RequestException as e:
+        return False, f"Unable to validate - request error: {e}"
     except Exception as e:
-        return False, f"Validation failed: {str(e)}"
+        return False, f"Unable to validate - unexpected error: {type(e).__name__}: {e}"
 
 auth_app = typer.Typer(
     name="auth",

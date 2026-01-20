@@ -584,11 +584,14 @@ class TestValidation:
         """Validates Anthropic API key format."""
         from codeframe.core.credentials import validate_credential_format, CredentialProvider
 
-        # Valid format
-        assert validate_credential_format(CredentialProvider.LLM_ANTHROPIC, "sk-ant-api03-abc123") is True
+        # Valid format (sk-ant- prefix, >= 20 chars)
+        assert validate_credential_format(CredentialProvider.LLM_ANTHROPIC, "sk-ant-api03-abc123defghij") is True
 
-        # Invalid - too short
-        assert validate_credential_format(CredentialProvider.LLM_ANTHROPIC, "sk") is False
+        # Invalid - wrong prefix
+        assert validate_credential_format(CredentialProvider.LLM_ANTHROPIC, "sk-abc123defghijklmnop") is False
+
+        # Invalid - too short (even with correct prefix)
+        assert validate_credential_format(CredentialProvider.LLM_ANTHROPIC, "sk-ant-short") is False
 
         # Invalid - empty
         assert validate_credential_format(CredentialProvider.LLM_ANTHROPIC, "") is False
@@ -610,8 +613,14 @@ class TestValidation:
         """Validates OpenAI API key format."""
         from codeframe.core.credentials import validate_credential_format, CredentialProvider
 
-        # Valid format
-        assert validate_credential_format(CredentialProvider.LLM_OPENAI, "sk-proj-abc123xyz") is True
+        # Valid format (sk- prefix, >= 20 chars)
+        assert validate_credential_format(CredentialProvider.LLM_OPENAI, "sk-proj-abc123xyzdefghijk") is True
+
+        # Valid legacy format
+        assert validate_credential_format(CredentialProvider.LLM_OPENAI, "sk-abc123xyzdefghijklmnop") is True
+
+        # Invalid - wrong prefix
+        assert validate_credential_format(CredentialProvider.LLM_OPENAI, "pk-abc123xyzdefghijklmnop") is False
 
         # Invalid - too short
-        assert validate_credential_format(CredentialProvider.LLM_OPENAI, "sk") is False
+        assert validate_credential_format(CredentialProvider.LLM_OPENAI, "sk-short") is False
