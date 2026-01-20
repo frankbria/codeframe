@@ -202,6 +202,13 @@ def derive_encryption_key(salt_file: Path) -> bytes:
     if salt_file.exists():
         with open(salt_file, "rb") as f:
             salt = f.read()
+        # Validate salt file integrity
+        if len(salt) != 16:
+            raise ValueError(
+                f"Invalid salt file at {salt_file}: expected 16 bytes, got {len(salt)}. "
+                "Delete the salt file to regenerate (note: this will make existing "
+                "credentials inaccessible)."
+            )
     else:
         salt = os.urandom(16)
         salt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -468,6 +475,8 @@ class CredentialStore:
                 data = keyring.get_password(KEYRING_SERVICE_NAME, key)
                 if data:
                     return Credential.from_dict(json.loads(data))
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
+                logger.warning(f"Malformed credential data in keyring for {key}: {e}")
             except Exception as e:
                 logger.debug(f"Keyring retrieval failed: {e}")
 
@@ -477,7 +486,8 @@ class CredentialStore:
             try:
                 return Credential.from_dict(store[key])
             except (KeyError, TypeError, ValueError) as e:
-                logger.warning(f"Malformed credential data for {key}: {e}")
+                logger.warning(f"Malformed credential data in encrypted store for {key}: {e}")
+                return None
 
         return None
 

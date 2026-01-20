@@ -503,6 +503,11 @@ def setup_credential(
             hide_input=True,
         )
 
+    # Reject empty or whitespace-only values
+    if not value or not value.strip():
+        console.print("[red]Error:[/red] Credential value cannot be empty")
+        raise typer.Exit(1)
+
     # Validate format
     if not manager.validate_credential_format(provider_enum, value):
         console.print("[red]Error:[/red] Invalid credential format")
@@ -708,6 +713,18 @@ def remove_credential(
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
+    # Check if credential exists in storage (not just environment)
+    source = manager.get_credential_source(provider_enum)
+    if source != CredentialSource.STORED:
+        if source == CredentialSource.ENVIRONMENT:
+            console.print(
+                f"[yellow]Credential for {provider_enum.display_name} is set via environment "
+                f"variable ({provider_enum.env_var}) and cannot be removed by this command[/yellow]"
+            )
+        else:
+            console.print(f"[yellow]No stored credential found for {provider_enum.display_name}[/yellow]")
+        return
+
     # Confirm deletion
     if not yes:
         confirm = typer.confirm(
@@ -719,4 +736,4 @@ def remove_credential(
 
     # Delete credential
     manager.delete_credential(provider_enum)
-    console.print(f"[green]Removed credential for {provider_enum.display_name}[/green]")
+    console.print(f"[green]Removed stored credential for {provider_enum.display_name}[/green]")
