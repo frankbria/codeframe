@@ -410,12 +410,17 @@ class CredentialStore:
 
         # Write atomically
         temp_path = file_path.with_suffix(".tmp")
-        with open(temp_path, "wb") as f:
-            f.write(encrypted)
-        temp_path.chmod(0o600)
-        temp_path.replace(file_path)
-        # Ensure final file has correct permissions (replace may not preserve on all filesystems)
-        file_path.chmod(0o600)
+        try:
+            with open(temp_path, "wb") as f:
+                f.write(encrypted)
+            temp_path.chmod(0o600)
+            temp_path.replace(file_path)
+            file_path.chmod(0o600)
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def store(self, credential: Credential) -> None:
         """Store a credential securely.
