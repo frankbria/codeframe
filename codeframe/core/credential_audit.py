@@ -236,7 +236,7 @@ class CredentialAuditLogger:
             return []
 
         # Return most recent entries first
-        return list(reversed(entries[-count:]))
+        return [] if count <= 0 else list(reversed(entries[-count:]))
 
 
 # Global audit logger instance
