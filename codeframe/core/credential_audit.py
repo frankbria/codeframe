@@ -75,7 +75,10 @@ class CredentialAuditLogger:
 
         # Ensure log directory exists
         if self.enabled:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                self.log_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                logger.warning(f"Failed to create audit log dir {self.log_dir}: {e}")
 
     def _get_log_path(self) -> Path:
         """Get the path to the audit log file."""
@@ -134,11 +137,15 @@ class CredentialAuditLogger:
         }
 
         if details:
-            # Ensure we never log sensitive values
-            safe_details = {k: v for k, v in details.items()
-                           if k.lower() not in ("value", "credential", "password", "secret", "token", "key")}
-            entry["details"] = safe_details
-
+            # Ensure we never log sensitive values (including nested)
+            def _scrub(obj):
+                if isinstance(obj, dict):
+                    return {k: _scrub(v) for k, v in obj.items() if k.lower() not in ("value", "credential", "password", "secret", "token", "key")}
+                elif isinstance(obj, list):
+                    return [_scrub(v) for v in obj]
+                else:
+                    return obj
+            entry["details"] = _scrub(details)
         self._write_entry(entry)
         logger.debug(f"Audit log: {action.value} {provider.name} ({source}) - {'success' if success else 'failure'}")
 
@@ -233,7 +240,7 @@ class CredentialAuditLogger:
             return []
 
         # Return most recent entries first
-        return list(reversed(entries[-count:]))
+        return [] if count <= 0 else list(reversed(entries[-count:]))
 
 
 # Global audit logger instance

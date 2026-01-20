@@ -503,6 +503,11 @@ def setup_credential(
             hide_input=True,
         )
 
+    # Reject empty or whitespace-only values
+    if not value or not value.strip():
+        console.print("[red]Error:[/red] Credential value cannot be empty")
+        raise typer.Exit(1)
+
     # Validate format
     if not manager.validate_credential_format(provider_enum, value):
         console.print("[red]Error:[/red] Invalid credential format")
@@ -642,8 +647,8 @@ def rotate_credential(
         raise typer.Exit(1)
 
     # Check if credential exists
-    existing = manager.get_credential(provider_enum)
-    if not existing:
+    source = manager.get_credential_source(provider_enum)
+    if source == CredentialSource.NOT_FOUND:
         console.print(f"[yellow]Note:[/yellow] No existing credential for {provider_enum.display_name}")
         console.print("Use 'codeframe auth setup' to create a new credential.")
         raise typer.Exit(1)
@@ -651,7 +656,7 @@ def rotate_credential(
     # Prompt for new value if not provided
     if not value:
         value = typer.prompt("Enter new credential value", hide_input=True)
-
+    value = value.strip()
     # Validate format
     if not manager.validate_credential_format(provider_enum, value):
         console.print("[red]Error:[/red] Invalid credential format")
@@ -708,6 +713,18 @@ def remove_credential(
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
+    # Check if credential exists in storage (not just environment)
+    source = manager.get_credential_source(provider_enum)
+    if source != CredentialSource.STORED:
+        if source == CredentialSource.ENVIRONMENT:
+            console.print(
+                f"[yellow]Credential for {provider_enum.display_name} is set via environment "
+                f"variable ({provider_enum.env_var}) and cannot be removed by this command[/yellow]"
+            )
+        else:
+            console.print(f"[yellow]No stored credential found for {provider_enum.display_name}[/yellow]")
+        return
+
     # Confirm deletion
     if not yes:
         confirm = typer.confirm(
@@ -718,5 +735,10 @@ def remove_credential(
             return
 
     # Delete credential
-    manager.delete_credential(provider_enum)
-    console.print(f"[green]Removed credential for {provider_enum.display_name}[/green]")
+    try:
+        manager.delete_credential(provider_enum)
+        console.print(f"[green]Removed stored credential for {provider_enum.display_name}[/green]")
+    except Exception as e:
+        logger.debug(f"Credential deletion error: {e}")
+        console.print("[red]Error:[/red] Failed to remove stored credential")
+        raise typer.Exit(1)

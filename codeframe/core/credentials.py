@@ -56,17 +56,6 @@ SALT_FILE_NAME = "salt"
 DEFAULT_STORAGE_DIR = Path.home() / ".codeframe"
 
 
-class CredentialStoreError(Exception):
-    """Raised when the credential store cannot be read or decrypted.
-
-    This exception indicates that the credential store file exists but cannot
-    be accessed properly. Callers should NOT proceed with write operations
-    when this is raised, as doing so could result in data loss.
-    """
-
-    pass
-
-
 class CredentialSource(str, Enum):
     """Source of a credential."""
 
@@ -127,9 +116,12 @@ class Credential:
     @property
     def is_expired(self) -> bool:
         """Check if credential has expired."""
-        if self.expires_at is None:
+        exp = self.expires_at
+        if exp is None:
             return False
-        return datetime.now(timezone.utc) > self.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > exp
 
     @property
     def masked_value(self) -> str:
@@ -213,6 +205,13 @@ def derive_encryption_key(salt_file: Path) -> bytes:
     if salt_file.exists():
         with open(salt_file, "rb") as f:
             salt = f.read()
+        # Validate salt file integrity
+        if len(salt) != 16:
+            raise ValueError(
+                f"Invalid salt file at {salt_file}: expected 16 bytes, got {len(salt)}. "
+                "Delete the salt file to regenerate (note: this will make existing "
+                "credentials inaccessible)."
+            )
     else:
         salt = os.urandom(16)
         salt_file.parent.mkdir(parents=True, exist_ok=True)
@@ -375,11 +374,9 @@ class CredentialStore:
         Returns:
             Dictionary of stored credentials, or empty dict if file doesn't exist.
 
-        Raises:
-            CredentialStoreError: If decryption fails (e.g., machine ID changed,
-                file corrupted). Callers must NOT proceed with write operations.
-            PermissionError: If file cannot be read due to permissions.
-            OSError: If file cannot be read due to other I/O errors.
+        Note:
+            Returns empty dict on decryption failure (e.g., machine ID changed).
+            This is intentional - credentials become inaccessible on new machines.
         """
         file_path = self._get_encrypted_file_path()
         if not file_path.exists():
@@ -394,18 +391,22 @@ class CredentialStore:
             return json.loads(decrypted.decode())
         except InvalidToken:
             # Decryption failed - likely machine ID changed or file corrupted
-            raise CredentialStoreError(
+            logger.error(
                 "Failed to decrypt credentials file. This can happen if the machine ID "
                 "changed (e.g., new machine, VM clone). Stored credentials are inaccessible. "
                 "Re-run 'cf auth setup' to reconfigure credentials."
             )
+            return {}
         except json.JSONDecodeError as e:
             # Decryption succeeded but JSON is invalid - file corruption
-            raise CredentialStoreError(f"Credentials file corrupted (invalid JSON): {e}")
-        except PermissionError:
-            raise
-        except OSError:
-            raise
+            logger.error(f"Credentials file corrupted (invalid JSON): {e}")
+            return {}
+        except PermissionError as e:
+            logger.error(f"Permission denied reading credentials file: {e}")
+            return {}
+        except OSError as e:
+            logger.error(f"Failed to read credentials file: {e}")
+            return {}
 
     def _save_encrypted_store(self, store: dict[str, dict]) -> None:
         """Save all credentials to encrypted file."""
@@ -438,11 +439,6 @@ class CredentialStore:
 
         Args:
             credential: The credential to store
-
-        Raises:
-            CredentialStoreError: If the credential store cannot be read.
-            PermissionError: If the credential store cannot be accessed.
-            OSError: If there's an I/O error accessing the credential store.
         """
         key = credential.provider.name
         data = json.dumps(credential.to_dict())
@@ -455,13 +451,14 @@ class CredentialStore:
                 return
             except Exception as e:
                 logger.warning(f"Keyring storage failed, using encrypted file: {e}")
+                try:
+                    keyring.delete_password(KEYRING_SERVICE_NAME, key)
+                except Exception:
+                    pass
+                self._keyring_available = False
 
         # Fall back to encrypted file
-        try:
-            store = self._load_encrypted_store()
-        except (CredentialStoreError, PermissionError, OSError) as e:
-            logger.error(f"Cannot store credential: failed to read existing store: {e}")
-            raise
+        store = self._load_encrypted_store()
         store[key] = credential.to_dict()
         self._save_encrypted_store(store)
         logger.debug(f"Stored {key} in encrypted file")
@@ -475,7 +472,7 @@ class CredentialStore:
             provider: The provider type to retrieve
 
         Returns:
-            Credential if found, None otherwise (including on read errors)
+            Credential if found, None otherwise
         """
         key = provider.name
 
@@ -485,20 +482,19 @@ class CredentialStore:
                 data = keyring.get_password(KEYRING_SERVICE_NAME, key)
                 if data:
                     return Credential.from_dict(json.loads(data))
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
+                logger.warning(f"Malformed credential data in keyring for {key}: {e}")
             except Exception as e:
                 logger.debug(f"Keyring retrieval failed: {e}")
 
         # Fall back to encrypted file
-        try:
-            store = self._load_encrypted_store()
-        except (CredentialStoreError, PermissionError, OSError) as e:
-            logger.error(f"Cannot retrieve credential: failed to read store: {e}")
-            return None
+        store = self._load_encrypted_store()
         if key in store:
             try:
                 return Credential.from_dict(store[key])
             except (KeyError, TypeError, ValueError) as e:
-                logger.warning(f"Malformed credential data for {key}: {e}")
+                logger.warning(f"Malformed credential data in encrypted store for {key}: {e}")
+                return None
 
         return None
 
@@ -516,14 +512,11 @@ class CredentialStore:
                 keyring.delete_password(KEYRING_SERVICE_NAME, key)
                 logger.debug(f"Deleted {key} from keyring")
             except Exception as e:
-                logger.debug(f"Keyring deletion failed: {e}")
+                logger.warning(f"Keyring deletion failed: {e}")
+                raise
 
         # Also remove from encrypted file (if exists)
-        try:
-            store = self._load_encrypted_store()
-        except (CredentialStoreError, PermissionError, OSError) as e:
-            logger.warning(f"Cannot delete from encrypted store: failed to read store: {e}")
-            return
+        store = self._load_encrypted_store()
         if key in store:
             del store[key]
             self._save_encrypted_store(store)
@@ -540,17 +533,12 @@ class CredentialStore:
             checks all known provider types and will find keyring entries.
 
         Returns:
-            List of providers that have stored credentials in encrypted file,
-            or empty list if store cannot be read.
+            List of providers that have stored credentials in encrypted file
         """
         providers = []
 
         # Check encrypted file only - keyring doesn't support enumeration
-        try:
-            store = self._load_encrypted_store()
-        except (CredentialStoreError, PermissionError, OSError) as e:
-            logger.error(f"Cannot list providers: failed to read store: {e}")
-            return []
+        store = self._load_encrypted_store()
         for key in store:
             try:
                 providers.append(CredentialProvider[key])
