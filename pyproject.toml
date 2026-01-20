@@ -54,6 +54,7 @@ dependencies = [
     "fastapi-users[sqlalchemy]>=15.0.2",
     "python-jose[cryptography]>=3.4.0",
     "passlib[argon2]>=1.7.4",
+    "keyring>=24.0.0",
 ]
 
 [project.optional-dependencies]

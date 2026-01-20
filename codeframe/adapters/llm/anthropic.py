@@ -4,7 +4,7 @@ Provides Claude model access via the Anthropic API.
 """
 
 import os
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING, Iterator, Optional
 
 from codeframe.adapters.llm.base import (
     LLMProvider,
@@ -14,6 +14,9 @@ from codeframe.adapters.llm.base import (
     Tool,
     ToolCall,
 )
+
+if TYPE_CHECKING:
+    from codeframe.core.credentials import CredentialManager
 
 
 class AnthropicProvider(LLMProvider):
@@ -27,22 +30,38 @@ class AnthropicProvider(LLMProvider):
         self,
         api_key: Optional[str] = None,
         model_selector: Optional[ModelSelector] = None,
+        credential_manager: Optional["CredentialManager"] = None,
     ):
         """Initialize the Anthropic provider.
 
         Args:
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
             model_selector: Custom model selector
+            credential_manager: Optional credential manager for secure key retrieval
 
         Raises:
             ValueError: If no API key is available
         """
         super().__init__(model_selector)
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+
+        # Try to get API key from multiple sources in order:
+        # 1. Direct api_key parameter
+        # 2. CredentialManager (if provided)
+        # 3. Environment variable
+        self.api_key = api_key
+
+        if not self.api_key and credential_manager:
+            from codeframe.core.credentials import CredentialProvider
+            self.api_key = credential_manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
+
+        if not self.api_key:
+            self.api_key = os.getenv("ANTHROPIC_API_KEY")
+
         if not self.api_key:
             raise ValueError(
                 "ANTHROPIC_API_KEY not set. "
-                "Set the environment variable or pass api_key parameter."
+                "Set the environment variable, pass api_key parameter, "
+                "or configure via 'codeframe auth setup --provider anthropic'."
             )
         self._client = None
 
