@@ -448,6 +448,10 @@ class CredentialStore:
                 return
             except Exception as e:
                 logger.warning(f"Keyring storage failed, using encrypted file: {e}")
+                try:
+                    keyring.delete_password(KEYRING_SERVICE_NAME, key)
+                except Exception:
+                    pass
                 self._keyring_available = False
 
         # Fall back to encrypted file
