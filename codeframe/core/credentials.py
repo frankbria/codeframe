@@ -116,9 +116,12 @@ class Credential:
     @property
     def is_expired(self) -> bool:
         """Check if credential has expired."""
-        if self.expires_at is None:
+        exp = self.expires_at
+        if exp is None:
             return False
-        return datetime.now(timezone.utc) > self.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > exp
 
     @property
     def masked_value(self) -> str:
