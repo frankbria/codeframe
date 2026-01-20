@@ -474,7 +474,10 @@ class CredentialStore:
         # Fall back to encrypted file
         store = self._load_encrypted_store()
         if key in store:
-            return Credential.from_dict(store[key])
+            try:
+                return Credential.from_dict(store[key])
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning(f"Malformed credential data for {key}: {e}")
 
         return None
 
