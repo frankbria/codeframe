@@ -136,7 +136,7 @@ class CredentialAuditLogger:
         if details:
             # Ensure we never log sensitive values
             safe_details = {k: v for k, v in details.items()
-                           if k not in ("value", "credential", "password", "secret", "token", "key")}
+                           if k.lower() not in ("value", "credential", "password", "secret", "token", "key")}
             entry["details"] = safe_details
 
         self._write_entry(entry)
