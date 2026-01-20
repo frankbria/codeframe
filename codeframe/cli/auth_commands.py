@@ -656,7 +656,7 @@ def rotate_credential(
     # Prompt for new value if not provided
     if not value:
         value = typer.prompt("Enter new credential value", hide_input=True)
-
+    value = value.strip()
     # Validate format
     if not manager.validate_credential_format(provider_enum, value):
         console.print("[red]Error:[/red] Invalid credential format")
