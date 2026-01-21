@@ -101,7 +101,8 @@ describe('ReviewFindingsList', () => {
       const findingWithoutSuggestion = { ...mockFinding, suggestion: undefined };
       const { container } = render(<ReviewFindingsList findings={[findingWithoutSuggestion]} />);
 
-      const suggestionBox = container.querySelector('.bg-blue-50');
+      // Suggestion box uses bg-muted class (Nova palette)
+      const suggestionBox = container.querySelector('.mt-2.p-2.bg-muted');
       expect(suggestionBox).not.toBeInTheDocument();
     });
 
@@ -401,7 +402,8 @@ describe('ReviewFindingsList', () => {
 
       const { container } = render(<ReviewFindingsList findings={[finding]} />);
       // Empty string is falsy, so suggestion box should not render
-      const suggestionBox = container.querySelector('.bg-blue-50');
+      // Suggestion box uses bg-muted class (Nova palette)
+      const suggestionBox = container.querySelector('.mt-2.p-2.bg-muted');
       expect(suggestionBox).not.toBeInTheDocument();
     });
   });

@@ -255,7 +255,7 @@ describe('AgentList', () => {
       );
 
       await waitFor(() => {
-        // Check for BotIcon (Hugeicons adds data-testid automatically)
+        // Check for BotIcon (data-testid added explicitly in component source)
         expect(screen.getByTestId('bot-icon')).toBeInTheDocument();
       });
     });

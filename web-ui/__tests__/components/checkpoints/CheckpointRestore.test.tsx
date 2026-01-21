@@ -149,10 +149,10 @@ index abc123d..def456e 100644
       />
     );
 
-    // ASSERT: Warning message is shown (Alert02Icon + text without emoji)
+    // ASSERT: Warning message is shown (Alert02Icon is decorative, so we check text)
     await waitFor(() => {
       expect(screen.getByText('Warning: Destructive Operation')).toBeInTheDocument();
-      expect(screen.getByTestId('Alert02Icon')).toBeInTheDocument();
+      expect(screen.getByTestId('restore-warning')).toBeInTheDocument();
     });
 
     expect(
