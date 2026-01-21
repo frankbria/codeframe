@@ -1,5 +1,6 @@
 /**
  * Unit tests for CheckpointRestore component (T103)
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  *
  * Tests:
  * - Diff preview display
@@ -16,6 +17,19 @@ import userEvent from '@testing-library/user-event';
 import { CheckpointRestore } from '../../../src/components/checkpoints/CheckpointRestore';
 import * as checkpointsApi from '../../../src/api/checkpoints';
 import type { Checkpoint, CheckpointDiff, RestoreCheckpointResponse } from '../../../src/types/checkpoints';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  return {
+    Alert02Icon: ({ className }: { className?: string }) => (
+      <svg data-testid="Alert02Icon" className={className} aria-hidden="true" />
+    ),
+    CheckmarkCircle01Icon: ({ className }: { className?: string }) => (
+      <svg data-testid="CheckmarkCircle01Icon" className={className} aria-hidden="true" />
+    ),
+  };
+});
 
 // Mock the API module
 jest.mock('../../../src/api/checkpoints');
@@ -138,9 +152,10 @@ index abc123d..def456e 100644
       />
     );
 
-    // ASSERT: Warning message is shown
+    // ASSERT: Warning message is shown (Alert02Icon is decorative, so we check text)
     await waitFor(() => {
-      expect(screen.getByText('⚠️ Warning: Destructive Operation')).toBeInTheDocument();
+      expect(screen.getByText('Warning: Destructive Operation')).toBeInTheDocument();
+      expect(screen.getByTestId('restore-warning')).toBeInTheDocument();
     });
 
     expect(

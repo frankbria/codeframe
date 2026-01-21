@@ -8,6 +8,31 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+// Mock Hugeicons - must be before component import
+jest.mock('@hugeicons/react', () => {
+  const createMockIcon = (name: string, testId: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg className={className} data-testid={testId} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+
+  return {
+    // Agent type icons
+    Settings01Icon: createMockIcon('Settings01Icon', 'settings-icon'),
+    PaintBrush01Icon: createMockIcon('PaintBrush01Icon', 'paint-brush-icon'),
+    TestTube01Icon: createMockIcon('TestTube01Icon', 'test-tube-icon'),
+    BotIcon: createMockIcon('BotIcon', 'bot-icon'),
+    // Maturity level icons
+    SunriseIcon: createMockIcon('SunriseIcon', 'sunrise-icon'),
+    BookOpen01Icon: createMockIcon('BookOpen01Icon', 'book-icon'),
+    FlashIcon: createMockIcon('FlashIcon', 'flash-icon'),
+    Award01Icon: createMockIcon('Award01Icon', 'award-icon'),
+  };
+});
+
 import AgentCard, { Agent } from '@/components/AgentCard';
 
 describe('AgentCard Component', () => {
@@ -212,7 +237,7 @@ describe('AgentCard Component', () => {
 
       const badge = screen.getByText('Backend Worker').parentElement;
       expect(badge).toHaveClass('bg-primary/10', 'text-primary-foreground');
-      expect(screen.getByText('⚙️')).toBeInTheDocument();
+      expect(screen.getByTestId('settings-icon')).toBeInTheDocument();
     });
 
     it('should show frontend badge with correct icon', () => {
@@ -227,7 +252,7 @@ describe('AgentCard Component', () => {
 
       const badge = screen.getByText('Frontend Specialist').parentElement;
       expect(badge).toHaveClass('bg-secondary', 'text-secondary-foreground');
-      expect(screen.getByText('🎨')).toBeInTheDocument();
+      expect(screen.getByTestId('paint-brush-icon')).toBeInTheDocument();
     });
 
     it('should show test badge with correct icon', () => {
@@ -242,7 +267,7 @@ describe('AgentCard Component', () => {
 
       const badge = screen.getByText('Test Engineer').parentElement;
       expect(badge).toHaveClass('bg-secondary', 'text-secondary-foreground');
-      expect(screen.getByText('🧪')).toBeInTheDocument();
+      expect(screen.getByTestId('test-tube-icon')).toBeInTheDocument();
     });
 
     it('should show default badge for unknown agent type', () => {
@@ -257,7 +282,7 @@ describe('AgentCard Component', () => {
 
       const badge = screen.getByText('Custom Agent').parentElement;
       expect(badge).toHaveClass('bg-muted', 'text-foreground');
-      expect(screen.getByText('🤖')).toBeInTheDocument();
+      expect(screen.getByTestId('bot-icon')).toBeInTheDocument();
     });
   });
 

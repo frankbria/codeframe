@@ -2,11 +2,34 @@
  * ReviewFindingsList Component Tests (T062)
  * Tests for review findings display with severity indicators
  * Part of Sprint 9 Phase 3 (Review Agent API/UI Integration)
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  */
 
 import { render, screen } from '@testing-library/react';
 import ReviewFindingsList from '@/components/review/ReviewFindingsList';
 import type { ReviewFinding, FindingSeverity } from '@/types/review';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    CheckmarkCircle01Icon: createMockIcon('CheckmarkCircle01Icon'),
+    LockIcon: createMockIcon('LockIcon'),
+    RepeatIcon: createMockIcon('RepeatIcon'),
+    SparklesIcon: createMockIcon('SparklesIcon'),
+    ChartBarLineIcon: createMockIcon('ChartBarLineIcon'),
+    KnightShieldIcon: createMockIcon('KnightShieldIcon'),
+    FileEditIcon: createMockIcon('FileEditIcon'),
+    Idea01Icon: createMockIcon('Idea01Icon'),
+  };
+});
 
 describe('ReviewFindingsList', () => {
   describe('Empty state', () => {
@@ -14,7 +37,7 @@ describe('ReviewFindingsList', () => {
       render(<ReviewFindingsList findings={[]} />);
 
       expect(screen.getByText('No findings - excellent code quality!')).toBeInTheDocument();
-      expect(screen.getByText('✅')).toBeInTheDocument();
+      expect(screen.getByTestId('CheckmarkCircle01Icon')).toBeInTheDocument();
     });
 
     it('applies correct CSS classes to empty state container', () => {
@@ -26,11 +49,11 @@ describe('ReviewFindingsList', () => {
       expect(emptyState).toHaveClass('text-muted-foreground');
     });
 
-    it('displays checkmark emoji in empty state', () => {
+    it('displays CheckmarkCircle01Icon in empty state', () => {
       render(<ReviewFindingsList findings={[]} />);
-      const emoji = screen.getByText('✅');
+      const icon = screen.getByTestId('CheckmarkCircle01Icon');
 
-      expect(emoji).toBeInTheDocument();
+      expect(icon).toBeInTheDocument();
     });
   });
 
@@ -78,7 +101,8 @@ describe('ReviewFindingsList', () => {
       const findingWithoutSuggestion = { ...mockFinding, suggestion: undefined };
       const { container } = render(<ReviewFindingsList findings={[findingWithoutSuggestion]} />);
 
-      const suggestionBox = container.querySelector('.bg-blue-50');
+      // Suggestion box uses bg-muted class (Nova palette)
+      const suggestionBox = container.querySelector('.mt-2.p-2.bg-muted');
       expect(suggestionBox).not.toBeInTheDocument();
     });
 
@@ -175,32 +199,32 @@ describe('ReviewFindingsList', () => {
 
     it('renders security category icon', () => {
       render(<ReviewFindingsList findings={[createFindingWithCategory('security')]} />);
-      expect(screen.getByText('🔒')).toBeInTheDocument();
+      expect(screen.getByTestId('LockIcon')).toBeInTheDocument();
     });
 
     it('renders complexity category icon', () => {
       render(<ReviewFindingsList findings={[createFindingWithCategory('complexity')]} />);
-      expect(screen.getByText('🔄')).toBeInTheDocument();
+      expect(screen.getByTestId('RepeatIcon')).toBeInTheDocument();
     });
 
     it('renders style category icon', () => {
       render(<ReviewFindingsList findings={[createFindingWithCategory('style')]} />);
-      expect(screen.getByText('✨')).toBeInTheDocument();
+      expect(screen.getByTestId('SparklesIcon')).toBeInTheDocument();
     });
 
     it('renders coverage category icon', () => {
       render(<ReviewFindingsList findings={[createFindingWithCategory('coverage')]} />);
-      expect(screen.getByText('📊')).toBeInTheDocument();
+      expect(screen.getByTestId('ChartBarLineIcon')).toBeInTheDocument();
     });
 
     it('renders owasp category icon', () => {
       render(<ReviewFindingsList findings={[createFindingWithCategory('owasp')]} />);
-      expect(screen.getByText('🛡️')).toBeInTheDocument();
+      expect(screen.getByTestId('KnightShieldIcon')).toBeInTheDocument();
     });
 
     it('renders default category icon for unknown category', () => {
       render(<ReviewFindingsList findings={[createFindingWithCategory('unknown')]} />);
-      expect(screen.getByText('📝')).toBeInTheDocument();
+      expect(screen.getByTestId('FileEditIcon')).toBeInTheDocument();
     });
   });
 
@@ -268,7 +292,7 @@ describe('ReviewFindingsList', () => {
       expect(screen.getByText('Use bcrypt for password hashing')).toBeInTheDocument();
       expect(screen.getByText('Refactor into smaller functions')).toBeInTheDocument();
       // Third finding has no suggestion, so no extra suggestion should appear
-      const suggestions = screen.getAllByText(/💡 Suggestion:/);
+      const suggestions = screen.getAllByText(/Suggestion:/);
       expect(suggestions).toHaveLength(2);
     });
   });
@@ -378,7 +402,8 @@ describe('ReviewFindingsList', () => {
 
       const { container } = render(<ReviewFindingsList findings={[finding]} />);
       // Empty string is falsy, so suggestion box should not render
-      const suggestionBox = container.querySelector('.bg-blue-50');
+      // Suggestion box uses bg-muted class (Nova palette)
+      const suggestionBox = container.querySelector('.mt-2.p-2.bg-muted');
       expect(suggestionBox).not.toBeInTheDocument();
     });
   });

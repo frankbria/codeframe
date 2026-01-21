@@ -1,10 +1,24 @@
 /**
  * BlockerBadge Component Tests
  * Tests for blocker type badge display (049-human-in-loop, T016)
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  */
 
 import { render, screen } from '@testing-library/react';
 import { BlockerBadge } from '@/components/BlockerBadge';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  return {
+    Alert02Icon: ({ className }: { className?: string }) => (
+      <svg data-testid="Alert02Icon" className={className} aria-hidden="true" />
+    ),
+    Idea01Icon: ({ className }: { className?: string }) => (
+      <svg data-testid="Idea01Icon" className={className} aria-hidden="true" />
+    ),
+  };
+});
 
 describe('BlockerBadge', () => {
   describe('SYNC blocker badge', () => {
@@ -13,9 +27,9 @@ describe('BlockerBadge', () => {
       expect(screen.getByText('CRITICAL')).toBeInTheDocument();
     });
 
-    it('displays alert icon', () => {
+    it('displays Alert02Icon', () => {
       render(<BlockerBadge type="SYNC" />);
-      expect(screen.getByText('🚨')).toBeInTheDocument();
+      expect(screen.getByTestId('Alert02Icon')).toBeInTheDocument();
     });
 
     it('has red background and text colors', () => {
@@ -51,9 +65,9 @@ describe('BlockerBadge', () => {
       expect(screen.getByText('INFO')).toBeInTheDocument();
     });
 
-    it('displays lightbulb icon', () => {
+    it('displays Idea01Icon', () => {
       render(<BlockerBadge type="ASYNC" />);
-      expect(screen.getByText('💡')).toBeInTheDocument();
+      expect(screen.getByTestId('Idea01Icon')).toBeInTheDocument();
     });
 
     it('has yellow background and text colors', () => {
@@ -102,16 +116,16 @@ describe('BlockerBadge', () => {
   });
 
   describe('icon rendering', () => {
-    it('renders icon with correct size class', () => {
-      const { container } = render(<BlockerBadge type="SYNC" />);
-      const icon = screen.getByText('🚨');
-      expect(icon).toHaveClass('text-sm');
+    it('renders SYNC icon with correct size class', () => {
+      render(<BlockerBadge type="SYNC" />);
+      const icon = screen.getByTestId('Alert02Icon');
+      expect(icon).toHaveClass('h-3.5', 'w-3.5');
     });
 
     it('renders ASYNC icon with correct size class', () => {
-      const { container } = render(<BlockerBadge type="ASYNC" />);
-      const icon = screen.getByText('💡');
-      expect(icon).toHaveClass('text-sm');
+      render(<BlockerBadge type="ASYNC" />);
+      const icon = screen.getByTestId('Idea01Icon');
+      expect(icon).toHaveClass('h-3.5', 'w-3.5');
     });
   });
 });

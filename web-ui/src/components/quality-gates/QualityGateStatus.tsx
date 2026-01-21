@@ -19,6 +19,14 @@ import type {
 } from '@/types/qualityGates';
 import { fetchQualityGateStatus, triggerQualityGates } from '@/api/qualityGates';
 import { getStatusClasses, getSeverityClasses, getGateIcon, getStatusIcon } from '@/lib/qualityGateUtils';
+import {
+  Alert02Icon,
+  Settings01Icon,
+  UserIcon,
+  RefreshIcon,
+  Cancel01Icon,
+  CheckmarkCircle01Icon,
+} from '@hugeicons/react';
 
 interface QualityGateStatusProps {
   taskId: number;
@@ -125,7 +133,7 @@ export default function QualityGateStatus({
     return (
       <div className="p-4 bg-destructive/10 rounded-lg border border-destructive">
         <div className="flex items-start">
-          <span className="text-destructive text-xl mr-2">⚠️</span>
+          <Alert02Icon className="h-5 w-5 text-destructive mr-2 flex-shrink-0" aria-hidden="true" />
           <div className="flex-1">
             <h4 className="text-sm font-medium text-destructive">Error Loading Quality Gates</h4>
             <p className="text-sm text-destructive mt-1">{error}</p>
@@ -141,7 +149,7 @@ export default function QualityGateStatus({
       <div className="p-4 bg-muted rounded-lg border border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <span className="text-muted-foreground text-xl mr-2">⚙️</span>
+            <Settings01Icon className="h-5 w-5 text-muted-foreground mr-2" aria-hidden="true" />
             <span className="text-sm text-muted-foreground">No quality gate results yet</span>
           </div>
           <button
@@ -161,7 +169,7 @@ export default function QualityGateStatus({
       {/* Status Header */}
       <div className="flex items-center justify-between p-4 bg-card rounded-lg border border-border shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{getStatusIcon(status.status)}</span>
+          {getStatusIcon(status.status)}
           <div>
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-semibold text-foreground">Quality Gate Status</h4>
@@ -173,8 +181,9 @@ export default function QualityGateStatus({
                 {status.status || 'unknown'}
               </span>
               {status.requires_human_approval && (
-                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-accent text-accent-foreground border border-accent">
-                  👤 Requires Approval
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-accent text-accent-foreground border border-accent inline-flex items-center gap-1">
+                  <UserIcon className="h-3 w-3" aria-hidden="true" />
+                  <span>Requires Approval</span>
                 </span>
               )}
             </div>
@@ -198,7 +207,7 @@ export default function QualityGateStatus({
             </>
           ) : (
             <>
-              <span>🔄</span>
+              <RefreshIcon className="h-4 w-4" aria-hidden="true" />
               <span>Re-run</span>
             </>
           )}
@@ -211,7 +220,7 @@ export default function QualityGateStatus({
        !warningDismissed && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <span className="text-yellow-600 text-xl flex-shrink-0">⚠️</span>
+            <Alert02Icon className="h-5 w-5 text-yellow-600 flex-shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
               <h4 className="text-sm font-bold text-yellow-900">Summary Status Only</h4>
               <p className="text-sm text-yellow-800 mt-1">
@@ -248,7 +257,7 @@ export default function QualityGateStatus({
       {status.failures && status.failures.length > 0 && (
         <div className="p-4 bg-card rounded-lg border border-border shadow-sm">
           <h5 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <span>❌</span>
+            <Cancel01Icon className="h-4 w-4 text-destructive" aria-hidden="true" />
             <span>Quality Gate Failures ({status.failures.length})</span>
           </h5>
           <div className="space-y-2">
@@ -290,7 +299,7 @@ export default function QualityGateStatus({
       {status.status === 'passed' && (!status.failures || status.failures.length === 0) && (
         <div className="p-4 bg-green-50 rounded-lg border border-green-200">
           <div className="flex items-center gap-2">
-            <span className="text-green-600 text-xl">✅</span>
+            <CheckmarkCircle01Icon className="h-5 w-5 text-green-600" aria-hidden="true" />
             <span className="text-sm text-green-800 font-medium">
               All quality gates passed! Ready for deployment.
             </span>

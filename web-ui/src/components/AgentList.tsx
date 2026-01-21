@@ -21,7 +21,7 @@ import type { AgentAssignment } from '@/types/agentAssignment';
 import type { IssuesResponse } from '@/types/api';
 import { AgentAssignmentCard } from './AgentAssignmentCard';
 import { isPlanningPhase, getPlanningPhaseMessage } from '@/lib/phaseAwareData';
-import { BotIcon, CheckListIcon } from '@hugeicons/react';
+import { BotIcon, CheckListIcon, Alert02Icon, RefreshIcon } from '@hugeicons/react';
 
 interface AgentListProps {
   /** Project ID to fetch agents for */
@@ -130,7 +130,7 @@ export function AgentList({
     return (
       <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
         <div className="flex items-start">
-          <span className="text-destructive text-xl mr-2">⚠️</span>
+          <Alert02Icon className="h-5 w-5 text-destructive mr-2 flex-shrink-0" aria-hidden="true" />
           <div>
             <h3 className="text-sm font-semibold text-destructive">
               Failed to Load Agents
@@ -205,10 +205,11 @@ export function AgentList({
         </span>
         <button
           onClick={handleRefresh}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           title="Refresh agent list"
         >
-          🔄 Refresh
+          <RefreshIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>Refresh</span>
         </button>
       </div>
 

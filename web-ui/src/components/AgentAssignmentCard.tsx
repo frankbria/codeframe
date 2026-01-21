@@ -11,6 +11,15 @@
 'use client';
 
 import React from 'react';
+import {
+  CrownIcon,
+  Settings01Icon,
+  PaintBrush01Icon,
+  TestTube01Icon,
+  Search01Icon,
+  BotIcon,
+  CheckmarkCircle01Icon,
+} from '@hugeicons/react';
 import type { AgentAssignment } from '@/types/agentAssignment';
 
 interface AgentAssignmentCardProps {
@@ -57,30 +66,30 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
   // Agent type badge colors (using Nova design tokens)
   const agentTypeBadges: Record<
     string,
-    { bg: string; text: string; icon: string }
+    { bg: string; text: string; Icon: React.ComponentType<{ className?: string }> }
   > = {
-    lead: { bg: 'bg-accent/10', text: 'text-accent-foreground', icon: '👑' },
-    backend: { bg: 'bg-primary/10', text: 'text-primary', icon: '⚙️' },
-    'backend-worker': { bg: 'bg-primary/10', text: 'text-primary', icon: '⚙️' },
-    frontend: { bg: 'bg-secondary/10', text: 'text-secondary-foreground', icon: '🎨' },
+    lead: { bg: 'bg-accent/10', text: 'text-accent-foreground', Icon: CrownIcon },
+    backend: { bg: 'bg-primary/10', text: 'text-primary', Icon: Settings01Icon },
+    'backend-worker': { bg: 'bg-primary/10', text: 'text-primary', Icon: Settings01Icon },
+    frontend: { bg: 'bg-secondary/10', text: 'text-secondary-foreground', Icon: PaintBrush01Icon },
     'frontend-specialist': {
       bg: 'bg-secondary/10',
       text: 'text-secondary-foreground',
-      icon: '🎨',
+      Icon: PaintBrush01Icon,
     },
-    test: { bg: 'bg-accent/10', text: 'text-accent-foreground', icon: '🧪' },
+    test: { bg: 'bg-accent/10', text: 'text-accent-foreground', Icon: TestTube01Icon },
     'test-engineer': {
       bg: 'bg-accent/10',
       text: 'text-accent-foreground',
-      icon: '🧪',
+      Icon: TestTube01Icon,
     },
-    review: { bg: 'bg-muted', text: 'text-muted-foreground', icon: '🔍' },
+    review: { bg: 'bg-muted', text: 'text-muted-foreground', Icon: Search01Icon },
   };
 
   const agentTypeBadge = agentTypeBadges[assignment.type] || {
     bg: 'bg-muted',
     text: 'text-foreground',
-    icon: '🤖',
+    Icon: BotIcon,
   };
 
   // Format agent type for display
@@ -180,7 +189,7 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
         <span
           className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${agentTypeBadge.bg} ${agentTypeBadge.text}`}
         >
-          <span>{agentTypeBadge.icon}</span>
+          <agentTypeBadge.Icon className="h-3 w-3" aria-hidden="true" />
           <span>{formatAgentType(assignment.type)}</span>
         </span>
       </div>
@@ -243,8 +252,9 @@ const AgentAssignmentCardComponent: React.FC<AgentAssignmentCardProps> = ({
 
       {/* Active Indicator */}
       {assignment.is_active && (
-        <div className="mt-2 text-xs text-center font-medium">
-          ✓ Active Assignment
+        <div className="mt-2 text-xs text-center font-medium inline-flex items-center justify-center gap-1">
+          <CheckmarkCircle01Icon className="h-3 w-3 text-secondary" aria-hidden="true" />
+          <span>Active Assignment</span>
         </div>
       )}
     </div>
