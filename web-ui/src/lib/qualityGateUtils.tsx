@@ -108,18 +108,18 @@ export function getStatusClasses(status: QualityGateStatusValue): string {
  * getStatusIcon('running') // returns Loading03Icon element
  */
 export function getStatusIcon(status: QualityGateStatusValue): JSX.Element {
-  const iconProps = { className: 'h-5 w-5', 'aria-hidden': true as const };
+  const sharedProps = { 'aria-hidden': true as const };
   switch (status) {
     case 'passed':
-      return <CheckmarkCircle01Icon {...iconProps} className="h-5 w-5 text-secondary" />;
+      return <CheckmarkCircle01Icon {...sharedProps} className="h-5 w-5 text-secondary" />;
     case 'failed':
-      return <Cancel01Icon {...iconProps} className="h-5 w-5 text-destructive" />;
+      return <Cancel01Icon {...sharedProps} className="h-5 w-5 text-destructive" />;
     case 'running':
-      return <Loading03Icon {...iconProps} className="h-5 w-5 text-primary animate-spin" />;
+      return <Loading03Icon {...sharedProps} className="h-5 w-5 text-primary animate-spin" />;
     case 'pending':
-      return <PauseIcon {...iconProps} className="h-5 w-5 text-muted-foreground" />;
+      return <PauseIcon {...sharedProps} className="h-5 w-5 text-muted-foreground" />;
     default:
-      return <HelpCircleIcon {...iconProps} className="h-5 w-5 text-muted-foreground" />;
+      return <HelpCircleIcon {...sharedProps} className="h-5 w-5 text-muted-foreground" />;
   }
 }
 

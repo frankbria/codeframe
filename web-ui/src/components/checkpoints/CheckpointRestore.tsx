@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Checkpoint, CheckpointDiff, RestoreCheckpointResponse } from '../../types/checkpoints';
 import { getCheckpointDiff, restoreCheckpoint } from '../../api/checkpoints';
-import { Alert02Icon } from '@hugeicons/react';
+import { Alert02Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
 
 interface CheckpointRestoreProps {
   projectId: number;
@@ -91,17 +91,7 @@ export const CheckpointRestore: React.FC<CheckpointRestoreProps> = ({
           {restoreSuccess && (
             <div className="bg-secondary/10 border border-secondary/20 rounded-md p-4 mb-6">
               <div className="flex items-center">
-                <svg
-                  className="h-5 w-5 text-secondary mr-2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path d="M5 13l4 4L19 7"></path>
-                </svg>
+                <CheckmarkCircle01Icon className="h-5 w-5 text-secondary mr-2" aria-hidden="true" />
                 <p className="text-sm font-medium text-foreground">
                   Checkpoint restored successfully!
                 </p>

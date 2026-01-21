@@ -169,7 +169,7 @@ export default function QualityGateStatus({
       {/* Status Header */}
       <div className="flex items-center justify-between p-4 bg-card rounded-lg border border-border shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{getStatusIcon(status.status)}</span>
+          {getStatusIcon(status.status)}
           <div>
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-semibold text-foreground">Quality Gate Status</h4>

@@ -25,6 +25,9 @@ jest.mock('@hugeicons/react', () => {
     Alert02Icon: ({ className }: { className?: string }) => (
       <svg data-testid="Alert02Icon" className={className} aria-hidden="true" />
     ),
+    CheckmarkCircle01Icon: ({ className }: { className?: string }) => (
+      <svg data-testid="CheckmarkCircle01Icon" className={className} aria-hidden="true" />
+    ),
   };
 });
 
