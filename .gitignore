@@ -44,6 +44,7 @@ htmlcov/
 .hypothesis/
 artifacts/
 tests/e2e/run-e2e-full.sh
+test-results/
 
 # CodeFRAME specific
 .codeframe/state.db

@@ -54,6 +54,7 @@ dependencies = [
     "fastapi-users[sqlalchemy]>=15.0.2",
     "python-jose[cryptography]>=3.4.0",
     "passlib[argon2]>=1.7.4",
+    "keyring>=24.0.0",
 ]
 
 [project.optional-dependencies]
@@ -70,8 +71,8 @@ dev = [
 ]
 
 [project.scripts]
-codeframe = "codeframe.cli:app"
-cf = "codeframe.cli:app"  # Short alias for convenience
+codeframe = "codeframe.cli.app:app"
+cf = "codeframe.cli.app:app"  # Short alias for convenience
 
 [project.urls]
 Homepage = "https://github.com/frankbria/codeframe"

@@ -48,24 +48,8 @@ jobs:
       - name: Run mypy (type checking)
         run: uv run mypy codeframe/
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Install frontend dependencies
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Run ESLint
-        working-directory: web-ui
-        run: npm run lint -- --strict
-
-      - name: Run TypeScript type checking
-        working-directory: web-ui
-        run: npm run type-check
+      # Note: Frontend linting disabled - web-ui is legacy during v2 CLI-first refactor
+      # Re-enable when web-ui package.json is restored
 
   # ============================================
   # Static Analysis - Check for Hardcoded URLs
@@ -82,6 +66,12 @@ jobs:
       - name: Check for hardcoded localhost URLs in frontend
         run: |
           echo "🔍 Checking for hardcoded localhost URLs..."
+
+          # Skip if web-ui/src doesn't exist (v2 CLI-first mode)
+          if [ ! -d "web-ui/src" ]; then
+            echo "⏭️ Skipping: web-ui/src not found (v2 CLI-first mode)"
+            exit 0
+          fi
 
           # Check for hardcoded localhost URLs with common ports (3000-9999)
           # We ONLY allow: process.env.NEXT_PUBLIC_* || 'http://localhost:...' (or ws://, wss://, https://)
@@ -115,6 +105,12 @@ jobs:
         run: |
           echo "🔍 Checking for Vite-style environment variables..."
 
+          # Skip if web-ui/src doesn't exist (v2 CLI-first mode)
+          if [ ! -d "web-ui/src" ]; then
+            echo "⏭️ Skipping: web-ui/src not found (v2 CLI-first mode)"
+            exit 0
+          fi
+
           # Check for window.VITE_ or import.meta.env patterns
           VITE_VARS=$(grep -rn "window\.VITE_\|import\.meta\.env" web-ui/src \
             --include="*.ts" \
@@ -139,6 +135,12 @@ jobs:
       - name: Verify API files use consistent env vars
         run: |
           echo "🔍 Verifying API files use process.env.NEXT_PUBLIC_API_URL..."
+
+          # Skip if web-ui/src doesn't exist (v2 CLI-first mode)
+          if [ ! -d "web-ui/src" ]; then
+            echo "⏭️ Skipping: web-ui/src not found (v2 CLI-first mode)"
+            exit 0
+          fi
 
           # This check is a heuristic to catch files making API calls to localhost
           # without using environment variables. The primary hardcoded URL check above
@@ -252,48 +254,50 @@ jobs:
   # ============================================
   # Frontend Unit Tests (After Code Quality)
   # ============================================
-  frontend-tests:
-    name: Frontend Unit Tests
-    runs-on: ubuntu-latest
-    needs: code-quality
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Install dependencies
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Run Jest tests with coverage
-        working-directory: web-ui
-        run: npm run test:coverage
-
-      - name: Check coverage threshold (65%)
-        working-directory: web-ui
-        run: |
-          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
-          echo "Coverage: ${COVERAGE}%"
-          if (( $(echo "$COVERAGE < 65" | bc -l) )); then
-            echo "❌ Coverage ${COVERAGE}% is below 65% threshold"
-            exit 1
-          else
-            echo "✅ Coverage ${COVERAGE}% meets 65% threshold"
-          fi
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        with:
-          directory: web-ui/coverage
-          flags: frontend
-          name: frontend-coverage
+  # DISABLED: web-ui is legacy during v2 CLI-first refactor
+  # Re-enable when web-ui package.json is restored
+  # frontend-tests:
+  #   name: Frontend Unit Tests
+  #   runs-on: ubuntu-latest
+  #   needs: code-quality
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         cache: 'npm'
+  #         cache-dependency-path: 'web-ui/package-lock.json'
+  #
+  #     - name: Install dependencies
+  #       working-directory: web-ui
+  #       run: npm ci
+  #
+  #     - name: Run Jest tests with coverage
+  #       working-directory: web-ui
+  #       run: npm run test:coverage
+  #
+  #     - name: Check coverage threshold (65%)
+  #       working-directory: web-ui
+  #       run: |
+  #         COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
+  #         echo "Coverage: ${COVERAGE}%"
+  #         if (( $(echo "$COVERAGE < 65" | bc -l) )); then
+  #           echo "❌ Coverage ${COVERAGE}% is below 65% threshold"
+  #           exit 1
+  #         else
+  #           echo "✅ Coverage ${COVERAGE}% meets 65% threshold"
+  #         fi
+  #
+  #     - name: Upload coverage reports
+  #       uses: codecov/codecov-action@v4
+  #       with:
+  #         directory: web-ui/coverage
+  #         flags: frontend
+  #         name: frontend-coverage
 
   # ============================================
   # E2E Backend Tests (Pytest)
@@ -413,161 +417,163 @@ jobs:
   # ============================================
   # E2E Smoke Tests (Playwright - Chromium only)
   # ============================================
-  e2e-smoke-tests:
-    name: E2E Smoke Tests (Chromium)
-    runs-on: ubuntu-latest
-    # Run on PRs for fast feedback
-    if: github.event_name == 'pull_request'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: 'web-ui/package-lock.json'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-
-      - name: Install Python dependencies
-        run: |
-          uv venv
-          uv sync
-
-      - name: Install frontend dependencies
-        working-directory: web-ui
-        run: npm ci
-
-      - name: Install E2E test dependencies
-        working-directory: tests/e2e
-        run: |
-          npm ci
-          # Rebuild native modules for current Node.js version
-          # (better-sqlite3 requires matching NODE_MODULE_VERSION)
-          npm rebuild better-sqlite3
-
-      - name: Install Playwright browsers (Chromium only)
-        working-directory: tests/e2e
-        run: npx playwright install chromium --with-deps
-
-      - name: Install codeframe package
-        run: |
-          uv pip install -e .
-          echo "✅ Package installed in editable mode"
-
-      - name: Initialize database
-        run: |
-          # E2E tests expect database at tests/e2e/.codeframe/state.db
-          mkdir -p tests/e2e/.codeframe
-          source .venv/bin/activate
-          python -c "from codeframe.persistence.database import Database; db = Database('tests/e2e/.codeframe/state.db'); db.initialize(); db.close()"
-          echo "✅ Database initialized at tests/e2e/.codeframe/state.db"
-
-      - name: Start backend server
-        env:
-          # Must match TEST_DB_PATH in tests/e2e/e2e-config.ts
-          DATABASE_PATH: ${{ github.workspace }}/tests/e2e/.codeframe/state.db
-          WORKSPACE_ROOT: ${{ github.workspace }}
-          CODEFRAME_DEPLOYMENT_MODE: self_hosted
-        run: |
-          source .venv/bin/activate
-          python -m uvicorn codeframe.ui.server:app --port 8080 > /tmp/backend.log 2>&1 &
-          echo "BACKEND_PID=$!" >> $GITHUB_ENV
-          echo "Backend started with PID: $!"
-
-      - name: Wait for backend to be ready
-        run: |
-          echo "Waiting for backend to start..."
-          for i in {1..120}; do
-            if curl -s http://localhost:8080/health > /dev/null; then
-              echo "✅ Backend is ready!"
-              curl -s http://localhost:8080/health | jq .
-              break
-            fi
-            echo "Attempt $i/120: Backend not ready yet..."
-            sleep 1
-            if [ $i -eq 120 ]; then
-              echo "❌ Backend failed to start within 120 seconds"
-              cat /tmp/backend.log
-              exit 1
-            fi
-          done
-
-      - name: Start frontend dev server
-        working-directory: web-ui
-        env:
-          PORT: 3001
-          NEXT_PUBLIC_API_URL: http://localhost:8080
-        run: |
-          npm run dev > /tmp/frontend.log 2>&1 &
-          echo "FRONTEND_PID=$!" >> $GITHUB_ENV
-          echo "Frontend started with PID: $! on port 3001"
-
-      - name: Wait for frontend to be ready
-        run: |
-          echo "Waiting for frontend to start on port 3001..."
-          for i in {1..60}; do
-            if curl -s http://localhost:3001 > /dev/null; then
-              echo "✅ Frontend is ready on port 3001!"
-              break
-            fi
-            echo "Attempt $i/60: Frontend not ready yet..."
-            sleep 1
-            if [ $i -eq 60 ]; then
-              echo "❌ Frontend failed to start within 60 seconds"
-              cat /tmp/frontend.log
-              exit 1
-            fi
-          done
-
-      - name: Run Playwright smoke tests (Chromium only)
-        working-directory: tests/e2e
-        run: npm run test:smoke
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-smoke-report
-          path: tests/e2e/playwright-report/
-          retention-days: 7
-
-      - name: Upload backend logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-smoke-backend-logs
-          path: /tmp/backend.log
-          retention-days: 7
-
-      - name: Upload frontend logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-smoke-frontend-logs
-          path: /tmp/frontend.log
-          retention-days: 7
-
-      - name: Stop servers
-        if: always()
-        run: |
-          if [ -n "$BACKEND_PID" ]; then
-            kill $BACKEND_PID || true
-          fi
-          if [ -n "$FRONTEND_PID" ]; then
-            kill $FRONTEND_PID || true
-          fi
+  # DISABLED: web-ui is legacy during v2 CLI-first refactor
+  # Re-enable when web-ui package.json is restored
+  # e2e-smoke-tests:
+  #   name: E2E Smoke Tests (Chromium)
+  #   runs-on: ubuntu-latest
+  #   # Run on PRs for fast feedback
+  #   if: github.event_name == 'pull_request'
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         cache: 'npm'
+  #         cache-dependency-path: 'web-ui/package-lock.json'
+  #
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
+  #
+  #     - name: Install uv
+  #       uses: astral-sh/setup-uv@v4
+  #       with:
+  #         enable-cache: true
+  #
+  #     - name: Install Python dependencies
+  #       run: |
+  #         uv venv
+  #         uv sync
+  #
+  #     - name: Install frontend dependencies
+  #       working-directory: web-ui
+  #       run: npm ci
+  #
+  #     - name: Install E2E test dependencies
+  #       working-directory: tests/e2e
+  #       run: |
+  #         npm ci
+  #         # Rebuild native modules for current Node.js version
+  #         # (better-sqlite3 requires matching NODE_MODULE_VERSION)
+  #         npm rebuild better-sqlite3
+  #
+  #     - name: Install Playwright browsers (Chromium only)
+  #       working-directory: tests/e2e
+  #       run: npx playwright install chromium --with-deps
+  #
+  #     - name: Install codeframe package
+  #       run: |
+  #         uv pip install -e .
+  #         echo "✅ Package installed in editable mode"
+  #
+  #     - name: Initialize database
+  #       run: |
+  #         # E2E tests expect database at tests/e2e/.codeframe/state.db
+  #         mkdir -p tests/e2e/.codeframe
+  #         source .venv/bin/activate
+  #         python -c "from codeframe.persistence.database import Database; db = Database('tests/e2e/.codeframe/state.db'); db.initialize(); db.close()"
+  #         echo "✅ Database initialized at tests/e2e/.codeframe/state.db"
+  #
+  #     - name: Start backend server
+  #       env:
+  #         # Must match TEST_DB_PATH in tests/e2e/e2e-config.ts
+  #         DATABASE_PATH: ${{ github.workspace }}/tests/e2e/.codeframe/state.db
+  #         WORKSPACE_ROOT: ${{ github.workspace }}
+  #         CODEFRAME_DEPLOYMENT_MODE: self_hosted
+  #       run: |
+  #         source .venv/bin/activate
+  #         python -m uvicorn codeframe.ui.server:app --port 8080 > /tmp/backend.log 2>&1 &
+  #         echo "BACKEND_PID=$!" >> $GITHUB_ENV
+  #         echo "Backend started with PID: $!"
+  #
+  #     - name: Wait for backend to be ready
+  #       run: |
+  #         echo "Waiting for backend to start..."
+  #         for i in {1..120}; do
+  #           if curl -s http://localhost:8080/health > /dev/null; then
+  #             echo "✅ Backend is ready!"
+  #             curl -s http://localhost:8080/health | jq .
+  #             break
+  #           fi
+  #           echo "Attempt $i/120: Backend not ready yet..."
+  #           sleep 1
+  #           if [ $i -eq 120 ]; then
+  #             echo "❌ Backend failed to start within 120 seconds"
+  #             cat /tmp/backend.log
+  #             exit 1
+  #           fi
+  #         done
+  #
+  #     - name: Start frontend dev server
+  #       working-directory: web-ui
+  #       env:
+  #         PORT: 3001
+  #         NEXT_PUBLIC_API_URL: http://localhost:8080
+  #       run: |
+  #         npm run dev > /tmp/frontend.log 2>&1 &
+  #         echo "FRONTEND_PID=$!" >> $GITHUB_ENV
+  #         echo "Frontend started with PID: $! on port 3001"
+  #
+  #     - name: Wait for frontend to be ready
+  #       run: |
+  #         echo "Waiting for frontend to start on port 3001..."
+  #         for i in {1..60}; do
+  #           if curl -s http://localhost:3001 > /dev/null; then
+  #             echo "✅ Frontend is ready on port 3001!"
+  #             break
+  #           fi
+  #           echo "Attempt $i/60: Frontend not ready yet..."
+  #           sleep 1
+  #           if [ $i -eq 60 ]; then
+  #             echo "❌ Frontend failed to start within 60 seconds"
+  #             cat /tmp/frontend.log
+  #             exit 1
+  #           fi
+  #         done
+  #
+  #     - name: Run Playwright smoke tests (Chromium only)
+  #       working-directory: tests/e2e
+  #       run: npm run test:smoke
+  #
+  #     - name: Upload Playwright report
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: playwright-smoke-report
+  #         path: tests/e2e/playwright-report/
+  #         retention-days: 7
+  #
+  #     - name: Upload backend logs
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: e2e-smoke-backend-logs
+  #         path: /tmp/backend.log
+  #         retention-days: 7
+  #
+  #     - name: Upload frontend logs
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: e2e-smoke-frontend-logs
+  #         path: /tmp/frontend.log
+  #         retention-days: 7
+  #
+  #     - name: Stop servers
+  #       if: always()
+  #       run: |
+  #         if [ -n "$BACKEND_PID" ]; then
+  #           kill $BACKEND_PID || true
+  #         fi
+  #         if [ -n "$FRONTEND_PID" ]; then
+  #           kill $FRONTEND_PID || true
+  #         fi
 
   # ============================================
   # E2E Frontend Tests (Playwright - All Browsers)
@@ -792,7 +798,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, code-quality, check-hardcoded-urls]
+    needs: [backend-tests, code-quality, check-hardcoded-urls]
     if: always()
 
     steps:
@@ -805,12 +811,11 @@ jobs:
           echo "| Code Quality | ${{ needs.code-quality.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Hardcoded URLs | ${{ needs.check-hardcoded-urls.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend Tests | ${{ needs.backend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Frontend Tests | ${{ needs.frontend-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Tests | skipped (v2 CLI-first) |" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.code-quality.result }}" == "failure" ] || \
              [ "${{ needs.check-hardcoded-urls.result }}" == "failure" ] || \
-             [ "${{ needs.backend-tests.result }}" == "failure" ] || \
-             [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
+             [ "${{ needs.backend-tests.result }}" == "failure" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "❌ Some checks failed. Please review the logs above." >> $GITHUB_STEP_SUMMARY
             exit 1

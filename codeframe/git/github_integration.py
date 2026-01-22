@@ -6,10 +6,13 @@ Part of Sprint 11 - GitHub PR Integration.
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import logging
 
 import httpx
+
+if TYPE_CHECKING:
+    from codeframe.core.credentials import CredentialManager
 
 logger = logging.getLogger(__name__)
 
@@ -62,29 +65,66 @@ class GitHubIntegration:
 
     BASE_URL = "https://api.github.com"
 
-    def __init__(self, token: str, repo: str):
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        repo: Optional[str] = None,
+        credential_manager: Optional["CredentialManager"] = None,
+    ):
         """Initialize GitHub integration.
 
         Args:
             token: GitHub Personal Access Token with repo scope
             repo: Repository in format "owner/repo"
+            credential_manager: Optional credential manager for secure token retrieval
 
         Raises:
-            ValueError: If repo format is invalid
+            ValueError: If repo format is invalid or no token available
         """
+        # Try to get token from multiple sources in order:
+        # 1. Direct token parameter
+        # 2. CredentialManager (if provided)
+        # 3. Environment variable (handled by CredentialManager)
+        resolved_token = token
+
+        if not resolved_token and credential_manager:
+            from codeframe.core.credentials import CredentialProvider
+            resolved_token = credential_manager.get_credential(CredentialProvider.GIT_GITHUB)
+
+        if not resolved_token:
+            import os
+            resolved_token = os.getenv("GITHUB_TOKEN")
+
+        if not resolved_token:
+            raise ValueError(
+                "GITHUB_TOKEN not set. "
+                "Set the environment variable, pass token parameter, "
+                "or configure via 'codeframe auth setup --provider github'."
+            )
+
+        if not repo:
+            import os
+            repo = os.getenv("GITHUB_REPO")
+
+        if not repo:
+            raise ValueError(
+                "Repository not specified. "
+                "Pass repo parameter or set GITHUB_REPO environment variable."
+            )
+
         parts = repo.split("/", 1)
         if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
             raise ValueError(
                 f"Invalid repo format: '{repo}'. Expected 'owner/repo'"
             )
 
-        self.token = token
+        self.token = resolved_token
         self.repo = repo
         self.owner, self.repo_name = parts[0].strip(), parts[1].strip()
 
         self._client = httpx.AsyncClient(
             headers={
-                "Authorization": f"Bearer {token}",
+                "Authorization": f"Bearer {resolved_token}",
                 "Accept": "application/vnd.github.v3+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },

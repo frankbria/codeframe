@@ -3,6 +3,11 @@
 Tests for:
 - clear-session command (T026)
 - Session cancellation with Ctrl+C
+
+NOTE: These tests are skipped during v2 refactor. The session management
+features (clear-session, start, Project, SessionManager) are v1 concepts
+that are not part of the v2 Golden Path CLI. The v2 approach uses workspace
+state and run records instead.
 """
 
 import json
@@ -12,7 +17,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from codeframe.cli import app
+from codeframe.cli.app import app
+
+# Skip all tests - session management not part of v2 Golden Path
+pytestmark = pytest.mark.skip(
+    reason="Session management (clear-session, start) not implemented in v2 Golden Path"
+)
 
 
 @pytest.fixture

@@ -335,4 +335,8 @@ app.add_typer(review_app, name="review", help="Code review management (status, s
 
 
 if __name__ == "__main__":
+    # When run via python -m, ensure help text shows 'codeframe' not module path
+    import sys
+
+    sys.argv[0] = "codeframe"
     app()

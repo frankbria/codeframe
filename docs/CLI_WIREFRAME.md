@@ -26,15 +26,19 @@ Add these subpackages under `codeframe/`:
   - `state_machine.py` (authoritative transitions)
   - `events.py` (event log interface + event types)
   - `workspace.py` (workspace registration + config)
-  - `prd.py` (PRD store + parsing)
-  - `tasks.py` (task generation + CRUD)
-  - `blockers.py` (blocker store + answering)
-  - `runtime.py` (orchestrator/worker loop)
-  - `checkpoints.py` (snapshot + restore)
-  - `gates.py` (review/test runners)
+  - `config.py` (environment configuration: package manager, test framework, lint tools)
+  - `prd.py` (PRD store + AI-driven generation)
+  - `tasks.py` (task generation + CRUD with dependencies)
+  - `blockers.py` (blocker store + AI-powered resolution)
+  - `runtime.py` (single-task orchestrator/worker loop)
+  - `conductor.py` (batch orchestration, multi-task execution)
+  - `dependency_analyzer.py` (LLM-based dependency inference)
+  - `checkpoints.py` (snapshot + restore with git refs)
+  - `gates.py` (enhanced review/test runners)
+  - `git_integration.py` (Git workflow and PR management)
 - `codeframe/adapters/` (optional but recommended)
   - `llm/` (provider-specific clients)
-  - `git/` (branch/worktree/patch utilities)
+  - `git/` (branch/worktree/patch utilities + PR operations)
   - `fs/` (file operations)
   - `persistence/` (SQLite/filesystem implementations)
 - `codeframe/server/` (FastAPI wrapper; optional during Golden Path)
@@ -116,9 +120,88 @@ Each command:
 
 ---
 
+## Configuration: `codeframe config ...`
+
+### `codeframe config init [--detect] [--force]`
+**Purpose:** Initialize project environment configuration.
+
+**CLI module:**
+- `codeframe/cli/app.py` (config_app subgroup)
+
+**Core calls:**
+- `codeframe.core.config.load_environment_config(workspace_path) -> EnvironmentConfig | None`
+- `codeframe.core.config.save_environment_config(workspace_path, config) -> None`
+- Auto-detection reads: pyproject.toml, package.json, lock files
+
+**Options:**
+- `--detect`: Auto-detect settings from project files (non-interactive)
+- `--force`: Overwrite existing config file
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State writes:**
+- `.codeframe/config.yaml`
+
+---
+
+### `codeframe config show`
+**Purpose:** Display current project configuration.
+
+**Core calls:**
+- `codeframe.core.config.load_environment_config(workspace_path) -> EnvironmentConfig | None`
+- `codeframe.core.config.get_default_environment_config() -> EnvironmentConfig` (fallback)
+
+**State reads only.**
+
+---
+
+### `codeframe config set <key> <value>`
+**Purpose:** Set individual configuration values.
+
+**Core calls:**
+- `codeframe.core.config.load_environment_config(workspace_path) -> EnvironmentConfig | None`
+- `codeframe.core.config.save_environment_config(workspace_path, config) -> None`
+- `config.validate() -> list[str]` (validation errors)
+
+**Valid keys:**
+- `package_manager`: uv, pip, poetry, npm, pnpm, yarn
+- `python_version`: e.g., 3.11
+- `test_framework`: pytest, jest, vitest, mocha
+- `lint_tools`: comma-separated, e.g., "ruff,mypy"
+- `test_command`: custom test command override
+- `lint_command`: custom lint command override
+
+**State writes:**
+- `.codeframe/config.yaml`
+
+---
+
 ## PRD: `codeframe prd ...`
 
-### `codeframe prd add <file.md>`
+### `codeframe prd generate` (Enhanced - Primary)
+**Purpose:** AI-driven interactive PRD generation.
+
+**CLI module:**
+- `codeframe/cli/commands/prd.py`
+
+**Core calls:**
+- `codeframe.core.prd.start_discovery_session(workspace_id) -> DiscoverySession`
+- `codeframe.core.prd.ask_followup_questions(session, context) -> DiscoverySession`
+- `codeframe.core.prd.generate_prd(session) -> PrdRecord`
+- `codeframe.core.prd.refine_prd(prd_id, feedback) -> PrdRecord`
+- `codeframe.core.events.emit(workspace_id, "PRD_GENERATED", payload)`
+
+**State writes:**
+- Discovery session records
+- Comprehensive PRD record with technical specs
+- Version history and change tracking
+
+**Adapter usage:**
+- LLM adapter for interactive discovery and content generation
+- Analysis adapter for technical requirement extraction
+
+---
+
+### `codeframe prd add <file.md>` (Legacy Support)
 **Purpose:** Store PRD text + metadata.
 
 **CLI module:**
@@ -134,11 +217,144 @@ Each command:
 
 ---
 
-### `codeframe prd show`
-**Purpose:** Print PRD summary/title and location.
+### `codeframe prd refine <prd-id>`
+**Purpose:** Iterative PRD improvement based on feedback.
+
+**CLI module:**
+- `codeframe/cli/commands/prd.py`
 
 **Core calls:**
-- `codeframe.core.prd.get_latest(workspace_id) -> PrdRecord`
+- `codeframe.core.prd.get(workspace_id, prd_id) -> PrdRecord`
+- `codeframe.core.prd.suggest_improvements(prd) -> list[Suggestion]`
+- `codeframe.core.prd.apply_feedback(prd_id, feedback) -> PrdRecord`
+- `codeframe.core.events.emit(workspace_id, "PRD_REFINED", payload)`
+
+**State writes:**
+- Updated PRD record
+- Suggestion and feedback history
+
+---
+
+### `codeframe prd show [prd-id]`
+**Purpose:** Print PRD content. Without ID shows latest; with ID shows specific PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.get_latest(workspace_id) -> PrdRecord` (if no ID)
+- `codeframe.core.prd.get_by_id(workspace_id, prd_id) -> PrdRecord` (if ID provided)
+
+**CLI options:**
+- `--full`: Show complete content (default truncates long PRDs)
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+---
+
+### `codeframe prd list`
+**Purpose:** List all PRDs in the workspace.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.list_all(workspace_id) -> list[PrdRecord]`
+
+**Output:**
+- Table showing: ID (truncated), Title, Version, Created date
+
+---
+
+### `codeframe prd delete <prd-id>`
+**Purpose:** Delete a PRD from the workspace.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.get_by_id(workspace_id, prd_id) -> PrdRecord`
+- `codeframe.core.prd.delete(workspace_id, prd_id, check_dependencies) -> bool`
+- `codeframe.core.events.emit(workspace_id, "PRD_DELETED", payload)`
+
+**CLI options:**
+- `--force, -f`: Skip confirmation prompt
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State writes:**
+- Removes PRD record from database
+
+**Validation:**
+- Checks for dependent tasks (raises `PrdHasDependentTasksError` if found with `check_dependencies=True`)
+
+---
+
+### `codeframe prd export <prd-id> <file-path>`
+**Purpose:** Export a PRD to a file.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.export_to_file(workspace_id, prd_id, file_path, force) -> bool`
+
+**CLI options:**
+- `--latest`: Export the latest PRD instead of requiring ID
+- `--force, -f`: Overwrite existing file
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State reads only** (exports content to file)
+
+---
+
+### `codeframe prd versions <prd-id>`
+**Purpose:** Show version history for a PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.get_versions(workspace_id, prd_id) -> list[PrdRecord]`
+
+**Output:**
+- Table showing: Version number, ID (truncated), Change summary, Created date
+- Versions sorted by version number descending (newest first)
+
+---
+
+### `codeframe prd diff <prd-id> <version1> <version2>`
+**Purpose:** Show diff between two versions of a PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.diff_versions(workspace_id, prd_id, v1, v2) -> str`
+
+**Output:**
+- Unified diff format showing additions (+) and removals (-)
+
+---
+
+### `codeframe prd update <prd-id>`
+**Purpose:** Create a new version of an existing PRD.
+
+**CLI module:**
+- `codeframe/cli/app.py` (prd subcommand group)
+
+**Core calls:**
+- `codeframe.core.prd.load_file(file_path) -> str`
+- `codeframe.core.prd.create_new_version(workspace_id, prd_id, content, change_summary) -> PrdRecord`
+- `codeframe.core.events.emit(workspace_id, "PRD_UPDATED", payload)`
+
+**CLI options:**
+- `--file, -f`: Path to file with new content (required)
+- `--message, -m`: Change summary message (required)
+- `--workspace/-w`: Workspace path (defaults to cwd)
+
+**State writes:**
+- New PRD record with incremented version
+- Links to parent via `parent_id`
+- Shares `chain_id` with all versions in the chain
 
 ---
 
@@ -172,13 +388,26 @@ Each command:
 
 ---
 
-### `codeframe tasks set-status <task_id> <status>`
+### `codeframe tasks set status <task_id> <status>`
 **Purpose:** Manually transition state.
 
 **Core calls:**
 - `codeframe.core.state_machine.transition(task, new_status) -> Task`
 - `codeframe.core.tasks.update_status(workspace_id, task_id, new_status)`
 - `codeframe.core.events.emit(workspace_id, "TASK_STATUS_CHANGED", payload)`
+
+**Future state:**
+- Allow other task attributes to be set, like `provider`, etc.
+- `codeframe task set <attribute> <task_id> <attribute_value>`
+
+### `codeframe tasks get status <task_id>`
+**Purpose:** Get current state.
+
+**Core calls:**
+-`codeframe.core.tasks.get_status(workspace_id, task_id)`
+
+**Future state:**
+- Allow other task attributes to be retrieved
 
 ---
 
@@ -230,6 +459,89 @@ Each command:
 
 ---
 
+### `codeframe work batch run <task_ids...>` (Phase 1)
+**Purpose:** Execute multiple tasks in sequence (or parallel in Phase 2).
+
+**CLI module:**
+- `codeframe/cli/commands/work.py` (batch subcommand group)
+
+**Core calls:**
+- `batch = codeframe.core.conductor.start_batch(workspace_id, task_ids, strategy, max_parallel)`
+- `codeframe.core.events.emit(workspace_id, "BATCH_STARTED", payload)`
+- For each task: spawns subprocess `cf work start <task_id> --execute`
+- `codeframe.core.events.emit(workspace_id, "BATCH_COMPLETED", payload)`
+
+**State writes:**
+- BatchRun record (id, task_ids, status, strategy, results)
+
+**CLI options:**
+- `--all-ready`: Process all READY tasks instead of specifying IDs
+- `--strategy serial|parallel`: Execution strategy (default: serial)
+- `--max-parallel N`: Max concurrent tasks when parallel (default: 4)
+- `--dry-run`: Show execution plan without running
+- `--on-failure continue|stop`: Behavior on task failure (default: continue)
+- `--retry N, -r N`: Max retry attempts for failed tasks (default: 0, no retries)
+
+**Important constraint:**
+- Must work without FastAPI server running.
+- Phase 1: Serial execution only (parallel flag accepted but runs serial)
+- Phase 2: True parallel execution with dependency analysis
+
+---
+
+### `codeframe work batch status [batch_id]`
+**Purpose:** Show batch execution status.
+
+**Core calls:**
+- `codeframe.core.conductor.list_batches(workspace_id)` (if no batch_id)
+- `codeframe.core.conductor.get_batch(workspace_id, batch_id)` (if batch_id provided)
+
+**Output:**
+- Batch ID, status, strategy
+- Task progress (completed/total)
+- Per-task status and duration
+
+---
+
+### `codeframe work batch cancel <batch_id>`
+**Purpose:** Cancel a running batch.
+
+**Core calls:**
+- `codeframe.core.conductor.cancel_batch(workspace_id, batch_id)`
+- `codeframe.core.events.emit(workspace_id, "BATCH_CANCELLED", payload)`
+
+**Behavior:**
+- Sends SIGTERM to running subprocesses
+- Marks batch as CANCELLED
+- Does not affect already-completed tasks
+
+---
+
+### `codeframe work batch resume <batch_id>` (Phase 2)
+**Purpose:** Re-run failed/blocked tasks from a previous batch.
+
+**Core calls:**
+- `codeframe.core.conductor.resume_batch(workspace_id, batch_id, force)`
+- `codeframe.core.events.emit(workspace_id, "BATCH_STARTED", payload)` with `is_resume=True`
+
+**CLI options:**
+- `--force, -f`: Re-run all tasks including completed ones
+
+**Behavior:**
+- Loads existing BatchRun record
+- Identifies tasks with FAILED or BLOCKED status
+- Re-executes only those tasks (or all with --force)
+- Merges new results into existing batch
+- Updates batch status based on final results
+
+**Example:**
+```bash
+cf work batch resume abc123           # Re-run failed/blocked only
+cf work batch resume abc123 --force   # Re-run all tasks
+```
+
+---
+
 ### `codeframe events tail`
 **Purpose:** Tail event log in terminal.
 
@@ -238,9 +550,9 @@ Each command:
 
 ---
 
-## Blockers: `codeframe blockers ...`
+## Blockers: `codeframe blocker ...`
 
-### `codeframe blockers`
+### `codeframe blocker list`
 **Purpose:** List open blockers.
 
 **CLI module:**
@@ -317,6 +629,86 @@ Each command:
 
 **Notes:**
 - This can be postponed in favor of patch export early.
+
+---
+
+## Git Integration & PR Management: `codeframe git ...` / `codeframe pr ...`
+
+### `codeframe work start <task_id> --create-branch`
+**Purpose:** Begin task execution with automatic branch creation.
+
+**CLI module:**
+- `codeframe/cli/commands/work.py`
+
+**Core calls:**
+- `branch_name = codeframe.core.git.create_feature_branch(workspace_id, task_id)`
+- `run = codeframe.core.runtime.start_task_run(workspace_id, task_id, branch=branch_name)`
+- `emit(..., "TASK_STARTED_WITH_BRANCH", payload)`
+
+**Adapter usage:**
+- git adapter for branch management
+
+---
+
+### `codeframe pr create` (Enhanced)
+**Purpose:** Create pull request with AI-generated description.
+
+**CLI module:**
+- `codeframe/cli/commands/pr.py`
+
+**Core calls:**
+- `pr = codeframe.core.git.create_pull_request(workspace_id, branch_name, base_branch)`
+- `description = codeframe.core.prd.generate_pr_description(workspace_id, task_ids)`
+- `codeframe.core.git.update_pr_description(pr.id, description)`
+- `emit(..., "PR_CREATED", payload)`
+
+**State writes:**
+- PR record with task associations
+- Transition of associated tasks to IN_REVIEW status
+
+**Adapter usage:**
+- git adapter for PR operations
+- LLM adapter for description generation
+
+---
+
+### `codeframe pr list [--status open|closed|merged]`
+**Purpose:** List pull requests and their status.
+
+**CLI module:**
+- `codeframe/cli/commands/pr.py`
+
+**Core calls:**
+- `prs = codeframe.core.git.list_pull_requests(workspace_id, status_filter)`
+
+---
+
+### `codeframe pr merge <pr-id> [--strategy squash|merge|rebase]`
+**Purpose:** Merge pull request with verification.
+
+**CLI module:**
+- `codeframe/cli/commands/pr.py`
+
+**Core calls:**
+- `codeframe.core.gates.run_pr_checks(workspace_id, pr_id)`
+- `merge_result = codeframe.core.git.merge_pull_request(pr_id, strategy)`
+- `codeframe.core.tasks.transition_to_merged(workspace_id, pr.task_ids)`
+- `emit(..., "PR_MERGED", payload)`
+
+**State writes:**
+- Transition of associated tasks to MERGED status
+- PR record with merge details
+
+---
+
+### `codeframe git status` (Enhanced)
+**Purpose:** Show git status summary with CodeFRAME context.
+
+**CLI module:**
+- `codeframe/cli/commands/git.py`
+
+**Core calls:**
+- `status = codeframe.core.git.get_enhanced_status(workspace_id)`
 
 ---
 
@@ -407,21 +799,71 @@ Output includes:
 
 ---
 
-## Implementation order (do not reorder)
+## Implementation order (reordered for Enhanced MVP)
 
-1) `init` + durable state
-2) `prd add`
-3) `tasks generate`
-4) `status`
-5) `work start` (stubbed run loop ok initially, but must emit events)
-6) blockers list/answer
-7) review/gates
-8) patch export (preferred before commit)
-9) checkpoint + summary
+### Enhanced MVP Priority Order
 
-Only after these are stable:
-- server adapter improvements
-- UI rebuilding
+### Phase 0: Enhanced PRD & Discovery (NEW HIGH PRIORITY)
+1) `prd generate` - AI-driven interactive PRD generation with follow-up questions
+2) `prd refine` - iterative PRD improvement based on user feedback
+3) Enhanced `init` with auto-discovery and environment configuration
+4) PRD versioning and change tracking
+
+### Phase 1: Enhanced Task Generation (NEW HIGH PRIORITY)
+5) Enhanced `tasks generate` with dependency analysis and effort estimation
+6) Task template system for common implementation patterns
+7) Critical path identification and workstream grouping
+8) `tasks analyze` - dependency graph visualization and analysis
+
+### Phase 2: Git Integration & PR Workflow (NEW HIGH PRIORITY)
+9) `codeframe git_integration` module implementation
+10) Enhanced `work start --create-branch` with automatic branch management
+11) `pr create` with AI-generated comprehensive descriptions
+12) `pr merge` with automated verification and merge strategies
+13) Git adapter for branch/worktree/patch operations
+
+### Phase 3: Enhanced Quality Gates (UPGRADED)
+14) Enhanced `gates.run` with comprehensive test suite
+15) AI-assisted code review and best practices checking
+16) Quality metrics tracking and trend analysis
+17) Technical debt accumulation monitoring
+18) Security and performance regression detection
+
+### Phase 4: Advanced Blocker Resolution (ENHANCED)
+19) Enhanced blocker system with AI-powered suggestions
+20) Contextual blocker display with rich background information
+21) Learning system for blocker pattern recognition
+22) Similar past blocker solutions and recommendations
+
+### Phase 5: Advanced Checkpointing (ENHANCED)
+23) Rich checkpoint snapshots with complete workspace state
+24) Cross-environment checkpoint portability
+25) Seamless workflow resumption from any checkpoint
+26) Executive reporting with progress and risk metrics
+
+### Legacy Phase Completion (MAINTAINED)
+**Basic Golden Path (already complete):**
+- Basic `init` + durable state ✓ DONE
+- Basic `prd add` ✓ DONE (superseded by `prd generate`)
+- Basic `tasks generate` ✓ DONE (enhanced above)
+- Basic `work start` ✓ DONE (enhanced with git integration)
+- Basic blockers ✓ DONE (enhanced above)
+- Basic review/gates ✓ DONE (enhanced above)
+- Basic patch/commit ✓ DONE (enhanced with PR workflow)
+- Basic checkpoint + summary ✓ DONE (enhanced above)
+
+**Batch Execution (already complete):**
+- `work batch run` ✓ DONE (enhanced with git integration)
+- `work batch status` ✓ DONE
+- `work batch cancel` ✓ DONE
+- Parallel execution & retry ✓ DONE
+- Observability ✓ DONE
+
+Only after Enhanced MVP phases are complete:
+- Production readiness features
+- Advanced multi-provider support
+- Performance optimization at scale
+- Enterprise security and compliance features
 - multi-provider switching
 
 ---
