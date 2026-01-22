@@ -211,9 +211,9 @@ def group_by_level(graph: dict[str, list[str]]) -> list[list[str]]:
             levels[node] = 0
         else:
             # Level is 1 + max level of dependencies
-            max_dep_level = max(
-                calculate_level(dep) for dep in deps if dep in graph
-            )
+            # Only consider deps that are in the graph; if none are, treat as level 0
+            dep_levels = [calculate_level(dep) for dep in deps if dep in graph]
+            max_dep_level = max(dep_levels, default=-1)
             levels[node] = max_dep_level + 1
 
         return levels[node]

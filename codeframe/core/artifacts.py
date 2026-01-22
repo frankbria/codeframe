@@ -117,8 +117,11 @@ def export_patch(
 
     patch_content = result.stdout
 
+    # Track if we fell back to plain unstaged diff (git diff without HEAD)
+    fell_back_to_plain_unstaged = False
+
     if not patch_content.strip():
-        # Try just unstaged changes
+        # Try just unstaged changes (git diff without HEAD)
         result = subprocess.run(
             ["git", "diff"],
             cwd=repo_path,
@@ -128,6 +131,7 @@ def export_patch(
         patch_content = result.stdout
         # We fell back to unstaged diff, so update the tracking flag
         actual_staged_used = False
+        fell_back_to_plain_unstaged = True
 
     if not patch_content.strip():
         raise ValueError("No changes to export")
@@ -143,8 +147,12 @@ def export_patch(
     # Write patch
     out_path.write_text(patch_content)
 
-    # Get stats using the actual diff type that was used
-    stats = _get_diff_stats(repo_path, actual_staged_used)
+    # Get stats - when fell back to plain unstaged, parse from content directly
+    # because _get_diff_stats runs "git diff HEAD --stat" which may return zeros
+    if fell_back_to_plain_unstaged:
+        stats = _parse_patch_content_stats(patch_content)
+    else:
+        stats = _get_diff_stats(repo_path, actual_staged_used)
 
     patch_info = PatchInfo(
         path=out_path,
@@ -383,10 +391,15 @@ def _get_diff_stats(repo_path: Path, staged_only: bool = False) -> dict:
     return {"files": files, "insertions": insertions, "deletions": deletions}
 
 
-def _parse_patch_stats(patch_file: Path) -> dict:
-    """Parse stats from a patch file."""
-    content = patch_file.read_text()
+def _parse_patch_content_stats(content: str) -> dict:
+    """Parse stats from patch content string.
 
+    Args:
+        content: Raw patch content (git diff output)
+
+    Returns:
+        Dict with files, insertions, deletions counts
+    """
     files = set()
     insertions = 0
     deletions = 0
@@ -407,3 +420,9 @@ def _parse_patch_stats(patch_file: Path) -> dict:
         "insertions": insertions,
         "deletions": deletions,
     }
+
+
+def _parse_patch_stats(patch_file: Path) -> dict:
+    """Parse stats from a patch file."""
+    content = patch_file.read_text()
+    return _parse_patch_content_stats(content)
