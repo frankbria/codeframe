@@ -3,11 +3,6 @@
 Tests the `codeframe auth setup/list/validate/rotate/remove` commands.
 """
 
-import json
-import os
-import tempfile
-from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

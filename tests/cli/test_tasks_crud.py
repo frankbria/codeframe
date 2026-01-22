@@ -1,13 +1,13 @@
 """Tests for task CRUD operations (delete, generate --overwrite)."""
 
 import pytest
-
-# Mark all tests in this module as v2
-pytestmark = pytest.mark.v2
 from typer.testing import CliRunner
 
 from codeframe.cli.app import app
 from codeframe.core import workspace, tasks, prd
+
+# Mark all tests in this module as v2
+pytestmark = pytest.mark.v2
 
 
 @pytest.fixture

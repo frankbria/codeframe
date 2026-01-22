@@ -275,7 +275,7 @@ def get_status(repo_path: Path) -> dict:
         text=True,
     )
 
-    lines = [l for l in result.stdout.strip().split("\n") if l]
+    lines = [line for line in result.stdout.strip().split("\n") if line]
 
     staged = []
     unstaged = []

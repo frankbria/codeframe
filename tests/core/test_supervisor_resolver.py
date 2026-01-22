@@ -18,7 +18,7 @@ from codeframe.core.conductor import (
     SUPERVISOR_TACTICAL_PATTERNS,
     _decision_cache,
 )
-from codeframe.core.workspace import Workspace, create_or_load_workspace
+from codeframe.core.workspace import create_or_load_workspace
 from codeframe.core import blockers, tasks
 from codeframe.core.state_machine import TaskStatus
 

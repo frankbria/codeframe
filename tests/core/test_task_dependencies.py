@@ -4,10 +4,8 @@ Tests the depends_on field and related dependency management features.
 """
 
 import pytest
-from datetime import datetime, timezone
 
 from codeframe.core import tasks
-from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import create_or_load_workspace
 
 

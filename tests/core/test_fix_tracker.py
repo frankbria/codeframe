@@ -1,13 +1,9 @@
 """Tests for fix attempt tracking."""
 
-import pytest
-from datetime import datetime, timezone
 
 from codeframe.core.fix_tracker import (
     FixAttemptTracker,
-    FixAttempt,
     FixOutcome,
-    EscalationDecision,
     MAX_SAME_ERROR_ATTEMPTS,
     MAX_SAME_FILE_ATTEMPTS,
     MAX_TOTAL_FAILURES,

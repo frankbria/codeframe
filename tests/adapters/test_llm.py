@@ -8,7 +8,6 @@ from codeframe.adapters.llm import (
     MockProvider,
     ModelSelector,
     Purpose,
-    Tool,
     ToolCall,
     get_provider,
 )

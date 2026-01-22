@@ -13,10 +13,8 @@ from unittest.mock import MagicMock
 from codeframe.core.agent import (
     REQUIREMENTS_AMBIGUITY_PATTERNS,
     ACCESS_PATTERNS,
-    EXTERNAL_SERVICE_PATTERNS,
     TACTICAL_DECISION_PATTERNS,
     HUMAN_INPUT_PATTERNS,
-    TECHNICAL_ERROR_PATTERNS,
     Agent,
 )
 from codeframe.core.executor import StepResult, ExecutionStatus

@@ -9,7 +9,6 @@ This module is headless - no FastAPI or HTTP dependencies.
 from dataclasses import dataclass
 from typing import Optional
 
-from codeframe.core.tasks import Task
 from codeframe.core.workspace import Workspace
 from codeframe.core import tasks as task_module
 

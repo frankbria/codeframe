@@ -1,16 +1,12 @@
 """Tests for task context loader."""
 
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
 
 from codeframe.core.context import (
     ContextLoader,
     TaskContext,
     FileInfo,
-    FileContent,
-    DEFAULT_IGNORE_PATTERNS,
-    CODE_EXTENSIONS,
     CHARS_PER_TOKEN,
 )
 from codeframe.core.tasks import Task, TaskStatus

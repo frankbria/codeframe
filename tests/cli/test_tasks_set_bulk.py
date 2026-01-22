@@ -1,14 +1,14 @@
 """Tests for tasks set bulk operations (--all, --from flags)."""
 
 import pytest
-
-# Mark all tests in this module as v2
-pytestmark = pytest.mark.v2
 from typer.testing import CliRunner
 
 from codeframe.cli.app import app
 from codeframe.core import workspace, tasks, prd
 from codeframe.core.tasks import TaskStatus
+
+# Mark all tests in this module as v2
+pytestmark = pytest.mark.v2
 
 
 @pytest.fixture

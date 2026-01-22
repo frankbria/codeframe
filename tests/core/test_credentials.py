@@ -9,7 +9,7 @@ import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -414,7 +414,6 @@ class TestCredentialManager:
         from codeframe.core.credentials import (
             CredentialManager,
             CredentialProvider,
-            CredentialInfo,
         )
 
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "env-key"}):

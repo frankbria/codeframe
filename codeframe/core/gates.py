@@ -483,7 +483,7 @@ def _summarize_pytest_output(output: str) -> str:
                 return line.strip()
 
     # Fall back to last non-empty lines
-    non_empty = [l.strip() for l in lines if l.strip()]
+    non_empty = [line.strip() for line in lines if line.strip()]
     if non_empty:
         return "\n".join(non_empty[-3:])
 
@@ -498,7 +498,7 @@ def _summarize_ruff_output(output: str) -> str:
     lines = output.strip().split("\n")
 
     # Count issues
-    issue_count = len([l for l in lines if l.strip() and not l.startswith("Found")])
+    issue_count = len([line for line in lines if line.strip() and not line.startswith("Found")])
 
     # Look for "Found X errors" line
     for line in lines:

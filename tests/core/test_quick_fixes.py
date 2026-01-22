@@ -1,7 +1,5 @@
 """Tests for pattern-based quick fixes."""
 
-import pytest
-from pathlib import Path
 
 from codeframe.core.quick_fixes import (
     find_quick_fix,

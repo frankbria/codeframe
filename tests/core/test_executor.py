@@ -1,8 +1,6 @@
 """Tests for code execution engine."""
 
 import pytest
-import json
-from pathlib import Path
 from datetime import datetime, timezone
 
 from codeframe.core.executor import (
@@ -16,7 +14,6 @@ from codeframe.core.planner import (
     PlanStep,
     StepType,
     ImplementationPlan,
-    Complexity,
 )
 from codeframe.core.context import TaskContext
 from codeframe.core.tasks import Task, TaskStatus
