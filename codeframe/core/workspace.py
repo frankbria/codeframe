@@ -92,6 +92,7 @@ def _init_database(db_path: Path) -> None:
             parent_id TEXT,
             change_summary TEXT,
             chain_id TEXT,
+            depends_on TEXT,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
             FOREIGN KEY (parent_id) REFERENCES prds(id),
             FOREIGN KEY (chain_id) REFERENCES prds(id)
@@ -208,6 +209,7 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
 
     conn.commit()
     conn.close()

@@ -87,24 +87,32 @@ def detect_package_manager(repo_path: Path) -> str:
     Returns:
         Package manager command (uv, pip, npm, etc.)
     """
-    # Check for Python package managers
-    if (repo_path / "uv.lock").exists() or (repo_path / "pyproject.toml").exists():
-        # Check if uv is being used
-        pyproject = repo_path / "pyproject.toml"
-        if pyproject.exists():
-            content = pyproject.read_text()
-            if "[tool.uv]" in content or "uv.lock" in content:
-                return "uv pip install"
-        return "uv pip install"  # Default to uv for Python
+    # Check for Poetry first (poetry.lock is definitive)
+    if (repo_path / "poetry.lock").exists():
+        return "poetry add"
+
+    # Check for uv lock file (definitive for uv)
+    if (repo_path / "uv.lock").exists():
+        return "uv pip install"
+
+    # Check pyproject.toml for tool-specific markers
+    pyproject = repo_path / "pyproject.toml"
+    if pyproject.exists():
+        content = pyproject.read_text()
+        # Check for uv-specific configuration
+        if "[tool.uv]" in content:
+            return "uv pip install"
+        # Check for Poetry-specific configuration
+        if "[tool.poetry]" in content:
+            return "poetry add"
+        # Generic pyproject.toml - default to uv
+        return "uv pip install"
 
     if (repo_path / "requirements.txt").exists():
         return "pip install"
 
     if (repo_path / "Pipfile").exists():
         return "pipenv install"
-
-    if (repo_path / "poetry.lock").exists():
-        return "poetry add"
 
     # Check for Node.js package managers
     if (repo_path / "package-lock.json").exists():
@@ -308,6 +316,9 @@ def match_syntax_error(error: str, file_content: Optional[str] = None) -> Option
                     # Skip byte strings - can't add 'f' to 'b'
                     elif 'b' in prefix.lower():
                         pass  # Byte string, can't be f-string
+                    # Skip unicode strings - 'u' prefix is for Python 2 compatibility
+                    elif 'u' in prefix.lower():
+                        pass  # Unicode string, don't add 'f' prefix
                     else:
                         # Add 'f' to prefix (before 'r' if present, e.g., 'r' -> 'rf')
                         if 'r' in prefix.lower():

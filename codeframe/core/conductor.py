@@ -54,6 +54,10 @@ _decision_cache: dict[str, str] = {}
 # Track running subprocesses for force stop capability
 # Structure: {batch_id: {task_id: Popen}}
 _active_processes: dict[str, dict[str, subprocess.Popen]] = {}
+# Lock for thread-safe access to _active_processes
+_active_processes_lock = threading.Lock()
+# Lock for thread-safe batch database writes
+_batch_db_lock = threading.Lock()
 
 
 class SupervisorResolver:
@@ -560,8 +564,9 @@ def start_batch(
             else:
                 print("No dependencies inferred - tasks appear independent")
 
-            # Apply dependencies temporarily for this execution
-            # (doesn't persist to database unless explicitly requested)
+            # Apply inferred dependencies to task records
+            # Note: This persists the dependencies to the database so they're
+            # available for future executions and batch resumes
             apply_inferred_dependencies(workspace, dependencies)
 
             # Execute with parallel strategy
@@ -746,19 +751,20 @@ def stop_batch(workspace: Workspace, batch_id: str, force: bool = False) -> Batc
     _save_batch(workspace, batch)
 
     terminated_count = 0
-    if force and batch_id in _active_processes:
-        # Terminate all running processes for this batch
-        processes = _active_processes.get(batch_id, {})
-        for task_id, process in list(processes.items()):
-            try:
-                if process.poll() is None:  # Still running
-                    process.terminate()  # SIGTERM
-                    terminated_count += 1
-            except (ProcessLookupError, OSError):
-                pass  # Process already exited
+    with _active_processes_lock:
+        if force and batch_id in _active_processes:
+            # Terminate all running processes for this batch
+            processes = _active_processes.get(batch_id, {})
+            for task_id, process in list(processes.items()):
+                try:
+                    if process.poll() is None:  # Still running
+                        process.terminate()  # SIGTERM
+                        terminated_count += 1
+                except (ProcessLookupError, OSError):
+                    pass  # Process already exited
 
-        # Cleanup tracking
-        _active_processes.pop(batch_id, None)
+            # Cleanup tracking
+            _active_processes.pop(batch_id, None)
 
     # Emit event
     event_data = {"batch_id": batch_id, "force": force}
@@ -1630,20 +1636,23 @@ def _execute_task_subprocess(
             text=True,
         )
 
-        # Track process if batch_id provided
+        # Track process if batch_id provided (thread-safe)
         if batch_id:
-            if batch_id not in _active_processes:
-                _active_processes[batch_id] = {}
-            _active_processes[batch_id][task_id] = process
+            with _active_processes_lock:
+                if batch_id not in _active_processes:
+                    _active_processes[batch_id] = {}
+                _active_processes[batch_id][task_id] = process
 
-        # Wait for completion
+        # Wait for completion (outside lock to avoid blocking)
         returncode = process.wait()
 
-        # Untrack process
-        if batch_id and batch_id in _active_processes:
-            _active_processes[batch_id].pop(task_id, None)
-            if not _active_processes[batch_id]:
-                _active_processes.pop(batch_id, None)
+        # Untrack process (thread-safe)
+        if batch_id:
+            with _active_processes_lock:
+                if batch_id in _active_processes:
+                    _active_processes[batch_id].pop(task_id, None)
+                    if not _active_processes[batch_id]:
+                        _active_processes.pop(batch_id, None)
 
         # Check the run status from database
         # The subprocess should have updated the run record
@@ -1666,45 +1675,53 @@ def _execute_task_subprocess(
 
     except Exception as e:
         print(f"      Error executing task: {e}")
-        # Cleanup on exception
-        if batch_id and batch_id in _active_processes:
-            _active_processes[batch_id].pop(task_id, None)
-            if not _active_processes[batch_id]:
-                _active_processes.pop(batch_id, None)
+        # Cleanup on exception (thread-safe)
+        if batch_id:
+            with _active_processes_lock:
+                if batch_id in _active_processes:
+                    _active_processes[batch_id].pop(task_id, None)
+                    if not _active_processes[batch_id]:
+                        _active_processes.pop(batch_id, None)
         return RunStatus.FAILED.value
 
 
 def _save_batch(workspace: Workspace, batch: BatchRun) -> None:
-    """Save or update a batch record in the database."""
-    conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    """Save or update a batch record in the database.
 
+    Uses a thread lock to prevent SQLite "database is locked" errors
+    when multiple workers try to update batch status concurrently.
+    """
     task_ids_json = json.dumps(batch.task_ids)
     results_json = json.dumps(batch.results) if batch.results else None
     completed_at = batch.completed_at.isoformat() if batch.completed_at else None
 
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO batch_runs
-        (id, workspace_id, task_ids, status, strategy, max_parallel, on_failure,
-         started_at, completed_at, results)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            batch.id,
-            batch.workspace_id,
-            task_ids_json,
-            batch.status.value,
-            batch.strategy,
-            batch.max_parallel,
-            batch.on_failure.value,
-            batch.started_at.isoformat(),
-            completed_at,
-            results_json,
-        ),
-    )
-    conn.commit()
-    conn.close()
+    with _batch_db_lock:
+        conn = get_db_connection(workspace)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO batch_runs
+                (id, workspace_id, task_ids, status, strategy, max_parallel, on_failure,
+                 started_at, completed_at, results)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    batch.id,
+                    batch.workspace_id,
+                    task_ids_json,
+                    batch.status.value,
+                    batch.strategy,
+                    batch.max_parallel,
+                    batch.on_failure.value,
+                    batch.started_at.isoformat(),
+                    completed_at,
+                    results_json,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def _row_to_batch(row: tuple) -> BatchRun:

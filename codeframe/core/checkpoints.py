@@ -67,17 +67,18 @@ def create(
     snapshot_json = json.dumps(snapshot)
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO checkpoints (id, workspace_id, name, snapshot, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (checkpoint_id, workspace.id, name, snapshot_json, now),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO checkpoints (id, workspace_id, name, snapshot, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (checkpoint_id, workspace.id, name, snapshot_json, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     checkpoint = Checkpoint(
         id=checkpoint_id,
@@ -113,34 +114,35 @@ def get(workspace: Workspace, checkpoint_id: str) -> Optional[Checkpoint]:
         Checkpoint if found, None otherwise
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    # Try exact ID match
-    cursor.execute(
-        """
-        SELECT id, workspace_id, name, snapshot, created_at
-        FROM checkpoints
-        WHERE workspace_id = ? AND (id = ? OR name = ?)
-        """,
-        (workspace.id, checkpoint_id, checkpoint_id),
-    )
-    row = cursor.fetchone()
-
-    # Try prefix match if no exact match
-    if not row:
+        # Try exact ID match
         cursor.execute(
             """
             SELECT id, workspace_id, name, snapshot, created_at
             FROM checkpoints
-            WHERE workspace_id = ? AND id LIKE ?
+            WHERE workspace_id = ? AND (id = ? OR name = ?)
             """,
-            (workspace.id, f"{checkpoint_id}%"),
+            (workspace.id, checkpoint_id, checkpoint_id),
         )
-        rows = cursor.fetchall()
-        if len(rows) == 1:
-            row = rows[0]
+        row = cursor.fetchone()
 
-    conn.close()
+        # Try prefix match if no exact match
+        if not row:
+            cursor.execute(
+                """
+                SELECT id, workspace_id, name, snapshot, created_at
+                FROM checkpoints
+                WHERE workspace_id = ? AND id LIKE ?
+                """,
+                (workspace.id, f"{checkpoint_id}%"),
+            )
+            rows = cursor.fetchall()
+            if len(rows) == 1:
+                row = rows[0]
+    finally:
+        conn.close()
 
     if not row:
         return None
@@ -159,20 +161,21 @@ def list_all(workspace: Workspace, limit: int = 50) -> list[Checkpoint]:
         List of Checkpoints, newest first
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        SELECT id, workspace_id, name, snapshot, created_at
-        FROM checkpoints
-        WHERE workspace_id = ?
-        ORDER BY created_at DESC
-        LIMIT ?
-        """,
-        (workspace.id, limit),
-    )
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, workspace_id, name, snapshot, created_at
+            FROM checkpoints
+            WHERE workspace_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (workspace.id, limit),
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
 
     return [_row_to_checkpoint(row) for row in rows]
 
@@ -200,20 +203,20 @@ def restore(workspace: Workspace, checkpoint_id: str) -> Checkpoint:
 
     # Restore task statuses
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    for task_data in snapshot.get("tasks", []):
-        cursor.execute(
-            """
-            UPDATE tasks
-            SET status = ?, updated_at = ?
-            WHERE id = ? AND workspace_id = ?
-            """,
-            (task_data["status"], _utc_now().isoformat(), task_data["id"], workspace.id),
-        )
-
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        for task_data in snapshot.get("tasks", []):
+            cursor.execute(
+                """
+                UPDATE tasks
+                SET status = ?, updated_at = ?
+                WHERE id = ? AND workspace_id = ?
+                """,
+                (task_data["status"], _utc_now().isoformat(), task_data["id"], workspace.id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Emit event
     events.emit_for_workspace(
@@ -244,14 +247,15 @@ def delete(workspace: Workspace, checkpoint_id: str) -> bool:
         return False
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "DELETE FROM checkpoints WHERE id = ?",
-        (checkpoint.id,),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM checkpoints WHERE id = ?",
+            (checkpoint.id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     return True
 

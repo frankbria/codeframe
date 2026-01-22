@@ -198,14 +198,18 @@ def apply_inferred_dependencies(
     """Apply inferred dependencies to tasks in the workspace.
 
     Updates each task's depends_on field with the inferred dependencies.
+    Only updates tasks that have non-empty dependency lists to preserve
+    any existing manual/explicit dependencies.
 
     Args:
         workspace: Workspace containing the tasks
         dependencies: Dict mapping task_id -> list of dependency task_ids
     """
     for task_id, deps in dependencies.items():
-        # Always update, even with empty list, to clear stale dependencies
-        task_module.update_depends_on(workspace, task_id, deps)
+        # Only update when there are inferred dependencies to apply
+        # Empty list means no dependencies found - don't clear existing ones
+        if deps:
+            task_module.update_depends_on(workspace, task_id, deps)
 
 
 def _get_default_provider():

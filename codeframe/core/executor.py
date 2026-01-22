@@ -487,15 +487,43 @@ class Executor:
                 output=f"[DRY RUN] Would run: {command}",
             )
 
+        # Detect shell operators to determine execution mode
+        shell_operators = ['|', '&&', '||', '>', '<', '>>', '<<', ';', '`', '$(']
+        requires_shell = any(op in command for op in shell_operators)
+
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                timeout=self.command_timeout,
-            )
+            if requires_shell:
+                # Command contains shell operators, must use shell=True
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.command_timeout,
+                )
+            else:
+                # Safe to use shell=False with parsed arguments
+                try:
+                    argv = shlex.split(command)
+                    result = subprocess.run(
+                        argv,
+                        shell=False,
+                        cwd=self.repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=self.command_timeout,
+                    )
+                except ValueError:
+                    # shlex.split failed (malformed command), fall back to shell=True
+                    result = subprocess.run(
+                        command,
+                        shell=True,
+                        cwd=self.repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=self.command_timeout,
+                    )
 
             if result.returncode == 0:
                 return StepResult(

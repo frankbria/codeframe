@@ -925,22 +925,47 @@ class Agent:
         """Try to automatically fix lint issues.
 
         Returns:
-            True if auto-fix was successful
+            True if auto-fix was successful (returncode == 0)
         """
-        # Try running ruff --fix
-        if self.executor and not self.dry_run:
-            import subprocess
-            try:
-                subprocess.run(
-                    ["ruff", "check", "--fix", "."],
-                    cwd=self.workspace.repo_path,
-                    capture_output=True,
-                    timeout=30,
-                )
+        if not self.executor or self.dry_run:
+            return False
+
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["ruff", "check", "--fix", "."],
+                cwd=self.workspace.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode == 0:
+                self._debug_log("ruff --fix succeeded", level="INFO")
                 return True
-            except Exception:
-                pass
-        return False
+            else:
+                # Ruff fix failed - log the error output
+                stderr_preview = result.stderr[:500] if result.stderr else ""
+                stdout_preview = result.stdout[:500] if result.stdout else ""
+                self._debug_log(
+                    f"ruff --fix failed (exit {result.returncode}): {stderr_preview or stdout_preview}",
+                    level="WARN",
+                )
+                return False
+
+        except subprocess.TimeoutExpired:
+            self._debug_log("ruff --fix timed out after 30s", level="WARN")
+            return False
+        except subprocess.CalledProcessError as e:
+            self._debug_log(f"ruff --fix raised CalledProcessError: {e}", level="WARN")
+            return False
+        except FileNotFoundError:
+            self._debug_log("ruff command not found", level="WARN")
+            return False
+        except Exception as e:
+            self._debug_log(f"ruff --fix error: {e}", level="WARN")
+            return False
 
     def _build_self_correction_context(self) -> str:
         """Build rich context for intelligent self-correction.
@@ -1243,21 +1268,30 @@ IMPORTANT:
                     fix_succeeded = False
 
                     if action == "create":
-                        # Create new file
+                        # Create new file with path safety check
                         content = fix.get("content", "")
                         if content and not self.dry_run:
-                            file_path.parent.mkdir(parents=True, exist_ok=True)
-                            file_path.write_text(content)
-                            self._debug_log(f"Created {file_path}", level="INFO")
-                            applied += 1
-                            fix_succeeded = True
+                            # Verify path is safely within workspace
+                            is_safe, reason = _is_path_safe(file_path, self.workspace.repo_path)
+                            if not is_safe:
+                                self._debug_log(f"Create blocked: {reason}", level="WARN")
+                            else:
+                                file_path.parent.mkdir(parents=True, exist_ok=True)
+                                file_path.write_text(content)
+                                self._debug_log(f"Created {file_path}", level="INFO")
+                                applied += 1
+                                fix_succeeded = True
 
                     elif action == "edit":
-                        # Edit existing file
+                        # Edit existing file with path safety check
                         old_code = fix.get("old_code", "")
                         new_code = fix.get("new_code", "")
 
-                        if not file_path.exists():
+                        # Verify path is safely within workspace before any file ops
+                        is_safe, reason = _is_path_safe(file_path, self.workspace.repo_path)
+                        if not is_safe:
+                            self._debug_log(f"Edit blocked: {reason}", level="WARN")
+                        elif not file_path.exists():
                             self._debug_log(f"File not found: {file_path}", level="WARN")
                         elif not old_code:
                             self._debug_log(f"No old_code for {file_path}", level="WARN")
@@ -1302,29 +1336,35 @@ IMPORTANT:
 
                             # Parse command for safe execution
                             argv, requires_shell, parse_warning = _parse_command_safely(command)
+
+                            # Reject commands that require shell=True (contain operators/unsafe constructs)
+                            if requires_shell:
+                                self._debug_log(
+                                    f"Shell command rejected: {parse_warning} - command: {command[:100]}",
+                                    level="ERROR",
+                                )
+                                self._verbose_print(
+                                    f"[SELFCORRECT] Command rejected (requires shell): {parse_warning}"
+                                )
+                                # Mark as failed and skip execution
+                                self.fix_tracker.record_outcome(
+                                    error_summary, fix_desc, FixOutcome.FAILED
+                                )
+                                continue  # Skip to next fix
+
                             if parse_warning:
                                 self._debug_log(f"Shell safety: {parse_warning}", level="WARN")
 
-                            # Helper to run the command safely
+                            # Helper to run the command safely (only shell=False now)
                             def _run_command() -> subprocess.CompletedProcess:
-                                if requires_shell:
-                                    return subprocess.run(
-                                        command,
-                                        shell=True,
-                                        cwd=self.workspace.repo_path,
-                                        capture_output=True,
-                                        text=True,
-                                        timeout=120,
-                                    )
-                                else:
-                                    return subprocess.run(
-                                        argv,
-                                        shell=False,
-                                        cwd=self.workspace.repo_path,
-                                        capture_output=True,
-                                        text=True,
-                                        timeout=120,
-                                    )
+                                return subprocess.run(
+                                    argv,
+                                    shell=False,
+                                    cwd=self.workspace.repo_path,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=120,
+                                )
 
                             # Global scope commands should go through Coordinator
                             if scope == FixScope.GLOBAL and self.fix_coordinator:
