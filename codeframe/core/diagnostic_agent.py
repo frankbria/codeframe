@@ -459,9 +459,9 @@ def summarize_logs(logs: list[RunLogEntry], max_length: int = 1000) -> str:
 
     summary = "\n".join(lines)
 
-    # Truncate if necessary
+    # Truncate if necessary (guard against negative index when max_length < 3)
     if len(summary) > max_length:
-        summary = summary[:max_length - 3] + "..."
+        summary = summary[:max(0, max_length - 3)] + "..."
 
     return summary
 
@@ -618,14 +618,15 @@ Then provide recommendations."""
     def _extract_category_from_llm(self, llm_response: str) -> FailureCategory:
         """Extract failure category from LLM response.
 
+        Parses specifically the 'Failure Category:' line to avoid false matches
+        from category names appearing in other contexts (e.g., 'NOT a dependency_issue').
+
         Args:
             llm_response: Response from LLM
 
         Returns:
             Extracted failure category
         """
-        response_lower = llm_response.lower()
-
         category_map = {
             "task_description": FailureCategory.TASK_DESCRIPTION,
             "blocker_unresolved": FailureCategory.BLOCKER_UNRESOLVED,
@@ -636,9 +637,16 @@ Then provide recommendations."""
             "technical_error": FailureCategory.TECHNICAL_ERROR,
         }
 
-        for key, category in category_map.items():
-            if key in response_lower:
-                return category
+        # Parse specifically the "Failure Category:" line
+        match = re.search(
+            r"failure\s*category\s*:\s*(\w+)",
+            llm_response,
+            re.IGNORECASE,
+        )
+        if match:
+            category_value = match.group(1).lower()
+            if category_value in category_map:
+                return category_map[category_value]
 
         return FailureCategory.UNKNOWN
 

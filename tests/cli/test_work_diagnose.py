@@ -70,9 +70,8 @@ class TestWorkDiagnoseCommand:
             ["work", "diagnose", task.id[:8], "--workspace", str(workspace.repo_path)],
         )
 
-        # Should show diagnostic output
-        assert result.exit_code == 0 or "Error" not in result.stdout
-        # The command should run (even if output varies)
+        # Should complete successfully
+        assert result.exit_code == 0, f"Expected exit_code 0, got {result.exit_code}. Output: {result.stdout}"
 
     def test_diagnose_no_workspace(self, tmp_path):
         """Test diagnose with no workspace."""
@@ -104,8 +103,8 @@ class TestWorkDiagnoseCommand:
             ["work", "diagnose", task.id[:8], "--workspace", str(workspace.repo_path)],
         )
 
-        # Should complete without error
-        assert result.exit_code == 0 or result.exit_code is None
+        # Should complete successfully
+        assert result.exit_code == 0, f"Expected exit_code 0, got {result.exit_code}. Output: {result.stdout}"
 
     def test_diagnose_with_verbose(self, tmp_path, workspace, task, failed_run):
         """Test diagnose with verbose flag shows more details."""
@@ -118,8 +117,8 @@ class TestWorkDiagnoseCommand:
             ["work", "diagnose", task.id[:8], "--verbose", "--workspace", str(workspace.repo_path)],
         )
 
-        # Should complete without crashing
-        assert result.exit_code == 0 or result.exit_code is None
+        # Should complete successfully
+        assert result.exit_code == 0, f"Expected exit_code 0, got {result.exit_code}. Output: {result.stdout}"
 
 
 class TestWorkDiagnoseFormatting:
@@ -151,8 +150,8 @@ class TestWorkDiagnoseFormatting:
             ["work", "diagnose", task.id[:8], "--workspace", str(workspace.repo_path)],
         )
 
-        # Command should complete
-        assert result.exit_code == 0 or result.exit_code is None
+        # Should complete successfully
+        assert result.exit_code == 0, f"Expected exit_code 0, got {result.exit_code}. Output: {result.stdout}"
 
     def test_diagnose_shows_cli_commands(self, tmp_path, workspace, task, failed_run):
         """Test that recommendations include executable CLI commands."""
@@ -164,9 +163,8 @@ class TestWorkDiagnoseFormatting:
             ["work", "diagnose", task.id[:8], "--workspace", str(workspace.repo_path)],
         )
 
-        # Should include CLI commands in output
-        # The exact format will depend on implementation
-        assert result.exit_code == 0 or result.exit_code is None
+        # Should complete successfully
+        assert result.exit_code == 0, f"Expected exit_code 0, got {result.exit_code}. Output: {result.stdout}"
 
 
 class TestWorkDiagnoseHistory:
@@ -192,8 +190,8 @@ class TestWorkDiagnoseHistory:
             ["work", "diagnose", task.id[:8], "--workspace", str(workspace.repo_path)],
         )
 
-        # Should show the saved report or regenerate
-        assert result.exit_code == 0 or result.exit_code is None
+        # Should complete successfully
+        assert result.exit_code == 0, f"Expected exit_code 0, got {result.exit_code}. Output: {result.stdout}"
 
 
 class TestWorkDiagnoseEdgeCases:
