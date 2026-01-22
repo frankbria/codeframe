@@ -1853,6 +1853,334 @@ def work_status(
         raise typer.Exit(1)
 
 
+@work_app.command("diagnose")
+def work_diagnose(
+    task_id: str = typer.Argument(..., help="Task ID to diagnose (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show detailed log entries",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force re-analysis even if a report exists",
+    ),
+) -> None:
+    """Diagnose a failed task and get recommendations.
+
+    Analyzes run logs to identify the root cause of failure and
+    provides actionable recommendations to fix the issue.
+
+    Example:
+        codeframe work diagnose abc123
+        codeframe work diagnose abc123 --verbose
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module, runtime
+    from codeframe.core.diagnostics import (
+        get_latest_diagnostic_report,
+        get_run_logs,
+        Severity,
+    )
+    from codeframe.core.diagnostic_agent import DiagnosticAgent
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find task by partial ID
+        all_tasks = tasks_module.list_tasks(workspace)
+        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            for t in matching[:5]:
+                console.print(f"  {t.id[:8]} - {t.title}")
+            raise typer.Exit(1)
+
+        task = matching[0]
+
+        # Find the most recent failed run
+        runs = runtime.list_runs(workspace, task_id=task.id)
+        failed_runs = [r for r in runs if r.status == runtime.RunStatus.FAILED]
+
+        if not failed_runs:
+            console.print(f"[yellow]No failed run found for task '{task.title}'[/yellow]")
+            console.print("[dim]Diagnosis is only available for failed tasks.[/dim]")
+            raise typer.Exit(1)
+
+        latest_run = failed_runs[0]  # Most recent failed run
+
+        # Check for existing report
+        existing_report = get_latest_diagnostic_report(workspace, run_id=latest_run.id)
+
+        if existing_report and not force:
+            report = existing_report
+            console.print("[dim]Using cached diagnostic report (use --force to re-analyze)[/dim]\n")
+        else:
+            # Run diagnostic analysis
+            console.print("[bold]Analyzing run logs...[/bold]\n")
+            agent = DiagnosticAgent(workspace)
+            report = agent.analyze(task.id, latest_run.id)
+
+        # Display report
+        _display_diagnostic_report(report, task.title, verbose, workspace, latest_run.id)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+def _display_diagnostic_report(
+    report,
+    task_title: str,
+    verbose: bool,
+    workspace,
+    run_id: str,
+) -> None:
+    """Display a diagnostic report with Rich formatting."""
+    from codeframe.core.diagnostics import Severity, get_run_logs, LogLevel
+
+    # Severity colors
+    severity_colors = {
+        Severity.CRITICAL: "red bold",
+        Severity.HIGH: "red",
+        Severity.MEDIUM: "yellow",
+        Severity.LOW: "green",
+    }
+    severity_color = severity_colors.get(report.severity, "white")
+
+    # Header
+    console.print(f"[bold red]Task Failed:[/bold red] {task_title}\n")
+    console.print("[bold]Diagnosis Complete[/bold]")
+    console.print("━" * 60)
+
+    # Root cause
+    console.print(f"\n[bold]Root Cause:[/bold]")
+    console.print(f"  {report.root_cause[:500]}")
+
+    # Category and severity
+    console.print(f"\n[bold]Category:[/bold] {report.failure_category.value}")
+    console.print(f"[bold]Severity:[/bold] [{severity_color}]{report.severity.value.upper()}[/{severity_color}]")
+
+    # Recommendations
+    if report.recommendations:
+        console.print(f"\n[bold]Recommendations:[/bold]\n")
+        for i, rec in enumerate(report.recommendations, 1):
+            console.print(f"  {i}. [cyan]{rec.action.value}[/cyan]")
+            console.print(f"     {rec.reason}")
+            console.print(f"     [dim]Command:[/dim] [green]{rec.command}[/green]")
+            console.print()
+
+    # Log summary
+    if verbose:
+        console.print("[bold]Log Summary:[/bold]")
+        console.print("━" * 60)
+        console.print(report.log_summary)
+        console.print()
+
+        # Show recent errors
+        logs = get_run_logs(workspace, run_id, level=LogLevel.ERROR)
+        if logs:
+            console.print(f"\n[bold]Recent Errors ({len(logs)}):[/bold]")
+            for log in logs[:5]:
+                console.print(f"  [red]ERROR[/red] {log.category.value}: {log.message[:100]}")
+
+    console.print("━" * 60)
+    console.print(f"[dim]Report ID: {report.id}[/dim]")
+
+
+@work_app.command("retry")
+def work_retry(
+    task_id: str = typer.Argument(..., help="Task ID to retry (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Print detailed progress to stdout",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview changes without applying them",
+    ),
+) -> None:
+    """Retry a failed task with context from previous attempts.
+
+    Resets the task status and starts a new execution run.
+    The agent will have access to previous blocker answers and
+    diagnostic information to improve its approach.
+
+    Example:
+        codeframe work retry abc123
+        codeframe work retry abc123 --verbose
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module, runtime
+    from codeframe.core.state_machine import TaskStatus, InvalidTransitionError
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find task by partial ID
+        all_tasks = tasks_module.list_tasks(workspace)
+        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            for t in matching[:5]:
+                console.print(f"  {t.id[:8]} - {t.title}")
+            raise typer.Exit(1)
+
+        task = matching[0]
+
+        # Reset task to READY if it's FAILED or BLOCKED
+        if task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
+            # Reset any blocked runs first
+            runtime.reset_blocked_run(workspace, task.id)
+
+            # Ensure task is READY
+            if task.status != TaskStatus.READY:
+                tasks_module.update_status(workspace, task.id, TaskStatus.READY)
+
+            console.print(f"[green]Task reset to READY[/green]")
+
+        elif task.status == TaskStatus.IN_PROGRESS:
+            console.print(f"[yellow]Task is currently running[/yellow]")
+            console.print("[dim]Use 'codeframe work stop' to stop it first.[/dim]")
+            raise typer.Exit(1)
+
+        elif task.status == TaskStatus.DONE:
+            console.print(f"[yellow]Task is already completed[/yellow]")
+            raise typer.Exit(0)
+
+        # Start new run
+        console.print(f"\n[bold]Retrying task:[/bold] {task.title}")
+        run = runtime.start_task_run(workspace, task.id)
+
+        console.print(f"  Run ID: [dim]{run.id}[/dim]")
+        console.print("  Status: [yellow]RUNNING[/yellow]")
+
+        # Execute agent
+        from codeframe.core.agent import AgentStatus
+
+        mode = "[dim](dry run)[/dim]" if dry_run else ""
+        verbose_mode = " [dim](verbose)[/dim]" if verbose else ""
+        console.print(f"\n[bold]Executing agent...{mode}{verbose_mode}[/bold]")
+
+        state = runtime.execute_agent(workspace, run, dry_run=dry_run, verbose=verbose)
+
+        if state.status == AgentStatus.COMPLETED:
+            console.print("[bold green]Task completed successfully![/bold green]")
+        elif state.status == AgentStatus.BLOCKED:
+            console.print("[yellow]Task blocked - human input needed[/yellow]")
+            if state.blocker:
+                console.print(f"  Question: {state.blocker.question}")
+            console.print("  Use 'codeframe blocker list' to see blockers")
+        elif state.status == AgentStatus.FAILED:
+            console.print("[red]Task execution failed[/red]")
+            console.print("  Use 'codeframe work diagnose' for analysis")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except InvalidTransitionError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@work_app.command("update-description")
+def work_update_description(
+    task_id: str = typer.Argument(..., help="Task ID to update (can be partial)"),
+    description: str = typer.Argument(..., help="New task description"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Update a task's description.
+
+    Use this to clarify requirements after a failed run.
+    The updated description will be used on the next execution attempt.
+
+    Example:
+        codeframe work update-description abc123 "Implement JWT auth with refresh tokens"
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find task by partial ID
+        all_tasks = tasks_module.list_tasks(workspace)
+        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            for t in matching[:5]:
+                console.print(f"  {t.id[:8]} - {t.title}")
+            raise typer.Exit(1)
+
+        task = matching[0]
+
+        # Update the description
+        tasks_module.update(workspace, task.id, description=description)
+
+        console.print(f"[green]Task description updated[/green]")
+        console.print(f"  Task: {task.title}")
+        console.print(f"  New description: {description[:100]}{'...' if len(description) > 100 else ''}")
+        console.print("\nNext steps:")
+        console.print(f"  codeframe work retry {task.id[:8]}  # Retry with updated description")
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 # =============================================================================
 # Batch execution commands (subcommand group: cf work batch <cmd>)
 # =============================================================================

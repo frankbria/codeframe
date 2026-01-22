@@ -585,6 +585,7 @@ def execute_agent(
     import os
     from codeframe.core.agent import Agent, AgentStatus
     from codeframe.adapters.llm import get_provider
+    from codeframe.core.diagnostics import RunLogger, LogCategory
 
     # Get LLM provider
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -595,7 +596,15 @@ def execute_agent(
 
     provider = get_provider("anthropic")
 
-    # Create event callback to emit workspace events
+    # Create run logger for structured logging
+    run_logger = RunLogger(workspace, run.id, run.task_id)
+    run_logger.info(LogCategory.AGENT_ACTION, "Starting agent execution", {
+        "task_id": run.task_id,
+        "dry_run": dry_run,
+        "verbose": verbose,
+    })
+
+    # Create event callback to emit workspace events and log
     def on_agent_event(event_type: str, data: dict) -> None:
         events.emit_for_workspace(
             workspace,
@@ -603,6 +612,10 @@ def execute_agent(
             {"run_id": run.id, "agent_event": event_type, **data},
             print_event=True,
         )
+
+        # Also log to run logger for diagnosis
+        category = _event_type_to_category(event_type)
+        run_logger.info(category, f"Agent event: {event_type}", data)
 
     # Create and run agent
     agent = Agent(
@@ -740,6 +753,25 @@ def execute_agent(
                 not error_msg, not matched_patterns
             )
 
+    # Log final status
+    if state.status == AgentStatus.COMPLETED:
+        run_logger.info(LogCategory.STATE_CHANGE, "Agent completed successfully")
+    elif state.status == AgentStatus.BLOCKED:
+        blocker_reason = state.blocker.question if state.blocker else "Unknown"
+        run_logger.warning(LogCategory.BLOCKER, f"Agent blocked: {blocker_reason[:200]}", {
+            "blocker_question": blocker_reason,
+        })
+    elif state.status == AgentStatus.FAILED:
+        # Log detailed error information for diagnosis
+        error_info = {}
+        if state.step_results:
+            last_step = state.step_results[-1]
+            error_info["last_step_status"] = last_step.status.value if hasattr(last_step.status, 'value') else str(last_step.status)
+            error_info["last_step_error"] = last_step.error[:500] if last_step.error else None
+        if state.gate_results:
+            error_info["gate_failures"] = sum(1 for g in state.gate_results if not g.passed)
+        run_logger.error(LogCategory.ERROR, "Agent execution failed", error_info)
+
     # Update run status based on agent result
     if state.status == AgentStatus.COMPLETED:
         complete_run(workspace, run.id)
@@ -753,6 +785,35 @@ def execute_agent(
         fail_run(workspace, run.id)
 
     return state
+
+
+def _event_type_to_category(event_type: str):
+    """Map agent event types to log categories.
+
+    Args:
+        event_type: The agent event type string
+
+    Returns:
+        LogCategory appropriate for the event
+    """
+    from codeframe.core.diagnostics import LogCategory
+
+    if "planning" in event_type.lower():
+        return LogCategory.AGENT_ACTION
+    elif "verification" in event_type.lower() or "gate" in event_type.lower():
+        return LogCategory.VERIFICATION
+    elif "error" in event_type.lower() or "failed" in event_type.lower():
+        return LogCategory.ERROR
+    elif "blocker" in event_type.lower():
+        return LogCategory.BLOCKER
+    elif "llm" in event_type.lower() or "context" in event_type.lower():
+        return LogCategory.LLM_CALL
+    elif "file" in event_type.lower():
+        return LogCategory.FILE_OPERATION
+    elif "shell" in event_type.lower() or "command" in event_type.lower():
+        return LogCategory.SHELL_COMMAND
+    else:
+        return LogCategory.AGENT_ACTION
 
 
 def _row_to_run(row: tuple) -> Run:
