@@ -32,7 +32,7 @@ class TestAuthSetup:
 
     def test_setup_prompts_for_provider(self, runner):
         """Setup prompts user to select provider type."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -50,7 +50,7 @@ class TestAuthSetup:
 
     def test_setup_stores_valid_credential(self, runner):
         """Setup stores credential after validation."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -66,7 +66,7 @@ class TestAuthSetup:
 
     def test_setup_rejects_invalid_format(self, runner):
         """Setup rejects credentials with invalid format."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -86,7 +86,7 @@ class TestAuthList:
 
     def test_list_shows_configured_credentials(self, runner):
         """List displays all configured credentials."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
         from codeframe.core.credentials import (
             CredentialInfo,
             CredentialProvider,
@@ -117,7 +117,7 @@ class TestAuthList:
 
     def test_list_shows_source_type(self, runner):
         """List indicates whether credential is from env or stored."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
         from codeframe.core.credentials import (
             CredentialInfo,
             CredentialProvider,
@@ -143,7 +143,7 @@ class TestAuthList:
 
     def test_list_empty_shows_message(self, runner):
         """List shows helpful message when no credentials configured."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -161,7 +161,7 @@ class TestAuthValidate:
 
     def test_validate_checks_credential_health(self, runner):
         """Validate tests credential with provider API."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -178,7 +178,7 @@ class TestAuthValidate:
 
     def test_validate_reports_invalid_credential(self, runner):
         """Validate reports failure for invalid credentials."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -194,7 +194,7 @@ class TestAuthValidate:
 
     def test_validate_missing_credential(self, runner):
         """Validate reports when credential not found."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -213,7 +213,7 @@ class TestAuthRotate:
 
     def test_rotate_replaces_credential(self, runner):
         """Rotate stores new credential value."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -232,7 +232,7 @@ class TestAuthRotate:
 
     def test_rotate_validates_new_credential(self, runner):
         """Rotate validates new credential before storing."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -250,7 +250,7 @@ class TestAuthRotate:
 
     def test_rotate_with_force_skips_validation(self, runner):
         """Rotate with --force skips API validation."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
@@ -271,11 +271,14 @@ class TestAuthRemove:
 
     def test_remove_deletes_credential(self, runner):
         """Remove deletes stored credential."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
+        from codeframe.core.credentials import CredentialSource
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
             mock_cm.return_value = mock_instance
+            # Must return STORED for the command to proceed with deletion
+            mock_instance.get_credential_source.return_value = CredentialSource.STORED
 
             result = runner.invoke(
                 app,
@@ -286,11 +289,14 @@ class TestAuthRemove:
 
     def test_remove_prompts_for_confirmation(self, runner):
         """Remove prompts for confirmation without --yes."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
+        from codeframe.core.credentials import CredentialSource
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
             mock_cm.return_value = mock_instance
+            # Must return STORED for the command to reach the confirmation prompt
+            mock_instance.get_credential_source.return_value = CredentialSource.STORED
 
             # Input 'n' to decline
             result = runner.invoke(
@@ -303,11 +309,14 @@ class TestAuthRemove:
 
     def test_remove_with_yes_skips_confirmation(self, runner):
         """Remove with --yes skips confirmation prompt."""
-        from codeframe.cli import app
+        from codeframe.cli.app import app
+        from codeframe.core.credentials import CredentialSource
 
         with patch("codeframe.cli.auth_commands.CredentialManager") as mock_cm:
             mock_instance = MagicMock()
             mock_cm.return_value = mock_instance
+            # Must return STORED for the command to proceed with deletion
+            mock_instance.get_credential_source.return_value = CredentialSource.STORED
 
             result = runner.invoke(
                 app,

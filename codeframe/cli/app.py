@@ -21,6 +21,9 @@ import typer
 from dotenv import load_dotenv
 from rich.console import Console
 
+# Import auth subapp for credential management
+from codeframe.cli.auth_commands import auth_app
+
 # Load environment variables from .env files
 # Priority: workspace .env > home .env
 _cwd = Path.cwd()
@@ -3369,6 +3372,7 @@ app.add_typer(patch_app, name="patch")
 app.add_typer(commit_app, name="commit")
 app.add_typer(checkpoint_app, name="checkpoint")
 app.add_typer(gates_app, name="gates")
+app.add_typer(auth_app, name="auth")
 
 
 # =============================================================================
