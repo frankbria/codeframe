@@ -159,7 +159,7 @@ jobs:
 
             # Frontend setup - export NEXT_PUBLIC vars at build time
             echo "📦 Building frontend..."
-            cd web-ui
+            cd legacy/web-ui
             npm ci
             echo "🔒 Running security audit..."
             npm audit --audit-level=critical
@@ -467,7 +467,7 @@ jobs:
 
             # Frontend setup (production build) - export NEXT_PUBLIC vars at build time
             echo "📦 Building frontend for production..."
-            cd web-ui
+            cd legacy/web-ui
             npm ci
             echo "🔒 Running security audit..."
             npm audit --audit-level=critical
