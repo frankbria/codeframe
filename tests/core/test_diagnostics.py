@@ -3,7 +3,6 @@
 Tests the RunLogger, diagnostic reports, and related functions.
 """
 
-import json
 import pytest
 import uuid
 from datetime import datetime, timezone
@@ -27,7 +26,7 @@ from codeframe.core.diagnostics import (
     list_diagnostic_reports,
     save_diagnostic_report,
 )
-from codeframe.core.workspace import create_or_load_workspace, get_db_connection
+from codeframe.core.workspace import create_or_load_workspace
 
 
 @pytest.fixture

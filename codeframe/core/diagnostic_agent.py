@@ -244,7 +244,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.ANSWER_BLOCKER,
                 reason="The task has an unresolved blocker that needs human input",
-                command=f"cf blocker list  # Find and answer the open blocker",
+                command="cf blocker list  # Find and answer the open blocker",
                 parameters={"task_id": task_id},
             )
         )
@@ -312,7 +312,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.CHANGE_MODEL,
                 reason="Model limitation detected (token limit, rate limit, etc.). Consider using a different model or breaking down the task.",
-                command=f"# Consider splitting task or using a model with larger context",
+                command="# Consider splitting task or using a model with larger context",
                 parameters={"task_id": task_id},
             )
         )
@@ -320,7 +320,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.SPLIT_TASK,
                 reason="The task may be too large. Consider splitting it into smaller subtasks.",
-                command=f"# Review task and consider breaking into smaller pieces",
+                command="# Review task and consider breaking into smaller pieces",
                 parameters={"task_id": task_id},
             )
         )

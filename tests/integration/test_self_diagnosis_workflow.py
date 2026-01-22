@@ -4,22 +4,18 @@ Tests the complete flow from task failure to diagnosis to remediation.
 """
 
 import pytest
-import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from codeframe.cli.app import app
 from codeframe.core.diagnostics import (
-    DiagnosticReport,
     FailureCategory,
     LogCategory,
     RemediationAction,
     RunLogger,
     Severity,
     get_latest_diagnostic_report,
-    get_run_logs,
 )
 from codeframe.core.diagnostic_agent import DiagnosticAgent
 from codeframe.core.workspace import create_or_load_workspace

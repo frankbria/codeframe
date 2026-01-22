@@ -4,10 +4,8 @@ Tests the diagnostic analysis command for failed runs.
 """
 
 import pytest
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 

@@ -5,20 +5,16 @@ Tests the LLM-powered diagnostic analysis of run failures.
 
 import pytest
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from codeframe.core.diagnostics import (
-    DiagnosticReport,
     FailureCategory,
     LogCategory,
-    LogLevel,
     RemediationAction,
     RunLogger,
     Severity,
     get_run_logs,
-    save_diagnostic_report,
 )
 from codeframe.core.workspace import create_or_load_workspace
 
@@ -154,7 +150,7 @@ class TestDiagnosticAgentPatternMatching:
 
     def test_detect_ambiguous_task_pattern(self, workspace, run_id, task_id):
         """Test detection of ambiguous task description pattern."""
-        from codeframe.core.diagnostic_agent import DiagnosticAgent, detect_failure_patterns
+        from codeframe.core.diagnostic_agent import detect_failure_patterns
 
         logger = RunLogger(workspace, run_id, task_id)
         logger.error(

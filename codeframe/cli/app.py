@@ -1888,8 +1888,6 @@ def work_diagnose(
     from codeframe.core import tasks as tasks_module, runtime
     from codeframe.core.diagnostics import (
         get_latest_diagnostic_report,
-        get_run_logs,
-        Severity,
     )
     from codeframe.core.diagnostic_agent import DiagnosticAgent
 
@@ -1973,7 +1971,7 @@ def _display_diagnostic_report(
     console.print("━" * 60)
 
     # Root cause
-    console.print(f"\n[bold]Root Cause:[/bold]")
+    console.print("\n[bold]Root Cause:[/bold]")
     console.print(f"  {report.root_cause[:500]}")
 
     # Category and severity
@@ -1982,7 +1980,7 @@ def _display_diagnostic_report(
 
     # Recommendations
     if report.recommendations:
-        console.print(f"\n[bold]Recommendations:[/bold]\n")
+        console.print("\n[bold]Recommendations:[/bold]\n")
         for i, rec in enumerate(report.recommendations, 1):
             console.print(f"  {i}. [cyan]{rec.action.value}[/cyan]")
             console.print(f"     {rec.reason}")
@@ -2072,15 +2070,15 @@ def work_retry(
             if task.status != TaskStatus.READY:
                 tasks_module.update_status(workspace, task.id, TaskStatus.READY)
 
-            console.print(f"[green]Task reset to READY[/green]")
+            console.print("[green]Task reset to READY[/green]")
 
         elif task.status == TaskStatus.IN_PROGRESS:
-            console.print(f"[yellow]Task is currently running[/yellow]")
+            console.print("[yellow]Task is currently running[/yellow]")
             console.print("[dim]Use 'codeframe work stop' to stop it first.[/dim]")
             raise typer.Exit(1)
 
         elif task.status == TaskStatus.DONE:
-            console.print(f"[yellow]Task is already completed[/yellow]")
+            console.print("[yellow]Task is already completed[/yellow]")
             raise typer.Exit(0)
 
         # Start new run
@@ -2167,7 +2165,7 @@ def work_update_description(
         # Update the description
         tasks_module.update(workspace, task.id, description=description)
 
-        console.print(f"[green]Task description updated[/green]")
+        console.print("[green]Task description updated[/green]")
         console.print(f"  Task: {task.title}")
         console.print(f"  New description: {description[:100]}{'...' if len(description) > 100 else ''}")
         console.print("\nNext steps:")
