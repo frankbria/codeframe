@@ -199,6 +199,41 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
+    # Run logs (structured logging per run)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS run_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            log_level TEXT NOT NULL DEFAULT 'INFO',
+            category TEXT NOT NULL,
+            message TEXT NOT NULL,
+            metadata TEXT,
+            FOREIGN KEY (run_id) REFERENCES runs(id),
+            FOREIGN KEY (task_id) REFERENCES tasks(id),
+            CHECK (log_level IN ('DEBUG', 'INFO', 'WARNING', 'ERROR'))
+        )
+    """)
+
+    # Diagnostic reports (LLM analysis of run failures)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS diagnostic_reports (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            root_cause TEXT NOT NULL,
+            failure_category TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            recommendations TEXT NOT NULL,
+            log_summary TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (task_id) REFERENCES tasks(id),
+            FOREIGN KEY (run_id) REFERENCES runs(id),
+            CHECK (severity IN ('critical', 'high', 'medium', 'low'))
+        )
+    """)
+
     # Create indexes for common queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_workspace ON tasks(workspace_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
@@ -210,6 +245,10 @@ def _init_database(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_logs_run ON run_logs(run_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_logs_task ON run_logs(task_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_task ON diagnostic_reports(task_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_run ON diagnostic_reports(run_id)")
 
     conn.commit()
     conn.close()
@@ -290,6 +329,75 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
     conn.commit()
+
+    # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='runs'"
+    )
+    if not cursor.fetchone():
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS runs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'RUNNING',
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+                FOREIGN KEY (task_id) REFERENCES tasks(id),
+                CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED', 'BLOCKED'))
+            )
+        """)
+        conn.commit()
+
+    # Add run_logs table if it doesn't exist
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='run_logs'"
+    )
+    if not cursor.fetchone():
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS run_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                log_level TEXT NOT NULL DEFAULT 'INFO',
+                category TEXT NOT NULL,
+                message TEXT NOT NULL,
+                metadata TEXT,
+                FOREIGN KEY (run_id) REFERENCES runs(id),
+                FOREIGN KEY (task_id) REFERENCES tasks(id),
+                CHECK (log_level IN ('DEBUG', 'INFO', 'WARNING', 'ERROR'))
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_logs_run ON run_logs(run_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_run_logs_task ON run_logs(task_id)")
+        conn.commit()
+
+    # Add diagnostic_reports table if it doesn't exist
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='diagnostic_reports'"
+    )
+    if not cursor.fetchone():
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS diagnostic_reports (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                root_cause TEXT NOT NULL,
+                failure_category TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                recommendations TEXT NOT NULL,
+                log_summary TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id),
+                FOREIGN KEY (run_id) REFERENCES runs(id),
+                CHECK (severity IN ('critical', 'high', 'medium', 'low'))
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_task ON diagnostic_reports(task_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_diagnostic_reports_run ON diagnostic_reports(run_id)")
+        conn.commit()
 
     conn.close()
 

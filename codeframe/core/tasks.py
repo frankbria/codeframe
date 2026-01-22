@@ -232,20 +232,99 @@ def update_status(
     now = _utc_now().isoformat()
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        UPDATE tasks
-        SET status = ?, updated_at = ?
-        WHERE workspace_id = ? AND id = ?
-        """,
-        (new_status.value, now, workspace.id, task_id),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET status = ?, updated_at = ?
+            WHERE workspace_id = ? AND id = ?
+            """,
+            (new_status.value, now, workspace.id, task_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     task.status = new_status
+    task.updated_at = datetime.fromisoformat(now)
+
+    return task
+
+
+def update(
+    workspace: Workspace,
+    task_id: str,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    priority: Optional[int] = None,
+) -> Task:
+    """Update a task's title, description, or priority.
+
+    Only provided fields are updated; others are left unchanged.
+
+    Args:
+        workspace: Target workspace
+        task_id: Task to update
+        title: New title (optional)
+        description: New description (optional)
+        priority: New priority (optional)
+
+    Returns:
+        Updated Task
+
+    Raises:
+        ValueError: If task not found
+    """
+    task = get(workspace, task_id)
+    if not task:
+        raise ValueError(f"Task not found: {task_id}")
+
+    # Build update query dynamically
+    updates = []
+    params = []
+
+    if title is not None:
+        updates.append("title = ?")
+        params.append(title)
+        task.title = title
+
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+        task.description = description
+
+    if priority is not None:
+        updates.append("priority = ?")
+        params.append(priority)
+        task.priority = priority
+
+    if not updates:
+        # Nothing to update
+        return task
+
+    now = _utc_now().isoformat()
+    updates.append("updated_at = ?")
+    params.append(now)
+
+    # Add WHERE clause params
+    params.extend([workspace.id, task_id])
+
+    conn = get_db_connection(workspace)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            UPDATE tasks
+            SET {', '.join(updates)}
+            WHERE workspace_id = ? AND id = ?
+            """,
+            params,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
     task.updated_at = datetime.fromisoformat(now)
 
     return task
