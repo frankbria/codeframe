@@ -1,10 +1,11 @@
 """Stale blocker expiration cron job (049-human-in-loop, Phase 8).
 
-This script runs hourly to expire blockers that have been pending for more
-than 24 hours without resolution. Expired blockers trigger task failures
-and WebSocket notifications to update the dashboard.
+This is an INTERNAL scheduled task script, not part of the public `codeframe` CLI.
+It runs hourly to expire blockers that have been pending for more than 24 hours
+without resolution. Expired blockers trigger task failures and WebSocket
+notifications to update the dashboard.
 
-Usage:
+Usage (internal/cron only):
     python -m codeframe.tasks.expire_blockers [--db-path PATH] [--hours HOURS]
 
 Deployment:
