@@ -227,7 +227,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.UPDATE_TASK_DESCRIPTION,
                 reason="Task description may be ambiguous or incomplete. Adding clearer acceptance criteria will help the agent understand requirements.",
-                command=f"cf tasks show {task_id}  # Review current description, then update with clearer criteria",
+                command=f"cf work update-description {task_id} \"<new description with clear acceptance criteria>\"",
                 parameters={"task_id": task_id},
             )
         )
@@ -235,7 +235,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.RETRY_WITH_CONTEXT,
                 reason="After updating the description, retry the task",
-                command=f"cf work start {task_id} --execute",
+                command=f"cf work retry {task_id}",
                 parameters={"task_id": task_id},
             )
         )
@@ -275,7 +275,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.RETRY_WITH_CONTEXT,
                 reason="After resolving dependencies, retry the task",
-                command=f"cf work start {task_id} --execute",
+                command=f"cf work retry {task_id}",
                 parameters={"task_id": task_id},
             )
         )
@@ -293,7 +293,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.RETRY_WITH_CONTEXT,
                 reason="After fixing the environment, retry the task",
-                command=f"cf work start {task_id} --execute",
+                command=f"cf work retry {task_id}",
                 parameters={"task_id": task_id},
             )
         )
@@ -303,7 +303,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.RETRY_WITH_CONTEXT,
                 reason="Code quality issues (tests/lint) detected. The agent will try to self-correct on retry.",
-                command=f"cf work start {task_id} --execute --verbose",
+                command=f"cf work retry {task_id} --verbose",
                 parameters={"task_id": task_id, "verbose": True},
             )
         )
@@ -331,7 +331,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.RETRY_WITH_CONTEXT,
                 reason="Technical error occurred. A simple retry may resolve transient issues.",
-                command=f"cf work start {task_id} --execute",
+                command=f"cf work retry {task_id}",
                 parameters={"task_id": task_id},
             )
         )
@@ -341,7 +341,7 @@ def generate_recommendations(
             DiagnosticRecommendation(
                 action=RemediationAction.RETRY_WITH_CONTEXT,
                 reason="Unable to determine specific failure cause. Try running with verbose mode for more details.",
-                command=f"cf work start {task_id} --execute --verbose",
+                command=f"cf work retry {task_id} --verbose",
                 parameters={"task_id": task_id, "verbose": True},
             )
         )
@@ -360,12 +360,14 @@ def _extract_package_name(error_messages: list[str]) -> Optional[str]:
     """
     for msg in error_messages:
         # ModuleNotFoundError: No module named 'package_name'
-        match = re.search(r"no module named ['\"]?(\w+)", msg, re.IGNORECASE)
+        # Handles: simple names, hyphenated (pydantic-core), dotted (google.auth)
+        match = re.search(r"no module named ['\"]?([\w\-\.]+)", msg, re.IGNORECASE)
         if match:
             return match.group(1)
 
         # ImportError: cannot import name 'x' from 'package'
-        match = re.search(r"cannot import.*from ['\"]?(\w+)", msg, re.IGNORECASE)
+        # Handles: simple names, hyphenated (typing-extensions), dotted (google.auth)
+        match = re.search(r"cannot import.*from ['\"]?([\w\-\.]+)", msg, re.IGNORECASE)
         if match:
             return match.group(1)
 

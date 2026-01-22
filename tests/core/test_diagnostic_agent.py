@@ -248,7 +248,7 @@ class TestDiagnosticAgentRecommendationGeneration:
             None,
         )
         assert retry_rec is not None
-        assert "cf work start" in retry_rec.command
+        assert "cf work retry" in retry_rec.command
 
     def test_generate_dependency_fix_recommendation(self, workspace, run_id, task_id):
         """Test generating RESOLVE_DEPENDENCY recommendation."""

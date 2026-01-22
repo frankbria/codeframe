@@ -232,18 +232,19 @@ def update_status(
     now = _utc_now().isoformat()
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        UPDATE tasks
-        SET status = ?, updated_at = ?
-        WHERE workspace_id = ? AND id = ?
-        """,
-        (new_status.value, now, workspace.id, task_id),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET status = ?, updated_at = ?
+            WHERE workspace_id = ? AND id = ?
+            """,
+            (new_status.value, now, workspace.id, task_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     task.status = new_status
     task.updated_at = datetime.fromisoformat(now)
