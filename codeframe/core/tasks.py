@@ -310,18 +310,19 @@ def update(
     params.extend([workspace.id, task_id])
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        f"""
-        UPDATE tasks
-        SET {', '.join(updates)}
-        WHERE workspace_id = ? AND id = ?
-        """,
-        params,
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            UPDATE tasks
+            SET {', '.join(updates)}
+            WHERE workspace_id = ? AND id = ?
+            """,
+            params,
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     task.updated_at = datetime.fromisoformat(now)
 

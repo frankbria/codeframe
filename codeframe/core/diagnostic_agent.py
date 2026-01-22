@@ -15,6 +15,7 @@ import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
+from codeframe.adapters.llm import Purpose
 from codeframe.core.diagnostics import (
     DiagnosticRecommendation,
     DiagnosticReport,
@@ -520,25 +521,10 @@ class DiagnosticAgent:
             for log in logs
         )
 
-        # Assess severity
-        severity = assess_severity(
-            failure_category=failure_category,
-            error_count=len(errors),
-            has_blocker=has_blocker,
-        )
-
-        # Generate recommendations
-        recommendations = generate_recommendations(
-            task_id=task_id,
-            run_id=run_id,
-            failure_category=failure_category,
-            error_messages=error_messages,
-        )
-
         # Generate log summary
         log_summary = summarize_logs(logs)
 
-        # Determine root cause
+        # Determine root cause (may update failure_category via LLM)
         if self.llm_provider and logs:
             root_cause = self._analyze_with_llm(logs, error_messages)
             # Parse LLM response to potentially update category
@@ -547,6 +533,21 @@ class DiagnosticAgent:
                 failure_category = llm_category
         else:
             root_cause = self._generate_root_cause(failure_category, error_messages)
+
+        # Assess severity AFTER potential LLM category update
+        severity = assess_severity(
+            failure_category=failure_category,
+            error_count=len(errors),
+            has_blocker=has_blocker,
+        )
+
+        # Generate recommendations AFTER potential LLM category update
+        recommendations = generate_recommendations(
+            task_id=task_id,
+            run_id=run_id,
+            failure_category=failure_category,
+            error_messages=error_messages,
+        )
 
         # Create report
         report = DiagnosticReport(
@@ -604,7 +605,10 @@ Severity: [One of: critical, high, medium, low]
 Then provide recommendations."""
 
         try:
-            response = self.llm_provider.complete(prompt)
+            response = self.llm_provider.complete(
+                messages=[{"role": "user", "content": prompt}],
+                purpose=Purpose.GENERATION,
+            )
             return response.content if hasattr(response, 'content') else str(response)
         except Exception as e:
             return f"LLM analysis failed: {e}"
