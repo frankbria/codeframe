@@ -148,21 +148,9 @@ def topological_sort(graph: dict[str, list[str]]) -> list[str]:
         raise CycleDetectedError(cycle)
 
     # Kahn's algorithm for topological sort
-    # Count incoming edges (how many tasks depend on each task)
-    in_degree: dict[str, int] = {node: 0 for node in graph}
-
-    for node in graph:
-        for dep in graph[node]:
-            if dep in in_degree:
-                # dep has an edge TO node (node depends on dep)
-                # We want to count edges TO each node
-                pass
-
-    # Actually, we need reverse thinking:
     # graph[node] = deps means node depends on deps
     # So deps must come before node
     # in_degree[node] = number of dependencies that node has
-
     in_degree = {node: len(graph.get(node, [])) for node in graph}
 
     # Start with nodes that have no dependencies

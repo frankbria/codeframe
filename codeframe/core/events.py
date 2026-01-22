@@ -141,15 +141,16 @@ def emit(
 
     workspace = get_workspace(repo_path)
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "INSERT INTO events (workspace_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
-        (workspace_id, event_type, payload_json, now),
-    )
-    event_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO events (workspace_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
+            (workspace_id, event_type, payload_json, now),
+        )
+        event_id = cursor.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
 
     event = Event(
         id=event_id,
@@ -190,15 +191,16 @@ def emit_for_workspace(
     payload_json = json.dumps(payload)
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "INSERT INTO events (workspace_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
-        (workspace.id, event_type, payload_json, now),
-    )
-    event_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO events (workspace_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
+            (workspace.id, event_type, payload_json, now),
+        )
+        event_id = cursor.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
 
     event = Event(
         id=event_id,
@@ -230,33 +232,35 @@ def list_recent(
         List of Event objects, newest first
     """
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
+    try:
+        cursor = conn.cursor()
 
-    if since_id:
-        cursor.execute(
-            """
-            SELECT id, workspace_id, event_type, payload, created_at
-            FROM events
-            WHERE workspace_id = ? AND id > ?
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (workspace.id, since_id, limit),
-        )
-    else:
-        cursor.execute(
-            """
-            SELECT id, workspace_id, event_type, payload, created_at
-            FROM events
-            WHERE workspace_id = ?
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (workspace.id, limit),
-        )
+        if since_id:
+            cursor.execute(
+                """
+                SELECT id, workspace_id, event_type, payload, created_at
+                FROM events
+                WHERE workspace_id = ? AND id > ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (workspace.id, since_id, limit),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, workspace_id, event_type, payload, created_at
+                FROM events
+                WHERE workspace_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (workspace.id, limit),
+            )
 
-    rows = cursor.fetchall()
-    conn.close()
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
 
     return [
         Event(

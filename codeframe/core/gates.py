@@ -73,12 +73,15 @@ class GateResult:
         passed_count = sum(1 for c in self.checks if c.status == GateStatus.PASSED)
         failed_count = sum(1 for c in self.checks if c.status == GateStatus.FAILED)
         skipped_count = sum(1 for c in self.checks if c.status == GateStatus.SKIPPED)
+        error_count = sum(1 for c in self.checks if c.status == GateStatus.ERROR)
 
         parts = []
         if passed_count:
             parts.append(f"{passed_count} passed")
         if failed_count:
             parts.append(f"{failed_count} failed")
+        if error_count:
+            parts.append(f"{error_count} errors")
         if skipped_count:
             parts.append(f"{skipped_count} skipped")
 
@@ -102,11 +105,14 @@ def run(
     """
     started_at = _utc_now()
 
-    # Emit gates started event
+    # Track whether gates were explicitly provided (vs auto-detected)
+    gates_explicitly_provided = gates is not None
+
+    # Emit gates started event - report actual provided list or ["auto"]
     events.emit_for_workspace(
         workspace,
         events.EventType.GATES_STARTED,
-        {"gates": gates or ["auto"]},
+        {"gates": gates if gates is not None else ["auto"]},
         print_event=True,
     )
 
@@ -116,6 +122,9 @@ def run(
     # Determine which gates to run
     if gates is None:
         gates = _detect_available_gates(repo_path)
+
+    # Known gate names
+    known_gates = {"pytest", "ruff", "mypy", "npm-test", "npm-lint"}
 
     # Run each gate
     for gate_name in gates:
@@ -130,11 +139,19 @@ def run(
         elif gate_name == "npm-lint":
             check = _run_npm_lint(repo_path, verbose)
         else:
-            check = GateCheck(
-                name=gate_name,
-                status=GateStatus.SKIPPED,
-                output=f"Unknown gate: {gate_name}",
-            )
+            # Unknown gate: FAILED if explicitly requested, SKIPPED if auto-detected
+            if gates_explicitly_provided:
+                check = GateCheck(
+                    name=gate_name,
+                    status=GateStatus.FAILED,
+                    output=f"Unknown gate: {gate_name}. Valid gates: {', '.join(sorted(known_gates))}",
+                )
+            else:
+                check = GateCheck(
+                    name=gate_name,
+                    status=GateStatus.SKIPPED,
+                    output=f"Unknown gate: {gate_name}",
+                )
 
         checks.append(check)
 

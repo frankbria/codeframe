@@ -100,6 +100,9 @@ def export_patch(
         raise ValueError(f"Not a git repository: {repo_path}")
 
     # Generate patch content
+    # Track which diff was actually used for stats calculation
+    actual_staged_used = staged_only
+
     if staged_only:
         diff_cmd = ["git", "diff", "--cached"]
     else:
@@ -123,6 +126,8 @@ def export_patch(
             text=True,
         )
         patch_content = result.stdout
+        # We fell back to unstaged diff, so update the tracking flag
+        actual_staged_used = False
 
     if not patch_content.strip():
         raise ValueError("No changes to export")
@@ -138,8 +143,8 @@ def export_patch(
     # Write patch
     out_path.write_text(patch_content)
 
-    # Get stats
-    stats = _get_diff_stats(repo_path, staged_only)
+    # Get stats using the actual diff type that was used
+    stats = _get_diff_stats(repo_path, actual_staged_used)
 
     patch_info = PatchInfo(
         path=out_path,
