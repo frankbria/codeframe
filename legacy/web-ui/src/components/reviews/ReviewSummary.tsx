@@ -11,7 +11,8 @@
 
 import React, { useMemo, useState } from 'react';
 import type { ReviewResult, Severity, ReviewCategory, CodeReview } from '../../types/reviews';
-import { CATEGORY_ICONS, SEVERITY_COLORS } from '../../types/reviews';
+import { getCategoryIcon, SEVERITY_COLORS } from '../../types/reviews';
+import { Idea01Icon, Alert02Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
 
 interface ReviewSummaryProps {
   /** Review result data */
@@ -43,7 +44,7 @@ const FindingCard = React.memo(({ finding, index, isExpanded, onToggle }: Findin
   const severityColor = SEVERITY_COLORS[finding.severity as Severity] || 'bg-muted text-muted-foreground border-border';
 
   // Defensive check for category icon (Issue #5)
-  const categoryIcon = CATEGORY_ICONS[finding.category as ReviewCategory] || '📄';
+  const categoryIcon = getCategoryIcon(finding.category as ReviewCategory);
 
   // Keyboard event handler for accessibility (Issue #2)
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -106,7 +107,7 @@ const FindingCard = React.memo(({ finding, index, isExpanded, onToggle }: Findin
               data-testid="finding-recommendation"
             >
               <div className="flex items-start gap-2">
-                <span className="text-foreground text-lg" aria-hidden="true">💡</span>
+                <Idea01Icon className="h-5 w-5 text-foreground flex-shrink-0" aria-hidden="true" />
                 <div>
                   <p className="text-xs font-semibold text-foreground mb-1">
                     Recommendation:
@@ -245,7 +246,7 @@ export function ReviewSummary({
           data-testid="blocking-banner"
         >
           <div className="flex items-center gap-2">
-            <span className="text-2xl">⚠️</span>
+            <Alert02Icon className="h-6 w-6" aria-hidden="true" />
             <div>
               <p className="font-semibold">Review Blocked</p>
               <p className="text-sm">
@@ -265,7 +266,7 @@ export function ReviewSummary({
           data-testid="success-banner"
         >
           <div className="flex items-center gap-2">
-            <span className="text-2xl">✅</span>
+            <CheckmarkCircle01Icon className="h-6 w-6" aria-hidden="true" />
             <div>
               <p className="font-semibold">Review Passed</p>
               <p className="text-sm">No issues found. Code looks great!</p>
@@ -361,7 +362,6 @@ export function ReviewSummary({
             ] as ReviewCategory[]
           ).map((category) => {
             const count = reviewResult.category_counts[category];
-            const icon = CATEGORY_ICONS[category];
 
             return (
               <div
@@ -371,7 +371,7 @@ export function ReviewSummary({
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{icon}</span>
+                    <span className="text-lg">{getCategoryIcon(category)}</span>
                     <span className="text-xs font-medium capitalize text-foreground">
                       {category}
                     </span>

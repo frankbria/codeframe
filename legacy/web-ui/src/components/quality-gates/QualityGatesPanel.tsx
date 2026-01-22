@@ -25,7 +25,7 @@ import { fetchQualityGateStatus } from '@/api/qualityGates';
 import { isPlanningPhase, getPlanningPhaseMessage } from '@/lib/phaseAwareData';
 import QualityGateStatus from './QualityGateStatus';
 import GateStatusIndicator from './GateStatusIndicator';
-import { CheckmarkCircle01Icon, CheckListIcon } from '@hugeicons/react';
+import { CheckmarkCircle01Icon, CheckListIcon, InformationCircleIcon, Alert02Icon } from '@hugeicons/react';
 
 /**
  * Props for QualityGatesPanel component
@@ -239,7 +239,7 @@ function QualityGatesPanel({
         aria-label="No tasks available"
       >
         <div className="flex items-center gap-2 text-muted-foreground">
-          <span aria-hidden="true">ℹ️</span>
+          <InformationCircleIcon className="h-5 w-5" aria-hidden="true" />
           <span className="text-sm">
             No tasks available for quality gate evaluation. Complete or start a task first.
           </span>
@@ -278,7 +278,7 @@ function QualityGatesPanel({
           aria-live="polite"
         >
           <div className="flex items-start">
-            <span className="text-destructive text-xl mr-2" aria-hidden="true">⚠️</span>
+            <Alert02Icon className="h-5 w-5 text-destructive mr-2 flex-shrink-0" aria-hidden="true" />
             <div className="flex-1">
               <h4 className="text-sm font-medium text-destructive">Error Loading Quality Gates</h4>
               <p className="text-sm text-destructive/80 mt-1">{error}</p>

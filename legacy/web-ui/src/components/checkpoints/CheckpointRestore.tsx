@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Checkpoint, CheckpointDiff, RestoreCheckpointResponse } from '../../types/checkpoints';
 import { getCheckpointDiff, restoreCheckpoint } from '../../api/checkpoints';
+import { Alert02Icon, CheckmarkCircle01Icon } from '@hugeicons/react';
 
 interface CheckpointRestoreProps {
   projectId: number;
@@ -90,17 +91,7 @@ export const CheckpointRestore: React.FC<CheckpointRestoreProps> = ({
           {restoreSuccess && (
             <div className="bg-secondary/10 border border-secondary/20 rounded-md p-4 mb-6">
               <div className="flex items-center">
-                <svg
-                  className="h-5 w-5 text-secondary mr-2"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path d="M5 13l4 4L19 7"></path>
-                </svg>
+                <CheckmarkCircle01Icon className="h-5 w-5 text-secondary mr-2" aria-hidden="true" />
                 <p className="text-sm font-medium text-foreground">
                   Checkpoint restored successfully!
                 </p>
@@ -113,20 +104,10 @@ export const CheckpointRestore: React.FC<CheckpointRestoreProps> = ({
           {!restoreSuccess && (
             <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4 mb-6" data-testid="restore-warning">
               <div className="flex items-start">
-                <svg
-                  className="h-5 w-5 text-destructive mr-2 mt-0.5"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-                </svg>
+                <Alert02Icon className="h-5 w-5 text-destructive mr-2 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
                   <p className="text-sm font-medium text-destructive">
-                    ⚠️ Warning: Destructive Operation
+                    Warning: Destructive Operation
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
                     This will restore your project to the state at checkpoint creation. All

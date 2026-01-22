@@ -282,6 +282,7 @@ const EmptyState = memo(function EmptyState({ onCreatePR }: { onCreatePR: () => 
       </p>
       <button
         onClick={onCreatePR}
+        data-testid="create-pr-empty-state"
         className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition-colors"
       >
         <Add01Icon className="h-4 w-4" />
@@ -426,6 +427,7 @@ export default function PRList({
         </div>
         <button
           onClick={onCreatePR}
+          data-testid="create-pr-button"
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-md transition-colors"
         >
           <Add01Icon className="h-4 w-4" />

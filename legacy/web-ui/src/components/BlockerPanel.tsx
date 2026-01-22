@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react';
 import type { Blocker } from '../types/blocker';
 import { BlockerBadge } from './BlockerBadge';
+import { CheckmarkCircle01Icon, BotIcon } from '@hugeicons/react';
 
 type BlockerFilter = 'all' | 'sync' | 'async';
 
@@ -118,7 +119,9 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
           Blockers <span className="text-sm font-normal text-muted-foreground">(0)</span>
         </h2>
         <div className="text-center py-8 text-muted-foreground">
-          <div className="text-4xl mb-2">✅</div>
+          <div className="flex justify-center mb-2">
+            <CheckmarkCircle01Icon className="h-10 w-10 text-secondary" aria-hidden="true" />
+          </div>
           <p className="text-sm">No blockers - agents are running smoothly!</p>
         </div>
       </div>
@@ -185,7 +188,7 @@ export default function BlockerPanel({ blockers, onBlockerClick }: BlockerPanelP
                 {/* Agent and task info */}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="inline-flex items-center gap-1">
-                    <span>🤖</span>
+                    <BotIcon className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>{blocker.agent_name || blocker.agent_id}</span>
                   </span>
                   {blocker.task_title && (

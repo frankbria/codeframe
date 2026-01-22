@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import type { ReviewStatusResponse } from '../../types/review';
 import { fetchReviewStatus } from '../../api/review';
+import { Alert02Icon, FileEditIcon } from '@hugeicons/react';
 
 interface ReviewResultsPanelProps {
   taskId: number;
@@ -59,7 +60,9 @@ export default function ReviewResultsPanel({
     return (
       <div className="bg-card rounded-lg shadow p-6 border border-border">
         <div className="text-center py-8">
-          <div className="text-4xl mb-2">⚠️</div>
+          <div className="mb-2 flex justify-center">
+            <Alert02Icon className="h-10 w-10 text-destructive" aria-hidden="true" />
+          </div>
           <p className="text-destructive font-medium">Error Loading Review</p>
           <p className="text-sm text-muted-foreground mt-2">{error}</p>
         </div>
@@ -72,7 +75,9 @@ export default function ReviewResultsPanel({
     return (
       <div className="bg-card rounded-lg shadow p-6 border border-border">
         <div className="text-center py-8">
-          <div className="text-4xl mb-2">📝</div>
+          <div className="mb-2 flex justify-center">
+            <FileEditIcon className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+          </div>
           <p className="text-foreground font-medium">No Review Available</p>
           <p className="text-sm text-muted-foreground mt-2">
             This task has not been reviewed yet.

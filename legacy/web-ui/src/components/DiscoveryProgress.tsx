@@ -13,7 +13,7 @@ import type { DiscoveryProgressResponse } from '@/types/api';
 import type { WebSocketMessage } from '@/types';
 import ProgressBar from './ProgressBar';
 import PhaseIndicator from './PhaseIndicator';
-import { Cancel01Icon, CheckmarkCircle01Icon, Alert02Icon, AlertDiamondIcon } from '@hugeicons/react';
+import { Cancel01Icon, CheckmarkCircle01Icon, Alert02Icon, AlertDiamondIcon, Idea01Icon } from '@hugeicons/react';
 import {
   Dialog,
   DialogContent,
@@ -785,8 +785,9 @@ const DiscoveryProgress = memo(function DiscoveryProgress({ projectId, onViewPRD
                 )}
 
                 {/* Feature: 012-discovery-answer-ui - Keyboard Shortcut Hint (T050) */}
-                <div className="mt-2 text-center text-xs text-muted-foreground">
-                  💡 Tip: Press <kbd className="px-2 py-1 bg-muted border border-border rounded">Ctrl+Enter</kbd> to submit
+                <div className="mt-2 text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
+                  <Idea01Icon className="h-4 w-4" aria-hidden="true" />
+                  <span>Tip: Press <kbd className="px-2 py-1 bg-muted border border-border rounded">Ctrl+Enter</kbd> to submit</span>
                 </div>
               </div>
             )}

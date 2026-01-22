@@ -2,12 +2,29 @@
  * ReviewResultsPanel Component Tests (T064)
  * Tests for main panel displaying review results with scores and findings
  * Part of Sprint 9 Phase 3 (Review Agent API/UI Integration)
+ * Updated for emoji-to-Hugeicons migration: icons now use Hugeicons components
  */
 
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import ReviewResultsPanel from '@/components/review/ReviewResultsPanel';
 import * as reviewApi from '@/api/review';
 import type { ReviewStatusResponse } from '@/types/review';
+
+// Mock Hugeicons
+jest.mock('@hugeicons/react', () => {
+  const React = require('react');
+  const createMockIcon = (name: string) => {
+    const Icon = ({ className }: { className?: string }) => (
+      <svg data-testid={name} className={className} aria-hidden="true" />
+    );
+    Icon.displayName = name;
+    return Icon;
+  };
+  return {
+    Alert02Icon: createMockIcon('Alert02Icon'),
+    FileEditIcon: createMockIcon('FileEditIcon'),
+  };
+});
 
 // Mock the API module
 jest.mock('@/api/review');
@@ -94,13 +111,13 @@ describe('ReviewResultsPanel', () => {
       });
     });
 
-    it('displays warning emoji in error state', async () => {
+    it('displays Alert02Icon in error state', async () => {
       mockFetchReviewStatus.mockRejectedValue(new Error('Network error'));
 
       render(<ReviewResultsPanel taskId={1} />);
 
       await waitFor(() => {
-        expect(screen.getByText('⚠️')).toBeInTheDocument();
+        expect(screen.getByTestId('Alert02Icon')).toBeInTheDocument();
       });
     });
 
@@ -158,7 +175,7 @@ describe('ReviewResultsPanel', () => {
       });
     });
 
-    it('displays document emoji in no review state', async () => {
+    it('displays FileEditIcon in no review state', async () => {
       mockFetchReviewStatus.mockResolvedValue({
         has_review: false,
         status: null,
@@ -169,7 +186,7 @@ describe('ReviewResultsPanel', () => {
       render(<ReviewResultsPanel taskId={1} />);
 
       await waitFor(() => {
-        expect(screen.getByText('📝')).toBeInTheDocument();
+        expect(screen.getByTestId('FileEditIcon')).toBeInTheDocument();
       });
     });
 
