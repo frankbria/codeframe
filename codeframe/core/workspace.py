@@ -275,9 +275,18 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         """)
         conn.commit()
 
+    # Add depends_on column to prds table if it doesn't exist
+    # Re-check prd_columns as it may have changed
+    cursor.execute("PRAGMA table_info(prds)")
+    prd_columns = {row[1] for row in cursor.fetchall()}
+    if "depends_on" not in prd_columns:
+        cursor.execute("ALTER TABLE prds ADD COLUMN depends_on TEXT")
+        conn.commit()
+
     # Add indexes for PRD version chain queries
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
     conn.commit()
 
     conn.close()

@@ -75,8 +75,8 @@ class SupervisorResolver:
     def llm(self):
         """Lazy-load LLM provider."""
         if self._llm is None:
-            from codeframe.adapters.llm import get_llm_provider
-            self._llm = get_llm_provider()
+            from codeframe.adapters.llm import get_provider
+            self._llm = get_provider()
         return self._llm
 
     def try_resolve_blocked_task(self, task_id: str) -> bool:

@@ -5,16 +5,18 @@ Manages task execution runs and the agent loop.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
+from codeframe.core import events, tasks
+from codeframe.core.state_machine import TaskStatus
 from codeframe.core.workspace import Workspace, get_db_connection
 
-from codeframe.core.state_machine import TaskStatus
-from codeframe.core import tasks, events
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from codeframe.core.agent import AgentState
@@ -95,17 +97,18 @@ def start_task_run(workspace: Workspace, task_id: str) -> Run:
     now = _utc_now().isoformat()
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO runs (id, workspace_id, task_id, status, started_at)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (run_id, workspace.id, task_id, RunStatus.RUNNING.value, now),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO runs (id, workspace_id, task_id, status, started_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (run_id, workspace.id, task_id, RunStatus.RUNNING.value, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     run = Run(
         id=run_id,
@@ -638,11 +641,17 @@ def execute_agent(
     if state.status == AgentStatus.FAILED:
         from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
 
-        print(f"\n{'='*60}")
-        print("[DIAG] Agent FAILED - analyzing for supervisor intervention")
-        print(f"[DIAG] state.blocker: {state.blocker}")
-        print(f"[DIAG] state.step_results count: {len(state.step_results) if state.step_results else 0}")
-        print(f"[DIAG] state.gate_results count: {len(state.gate_results) if state.gate_results else 0}")
+        if debug:
+            logger.debug("Agent FAILED - analyzing for supervisor intervention")
+            logger.debug("state.blocker: %s", state.blocker)
+            logger.debug(
+                "state.step_results count: %d",
+                len(state.step_results) if state.step_results else 0
+            )
+            logger.debug(
+                "state.gate_results count: %d",
+                len(state.gate_results) if state.gate_results else 0
+            )
 
         # Extract error message from available sources
         error_msg = ""
@@ -653,7 +662,12 @@ def execute_agent(
         elif state.step_results:
             # Check last step result for error info
             last_result = state.step_results[-1]
-            print(f"[DIAG] Last step result: status={last_result.status}, error={last_result.error[:200] if last_result.error else 'None'}")
+            if debug:
+                error_preview = last_result.error[:200] if last_result.error else "None"
+                logger.debug(
+                    "Last step result: status=%s, error=%s",
+                    last_result.status, error_preview
+                )
             if hasattr(last_result, 'error') and last_result.error:
                 error_msg = last_result.error
                 error_source = "step_result.error"
@@ -663,26 +677,38 @@ def execute_agent(
         elif state.gate_results:
             # Check gate results for failure info
             for gate in state.gate_results:
-                print(f"[DIAG] Gate result: passed={gate.passed}")
+                if debug:
+                    logger.debug("Gate result: passed=%s", gate.passed)
                 if not gate.passed:
                     for check in gate.checks:
-                        print(f"[DIAG]   Check: {check.name} status={check.status} output={check.output[:100] if check.output else 'None'}")
+                        if debug:
+                            output_preview = check.output[:100] if check.output else "None"
+                            logger.debug(
+                                "  Check: %s status=%s output=%s",
+                                check.name, check.status, output_preview
+                            )
                         if check.output:
                             error_msg = check.output
                             error_source = f"gate.{check.name}"
                             break
 
-        print(f"[DIAG] Extracted error from: {error_source}")
-        print(f"[DIAG] Error message (first 300 chars): {error_msg[:300] if error_msg else 'EMPTY'}")
+        if debug:
+            logger.debug("Extracted error from: %s", error_source)
+            error_preview = error_msg[:300] if error_msg else "EMPTY"
+            logger.debug("Error message (first 300 chars): %s", error_preview)
 
         error_msg_lower = error_msg.lower()
         matched_patterns = [p for p in SUPERVISOR_TACTICAL_PATTERNS if p in error_msg_lower]
-        print(f"[DIAG] Matched tactical patterns: {matched_patterns}")
+        if debug:
+            logger.debug("Matched tactical patterns: %s", matched_patterns)
 
         if error_msg and matched_patterns:
             supervisor = get_supervisor(workspace)
             resolution = supervisor._generate_tactical_resolution(error_msg)
-            print(f"[Supervisor] Detected recoverable error, providing guidance: {resolution[:100]}...")
+            logger.info(
+                "Supervisor detected recoverable error, providing guidance: %s...",
+                resolution[:100]
+            )
 
             # Create a blocker with the resolution for the agent's next run
             from codeframe.core import blockers
@@ -692,10 +718,11 @@ def execute_agent(
                 question=f"Technical error: {error_msg[:500]}",
             )
             blockers.answer(workspace, blocker.id, resolution)
-            print(f"[DIAG] Created blocker {blocker.id[:8]} and answered with resolution")
+            if debug:
+                logger.debug("Created blocker %s and answered with resolution", blocker.id[:8])
 
             # Retry the agent with the new context
-            print("[Supervisor] Retrying task with guidance...")
+            logger.info("Supervisor retrying task with guidance...")
             agent = Agent(
                 workspace=workspace,
                 llm_provider=provider,
@@ -705,10 +732,13 @@ def execute_agent(
                 fix_coordinator=fix_coordinator,
             )
             state = agent.run(run.task_id)
-            print(f"[DIAG] Retry completed with status: {state.status}")
-        else:
-            print(f"[DIAG] No supervisor intervention - error_msg empty={not error_msg}, no pattern match={not matched_patterns}")
-        print(f"{'='*60}\n")
+            if debug:
+                logger.debug("Retry completed with status: %s", state.status)
+        elif debug:
+            logger.debug(
+                "No supervisor intervention - error_msg empty=%s, no pattern match=%s",
+                not error_msg, not matched_patterns
+            )
 
     # Update run status based on agent result
     if state.status == AgentStatus.COMPLETED:

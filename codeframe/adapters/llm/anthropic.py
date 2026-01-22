@@ -167,6 +167,7 @@ class AnthropicProvider(LLMProvider):
         for msg in messages:
             if "tool_results" in msg and msg["tool_results"]:
                 # Convert tool results to Anthropic format
+                # Mirror tool_calls logic: tool_result blocks first, then text if present
                 content = []
                 for tr in msg["tool_results"]:
                     content.append(
@@ -177,6 +178,18 @@ class AnthropicProvider(LLMProvider):
                             "is_error": tr.get("is_error", False),
                         }
                     )
+                # Preserve any user text content alongside tool results
+                if msg.get("content"):
+                    msg_content = msg["content"]
+                    if isinstance(msg_content, str):
+                        content.append({"type": "text", "text": msg_content})
+                    elif isinstance(msg_content, list):
+                        # Handle list of content blocks
+                        for block in msg_content:
+                            if isinstance(block, str):
+                                content.append({"type": "text", "text": block})
+                            elif isinstance(block, dict) and block.get("type") == "text":
+                                content.append(block)
                 converted.append({"role": "user", "content": content})
             elif "tool_calls" in msg and msg["tool_calls"]:
                 # Convert assistant message with tool calls

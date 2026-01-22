@@ -73,6 +73,9 @@ def analyze_dependencies(
     if not task_list:
         return {}
 
+    # Use only IDs from successfully loaded tasks to prevent references to missing tasks
+    valid_ids = [t.id for t in task_list]
+
     # Build prompt
     prompt = _build_analysis_prompt(task_list)
 
@@ -89,8 +92,8 @@ def analyze_dependencies(
         temperature=0.0,
     )
 
-    # Parse response
-    dependencies = _parse_dependency_response(response.content, task_ids)
+    # Parse response - use valid_ids (loaded tasks) not original task_ids
+    dependencies = _parse_dependency_response(response.content, valid_ids)
 
     return dependencies
 
@@ -201,8 +204,8 @@ def apply_inferred_dependencies(
         dependencies: Dict mapping task_id -> list of dependency task_ids
     """
     for task_id, deps in dependencies.items():
-        if deps:  # Only update if there are dependencies
-            task_module.update_depends_on(workspace, task_id, deps)
+        # Always update, even with empty list, to clear stale dependencies
+        task_module.update_depends_on(workspace, task_id, deps)
 
 
 def _get_default_provider():

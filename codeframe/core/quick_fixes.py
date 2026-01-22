@@ -293,17 +293,39 @@ def match_syntax_error(error: str, file_content: Optional[str] = None) -> Option
             lines = file_content.split('\n')
             if 0 < line_num <= len(lines):
                 line = lines[line_num - 1]
-                # Check for string with {} but no f prefix
-                if re.search(r'["\'][^"\']*\{[^}]+\}[^"\']*["\']', line) and not re.search(r'f["\']', line):
-                    # Add f prefix to string
-                    new_line = re.sub(r'(["\'])', r'f\1', line, count=1)
-                    if new_line != line:
-                        return QuickFix(
-                            fix_type=FixType.FIX_SYNTAX,
-                            description=f"Add f-string prefix at line {line_num}",
-                            old_content=line,
-                            new_content=new_line,
-                        )
+                # Pattern to match string literals with optional prefix
+                # Captures: (1) prefix like r/u/b/br/fr, (2) opening quote, (3) body, (4) closing quote
+                string_pattern = r'([rRuUbBfF]*)(["\'])([^"\']*\{[^}]+\}[^"\']*)\2'
+                match = re.search(string_pattern, line)
+                if match:
+                    prefix = match.group(1)
+                    quote = match.group(2)
+                    body = match.group(3)
+
+                    # Skip if already has 'f' prefix
+                    if 'f' in prefix.lower():
+                        pass  # Already an f-string
+                    # Skip byte strings - can't add 'f' to 'b'
+                    elif 'b' in prefix.lower():
+                        pass  # Byte string, can't be f-string
+                    else:
+                        # Add 'f' to prefix (before 'r' if present, e.g., 'r' -> 'rf')
+                        if 'r' in prefix.lower():
+                            # Keep the case of r, add f before it
+                            new_prefix = 'f' + prefix
+                        else:
+                            new_prefix = 'f' + prefix
+                        # Build the new string literal
+                        old_literal = f"{prefix}{quote}{body}{quote}"
+                        new_literal = f"{new_prefix}{quote}{body}{quote}"
+                        new_line = line.replace(old_literal, new_literal, 1)
+                        if new_line != line:
+                            return QuickFix(
+                                fix_type=FixType.FIX_SYNTAX,
+                                description=f"Add f-string prefix at line {line_num}",
+                                old_content=line,
+                                new_content=new_line,
+                            )
 
     return None
 

@@ -11,27 +11,42 @@ Coordinates the full agent execution loop:
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import re
+import shlex
+import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional
 
-import re
+from codeframe.adapters.llm import LLMProvider, Purpose
+from codeframe.core import blockers, events
+from codeframe.core.context import ContextLoader, TaskContext
+from codeframe.core.events import EventType
+from codeframe.core.executor import Executor, ExecutionStatus, StepResult
+from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
+from codeframe.core.gates import run as run_gates, GateResult, GateStatus
+from codeframe.core.planner import ImplementationPlan, Planner, PlanStep, StepType
+from codeframe.core.quick_fixes import apply_quick_fix, find_quick_fix
+from codeframe.core.workspace import Workspace
 
 if TYPE_CHECKING:
     from codeframe.core.conductor import GlobalFixCoordinator
 
-from codeframe.core.workspace import Workspace
-from codeframe.core.context import ContextLoader, TaskContext
-from codeframe.core.planner import Planner, ImplementationPlan, PlanStep, StepType
-from codeframe.core.executor import Executor, ExecutionStatus, StepResult
-from codeframe.core.gates import run as run_gates, GateResult, GateStatus
-from codeframe.core import blockers, events
-from codeframe.core.events import EventType
-from codeframe.core.fix_tracker import FixAttemptTracker, FixOutcome, EscalationDecision
-from codeframe.core.quick_fixes import find_quick_fix, apply_quick_fix
-from codeframe.adapters.llm import LLMProvider, Purpose
+# Safe shell commands that can be executed without full shell interpretation
+SAFE_SHELL_COMMANDS = frozenset({
+    # Python tools
+    "python", "python3", "pytest", "ruff", "black", "mypy", "pip", "uv",
+    # Node tools
+    "npm", "node", "npx", "yarn", "pnpm",
+    # System tools
+    "ls", "cat", "head", "tail", "grep", "find", "mkdir", "touch", "cp", "mv",
+    # Git
+    "git",
+    # Testing
+    "jest", "vitest", "cargo",
+})
 
 
 def _extract_file_from_command(command: str) -> Optional[str]:
@@ -60,6 +75,69 @@ def _extract_file_from_command(command: str) -> Optional[str]:
 
     # No file found
     return None
+
+
+def _is_path_safe(file_path: Path, workspace_path: Path) -> tuple[bool, str]:
+    """Check if a file path is safely within the workspace.
+
+    Prevents path traversal attacks via '..' components.
+
+    Args:
+        file_path: The file path to check
+        workspace_path: The workspace root path
+
+    Returns:
+        Tuple of (is_safe, reason) where reason explains any rejection
+    """
+    try:
+        # Resolve both paths to handle symlinks and relative paths
+        resolved_file = file_path.resolve()
+        resolved_workspace = workspace_path.resolve()
+
+        # Check if the file is within the workspace
+        try:
+            resolved_file.relative_to(resolved_workspace)
+            return (True, "")
+        except ValueError:
+            return (False, f"Path escapes workspace: {file_path}")
+    except Exception as e:
+        return (False, f"Path resolution error: {e}")
+
+
+def _parse_command_safely(command: str) -> tuple[list[str], bool, str]:
+    """Parse a shell command into an argument list for safe execution.
+
+    Args:
+        command: The shell command string
+
+    Returns:
+        Tuple of (argv_list, requires_shell, warning) where:
+        - argv_list: Parsed command arguments
+        - requires_shell: True if command needs shell interpretation
+        - warning: Non-empty if there are safety concerns
+    """
+    # Check for shell operators that require shell=True
+    shell_operators = ['|', '&&', '||', '>', '<', '>>', '<<', ';', '$', '`', '$(']
+    has_shell_operators = any(op in command for op in shell_operators)
+
+    if has_shell_operators:
+        return ([], True, "Command contains shell operators")
+
+    try:
+        # Parse command into argv list
+        argv = shlex.split(command)
+        if not argv:
+            return ([], True, "Empty command")
+
+        # Check if the base command is in our safe list
+        base_cmd = Path(argv[0]).name  # Handle paths like /usr/bin/python
+        if base_cmd not in SAFE_SHELL_COMMANDS:
+            return (argv, True, f"Command '{base_cmd}' not in safe list")
+
+        return (argv, False, "")
+    except ValueError as e:
+        # shlex.split failed (e.g., unclosed quotes)
+        return ([], True, f"Command parse error: {e}")
 
 
 class AgentStatus(str, Enum):
@@ -1198,20 +1276,55 @@ IMPORTANT:
                                 fix_succeeded = True
 
                     elif action == "delete":
-                        # Delete file
-                        if file_path.exists() and not self.dry_run:
-                            file_path.unlink()
-                            self._debug_log(f"Deleted {file_path}", level="INFO")
-                            applied += 1
+                        # Delete file with safeguards
+                        if self.dry_run:
+                            self._debug_log(f"[DRY RUN] Would delete {file_path}", level="INFO")
+                        elif not file_path.exists():
+                            self._debug_log(f"File already deleted: {file_path}", level="INFO")
                             fix_succeeded = True
+                        else:
+                            # Verify path is safely within workspace
+                            is_safe, reason = _is_path_safe(file_path, self.workspace.repo_path)
+                            if not is_safe:
+                                self._debug_log(f"Delete blocked: {reason}", level="WARN")
+                            else:
+                                file_path.unlink()
+                                self._debug_log(f"Deleted {file_path}", level="INFO")
+                                applied += 1
+                                fix_succeeded = True
 
                     elif action == "shell":
-                        # Run shell command
+                        # Run shell command with safe parsing
                         command = fix.get("command", "")
                         if command and not self.dry_run:
-                            import subprocess
                             scope = self._classify_fix_scope(fix)
                             self._verbose_print(f"[SELFCORRECT] Running shell ({scope.value}): {command[:80]}...")
+
+                            # Parse command for safe execution
+                            argv, requires_shell, parse_warning = _parse_command_safely(command)
+                            if parse_warning:
+                                self._debug_log(f"Shell safety: {parse_warning}", level="WARN")
+
+                            # Helper to run the command safely
+                            def _run_command() -> subprocess.CompletedProcess:
+                                if requires_shell:
+                                    return subprocess.run(
+                                        command,
+                                        shell=True,
+                                        cwd=self.workspace.repo_path,
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=120,
+                                    )
+                                else:
+                                    return subprocess.run(
+                                        argv,
+                                        shell=False,
+                                        cwd=self.workspace.repo_path,
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=120,
+                                    )
 
                             # Global scope commands should go through Coordinator
                             if scope == FixScope.GLOBAL and self.fix_coordinator:
@@ -1238,14 +1351,7 @@ IMPORTANT:
                                 elif should_execute:
                                     # We are responsible for executing
                                     try:
-                                        result = subprocess.run(
-                                            command,
-                                            shell=True,
-                                            cwd=self.workspace.repo_path,
-                                            capture_output=True,
-                                            text=True,
-                                            timeout=120,
-                                        )
+                                        result = _run_command()
                                         success = result.returncode == 0
                                         self.fix_coordinator.report_fix_result(
                                             error_summary, success, result.stderr[:200] if not success else None
@@ -1262,14 +1368,7 @@ IMPORTANT:
                             else:
                                 # Local scope - execute directly
                                 try:
-                                    result = subprocess.run(
-                                        command,
-                                        shell=True,
-                                        cwd=self.workspace.repo_path,
-                                        capture_output=True,
-                                        text=True,
-                                        timeout=120,
-                                    )
+                                    result = _run_command()
                                     if result.returncode == 0:
                                         self._debug_log(f"Shell command succeeded: {command}", level="INFO")
                                         applied += 1

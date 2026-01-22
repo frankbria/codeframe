@@ -21,12 +21,12 @@ class Purpose(str, Enum):
     SUPERVISION = "supervision"  # Supervisor decisions (blocker triage, tactical resolution)
 
 
-# Default model aliases (use latest versions automatically)
-DEFAULT_PLANNING_MODEL = "claude-sonnet-4-5"
-DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-5"
-DEFAULT_GENERATION_MODEL = "claude-haiku-4-5"
-DEFAULT_CORRECTION_MODEL = "claude-opus-4-5"  # Step up for fixing errors
-DEFAULT_SUPERVISION_MODEL = "claude-opus-4-5"  # Strong model for supervisor decisions
+# Default model aliases (use valid Anthropic model identifiers)
+DEFAULT_PLANNING_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_EXECUTION_MODEL = "claude-sonnet-4-20250514"
+DEFAULT_GENERATION_MODEL = "claude-3-5-haiku-20241022"
+DEFAULT_CORRECTION_MODEL = "claude-opus-4-20250514"  # Step up for fixing errors
+DEFAULT_SUPERVISION_MODEL = "claude-opus-4-20250514"  # Strong model for supervisor decisions
 
 
 @dataclass
@@ -49,22 +49,31 @@ class ModelSelector:
     supervision_model: str = ""
 
     def __post_init__(self):
-        """Load model names from environment or use defaults."""
-        self.planning_model = os.getenv(
-            "CODEFRAME_PLANNING_MODEL", DEFAULT_PLANNING_MODEL
-        )
-        self.execution_model = os.getenv(
-            "CODEFRAME_EXECUTION_MODEL", DEFAULT_EXECUTION_MODEL
-        )
-        self.generation_model = os.getenv(
-            "CODEFRAME_GENERATION_MODEL", DEFAULT_GENERATION_MODEL
-        )
-        self.correction_model = os.getenv(
-            "CODEFRAME_CORRECTION_MODEL", DEFAULT_CORRECTION_MODEL
-        )
-        self.supervision_model = os.getenv(
-            "CODEFRAME_SUPERVISION_MODEL", DEFAULT_SUPERVISION_MODEL
-        )
+        """Load model names from environment or use defaults.
+
+        Only assigns from environment/defaults when the field is empty/falsy,
+        respecting any explicit constructor overrides.
+        """
+        if not self.planning_model:
+            self.planning_model = os.getenv(
+                "CODEFRAME_PLANNING_MODEL", DEFAULT_PLANNING_MODEL
+            )
+        if not self.execution_model:
+            self.execution_model = os.getenv(
+                "CODEFRAME_EXECUTION_MODEL", DEFAULT_EXECUTION_MODEL
+            )
+        if not self.generation_model:
+            self.generation_model = os.getenv(
+                "CODEFRAME_GENERATION_MODEL", DEFAULT_GENERATION_MODEL
+            )
+        if not self.correction_model:
+            self.correction_model = os.getenv(
+                "CODEFRAME_CORRECTION_MODEL", DEFAULT_CORRECTION_MODEL
+            )
+        if not self.supervision_model:
+            self.supervision_model = os.getenv(
+                "CODEFRAME_SUPERVISION_MODEL", DEFAULT_SUPERVISION_MODEL
+            )
 
     def for_purpose(self, purpose: Purpose) -> str:
         """Get the model for a given purpose.

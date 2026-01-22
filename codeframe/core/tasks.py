@@ -6,7 +6,6 @@ This module is headless - no FastAPI or HTTP dependencies.
 """
 
 import json
-import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -80,17 +79,18 @@ def create(
     depends_on_list = depends_on or []
 
     conn = get_db_connection(workspace)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), now, now),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     return Task(
         id=task_id,
@@ -453,13 +453,10 @@ def _generate_tasks_with_llm(prd_content: str) -> list[dict]:
     Returns:
         List of task dicts with 'title' and 'description' keys
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not set")
+    # Use the LLM adapter for provider-agnostic access
+    from codeframe.adapters.llm import get_provider, Purpose
 
-    from anthropic import Anthropic
-
-    client = Anthropic(api_key=api_key)
+    provider = get_provider()
 
     prompt = f"""Analyze the following Product Requirements Document (PRD) and generate a list of actionable development tasks.
 
@@ -477,14 +474,14 @@ PRD Content:
 
 JSON Tasks:"""
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
+    response = provider.complete(
         messages=[{"role": "user", "content": prompt}],
+        purpose=Purpose.GENERATION,
+        max_tokens=2000,
     )
 
     # Extract JSON from response
-    response_text = response.content[0].text.strip()
+    response_text = response.content.strip()
 
     # Try to find JSON array in response
     json_match = re.search(r"\[[\s\S]*\]", response_text)
