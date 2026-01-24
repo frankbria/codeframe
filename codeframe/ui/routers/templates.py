@@ -118,7 +118,7 @@ async def list_templates(
 
     except Exception as e:
         logger.error(f"Error listing templates: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/categories", response_model=CategoryListResponse)
@@ -135,7 +135,7 @@ async def list_categories() -> Dict[str, List[str]]:
 
     except Exception as e:
         logger.error(f"Error listing categories: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{template_id}", response_model=TemplateResponse)
@@ -182,7 +182,7 @@ async def get_template(
         raise
     except Exception as e:
         logger.error(f"Error getting template {template_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/{project_id}/apply", response_model=ApplyTemplateResponse)
@@ -291,4 +291,4 @@ async def apply_template(
         raise
     except Exception as e:
         logger.error(f"Error applying template to project {project_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

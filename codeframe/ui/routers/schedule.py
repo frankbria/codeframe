@@ -131,7 +131,7 @@ async def get_project_schedule(
         raise
     except Exception as e:
         logger.error(f"Error getting schedule for project {project_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{project_id}/predict", response_model=CompletionPredictionResponse)
@@ -202,7 +202,7 @@ async def predict_completion(
         raise
     except Exception as e:
         logger.error(f"Error predicting completion for project {project_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{project_id}/bottlenecks", response_model=List[BottleneckResponse])
@@ -269,4 +269,4 @@ async def get_bottlenecks(
         raise
     except Exception as e:
         logger.error(f"Error getting bottlenecks for project {project_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
