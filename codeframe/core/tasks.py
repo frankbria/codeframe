@@ -38,6 +38,8 @@ class Task:
         updated_at: When the task was last modified
         depends_on: List of task IDs this task depends on (default: empty)
         estimated_hours: Estimated hours to complete the task (optional)
+        complexity_score: Complexity rating 1-5 (optional)
+        uncertainty_level: Uncertainty level: 'low', 'medium', 'high' (optional)
     """
 
     id: str
@@ -51,6 +53,8 @@ class Task:
     updated_at: datetime
     depends_on: list[str] = field(default_factory=list)
     estimated_hours: Optional[float] = None
+    complexity_score: Optional[int] = None
+    uncertainty_level: Optional[str] = None
 
 
 def create(
@@ -62,6 +66,8 @@ def create(
     prd_id: Optional[str] = None,
     depends_on: Optional[list[str]] = None,
     estimated_hours: Optional[float] = None,
+    complexity_score: Optional[int] = None,
+    uncertainty_level: Optional[str] = None,
 ) -> Task:
     """Create a new task.
 
@@ -74,6 +80,8 @@ def create(
         prd_id: Optional source PRD ID
         depends_on: Optional list of task IDs this task depends on
         estimated_hours: Optional time estimate in hours
+        complexity_score: Optional complexity rating 1-5
+        uncertainty_level: Optional uncertainty level ('low', 'medium', 'high')
 
     Returns:
         Created Task
@@ -87,10 +95,10 @@ def create(
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO tasks (id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, now, now),
+            (task_id, workspace.id, prd_id, title, description, status.value, priority, json.dumps(depends_on_list), estimated_hours, complexity_score, uncertainty_level, now, now),
         )
         conn.commit()
     finally:
@@ -106,6 +114,8 @@ def create(
         priority=priority,
         depends_on=depends_on_list,
         estimated_hours=estimated_hours,
+        complexity_score=complexity_score,
+        uncertainty_level=uncertainty_level,
         created_at=datetime.fromisoformat(now),
         updated_at=datetime.fromisoformat(now),
     )
@@ -126,7 +136,7 @@ def get(workspace: Workspace, task_id: str) -> Optional[Task]:
 
     cursor.execute(
         """
-        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, created_at, updated_at
+        SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
         FROM tasks
         WHERE workspace_id = ? AND id = ?
         """,
@@ -162,7 +172,7 @@ def list_tasks(
     if status:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, created_at, updated_at
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
             FROM tasks
             WHERE workspace_id = ? AND status = ?
             ORDER BY priority ASC, created_at ASC
@@ -173,7 +183,7 @@ def list_tasks(
     else:
         cursor.execute(
             """
-            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, created_at, updated_at
+            SELECT id, workspace_id, prd_id, title, description, status, priority, depends_on, estimated_hours, complexity_score, uncertainty_level, created_at, updated_at
             FROM tasks
             WHERE workspace_id = ?
             ORDER BY priority ASC, created_at ASC
@@ -632,7 +642,8 @@ def _row_to_task(row: tuple) -> Task:
     """Convert a database row to a Task object.
 
     Row columns: id, workspace_id, prd_id, title, description, status, priority,
-                 depends_on, estimated_hours, created_at, updated_at
+                 depends_on, estimated_hours, complexity_score, uncertainty_level,
+                 created_at, updated_at
     """
     # Parse depends_on from JSON string (default to empty list if null)
     depends_on_raw = row[7]
@@ -648,6 +659,8 @@ def _row_to_task(row: tuple) -> Task:
         priority=row[6],
         depends_on=depends_on,
         estimated_hours=row[8],
-        created_at=datetime.fromisoformat(row[9]),
-        updated_at=datetime.fromisoformat(row[10]),
+        complexity_score=row[9],
+        uncertainty_level=row[10],
+        created_at=datetime.fromisoformat(row[11]),
+        updated_at=datetime.fromisoformat(row[12]),
     )

@@ -4,6 +4,7 @@ Refactored to use domain-specific repositories for better maintainability.
 The Database class now acts as a facade, delegating operations to repositories.
 """
 
+import contextlib
 import os
 import sqlite3
 import threading
@@ -274,6 +275,37 @@ class Database:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Async context manager exit."""
         await self.close_async()
+
+    @contextlib.contextmanager
+    def transaction(self):
+        """Context manager for explicit transaction control.
+
+        Usage:
+            with db.transaction():
+                db.create_issue(...)
+                db.create_task_with_issue(...)
+                # All operations committed together, or rolled back on error
+
+        Yields:
+            self: The database instance for chaining operations
+        """
+        if not self.conn:
+            self.initialize()
+
+        # SQLite uses autocommit by default; disable it for this transaction
+        old_isolation = self.conn.isolation_level
+        self.conn.isolation_level = None  # Manual transaction mode
+        cursor = self.conn.cursor()
+        cursor.execute("BEGIN")
+
+        try:
+            yield self
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        finally:
+            self.conn.isolation_level = old_isolation
 
     # Backward compatibility: Parse datetime helper (used by many tests)
     def _parse_datetime(

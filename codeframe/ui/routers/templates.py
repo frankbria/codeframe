@@ -216,63 +216,63 @@ async def apply_template(
         if not project:
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
-        # Get first issue or create one
-        issues = db.get_project_issues(project_id)
-        if issues:
-            issue_id = issues[0].id
-        else:
-            # Create a default issue for the tasks
-            from codeframe.core.models import Issue, TaskStatus
-
-            default_issue = Issue(
-                project_id=project_id,
-                issue_number=request.issue_number,
-                title=f"Tasks from template: {template.name}",
-                description=f"Tasks generated from {template.id} template",
-                status=TaskStatus.PENDING,
-                priority=2,
-                workflow_step=1,
-            )
-            issue_id = db.create_issue(default_issue)
-
-        # Apply template
+        # Apply template to get task definitions
         task_dicts = manager.apply_template(
             template_id=request.template_id,
             context=request.context,
             issue_number=request.issue_number,
         )
 
-        # Create tasks in database with dependency tracking
-        from codeframe.core.models import TaskStatus
+        from codeframe.core.models import Issue, TaskStatus
 
-        created_tasks = []  # List of (task_id, depends_on_indices)
-        for task_dict in task_dicts:
-            task_id = db.create_task_with_issue(
-                project_id=project_id,
-                issue_id=issue_id,
-                task_number=task_dict["task_number"],
-                parent_issue_number=request.issue_number,
-                title=task_dict["title"],
-                description=task_dict["description"],
-                status=TaskStatus.PENDING,
-                priority=2,
-                workflow_step=1,
-                can_parallelize=False,
-                estimated_hours=task_dict.get("estimated_hours"),
-            )
-            created_tasks.append((task_id, task_dict.get("depends_on_indices", [])))
+        # Wrap all DB operations in a transaction for atomicity
+        with db.transaction():
+            # Get first issue or create one
+            issues = db.get_project_issues(project_id)
+            if issues:
+                issue_id = issues[0].id
+            else:
+                # Create a default issue for the tasks
+                default_issue = Issue(
+                    project_id=project_id,
+                    issue_number=request.issue_number,
+                    title=f"Tasks from template: {template.name}",
+                    description=f"Tasks generated from {template.id} template",
+                    status=TaskStatus.PENDING,
+                    priority=2,
+                    workflow_step=1,
+                )
+                issue_id = db.create_issue(default_issue)
 
-        # Wire up dependencies using indices -> actual task IDs
-        for task_id, dep_indices in created_tasks:
-            if dep_indices:
-                # Map 0-based indices to actual task IDs
-                depends_on_ids = [
-                    created_tasks[idx][0]
-                    for idx in dep_indices
-                    if 0 <= idx < len(created_tasks)
-                ]
-                for dep_id in depends_on_ids:
-                    db.tasks.add_task_dependency(task_id, dep_id)
+            # Create tasks in database with dependency tracking
+            created_tasks = []  # List of (task_id, depends_on_indices)
+            for task_dict in task_dicts:
+                task_id = db.create_task_with_issue(
+                    project_id=project_id,
+                    issue_id=issue_id,
+                    task_number=task_dict["task_number"],
+                    parent_issue_number=request.issue_number,
+                    title=task_dict["title"],
+                    description=task_dict["description"],
+                    status=TaskStatus.PENDING,
+                    priority=2,
+                    workflow_step=1,
+                    can_parallelize=False,
+                    estimated_hours=task_dict.get("estimated_hours"),
+                )
+                created_tasks.append((task_id, task_dict.get("depends_on_indices", [])))
+
+            # Wire up dependencies using indices -> actual task IDs
+            for task_id, dep_indices in created_tasks:
+                if dep_indices:
+                    # Map 0-based indices to actual task IDs
+                    depends_on_ids = [
+                        created_tasks[idx][0]
+                        for idx in dep_indices
+                        if 0 <= idx < len(created_tasks)
+                    ]
+                    for dep_id in depends_on_ids:
+                        db.tasks.add_task_dependency(task_id, dep_id)
 
         created_task_ids = [task_id for task_id, _ in created_tasks]
 

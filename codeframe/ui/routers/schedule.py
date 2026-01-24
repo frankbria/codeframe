@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from codeframe.persistence.database import Database
@@ -72,14 +72,14 @@ class BottleneckResponse(BaseModel):
 @router.get("/{project_id}", response_model=ScheduleResponse)
 async def get_project_schedule(
     project_id: int,
-    agents: int = 1,
+    agents: int = Query(1, ge=1, description="Number of parallel agents/workers"),
     db: Database = Depends(get_db),
 ) -> Dict[str, Any]:
     """Get the schedule for a project.
 
     Args:
         project_id: Project ID
-        agents: Number of parallel agents/workers (default: 1)
+        agents: Number of parallel agents/workers (default: 1, must be >= 1)
         db: Database connection
 
     Returns:
@@ -137,14 +137,14 @@ async def get_project_schedule(
 @router.get("/{project_id}/predict", response_model=CompletionPredictionResponse)
 async def predict_completion(
     project_id: int,
-    hours_per_day: float = 8.0,
+    hours_per_day: float = Query(8.0, gt=0, le=24, description="Working hours per day"),
     db: Database = Depends(get_db),
 ) -> Dict[str, Any]:
     """Predict project completion date.
 
     Args:
         project_id: Project ID
-        hours_per_day: Working hours per day (default: 8)
+        hours_per_day: Working hours per day (default: 8, must be > 0 and <= 24)
         db: Database connection
 
     Returns:

@@ -4088,6 +4088,8 @@ def templates_apply(
                 description=task_dict["description"],
                 status=TaskStatus.BACKLOG,
                 estimated_hours=task_dict.get("estimated_hours"),
+                complexity_score=task_dict.get("complexity_score"),
+                uncertainty_level=task_dict.get("uncertainty_level"),
             )
             created_tasks.append((task, task_dict.get("depends_on_indices", [])))
 
