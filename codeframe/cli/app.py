@@ -3686,6 +3686,430 @@ def gates_run() -> None:
 
 
 # =============================================================================
+# Schedule sub-application (task scheduling)
+# =============================================================================
+
+schedule_app = typer.Typer(
+    name="schedule",
+    help="Task scheduling and project timeline",
+    no_args_is_help=True,
+)
+
+
+@schedule_app.command("show")
+def schedule_show(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    agents: int = typer.Option(
+        1,
+        "--agents", "-a",
+        help="Number of parallel agents/workers",
+    ),
+) -> None:
+    """Show the project schedule.
+
+    Displays task assignments with start/end times based on dependencies
+    and resource availability.
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as task_module
+    from codeframe.planning.task_scheduler import TaskScheduler
+    from codeframe.agents.dependency_resolver import DependencyResolver
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Get tasks using v2 API
+        task_list = task_module.list_tasks(workspace)
+        if not task_list:
+            console.print("[yellow]No tasks found.[/yellow] Generate tasks first with: codeframe tasks generate")
+            raise typer.Exit(0)
+
+        # Build dependency graph and schedule
+        resolver = DependencyResolver()
+        resolver.build_dependency_graph(task_list)
+
+        scheduler = TaskScheduler()
+
+        # Extract durations
+        task_durations = {}
+        for task in task_list:
+            duration = task.estimated_hours
+            if duration is None or duration <= 0:
+                duration = 1.0
+            task_durations[task.id] = duration
+
+        schedule = scheduler.schedule_tasks(
+            tasks=task_list,
+            task_durations=task_durations,
+            resolver=resolver,
+            agents_available=agents,
+        )
+
+        # Display schedule
+        console.print(f"\n[bold]Project Schedule[/bold] ({agents} agent{'s' if agents > 1 else ''})\n")
+        console.print(f"Total Duration: [green]{schedule.total_duration:.1f} hours[/green]\n")
+
+        # Create a task lookup
+        task_lookup = {t.id: t for t in task_list}
+
+        console.print("[bold]Task Assignments:[/bold]")
+        for task_id, assignment in sorted(schedule.task_assignments.items(), key=lambda x: x[1].start_time):
+            task = task_lookup.get(task_id)
+            title = task.title if task else f"Task {task_id}"
+            agent_str = f"Agent {assignment.assigned_agent}" if assignment.assigned_agent is not None else ""
+            console.print(
+                f"  [{assignment.start_time:5.1f}h - {assignment.end_time:5.1f}h] "
+                f"{title} {agent_str}"
+            )
+
+        console.print()
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@schedule_app.command("predict")
+def schedule_predict(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    hours_per_day: float = typer.Option(
+        8.0,
+        "--hours-per-day",
+        help="Working hours per day",
+    ),
+) -> None:
+    """Predict project completion date.
+
+    Estimates when the project will be complete based on remaining
+    tasks and their estimated durations.
+    """
+    from datetime import datetime
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as task_module
+    from codeframe.planning.task_scheduler import TaskScheduler
+    from codeframe.agents.dependency_resolver import DependencyResolver
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Get tasks using v2 API
+        task_list = task_module.list_tasks(workspace)
+        if not task_list:
+            console.print("[yellow]No tasks found.[/yellow]")
+            raise typer.Exit(0)
+
+        # Build schedule
+        resolver = DependencyResolver()
+        resolver.build_dependency_graph(task_list)
+        scheduler = TaskScheduler()
+
+        task_durations = {}
+        for task in task_list:
+            duration = task.estimated_hours or 1.0
+            task_durations[task.id] = duration
+
+        schedule = scheduler.schedule_tasks(
+            tasks=task_list,
+            task_durations=task_durations,
+            resolver=resolver,
+            agents_available=1,
+        )
+
+        # Get current progress
+        current_progress = {}
+        for task in task_list:
+            if task.status.value == "DONE":
+                current_progress[task.id] = "completed"
+
+        # Predict completion
+        prediction = scheduler.predict_completion_date(
+            schedule=schedule,
+            current_progress=current_progress,
+            start_date=datetime.now(),
+            hours_per_day=hours_per_day,
+        )
+
+        console.print("\n[bold]Completion Prediction[/bold]\n")
+        console.print(f"Predicted Date: [green]{prediction.predicted_date.strftime('%Y-%m-%d')}[/green]")
+        console.print(f"Remaining Hours: {prediction.remaining_hours:.1f}h")
+        console.print(f"Completed: {prediction.completed_percentage:.1f}%")
+        console.print(f"\nConfidence Interval:")
+        console.print(f"  Early: {prediction.confidence_interval['early'].strftime('%Y-%m-%d')}")
+        console.print(f"  Late:  {prediction.confidence_interval['late'].strftime('%Y-%m-%d')}")
+        console.print()
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+@schedule_app.command("bottlenecks")
+def schedule_bottlenecks(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+) -> None:
+    """Identify scheduling bottlenecks.
+
+    Finds tasks that are causing delays due to long duration
+    or blocking many dependent tasks.
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as task_module
+    from codeframe.planning.task_scheduler import TaskScheduler
+    from codeframe.agents.dependency_resolver import DependencyResolver
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Get tasks using v2 API
+        task_list = task_module.list_tasks(workspace)
+        if not task_list:
+            console.print("[yellow]No tasks found.[/yellow]")
+            raise typer.Exit(0)
+
+        # Build schedule
+        resolver = DependencyResolver()
+        resolver.build_dependency_graph(task_list)
+        scheduler = TaskScheduler()
+
+        task_durations = {}
+        for task in task_list:
+            duration = task.estimated_hours or 1.0
+            task_durations[task.id] = duration
+
+        schedule = scheduler.schedule_tasks(
+            tasks=task_list,
+            task_durations=task_durations,
+            resolver=resolver,
+            agents_available=1,
+        )
+
+        bottlenecks = scheduler.identify_bottlenecks(
+            schedule=schedule,
+            task_durations=task_durations,
+            resolver=resolver,
+        )
+
+        console.print("\n[bold]Scheduling Bottlenecks[/bold]\n")
+
+        if not bottlenecks:
+            console.print("[green]No significant bottlenecks identified.[/green]")
+        else:
+            task_lookup = {t.id: t for t in task_list}
+            for bn in bottlenecks:
+                task = task_lookup.get(bn.task_id)
+                title = task.title if task else f"Task {bn.task_id}"
+                console.print(f"[yellow]Task {bn.task_id}:[/yellow] {title}")
+                console.print(f"  Type: {bn.bottleneck_type}")
+                console.print(f"  Impact: {bn.impact_hours:.1f} hours")
+                console.print(f"  Recommendation: {bn.recommendation}")
+                console.print()
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# Templates sub-application (task templates)
+# =============================================================================
+
+templates_app = typer.Typer(
+    name="templates",
+    help="Task template management",
+    no_args_is_help=True,
+)
+
+
+@templates_app.command("list")
+def templates_list(
+    category: Optional[str] = typer.Option(
+        None,
+        "--category", "-c",
+        help="Filter by category",
+    ),
+    categories: bool = typer.Option(
+        False,
+        "--categories",
+        help="Show available categories only",
+    ),
+) -> None:
+    """List available task templates.
+
+    Shows all builtin and custom templates that can be applied
+    to generate task sets.
+    """
+    from codeframe.planning.task_templates import TaskTemplateManager
+
+    manager = TaskTemplateManager()
+
+    if categories:
+        cats = manager.get_categories()
+        console.print("\n[bold]Available Categories:[/bold]\n")
+        for cat in cats:
+            count = len(manager.list_templates(category=cat))
+            console.print(f"  {cat} ({count} template{'s' if count != 1 else ''})")
+        console.print()
+        return
+
+    templates = manager.list_templates(category=category)
+
+    console.print("\n[bold]Available Templates:[/bold]\n")
+    for template in templates:
+        hours = template.total_estimated_hours
+        console.print(f"  [green]{template.id}[/green] - {template.name}")
+        console.print(f"    {template.description}")
+        console.print(f"    Category: {template.category} | Tasks: {len(template.tasks)} | Est: {hours:.1f}h")
+        console.print()
+
+
+@templates_app.command("show")
+def templates_show(
+    template_id: str = typer.Argument(..., help="Template ID to show"),
+) -> None:
+    """Show details of a specific template.
+
+    Displays the template's tasks, estimates, and dependencies.
+    """
+    from codeframe.planning.task_templates import TaskTemplateManager
+
+    manager = TaskTemplateManager()
+    template = manager.get_template(template_id)
+
+    if not template:
+        console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
+        console.print("\nAvailable templates:")
+        for t in manager.list_templates():
+            console.print(f"  {t.id}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
+    console.print(f"{template.description}\n")
+    console.print(f"Category: {template.category}")
+    console.print(f"Total Estimated Hours: {template.total_estimated_hours:.1f}h")
+    if template.tags:
+        console.print(f"Tags: {', '.join(template.tags)}")
+
+    console.print("\n[bold]Tasks:[/bold]\n")
+    for i, task in enumerate(template.tasks, 1):
+        deps = ""
+        if task.depends_on_indices:
+            deps = f" (depends on: {', '.join(str(d+1) for d in task.depends_on_indices)})"
+        console.print(f"  {i}. {task.title}{deps}")
+        console.print(f"     {task.description}")
+        console.print(f"     Est: {task.estimated_hours}h | Complexity: {task.complexity_score}/5 | Uncertainty: {task.uncertainty_level}")
+        console.print()
+
+
+@templates_app.command("apply")
+def templates_apply(
+    template_id: str = typer.Argument(..., help="Template ID to apply"),
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    issue_number: str = typer.Option(
+        "1",
+        "--issue", "-i",
+        help="Parent issue number for task numbering",
+    ),
+) -> None:
+    """Apply a template to create tasks.
+
+    Generates tasks from the template and adds them to the workspace.
+    Requires a PRD to be added first.
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.planning.task_templates import TaskTemplateManager
+    from codeframe.core import prd, tasks
+    from codeframe.core.state_machine import TaskStatus
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Check for PRD
+        prd_record = prd.get_latest(workspace)
+        if not prd_record:
+            console.print("[red]Error:[/red] No PRD found. Add one first:")
+            console.print("  codeframe prd add <file.md>")
+            raise typer.Exit(1)
+
+        # Get template
+        manager = TaskTemplateManager()
+        template = manager.get_template(template_id)
+
+        if not template:
+            console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
+            raise typer.Exit(1)
+
+        # Apply template
+        task_dicts = manager.apply_template(
+            template_id=template_id,
+            context={},
+            issue_number=issue_number,
+        )
+
+        # Create tasks using v2 API
+        created_tasks = []
+        for task_dict in task_dicts:
+            task = tasks.create(
+                workspace,
+                title=task_dict["title"],
+                description=task_dict["description"],
+                status=TaskStatus.BACKLOG,
+                estimated_hours=task_dict.get("estimated_hours"),
+            )
+            created_tasks.append(task)
+
+        console.print(f"\n[green]Created {len(created_tasks)} tasks from template '{template_id}'[/green]\n")
+        for i, task in enumerate(created_tasks, 1):
+            console.print(f"  {i}. {task.title}")
+
+        console.print("\nNext steps:")
+        console.print("  codeframe tasks list              View all tasks")
+        console.print("  codeframe tasks set status READY --all  Mark all tasks ready")
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
 # Register all sub-applications
 # =============================================================================
 
@@ -3698,6 +4122,8 @@ app.add_typer(patch_app, name="patch")
 app.add_typer(commit_app, name="commit")
 app.add_typer(checkpoint_app, name="checkpoint")
 app.add_typer(gates_app, name="gates")
+app.add_typer(schedule_app, name="schedule")
+app.add_typer(templates_app, name="templates")
 app.add_typer(auth_app, name="auth")
 
 

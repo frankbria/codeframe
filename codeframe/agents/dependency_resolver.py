@@ -107,53 +107,63 @@ class DependencyResolver:
         # First pass: register all tasks
         for task in tasks:
             self.all_tasks.add(task.id)
-            if task.status == "completed":
+            # Handle both v2 (TaskStatus enum) and legacy (string) status
+            status = task.status.value if hasattr(task.status, 'value') else str(task.status)
+            if status.upper() in ("DONE", "COMPLETED"):
                 self.completed_tasks.add(task.id)
 
         # Second pass: build dependency edges
         for task in tasks:
             task_id = task.id
 
-            # Parse depends_on field (JSON array or empty string)
-            if task.depends_on and task.depends_on.strip():
-                # Handle JSON array format: "[1, 2, 3]" or comma-separated "1,2,3"
-                depends_on_str = task.depends_on.strip()
+            # Parse depends_on field - supports both:
+            # - List format (v2): [task_id_1, task_id_2]
+            # - String format (legacy): "[1, 2, 3]" or "1,2,3"
+            dep_ids = []
 
-                if depends_on_str.startswith("[") and depends_on_str.endswith("]"):
-                    # JSON array format
-                    import json
+            if task.depends_on:
+                if isinstance(task.depends_on, list):
+                    # v2 format: already a list
+                    dep_ids = task.depends_on
+                elif isinstance(task.depends_on, str) and task.depends_on.strip():
+                    # Legacy string format
+                    depends_on_str = task.depends_on.strip()
 
-                    try:
-                        dep_ids = json.loads(depends_on_str)
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            f"Invalid JSON in depends_on for task {task_id}: {depends_on_str}"
-                        )
-                        dep_ids = []
-                else:
-                    # Comma-separated format
-                    try:
-                        dep_ids = [int(x.strip()) for x in depends_on_str.split(",") if x.strip()]
-                    except ValueError:
-                        logger.warning(
-                            f"Invalid depends_on format for task {task_id}: {depends_on_str}"
-                        )
-                        dep_ids = []
+                    if depends_on_str.startswith("[") and depends_on_str.endswith("]"):
+                        # JSON array format
+                        import json
 
-                for dep_id in dep_ids:
-                    if dep_id == task_id:
-                        raise ValueError(
-                            f"Task {task_id} cannot depend on itself (self-dependency)"
-                        )
+                        try:
+                            dep_ids = json.loads(depends_on_str)
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                f"Invalid JSON in depends_on for task {task_id}: {depends_on_str}"
+                            )
+                            dep_ids = []
+                    else:
+                        # Comma-separated format
+                        try:
+                            dep_ids = [int(x.strip()) for x in depends_on_str.split(",") if x.strip()]
+                        except ValueError:
+                            logger.warning(
+                                f"Invalid depends_on format for task {task_id}: {depends_on_str}"
+                            )
+                            dep_ids = []
 
-                    if dep_id not in self.all_tasks:
-                        logger.warning(
-                            f"Task {task_id} depends on unknown task {dep_id}. "
-                            "Dependency will be tracked but may cause blocking."
-                        )
+            for dep_id in dep_ids:
+                if dep_id == task_id:
+                    raise ValueError(
+                        f"Task {task_id} cannot depend on itself (self-dependency)"
+                    )
 
-                    self.dependencies[task_id].add(dep_id)
-                    self.dependents[dep_id].add(task_id)
+                if dep_id not in self.all_tasks:
+                    logger.warning(
+                        f"Task {task_id} depends on unknown task {dep_id}. "
+                        "Dependency will be tracked but may cause blocking."
+                    )
+
+                self.dependencies[task_id].add(dep_id)
+                self.dependents[dep_id].add(task_id)
 
         # Validate no cycles
         if self.detect_cycles():
