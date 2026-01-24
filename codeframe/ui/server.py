@@ -31,8 +31,10 @@ from codeframe.ui.routers import (
     prs,
     quality_gates,
     review,
+    schedule,
     session,
     tasks,
+    templates,
     websocket,
 )
 from codeframe.auth import router as auth_router
@@ -339,9 +341,11 @@ app.include_router(projects.router)
 app.include_router(prs.router)
 app.include_router(quality_gates.router)
 app.include_router(review.router)
+app.include_router(schedule.router)
 app.include_router(session.router)
 app.include_router(tasks.router)
 app.include_router(tasks.project_router)
+app.include_router(templates.router)
 app.include_router(websocket.router)
 app.include_router(auth_router.router)
 
