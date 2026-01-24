@@ -3848,7 +3848,7 @@ def schedule_predict(
         console.print(f"Predicted Date: [green]{prediction.predicted_date.strftime('%Y-%m-%d')}[/green]")
         console.print(f"Remaining Hours: {prediction.remaining_hours:.1f}h")
         console.print(f"Completed: {prediction.completed_percentage:.1f}%")
-        console.print(f"\nConfidence Interval:")
+        console.print("\nConfidence Interval:")
         console.print(f"  Early: {prediction.confidence_interval['early'].strftime('%Y-%m-%d')}")
         console.print(f"  Late:  {prediction.confidence_interval['late'].strftime('%Y-%m-%d')}")
         console.print()

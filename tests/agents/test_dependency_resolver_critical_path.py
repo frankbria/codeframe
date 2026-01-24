@@ -8,8 +8,6 @@ TDD tests for enhanced dependency analysis features:
 """
 
 import pytest
-from dataclasses import dataclass
-from typing import Optional
 from codeframe.agents.dependency_resolver import DependencyResolver
 from codeframe.core.models import Task, TaskStatus
 
