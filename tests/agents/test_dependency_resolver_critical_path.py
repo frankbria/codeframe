@@ -11,6 +11,8 @@ import pytest
 from codeframe.agents.dependency_resolver import DependencyResolver
 from codeframe.core.models import Task, TaskStatus
 
+pytestmark = pytest.mark.v2
+
 
 @pytest.fixture
 def resolver():

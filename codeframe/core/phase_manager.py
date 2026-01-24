@@ -7,9 +7,24 @@ rules and provides phase metadata for the UI.
 
 from typing import Dict, List, Any
 
-from fastapi import HTTPException
-
 from codeframe.persistence.database import Database
+
+
+class ProjectNotFoundError(Exception):
+    """Raised when a project is not found."""
+
+    def __init__(self, project_id: int):
+        self.project_id = project_id
+        super().__init__(f"Project not found: {project_id}")
+
+
+class InvalidPhaseTransitionError(Exception):
+    """Raised when an invalid phase transition is attempted."""
+
+    def __init__(self, from_phase: str, to_phase: str):
+        self.from_phase = from_phase
+        self.to_phase = to_phase
+        super().__init__(f"Invalid phase transition from '{from_phase}' to '{to_phase}'")
 
 
 # Valid phase transitions mapping
@@ -96,8 +111,8 @@ class PhaseManager:
             db: Database instance for persistence
 
         Raises:
-            HTTPException: 404 if project not found
-            HTTPException: 400 if transition is invalid
+            ProjectNotFoundError: If project not found
+            InvalidPhaseTransitionError: If transition is invalid
 
         Example:
             >>> db = Database("path/to/db")
@@ -105,18 +120,12 @@ class PhaseManager:
         """
         project = db.get_project(project_id)
         if not project:
-            raise HTTPException(
-                status_code=404,
-                detail={"error": "Project not found", "project_id": project_id}
-            )
+            raise ProjectNotFoundError(project_id)
 
         current_phase = project.get("phase", "discovery")
 
         if not PhaseManager.can_transition(current_phase, to_phase):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid phase transition from '{current_phase}' to '{to_phase}'"
-            )
+            raise InvalidPhaseTransitionError(current_phase, to_phase)
 
         # Update project phase
         db.update_project(project_id, {"phase": to_phase})

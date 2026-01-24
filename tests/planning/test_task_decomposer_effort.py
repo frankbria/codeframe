@@ -14,6 +14,8 @@ from codeframe.planning.task_decomposer import TaskDecomposer
 from codeframe.core.models import Issue, Task, TaskStatus
 from codeframe.providers.anthropic import AnthropicProvider
 
+pytestmark = pytest.mark.v2
+
 
 @pytest.fixture
 def sample_issue():

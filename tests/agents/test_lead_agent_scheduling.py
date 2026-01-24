@@ -12,6 +12,8 @@ from codeframe.persistence.database import Database
 from codeframe.core.models import Issue, TaskStatus
 from codeframe.planning.task_scheduler import ScheduleResult
 
+pytestmark = pytest.mark.v2
+
 
 @pytest.fixture
 def temp_db(temp_db_path):

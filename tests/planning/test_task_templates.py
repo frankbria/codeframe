@@ -16,6 +16,8 @@ from codeframe.planning.task_templates import (
     BUILTIN_TEMPLATES,
 )
 
+pytestmark = pytest.mark.v2
+
 
 @pytest.mark.unit
 class TestTaskTemplateDataclass:

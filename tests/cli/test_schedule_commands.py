@@ -15,6 +15,7 @@ from codeframe.core.workspace import create_or_load_workspace
 from codeframe.core import tasks
 from codeframe.core.state_machine import TaskStatus
 
+pytestmark = pytest.mark.v2
 
 runner = CliRunner()
 

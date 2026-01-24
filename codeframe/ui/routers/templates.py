@@ -7,7 +7,7 @@ This module provides API endpoints for:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -31,9 +31,11 @@ class TemplateTaskResponse(BaseModel):
 
     title: str
     description: str
-    estimated_hours: float
-    complexity_score: int
-    uncertainty_level: str
+    estimated_hours: float = Field(..., gt=0, description="Estimated hours (must be positive)")
+    complexity_score: int = Field(..., ge=1, le=5, description="Complexity rating (1-5)")
+    uncertainty_level: Literal["low", "medium", "high"] = Field(
+        ..., description="Uncertainty level"
+    )
     depends_on_indices: List[int]
     tags: List[str]
 

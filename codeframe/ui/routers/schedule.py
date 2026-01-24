@@ -162,7 +162,8 @@ async def predict_completion(
 
         task_durations = {}
         for task in tasks:
-            duration = getattr(task, "estimated_hours", None) or 1.0
+            val = getattr(task, "estimated_hours", None)
+            duration = val if val is not None and val > 0 else 1.0
             task_durations[task.id] = duration
 
         schedule = scheduler.schedule_tasks(
@@ -230,7 +231,8 @@ async def get_bottlenecks(
 
         task_durations = {}
         for task in tasks:
-            duration = getattr(task, "estimated_hours", None) or 1.0
+            val = getattr(task, "estimated_hours", None)
+            duration = val if val is not None and val > 0 else 1.0
             task_durations[task.id] = duration
 
         schedule = scheduler.schedule_tasks(

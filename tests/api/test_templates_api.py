@@ -9,6 +9,8 @@ TDD tests for the templates API:
 
 import pytest
 
+pytestmark = pytest.mark.v2
+
 
 @pytest.mark.unit
 class TestTemplatesAPI:

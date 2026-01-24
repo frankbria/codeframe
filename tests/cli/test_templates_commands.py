@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from codeframe.cli.app import app
 
+pytestmark = pytest.mark.v2
 
 runner = CliRunner()
 

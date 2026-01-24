@@ -338,10 +338,20 @@ class TaskScheduler:
                 agent_end_times[best_agent] = end_time
 
                 timeline.append(
-                    TimelineEntry(time=best_start, event_type="start", task_id=task_id)
+                    TimelineEntry(
+                        time=best_start,
+                        event_type="start",
+                        task_id=task_id,
+                        agent_id=best_agent,
+                    )
                 )
                 timeline.append(
-                    TimelineEntry(time=end_time, event_type="end", task_id=task_id)
+                    TimelineEntry(
+                        time=end_time,
+                        event_type="end",
+                        task_id=task_id,
+                        agent_id=best_agent,
+                    )
                 )
 
         timeline.sort(key=lambda e: e.time)
