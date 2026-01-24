@@ -242,11 +242,11 @@ async def apply_template(
             issue_number=request.issue_number,
         )
 
-        # Create tasks in database
-        created_task_ids = []
-        for task_dict in task_dicts:
-            from codeframe.core.models import TaskStatus
+        # Create tasks in database with dependency tracking
+        from codeframe.core.models import TaskStatus
 
+        created_tasks = []  # List of (task_id, depends_on_indices)
+        for task_dict in task_dicts:
             task_id = db.create_task_with_issue(
                 project_id=project_id,
                 issue_id=issue_id,
@@ -260,7 +260,21 @@ async def apply_template(
                 can_parallelize=False,
                 estimated_hours=task_dict.get("estimated_hours"),
             )
-            created_task_ids.append(task_id)
+            created_tasks.append((task_id, task_dict.get("depends_on_indices", [])))
+
+        # Wire up dependencies using indices -> actual task IDs
+        for task_id, dep_indices in created_tasks:
+            if dep_indices:
+                # Map 0-based indices to actual task IDs
+                depends_on_ids = [
+                    created_tasks[idx][0]
+                    for idx in dep_indices
+                    if 0 <= idx < len(created_tasks)
+                ]
+                for dep_id in depends_on_ids:
+                    db.tasks.add_task_dependency(task_id, dep_id)
+
+        created_task_ids = [task_id for task_id, _ in created_tasks]
 
         logger.info(
             f"Applied template '{request.template_id}' to project {project_id}: "

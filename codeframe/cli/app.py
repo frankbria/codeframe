@@ -3833,7 +3833,8 @@ def schedule_predict(
         # Get current progress
         current_progress = {}
         for task in task_list:
-            if task.status.value == "DONE":
+            status = task.status.value if hasattr(task.status, "value") else str(task.status)
+            if status.upper() in ("DONE", "COMPLETED"):
                 current_progress[task.id] = "completed"
 
         # Predict completion
@@ -4088,10 +4089,25 @@ def templates_apply(
                 status=TaskStatus.BACKLOG,
                 estimated_hours=task_dict.get("estimated_hours"),
             )
-            created_tasks.append(task)
+            created_tasks.append((task, task_dict.get("depends_on_indices", [])))
 
-        console.print(f"\n[green]Created {len(created_tasks)} tasks from template '{template_id}'[/green]\n")
-        for i, task in enumerate(created_tasks, 1):
+        # Wire up dependencies using indices -> actual task IDs
+        for i, (task, dep_indices) in enumerate(created_tasks):
+            if dep_indices:
+                # Map 0-based indices to actual task IDs
+                depends_on_ids = [
+                    created_tasks[idx][0].id
+                    for idx in dep_indices
+                    if 0 <= idx < len(created_tasks)
+                ]
+                if depends_on_ids:
+                    tasks.update_depends_on(workspace, task.id, depends_on_ids)
+
+        # Extract just the tasks for display
+        created_task_list = [t for t, _ in created_tasks]
+
+        console.print(f"\n[green]Created {len(created_task_list)} tasks from template '{template_id}'[/green]\n")
+        for i, task in enumerate(created_task_list, 1):
             console.print(f"  {i}. {task.title}")
 
         console.print("\nNext steps:")
