@@ -46,6 +46,11 @@ ALLOWED_TASK_FIELDS = {
     "quality_gate_status",
     "quality_gate_failures",
     "requires_human_approval",
+    # Effort estimation fields (Phase 1)
+    "estimated_hours",
+    "complexity_score",
+    "uncertainty_level",
+    "resource_requirements",
 }
 
 
@@ -160,6 +165,10 @@ class TaskRepository(BaseRepository):
         workflow_step: int,
         can_parallelize: bool,
         requires_mcp: bool = False,
+        estimated_hours: float | None = None,
+        complexity_score: int | None = None,
+        uncertainty_level: str | None = None,
+        resource_requirements: str | None = None,
     ) -> int:
         """Create a new task with issue relationship.
 
@@ -175,6 +184,10 @@ class TaskRepository(BaseRepository):
             workflow_step: Workflow step (1-15)
             can_parallelize: Whether task can run in parallel
             requires_mcp: Whether task requires MCP tools
+            estimated_hours: Time estimate in hours (optional)
+            complexity_score: Complexity rating 1-5 (optional)
+            uncertainty_level: "low", "medium", "high" (optional)
+            resource_requirements: JSON string of required skills/tools (optional)
 
         Returns:
             Task ID
@@ -185,8 +198,9 @@ class TaskRepository(BaseRepository):
             INSERT INTO tasks (
                 project_id, issue_id, task_number, parent_issue_number,
                 title, description, status, priority, workflow_step,
-                can_parallelize, requires_mcp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                can_parallelize, requires_mcp,
+                estimated_hours, complexity_score, uncertainty_level, resource_requirements
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 project_id,
@@ -200,6 +214,10 @@ class TaskRepository(BaseRepository):
                 workflow_step,
                 can_parallelize,
                 requires_mcp,
+                estimated_hours,
+                complexity_score,
+                uncertainty_level,
+                resource_requirements,
             ),
         )
         self.conn.commit()
@@ -373,6 +391,32 @@ class TaskRepository(BaseRepository):
                     f"Invalid task status '{row['status']}' for task {row_id}, defaulting to PENDING"
                 )
 
+        # Parse effort estimation fields (handle missing columns for backward compatibility)
+        estimated_hours = None
+        complexity_score = None
+        uncertainty_level = None
+        resource_requirements = None
+
+        try:
+            estimated_hours = row["estimated_hours"]
+        except (KeyError, IndexError):
+            pass
+
+        try:
+            complexity_score = row["complexity_score"]
+        except (KeyError, IndexError):
+            pass
+
+        try:
+            uncertainty_level = row["uncertainty_level"]
+        except (KeyError, IndexError):
+            pass
+
+        try:
+            resource_requirements = row["resource_requirements"]
+        except (KeyError, IndexError):
+            pass
+
         return Task(
             id=row_id,
             project_id=row["project_id"],
@@ -390,6 +434,10 @@ class TaskRepository(BaseRepository):
             requires_mcp=bool(row["requires_mcp"]),
             estimated_tokens=row["estimated_tokens"] if row["estimated_tokens"] is not None else 0,
             actual_tokens=row["actual_tokens"],
+            estimated_hours=estimated_hours,
+            complexity_score=complexity_score,
+            uncertainty_level=uncertainty_level,
+            resource_requirements=resource_requirements,
             created_at=created_at,
             completed_at=completed_at,
         )

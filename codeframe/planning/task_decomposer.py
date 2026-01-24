@@ -77,13 +77,13 @@ class TaskDecomposer:
         return tasks
 
     def build_decomposition_prompt(self, issue: Issue) -> str:
-        """Build prompt for Claude to decompose issue into tasks.
+        """Build prompt for Claude to decompose issue into tasks with effort estimation.
 
         Args:
             issue: Issue to decompose
 
         Returns:
-            Prompt string for Claude API
+            Prompt string for Claude API with effort estimation requirements
         """
         prompt = f"""You are a technical project manager decomposing a software development issue into atomic tasks.
 
@@ -98,28 +98,49 @@ Description: {issue.description}
 4. For simple issues, use 3-4 tasks; for complex issues, use 6-8 tasks
 5. Each task should have a clear, concise title and detailed description
 
+**Effort Estimation Requirements:**
+For each task, provide:
+- Complexity: Rate complexity from 1-5 (1=trivial, 2=simple, 3=moderate, 4=complex, 5=very complex)
+- Estimated Hours: Time estimate in hours based on task scope
+- Uncertainty: Assessment of estimate confidence (low, medium, or high)
+
 **Output Format:**
-Provide tasks as a numbered list where each item contains:
+For each task, use this format:
+
 1. Task Title - Brief description of what to do
+   Complexity: [1-5]
+   Estimated Hours: [number]
+   Uncertainty: [low/medium/high]
 
 Example:
 1. Create User model - Implement User database model with fields: username, email, password_hash
-2. Implement password hashing - Add bcrypt hashing for secure password storage
-3. Create login endpoint - Implement POST /api/login with JWT token generation
+   Complexity: 2
+   Estimated Hours: 2
+   Uncertainty: low
 
-Now decompose the issue above into {self._estimate_task_count(issue)} atomic tasks:"""
+2. Implement password hashing - Add bcrypt hashing for secure password storage
+   Complexity: 3
+   Estimated Hours: 3
+   Uncertainty: low
+
+3. Create login endpoint - Implement POST /api/login with JWT token generation
+   Complexity: 4
+   Estimated Hours: 5
+   Uncertainty: medium
+
+Now decompose the issue above into {self._estimate_task_count(issue)} atomic tasks with effort estimates:"""
 
         return prompt
 
     def parse_claude_response(self, response: str, issue: Issue) -> List[Task]:
-        """Parse Claude response into Task objects.
+        """Parse Claude response into Task objects with effort estimation.
 
         Args:
             response: Claude API response text
             issue: Parent issue for tasks
 
         Returns:
-            List of Task objects (without dependencies set)
+            List of Task objects with effort estimation fields populated
 
         Raises:
             ValueError: If response is empty or invalid
@@ -127,47 +148,46 @@ Now decompose the issue above into {self._estimate_task_count(issue)} atomic tas
         if not response or not response.strip():
             raise ValueError("Empty response from Claude API")
 
-        # Extract tasks from numbered list
-        # Matches patterns like:
-        # 1. Title - Description
-        # Task 1: Title - Description
-        # 1) Title - Description
-        pattern = r"(?:Task\s+)?(\d+)[.):]\s*([^\n-]+?)(?:\s*-\s*([^\n]+))?(?:\n|$)"
-        matches = re.findall(pattern, response, re.MULTILINE | re.IGNORECASE)
+        # Split response into task blocks (each starting with a number)
+        task_blocks = self._split_into_task_blocks(response)
 
-        if not matches:
-            # Try alternative format: "1. Title\n   Description"
-            pattern_alt = r"(\d+)[.):]\s*([^\n]+)\n\s+([^\n]+(?:\n\s+[^\n]+)*)"
-            matches = re.findall(pattern_alt, response, re.MULTILINE)
-
-        if not matches:
+        if not task_blocks:
             raise ValueError("No tasks found in Claude response")
 
         tasks = []
-        for idx, match in enumerate(matches, start=1):
-            if len(match) >= 2:
-                match[0]
-                title = match[1].strip()
-                description = match[2].strip() if len(match) > 2 and match[2] else title
+        for idx, block in enumerate(task_blocks, start=1):
+            # Parse title and description from the first line
+            title, description = self._parse_task_title_description(block)
 
-                # Create task number: {issue_number}.{task_idx}
-                task_number = f"{issue.issue_number}.{idx}"
+            if not title:
+                continue
 
-                task = Task(
-                    project_id=issue.project_id,
-                    issue_id=issue.id,
-                    task_number=task_number,
-                    parent_issue_number=issue.issue_number,
-                    title=title,
-                    description=description,
-                    status=TaskStatus.PENDING,
-                    depends_on="",  # Will be set in create_dependency_chain
-                    can_parallelize=False,  # Always FALSE within issue
-                    priority=issue.priority,
-                    workflow_step=issue.workflow_step,
-                )
+            # Parse effort estimation data
+            complexity = self._parse_complexity(block)
+            estimated_hours = self._parse_estimated_hours(block)
+            uncertainty = self._parse_uncertainty(block)
 
-                tasks.append(task)
+            # Create task number: {issue_number}.{task_idx}
+            task_number = f"{issue.issue_number}.{idx}"
+
+            task = Task(
+                project_id=issue.project_id,
+                issue_id=issue.id,
+                task_number=task_number,
+                parent_issue_number=issue.issue_number,
+                title=title,
+                description=description,
+                status=TaskStatus.PENDING,
+                depends_on="",  # Will be set in create_dependency_chain
+                can_parallelize=False,  # Always FALSE within issue
+                priority=issue.priority,
+                workflow_step=issue.workflow_step,
+                complexity_score=complexity,
+                estimated_hours=estimated_hours,
+                uncertainty_level=uncertainty,
+            )
+
+            tasks.append(task)
 
         if not tasks:
             raise ValueError("Failed to parse tasks from Claude response")
@@ -184,6 +204,122 @@ Now decompose the issue above into {self._estimate_task_count(issue)} atomic tas
 
         logger.debug(f"Parsed {len(tasks)} tasks from Claude response")
         return tasks
+
+    def _split_into_task_blocks(self, response: str) -> List[str]:
+        """Split response into individual task blocks.
+
+        Args:
+            response: Full Claude response
+
+        Returns:
+            List of task block strings
+        """
+        # Split on task number patterns (e.g., "1.", "2.", "Task 1:", etc.)
+        # Allow optional leading whitespace
+        pattern = r"(?:^|\n)\s*(?:Task\s+)?(\d+)[.):]\s*"
+        parts = re.split(pattern, response, flags=re.MULTILINE | re.IGNORECASE)
+
+        # Reconstruct blocks (alternating: empty/preamble, number, content, number, content...)
+        blocks = []
+        i = 1  # Skip first part (preamble before first task)
+        while i < len(parts):
+            if i < len(parts) and parts[i].isdigit():
+                block = parts[i + 1] if i + 1 < len(parts) else ""
+                blocks.append(block)
+                i += 2
+            else:
+                i += 1
+
+        return blocks
+
+    def _parse_task_title_description(self, block: str) -> tuple:
+        """Parse task title and description from a task block.
+
+        Args:
+            block: Single task block text
+
+        Returns:
+            Tuple of (title, description)
+        """
+        lines = block.strip().split("\n")
+        if not lines:
+            return "", ""
+
+        first_line = lines[0].strip()
+
+        # Check for "Title - Description" format
+        if " - " in first_line:
+            parts = first_line.split(" - ", 1)
+            title = parts[0].strip()
+            description = parts[1].strip() if len(parts) > 1 else title
+        else:
+            title = first_line
+            description = title
+
+        return title, description
+
+    def _parse_complexity(self, block: str) -> int | None:
+        """Parse complexity score from task block.
+
+        Args:
+            block: Single task block text
+
+        Returns:
+            Complexity score (1-5) or None if not found
+        """
+        # Match "Complexity: 3" or "Complexity: 5" patterns
+        pattern = r"(?:^|\n)\s*Complexity:\s*(\d+)"
+        match = re.search(pattern, block, re.IGNORECASE)
+
+        if match:
+            try:
+                score = int(match.group(1))
+                # Normalize to 1-5 range
+                if score < 1:
+                    return 1
+                elif score > 5:
+                    return 5
+                return score
+            except ValueError:
+                return None
+        return None
+
+    def _parse_estimated_hours(self, block: str) -> float | None:
+        """Parse estimated hours from task block.
+
+        Args:
+            block: Single task block text
+
+        Returns:
+            Estimated hours or None if not found
+        """
+        # Match "Estimated Hours: 2.5" or "Estimated Hours: 3" patterns
+        pattern = r"(?:^|\n)\s*Estimated\s*Hours:\s*(\d+(?:\.\d+)?)"
+        match = re.search(pattern, block, re.IGNORECASE)
+
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                return None
+        return None
+
+    def _parse_uncertainty(self, block: str) -> str | None:
+        """Parse uncertainty level from task block.
+
+        Args:
+            block: Single task block text
+
+        Returns:
+            Uncertainty level ("low", "medium", "high") or None if not found
+        """
+        # Match "Uncertainty: low" or "Uncertainty: medium" patterns
+        pattern = r"(?:^|\n)\s*Uncertainty:\s*(low|medium|high)"
+        match = re.search(pattern, block, re.IGNORECASE)
+
+        if match:
+            return match.group(1).lower()
+        return None
 
     def create_dependency_chain(self, tasks: List[Task]) -> List[Task]:
         """Create sequential dependency chain for tasks.
