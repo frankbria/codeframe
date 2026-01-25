@@ -195,6 +195,16 @@ class TaskScheduler:
         # Sort timeline by time
         timeline.sort(key=lambda e: (e.time, 0 if e.event_type == "start" else 1))
 
+        # Warn if any tasks were not scheduled (e.g., due to unknown dependency IDs)
+        expected_task_ids = set(task_durations.keys())
+        scheduled_task_ids = set(task_assignments.keys())
+        missing_task_ids = expected_task_ids - scheduled_task_ids
+        if missing_task_ids:
+            logger.warning(
+                f"Tasks omitted from schedule (possibly due to unknown dependencies): "
+                f"{sorted(missing_task_ids)}"
+            )
+
         # Calculate total duration
         total_duration = max(
             (a.end_time for a in task_assignments.values()),
