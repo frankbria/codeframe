@@ -82,6 +82,20 @@ class SchemaManager:
             cursor, "issues", "depends_on", "TEXT"
         )
 
+        # Migration: Add effort estimation columns to tasks table (Phase 1)
+        self._add_column_if_not_exists(
+            cursor, "tasks", "estimated_hours", "REAL"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "complexity_score", "INTEGER"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "uncertainty_level", "TEXT"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "resource_requirements", "TEXT"
+        )
+
     def _add_column_if_not_exists(
         self,
         cursor: sqlite3.Cursor,
@@ -289,7 +303,12 @@ class SchemaManager:
                 completed_at TIMESTAMP,
                 quality_gate_status TEXT CHECK(quality_gate_status IN ('pending', 'running', 'passed', 'failed')) DEFAULT 'pending',
                 quality_gate_failures JSON,
-                requires_human_approval BOOLEAN DEFAULT FALSE
+                requires_human_approval BOOLEAN DEFAULT FALSE,
+                -- Effort estimation fields (Phase 1)
+                estimated_hours REAL,
+                complexity_score INTEGER CHECK(complexity_score BETWEEN 1 AND 5),
+                uncertainty_level TEXT CHECK(uncertainty_level IN ('low', 'medium', 'high')),
+                resource_requirements TEXT
             )
         """
         )

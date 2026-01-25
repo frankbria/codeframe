@@ -17,6 +17,7 @@ from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.agents.agent_pool_manager import AgentPoolManager
 from codeframe.agents.dependency_resolver import DependencyResolver
 from codeframe.agents.simple_assignment import SimpleAgentAssigner
+from codeframe.planning.task_scheduler import TaskScheduler, ScheduleResult
 
 if TYPE_CHECKING:
     pass
@@ -103,6 +104,7 @@ class LeadAgent:
         )
         self.dependency_resolver = DependencyResolver()
         self.agent_assigner = SimpleAgentAssigner()
+        self.task_scheduler = TaskScheduler()
 
         # SDK session tracking (Phase 3)
         self._sdk_sessions: Dict[str, str] = {}
@@ -1390,6 +1392,58 @@ Generate the PRD in markdown format with clear sections and professional languag
         except Exception as e:
             logger.warning(f"Failed to get blocking relationships: {e}")
             return {}
+
+    def schedule_project_tasks(self, agents_available: int = 1) -> ScheduleResult:
+        """
+        Create a schedule for all project tasks using TaskScheduler.
+
+        Uses task dependencies and estimated_hours to create an optimized
+        schedule that respects dependency constraints and resource availability.
+
+        Args:
+            agents_available: Number of parallel agents/workers (default: 1)
+
+        Returns:
+            ScheduleResult with task assignments, timeline, and total duration
+        """
+        # Load all tasks for project
+        tasks = self.db.get_project_tasks(self.project_id)
+
+        if not tasks:
+            # Return empty schedule for projects with no tasks
+            return ScheduleResult(
+                task_assignments={},
+                total_duration=0.0,
+                timeline=[],
+                agents_used=agents_available,
+            )
+
+        # Build dependency graph
+        self.dependency_resolver.build_dependency_graph(tasks)
+
+        # Extract task durations from estimated_hours, with default of 1.0 hour
+        task_durations: Dict[int, float] = {}
+        for task in tasks:
+            # Use estimated_hours if available, otherwise default to 1.0
+            duration = getattr(task, "estimated_hours", None)
+            if duration is None or duration <= 0:
+                duration = 1.0  # Default duration
+            task_durations[task.id] = duration
+
+        # Schedule tasks
+        schedule = self.task_scheduler.schedule_tasks(
+            tasks=tasks,
+            task_durations=task_durations,
+            resolver=self.dependency_resolver,
+            agents_available=agents_available,
+        )
+
+        logger.info(
+            f"Scheduled {len(tasks)} tasks: total duration {schedule.total_duration:.1f}h "
+            f"with {agents_available} agent(s)"
+        )
+
+        return schedule
 
     def _determine_severity(self, bottleneck_type: str, metrics: dict) -> str:
         """

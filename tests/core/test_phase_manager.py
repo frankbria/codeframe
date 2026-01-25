@@ -12,6 +12,8 @@ from codeframe.core.phase_manager import (
     PhaseManager,
     VALID_TRANSITIONS,
     PHASE_STEPS,
+    ProjectNotFoundError,
+    InvalidPhaseTransitionError,
 )
 from codeframe.core.models import ProjectPhase
 from tests.conftest import setup_test_user
@@ -98,9 +100,7 @@ class TestPhaseManagerTransition:
         assert project["phase"] == "planning"
 
     def test_transition_invalid_raises_400(self, temp_db_path: Path):
-        """Invalid transition raises HTTPException with 400 status."""
-        from fastapi import HTTPException
-
+        """Invalid transition raises InvalidPhaseTransitionError."""
         db = Database(temp_db_path)
         db.initialize()
         setup_test_user(db, user_id=1)
@@ -113,23 +113,22 @@ class TestPhaseManagerTransition:
         )
 
         # Try invalid transition (discovery -> review)
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(InvalidPhaseTransitionError) as exc_info:
             PhaseManager.transition(project_id, "review", db)
 
-        assert exc_info.value.status_code == 400
-        assert "Invalid phase transition" in str(exc_info.value.detail)
+        assert exc_info.value.from_phase == "discovery"
+        assert exc_info.value.to_phase == "review"
+        assert "Invalid phase transition" in str(exc_info.value)
 
     def test_transition_nonexistent_project_raises_404(self, temp_db_path: Path):
-        """Transition on non-existent project raises 404."""
-        from fastapi import HTTPException
-
+        """Transition on non-existent project raises ProjectNotFoundError."""
         db = Database(temp_db_path)
         db.initialize()
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ProjectNotFoundError) as exc_info:
             PhaseManager.transition(99999, "planning", db)
 
-        assert exc_info.value.status_code == 404
+        assert exc_info.value.project_id == 99999
 
     def test_transition_chain(self, temp_db_path: Path):
         """Test full phase transition chain from discovery to complete."""

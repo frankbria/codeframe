@@ -18,7 +18,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from codeframe.core.models import Task, TaskStatus
-from codeframe.core.phase_manager import PhaseManager
+from codeframe.core.phase_manager import (
+    PhaseManager,
+    ProjectNotFoundError,
+    InvalidPhaseTransitionError,
+)
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
 from codeframe.ui.shared import manager
@@ -318,8 +322,10 @@ async def approve_tasks(
     # This ensures we don't leave tasks in pending status if phase transition fails
     try:
         PhaseManager.transition(project_id, "active", db)
-    except HTTPException:
-        raise
+    except ProjectNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidPhaseTransitionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to transition phase for project {project_id}: {e}", exc_info=True)
         raise HTTPException(

@@ -3,15 +3,62 @@ DAG-based Task Dependency Resolver (Sprint 4: cf-50).
 
 This module provides dependency resolution for multi-agent task coordination,
 ensuring tasks are executed in correct order based on their dependencies.
+
+Enhanced in Phase 2 with:
+- Critical path analysis (longest path through DAG)
+- Task slack/float calculation
+- Parallel execution opportunity identification
+- Dependency conflict detection and resolution suggestions
 """
 
 import logging
 from typing import Dict, List, Set, Optional
 from collections import defaultdict, deque
+from dataclasses import dataclass
 
 from codeframe.core.models import Task
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TaskTiming:
+    """Timing information for a task in critical path analysis."""
+
+    earliest_start: float
+    earliest_finish: float
+    latest_start: float
+    latest_finish: float
+
+
+@dataclass
+class CriticalPathResult:
+    """Result of critical path calculation."""
+
+    critical_task_ids: List[int]
+    total_duration: float
+    task_timings: Dict[int, TaskTiming]
+
+
+@dataclass
+class DependencyConflict:
+    """Represents a detected dependency conflict or bottleneck."""
+
+    task_id: int
+    conflict_type: str  # "bottleneck", "long_chain", "high_risk_multiplier"
+    severity: str  # "critical", "high", "medium"
+    recommendation: str
+    impact_analysis: str
+
+
+@dataclass
+class ResolutionSuggestion:
+    """Suggested resolution for a dependency conflict."""
+
+    suggestion_type: str  # "split_task", "reorder", "prioritize"
+    description: str
+    affected_task_ids: List[int]
+    expected_improvement: str
 
 
 class DependencyResolver:
@@ -60,53 +107,63 @@ class DependencyResolver:
         # First pass: register all tasks
         for task in tasks:
             self.all_tasks.add(task.id)
-            if task.status == "completed":
+            # Handle both v2 (TaskStatus enum) and legacy (string) status
+            status = task.status.value if hasattr(task.status, 'value') else str(task.status)
+            if status.upper() in ("DONE", "COMPLETED"):
                 self.completed_tasks.add(task.id)
 
         # Second pass: build dependency edges
         for task in tasks:
             task_id = task.id
 
-            # Parse depends_on field (JSON array or empty string)
-            if task.depends_on and task.depends_on.strip():
-                # Handle JSON array format: "[1, 2, 3]" or comma-separated "1,2,3"
-                depends_on_str = task.depends_on.strip()
+            # Parse depends_on field - supports both:
+            # - List format (v2): [task_id_1, task_id_2]
+            # - String format (legacy): "[1, 2, 3]" or "1,2,3"
+            dep_ids = []
 
-                if depends_on_str.startswith("[") and depends_on_str.endswith("]"):
-                    # JSON array format
-                    import json
+            if task.depends_on:
+                if isinstance(task.depends_on, list):
+                    # v2 format: already a list
+                    dep_ids = task.depends_on
+                elif isinstance(task.depends_on, str) and task.depends_on.strip():
+                    # Legacy string format
+                    depends_on_str = task.depends_on.strip()
 
-                    try:
-                        dep_ids = json.loads(depends_on_str)
-                    except json.JSONDecodeError:
-                        logger.warning(
-                            f"Invalid JSON in depends_on for task {task_id}: {depends_on_str}"
-                        )
-                        dep_ids = []
-                else:
-                    # Comma-separated format
-                    try:
-                        dep_ids = [int(x.strip()) for x in depends_on_str.split(",") if x.strip()]
-                    except ValueError:
-                        logger.warning(
-                            f"Invalid depends_on format for task {task_id}: {depends_on_str}"
-                        )
-                        dep_ids = []
+                    if depends_on_str.startswith("[") and depends_on_str.endswith("]"):
+                        # JSON array format
+                        import json
 
-                for dep_id in dep_ids:
-                    if dep_id == task_id:
-                        raise ValueError(
-                            f"Task {task_id} cannot depend on itself (self-dependency)"
-                        )
+                        try:
+                            dep_ids = json.loads(depends_on_str)
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                f"Invalid JSON in depends_on for task {task_id}: {depends_on_str}"
+                            )
+                            dep_ids = []
+                    else:
+                        # Comma-separated format
+                        try:
+                            dep_ids = [int(x.strip()) for x in depends_on_str.split(",") if x.strip()]
+                        except ValueError:
+                            logger.warning(
+                                f"Invalid depends_on format for task {task_id}: {depends_on_str}"
+                            )
+                            dep_ids = []
 
-                    if dep_id not in self.all_tasks:
-                        logger.warning(
-                            f"Task {task_id} depends on unknown task {dep_id}. "
-                            "Dependency will be tracked but may cause blocking."
-                        )
+            for dep_id in dep_ids:
+                if dep_id == task_id:
+                    raise ValueError(
+                        f"Task {task_id} cannot depend on itself (self-dependency)"
+                    )
 
-                    self.dependencies[task_id].add(dep_id)
-                    self.dependents[dep_id].add(task_id)
+                if dep_id not in self.all_tasks:
+                    logger.warning(
+                        f"Task {task_id} depends on unknown task {dep_id}. "
+                        "Dependency will be tracked but may cause blocking."
+                    )
+
+                self.dependencies[task_id].add(dep_id)
+                self.dependents[dep_id].add(task_id)
 
         # Validate no cycles
         if self.detect_cycles():
@@ -374,3 +431,284 @@ class DependencyResolver:
         self.dependents.clear()
         self.completed_tasks.clear()
         self.all_tasks.clear()
+
+    # ========== Phase 2: Critical Path Analysis ==========
+
+    def calculate_critical_path(
+        self, task_durations: Dict[int, float]
+    ) -> CriticalPathResult:
+        """
+        Calculate the critical path through the task dependency graph.
+
+        Uses forward and backward passes to compute earliest/latest times
+        and identifies tasks with zero slack (critical path).
+
+        Args:
+            task_durations: Dict mapping task_id to duration in hours.
+                           Missing tasks default to 0 duration.
+
+        Returns:
+            CriticalPathResult with critical task IDs, total duration, and timings
+        """
+        # Get topological order
+        topo_order = self.topological_sort()
+        if not topo_order:
+            # If cycle detected, return empty result
+            return CriticalPathResult(
+                critical_task_ids=[],
+                total_duration=0.0,
+                task_timings={},
+            )
+
+        # Initialize timing data
+        task_timings: Dict[int, TaskTiming] = {}
+
+        # Forward pass: compute earliest start/finish times
+        earliest_start: Dict[int, float] = {}
+        earliest_finish: Dict[int, float] = {}
+
+        for task_id in topo_order:
+            duration = task_durations.get(task_id, 0.0)
+            deps = self.dependencies.get(task_id, set())
+
+            if not deps:
+                # No dependencies - starts at time 0
+                earliest_start[task_id] = 0.0
+            else:
+                # Earliest start is max of all dependency finish times
+                earliest_start[task_id] = max(
+                    earliest_finish.get(dep_id, 0.0) for dep_id in deps
+                )
+
+            earliest_finish[task_id] = earliest_start[task_id] + duration
+
+        # Project end time is the maximum earliest finish
+        project_duration = max(earliest_finish.values()) if earliest_finish else 0.0
+
+        # Backward pass: compute latest start/finish times
+        latest_finish: Dict[int, float] = {}
+        latest_start: Dict[int, float] = {}
+
+        for task_id in reversed(topo_order):
+            duration = task_durations.get(task_id, 0.0)
+            dependents = self.dependents.get(task_id, set())
+
+            if not dependents:
+                # No dependents - must finish by project end
+                latest_finish[task_id] = project_duration
+            else:
+                # Latest finish is min of all dependent start times
+                latest_finish[task_id] = min(
+                    latest_start.get(dep_id, project_duration) for dep_id in dependents
+                )
+
+            latest_start[task_id] = latest_finish[task_id] - duration
+
+        # Build timing objects and identify critical path (zero slack)
+        critical_task_ids = []
+
+        for task_id in self.all_tasks:
+            timing = TaskTiming(
+                earliest_start=earliest_start.get(task_id, 0.0),
+                earliest_finish=earliest_finish.get(task_id, 0.0),
+                latest_start=latest_start.get(task_id, 0.0),
+                latest_finish=latest_finish.get(task_id, 0.0),
+            )
+            task_timings[task_id] = timing
+
+            # Task is on critical path if slack is zero
+            slack = timing.latest_start - timing.earliest_start
+            if abs(slack) < 0.001:  # Float comparison tolerance
+                critical_task_ids.append(task_id)
+
+        return CriticalPathResult(
+            critical_task_ids=sorted(critical_task_ids),
+            total_duration=project_duration,
+            task_timings=task_timings,
+        )
+
+    def calculate_task_slack(self, task_durations: Dict[int, float]) -> Dict[int, float]:
+        """
+        Calculate slack/float time for each task.
+
+        Slack = Latest Start - Earliest Start
+        Tasks with zero slack are on the critical path.
+
+        Args:
+            task_durations: Dict mapping task_id to duration in hours
+
+        Returns:
+            Dict mapping task_id to slack time in hours
+        """
+        result = self.calculate_critical_path(task_durations)
+
+        slack = {}
+        for task_id, timing in result.task_timings.items():
+            slack[task_id] = timing.latest_start - timing.earliest_start
+
+        return slack
+
+    def identify_parallel_opportunities(self) -> Dict[int, List[int]]:
+        """
+        Identify tasks that can execute in parallel (execution waves).
+
+        Groups tasks by their dependency level - tasks in the same wave
+        have no dependencies on each other and can run concurrently.
+
+        Returns:
+            Dict mapping wave number (0, 1, 2...) to list of task IDs
+        """
+        # Use topological sort with level tracking
+        in_degree = {
+            task_id: len(self.dependencies.get(task_id, set()))
+            for task_id in self.all_tasks
+        }
+
+        # Track which level each task belongs to
+        task_level: Dict[int, int] = {}
+
+        # Start with tasks that have no dependencies (level 0)
+        current_level = 0
+        queue = deque([task_id for task_id in self.all_tasks if in_degree[task_id] == 0])
+
+        while queue:
+            # Process all tasks at current level
+            level_size = len(queue)
+
+            for _ in range(level_size):
+                task_id = queue.popleft()
+                task_level[task_id] = current_level
+
+                # Add dependents to next level if their in-degree becomes 0
+                for dependent_id in self.dependents.get(task_id, set()):
+                    in_degree[dependent_id] -= 1
+                    if in_degree[dependent_id] == 0:
+                        queue.append(dependent_id)
+
+            current_level += 1
+
+        # Group tasks by level
+        waves: Dict[int, List[int]] = defaultdict(list)
+        for task_id, level in task_level.items():
+            waves[level].append(task_id)
+
+        # Sort task IDs within each wave
+        return {level: sorted(tasks) for level, tasks in waves.items()}
+
+    # ========== Phase 2: Conflict Detection ==========
+
+    def detect_dependency_conflicts(
+        self, task_durations: Dict[int, float]
+    ) -> List[DependencyConflict]:
+        """
+        Detect dependency conflicts, bottlenecks, and risk patterns.
+
+        Identifies:
+        - Bottleneck tasks (many dependents, high impact on critical path)
+        - Long dependency chains (> 5 tasks in sequence)
+        - High-risk multipliers (high complexity + many dependents)
+
+        Args:
+            task_durations: Dict mapping task_id to duration in hours
+
+        Returns:
+            List of DependencyConflict objects with severity and recommendations
+        """
+        conflicts: List[DependencyConflict] = []
+
+        # Get critical path info
+        cp_result = self.calculate_critical_path(task_durations)
+        critical_set = set(cp_result.critical_task_ids)
+
+        # Detect bottleneck tasks (3+ dependents)
+        bottleneck_threshold = 3
+        for task_id in self.all_tasks:
+            dependent_count = len(self.dependents.get(task_id, set()))
+
+            if dependent_count >= bottleneck_threshold:
+                duration = task_durations.get(task_id, 0.0)
+                is_critical = task_id in critical_set
+
+                severity = "critical" if is_critical and duration > 4 else "high" if is_critical else "medium"
+
+                conflicts.append(
+                    DependencyConflict(
+                        task_id=task_id,
+                        conflict_type="bottleneck",
+                        severity=severity,
+                        recommendation=f"Consider splitting task {task_id} into smaller tasks "
+                        f"to reduce blocking impact on {dependent_count} dependent tasks",
+                        impact_analysis=f"Task {task_id} blocks {dependent_count} tasks. "
+                        f"Duration: {duration}h. On critical path: {is_critical}",
+                    )
+                )
+
+        # Detect long dependency chains (> 5 tasks)
+        chain_threshold = 5
+        for task_id in self.all_tasks:
+            depth = self.get_dependency_depth(task_id)
+            if depth >= chain_threshold:
+                conflicts.append(
+                    DependencyConflict(
+                        task_id=task_id,
+                        conflict_type="long_chain",
+                        severity="high" if task_id in critical_set else "medium",
+                        recommendation=f"Consider parallelizing some tasks in the chain "
+                        f"leading to task {task_id}",
+                        impact_analysis=f"Task {task_id} has dependency depth of {depth}, "
+                        f"creating a long sequential chain",
+                    )
+                )
+
+        return conflicts
+
+    def suggest_dependency_resolution(
+        self, conflicts: List[DependencyConflict]
+    ) -> List[ResolutionSuggestion]:
+        """
+        Generate resolution suggestions for detected conflicts.
+
+        Args:
+            conflicts: List of detected dependency conflicts
+
+        Returns:
+            List of ResolutionSuggestion objects
+        """
+        suggestions: List[ResolutionSuggestion] = []
+
+        for conflict in conflicts:
+            if conflict.conflict_type == "bottleneck":
+                # Suggest task splitting
+                suggestions.append(
+                    ResolutionSuggestion(
+                        suggestion_type="split_task",
+                        description=f"Split task {conflict.task_id} into multiple smaller tasks "
+                        f"that can be worked on independently",
+                        affected_task_ids=[conflict.task_id],
+                        expected_improvement="Reduces blocking time and enables more parallel work",
+                    )
+                )
+
+                # Suggest prioritization
+                suggestions.append(
+                    ResolutionSuggestion(
+                        suggestion_type="prioritize",
+                        description=f"Prioritize task {conflict.task_id} to unblock dependent tasks sooner",
+                        affected_task_ids=[conflict.task_id],
+                        expected_improvement="Earlier completion of blocking task reduces overall delay",
+                    )
+                )
+
+            elif conflict.conflict_type == "long_chain":
+                # Suggest dependency reordering
+                suggestions.append(
+                    ResolutionSuggestion(
+                        suggestion_type="reorder",
+                        description=f"Review dependencies leading to task {conflict.task_id} "
+                        f"- some may be removable or parallelizable",
+                        affected_task_ids=[conflict.task_id],
+                        expected_improvement="Shorter critical path reduces project duration",
+                    )
+                )
+
+        return suggestions

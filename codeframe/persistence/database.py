@@ -4,6 +4,7 @@ Refactored to use domain-specific repositories for better maintainability.
 The Database class now acts as a facade, delegating operations to repositories.
 """
 
+import contextlib
 import os
 import sqlite3
 import threading
@@ -87,7 +88,7 @@ class Database:
         self.conn: Optional[sqlite3.Connection] = None
         self._async_conn: Optional[aiosqlite.Connection] = None
         self._async_lock = asyncio.Lock()
-        self._sync_lock = threading.Lock()  # Thread-safe access to sync connection
+        self._sync_lock = threading.RLock()  # Reentrant lock for thread-safe access
 
         # Initialize repositories (will be set after connections are created)
         self.projects: Optional[ProjectRepository] = None
@@ -274,6 +275,51 @@ class Database:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Async context manager exit."""
         await self.close_async()
+
+    @contextlib.contextmanager
+    def transaction(self):
+        """Context manager for explicit transaction control.
+
+        Usage:
+            with db.transaction():
+                db.create_issue(...)
+                db.create_task_with_issue(...)
+                # All operations committed together, or rolled back on error
+
+        Yields:
+            self: The database instance for chaining operations
+
+        Raises:
+            RuntimeError: If called while already inside a transaction
+        """
+        if not self.conn:
+            self.initialize()
+
+        # Acquire reentrant lock to ensure thread-safe access to connection state
+        with self._sync_lock:
+            # Guard against nested transactions
+            if self.conn.in_transaction:
+                raise RuntimeError(
+                    "Cannot start a nested transaction. "
+                    "Complete the current transaction first."
+                )
+
+            # SQLite uses autocommit by default; disable it for this transaction
+            old_isolation = self.conn.isolation_level
+            self.conn.isolation_level = None  # Manual transaction mode
+            cursor = self.conn.cursor()
+
+            try:
+                cursor.execute("BEGIN")
+                yield self
+                self.conn.commit()
+            except Exception:
+                # Only rollback if a transaction was actually started
+                if self.conn.in_transaction:
+                    self.conn.rollback()
+                raise
+            finally:
+                self.conn.isolation_level = old_isolation
 
     # Backward compatibility: Parse datetime helper (used by many tests)
     def _parse_datetime(

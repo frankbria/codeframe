@@ -1,10 +1,10 @@
 # CodeFRAME Development Guidelines (v2 Reset)
 
-Last updated: 2026-01-16
+Last updated: 2026-01-24
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: v2 Phase 3 Complete** - Agent execution + parallel batch orchestration + self-correction + tech stack configuration.
+**Status: v2 Phase 4 Complete** - Agent execution + parallel batch orchestration + self-correction + tech stack configuration + enhanced task generation (scheduling, templates).
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -46,6 +46,9 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 - **LLM dependency inference**: `--strategy auto` analyzes task descriptions
 - **Automatic retry**: `--retry N` for failed task recovery
 - **Batch resume**: Re-run failed/blocked tasks from previous batches
+- **Task scheduling**: `cf schedule show/predict/bottlenecks` with CPM-based scheduling
+- **Task templates**: `cf templates list/show/apply` with 7 builtin templates
+- **Effort estimation**: Tasks support `estimated_hours` field for scheduling
 
 ### v2 Architecture (current)
 - **Core-first**: Domain logic lives in `codeframe/core/` (headless, no FastAPI imports)

@@ -110,6 +110,9 @@ def _init_database(db_path: Path) -> None:
             status TEXT NOT NULL DEFAULT 'BACKLOG',
             priority INTEGER DEFAULT 0,
             depends_on TEXT DEFAULT '[]',
+            estimated_hours REAL,
+            complexity_score INTEGER CHECK(complexity_score IS NULL OR (complexity_score BETWEEN 1 AND 5)),
+            uncertainty_level TEXT CHECK(uncertainty_level IS NULL OR uncertainty_level IN ('low', 'medium', 'high')),
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
@@ -118,12 +121,18 @@ def _init_database(db_path: Path) -> None:
         )
     """)
 
-    # Migration: Add depends_on column to existing tasks table
+    # Migration: Add columns to existing tasks table
     # SQLite doesn't support IF NOT EXISTS for ALTER TABLE, so we check first
     cursor.execute("PRAGMA table_info(tasks)")
     columns = {row[1] for row in cursor.fetchall()}
     if "depends_on" not in columns:
         cursor.execute("ALTER TABLE tasks ADD COLUMN depends_on TEXT DEFAULT '[]'")
+    if "estimated_hours" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN estimated_hours REAL")
+    if "complexity_score" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN complexity_score INTEGER")
+    if "uncertainty_level" not in columns:
+        cursor.execute("ALTER TABLE tasks ADD COLUMN uncertainty_level TEXT")
 
     # Append-only event log
     cursor.execute("""

@@ -260,6 +260,12 @@ class Task:
     Tasks are numbered hierarchically (e.g., "1.5.1", "1.5.2") and are
     always sequential within their parent issue (cannot parallelize).
     Each task depends on the previous task in the sequence.
+
+    Effort estimation fields support project planning and scheduling:
+    - estimated_hours: Time estimate in hours for task completion
+    - complexity_score: Task complexity rating (1-5 scale)
+    - uncertainty_level: Confidence in estimate ("low", "medium", "high")
+    - resource_requirements: JSON string of required skills/tools
     """
 
     id: Optional[int] = None
@@ -278,6 +284,11 @@ class Task:
     requires_mcp: bool = False
     estimated_tokens: int = 0
     actual_tokens: Optional[int] = None
+    # Effort estimation fields
+    estimated_hours: Optional[float] = None  # Time estimate in hours
+    complexity_score: Optional[int] = None  # Complexity rating (1-5)
+    uncertainty_level: Optional[str] = None  # "low", "medium", "high"
+    resource_requirements: Optional[str] = None  # JSON string of required skills/tools
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
@@ -300,6 +311,10 @@ class Task:
             "requires_mcp": self.requires_mcp,
             "estimated_tokens": self.estimated_tokens,
             "actual_tokens": self.actual_tokens,
+            "estimated_hours": self.estimated_hours,
+            "complexity_score": self.complexity_score,
+            "uncertainty_level": self.uncertainty_level,
+            "resource_requirements": self.resource_requirements,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
