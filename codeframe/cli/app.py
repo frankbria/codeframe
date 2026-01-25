@@ -3833,7 +3833,9 @@ def schedule_predict(
 
         task_durations = {}
         for task in task_list:
-            duration = task.estimated_hours or 1.0
+            duration = task.estimated_hours
+            if duration is None or duration <= 0:
+                duration = 1.0
             task_durations[task.id] = duration
 
         schedule = scheduler.schedule_tasks(
@@ -3911,7 +3913,9 @@ def schedule_bottlenecks(
 
         task_durations = {}
         for task in task_list:
-            duration = task.estimated_hours or 1.0
+            duration = task.estimated_hours
+            if duration is None or duration <= 0:
+                duration = 1.0
             task_durations[task.id] = duration
 
         schedule = scheduler.schedule_tasks(
