@@ -288,24 +288,43 @@ class Database:
 
         Yields:
             self: The database instance for chaining operations
+
+        Raises:
+            RuntimeError: If called while already inside a transaction
         """
         if not self.conn:
             self.initialize()
 
-        # SQLite uses autocommit by default; disable it for this transaction
-        old_isolation = self.conn.isolation_level
-        self.conn.isolation_level = None  # Manual transaction mode
-        cursor = self.conn.cursor()
-        cursor.execute("BEGIN")
+        # Guard against nested transactions (check before acquiring lock to avoid deadlock)
+        if self.conn.in_transaction:
+            raise RuntimeError(
+                "Cannot start a nested transaction. "
+                "Complete the current transaction first."
+            )
 
-        try:
-            yield self
-            self.conn.commit()
-        except Exception:
-            self.conn.rollback()
-            raise
-        finally:
-            self.conn.isolation_level = old_isolation
+        # Acquire lock to ensure thread-safe access to connection state
+        with self._sync_lock:
+            # Double-check after acquiring lock (another thread may have started a transaction)
+            if self.conn.in_transaction:
+                raise RuntimeError(
+                    "Cannot start a nested transaction. "
+                    "Complete the current transaction first."
+                )
+
+            # SQLite uses autocommit by default; disable it for this transaction
+            old_isolation = self.conn.isolation_level
+            self.conn.isolation_level = None  # Manual transaction mode
+            cursor = self.conn.cursor()
+            cursor.execute("BEGIN")
+
+            try:
+                yield self
+                self.conn.commit()
+            except Exception:
+                self.conn.rollback()
+                raise
+            finally:
+                self.conn.isolation_level = old_isolation
 
     # Backward compatibility: Parse datetime helper (used by many tests)
     def _parse_datetime(

@@ -3706,7 +3706,8 @@ def schedule_show(
     agents: int = typer.Option(
         1,
         "--agents", "-a",
-        help="Number of parallel agents/workers",
+        min=1,
+        help="Number of parallel agents/workers (must be >= 1)",
     ),
 ) -> None:
     """Show the project schedule.
@@ -3720,6 +3721,11 @@ def schedule_show(
     from codeframe.agents.dependency_resolver import DependencyResolver
 
     workspace_path = repo_path or Path.cwd()
+
+    # Validate parameters
+    if agents < 1:
+        console.print("[red]Error:[/red] agents must be at least 1")
+        raise typer.Exit(1)
 
     try:
         workspace = get_workspace(workspace_path)
@@ -3788,7 +3794,9 @@ def schedule_predict(
     hours_per_day: float = typer.Option(
         8.0,
         "--hours-per-day",
-        help="Working hours per day",
+        min=0.1,
+        max=24.0,
+        help="Working hours per day (must be > 0 and <= 24)",
     ),
 ) -> None:
     """Predict project completion date.
@@ -3803,6 +3811,11 @@ def schedule_predict(
     from codeframe.agents.dependency_resolver import DependencyResolver
 
     workspace_path = repo_path or Path.cwd()
+
+    # Validate parameters
+    if hours_per_day <= 0 or hours_per_day > 24:
+        console.print("[red]Error:[/red] hours_per_day must be > 0 and <= 24")
+        raise typer.Exit(1)
 
     try:
         workspace = get_workspace(workspace_path)
