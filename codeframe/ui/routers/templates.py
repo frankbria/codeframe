@@ -230,7 +230,10 @@ async def apply_template(
             # Get first issue or create one
             issues = db.get_project_issues(project_id)
             if issues:
-                issue_id = issues[0].id
+                # Reuse existing issue - use ITS issue_number, not request.issue_number
+                matched_issue = issues[0]
+                issue_id = matched_issue.id
+                actual_issue_number = matched_issue.issue_number
             else:
                 # Create a default issue for the tasks
                 default_issue = Issue(
@@ -243,6 +246,7 @@ async def apply_template(
                     workflow_step=1,
                 )
                 issue_id = db.create_issue(default_issue)
+                actual_issue_number = request.issue_number
 
             # Create tasks in database with dependency tracking
             created_tasks = []  # List of (task_id, depends_on_indices)
@@ -251,7 +255,7 @@ async def apply_template(
                     project_id=project_id,
                     issue_id=issue_id,
                     task_number=task_dict["task_number"],
-                    parent_issue_number=request.issue_number,
+                    parent_issue_number=actual_issue_number,
                     title=task_dict["title"],
                     description=task_dict["description"],
                     status=TaskStatus.PENDING,
