@@ -88,7 +88,7 @@ class Database:
         self.conn: Optional[sqlite3.Connection] = None
         self._async_conn: Optional[aiosqlite.Connection] = None
         self._async_lock = asyncio.Lock()
-        self._sync_lock = threading.Lock()  # Thread-safe access to sync connection
+        self._sync_lock = threading.RLock()  # Reentrant lock for thread-safe access
 
         # Initialize repositories (will be set after connections are created)
         self.projects: Optional[ProjectRepository] = None
@@ -295,16 +295,9 @@ class Database:
         if not self.conn:
             self.initialize()
 
-        # Guard against nested transactions (check before acquiring lock to avoid deadlock)
-        if self.conn.in_transaction:
-            raise RuntimeError(
-                "Cannot start a nested transaction. "
-                "Complete the current transaction first."
-            )
-
-        # Acquire lock to ensure thread-safe access to connection state
+        # Acquire reentrant lock to ensure thread-safe access to connection state
         with self._sync_lock:
-            # Double-check after acquiring lock (another thread may have started a transaction)
+            # Guard against nested transactions
             if self.conn.in_transaction:
                 raise RuntimeError(
                     "Cannot start a nested transaction. "
@@ -315,13 +308,15 @@ class Database:
             old_isolation = self.conn.isolation_level
             self.conn.isolation_level = None  # Manual transaction mode
             cursor = self.conn.cursor()
-            cursor.execute("BEGIN")
 
             try:
+                cursor.execute("BEGIN")
                 yield self
                 self.conn.commit()
             except Exception:
-                self.conn.rollback()
+                # Only rollback if a transaction was actually started
+                if self.conn.in_transaction:
+                    self.conn.rollback()
                 raise
             finally:
                 self.conn.isolation_level = old_isolation
