@@ -96,6 +96,11 @@ class SchemaManager:
             cursor, "tasks", "resource_requirements", "TEXT"
         )
 
+        # Migration: Add supervisor intervention context to tasks table
+        self._add_column_if_not_exists(
+            cursor, "tasks", "intervention_context", "JSON"
+        )
+
     def _add_column_if_not_exists(
         self,
         cursor: sqlite3.Cursor,
@@ -308,7 +313,9 @@ class SchemaManager:
                 estimated_hours REAL,
                 complexity_score INTEGER CHECK(complexity_score BETWEEN 1 AND 5),
                 uncertainty_level TEXT CHECK(uncertainty_level IN ('low', 'medium', 'high')),
-                resource_requirements TEXT
+                resource_requirements TEXT,
+                -- Supervisor intervention context (JSON for flexible structure)
+                intervention_context JSON
             )
         """
         )

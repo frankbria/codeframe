@@ -266,6 +266,16 @@ class Task:
     - complexity_score: Task complexity rating (1-5 scale)
     - uncertainty_level: Confidence in estimate ("low", "medium", "high")
     - resource_requirements: JSON string of required skills/tools
+
+    Supervisor intervention context (set when retrying after tactical pattern match):
+    - intervention_context: Dict with structure:
+        {
+            "intervention_applied": bool,  # True if supervisor applied intervention
+            "pattern_matched": str,  # ID of matched tactical pattern
+            "existing_files": List[str],  # Files that already exist
+            "instruction": str,  # Guidance for agent on retry
+            "strategy": str,  # InterventionStrategy value
+        }
     """
 
     id: Optional[int] = None
@@ -289,6 +299,8 @@ class Task:
     complexity_score: Optional[int] = None  # Complexity rating (1-5)
     uncertainty_level: Optional[str] = None  # "low", "medium", "high"
     resource_requirements: Optional[str] = None  # JSON string of required skills/tools
+    # Supervisor intervention context (populated on retry after tactical pattern match)
+    intervention_context: Optional[Dict[str, Any]] = None
     created_at: datetime = field(default_factory=datetime.now)
     completed_at: Optional[datetime] = None
 
@@ -315,6 +327,7 @@ class Task:
             "complexity_score": self.complexity_score,
             "uncertainty_level": self.uncertainty_level,
             "resource_requirements": self.resource_requirements,
+            "intervention_context": self.intervention_context,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
