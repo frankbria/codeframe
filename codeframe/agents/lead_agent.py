@@ -2459,7 +2459,17 @@ Generate the PRD in markdown format with clear sections and professional languag
             # Worker agents now use async execute_task - no threading needed
             # Wrap in try-except for supervisor intervention on tactical patterns
             try:
-                await agent_instance.execute_task(task_dict)
+                result = await agent_instance.execute_task(task_dict)
+
+                # Track workspace state from worker results
+                if isinstance(result, dict):
+                    files_modified = result.get("files_modified", [])
+                    if files_modified:
+                        self.update_workspace_state(
+                            task.id,
+                            files_created=[],
+                            files_modified=files_modified,
+                        )
             except Exception as exec_error:
                 # Check for tactical pattern match (supervisor intervention)
                 error_msg = str(exec_error)
@@ -2475,8 +2485,13 @@ Generate the PRD in markdown format with clear sections and professional languag
                         f"[DIAG] Matched tactical patterns: ['{pattern.pattern_id}']"
                     )
 
-                    # Apply intervention
+                    # Apply intervention (writes context to DB)
                     self._handle_file_conflict_intervention(task, exec_error, pattern)
+
+                    # Re-fetch task_dict so retry gets updated intervention_context
+                    updated_task = self.db.get_task(task.id)
+                    if updated_task:
+                        task_dict = updated_task.to_dict()
 
                     # Re-raise to trigger retry logic
                     raise
@@ -2526,6 +2541,10 @@ Generate the PRD in markdown format with clear sections and professional languag
 
             # Task succeeded and passed review
             self.db.update_task(task.id, {"status": "completed"})
+
+            # Clear any stale intervention context from previous retries
+            self.db.clear_task_intervention_context(task.id)
+
             logger.info(f"Task {task.id} completed successfully by agent {agent_id}")
 
             # Mark agent idle
@@ -2579,6 +2598,20 @@ Generate the PRD in markdown format with clear sections and professional languag
         if file_path and file_path not in existing_files:
             existing_files.append(file_path)
 
+        # Check existing intervention context for retry count
+        existing_context = self.db.get_task_intervention_context(task.id)
+        retry_count = 0
+        if existing_context:
+            retry_count = existing_context.get("intervention_retry_count", 0)
+
+        max_intervention_retries = 3
+        if retry_count >= max_intervention_retries:
+            logger.warning(
+                f"[DIAG] Task {task.id} exceeded max intervention retries "
+                f"({max_intervention_retries}). Not applying further intervention."
+            )
+            return
+
         # Build intervention context
         intervention_context = {
             "intervention_applied": True,
@@ -2587,6 +2620,7 @@ Generate the PRD in markdown format with clear sections and professional languag
             "strategy": pattern.intervention_strategy.value,
             "instruction": self._get_intervention_instruction(pattern.intervention_strategy),
             "original_error": error_msg[:500],  # Truncate long errors
+            "intervention_retry_count": retry_count + 1,
         }
 
         # Update task intervention context in database

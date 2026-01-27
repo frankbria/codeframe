@@ -111,11 +111,10 @@ class TestSkipFileCreation(TestBackendWorkerIntervention):
 
 
 class TestAutoConversion(TestBackendWorkerIntervention):
-    """Test automatic conversion without explicit intervention."""
+    """Test that creating over existing files raises FileExistsError without intervention."""
 
-    def test_auto_converts_create_to_modify_for_existing_file(self, agent, project_root):
-        """Test auto-conversion when file exists but no intervention context."""
-        # Create existing file
+    def test_raises_file_exists_without_intervention(self, agent, project_root):
+        """Creating over existing file without intervention context raises FileExistsError."""
         test_file = project_root / "existing.py"
         test_file.write_text("original")
 
@@ -123,11 +122,11 @@ class TestAutoConversion(TestBackendWorkerIntervention):
             {"path": "existing.py", "action": "create", "content": "updated"}
         ]
 
-        # No intervention context
-        result = agent.apply_file_changes(files, intervention_context=None)
+        with pytest.raises(FileExistsError, match="File already exists"):
+            agent.apply_file_changes(files, intervention_context=None)
 
-        assert result == ["existing.py"]
-        assert test_file.read_text() == "updated"
+        # Original file should be untouched
+        assert test_file.read_text() == "original"
 
 
 class TestNormalOperation(TestBackendWorkerIntervention):

@@ -430,8 +430,11 @@ Guidelines:
                 raise ValueError(f"Path traversal detected: {path}")
 
             if self.use_sdk:
-                # SDK mode: Files already written by SDK Write tool
-                # Just validate and track paths
+                # SDK mode: Files already written by SDK Write tool.
+                # Note: Intervention context is NOT applied in SDK mode because
+                # file operations are handled externally by the SDK. If file
+                # conflicts occur in SDK mode, they must be resolved at the
+                # SDK/tool level rather than through tactical pattern intervention.
                 logger.info(f"SDK handled {action} for: {path}")
                 modified_paths.append(path)
             else:
@@ -454,12 +457,11 @@ Guidelines:
                             modified_paths.append(path)
                             continue
                     else:
-                        # No intervention - file exists but we were told to create
-                        # This will still raise FileExistsError in strict mode
-                        # For now, we auto-convert to modify for safety
-                        action = "modify"
-                        logger.warning(
-                            f"File exists during create, auto-converting to modify: {path}"
+                        # No intervention context - let LeadAgent handle via
+                        # tactical pattern intervention on retry
+                        raise FileExistsError(
+                            f"File already exists: {path}. "
+                            "Cannot create over existing file without intervention context."
                         )
 
                 if action == "create" or action == "modify":
