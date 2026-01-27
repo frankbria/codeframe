@@ -2469,7 +2469,7 @@ Generate the PRD in markdown format with clear sections and professional languag
 
                 if pattern:
                     logger.info(
-                        f"[DIAG] Agent FAILED - analyzing for supervisor intervention"
+                        "[DIAG] Agent FAILED - analyzing for supervisor intervention"
                     )
                     logger.info(
                         f"[DIAG] Matched tactical patterns: ['{pattern.pattern_id}']"

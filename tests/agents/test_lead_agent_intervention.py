@@ -11,7 +11,6 @@ Following strict TDD methodology.
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.agents.tactical_patterns import InterventionStrategy, TacticalPattern
 from codeframe.persistence.database import Database

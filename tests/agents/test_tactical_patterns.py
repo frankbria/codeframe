@@ -11,9 +11,6 @@ Test coverage for supervisor intervention pattern matching:
 Following strict TDD methodology (RED-GREEN-REFACTOR).
 """
 
-import pytest
-from dataclasses import dataclass
-from typing import Optional
 
 # Import will fail until we create the module (TDD RED phase)
 from codeframe.agents.tactical_patterns import (

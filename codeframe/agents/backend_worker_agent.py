@@ -438,7 +438,6 @@ Guidelines:
                 # Non-SDK mode: Perform file operations directly
 
                 # Handle intervention: convert create to modify for existing files
-                original_action = action
                 if action == "create" and target_path.exists():
                     # Check if intervention says to convert
                     if intervention_context and intervention_context.get("intervention_applied"):

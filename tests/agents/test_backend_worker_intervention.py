@@ -12,7 +12,7 @@ Following strict TDD methodology.
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
