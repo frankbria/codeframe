@@ -419,6 +419,19 @@ class TaskRepository(BaseRepository):
         except (KeyError, IndexError):
             pass
 
+        # Parse intervention_context JSON field (handle missing column for backward compat)
+        intervention_context = None
+        try:
+            raw_ctx = row["intervention_context"]
+            if raw_ctx:
+                intervention_context = json.loads(raw_ctx) if isinstance(raw_ctx, str) else raw_ctx
+        except (KeyError, IndexError):
+            pass
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(
+                f"Invalid intervention_context JSON for task {row_id}: {e}"
+            )
+
         return Task(
             id=row_id,
             project_id=row["project_id"],
@@ -440,6 +453,7 @@ class TaskRepository(BaseRepository):
             complexity_score=complexity_score,
             uncertainty_level=uncertainty_level,
             resource_requirements=resource_requirements,
+            intervention_context=intervention_context,
             created_at=created_at,
             completed_at=completed_at,
         )

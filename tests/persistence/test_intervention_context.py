@@ -185,3 +185,39 @@ class TestInterventionContextMethods:
         result = db.get_task_intervention_context(99999)
 
         assert result is None
+
+    def test_get_task_includes_intervention_context(self, db_with_task):
+        """Test that db.get_task() returns Task with intervention_context populated.
+
+        This verifies the _row_to_task() deserialization round-trip, which is
+        critical for LeadAgent re-fetching tasks after intervention is applied.
+        """
+        db, task_id = db_with_task
+
+        context = {
+            "intervention_applied": True,
+            "pattern_matched": "file_already_exists",
+            "existing_files": ["src/app.py"],
+            "strategy": "convert_create_to_edit",
+            "intervention_retry_count": 1,
+        }
+        db.update_task_intervention_context(task_id, context)
+
+        # Re-fetch via get_task (uses _row_to_task internally)
+        task = db.get_task(task_id)
+
+        assert task is not None
+        assert task.intervention_context is not None
+        assert task.intervention_context["intervention_applied"] is True
+        assert task.intervention_context["strategy"] == "convert_create_to_edit"
+        assert task.intervention_context["existing_files"] == ["src/app.py"]
+        assert task.intervention_context["intervention_retry_count"] == 1
+
+    def test_get_task_returns_none_intervention_context_when_unset(self, db_with_task):
+        """Task.intervention_context is None when no context has been set."""
+        db, task_id = db_with_task
+
+        task = db.get_task(task_id)
+
+        assert task is not None
+        assert task.intervention_context is None
