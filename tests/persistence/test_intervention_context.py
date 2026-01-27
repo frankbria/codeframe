@@ -14,6 +14,8 @@ import pytest
 from codeframe.persistence.database import Database
 from codeframe.core.models import TaskStatus
 
+pytestmark = pytest.mark.v2
+
 
 class TestInterventionContextMethods:
     """Test intervention context database operations."""

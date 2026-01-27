@@ -14,6 +14,8 @@ import pytest
 from codeframe.agents.lead_agent import LeadAgent
 from codeframe.persistence.database import Database
 
+pytestmark = pytest.mark.v2
+
 
 class TestLeadAgentWorkspaceState:
     """Test workspace state tracking for supervisor intervention."""

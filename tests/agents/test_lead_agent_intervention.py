@@ -16,6 +16,8 @@ from codeframe.agents.tactical_patterns import InterventionStrategy, TacticalPat
 from codeframe.persistence.database import Database
 from codeframe.core.models import Task, TaskStatus
 
+pytestmark = pytest.mark.v2
+
 
 class TestLeadAgentIntervention:
     """Test supervisor intervention logic."""

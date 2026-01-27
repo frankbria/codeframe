@@ -12,12 +12,16 @@ Following strict TDD methodology (RED-GREEN-REFACTOR).
 """
 
 
+import pytest
+
 # Import will fail until we create the module (TDD RED phase)
 from codeframe.agents.tactical_patterns import (
     TacticalPattern,
     TacticalPatternMatcher,
     InterventionStrategy,
 )
+
+pytestmark = pytest.mark.v2
 
 
 class TestTacticalPatternDataclass:

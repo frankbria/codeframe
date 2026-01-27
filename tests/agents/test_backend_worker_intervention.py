@@ -17,6 +17,8 @@ from codeframe.agents.backend_worker_agent import BackendWorkerAgent
 from codeframe.persistence.database import Database
 from codeframe.indexing.codebase_index import CodebaseIndex
 
+pytestmark = pytest.mark.v2
+
 
 class TestBackendWorkerIntervention:
     """Test intervention context handling in apply_file_changes."""
