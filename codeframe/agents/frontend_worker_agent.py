@@ -148,8 +148,13 @@ Output format:
                 types_code = None
 
             # Create files in correct location
+            # Check for intervention context from supervisor
+            intervention_context = task.get("intervention_context")
             file_paths = self._create_component_files(
-                component_spec["name"], component_code, types_code
+                component_spec["name"],
+                component_code,
+                types_code,
+                intervention_context=intervention_context,
             )
 
             # Update imports/exports
@@ -375,7 +380,11 @@ export const {name}: React.FC<{name}Props> = (props) => {{
         return None
 
     def _create_component_files(
-        self, component_name: str, component_code: str, types_code: Optional[str] = None
+        self,
+        component_name: str,
+        component_code: str,
+        types_code: Optional[str] = None,
+        intervention_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, str]:
         """
         Create component files in correct directory structure.
@@ -384,6 +393,7 @@ export const {name}: React.FC<{name}Props> = (props) => {{
             component_name: Name of component
             component_code: Component source code
             types_code: Optional TypeScript types
+            intervention_context: Optional intervention context from supervisor
 
         Returns:
             Dict of created file paths
@@ -396,10 +406,37 @@ export const {name}: React.FC<{name}Props> = (props) => {{
 
         # Check for conflicts
         if component_file.exists():
-            raise FileExistsError(
-                f"Component file already exists: {component_file}. "
-                "Please choose a different name or delete the existing file."
-            )
+            # Check if intervention context allows handling conflict
+            if intervention_context and intervention_context.get("intervention_applied"):
+                strategy = intervention_context.get("strategy", "")
+
+                if strategy == "convert_create_to_edit":
+                    logger.info(
+                        f"[DIAG] Intervention: Overwriting existing component file: {component_file}"
+                    )
+                    # Fall through to write the file (overwrite)
+                elif strategy == "skip_file_creation":
+                    logger.info(
+                        f"[DIAG] Intervention: Skipping existing component file: {component_file}"
+                    )
+                    # Return paths without writing
+                    try:
+                        relative_path = component_file.relative_to(self.project_root)
+                    except ValueError:
+                        relative_path = component_file.relative_to(self.web_ui_root.parent)
+                    return {"component": str(relative_path)}
+                else:
+                    # Unknown strategy, raise the original error
+                    raise FileExistsError(
+                        f"Component file already exists: {component_file}. "
+                        "Please choose a different name or delete the existing file."
+                    )
+            else:
+                # No intervention context - raise original error
+                raise FileExistsError(
+                    f"Component file already exists: {component_file}. "
+                    "Please choose a different name or delete the existing file."
+                )
 
         # Write component file
         component_file.write_text(component_code, encoding="utf-8")

@@ -481,6 +481,18 @@ class Database:
         """Delegate to tasks.get_task_by_commit()."""
         return self.tasks.get_task_by_commit(*args, **kwargs)
 
+    def update_task_intervention_context(self, *args, **kwargs):
+        """Delegate to tasks.update_task_intervention_context()."""
+        return self.tasks.update_task_intervention_context(*args, **kwargs)
+
+    def get_task_intervention_context(self, *args, **kwargs):
+        """Delegate to tasks.get_task_intervention_context()."""
+        return self.tasks.get_task_intervention_context(*args, **kwargs)
+
+    def clear_task_intervention_context(self, *args, **kwargs):
+        """Delegate to tasks.clear_task_intervention_context()."""
+        return self.tasks.clear_task_intervention_context(*args, **kwargs)
+
     def get_recently_completed_tasks(self, *args, **kwargs):
         """Delegate to tasks.get_recently_completed_tasks()."""
         return self.tasks.get_recently_completed_tasks(*args, **kwargs)

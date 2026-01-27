@@ -368,7 +368,11 @@ Guidelines:
 
         return result
 
-    def apply_file_changes(self, files: List[Dict[str, Any]]) -> List[str]:
+    def apply_file_changes(
+        self,
+        files: List[Dict[str, Any]],
+        intervention_context: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
         """
         Apply file changes to disk.
 
@@ -378,8 +382,13 @@ Guidelines:
         When not using SDK, safely writes, modifies, or deletes files with security
         validation and atomic operations.
 
+        If intervention_context is provided (from supervisor intervention), the
+        method will convert "create" actions to "modify" for files that already
+        exist, preventing FileExistsError on retry.
+
         Args:
             files: List of file change dictionaries from generate_code()
+            intervention_context: Optional intervention context from supervisor
 
         Returns:
             List of modified file paths
@@ -391,6 +400,16 @@ Guidelines:
         from pathlib import Path
 
         modified_paths = []
+
+        # Extract existing files from intervention context if available
+        existing_files = []
+        if intervention_context and intervention_context.get("intervention_applied"):
+            existing_files = intervention_context.get("existing_files", [])
+            logger.info(
+                f"[DIAG] Intervention context active: "
+                f"strategy={intervention_context.get('strategy')}, "
+                f"existing_files={len(existing_files)}"
+            )
 
         for file_spec in files:
             path = file_spec["path"]
@@ -417,6 +436,33 @@ Guidelines:
                 modified_paths.append(path)
             else:
                 # Non-SDK mode: Perform file operations directly
+
+                # Handle intervention: convert create to modify for existing files
+                original_action = action
+                if action == "create" and target_path.exists():
+                    # Check if intervention says to convert
+                    if intervention_context and intervention_context.get("intervention_applied"):
+                        strategy = intervention_context.get("strategy", "")
+                        if strategy == "convert_create_to_edit":
+                            action = "modify"
+                            logger.info(
+                                f"[DIAG] Converted 'create' to 'modify' for existing file: {path}"
+                            )
+                        elif strategy == "skip_file_creation":
+                            logger.info(
+                                f"[DIAG] Skipping creation of existing file: {path}"
+                            )
+                            modified_paths.append(path)
+                            continue
+                    else:
+                        # No intervention - file exists but we were told to create
+                        # This will still raise FileExistsError in strict mode
+                        # For now, we auto-convert to modify for safety
+                        action = "modify"
+                        logger.warning(
+                            f"File exists during create, auto-converting to modify: {path}"
+                        )
+
                 if action == "create" or action == "modify":
                     if action == "modify" and not target_path.exists():
                         raise FileNotFoundError(f"Cannot modify non-existent file: {path}")
@@ -1016,7 +1062,12 @@ Focus ONLY on fixing the test failures. Do not make unrelated changes.
             generation_result = await self.generate_code(context)
 
             # 4. Apply file changes
-            files_modified = self.apply_file_changes(generation_result["files"])
+            # Check for intervention context from supervisor
+            intervention_context = task.get("intervention_context")
+            files_modified = self.apply_file_changes(
+                generation_result["files"],
+                intervention_context=intervention_context,
+            )
 
             # 4.5. Run linting on modified files (Sprint 9 Phase 5: T111)
             await self._run_and_check_linting(task, files_modified)

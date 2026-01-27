@@ -17,6 +17,7 @@ from codeframe.indexing.codebase_index import CodebaseIndex
 from codeframe.agents.agent_pool_manager import AgentPoolManager
 from codeframe.agents.dependency_resolver import DependencyResolver
 from codeframe.agents.simple_assignment import SimpleAgentAssigner
+from codeframe.agents.tactical_patterns import TacticalPatternMatcher, InterventionStrategy
 from codeframe.planning.task_scheduler import TaskScheduler, ScheduleResult
 
 if TYPE_CHECKING:
@@ -158,6 +159,13 @@ class LeadAgent:
         # Discovery conversation history for Socratic questioning
         self._discovery_conversation_history: List[Dict[str, str]] = []
 
+        # Workspace state tracking for supervisor intervention (tactical patterns)
+        # Maps task_id -> {files_created: [...], files_modified: [...]}
+        self._workspace_state: Dict[int, Dict[str, List[str]]] = {}
+
+        # Tactical pattern matcher for supervisor intervention
+        self._tactical_pattern_matcher = TacticalPatternMatcher()
+
         # Category coverage tracking with cache invalidation
         self._category_coverage: Dict[str, str] = {}
         self._coverage_turn_count: int = -1  # Track when cache was computed
@@ -191,6 +199,76 @@ class LeadAgent:
 
         logger.debug(f"Loaded {len(conversation)} messages from conversation history")
         return conversation
+
+    def get_workspace_context(self, task_id: int) -> Dict[str, Any]:
+        """Get workspace context for supervisor intervention.
+
+        Returns information about files created/modified by previous runs
+        of this task or related tasks. Used to provide context to agents
+        when retrying after file conflict errors.
+
+        Args:
+            task_id: Task ID to get context for
+
+        Returns:
+            Dictionary with:
+                - existing_files: List of all files known to exist
+                - files_by_task: Dict mapping task_id to files list
+        """
+        existing_files: List[str] = []
+
+        # Collect all files from workspace state
+        for tid, state in self._workspace_state.items():
+            existing_files.extend(state.get("files_created", []))
+            existing_files.extend(state.get("files_modified", []))
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_files = []
+        for f in existing_files:
+            if f not in seen:
+                seen.add(f)
+                unique_files.append(f)
+
+        return {
+            "existing_files": unique_files,
+            "files_by_task": dict(self._workspace_state),
+            "task_specific_files": self._workspace_state.get(task_id, {}),
+        }
+
+    def update_workspace_state(
+        self,
+        task_id: int,
+        files_created: Optional[List[str]] = None,
+        files_modified: Optional[List[str]] = None,
+    ) -> None:
+        """Update workspace state after task execution.
+
+        Called after successful task execution to track which files
+        were created or modified. This enables supervisor intervention
+        when retrying tasks that encounter file conflicts.
+
+        Args:
+            task_id: Task ID that was executed
+            files_created: List of file paths that were created
+            files_modified: List of file paths that were modified
+        """
+        if task_id not in self._workspace_state:
+            self._workspace_state[task_id] = {
+                "files_created": [],
+                "files_modified": [],
+            }
+
+        if files_created:
+            self._workspace_state[task_id]["files_created"].extend(files_created)
+
+        if files_modified:
+            self._workspace_state[task_id]["files_modified"].extend(files_modified)
+
+        logger.debug(
+            f"[DIAG] Updated workspace state for task {task_id}: "
+            f"created={len(files_created or [])}, modified={len(files_modified or [])}"
+        )
 
     def _get_next_conversation_index(self) -> int:
         """Get the next available conversation message index from database.
@@ -2379,7 +2457,35 @@ Generate the PRD in markdown format with clear sections and professional languag
             logger.info(f"Agent {agent_id} executing task {task.id}")
 
             # Worker agents now use async execute_task - no threading needed
-            await agent_instance.execute_task(task_dict)
+            # Wrap in try-except for supervisor intervention on tactical patterns
+            try:
+                await agent_instance.execute_task(task_dict)
+            except Exception as exec_error:
+                # Check for tactical pattern match (supervisor intervention)
+                error_msg = str(exec_error)
+                pattern, diagnostics = self._tactical_pattern_matcher.match_error_with_diagnostics(
+                    error_msg
+                )
+
+                if pattern:
+                    logger.info(
+                        f"[DIAG] Agent FAILED - analyzing for supervisor intervention"
+                    )
+                    logger.info(
+                        f"[DIAG] Matched tactical patterns: ['{pattern.pattern_id}']"
+                    )
+
+                    # Apply intervention
+                    self._handle_file_conflict_intervention(task, exec_error, pattern)
+
+                    # Re-raise to trigger retry logic
+                    raise
+                else:
+                    logger.debug(
+                        f"[DIAG] No supervisor intervention - "
+                        f"error_msg empty={not error_msg}, no pattern match=True"
+                    )
+                    raise
 
             # Step 11: Code Review (Sprint 9)
             # Review the code changes before marking task as completed
@@ -2441,6 +2547,89 @@ Generate the PRD in markdown format with clear sections and professional languag
                 pass
 
             return False
+
+    def _handle_file_conflict_intervention(
+        self,
+        task: Task,
+        error: Exception,
+        pattern,  # TacticalPattern
+    ) -> None:
+        """
+        Handle file conflict intervention for supervisor pattern matching.
+
+        Called when a tactical pattern (like file_already_exists) is matched.
+        Updates the task's intervention_context so the agent can handle
+        the situation differently on retry.
+
+        Args:
+            task: Task that failed
+            error: The exception that was raised
+            pattern: The matched TacticalPattern
+        """
+        error_msg = str(error)
+
+        # Extract file path from error message
+        file_path = self._tactical_pattern_matcher.extract_file_path(error_msg)
+
+        # Get workspace context to see what files exist from previous runs
+        workspace_context = self.get_workspace_context(task.id)
+
+        # Build list of existing files - combine from error and workspace state
+        existing_files = list(workspace_context.get("existing_files", []))
+        if file_path and file_path not in existing_files:
+            existing_files.append(file_path)
+
+        # Build intervention context
+        intervention_context = {
+            "intervention_applied": True,
+            "pattern_matched": pattern.pattern_id,
+            "existing_files": existing_files,
+            "strategy": pattern.intervention_strategy.value,
+            "instruction": self._get_intervention_instruction(pattern.intervention_strategy),
+            "original_error": error_msg[:500],  # Truncate long errors
+        }
+
+        # Update task intervention context in database
+        self.db.update_task_intervention_context(task.id, intervention_context)
+
+        logger.info(
+            f"[DIAG] Applied intervention for task {task.id}: "
+            f"pattern={pattern.pattern_id}, "
+            f"existing_files={existing_files}, "
+            f"strategy={pattern.intervention_strategy.value}"
+        )
+
+    def _get_intervention_instruction(self, strategy: InterventionStrategy) -> str:
+        """Get human-readable instruction for intervention strategy.
+
+        Args:
+            strategy: The intervention strategy
+
+        Returns:
+            Instruction string for the agent
+        """
+        instructions = {
+            InterventionStrategy.CONVERT_CREATE_TO_EDIT: (
+                "Use 'modify' action instead of 'create' for files listed in "
+                "existing_files. These files already exist from a previous run."
+            ),
+            InterventionStrategy.SKIP_FILE_CREATION: (
+                "Skip creating files that already exist. Only create files "
+                "that do not appear in existing_files."
+            ),
+            InterventionStrategy.CREATE_BACKUP: (
+                "Create backup of existing files before overwriting. "
+                "Backup with .bak extension."
+            ),
+            InterventionStrategy.RETRY_WITH_CONTEXT: (
+                "Retry with additional context about the workspace state. "
+                "Check existing_files before modifying."
+            ),
+        }
+        return instructions.get(
+            strategy,
+            "Review existing_files and adjust file operations accordingly."
+        )
 
     async def can_assign_task(self, task_id: int) -> bool:
         """

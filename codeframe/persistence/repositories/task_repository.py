@@ -51,6 +51,8 @@ ALLOWED_TASK_FIELDS = {
     "complexity_score",
     "uncertainty_level",
     "resource_requirements",
+    # Supervisor intervention context
+    "intervention_context",
 }
 
 
@@ -549,7 +551,78 @@ class TaskRepository(BaseRepository):
         )
         self.conn.commit()
 
+    def update_task_intervention_context(
+        self, task_id: int, context: Dict[str, Any]
+    ) -> None:
+        """Update task with supervisor intervention context.
 
+        This is used when the supervisor detects a tactical pattern match
+        and needs to provide context to the agent for retry.
+
+        Args:
+            task_id: Task ID
+            context: Intervention context dictionary with structure:
+                {
+                    "intervention_applied": bool,
+                    "pattern_matched": str,
+                    "existing_files": List[str],
+                    "instruction": str,
+                    "strategy": str
+                }
+        """
+        import json
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE tasks SET intervention_context = ? WHERE id = ?
+            """,
+            (json.dumps(context), task_id),
+        )
+        self.conn.commit()
+
+    def get_task_intervention_context(
+        self, task_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Get intervention context for a task.
+
+        Args:
+            task_id: Task ID
+
+        Returns:
+            Intervention context dictionary or None if not set
+        """
+        import json
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            SELECT intervention_context FROM tasks WHERE id = ?
+            """,
+            (task_id,),
+        )
+        row = cursor.fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+        return None
+
+    def clear_task_intervention_context(self, task_id: int) -> None:
+        """Clear intervention context for a task.
+
+        This is typically called after a task succeeds to clean up
+        the intervention state.
+
+        Args:
+            task_id: Task ID
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """
+            UPDATE tasks SET intervention_context = NULL WHERE id = ?
+            """,
+            (task_id,),
+        )
+        self.conn.commit()
 
     def get_task_by_commit(self, commit_sha: str) -> Optional[dict]:
         """Find task by git commit SHA.
