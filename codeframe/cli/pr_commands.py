@@ -474,7 +474,7 @@ def close_pr(
 
                 if pr.state == "closed":
                     console.print(f"[yellow]PR #{pr_number} is already closed.[/yellow]")
-                    return True
+                    return None
 
                 # Close the PR
                 result = await gh.close_pull_request(pr_number)
@@ -483,6 +483,10 @@ def close_pr(
                 await gh.close()
 
         result = _run_async(_close())
+
+        if result is None:
+            # Already closed - message already printed
+            raise typer.Exit(0)
 
         if result:
             console.print(f"[green]✓ PR #{pr_number} closed[/green]")
