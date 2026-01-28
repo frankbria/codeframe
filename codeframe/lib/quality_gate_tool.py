@@ -231,6 +231,7 @@ async def _run_specific_gates(
     # Run each requested gate
     for check in checks:
         gate_method = {
+            "build": quality_gates.run_build_gate,
             "tests": quality_gates.run_tests_gate,
             "types": quality_gates.run_type_check_gate,
             "coverage": quality_gates.run_coverage_gate,

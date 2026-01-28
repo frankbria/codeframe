@@ -1197,6 +1197,8 @@ class QualityGates:
                 return {"returncode": result.returncode, "output": output, "summary": summary}
             except FileNotFoundError:
                 return {"returncode": 0, "output": "No Python build tool found, skipping", "summary": "Skipped"}
+            except subprocess.TimeoutExpired:
+                return {"returncode": 1, "output": "pip install timed out after 60 seconds", "summary": "Timeout"}
         except subprocess.TimeoutExpired:
             return {"returncode": 1, "output": "Build validation timed out after 60 seconds", "summary": "Timeout"}
 
@@ -1392,7 +1394,7 @@ class QualityGates:
             ),
             "configuration": (
                 "This task was classified as a configuration task. "
-                "Only linting and type checking gates apply."
+                "Build validation, linting, and type checking gates apply."
             ),
             "testing": (
                 "This task was classified as a testing task. "
