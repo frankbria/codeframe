@@ -881,3 +881,190 @@ class TestAIGoldenPathE2E:
 
         # Verify the file the agent created
         assert (temp_repo / "hello.py").exists()
+
+
+# ---------------------------------------------------------------------------
+# 16. PR commands (GitHub integration)
+# ---------------------------------------------------------------------------
+
+
+class TestPRCommands:
+    """Tests for PR CLI commands with mocked GitHub API."""
+
+    @pytest.fixture
+    def mock_github_env(self, monkeypatch):
+        """Set up mock GitHub environment variables."""
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_test_token_12345")
+        monkeypatch.setenv("GITHUB_REPO", "testowner/testrepo")
+
+    @pytest.fixture
+    def mock_pr_details(self):
+        """Mock PRDetails response."""
+        from datetime import datetime, UTC
+        from codeframe.git.github_integration import PRDetails
+
+        return PRDetails(
+            number=42,
+            url="https://github.com/testowner/testrepo/pull/42",
+            state="open",
+            title="Test PR",
+            body="Test description",
+            created_at=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            merged_at=None,
+            head_branch="feature/test",
+            base_branch="main",
+        )
+
+    def test_pr_help(self):
+        """PR command group shows help."""
+        result = runner.invoke(app, ["pr", "--help"])
+        assert result.exit_code == 0
+        assert "create" in result.output
+        assert "list" in result.output
+        assert "merge" in result.output
+
+    def test_pr_list(self, mock_github_env, mock_pr_details, monkeypatch):
+        """PR list command displays PRs."""
+        from unittest.mock import AsyncMock
+
+        mock_gh = AsyncMock()
+        mock_gh.list_pull_requests = AsyncMock(return_value=[mock_pr_details])
+        mock_gh.close = AsyncMock()
+
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.GitHubIntegration",
+            lambda **kwargs: mock_gh,
+        )
+
+        result = runner.invoke(app, ["pr", "list"])
+        assert result.exit_code == 0
+        assert "42" in result.output
+
+    def test_pr_list_json(self, mock_github_env, mock_pr_details, monkeypatch):
+        """PR list with JSON format."""
+        from unittest.mock import AsyncMock
+
+        mock_gh = AsyncMock()
+        mock_gh.list_pull_requests = AsyncMock(return_value=[mock_pr_details])
+        mock_gh.close = AsyncMock()
+
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.GitHubIntegration",
+            lambda **kwargs: mock_gh,
+        )
+
+        result = runner.invoke(app, ["pr", "list", "--format", "json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert data[0]["number"] == 42
+
+    def test_pr_get(self, mock_github_env, mock_pr_details, monkeypatch):
+        """PR get command shows PR details."""
+        from unittest.mock import AsyncMock
+
+        mock_gh = AsyncMock()
+        mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
+        mock_gh.close = AsyncMock()
+
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.GitHubIntegration",
+            lambda **kwargs: mock_gh,
+        )
+
+        result = runner.invoke(app, ["pr", "get", "42"])
+        assert result.exit_code == 0
+        assert "42" in result.output
+        assert "Test PR" in result.output
+
+    def test_pr_create(self, mock_github_env, mock_pr_details, monkeypatch):
+        """PR create command creates a PR."""
+        from unittest.mock import AsyncMock
+
+        mock_gh = AsyncMock()
+        mock_gh.create_pull_request = AsyncMock(return_value=mock_pr_details)
+        mock_gh.close = AsyncMock()
+
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.GitHubIntegration",
+            lambda **kwargs: mock_gh,
+        )
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.get_current_branch",
+            lambda *args: "feature/test",
+        )
+
+        result = runner.invoke(
+            app, ["pr", "create", "--title", "Test PR", "--no-auto-description"]
+        )
+        assert result.exit_code == 0
+        assert "42" in result.output or "created" in result.output.lower()
+
+    def test_pr_merge(self, mock_github_env, mock_pr_details, monkeypatch):
+        """PR merge command merges a PR."""
+        from unittest.mock import AsyncMock
+        from codeframe.git.github_integration import MergeResult
+
+        merge_result = MergeResult(sha="abc123", merged=True, message="Merged")
+
+        mock_gh = AsyncMock()
+        mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
+        mock_gh.merge_pull_request = AsyncMock(return_value=merge_result)
+        mock_gh.close = AsyncMock()
+
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.GitHubIntegration",
+            lambda **kwargs: mock_gh,
+        )
+
+        result = runner.invoke(app, ["pr", "merge", "42"])
+        assert result.exit_code == 0
+        assert "merged" in result.output.lower()
+
+    def test_pr_close(self, mock_github_env, mock_pr_details, monkeypatch):
+        """PR close command closes a PR."""
+        from unittest.mock import AsyncMock
+
+        mock_gh = AsyncMock()
+        mock_gh.get_pull_request = AsyncMock(return_value=mock_pr_details)
+        mock_gh.close_pull_request = AsyncMock(return_value=True)
+        mock_gh.close = AsyncMock()
+
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.GitHubIntegration",
+            lambda **kwargs: mock_gh,
+        )
+
+        result = runner.invoke(app, ["pr", "close", "42"])
+        assert result.exit_code == 0
+        assert "closed" in result.output.lower()
+
+    def test_pr_status(self, mock_github_env, mock_pr_details, monkeypatch):
+        """PR status command shows status for current branch."""
+        from unittest.mock import AsyncMock
+
+        mock_gh = AsyncMock()
+        mock_gh.list_pull_requests = AsyncMock(return_value=[mock_pr_details])
+        mock_gh.close = AsyncMock()
+
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.GitHubIntegration",
+            lambda **kwargs: mock_gh,
+        )
+        monkeypatch.setattr(
+            "codeframe.cli.pr_commands.get_current_branch",
+            lambda *args: "feature/test",
+        )
+
+        result = runner.invoke(app, ["pr", "status"])
+        assert result.exit_code == 0
+        assert "42" in result.output or "open" in result.output.lower()
+
+    def test_pr_no_token_error(self, monkeypatch):
+        """PR commands without GITHUB_TOKEN show helpful error."""
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_REPO", raising=False)
+
+        result = runner.invoke(app, ["pr", "list"])
+        assert result.exit_code != 0
+        assert "github" in result.output.lower() or "token" in result.output.lower()
