@@ -13,7 +13,6 @@ AI-driven task generation + agent execution.
 
 import json
 import re
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
