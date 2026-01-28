@@ -29,6 +29,7 @@ from codeframe.lib.task_classifier import TaskCategory
 # Based on the Quality Gate Applicability Matrix
 _GATE_RULES: dict[TaskCategory, List[QualityGateType]] = {
     TaskCategory.CODE_IMPLEMENTATION: [
+        QualityGateType.BUILD,
         QualityGateType.TESTS,
         QualityGateType.COVERAGE,
         QualityGateType.TYPE_CHECK,
@@ -43,6 +44,7 @@ _GATE_RULES: dict[TaskCategory, List[QualityGateType]] = {
         QualityGateType.LINTING,
     ],
     TaskCategory.CONFIGURATION: [
+        QualityGateType.BUILD,
         QualityGateType.TYPE_CHECK,
         QualityGateType.LINTING,
     ],
@@ -52,6 +54,7 @@ _GATE_RULES: dict[TaskCategory, List[QualityGateType]] = {
         QualityGateType.SKIP_DETECTION,
     ],
     TaskCategory.REFACTORING: [
+        QualityGateType.BUILD,
         QualityGateType.TESTS,
         QualityGateType.COVERAGE,
         QualityGateType.TYPE_CHECK,
@@ -60,6 +63,7 @@ _GATE_RULES: dict[TaskCategory, List[QualityGateType]] = {
         QualityGateType.SKIP_DETECTION,
     ],
     TaskCategory.MIXED: [
+        QualityGateType.BUILD,
         QualityGateType.TESTS,
         QualityGateType.COVERAGE,
         QualityGateType.TYPE_CHECK,
@@ -72,6 +76,7 @@ _GATE_RULES: dict[TaskCategory, List[QualityGateType]] = {
 # Skip reasons for each category/gate combination
 _SKIP_REASONS: dict[TaskCategory, dict[QualityGateType, str]] = {
     TaskCategory.DESIGN: {
+        QualityGateType.BUILD: "Design tasks do not produce buildable artifacts",
         QualityGateType.TESTS: "Design tasks do not produce executable code to test",
         QualityGateType.COVERAGE: "Design tasks do not produce code requiring coverage",
         QualityGateType.TYPE_CHECK: "Design tasks do not produce typed code",
@@ -79,6 +84,7 @@ _SKIP_REASONS: dict[TaskCategory, dict[QualityGateType, str]] = {
         QualityGateType.SKIP_DETECTION: "Design tasks do not include test files",
     },
     TaskCategory.DOCUMENTATION: {
+        QualityGateType.BUILD: "Documentation tasks do not require build validation",
         QualityGateType.TESTS: "Documentation tasks do not produce executable code to test",
         QualityGateType.COVERAGE: "Documentation tasks do not produce code requiring coverage",
         QualityGateType.TYPE_CHECK: "Documentation tasks do not produce typed code",
@@ -92,6 +98,7 @@ _SKIP_REASONS: dict[TaskCategory, dict[QualityGateType, str]] = {
         QualityGateType.SKIP_DETECTION: "Configuration tasks do not include test files",
     },
     TaskCategory.TESTING: {
+        QualityGateType.BUILD: "Testing tasks typically don't modify build configuration",
         QualityGateType.TYPE_CHECK: "Test code may use dynamic patterns that fail type checks",
         QualityGateType.LINTING: "Test code may use patterns that trigger linting warnings",
         QualityGateType.CODE_REVIEW: "Test code is validated through execution rather than review",

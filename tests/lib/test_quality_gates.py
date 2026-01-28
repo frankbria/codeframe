@@ -1394,3 +1394,164 @@ class TestQualityGatesTaskClassification:
             assert mock_review.call_count == 0
             assert mock_skip.call_count == 0
             assert result.passed
+
+
+class TestBuildGate:
+    """Tests for the BUILD quality gate."""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Create temporary database."""
+        db_path = tmp_path / "test.db"
+        db = Database(db_path)
+        db.initialize()
+        return db
+
+    @pytest.fixture
+    def project_root(self, tmp_path):
+        """Create temporary project root directory."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        return project_dir
+
+    @pytest.fixture
+    def project_id(self, db, project_root):
+        """Create test project."""
+        return db.create_project(
+            name="Test Project",
+            description="Build gate test project",
+            workspace_path=str(project_root),
+        )
+
+    @pytest.fixture
+    def task(self, db, project_id):
+        """Create test task with Python files."""
+        cursor = db.conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO tasks (project_id, task_number, title, description, status)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (project_id, "1.1.1", "Build test task", "Update configuration", "in_progress"),
+        )
+        db.conn.commit()
+        task_id = cursor.lastrowid
+        task_obj = Task(
+            id=task_id,
+            project_id=project_id,
+            task_number="1.1.1",
+            title="Build test task",
+            description="Update configuration",
+            status=TaskStatus.IN_PROGRESS,
+        )
+        task_obj._test_files = ["src/feature.py"]
+        return task_obj
+
+    @pytest.fixture
+    def quality_gates(self, db, project_id, project_root):
+        """Create QualityGates instance."""
+        return QualityGates(db=db, project_id=project_id, project_root=project_root)
+
+    @pytest.mark.asyncio
+    async def test_build_gate_passes_valid_python_project(self, quality_gates, task, project_root):
+        """BUILD gate should pass when uv sync succeeds."""
+        (project_root / "pyproject.toml").write_text('[project]\nname = "test"\nversion = "0.1.0"\n')
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+            result = await quality_gates.run_build_gate(task)
+
+        assert result.status == "passed"
+        assert len(result.failures) == 0
+
+    @pytest.mark.asyncio
+    async def test_build_gate_fails_invalid_python_config(self, quality_gates, task, project_root):
+        """BUILD gate should fail when pyproject.toml has errors."""
+        (project_root / "pyproject.toml").write_text('[project\nname = broken')
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=1,
+                stdout="",
+                stderr="error: Failed to parse pyproject.toml\nInvalid TOML",
+            )
+            result = await quality_gates.run_build_gate(task)
+
+        assert result.status == "failed"
+        assert len(result.failures) > 0
+        assert result.failures[0].gate == QualityGateType.BUILD
+        assert "pyproject.toml" in result.failures[0].reason
+
+    @pytest.mark.asyncio
+    async def test_build_gate_passes_valid_node_project(self, quality_gates, task, project_root):
+        """BUILD gate should pass for valid package.json."""
+        task._test_files = ["src/index.js"]
+        (project_root / "package.json").write_text('{"name": "test", "version": "1.0.0"}')
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+            result = await quality_gates.run_build_gate(task)
+
+        assert result.status == "passed"
+        assert len(result.failures) == 0
+
+    @pytest.mark.asyncio
+    async def test_build_gate_fails_invalid_node_config(self, quality_gates, task, project_root):
+        """BUILD gate should fail for invalid package.json."""
+        task._test_files = ["src/index.js"]
+        (project_root / "package.json").write_text('{invalid json}')
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=1,
+                stdout="",
+                stderr="npm ERR! Invalid package.json",
+            )
+            result = await quality_gates.run_build_gate(task)
+
+        assert result.status == "failed"
+        assert len(result.failures) > 0
+        assert result.failures[0].gate == QualityGateType.BUILD
+        assert "package.json" in result.failures[0].reason
+
+    @pytest.mark.asyncio
+    async def test_build_gate_skipped_no_config_files(self, quality_gates, task, project_root):
+        """BUILD gate should pass when no config files exist (nothing to validate)."""
+        result = await quality_gates.run_build_gate(task)
+        assert result.status == "passed"
+        assert len(result.failures) == 0
+
+    @pytest.mark.asyncio
+    async def test_build_gate_detects_hatchling_section_error(self, quality_gates, task, project_root):
+        """BUILD gate should detect tool.hatchling vs tool.hatch confusion."""
+        (project_root / "pyproject.toml").write_text('[tool.hatchling.build]\n')
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=1,
+                stdout="",
+                stderr="hatchling.build.build_editable failed\nInvalid section [tool.hatchling.build]",
+            )
+            result = await quality_gates.run_build_gate(task)
+
+        assert result.status == "failed"
+        assert "hatchling" in result.failures[0].reason.lower() or "pyproject.toml" in result.failures[0].reason
+
+    @pytest.mark.asyncio
+    async def test_build_gate_uv_fallback_to_pip(self, quality_gates, task, project_root):
+        """BUILD gate should fallback to pip when uv is not available."""
+        (project_root / "pyproject.toml").write_text('[project]\nname = "test"\nversion = "0.1.0"\n')
+
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise FileNotFoundError("uv not found")
+            return Mock(returncode=0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=side_effect):
+            result = await quality_gates.run_build_gate(task)
+
+        assert result.status == "passed"

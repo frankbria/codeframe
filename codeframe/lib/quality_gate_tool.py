@@ -31,10 +31,11 @@ from codeframe.core.models import Task, TaskStatus, QualityGateResult
 logger = logging.getLogger(__name__)
 
 # Valid quality gate check names
-VALID_CHECKS = ["tests", "types", "coverage", "review", "linting"]
+VALID_CHECKS = ["build", "tests", "types", "coverage", "review", "linting"]
 
 # Mapping from check names to QualityGateType enum
 CHECK_NAME_TO_GATE = {
+    "build": QualityGateType.BUILD,
     "tests": QualityGateType.TESTS,
     "types": QualityGateType.TYPE_CHECK,
     "coverage": QualityGateType.COVERAGE,
