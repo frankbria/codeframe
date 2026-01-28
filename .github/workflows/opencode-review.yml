@@ -3,12 +3,13 @@ name: OpenCode PR Review
 on:
   pull_request:
     types: [opened, synchronize]
-    # Skip review for documentation-only changes
+    # Skip review for documentation and config-only changes
     # Exclude this workflow file to prevent self-triggering loops
     paths-ignore:
       - "**/*.md"
       - ".github/workflows/opencode-review.yml"
       - ".gitignore"
+      - "pyproject.toml"
 
 # Cancel in-progress runs for the same PR to avoid duplicate reviews
 concurrency:
@@ -29,10 +30,10 @@ jobs:
       - name: Calculate total changes
         id: calc
         run: |
-          additions="${{ github.event.pull_request.additions }}"
-          deletions="${{ github.event.pull_request.deletions }}"
+          additions=${{ github.event.pull_request.additions }}
+          deletions=${{ github.event.pull_request.deletions }}
           total=$((additions + deletions))
-          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "total=$total" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
         # Only review substantial changes (5+ files OR 20+ lines changed)
@@ -44,6 +45,31 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Clear git credentials to avoid duplicate auth
+        if: |
+          github.event.pull_request.changed_files >= 5 ||
+          steps.calc.outputs.total >= 20
+        run: |
+          # Clear all GitHub-related git config to prevent auth conflicts
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --global --unset-all credential.helper || true
+          git config --local --unset-all credential.helper || true
+          git config --global --unset-all credential."https://github.com".helper || true
+          git config --local --unset-all credential."https://github.com".helper || true
+          # Remove any credential URLs
+          git config --global --unset-all credential.url || true
+          git config --local --unset-all credential.url || true
+          # Clear any includeIf configs that might add credentials
+          # Note: git config doesn't support wildcards, so we iterate over matching keys
+          # Use case-insensitive grep to catch both "includeIf" and "includeif"
+          for key in $(git config --global --list --name-only 2>/dev/null | grep -i "^includeif\." || true); do
+            git config --global --unset "$key" || true
+          done
+          for key in $(git config --local --list --name-only 2>/dev/null | grep -i "^includeif\." || true); do
+            git config --local --unset "$key" || true
+          done
+
       - name: Run OpenCode PR Review
         # Only review substantial changes (5+ files OR 20+ lines changed)
         if: |
@@ -53,14 +79,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          # Pass PR context as environment variables for the review
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          REPO_NAME: ${{ github.repository }}
         with:
           model: zai-coding-plan/glm-4.7
           use_github_token: true
           prompt: |
             You are reviewing PR #${{ github.event.pull_request.number }} in repository ${{ github.repository }}.
 
-            Use `gh pr view ${{ github.event.pull_request.number }}` to read the PR title and description.
-            Use `gh pr diff ${{ github.event.pull_request.number }}` to read the changed files.
+            PR TITLE: ${{ github.event.pull_request.title }}
 
             Please review this pull request and provide feedback on:
             - Code quality and best practices
