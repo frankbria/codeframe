@@ -1,12 +1,17 @@
 """Comprehensive v2 CLI integration tests.
 
 Tests the full CLI surface area using CliRunner against real SQLite databases.
-No mocks — exercises the real core modules through the Typer CLI layer.
+
+Part 1 (smoke tests): Exercises every CLI command without AI calls.
+Part 2 (AI integration): Exercises the LLM code paths (task generation,
+planning, execution) using MockProvider injected via monkeypatch.
 
 Coverage: init, status, summary, prd, tasks, work, batch, blocker,
-checkpoint, patch, schedule, templates, review, and a golden-path E2E flow.
+checkpoint, patch, schedule, templates, review, golden-path E2E, and
+AI-driven task generation + agent execution.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -656,3 +661,224 @@ class TestGoldenPathE2E:
         # 8. Summary
         r = runner.invoke(app, ["summary", "-w", wp])
         assert r.exit_code == 0, f"summary failed: {r.output}"
+
+
+# ===========================================================================
+# Part 2 — AI Integration Tests (MockProvider)
+# ===========================================================================
+
+# Canned LLM responses for the mock provider.
+
+MOCK_TASK_GENERATION_RESPONSE = json.dumps([
+    {"title": "Set up project structure", "description": "Create directories and initial files"},
+    {"title": "Implement login endpoint", "description": "POST /auth/login with JWT"},
+    {"title": "Add signup endpoint", "description": "POST /auth/signup with validation"},
+])
+
+MOCK_PLAN_RESPONSE = json.dumps({
+    "summary": "Create a hello.py file with greeting function",
+    "steps": [
+        {
+            "index": 1,
+            "type": "file_create",
+            "description": "Create hello.py with greeting function",
+            "target": "hello.py",
+            "details": "Simple Python file with a greet() function",
+        },
+    ],
+    "files_to_create": ["hello.py"],
+    "files_to_modify": [],
+    "estimated_complexity": "low",
+    "considerations": [],
+})
+
+MOCK_FILE_CONTENT = '''\
+def greet(name: str) -> str:
+    """Return a greeting."""
+    return f"Hello, {name}!"
+'''
+
+
+def _make_mock_provider(responses: list[str]):
+    """Create a MockProvider with queued text responses.
+
+    Args:
+        responses: List of text strings the provider will return in order.
+    """
+    from codeframe.adapters.llm.mock import MockProvider
+
+    provider = MockProvider()
+    for r in responses:
+        provider.add_text_response(r)
+    return provider
+
+
+@pytest.fixture
+def mock_llm(monkeypatch):
+    """Fixture that patches get_provider to return a MockProvider.
+
+    Returns a function: call with a list of response strings to configure.
+    The fixture also sets ANTHROPIC_API_KEY so runtime doesn't reject execution.
+    """
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake-key")
+
+    def _configure(responses: list[str]):
+        provider = _make_mock_provider(responses)
+        monkeypatch.setattr(
+            "codeframe.adapters.llm.get_provider",
+            lambda *_args, **_kwargs: provider,
+        )
+        return provider
+
+    return _configure
+
+
+class TestAITaskGeneration:
+    """Tests that exercise the LLM task-generation code path."""
+
+    def test_generate_with_llm(self, workspace_with_prd, mock_llm):
+        """tasks generate (without --no-llm) calls the LLM and parses tasks."""
+        provider = mock_llm([MOCK_TASK_GENERATION_RESPONSE])
+
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "-w", str(workspace_with_prd)],
+        )
+        assert result.exit_code == 0, f"tasks generate failed: {result.output}"
+        assert "generated" in result.output.lower()
+        # Should have created 3 tasks from the mock response
+        assert "3" in result.output
+        # Verify the mock was actually called
+        assert provider.call_count >= 1
+
+    def test_generate_with_llm_overwrite(self, workspace_with_tasks, mock_llm):
+        """tasks generate --overwrite replaces existing tasks via LLM."""
+        provider = mock_llm([MOCK_TASK_GENERATION_RESPONSE])
+
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "--overwrite", "-w", str(workspace_with_tasks)],
+        )
+        assert result.exit_code == 0, f"generate overwrite failed: {result.output}"
+        assert "generated" in result.output.lower()
+        assert provider.call_count >= 1
+
+    def test_generate_llm_returns_invalid_json_falls_back(
+        self, workspace_with_prd, mock_llm
+    ):
+        """When LLM returns garbage, generate_from_prd falls back to simple extraction."""
+        mock_llm(["This is not valid JSON at all."])
+
+        result = runner.invoke(
+            app,
+            ["tasks", "generate", "-w", str(workspace_with_prd)],
+        )
+        # Should still succeed via fallback extraction
+        assert result.exit_code == 0, f"fallback failed: {result.output}"
+        assert "generated" in result.output.lower()
+
+
+class TestAIAgentExecution:
+    """Tests that exercise the planner → executor code path with MockProvider."""
+
+    def test_execute_dry_run(self, workspace_with_ready_tasks, mock_llm):
+        """work start --execute --dry-run goes through planning + dry execution."""
+        # Mock needs: 1) plan response, 2) file content response (for file_create)
+        provider = mock_llm([MOCK_PLAN_RESPONSE, MOCK_FILE_CONTENT])
+
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        tid = task_list[0].id[:8]
+
+        result = runner.invoke(
+            app,
+            [
+                "work", "start", tid,
+                "--execute", "--dry-run",
+                "-w", str(workspace_with_ready_tasks),
+            ],
+        )
+        assert result.exit_code == 0, f"dry-run failed: {result.output}"
+        assert "run started" in result.output.lower()
+        # The planner should have been called
+        assert provider.call_count >= 1
+
+    def test_execute_creates_file(self, workspace_with_ready_tasks, mock_llm):
+        """work start --execute runs agent that creates a file via MockProvider."""
+        # Plan says create hello.py, executor generates content via LLM
+        provider = mock_llm([MOCK_PLAN_RESPONSE, MOCK_FILE_CONTENT])
+
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        tid = task_list[0].id[:8]
+
+        result = runner.invoke(
+            app,
+            [
+                "work", "start", tid,
+                "--execute",
+                "-w", str(workspace_with_ready_tasks),
+            ],
+        )
+        assert result.exit_code == 0, f"execute failed: {result.output}"
+        assert "run started" in result.output.lower()
+        assert provider.call_count >= 1
+
+        # Verify the file was actually created by the executor
+        created_file = workspace_with_ready_tasks / "hello.py"
+        assert created_file.exists(), "Agent should have created hello.py"
+        content = created_file.read_text()
+        assert "greet" in content
+
+
+class TestAIGoldenPathE2E:
+    """Full golden path using MockProvider for all LLM calls."""
+
+    def test_ai_golden_path(self, temp_repo, mock_llm):
+        """init → prd add → tasks generate (LLM) → set READY → work start --execute."""
+        # Queue responses: 1) task generation, 2) plan, 3) file content
+        provider = mock_llm([
+            MOCK_TASK_GENERATION_RESPONSE,
+            MOCK_PLAN_RESPONSE,
+            MOCK_FILE_CONTENT,
+        ])
+
+        wp = str(temp_repo)
+
+        # 1. Init
+        r = runner.invoke(app, ["init", wp])
+        assert r.exit_code == 0, f"init: {r.output}"
+
+        # 2. PRD add
+        prd_path = temp_repo / "prd.md"
+        prd_path.write_text(SAMPLE_PRD)
+        r = runner.invoke(app, ["prd", "add", str(prd_path), "-w", wp])
+        assert r.exit_code == 0, f"prd add: {r.output}"
+
+        # 3. Tasks generate (uses LLM mock)
+        r = runner.invoke(app, ["tasks", "generate", "-w", wp])
+        assert r.exit_code == 0, f"tasks generate: {r.output}"
+        assert "generated" in r.output.lower()
+
+        # 4. Set all READY
+        r = runner.invoke(app, ["tasks", "set", "status", "READY", "--all", "-w", wp])
+        assert r.exit_code == 0, f"tasks set: {r.output}"
+
+        # 5. Execute agent on first task
+        ws = create_or_load_workspace(temp_repo)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        tid = task_list[0].id[:8]
+
+        r = runner.invoke(app, ["work", "start", tid, "--execute", "-w", wp])
+        assert r.exit_code == 0, f"work start --execute: {r.output}"
+
+        # Verify LLM was exercised through the full path
+        assert provider.call_count >= 2, (
+            f"Expected ≥2 LLM calls (plan + execute), got {provider.call_count}"
+        )
+
+        # Verify the file the agent created
+        assert (temp_repo / "hello.py").exists()
