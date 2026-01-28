@@ -158,6 +158,7 @@ class ReviewCategory(str, Enum):
 class QualityGateType(str, Enum):
     """Types of quality gates (Sprint 10)."""
 
+    BUILD = "build"
     TESTS = "tests"
     TYPE_CHECK = "type_check"
     COVERAGE = "coverage"

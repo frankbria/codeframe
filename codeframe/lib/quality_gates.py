@@ -508,6 +508,74 @@ class QualityGates:
 
         return result
 
+    async def run_build_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
+        """Execute build validation gate - verify project configuration files are valid.
+
+        This gate validates that pyproject.toml and/or package.json can be parsed
+        and dependencies resolved, catching configuration errors before slower gates run.
+
+        Detection Logic:
+            - If pyproject.toml exists → run uv sync --no-install-project (fallback: pip)
+            - If package.json exists → run npm install --dry-run --ignore-scripts
+
+        Args:
+            task: Task to validate
+            task_category: Optional category string for logging
+
+        Returns:
+            QualityGateResult with pass/fail status
+        """
+        start_time = datetime.now(timezone.utc)
+        failures: List[QualityGateFailure] = []
+
+        has_python = (self.project_root / "pyproject.toml").exists()
+        has_node = (self.project_root / "package.json").exists()
+
+        if has_python:
+            build_result = self._run_python_build()
+            if build_result["returncode"] != 0:
+                failures.append(
+                    QualityGateFailure(
+                        gate=QualityGateType.BUILD,
+                        reason=f"Build validation failed for pyproject.toml: {build_result['summary']}",
+                        details=build_result["output"],
+                        severity=Severity.HIGH,
+                    )
+                )
+
+        if has_node:
+            build_result = self._run_node_build()
+            if build_result["returncode"] != 0:
+                failures.append(
+                    QualityGateFailure(
+                        gate=QualityGateType.BUILD,
+                        reason=f"Build validation failed for package.json: {build_result['summary']}",
+                        details=build_result["output"],
+                        severity=Severity.HIGH,
+                    )
+                )
+
+        execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
+
+        status = "passed" if len(failures) == 0 else "failed"
+        result = QualityGateResult(
+            task_id=task.id,  # type: ignore[arg-type]
+            status=status,
+            failures=failures,
+            execution_time_seconds=execution_time,
+        )
+
+        self.db.update_quality_gate_status(
+            task_id=task.id,  # type: ignore[arg-type]
+            status=status,
+            failures=failures,
+        )
+
+        if not result.passed:
+            self._create_quality_blocker(task, failures, task_category)
+
+        return result
+
     async def run_skip_detection_gate(self, task: Task, task_category: Optional[str] = None) -> QualityGateResult:
         """Execute skip pattern detection gate - detect test skips across all languages.
 
@@ -720,7 +788,16 @@ class QualityGates:
             logger.info(f"Skipping linting gate for task {task.id}: {reason}")
             skipped_gates.append(QualityGateType.LINTING.value)
 
-        # 2. Type check gate (fast)
+        # 2. Build gate (fast, validates configuration)
+        if QualityGateType.BUILD in applicable_gates:
+            build_result = await self.run_build_gate(task, category.value)
+            all_failures.extend(build_result.failures)
+        else:
+            reason = rules.get_skip_reason(category, QualityGateType.BUILD)
+            logger.info(f"Skipping build gate for task {task.id}: {reason}")
+            skipped_gates.append(QualityGateType.BUILD.value)
+
+        # 3. Type check gate (fast)
         if QualityGateType.TYPE_CHECK in applicable_gates:
             type_check_result = await self.run_type_check_gate(task, category.value)
             all_failures.extend(type_check_result.failures)
@@ -1092,9 +1169,80 @@ class QualityGates:
                 "summary": "Skipped",
             }
 
+    def _run_python_build(self) -> Dict[str, Any]:
+        """Run Python build validation using uv (fallback to pip)."""
+        try:
+            result = subprocess.run(
+                ["uv", "sync", "--no-install-project"],
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            output = result.stdout + result.stderr
+            summary = self._extract_build_error_summary(output, "pyproject.toml")
+            return {"returncode": result.returncode, "output": output, "summary": summary}
+        except FileNotFoundError:
+            # uv not available, try pip
+            try:
+                result = subprocess.run(
+                    ["pip", "install", "-e", ".", "--dry-run"],
+                    cwd=str(self.project_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                output = result.stdout + result.stderr
+                summary = self._extract_build_error_summary(output, "pyproject.toml")
+                return {"returncode": result.returncode, "output": output, "summary": summary}
+            except FileNotFoundError:
+                return {"returncode": 0, "output": "No Python build tool found, skipping", "summary": "Skipped"}
+            except subprocess.TimeoutExpired:
+                return {"returncode": 1, "output": "pip install timed out after 60 seconds", "summary": "Timeout"}
+        except subprocess.TimeoutExpired:
+            return {"returncode": 1, "output": "Build validation timed out after 60 seconds", "summary": "Timeout"}
+
+    def _run_node_build(self) -> Dict[str, Any]:
+        """Run Node.js build validation using npm."""
+        try:
+            result = subprocess.run(
+                ["npm", "install", "--dry-run", "--ignore-scripts"],
+                cwd=str(self.project_root),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            output = result.stdout + result.stderr
+            summary = self._extract_build_error_summary(output, "package.json")
+            return {"returncode": result.returncode, "output": output, "summary": summary}
+        except FileNotFoundError:
+            return {"returncode": 0, "output": "npm not found, skipping", "summary": "Skipped"}
+        except subprocess.TimeoutExpired:
+            return {"returncode": 1, "output": "npm install timed out after 60 seconds", "summary": "Timeout"}
+
     # ========================================================================
     # Helper Methods - Output Parsing
     # ========================================================================
+
+    def _extract_build_error_summary(self, output: str, config_file: str) -> str:
+        """Extract summary from build validation output."""
+        if not output.strip():
+            return "No errors"
+        # Detect common build error patterns
+        if "hatchling" in output.lower():
+            match = re.search(r"Invalid section \[([^\]]+)\]", output)
+            if match:
+                return f"Invalid section [{match.group(1)}] in {config_file}"
+            return f"hatchling build error in {config_file}"
+        if "invalid toml" in output.lower() or "failed to parse" in output.lower():
+            return f"Invalid TOML syntax in {config_file}"
+        if "invalid package.json" in output.lower() or "invalid json" in output.lower():
+            return f"Invalid JSON in {config_file}"
+        if "npm err" in output.lower():
+            return f"npm dependency resolution error in {config_file}"
+        # Generic fallback
+        first_line = output.strip().split("\n")[0][:120]
+        return first_line
 
     def _extract_pytest_summary(self, output: str) -> str:
         """Extract summary from pytest output."""
@@ -1246,7 +1394,7 @@ class QualityGates:
             ),
             "configuration": (
                 "This task was classified as a configuration task. "
-                "Only linting and type checking gates apply."
+                "Build validation, linting, and type checking gates apply."
             ),
             "testing": (
                 "This task was classified as a testing task. "

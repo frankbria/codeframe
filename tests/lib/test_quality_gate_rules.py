@@ -36,13 +36,14 @@ class TestQualityGateRules:
         """CODE_IMPLEMENTATION tasks should have all quality gates applied."""
         gates = rules.get_applicable_gates(TaskCategory.CODE_IMPLEMENTATION)
 
+        assert QualityGateType.BUILD in gates
         assert QualityGateType.TESTS in gates
         assert QualityGateType.COVERAGE in gates
         assert QualityGateType.TYPE_CHECK in gates
         assert QualityGateType.LINTING in gates
         assert QualityGateType.CODE_REVIEW in gates
         assert QualityGateType.SKIP_DETECTION in gates
-        assert len(gates) == 6
+        assert len(gates) == 7
 
     # =========================================================================
     # DESIGN Gate Tests
@@ -86,12 +87,13 @@ class TestQualityGateRules:
     # =========================================================================
 
     def test_configuration_gets_linting_and_type_check(self, rules):
-        """CONFIGURATION tasks should have linting and type check gates."""
+        """CONFIGURATION tasks should have build, linting and type check gates."""
         gates = rules.get_applicable_gates(TaskCategory.CONFIGURATION)
 
+        assert QualityGateType.BUILD in gates
         assert QualityGateType.LINTING in gates
         assert QualityGateType.TYPE_CHECK in gates
-        assert len(gates) == 2
+        assert len(gates) == 3
 
     def test_configuration_does_not_get_tests(self, rules):
         """CONFIGURATION tasks should NOT have test gate."""
@@ -125,12 +127,13 @@ class TestQualityGateRules:
         gates = rules.get_applicable_gates(TaskCategory.REFACTORING)
 
         assert QualityGateType.TESTS in gates
+        assert QualityGateType.BUILD in gates
         assert QualityGateType.COVERAGE in gates
         assert QualityGateType.TYPE_CHECK in gates
         assert QualityGateType.LINTING in gates
         assert QualityGateType.CODE_REVIEW in gates
         assert QualityGateType.SKIP_DETECTION in gates
-        assert len(gates) == 6
+        assert len(gates) == 7
 
     # =========================================================================
     # MIXED Gate Tests
@@ -140,13 +143,14 @@ class TestQualityGateRules:
         """MIXED tasks should have all quality gates applied (conservative)."""
         gates = rules.get_applicable_gates(TaskCategory.MIXED)
 
+        assert QualityGateType.BUILD in gates
         assert QualityGateType.TESTS in gates
         assert QualityGateType.COVERAGE in gates
         assert QualityGateType.TYPE_CHECK in gates
         assert QualityGateType.LINTING in gates
         assert QualityGateType.CODE_REVIEW in gates
         assert QualityGateType.SKIP_DETECTION in gates
-        assert len(gates) == 6
+        assert len(gates) == 7
 
     # =========================================================================
     # should_skip_gate Tests
@@ -193,6 +197,46 @@ class TestQualityGateRules:
         """all_gates property should return all QualityGateType values."""
         all_gates = rules.all_gates
 
-        assert len(all_gates) == 6
+        assert len(all_gates) == 7
         for gate in QualityGateType:
             assert gate in all_gates
+
+    # =========================================================================
+    # BUILD Gate Applicability Tests
+    # =========================================================================
+
+    def test_configuration_gets_build_gate(self, rules):
+        """CONFIGURATION tasks should include BUILD gate."""
+        gates = rules.get_applicable_gates(TaskCategory.CONFIGURATION)
+        assert QualityGateType.BUILD in gates
+
+    def test_code_implementation_gets_build_gate(self, rules):
+        """CODE_IMPLEMENTATION tasks should include BUILD gate."""
+        gates = rules.get_applicable_gates(TaskCategory.CODE_IMPLEMENTATION)
+        assert QualityGateType.BUILD in gates
+
+    def test_design_does_not_get_build_gate(self, rules):
+        """DESIGN tasks should NOT have BUILD gate."""
+        gates = rules.get_applicable_gates(TaskCategory.DESIGN)
+        assert QualityGateType.BUILD not in gates
+
+    def test_documentation_does_not_get_build_gate(self, rules):
+        """DOCUMENTATION tasks should NOT have BUILD gate."""
+        gates = rules.get_applicable_gates(TaskCategory.DOCUMENTATION)
+        assert QualityGateType.BUILD not in gates
+
+    def test_testing_does_not_get_build_gate(self, rules):
+        """TESTING tasks should NOT have BUILD gate."""
+        gates = rules.get_applicable_gates(TaskCategory.TESTING)
+        assert QualityGateType.BUILD not in gates
+
+    def test_refactoring_gets_build_gate(self, rules):
+        """REFACTORING tasks should include BUILD gate."""
+        gates = rules.get_applicable_gates(TaskCategory.REFACTORING)
+        assert QualityGateType.BUILD in gates
+
+    def test_build_skip_reason_for_design(self, rules):
+        """Should provide skip reason for BUILD on DESIGN tasks."""
+        reason = rules.get_skip_reason(TaskCategory.DESIGN, QualityGateType.BUILD)
+        assert reason is not None
+        assert "buildable" in reason.lower() or "design" in reason.lower()
