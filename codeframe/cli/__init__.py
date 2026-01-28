@@ -316,6 +316,7 @@ from codeframe.cli.metrics_commands import metrics_app  # noqa: E402
 from codeframe.cli.session_commands import session_app  # noqa: E402
 from codeframe.cli.context_commands import context_app  # noqa: E402
 from codeframe.cli.review_commands import review_app  # noqa: E402
+from codeframe.cli.pr_commands import pr_app  # noqa: E402
 
 # Register Phase 1 command groups
 app.add_typer(auth_app, name="auth", help="Authentication (login, logout, register)")
@@ -332,6 +333,7 @@ app.add_typer(metrics_app, name="metrics", help="Usage and cost metrics (tokens,
 app.add_typer(session_app, name="session", help="Session management (get)")
 app.add_typer(context_app, name="context", help="Agent context (get, stats, flash-save, checkpoints)")
 app.add_typer(review_app, name="review", help="Code review management (status, stats, findings, list)")
+app.add_typer(pr_app, name="pr", help="Pull request management (create, list, merge, close)")
 
 
 if __name__ == "__main__":

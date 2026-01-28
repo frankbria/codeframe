@@ -23,6 +23,7 @@ from rich.console import Console
 
 # Import auth subapp for credential management
 from codeframe.cli.auth_commands import auth_app
+from codeframe.cli.pr_commands import pr_app
 
 # Load environment variables from .env files
 # Priority: workspace .env > home .env
@@ -4160,6 +4161,7 @@ app.add_typer(gates_app, name="gates")
 app.add_typer(schedule_app, name="schedule")
 app.add_typer(templates_app, name="templates")
 app.add_typer(auth_app, name="auth")
+app.add_typer(pr_app, name="pr")
 
 
 # =============================================================================
