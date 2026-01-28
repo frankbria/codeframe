@@ -650,54 +650,118 @@ cf work batch resume abc123 --force   # Re-run all tasks
 
 ---
 
-### `codeframe pr create` (Enhanced)
-**Purpose:** Create pull request with AI-generated description.
+### `codeframe pr create [--title <title>] [--branch <branch>] [--base <base>]`
+**Purpose:** Create pull request with optional auto-generated description from commits.
 
 **CLI module:**
-- `codeframe/cli/commands/pr.py`
+- `codeframe/cli/pr_commands.py`
 
 **Core calls:**
-- `pr = codeframe.core.git.create_pull_request(workspace_id, branch_name, base_branch)`
-- `description = codeframe.core.prd.generate_pr_description(workspace_id, task_ids)`
-- `codeframe.core.git.update_pr_description(pr.id, description)`
-- `emit(..., "PR_CREATED", payload)`
+- `GitHubIntegration.create_pull_request(branch, title, body, base)`
 
-**State writes:**
-- PR record with task associations
-- Transition of associated tasks to IN_REVIEW status
+**Options:**
+- `--title/-t`: PR title (required)
+- `--branch/-b`: Source branch (defaults to current)
+- `--base`: Target branch (defaults to main)
+- `--body`: PR description body
+- `--auto-description/--no-auto-description`: Auto-generate from commits
 
 **Adapter usage:**
-- git adapter for PR operations
-- LLM adapter for description generation
+- `codeframe.git.github_integration.GitHubIntegration`
+
+**Examples:**
+```bash
+codeframe pr create --title "Add new feature"
+codeframe pr create --branch feature/auth --title "Auth system" --base develop
+codeframe pr create --title "Quick fix" --no-auto-description
+```
 
 ---
 
-### `codeframe pr list [--status open|closed|merged]`
-**Purpose:** List pull requests and their status.
+### `codeframe pr list [--status open|closed|all] [--format table|json]`
+**Purpose:** List pull requests with optional filtering.
 
 **CLI module:**
-- `codeframe/cli/commands/pr.py`
+- `codeframe/cli/pr_commands.py`
 
 **Core calls:**
-- `prs = codeframe.core.git.list_pull_requests(workspace_id, status_filter)`
+- `GitHubIntegration.list_pull_requests(state)`
+
+**Examples:**
+```bash
+codeframe pr list
+codeframe pr list --status closed
+codeframe pr list --format json
+```
 
 ---
 
-### `codeframe pr merge <pr-id> [--strategy squash|merge|rebase]`
-**Purpose:** Merge pull request with verification.
+### `codeframe pr get <pr-number> [--format text|json]`
+**Purpose:** Get detailed information about a specific PR.
 
 **CLI module:**
-- `codeframe/cli/commands/pr.py`
+- `codeframe/cli/pr_commands.py`
 
 **Core calls:**
-- `codeframe.core.gates.run_pr_checks(workspace_id, pr_id)`
-- `merge_result = codeframe.core.git.merge_pull_request(pr_id, strategy)`
-- `codeframe.core.tasks.transition_to_merged(workspace_id, pr.task_ids)`
-- `emit(..., "PR_MERGED", payload)`
+- `GitHubIntegration.get_pull_request(pr_number)`
 
-**State writes:**
-- Transition of associated tasks to MERGED status
-- PR record with merge details
+**Examples:**
+```bash
+codeframe pr get 42
+codeframe pr get 42 --format json
+```
+
+---
+
+### `codeframe pr merge <pr-number> [--strategy squash|merge|rebase]`
+**Purpose:** Merge pull request with specified strategy.
+
+**CLI module:**
+- `codeframe/cli/pr_commands.py`
+
+**Core calls:**
+- `GitHubIntegration.get_pull_request(pr_number)` (validate state)
+- `GitHubIntegration.merge_pull_request(pr_number, method)`
+
+**Examples:**
+```bash
+codeframe pr merge 42
+codeframe pr merge 42 --strategy rebase
+```
+
+---
+
+### `codeframe pr close <pr-number>`
+**Purpose:** Close a pull request without merging.
+
+**CLI module:**
+- `codeframe/cli/pr_commands.py`
+
+**Core calls:**
+- `GitHubIntegration.close_pull_request(pr_number)`
+
+**Examples:**
+```bash
+codeframe pr close 42
+```
+
+---
+
+### `codeframe pr status`
+**Purpose:** Show PR status for current branch.
+
+**CLI module:**
+- `codeframe/cli/pr_commands.py`
+
+**Core calls:**
+- `get_current_branch()` (git helper)
+- `GitHubIntegration.list_pull_requests(state="open")`
+- Filters to find PR matching current branch
+
+**Examples:**
+```bash
+codeframe pr status
+```
 
 ---
 
