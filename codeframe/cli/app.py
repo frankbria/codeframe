@@ -1092,6 +1092,228 @@ def prd_update(
         raise typer.Exit(1)
 
 
+@prd_app.command("generate")
+def prd_generate(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    resume: Optional[str] = typer.Option(
+        None,
+        "--resume", "-r",
+        help="Resume from a paused session (blocker ID)",
+    ),
+    skip_optional: bool = typer.Option(
+        False,
+        "--skip-optional",
+        help="Skip optional questions",
+    ),
+) -> None:
+    """Generate a PRD through interactive Socratic discovery.
+
+    Asks a series of questions to understand your project requirements
+    and generates a structured PRD from your answers.
+
+    Special commands during discovery:
+      /pause  - Save progress and exit (creates a blocker for resume)
+      /skip   - Skip current question (optional questions only)
+      /quit   - Exit without saving
+      /help   - Show available commands
+
+    Example:
+        codeframe prd generate
+        codeframe prd generate --resume abc123
+        codeframe prd generate --skip-optional
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd as prd_module
+    from codeframe.core.prd_discovery import (
+        PrdDiscoverySession,
+        ValidationError,
+        IncompleteSessionError,
+        get_active_session,
+    )
+    from codeframe.core.events import emit_for_workspace, EventType
+    from rich.panel import Panel
+    from rich.prompt import Prompt
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Check for existing PRD
+        existing_prd = prd_module.get_latest(workspace)
+        if existing_prd and not resume:
+            if not typer.confirm(
+                f"PRD already exists: '{existing_prd.title}'. Create a new one?"
+            ):
+                console.print("Cancelled.")
+                return
+
+        # Create or resume session
+        session: PrdDiscoverySession
+        if resume:
+            console.print("\n[cyan]Resuming discovery session...[/cyan]")
+            session = PrdDiscoverySession(workspace)
+            try:
+                session.resume_discovery(resume)
+            except ValueError as e:
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1)
+            console.print(f"[green]✓[/green] Loaded {session.answered_count} previous answers")
+        else:
+            # Check for active session
+            active = get_active_session(workspace)
+            if active and active.answered_count > 0:
+                if typer.confirm(
+                    f"Found incomplete session with {active.answered_count} answers. Resume?"
+                ):
+                    session = active
+                    console.print("[green]✓[/green] Resuming previous session")
+                else:
+                    session = PrdDiscoverySession(workspace)
+                    session.start_discovery()
+            else:
+                session = PrdDiscoverySession(workspace)
+                session.start_discovery()
+
+        console.print("\n[bold]Starting interactive PRD discovery...[/bold]")
+        console.print("[dim]Type /help for available commands[/dim]\n")
+
+        # Discovery loop
+        while not session.is_complete():
+            question = session.get_current_question()
+            if question is None:
+                break
+
+            # Show progress
+            progress = session.get_progress()
+            progress_bar = "█" * (progress["percentage"] // 5)
+            progress_empty = "░" * (20 - len(progress_bar))
+            console.print(
+                f"[dim]Progress: {progress['answered']}/{progress['required_total']} "
+                f"required questions ({progress['percentage']}%)[/dim]"
+            )
+            console.print(f"[dim]{progress_bar}{progress_empty}[/dim]\n")
+
+            # Show question
+            category_display = question["category"].replace("_", " ").title()
+            is_optional = question.get("importance") == "optional"
+            opt_marker = " [dim](optional)[/dim]" if is_optional else ""
+
+            console.print(f"[bold cyan]Category:[/bold cyan] {category_display}{opt_marker}")
+            console.print(Panel(question["text"], title="Question", border_style="cyan"))
+
+            # Get answer
+            while True:
+                try:
+                    answer = Prompt.ask(
+                        "\nYour answer",
+                        default="",
+                    )
+                    answer = answer.strip()
+
+                    if not answer:
+                        console.print("[yellow]Please enter an answer or use /skip for optional questions[/yellow]")
+                        continue
+
+                    # Handle special commands
+                    if answer.lower() == "/help":
+                        console.print("\n[bold]Available commands:[/bold]")
+                        console.print("  /pause  - Save progress and exit")
+                        console.print("  /skip   - Skip this question (optional only)")
+                        console.print("  /quit   - Exit without saving")
+                        console.print("  /help   - Show this help")
+                        console.print()
+                        continue
+
+                    if answer.lower() == "/quit":
+                        if typer.confirm("Exit without saving?"):
+                            console.print("Cancelled.")
+                            return
+                        continue
+
+                    if answer.lower() == "/pause":
+                        reason = Prompt.ask("Reason for pausing", default="Taking a break")
+                        blocker_id = session.pause_discovery(reason)
+                        console.print("\n[green]✓[/green] Session paused")
+                        console.print(f"[dim]Blocker ID: {blocker_id}[/dim]")
+                        console.print(f"\nTo resume: [cyan]codeframe prd generate --resume {blocker_id[:8]}[/cyan]")
+                        return
+
+                    if answer.lower() == "/skip":
+                        if is_optional or skip_optional:
+                            # Move to next question by submitting a placeholder
+                            console.print("[dim]Skipping...[/dim]\n")
+                            break
+                        else:
+                            console.print("[yellow]Cannot skip required questions[/yellow]")
+                            continue
+
+                    # Submit answer
+                    session.submit_answer(answer)
+                    console.print("[green]✓[/green] Answer saved\n")
+                    break
+
+                except ValidationError as e:
+                    console.print(f"[yellow]Invalid answer:[/yellow] {e}")
+                except KeyboardInterrupt:
+                    console.print("\n")
+                    if typer.confirm("Save progress before exiting?"):
+                        blocker_id = session.pause_discovery("Interrupted")
+                        console.print("\n[green]✓[/green] Session paused")
+                        console.print(f"To resume: [cyan]codeframe prd generate --resume {blocker_id[:8]}[/cyan]")
+                    return
+
+        # Generate PRD
+        console.print("\n[bold green]All required questions answered![/bold green]")
+        console.print("\nGenerating PRD from your answers...")
+
+        try:
+            prd_record = session.generate_prd()
+        except IncompleteSessionError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+
+        # Emit event
+        emit_for_workspace(
+            workspace,
+            EventType.PRD_ADDED,
+            {
+                "prd_id": prd_record.id,
+                "title": prd_record.title,
+                "source": "discovery",
+            },
+            print_event=False,
+        )
+
+        # Show result
+        console.print(f"\n[green]✓[/green] PRD generated: [bold]{prd_record.title}[/bold]")
+        console.print(f"[dim]ID: {prd_record.id}[/dim]")
+
+        # Show preview
+        console.print("\n[bold]Preview:[/bold]")
+        preview = prd_record.content[:800]
+        if len(prd_record.content) > 800:
+            preview += "\n\n[dim]... (use 'codeframe prd show --full' to see complete PRD)[/dim]"
+        console.print(Panel(preview, border_style="green"))
+
+        console.print("\n[bold]Next steps:[/bold]")
+        console.print("  codeframe prd show --full    # View complete PRD")
+        console.print("  codeframe tasks generate     # Generate tasks from PRD")
+
+    except FileNotFoundError:
+        console.print("[red]Error:[/red] No workspace found. Run 'codeframe init' first.")
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 # Tasks commands
 tasks_app = typer.Typer(
     name="tasks",
