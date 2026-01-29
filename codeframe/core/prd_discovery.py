@@ -268,8 +268,9 @@ class PrdDiscoverySession:
         _ensure_discovery_schema(self.workspace)
         self._save_session()
 
-        # Generate first question
+        # Generate first question and persist it
         self._current_question = self._generate_opening_question()
+        self._save_session()
 
         logger.info(f"Started discovery session {self.session_id}")
 
@@ -393,6 +394,7 @@ Be warm and encouraging. Just output the question, nothing else."""
         self._update_coverage()
         next_question = self._generate_next_question()
 
+        # Complete when AI signals done OR coverage assessment says ready
         if next_question == "DISCOVERY_COMPLETE" or self._coverage_is_sufficient():
             self._is_complete = True
             self._current_question = None
@@ -462,7 +464,11 @@ Be warm and encouraging. Just output the question, nothing else."""
             self._coverage = None
 
     def _coverage_is_sufficient(self) -> bool:
-        """Check if coverage is sufficient to generate PRD."""
+        """Check if coverage is sufficient to generate PRD.
+
+        Relies on AI assessment - if a comprehensive answer covers all
+        categories (e.g., pasting a full PRD), discovery can complete quickly.
+        """
         if not self._coverage:
             return False
         return self._coverage.get("ready_for_prd", False)
@@ -696,9 +702,6 @@ def _ensure_discovery_schema(workspace: Workspace) -> None:
     """
     conn = get_db_connection(workspace)
     cursor = conn.cursor()
-
-    # Drop old table if exists (schema changed significantly)
-    cursor.execute("DROP TABLE IF EXISTS discovery_sessions")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS discovery_sessions (
