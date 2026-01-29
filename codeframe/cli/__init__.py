@@ -307,6 +307,7 @@ from codeframe.cli.project_commands import projects_app  # noqa: E402
 from codeframe.cli.blocker_commands import blockers_app  # noqa: E402
 from codeframe.cli.checkpoint_commands import checkpoints_app  # noqa: E402
 from codeframe.cli.discovery_commands import discovery_app  # noqa: E402
+from codeframe.cli.env_commands import env_app  # noqa: E402
 
 # Phase 2 imports
 from codeframe.cli.agents_commands import agents_app  # noqa: E402
@@ -324,6 +325,7 @@ app.add_typer(projects_app, name="projects", help="Project management (list, cre
 app.add_typer(blockers_app, name="blockers", help="Blocker resolution (list, resolve, metrics)")
 app.add_typer(checkpoints_app, name="checkpoints", help="Checkpoint management (create, restore)")
 app.add_typer(discovery_app, name="discovery", help="Discovery workflow (start, progress, answer)")
+app.add_typer(env_app, name="env", help="Environment validation and tool management")
 
 # Register Phase 2 command groups
 app.add_typer(agents_app, name="agents", help="Agent management (list, assign, remove, status)")
