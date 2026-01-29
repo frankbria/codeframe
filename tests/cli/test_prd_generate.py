@@ -6,6 +6,7 @@ Uses mocked LLM responses to avoid actual API calls.
 
 import json
 import os
+import re
 import pytest
 from pathlib import Path
 from typer.testing import CliRunner
@@ -18,6 +19,12 @@ from codeframe.core.workspace import create_or_load_workspace
 pytestmark = pytest.mark.v2
 
 runner = CliRunner()
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    ansi_pattern = re.compile(r'\x1b\[[0-9;]*m')
+    return ansi_pattern.sub('', text)
 
 
 @pytest.fixture
@@ -101,11 +108,12 @@ class TestPrdGenerateCommand:
     def test_help_shows_usage(self):
         """Help should display command usage and options."""
         result = runner.invoke(app, ["prd", "generate", "--help"])
+        output = strip_ansi(result.output)
 
         assert result.exit_code == 0
-        assert "AI-driven Socratic discovery" in result.output
-        assert "--resume" in result.output
-        assert "ANTHROPIC_API_KEY" in result.output
+        assert "AI-driven Socratic discovery" in output
+        assert "--resume" in output
+        assert "ANTHROPIC_API_KEY" in output
 
     def test_no_api_key_shows_error(self, workspace_dir: Path, monkeypatch):
         """Running without API key should show helpful error."""
