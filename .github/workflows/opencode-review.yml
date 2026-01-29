@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   opencode-review:
+    if: false  # Disabled - leaks environment variables including GITHUB_TOKEN into PR comments
     runs-on: ubuntu-latest
     timeout-minutes: 10  # Prevent hanging - kill after 10 min
     permissions:
