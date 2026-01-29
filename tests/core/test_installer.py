@@ -254,6 +254,43 @@ class TestNpmInstaller:
         assert "-D" in cmd or "--save-dev" in cmd
         assert "eslint" in cmd
 
+    def test_install_tool_already_installed_global(self):
+        """Test that global install skips when tool is already installed."""
+        installer = NpmInstaller()
+        with patch("shutil.which", return_value="/usr/local/bin/eslint"):
+            result = installer.install_tool("eslint", confirm=False, force=False, global_install=True)
+
+        assert result.status == InstallStatus.SKIPPED
+        assert "already installed" in result.message.lower()
+
+    def test_install_tool_force_reinstall_global(self):
+        """Test that force=True reinstalls even if tool exists."""
+        installer = NpmInstaller()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "installed"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            with patch("shutil.which", return_value="/usr/local/bin/eslint"):
+                result = installer.install_tool("eslint", confirm=False, force=True, global_install=True)
+
+        assert result.status == InstallStatus.SUCCESS
+
+    def test_install_tool_local_skips_check(self):
+        """Test that local install doesn't check for existing binary."""
+        installer = NpmInstaller()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "installed"
+        mock_result.stderr = ""
+
+        # Even with tool "found", local install should proceed
+        with patch("subprocess.run", return_value=mock_result):
+            result = installer.install_tool("eslint", confirm=False, force=False, global_install=False)
+
+        assert result.status == InstallStatus.SUCCESS
+
 
 # =============================================================================
 # CargoInstaller Tests
@@ -291,6 +328,59 @@ class TestCargoInstaller:
         assert "cargo" in cmd
         assert "install" in cmd
         assert "ripgrep" in cmd
+
+    def test_get_binary_name_same(self):
+        """Test binary name mapping when same as package."""
+        installer = CargoInstaller()
+        assert installer._get_binary_name("bat") == "bat"
+        assert installer._get_binary_name("tokei") == "tokei"
+        assert installer._get_binary_name("rustfmt") == "rustfmt"
+
+    def test_get_binary_name_different(self):
+        """Test binary name mapping when different from package."""
+        installer = CargoInstaller()
+        assert installer._get_binary_name("ripgrep") == "rg"
+        assert installer._get_binary_name("fd-find") == "fd"
+        assert installer._get_binary_name("clippy") == "cargo-clippy"
+        assert installer._get_binary_name("cargo-edit") == "cargo-add"
+
+    def test_install_tool_already_installed(self):
+        """Test that install skips when tool is already installed."""
+        installer = CargoInstaller()
+        # ripgrep package -> rg binary
+        with patch("shutil.which", return_value="/home/user/.cargo/bin/rg"):
+            result = installer.install_tool("ripgrep", confirm=False, force=False)
+
+        assert result.status == InstallStatus.SKIPPED
+        assert "already installed" in result.message.lower()
+
+    def test_install_tool_force_reinstall(self):
+        """Test that force=True reinstalls even if tool exists."""
+        installer = CargoInstaller()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "installed"
+        mock_result.stderr = ""
+
+        with patch("subprocess.run", return_value=mock_result):
+            with patch("shutil.which", return_value="/home/user/.cargo/bin/rg"):
+                result = installer.install_tool("ripgrep", confirm=False, force=True)
+
+        assert result.status == InstallStatus.SUCCESS
+
+    def test_install_rust_src_no_binary_check(self):
+        """Test that rust-src installation doesn't check for binary (it has none)."""
+        installer = CargoInstaller()
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "installed"
+        mock_result.stderr = ""
+
+        # rust-src has no binary, so it should always attempt install
+        with patch("subprocess.run", return_value=mock_result):
+            result = installer.install_tool("rust-src", confirm=False, force=False)
+
+        assert result.status == InstallStatus.SUCCESS
 
 
 # =============================================================================

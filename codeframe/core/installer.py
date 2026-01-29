@@ -265,6 +265,14 @@ class NpmInstaller:
         Returns:
             InstallResult with status and details
         """
+        # Check if already installed (only for global installs)
+        if global_install and not force and shutil.which(tool_name):
+            return InstallResult(
+                tool_name=tool_name,
+                status=InstallStatus.SKIPPED,
+                message=f"{tool_name} is already installed",
+            )
+
         command = self.get_install_command(tool_name, global_install)
         cmd_parts = self._get_install_cmd_parts(tool_name, global_install)
 
@@ -323,9 +331,21 @@ class CargoInstaller:
         "cargo-watch",
     }
 
+    # Mapping from package name to binary name (when different)
+    BINARY_NAMES: dict[str, str] = {
+        "ripgrep": "rg",
+        "fd-find": "fd",
+        "clippy": "cargo-clippy",
+        "cargo-edit": "cargo-add",
+    }
+
     def can_install(self, tool_name: str) -> bool:
         """Check if this installer can install the tool."""
         return tool_name in self.RUSTUP_COMPONENTS or tool_name in self.CARGO_PACKAGES
+
+    def _get_binary_name(self, tool_name: str) -> str:
+        """Get the binary name for a tool (may differ from package name)."""
+        return self.BINARY_NAMES.get(tool_name, tool_name)
 
     def get_install_command(self, tool_name: str) -> str:
         """Get the install command for a tool (display string)."""
@@ -362,6 +382,17 @@ class CargoInstaller:
         Returns:
             InstallResult with status and details
         """
+        # Check if already installed (use binary name which may differ from package)
+        # Note: rust-src has no binary, skip check for it
+        if not force and tool_name != "rust-src":
+            binary_name = self._get_binary_name(tool_name)
+            if shutil.which(binary_name):
+                return InstallResult(
+                    tool_name=tool_name,
+                    status=InstallStatus.SKIPPED,
+                    message=f"{tool_name} is already installed",
+                )
+
         command = self.get_install_command(tool_name)
         cmd_parts = self._get_install_cmd_parts(tool_name)
 
