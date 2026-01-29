@@ -741,7 +741,10 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
         workspace: Workspace to query
 
     Returns:
-        PrdDiscoverySession if found, None otherwise
+        PrdDiscoverySession if found, None if no active session exists
+
+    Raises:
+        NoApiKeyError: If session exists but ANTHROPIC_API_KEY is not set
     """
     _ensure_discovery_schema(workspace)
 
@@ -766,7 +769,15 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
     # Need API key to load session
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        return None
+        logger.warning(
+            "Cannot load discovery session %s: ANTHROPIC_API_KEY environment "
+            "variable is not set. Set the API key to resume this session.",
+            row[0],
+        )
+        raise NoApiKeyError(
+            "ANTHROPIC_API_KEY is required to load discovery session. "
+            "Set the environment variable to resume."
+        )
 
     session = PrdDiscoverySession(workspace, api_key=api_key)
     session.load_session(row[0])
