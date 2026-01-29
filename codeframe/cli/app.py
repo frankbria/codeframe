@@ -1092,6 +1092,234 @@ def prd_update(
         raise typer.Exit(1)
 
 
+@prd_app.command("generate")
+def prd_generate(
+    repo_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace", "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    resume: Optional[str] = typer.Option(
+        None,
+        "--resume", "-r",
+        help="Resume from a paused session (blocker ID)",
+    ),
+) -> None:
+    """Generate a PRD through AI-driven Socratic discovery.
+
+    An AI product manager conducts an intelligent conversation to understand
+    your project requirements, then generates a structured PRD.
+
+    The AI:
+    - Asks context-sensitive follow-up questions
+    - Validates that answers are substantive
+    - Determines when enough information has been gathered
+    - Generates the final PRD from the conversation
+
+    Special commands during discovery:
+      /pause  - Save progress and exit (creates a blocker for resume)
+      /quit   - Exit without saving
+      /help   - Show available commands
+
+    Requires ANTHROPIC_API_KEY environment variable.
+
+    Example:
+        codeframe prd generate
+        codeframe prd generate --resume abc123
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import prd as prd_module
+    from codeframe.core.prd_discovery import (
+        PrdDiscoverySession,
+        NoApiKeyError,
+        ValidationError,
+        IncompleteSessionError,
+        get_active_session,
+    )
+    from codeframe.core.events import emit_for_workspace, EventType
+    from rich.panel import Panel
+    from rich.prompt import Prompt
+
+    workspace_path = repo_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(workspace_path)
+
+        # Check for existing PRD
+        existing_prd = prd_module.get_latest(workspace)
+        if existing_prd and not resume:
+            if not typer.confirm(
+                f"PRD already exists: '{existing_prd.title}'. Create a new one?"
+            ):
+                console.print("Cancelled.")
+                return
+
+        # Create or resume session
+        session: PrdDiscoverySession
+        if resume:
+            console.print("\n[cyan]Resuming discovery session...[/cyan]")
+            try:
+                session = PrdDiscoverySession(workspace)
+                session.resume_discovery(resume)
+            except (ValueError, NoApiKeyError) as e:
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1)
+            console.print(f"[green]✓[/green] Loaded {session.answered_count} previous answers")
+        else:
+            # Check for active session
+            try:
+                active = get_active_session(workspace)
+                if active and active.answered_count > 0:
+                    if typer.confirm(
+                        f"Found incomplete session with {active.answered_count} answers. Resume?"
+                    ):
+                        session = active
+                        console.print("[green]✓[/green] Resuming previous session")
+                    else:
+                        session = PrdDiscoverySession(workspace)
+                        session.start_discovery()
+                else:
+                    session = PrdDiscoverySession(workspace)
+                    session.start_discovery()
+            except NoApiKeyError as e:
+                console.print(f"[red]Error:[/red] {e}")
+                console.print("\n[dim]Set ANTHROPIC_API_KEY environment variable to use AI discovery.[/dim]")
+                raise typer.Exit(1)
+
+        console.print("\n[bold]Starting AI-driven PRD discovery...[/bold]")
+        console.print("[dim]The AI will ask questions to understand your project.[/dim]")
+        console.print("[dim]Type /help for available commands[/dim]\n")
+
+        # Discovery loop
+        while not session.is_complete():
+            question = session.get_current_question()
+            if question is None:
+                break
+
+            # Show progress (coverage-based)
+            progress = session.get_progress()
+            pct = progress.get("percentage", 0)
+            progress_bar = "█" * int(pct // 5)
+            progress_empty = "░" * (20 - len(progress_bar))
+
+            console.print(f"[dim]Question {question['question_number']} | Coverage: {pct}%[/dim]")
+            console.print(f"[dim]{progress_bar}{progress_empty}[/dim]\n")
+
+            # Show question
+            console.print(Panel(question["text"], title="Question", border_style="cyan"))
+
+            # Get answer
+            while True:
+                try:
+                    answer = Prompt.ask(
+                        "\nYour answer",
+                        default="",
+                    )
+                    answer = answer.strip()
+
+                    if not answer:
+                        console.print("[yellow]Please enter an answer[/yellow]")
+                        continue
+
+                    # Handle special commands
+                    if answer.lower() == "/help":
+                        console.print("\n[bold]Available commands:[/bold]")
+                        console.print("  /pause  - Save progress and exit")
+                        console.print("  /quit   - Exit without saving")
+                        console.print("  /help   - Show this help")
+                        console.print()
+                        continue
+
+                    if answer.lower() == "/quit":
+                        if typer.confirm("Exit without saving?"):
+                            console.print("Cancelled.")
+                            return
+                        continue
+
+                    if answer.lower() == "/pause":
+                        reason = Prompt.ask("Reason for pausing", default="Taking a break")
+                        blocker_id = session.pause_discovery(reason)
+                        console.print("\n[green]✓[/green] Session paused")
+                        console.print(f"[dim]Blocker ID: {blocker_id}[/dim]")
+                        console.print(f"\nTo resume: [cyan]codeframe prd generate --resume {blocker_id[:8]}[/cyan]")
+                        return
+
+                    # Submit answer - AI validates
+                    result = session.submit_answer(answer)
+
+                    if result["accepted"]:
+                        console.print("[green]✓[/green] Answer recorded\n")
+                        break
+                    else:
+                        # AI didn't accept the answer
+                        console.print(f"[yellow]{result['feedback']}[/yellow]")
+                        if result.get("follow_up"):
+                            # AI provided a follow-up question
+                            console.print("\n[cyan]Let me ask differently:[/cyan]")
+                            # Loop will show the new question
+                            break
+                        # Otherwise let user try again
+
+                except ValidationError as e:
+                    console.print(f"[yellow]{e}[/yellow]")
+                except KeyboardInterrupt:
+                    console.print("\n")
+                    if typer.confirm("Save progress before exiting?"):
+                        blocker_id = session.pause_discovery("Interrupted")
+                        console.print("\n[green]✓[/green] Session paused")
+                        console.print(f"To resume: [cyan]codeframe prd generate --resume {blocker_id[:8]}[/cyan]")
+                    return
+
+        # Generate PRD
+        console.print("\n[bold green]Discovery complete![/bold green]")
+        console.print("\nGenerating PRD from our conversation...")
+
+        try:
+            prd_record = session.generate_prd()
+        except IncompleteSessionError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(1)
+
+        # Emit event
+        emit_for_workspace(
+            workspace,
+            EventType.PRD_ADDED,
+            {
+                "prd_id": prd_record.id,
+                "title": prd_record.title,
+                "source": "ai_discovery",
+            },
+            print_event=False,
+        )
+
+        # Show result
+        console.print(f"\n[green]✓[/green] PRD generated: [bold]{prd_record.title}[/bold]")
+        console.print(f"[dim]ID: {prd_record.id}[/dim]")
+
+        # Show preview
+        console.print("\n[bold]Preview:[/bold]")
+        preview = prd_record.content[:1000]
+        if len(prd_record.content) > 1000:
+            preview += "\n\n[dim]... (use 'codeframe prd show --full' to see complete PRD)[/dim]"
+        console.print(Panel(preview, border_style="green"))
+
+        console.print("\n[bold]Next steps:[/bold]")
+        console.print("  codeframe prd show --full    # View complete PRD")
+        console.print("  codeframe tasks generate     # Generate tasks from PRD")
+
+    except FileNotFoundError:
+        console.print("[red]Error:[/red] No workspace found. Run 'codeframe init' first.")
+        raise typer.Exit(1)
+    except NoApiKeyError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 # Tasks commands
 tasks_app = typer.Typer(
     name="tasks",
