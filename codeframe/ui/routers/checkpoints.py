@@ -623,6 +623,16 @@ async def get_checkpoint_diff(
             detail=f"Checkpoint {checkpoint_id} does not belong to project {project_id}",
         )
 
+    # Verify workspace directory exists on filesystem before git operations
+    workspace_dir = Path(workspace_path)
+    if not workspace_dir.exists():
+        logger.warning(f"Workspace directory not found: {workspace_path}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workspace directory not found for project {project_id}. "
+            "The workspace may have been deleted or moved.",
+        )
+
     # SECURITY: Validate git commit SHA format to prevent command injection
     git_sha_pattern = re.compile(r"^[a-f0-9]{7,40}$")
     if not git_sha_pattern.match(checkpoint.git_commit):
@@ -637,7 +647,7 @@ async def get_checkpoint_diff(
         try:
             subprocess.run(
                 ["git", "cat-file", "-e", checkpoint.git_commit],
-                cwd=Path(workspace_path),
+                cwd=workspace_dir,
                 check=True,
                 capture_output=True,
                 timeout=5,
@@ -655,7 +665,7 @@ async def get_checkpoint_diff(
         # Create checkpoint manager
         checkpoint_mgr = CheckpointManager(
             db=db,
-            project_root=Path(workspace_path),
+            project_root=workspace_dir,
             project_id=project_id,
         )
 
@@ -672,7 +682,7 @@ async def get_checkpoint_diff(
         try:
             stats_result = subprocess.run(
                 ["git", "diff", "--numstat", checkpoint.git_commit, "HEAD"],
-                cwd=Path(workspace_path),
+                cwd=workspace_dir,
                 check=True,
                 capture_output=True,
                 text=True,
@@ -704,7 +714,7 @@ async def get_checkpoint_diff(
             # Get current HEAD commit for ETag computation
             head_commit_result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
-                cwd=Path(workspace_path),
+                cwd=workspace_dir,
                 check=True,
                 capture_output=True,
                 text=True,

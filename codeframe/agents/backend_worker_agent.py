@@ -237,11 +237,18 @@ Guidelines:
         # Extract keywords from task title and description for symbol search
         search_terms = f"{task.get('title', '')} {task.get('description', '')}"
 
-        # Query codebase index for related symbols
-        related_symbols = self.codebase_index.search_pattern(search_terms)
-
-        # Extract unique file paths from symbols
-        related_files = list(set(symbol.file_path for symbol in related_symbols))
+        # Query codebase index for related symbols (with null check)
+        if self.codebase_index is None:
+            logger.warning(
+                f"Task {task.get('id', 'unknown')} has no codebase_index, "
+                "skipping symbol search"
+            )
+            related_symbols = []
+            related_files = []
+        else:
+            related_symbols = self.codebase_index.search_pattern(search_terms)
+            # Extract unique file paths from symbols
+            related_files = list(set(symbol.file_path for symbol in related_symbols))
 
         # Get parent issue context if available
         issue_context = None
