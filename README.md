@@ -1,6 +1,6 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Phase%203%20In%20Progress-yellow)
+![Status](https://img.shields.io/badge/status-v2%20Phase%201%20In%20Progress-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-3043%20passing-brightgreen)
@@ -23,9 +23,135 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ---
 
-## What's New (Updated: 2026-01-16)
+## What's New (Updated: 2026-01-29)
 
-### Tech Stack Configuration (Simplified)
+### V2 Strategic Roadmap Published
+
+We've completed the v2 strategic planning and published a comprehensive 5-phase roadmap:
+
+- **Phase 1** (Current): CLI Foundation - `cf prd generate`, live streaming, integration tests
+- **Phase 2**: Server Layer as thin adapter over core
+- **Phase 3**: Web UI rebuild on v2 foundation
+- **Phase 4**: Multi-Agent Coordination (the "FRAME" vision)
+- **Phase 5**: Advanced Features (TUI, metrics, replay)
+
+See [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md) for full details.
+
+### Environment Validation & Tool Detection
+
+**New `cf env` commands** — Validate your development environment and auto-install missing tools.
+
+```bash
+# Quick environment health check
+cf env check
+
+# Comprehensive diagnostics
+cf env doctor
+
+# Install a specific missing tool
+cf env install-missing pytest
+
+# Auto-install all missing required tools
+cf env auto-install --yes
+```
+
+**Supported tool ecosystems:**
+- Python: pytest, ruff, mypy, black, flake8, coverage, pre-commit
+- JavaScript/TypeScript: eslint, prettier, jest, typescript, vite, vitest
+- Rust: clippy, rustfmt, rust-analyzer, cargo-edit
+- System: git, docker, make, curl, gh
+
+### GitHub PR Workflow Commands
+
+**New `cf pr` commands** — Manage pull requests directly from the CLI.
+
+```bash
+# Create a PR from current branch
+cf pr create --title "Add feature X" --body "Description..."
+
+# List open PRs
+cf pr list
+
+# View PR details
+cf pr view 123
+
+# Merge a PR
+cf pr merge 123 --method squash
+
+# Close a PR
+cf pr close 123
+```
+
+### Task Self-Diagnosis
+
+**New `cf work diagnose` command** — Automatically analyze failed tasks and get actionable recommendations.
+
+```bash
+# Diagnose why a task failed
+cf work diagnose <task-id>
+
+# Verbose output with detailed logs
+cf work diagnose <task-id> --verbose
+```
+
+The diagnostic agent analyzes run logs, identifies root causes, and provides specific fix recommendations.
+
+### Bug Fixes
+
+- **Fixed #265**: NoneType error when `codebase_index` is None during task execution
+- **Fixed #253**: Checkpoint diff API now returns 404 instead of 500 when workspace directory is missing
+
+---
+
+### Previous: Enhanced Task Generation (2026-01-25)
+
+<details>
+<summary>Task Scheduling & Templates</summary>
+
+**Task Scheduling with Critical Path Analysis:**
+
+```bash
+# Show task schedule with dependencies
+cf schedule show
+
+# Predict completion dates
+cf schedule predict
+
+# Identify bottleneck tasks
+cf schedule bottlenecks
+```
+
+**Task Templates for Common Patterns:**
+
+```bash
+# List available templates
+cf templates list
+
+# Show template details
+cf templates show api-endpoint
+
+# Apply template to generate tasks
+cf templates apply api-endpoint --name "User API"
+```
+
+**7 Built-in Templates:**
+- `api-endpoint` - REST API endpoint with tests
+- `react-component` - React component with tests
+- `database-migration` - Schema migration with rollback
+- `cli-command` - CLI command with help and tests
+- `integration-test` - Integration test suite
+- `bug-fix` - Bug investigation and fix workflow
+- `feature-flag` - Feature flag implementation
+
+**Effort Estimation:**
+- Tasks now support `estimated_hours` field
+- CPM-based scheduling calculates critical path
+- Bottleneck detection identifies blocking tasks
+
+</details>
+
+<details>
+<summary>Tech Stack Configuration (2026-01-16)</summary>
 
 **Describe your tech stack** — Tell CodeFRAME what technologies your project uses during initialization.
 
@@ -42,20 +168,12 @@ cf init . --tech-stack "Rust project using cargo"
 cf init . --tech-stack-interactive
 ```
 
-**Example output:**
-```
-Workspace initialized
-  Path: /home/user/projects/my-project
-  ID: abc123...
-  State: .codeframe/
-  Tech Stack: Python with uv, pytest, ruff for linting
-```
-
 **Why this matters:** The agent uses your tech stack description to determine appropriate commands and patterns. Works with any stack — Python, TypeScript, Rust, Go, monorepos, or mixed environments.
 
----
+</details>
 
-### Agent Self-Correction & Observability
+<details>
+<summary>Agent Self-Correction & Observability (2026-01-16)</summary>
 
 **Verification self-correction loop** — Agent now automatically attempts to fix failing verification gates.
 
@@ -70,23 +188,16 @@ cf work start <task-id> --execute --verbose
 [SELFCORRECT] Applied 2/2 fixes, re-verifying...
 ```
 
-**New Capabilities:**
+**Capabilities:**
 - **Self-Correction Loop** — Agent analyzes gate errors and generates fix plans using LLM
 - **Verbose Mode** — `--verbose` / `-v` flag shows detailed verification and self-correction progress
 - **FAILED Task Status** — Tasks can now transition to FAILED state for proper error visibility
 - **Project Preferences** — Agent loads AGENTS.md or CLAUDE.md for per-project configuration
 
-**Bug Fixes:**
-- Fixed `fail_run()` not updating task status (tasks stuck in IN_PROGRESS)
-- Fixed task state transitions for proper failure recovery
-- Added diagnostic output for debugging agent behavior
-
----
-
-### Previous: v2 Phase 2 - Parallel Batch Execution
+</details>
 
 <details>
-<summary>Batch Execution (2026-01-15)</summary>
+<summary>Parallel Batch Execution (2026-01-15)</summary>
 
 **Multi-task batch execution** — Run multiple tasks with intelligent parallelization.
 
@@ -108,82 +219,6 @@ cf work batch run --all-ready --retry 3
 - **Automatic Retry** — `--retry N` retries failed tasks up to N times
 - **Batch Resume** — `cf work batch resume <batch-id>` re-runs failed/blocked tasks
 
-**Modules:**
-- `codeframe/core/conductor.py` — Batch orchestration with worker pool
-- `codeframe/core/dependency_graph.py` — DAG operations and execution planning
-- `codeframe/core/dependency_analyzer.py` — LLM-based dependency inference
-
-</details>
-
----
-
-### Previous: v2 Agent Implementation
-
-<details>
-<summary>Agent System (2026-01-14)</summary>
-
-**Autonomous Agent Execution** — The full agent loop is now functional via the CLI.
-
-```bash
-# Execute a task with the AI agent
-cf work start <task-id> --execute
-
-# Preview changes without applying (dry run)
-cf work start <task-id> --execute --dry-run
-```
-
-**Components:**
-- **LLM Adapter Interface** — Pluggable provider system with Anthropic Claude support
-- **Task Context Loader** — Intelligent codebase scanning with relevance scoring
-- **Implementation Planner** — LLM-powered task decomposition into executable steps
-- **Code Execution Engine** — File operations, shell commands, and rollback capability
-- **Agent Orchestrator** — Full execution loop with blocker detection and verification gates
-
-**Key Features:**
-- Task-based model selection (Sonnet for planning/execution, Haiku for generation)
-- Automatic blocker creation when agent needs human input
-- Incremental verification with ruff after each file change
-- State persistence for pause/resume across sessions
-
-</details>
-
----
-
-### Previous Updates
-
-<details>
-<summary>Late-Joining User Bug Fixes (2026-01-09)</summary>
-
-**Phase-Aware Data Source Selection** - Components now correctly display data for users who navigate to a project after events have occurred.
-
-- **TaskStats Phase-Awareness** - Fixed bug where TaskStats showed 0 tasks during planning phase
-- **State Reconciliation Tests** - Comprehensive E2E tests validate UI state for late-joining users
-- **Duplicate Button Prevention** - Fixed duplicate "Generate Tasks" button appearing for late-joining users
-
-</details>
-
-<details>
-<summary>Authentication System (Sprint 11)</summary>
-
-**FastAPI Users Migration** - Complete auth system redesign for production security.
-
-- **Migration**: BetterAuth → FastAPI Users with JWT tokens
-- **Mandatory Auth**: Authentication is now required (no bypass mode)
-- **WebSocket Auth**: Connections require `?token=TOKEN` query parameter
-- **Session Management**: Secure session tokens with SQLite-backed storage
-
-</details>
-
-<details>
-<summary>Sprint 10: MVP Complete</summary>
-
-**Production-Ready Quality System** - Comprehensive quality gates, checkpoint recovery, and cost tracking.
-
-- **Quality Gates System** - Multi-stage gates: Tests → Type Check → Coverage → Code Review
-- **Checkpoint & Recovery** - Hybrid snapshot: Git commit + SQLite backup + context JSON
-- **Metrics & Cost Tracking** - Per-call tracking for every LLM API interaction
-- **End-to-End Testing** - 85+ E2E tests with full workflow validation
-
 </details>
 
 ---
@@ -198,16 +233,19 @@ cf work start <task-id> --execute --dry-run
 - **Verbose Mode** — `--verbose` flag shows detailed progress and self-correction activity
 - **Dry Run Mode** — Preview changes without applying them
 - **State Persistence** — Resume work across sessions
+- **Task Diagnosis** — Automatic root cause analysis for failed tasks
 
 ### Multi-Agent Orchestration
 - **Multi-Agent Orchestra** — Lead agent coordinates backend, frontend, test, and review specialists
 - **Async/Await Architecture** — Non-blocking agent execution with true concurrency
 - **Self-Correction Loops** — Agents automatically fix failing tests (up to 3 attempts)
 - **WebSocket Agent Broadcasting** — Real-time agent status updates to all connected clients
+- **Tactical Pattern Handling** — Automatic resolution of common file conflicts
 
 ### Quality & Review
 - **AI Quality Enforcement** — Dual-layer quality system preventing test skipping and enforcing 85%+ coverage
 - **Quality Gates** — Pre-completion checks block bad code (tests, types, coverage, review)
+- **BUILD Gate** — Validates configuration errors before execution
 - **Automated Code Review** — Security scanning, OWASP pattern detection, and complexity analysis
 - **Lint Enforcement** — Multi-language linting with trend tracking and automatic fixes
 
@@ -219,10 +257,11 @@ cf work start <task-id> --execute --dry-run
 
 ### Developer Experience
 - **Real-time Dashboard** — WebSocket-powered UI with agent status, blockers, and progress tracking
-- **Proactive WebSocket Messaging** — Backend pushes updates without client polling
-- **Multi-Channel Notifications** — Desktop notifications, webhooks, and custom routing for agent events
-- **Auto-Commit Workflows** — Git integration with automatic commits after successful test passes
-- **Cost Tracking** — Real-time token usage and cost analytics per agent/task with timeseries API
+- **Environment Validation** — `cf env check` validates tools and dependencies
+- **PR Workflow** — `cf pr create/list/merge` for GitHub integration
+- **Task Scheduling** — CPM-based critical path analysis
+- **Task Templates** — 7 built-in templates for common development patterns
+- **Cost Tracking** — Real-time token usage and cost analytics per agent/task
 
 ---
 
@@ -283,6 +322,9 @@ uv sync
 
 # Set up environment
 export ANTHROPIC_API_KEY="your-api-key-here"
+
+# Validate environment (optional but recommended)
+cf env check
 ```
 
 ### CLI-First Workflow (v2 — Recommended)
@@ -312,7 +354,10 @@ cf blocker answer <blocker-id> "Your answer here"
 # 7. Resume work after answering blockers
 cf work resume <task-id>
 
-# 8. Review changes and create checkpoint
+# 8. If a task fails, diagnose the issue
+cf work diagnose <task-id>
+
+# 9. Review changes and create checkpoint
 cf review
 cf checkpoint create "Feature complete"
 ```
@@ -346,10 +391,21 @@ cf init <path> --tech-stack-interactive  # Initialize + interactive setup
 cf status                                # Show workspace status
 ```
 
+### Environment Validation
+```bash
+cf env check                    # Quick environment health check
+cf env doctor                   # Comprehensive diagnostics
+cf env install-missing <tool>   # Install specific missing tool
+cf env auto-install --yes       # Install all missing tools
+```
+
 ### PRD (Product Requirements)
 ```bash
 cf prd add <file.md>        # Add/update PRD
 cf prd show                 # Display current PRD
+cf prd list                 # List all PRDs
+cf prd versions <id>        # Show version history
+cf prd diff <id> <v1> <v2>  # Compare versions
 ```
 
 ### Task Management
@@ -360,6 +416,20 @@ cf tasks list --status READY  # Filter by status
 cf tasks show <id>          # Show task details
 ```
 
+### Task Scheduling
+```bash
+cf schedule show            # Show task schedule with dependencies
+cf schedule predict         # Predict completion dates
+cf schedule bottlenecks     # Identify blocking tasks
+```
+
+### Task Templates
+```bash
+cf templates list           # List available templates
+cf templates show <name>    # Show template details
+cf templates apply <name>   # Generate tasks from template
+```
+
 ### Work Execution
 ```bash
 cf work start <id>          # Start work (creates run record)
@@ -368,6 +438,7 @@ cf work start <id> --execute --verbose  # Execute with detailed output
 cf work start <id> --execute --dry-run  # Preview changes only
 cf work stop <id>           # Stop current run
 cf work resume <id>         # Resume blocked work
+cf work diagnose <id>       # Diagnose failed task
 ```
 
 ### Batch Execution
@@ -387,6 +458,15 @@ cf work batch resume <batch_id>       # Re-run failed tasks
 cf blocker list             # List open blockers
 cf blocker show <id>        # Show blocker details
 cf blocker answer <id> "answer"  # Answer a blocker
+```
+
+### Pull Requests
+```bash
+cf pr create --title "..." --body "..."  # Create PR
+cf pr list                               # List open PRs
+cf pr view <number>                      # View PR details
+cf pr merge <number> --method squash     # Merge PR
+cf pr close <number>                     # Close PR
 ```
 
 ### Quality & Review
@@ -461,6 +541,10 @@ POST   /api/blockers/{id}/answer              # Answer blocker
 GET    /api/projects/{id}/tasks               # List tasks
 GET    /api/tasks/{id}                        # Get task details
 POST   /api/tasks/approve                     # Approve tasks for development
+
+GET    /api/schedule/{project_id}             # Get task schedule
+GET    /api/templates                         # List task templates
+POST   /api/templates/{name}/apply            # Apply template
 ```
 
 ### WebSocket
@@ -485,15 +569,19 @@ uv run pytest
 uv run pytest tests/core/           # Core module tests
 uv run pytest tests/agents/         # Agent tests
 uv run pytest tests/api/            # API endpoint tests
+uv run pytest tests/cli/            # CLI command tests
 
 # Run with coverage
 uv run pytest --cov=codeframe --cov-report=html
+
+# Run v2 tests only
+uv run pytest -m v2
 ```
 
 ### Test Statistics
 
 - **Total Tests**: 3000+
-  - Core module tests: ~400
+  - Core module tests: ~815
   - Unit tests: ~900 (Python + TypeScript)
   - Integration tests: ~500
   - E2E tests: 85+ (Backend + Playwright)
@@ -506,6 +594,7 @@ uv run pytest --cov=codeframe --cov-report=html
 
 For detailed documentation, see:
 
+- **Strategic Roadmap**: [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md) - 5-phase development plan
 - **Quick Start (v2)**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Get started in 5 minutes
 - **Golden Path (v2)**: [docs/GOLDEN_PATH.md](docs/GOLDEN_PATH.md) - CLI-first workflow contract
 - **Agent Implementation**: [docs/AGENT_IMPLEMENTATION_TASKS.md](docs/AGENT_IMPLEMENTATION_TASKS.md) - Agent system details
@@ -551,27 +640,32 @@ We welcome contributions! To get started:
 ## Roadmap
 
 ### Completed
-- ✅ **Phase 0**: CLI-first Golden Path workflow
-- ✅ **Phase 1**: Batch execution (serial), status monitoring, cancellation
-- ✅ **Phase 2**: Parallel execution, dependency graphs, LLM inference, auto-retry
-- ✅ Autonomous agent execution with blocker detection
-- ✅ Verification gates integration
-- ✅ Task-based model selection
-- ✅ Self-correction loop for verification failures
-- ✅ Verbose mode for observability
+- Phase 0: CLI-first Golden Path workflow
+- Phase 1 (Batch): Batch execution (serial), status monitoring, cancellation
+- Phase 2 (Batch): Parallel execution, dependency graphs, LLM inference, auto-retry
+- Autonomous agent execution with blocker detection
+- Verification gates integration
+- Task-based model selection
+- Self-correction loop for verification failures
+- Verbose mode for observability
+- Task scheduling with CPM analysis
+- Task templates (7 built-in)
+- Environment validation and tool detection
+- GitHub PR workflow commands
+- Task self-diagnosis system
 
-### In Progress (Phase 3: Reliability & Polish)
-- **Environment detection**: Automatic `uv` vs `pip` detection
-- **Live streaming**: `cf work batch follow` for real-time terminal output
-- **WebSocket adapter**: Batch events for dashboard integration
-- **Progress estimation**: ETA and completion forecasting
+### In Progress (Phase 1: CLI Foundation)
+- **`cf prd generate`**: Interactive AI-driven PRD creation (Socratic discovery)
+- **`cf work follow`**: Live streaming of task execution
+- **Integration tests**: Credential and environment module coverage
 
-### Planned Features
-- **Per-task model override**: `cf tasks set provider <id> <provider>`
-- **LLM Provider Abstraction**: Support for OpenAI, Gemini, local models
-- **Advanced Git Workflows**: PR creation, branch management, merge conflict resolution
-- **Custom Agent Types**: Plugin system for domain-specific agents
-- **Team Collaboration**: Multi-user support with role-based access control
+### Planned (Phases 2-5)
+- **Phase 2**: Server layer as thin adapter, OpenAPI docs, rate limiting
+- **Phase 3**: Web UI rebuild on v2 foundation
+- **Phase 4**: Multi-agent coordination, agent roles, conflict resolution
+- **Phase 5**: TUI dashboard, token/cost tracking, debug/replay mode
+
+See [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md) for the complete roadmap.
 
 ---
 
