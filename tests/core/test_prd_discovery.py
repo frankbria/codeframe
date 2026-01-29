@@ -1,6 +1,7 @@
-"""Tests for PRD discovery session management.
+"""Tests for AI-native PRD discovery session management.
 
 Tests the headless discovery session that powers `cf prd generate`.
+All tests use mocked LLM responses to avoid actual API calls.
 """
 
 import json
@@ -20,190 +21,396 @@ def workspace(tmp_path: Path) -> Workspace:
     return create_or_load_workspace(tmp_path)
 
 
+@pytest.fixture
+def mock_llm_provider():
+    """Create a mock LLM provider that returns predictable responses."""
+    mock = MagicMock()
+
+    # Default responses for different prompt patterns
+    def complete_side_effect(messages, purpose=None, system=None, max_tokens=None, temperature=None):
+        content = messages[0]["content"] if messages else ""
+        response = MagicMock()
+
+        # Opening question
+        if "opening question" in content.lower():
+            response.content = "What problem are you trying to solve with this project?"
+        # Coverage assessment
+        elif "assess the current coverage" in content.lower():
+            response.content = json.dumps({
+                "scores": {
+                    "problem": 70,
+                    "users": 60,
+                    "features": 50,
+                    "constraints": 40,
+                    "tech_stack": 30
+                },
+                "average": 50,
+                "weakest_category": "tech_stack",
+                "ready_for_prd": False,
+                "reasoning": "Need more details on tech stack"
+            })
+        # Answer validation
+        elif "evaluate whether this answer" in content.lower():
+            response.content = json.dumps({
+                "adequate": True,
+                "reason": "Answer provides useful information"
+            })
+        # Next question generation
+        elif "generate the next discovery question" in content.lower():
+            response.content = "What technologies are you planning to use?"
+        # PRD generation
+        elif "generate a product requirements document" in content.lower():
+            response.content = """# Test Project
+
+## Overview
+A test project for unit testing.
+
+## Target Users
+Developers and testers.
+
+## Core Features
+1. Feature one
+2. Feature two
+
+## Technical Requirements
+Python, pytest
+
+## Constraints & Considerations
+Must be testable.
+
+## Success Criteria
+All tests pass.
+
+## Out of Scope (MVP)
+Advanced features."""
+        else:
+            response.content = "Default response"
+
+        response.input_tokens = 100
+        response.output_tokens = 50
+        return response
+
+    mock.complete.side_effect = complete_side_effect
+    return mock
+
+
 class TestDiscoverySession:
     """Tests for PrdDiscoverySession class."""
 
-    def test_start_discovery_creates_session(self, workspace: Workspace):
-        """Starting discovery should create a new session."""
+    def test_requires_api_key(self, workspace: Workspace):
+        """Session should require API key."""
+        from codeframe.core.prd_discovery import PrdDiscoverySession, NoApiKeyError
+
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}, clear=True):
+            with pytest.raises(NoApiKeyError):
+                PrdDiscoverySession(workspace, api_key=None)
+
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_start_discovery_creates_session(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
+        """Starting discovery should create a new session and generate first question."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
 
         assert session.session_id is not None
-        assert session.state == "discovering"
+        assert session.state.value == "discovering"
         assert session.answered_count == 0
 
-    def test_get_current_question_returns_first_required(self, workspace: Workspace):
-        """First question should be a required question from first category."""
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_get_current_question_returns_ai_question(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
+        """Current question should be AI-generated."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
 
         question = session.get_current_question()
 
         assert question is not None
-        assert question["importance"] == "required"
-        assert question["category"] == "problem"  # First category
+        assert "text" in question
+        assert "question_number" in question
+        assert question["question_number"] == 1
 
-    def test_submit_answer_advances_to_next_question(self, workspace: Workspace):
-        """Submitting valid answer should advance to next question."""
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_submit_answer_validates_with_ai(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
+        """Answer submission should use AI for validation."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
 
-        q1 = session.get_current_question()
-        session.submit_answer("This solves the problem of task management")
+        result = session.submit_answer("This solves the problem of task management for teams")
 
-        q2 = session.get_current_question()
-
-        assert q2 is not None
-        assert q2["id"] != q1["id"]
+        assert result["accepted"] is True
         assert session.answered_count == 1
 
-    def test_submit_answer_validates_minimum_length(self, workspace: Workspace):
-        """Answers shorter than minimum should be rejected."""
-        from codeframe.core.prd_discovery import PrdDiscoverySession, ValidationError
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_submit_answer_rejects_inadequate_with_feedback(
+        self, mock_provider_class, workspace: Workspace
+    ):
+        """AI should reject inadequate answers with feedback."""
+        mock = MagicMock()
 
-        session = PrdDiscoverySession(workspace)
-        session.start_discovery()
+        def complete_side_effect(messages, **kwargs):
+            content = messages[0]["content"] if messages else ""
+            response = MagicMock()
 
-        with pytest.raises(ValidationError, match="too short"):
-            session.submit_answer("hi")
+            if "opening question" in content.lower():
+                response.content = "What problem are you solving?"
+            elif "evaluate whether this answer" in content.lower():
+                response.content = json.dumps({
+                    "adequate": False,
+                    "reason": "Answer is too vague",
+                    "follow_up": "Can you be more specific about the problem?"
+                })
+            else:
+                response.content = "Default"
+            return response
 
-    def test_submit_answer_rejects_invalid_patterns(self, workspace: Workspace):
-        """Answers like 'n/a' or 'none' should be rejected."""
-        from codeframe.core.prd_discovery import PrdDiscoverySession, ValidationError
+        mock.complete.side_effect = complete_side_effect
+        mock_provider_class.return_value = mock
 
-        session = PrdDiscoverySession(workspace)
-        session.start_discovery()
-
-        # Invalid patterns are checked before length
-        with pytest.raises(ValidationError, match="substantive"):
-            session.submit_answer("none")
-
-    def test_is_complete_when_all_required_answered(self, workspace: Workspace):
-        """Session should be complete when all required questions answered."""
         from codeframe.core.prd_discovery import PrdDiscoverySession
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
 
-        # Answer all required questions
-        required_answers = [
-            "This app solves the task management problem for remote teams",
-            "The primary users are software developers and project managers",
-            "Core features include task tracking, time estimates, and reporting",
-            "Technical constraints include mobile-first and offline support",
-            "We prefer Python backend with React frontend",
+        result = session.submit_answer("stuff")
+
+        assert result["accepted"] is False
+        assert "vague" in result["feedback"].lower()
+        assert "follow_up" in result
+
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_submit_answer_empty_raises_error(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
+        """Empty answers should raise ValidationError."""
+        mock_provider_class.return_value = mock_llm_provider
+
+        from codeframe.core.prd_discovery import PrdDiscoverySession, ValidationError
+
+        session = PrdDiscoverySession(workspace, api_key="test-key")
+        session.start_discovery()
+
+        with pytest.raises(ValidationError):
+            session.submit_answer("")
+
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_is_complete_based_on_ai_assessment(
+        self, mock_provider_class, workspace: Workspace
+    ):
+        """Completion should be determined by AI coverage assessment."""
+        mock = MagicMock()
+        call_count = [0]
+
+        def complete_side_effect(messages, **kwargs):
+            content = messages[0]["content"] if messages else ""
+            response = MagicMock()
+
+            if "opening question" in content.lower():
+                response.content = "What problem are you solving?"
+            elif "assess the current coverage" in content.lower():
+                call_count[0] += 1
+                # After 3 answers, mark ready
+                if call_count[0] >= 3:
+                    response.content = json.dumps({
+                        "scores": {"problem": 80, "users": 75, "features": 70, "constraints": 65, "tech_stack": 60},
+                        "average": 70,
+                        "weakest_category": "tech_stack",
+                        "ready_for_prd": True,
+                        "reasoning": "Sufficient information gathered"
+                    })
+                else:
+                    response.content = json.dumps({
+                        "scores": {"problem": 50, "users": 40, "features": 30, "constraints": 20, "tech_stack": 10},
+                        "average": 30,
+                        "weakest_category": "tech_stack",
+                        "ready_for_prd": False,
+                        "reasoning": "Need more information"
+                    })
+            elif "evaluate whether this answer" in content.lower():
+                response.content = json.dumps({"adequate": True, "reason": "Good"})
+            elif "generate the next discovery question" in content.lower():
+                if call_count[0] >= 3:
+                    response.content = "DISCOVERY_COMPLETE"
+                else:
+                    response.content = "Tell me more about X?"
+            else:
+                response.content = "Default"
+            return response
+
+        mock.complete.side_effect = complete_side_effect
+        mock_provider_class.return_value = mock
+
+        from codeframe.core.prd_discovery import PrdDiscoverySession
+
+        session = PrdDiscoverySession(workspace, api_key="test-key")
+        session.start_discovery()
+
+        # Submit answers until complete
+        answers = [
+            "This app solves task management for teams",
+            "Primary users are project managers",
+            "Core features include boards and cards",
         ]
 
-        for answer in required_answers:
+        for answer in answers:
             if not session.is_complete():
                 session.submit_answer(answer)
 
         assert session.is_complete()
 
-    def test_get_progress_returns_accurate_stats(self, workspace: Workspace):
-        """Progress should accurately reflect answered/total questions."""
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_get_progress_returns_coverage(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
+        """Progress should include coverage scores."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
+        session.submit_answer("A valid answer about the project")
 
         progress = session.get_progress()
 
-        assert progress["answered"] == 0
-        assert progress["required_total"] == 5  # 5 required questions
-        assert progress["percentage"] == 0
+        assert "answered" in progress
+        assert "coverage" in progress
+        assert "percentage" in progress
 
-        session.submit_answer("A valid answer to the first question")
-
-        progress = session.get_progress()
-        assert progress["answered"] == 1
-        assert progress["percentage"] == 20  # 1/5 = 20%
-
-    def test_pause_discovery_creates_blocker(self, workspace: Workspace):
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_pause_discovery_creates_blocker(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
         """Pausing should create a blocker for resume."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
         from codeframe.core import blockers
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
-        session.submit_answer("A valid answer to the first question")
+        session.submit_answer("A valid answer")
 
-        blocker_id = session.pause_discovery("Need to check with stakeholder")
+        blocker_id = session.pause_discovery("Need to check with team")
 
         assert blocker_id is not None
-        assert session.state == "paused"
+        assert session.state.value == "paused"
 
         # Verify blocker was created
         blocker = blockers.get(workspace, blocker_id)
         assert blocker is not None
         assert "discovery" in blocker.question.lower()
 
-    def test_resume_discovery_from_blocker(self, workspace: Workspace):
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_resume_discovery_from_blocker(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
         """Resuming should restore previous session state."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
         from codeframe.core import blockers
 
         # Start and pause
-        session1 = PrdDiscoverySession(workspace)
+        session1 = PrdDiscoverySession(workspace, api_key="test-key")
         session1.start_discovery()
-        session1.submit_answer("A valid answer to the first question")
-        blocker_id = session1.pause_discovery("Need to check with stakeholder")
+        session1.submit_answer("A valid answer")
+        blocker_id = session1.pause_discovery("Need to check")
 
         # Answer the blocker
-        blockers.answer(workspace, blocker_id, "Checked with stakeholder, proceed")
+        blockers.answer(workspace, blocker_id, "Checked, proceed")
 
         # Resume
-        session2 = PrdDiscoverySession(workspace)
+        session2 = PrdDiscoverySession(workspace, api_key="test-key")
         session2.resume_discovery(blocker_id)
 
-        assert session2.state == "discovering"
-        assert session2.answered_count == 1
-
-    def test_answers_persist_across_sessions(self, workspace: Workspace):
-        """Answers should be saved and loadable in new session."""
-        from codeframe.core.prd_discovery import PrdDiscoverySession
-
-        session1 = PrdDiscoverySession(workspace)
-        session1.start_discovery()
-        session_id = session1.session_id
-        session1.submit_answer("A valid answer to the first question")
-
-        # Create new session and load
-        session2 = PrdDiscoverySession(workspace)
-        session2.load_session(session_id)
-
+        assert session2.state.value == "discovering"
         assert session2.answered_count == 1
 
 
 class TestPrdGeneration:
-    """Tests for PRD generation from discovery answers."""
+    """Tests for PRD generation from discovery."""
 
-    def test_generate_prd_from_complete_session(self, workspace: Workspace):
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_generate_prd_from_complete_session(
+        self, mock_provider_class, workspace: Workspace
+    ):
         """Complete session should generate valid PRD."""
+        mock = MagicMock()
+        call_count = [0]
+
+        def complete_side_effect(messages, **kwargs):
+            content = messages[0]["content"] if messages else ""
+            response = MagicMock()
+
+            if "opening question" in content.lower():
+                response.content = "What problem are you solving?"
+            elif "assess the current coverage" in content.lower():
+                call_count[0] += 1
+                response.content = json.dumps({
+                    "scores": {"problem": 80, "users": 75, "features": 70, "constraints": 65, "tech_stack": 60},
+                    "average": 70,
+                    "ready_for_prd": True,
+                    "weakest_category": "tech_stack",
+                    "reasoning": "Ready"
+                })
+            elif "evaluate whether this answer" in content.lower():
+                response.content = json.dumps({"adequate": True, "reason": "Good"})
+            elif "generate the next discovery question" in content.lower():
+                response.content = "DISCOVERY_COMPLETE"
+            elif "generate a product requirements document" in content.lower():
+                response.content = """# Task Management App
+
+## Overview
+A task management app for development teams.
+
+## Target Users
+Developers and project managers.
+
+## Core Features
+1. Task boards
+2. Time tracking
+
+## Technical Requirements
+Python FastAPI, React
+
+## Constraints & Considerations
+Must be self-hosted.
+
+## Success Criteria
+Users can manage tasks effectively.
+
+## Out of Scope (MVP)
+Mobile app."""
+            else:
+                response.content = "Default"
+            return response
+
+        mock.complete.side_effect = complete_side_effect
+        mock_provider_class.return_value = mock
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
         from codeframe.core import prd
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
-
-        # Answer all required questions
-        answers = [
-            "This app helps teams track software tasks and estimate effort",
-            "Primary users are developers, project managers, and stakeholders",
-            "Task CRUD, time tracking, dependency graphs, reporting dashboards",
-            "Must work offline, support mobile, integrate with GitHub",
-            "Python FastAPI backend, React TypeScript frontend, PostgreSQL",
-        ]
-
-        for answer in answers:
-            if not session.is_complete():
-                session.submit_answer(answer)
+        session.submit_answer("A task management app for teams")
 
         prd_record = session.generate_prd()
 
@@ -216,98 +423,37 @@ class TestPrdGeneration:
         stored = prd.get_by_id(workspace, prd_record.id)
         assert stored is not None
 
-    def test_generate_prd_includes_structured_sections(self, workspace: Workspace):
-        """Generated PRD should have all expected sections."""
-        from codeframe.core.prd_discovery import PrdDiscoverySession
-
-        session = PrdDiscoverySession(workspace)
-        session.start_discovery()
-
-        answers = [
-            "Team collaboration platform for remote workers",
-            "Remote developers and project managers",
-            "Chat, video calls, screen sharing, task boards",
-            "End-to-end encryption required, GDPR compliant",
-            "Node.js, WebRTC, React, PostgreSQL",
-        ]
-
-        for answer in answers:
-            if not session.is_complete():
-                session.submit_answer(answer)
-
-        prd_record = session.generate_prd()
-
-        # Check for expected sections
-        assert "## Overview" in prd_record.content
-        assert "## User" in prd_record.content  # User Stories
-        assert "## Technical" in prd_record.content or "## Constraint" in prd_record.content
-
-    def test_generate_prd_fails_when_incomplete(self, workspace: Workspace):
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_generate_prd_fails_when_incomplete(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
         """Generating PRD before completion should raise error."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession, IncompleteSessionError
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
-        session.submit_answer("Only answered one question here")
+        session.submit_answer("Only one answer")
 
         with pytest.raises(IncompleteSessionError):
             session.generate_prd()
 
 
-class TestAIQuestionGeneration:
-    """Tests for AI-powered question generation."""
-
-    def test_uses_static_questions_when_no_api_key(self, workspace: Workspace):
-        """Should fall back to static questions without API key."""
-        from codeframe.core.prd_discovery import PrdDiscoverySession
-
-        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": ""}):
-            session = PrdDiscoverySession(workspace, api_key=None)
-            session.start_discovery()
-
-            question = session.get_current_question()
-
-            # Should be one of the static questions
-            assert question is not None
-            assert question["id"].startswith("problem_")
-
-    def test_uses_ai_questions_when_api_key_provided(self, workspace: Workspace):
-        """Should use AI for questions when API key available."""
-        from codeframe.core.prd_discovery import PrdDiscoverySession
-        from codeframe.adapters.llm.base import LLMResponse
-
-        with patch("codeframe.adapters.llm.anthropic.AnthropicProvider") as mock_provider_class:
-            # Mock the LLM provider
-            mock_provider = MagicMock()
-            mock_provider.complete.return_value = LLMResponse(
-                content="Based on your previous answers, what specific pain points "
-                        "do your users experience with current solutions?",
-                input_tokens=100,
-                output_tokens=50,
-            )
-            mock_provider_class.return_value = mock_provider
-
-            session = PrdDiscoverySession(workspace, api_key="test-key")
-            session.start_discovery()
-            session.submit_answer("A task management app for development teams")
-
-            # Get second question (should trigger AI)
-            question = session.get_current_question()
-
-            # AI generates follow-up based on context
-            assert question is not None
-            # The implementation may use AI or fallback - just verify question exists
-
-
 class TestDiscoveryPersistence:
     """Tests for discovery session database operations."""
 
-    def test_session_saved_to_database(self, workspace: Workspace):
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_session_saved_to_database(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
         """Session should be persisted to workspace database."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
         from codeframe.core.workspace import get_db_connection
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
         session.submit_answer("A valid answer for persistence test")
 
@@ -323,12 +469,17 @@ class TestDiscoveryPersistence:
 
         assert row is not None
 
-    def test_answers_stored_as_json(self, workspace: Workspace):
-        """Answers should be stored as JSON in session record."""
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_qa_history_stored_as_json(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
+        """Q&A history should be stored as JSON in session record."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
         from codeframe.core.workspace import get_db_connection
 
-        session = PrdDiscoverySession(workspace)
+        session = PrdDiscoverySession(workspace, api_key="test-key")
         session.start_discovery()
         session.submit_answer("First answer about the problem")
         session.submit_answer("Second answer about the users")
@@ -336,35 +487,28 @@ class TestDiscoveryPersistence:
         conn = get_db_connection(workspace)
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT answers FROM discovery_sessions WHERE id = ?",
+            "SELECT qa_history FROM discovery_sessions WHERE id = ?",
             (session.session_id,)
         )
         row = cursor.fetchone()
         conn.close()
 
-        answers = json.loads(row[0])
-        assert len(answers) == 2
+        qa_history = json.loads(row[0])
+        assert len(qa_history) == 2
 
-    def test_session_state_transitions(self, workspace: Workspace):
+    @patch("codeframe.core.prd_discovery.AnthropicProvider")
+    def test_session_state_transitions(
+        self, mock_provider_class, workspace: Workspace, mock_llm_provider
+    ):
         """Session state should transition correctly."""
+        mock_provider_class.return_value = mock_llm_provider
+
         from codeframe.core.prd_discovery import PrdDiscoverySession
 
-        session = PrdDiscoverySession(workspace)
-        assert session.state == "idle"
+        session = PrdDiscoverySession(workspace, api_key="test-key")
 
         session.start_discovery()
-        assert session.state == "discovering"
+        assert session.state.value == "discovering"
 
         session.pause_discovery("test pause")
-        assert session.state == "paused"
-
-        # Complete all questions in new session
-        session2 = PrdDiscoverySession(workspace)
-        session2.start_discovery()
-        for _ in range(5):
-            if not session2.is_complete():
-                session2.submit_answer("A sufficiently long answer for this test question")
-
-        # After generating PRD
-        session2.generate_prd()
-        assert session2.state == "completed"
+        assert session.state.value == "paused"

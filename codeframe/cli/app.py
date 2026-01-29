@@ -1104,32 +1104,34 @@ def prd_generate(
         "--resume", "-r",
         help="Resume from a paused session (blocker ID)",
     ),
-    skip_optional: bool = typer.Option(
-        False,
-        "--skip-optional",
-        help="Skip optional questions",
-    ),
 ) -> None:
-    """Generate a PRD through interactive Socratic discovery.
+    """Generate a PRD through AI-driven Socratic discovery.
 
-    Asks a series of questions to understand your project requirements
-    and generates a structured PRD from your answers.
+    An AI product manager conducts an intelligent conversation to understand
+    your project requirements, then generates a structured PRD.
+
+    The AI:
+    - Asks context-sensitive follow-up questions
+    - Validates that answers are substantive
+    - Determines when enough information has been gathered
+    - Generates the final PRD from the conversation
 
     Special commands during discovery:
       /pause  - Save progress and exit (creates a blocker for resume)
-      /skip   - Skip current question (optional questions only)
       /quit   - Exit without saving
       /help   - Show available commands
+
+    Requires ANTHROPIC_API_KEY environment variable.
 
     Example:
         codeframe prd generate
         codeframe prd generate --resume abc123
-        codeframe prd generate --skip-optional
     """
     from codeframe.core.workspace import get_workspace
     from codeframe.core import prd as prd_module
     from codeframe.core.prd_discovery import (
         PrdDiscoverySession,
+        NoApiKeyError,
         ValidationError,
         IncompleteSessionError,
         get_active_session,
@@ -1156,30 +1158,36 @@ def prd_generate(
         session: PrdDiscoverySession
         if resume:
             console.print("\n[cyan]Resuming discovery session...[/cyan]")
-            session = PrdDiscoverySession(workspace)
             try:
+                session = PrdDiscoverySession(workspace)
                 session.resume_discovery(resume)
-            except ValueError as e:
+            except (ValueError, NoApiKeyError) as e:
                 console.print(f"[red]Error:[/red] {e}")
                 raise typer.Exit(1)
             console.print(f"[green]✓[/green] Loaded {session.answered_count} previous answers")
         else:
             # Check for active session
-            active = get_active_session(workspace)
-            if active and active.answered_count > 0:
-                if typer.confirm(
-                    f"Found incomplete session with {active.answered_count} answers. Resume?"
-                ):
-                    session = active
-                    console.print("[green]✓[/green] Resuming previous session")
+            try:
+                active = get_active_session(workspace)
+                if active and active.answered_count > 0:
+                    if typer.confirm(
+                        f"Found incomplete session with {active.answered_count} answers. Resume?"
+                    ):
+                        session = active
+                        console.print("[green]✓[/green] Resuming previous session")
+                    else:
+                        session = PrdDiscoverySession(workspace)
+                        session.start_discovery()
                 else:
                     session = PrdDiscoverySession(workspace)
                     session.start_discovery()
-            else:
-                session = PrdDiscoverySession(workspace)
-                session.start_discovery()
+            except NoApiKeyError as e:
+                console.print(f"[red]Error:[/red] {e}")
+                console.print("\n[dim]Set ANTHROPIC_API_KEY environment variable to use AI discovery.[/dim]")
+                raise typer.Exit(1)
 
-        console.print("\n[bold]Starting interactive PRD discovery...[/bold]")
+        console.print("\n[bold]Starting AI-driven PRD discovery...[/bold]")
+        console.print("[dim]The AI will ask questions to understand your project.[/dim]")
         console.print("[dim]Type /help for available commands[/dim]\n")
 
         # Discovery loop
@@ -1188,22 +1196,16 @@ def prd_generate(
             if question is None:
                 break
 
-            # Show progress
+            # Show progress (coverage-based)
             progress = session.get_progress()
-            progress_bar = "█" * (progress["percentage"] // 5)
+            pct = progress.get("percentage", 0)
+            progress_bar = "█" * (pct // 5)
             progress_empty = "░" * (20 - len(progress_bar))
-            console.print(
-                f"[dim]Progress: {progress['answered']}/{progress['required_total']} "
-                f"required questions ({progress['percentage']}%)[/dim]"
-            )
+
+            console.print(f"[dim]Question {question['question_number']} | Coverage: {pct}%[/dim]")
             console.print(f"[dim]{progress_bar}{progress_empty}[/dim]\n")
 
             # Show question
-            category_display = question["category"].replace("_", " ").title()
-            is_optional = question.get("importance") == "optional"
-            opt_marker = " [dim](optional)[/dim]" if is_optional else ""
-
-            console.print(f"[bold cyan]Category:[/bold cyan] {category_display}{opt_marker}")
             console.print(Panel(question["text"], title="Question", border_style="cyan"))
 
             # Get answer
@@ -1216,14 +1218,13 @@ def prd_generate(
                     answer = answer.strip()
 
                     if not answer:
-                        console.print("[yellow]Please enter an answer or use /skip for optional questions[/yellow]")
+                        console.print("[yellow]Please enter an answer[/yellow]")
                         continue
 
                     # Handle special commands
                     if answer.lower() == "/help":
                         console.print("\n[bold]Available commands:[/bold]")
                         console.print("  /pause  - Save progress and exit")
-                        console.print("  /skip   - Skip this question (optional only)")
                         console.print("  /quit   - Exit without saving")
                         console.print("  /help   - Show this help")
                         console.print()
@@ -1243,22 +1244,24 @@ def prd_generate(
                         console.print(f"\nTo resume: [cyan]codeframe prd generate --resume {blocker_id[:8]}[/cyan]")
                         return
 
-                    if answer.lower() == "/skip":
-                        if is_optional or skip_optional:
-                            # Move to next question by submitting a placeholder
-                            console.print("[dim]Skipping...[/dim]\n")
-                            break
-                        else:
-                            console.print("[yellow]Cannot skip required questions[/yellow]")
-                            continue
+                    # Submit answer - AI validates
+                    result = session.submit_answer(answer)
 
-                    # Submit answer
-                    session.submit_answer(answer)
-                    console.print("[green]✓[/green] Answer saved\n")
-                    break
+                    if result["accepted"]:
+                        console.print("[green]✓[/green] Answer recorded\n")
+                        break
+                    else:
+                        # AI didn't accept the answer
+                        console.print(f"[yellow]{result['feedback']}[/yellow]")
+                        if result.get("follow_up"):
+                            # AI provided a follow-up question
+                            console.print("\n[cyan]Let me ask differently:[/cyan]")
+                            # Loop will show the new question
+                            break
+                        # Otherwise let user try again
 
                 except ValidationError as e:
-                    console.print(f"[yellow]Invalid answer:[/yellow] {e}")
+                    console.print(f"[yellow]{e}[/yellow]")
                 except KeyboardInterrupt:
                     console.print("\n")
                     if typer.confirm("Save progress before exiting?"):
@@ -1268,8 +1271,8 @@ def prd_generate(
                     return
 
         # Generate PRD
-        console.print("\n[bold green]All required questions answered![/bold green]")
-        console.print("\nGenerating PRD from your answers...")
+        console.print("\n[bold green]Discovery complete![/bold green]")
+        console.print("\nGenerating PRD from our conversation...")
 
         try:
             prd_record = session.generate_prd()
@@ -1284,7 +1287,7 @@ def prd_generate(
             {
                 "prd_id": prd_record.id,
                 "title": prd_record.title,
-                "source": "discovery",
+                "source": "ai_discovery",
             },
             print_event=False,
         )
@@ -1295,8 +1298,8 @@ def prd_generate(
 
         # Show preview
         console.print("\n[bold]Preview:[/bold]")
-        preview = prd_record.content[:800]
-        if len(prd_record.content) > 800:
+        preview = prd_record.content[:1000]
+        if len(prd_record.content) > 1000:
             preview += "\n\n[dim]... (use 'codeframe prd show --full' to see complete PRD)[/dim]"
         console.print(Panel(preview, border_style="green"))
 
@@ -1306,6 +1309,9 @@ def prd_generate(
 
     except FileNotFoundError:
         console.print("[red]Error:[/red] No workspace found. Run 'codeframe init' first.")
+        raise typer.Exit(1)
+    except NoApiKeyError as e:
+        console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
     except typer.Exit:
         raise
