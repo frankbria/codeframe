@@ -12,7 +12,6 @@ on:
 
 jobs:
   claude-review:
-    if: false  # Disabled - using opencode-review.yml instead
     runs-on: ubuntu-latest
     permissions:
       contents: read
