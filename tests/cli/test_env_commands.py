@@ -7,10 +7,8 @@ This module tests:
 - `codeframe env auto-install` - Install all missing tools
 """
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 from typer.testing import CliRunner
 
 from codeframe.cli.env_commands import env_app

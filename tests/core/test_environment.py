@@ -8,13 +8,9 @@ This module tests:
 - Recommendations generation
 """
 
-import shutil
 import subprocess
-from pathlib import Path
-from typing import Optional
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from codeframe.core.environment import (
     ToolInfo,

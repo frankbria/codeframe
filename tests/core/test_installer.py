@@ -8,11 +8,8 @@ This module tests:
 """
 
 import json
-import subprocess
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from codeframe.core.installer import (
     ToolInstaller,
