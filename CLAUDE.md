@@ -1,10 +1,10 @@
 # CodeFRAME Development Guidelines (v2 Reset)
 
-Last updated: 2026-01-24
+Last updated: 2026-01-29
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: v2 Phase 4 Complete** - Agent execution + parallel batch orchestration + self-correction + tech stack configuration + enhanced task generation (scheduling, templates).
+**Status: v2 Phase 1 In Progress** - CLI 95% complete. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -24,11 +24,14 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 4) **Agent Implementation**: `docs/AGENT_IMPLEMENTATION_TASKS.md`
    Tracks the agent system components (all complete).
 
+5) **Strategic Roadmap**: `docs/V2_STRATEGIC_ROADMAP.md`
+   5-phase plan: CLI completion → Server layer → Web UI → Multi-agent → Advanced features.
+
 **Rule 0:** If a change does not directly support Golden Path, do not implement it.
 
 ---
 
-## Current Reality (v2 Complete)
+## Current Reality (v2 95% Complete)
 
 ### What's Working Now
 - **Full agent execution**: `cf work start <task-id> --execute`
@@ -49,6 +52,10 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 - **Task scheduling**: `cf schedule show/predict/bottlenecks` with CPM-based scheduling
 - **Task templates**: `cf templates list/show/apply` with 7 builtin templates
 - **Effort estimation**: Tasks support `estimated_hours` field for scheduling
+- **Environment validation**: `cf env check/install/doctor` validates tools and dependencies
+- **GitHub PR workflow**: `cf pr create/status/checks/merge` for PR management
+- **Task self-diagnosis**: `cf work diagnose <task-id>` analyzes failed tasks
+- **70+ integration tests**: Comprehensive CLI test coverage
 
 ### v2 Architecture (current)
 - **Core-first**: Domain logic lives in `codeframe/core/` (headless, no FastAPI imports)
@@ -77,7 +84,7 @@ codeframe/
 │   ├── conductor.py        # Batch orchestration with worker pool
 │   ├── dependency_graph.py # DAG operations and execution planning
 │   ├── dependency_analyzer.py # LLM-based dependency inference
-│   ├── gates.py            # Verification gates (ruff, pytest)
+│   ├── gates.py            # Verification gates (ruff, pytest, BUILD)
 │   ├── fix_tracker.py      # Fix attempt tracking for loop prevention
 │   ├── quick_fixes.py      # Pattern-based fixes without LLM
 │   ├── agents_config.py    # AGENTS.md/CLAUDE.md preference loading
@@ -85,6 +92,11 @@ codeframe/
 │   ├── prd.py              # PRD management
 │   ├── events.py           # Event emission
 │   ├── state_machine.py    # Task status transitions
+│   ├── environment.py      # Environment validation and tool detection
+│   ├── installer.py        # Automatic tool installation
+│   ├── diagnostics.py      # Failed task analysis
+│   ├── diagnostic_agent.py # AI-powered task diagnosis
+│   ├── credentials.py      # API key and credential management
 │   └── ...
 ├── adapters/
 │   └── llm/                # LLM provider adapters
@@ -173,6 +185,11 @@ At all times:
 | Conductor | `core/conductor.py` | Batch orchestration, worker pool |
 | Dependency Graph | `core/dependency_graph.py` | DAG operations, topological sort |
 | Dependency Analyzer | `core/dependency_analyzer.py` | LLM-based dependency inference |
+| Environment Validator | `core/environment.py` | Tool detection and validation |
+| Installer | `core/installer.py` | Automatic tool installation |
+| Diagnostics | `core/diagnostics.py` | Failed task analysis |
+| Diagnostic Agent | `core/diagnostic_agent.py` | AI-powered task diagnosis |
+| Credentials | `core/credentials.py` | API key and credential management |
 
 ### Model Selection Strategy
 Task-based heuristic via `Purpose` enum:
@@ -276,6 +293,20 @@ cf checkpoint create "name"
 cf checkpoint list
 cf checkpoint restore <id>
 cf summary
+
+# Environment validation
+cf env check                     # Validate tools and dependencies
+cf env install                   # Install missing tools
+cf env doctor                    # Comprehensive environment health check
+
+# GitHub PR workflow
+cf pr create                     # Create PR from current branch
+cf pr status                     # Show PR status
+cf pr checks                     # Show CI check results
+cf pr merge                      # Merge approved PR
+
+# Diagnostics
+cf work diagnose <task-id>       # AI-powered analysis of failed tasks
 ```
 
 Note: `codeframe serve` exists but Golden Path does not depend on it.
@@ -296,6 +327,7 @@ Do not expand frontend scope during Golden Path work.
 - `docs/REFACTOR_PLAN_FOR_AGENT.md` - Step-by-step refactor instructions
 - `docs/CLI_WIREFRAME.md` - Command → module mapping
 - `docs/AGENT_IMPLEMENTATION_TASKS.md` - Agent system components
+- `docs/V2_STRATEGIC_ROADMAP.md` - 5-phase plan from CLI to multi-agent
 
 ### Legacy (v1 reference only)
 These describe old server/UI-driven architecture:
@@ -336,7 +368,71 @@ If you are unsure which direction to take, default to:
 
 ---
 
-## Recent Updates (2026-01-16)
+## Recent Updates (2026-01-29)
+
+### V2 Strategic Roadmap Established
+Created comprehensive 5-phase roadmap in `docs/V2_STRATEGIC_ROADMAP.md`:
+
+| Phase | Focus | Status |
+|-------|-------|--------|
+| 1 | CLI Completion | **In Progress** |
+| 2 | Server Layer | Planned |
+| 3 | Web UI Rebuild | Planned |
+| 4 | Multi-Agent Coordination | Planned |
+| 5 | Advanced Features | Planned |
+
+**Phase 1 priorities:**
+- `cf prd generate` - Socratic PRD discovery (#307)
+- `cf work follow` - Live execution streaming (#308)
+- Integration tests for credential/env modules (#309)
+
+### Environment Validation (`cf env`)
+New commands for validating development environment:
+
+```bash
+cf env check              # Validate required tools (git, uv, ruff, pytest)
+cf env install            # Install missing tools automatically
+cf env doctor             # Comprehensive environment health check
+```
+
+**Modules:**
+- `core/environment.py` - Tool detection and validation
+- `core/installer.py` - Cross-platform tool installation
+
+### GitHub PR Workflow (`cf pr`)
+Streamlined PR management without leaving the CLI:
+
+```bash
+cf pr create              # Create PR from current branch
+cf pr status              # Show PR status and review state
+cf pr checks              # Show CI check results
+cf pr merge               # Merge approved PR
+```
+
+### Task Self-Diagnosis (`cf work diagnose`)
+AI-powered analysis of failed tasks:
+
+```bash
+cf work diagnose <task-id>   # Analyze why a task failed
+```
+
+**Modules:**
+- `core/diagnostics.py` - Failed task analysis
+- `core/diagnostic_agent.py` - AI-powered diagnosis
+
+### Bug Fixes
+- **#265**: Fixed NoneType error in `codebase_index.search_pattern()` - added null check
+- **#253**: Fixed checkpoint diff API returning 500 - added workspace existence validation
+
+### GitHub Issue Organization
+- Created `v1-legacy` label for 22 v1-specific issues (closed, retained as Phase 3 reference)
+- Created phase labels: `phase-1`, `phase-2`, `phase-4`, `phase-5`
+- Created 9 new issues (#307-#315) for roadmap features
+- Consistent naming: `[Phase #] Title` format
+
+---
+
+## Previous Updates (2026-01-16)
 
 ### Phase 3.1: Tech Stack Configuration
 Simplified tech stack configuration using natural language descriptions:
@@ -420,9 +516,7 @@ Error occurs
 
 ---
 
-## Previous Updates (2026-01-15)
-
-### Phase 2 Complete: Parallel Batch Execution
+### Phase 2 Complete (2026-01-15): Parallel Batch Execution
 All 6 Phase 2 items from `CLI_WIREFRAME.md` are done:
 
 1. ✅ `work batch resume <batch-id>` - re-run failed/blocked tasks
@@ -439,9 +533,7 @@ All 6 Phase 2 items from `CLI_WIREFRAME.md` are done:
 
 ---
 
-## Previous Updates (2026-01-14)
-
-### Agent Implementation Complete
+### Agent Implementation Complete (2026-01-14)
 All 8 implementation tasks from `AGENT_IMPLEMENTATION_TASKS.md` are done:
 
 1. ✅ LLM Adapter Interface (`adapters/llm/`)
