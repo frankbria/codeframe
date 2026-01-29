@@ -1199,7 +1199,7 @@ def prd_generate(
             # Show progress (coverage-based)
             progress = session.get_progress()
             pct = progress.get("percentage", 0)
-            progress_bar = "█" * (pct // 5)
+            progress_bar = "█" * int(pct // 5)
             progress_empty = "░" * (20 - len(progress_bar))
 
             console.print(f"[dim]Question {question['question_number']} | Coverage: {pct}%[/dim]")
