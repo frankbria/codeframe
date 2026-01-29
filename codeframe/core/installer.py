@@ -48,7 +48,8 @@ def get_platform() -> str:
         return "darwin"
     elif system == "Windows":
         return "windows"
-    return "linux"  # Default to linux
+    logger.warning(f"Unknown platform '{system}', defaulting to 'linux'")
+    return "linux"
 
 
 # =============================================================================
@@ -110,13 +111,26 @@ class PipInstaller:
         return tool_name in self.SUPPORTED_TOOLS
 
     def get_install_command(self, tool_name: str) -> str:
-        """Get the install command for a tool.
+        """Get the install command for a tool (display string).
 
         Prefers uv if available, falls back to pip.
         """
         if shutil.which("uv"):
             return f"uv pip install {tool_name}"
         return f"pip install {tool_name}"
+
+    def _get_install_cmd_parts(self, tool_name: str) -> list[str]:
+        """Get the install command as a list of arguments.
+
+        Args:
+            tool_name: Name of the package to install
+
+        Returns:
+            List of command arguments for subprocess
+        """
+        if shutil.which("uv"):
+            return ["uv", "pip", "install", tool_name]
+        return ["pip", "install", tool_name]
 
     def install_tool(
         self,
@@ -143,7 +157,7 @@ class PipInstaller:
             )
 
         command = self.get_install_command(tool_name)
-        cmd_parts = command.split()
+        cmd_parts = self._get_install_cmd_parts(tool_name)
 
         try:
             result = subprocess.run(
@@ -207,7 +221,7 @@ class NpmInstaller:
         return tool_name in self.SUPPORTED_TOOLS
 
     def get_install_command(self, tool_name: str, global_install: bool = True) -> str:
-        """Get the install command for a tool.
+        """Get the install command for a tool (display string).
 
         Args:
             tool_name: Name of the package
@@ -216,6 +230,22 @@ class NpmInstaller:
         if global_install:
             return f"npm install -g {tool_name}"
         return f"npm install -D {tool_name}"
+
+    def _get_install_cmd_parts(
+        self, tool_name: str, global_install: bool = True
+    ) -> list[str]:
+        """Get the install command as a list of arguments.
+
+        Args:
+            tool_name: Name of the package
+            global_install: Install globally (-g) or as dev dependency (-D)
+
+        Returns:
+            List of command arguments for subprocess
+        """
+        if global_install:
+            return ["npm", "install", "-g", tool_name]
+        return ["npm", "install", "-D", tool_name]
 
     def install_tool(
         self,
@@ -236,7 +266,7 @@ class NpmInstaller:
             InstallResult with status and details
         """
         command = self.get_install_command(tool_name, global_install)
-        cmd_parts = command.split()
+        cmd_parts = self._get_install_cmd_parts(tool_name, global_install)
 
         try:
             result = subprocess.run(
@@ -298,10 +328,23 @@ class CargoInstaller:
         return tool_name in self.RUSTUP_COMPONENTS or tool_name in self.CARGO_PACKAGES
 
     def get_install_command(self, tool_name: str) -> str:
-        """Get the install command for a tool."""
+        """Get the install command for a tool (display string)."""
         if tool_name in self.RUSTUP_COMPONENTS:
             return f"rustup component add {tool_name}"
         return f"cargo install {tool_name}"
+
+    def _get_install_cmd_parts(self, tool_name: str) -> list[str]:
+        """Get the install command as a list of arguments.
+
+        Args:
+            tool_name: Name of the tool to install
+
+        Returns:
+            List of command arguments for subprocess
+        """
+        if tool_name in self.RUSTUP_COMPONENTS:
+            return ["rustup", "component", "add", tool_name]
+        return ["cargo", "install", tool_name]
 
     def install_tool(
         self,
@@ -320,7 +363,7 @@ class CargoInstaller:
             InstallResult with status and details
         """
         command = self.get_install_command(tool_name)
-        cmd_parts = command.split()
+        cmd_parts = self._get_install_cmd_parts(tool_name)
 
         try:
             result = subprocess.run(

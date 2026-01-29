@@ -418,9 +418,16 @@ class TestInstallerIntegration:
         mock_result.stdout = "Successfully installed pytest-7.4.0"
         mock_result.stderr = ""
 
+        def which_side_effect(cmd):
+            """Mock shutil.which to handle tool and uv checks."""
+            if cmd == "pytest":
+                return None  # pytest not installed initially
+            if cmd == "uv":
+                return None  # uv not available, use pip
+            return None
+
         with patch("subprocess.run", return_value=mock_result):
-            with patch("shutil.which", side_effect=[None, "/usr/bin/pytest"]):
-                # First check: not installed, Second check: installed
+            with patch("shutil.which", side_effect=which_side_effect):
                 result = installer.install_tool("pytest", confirm=False)
 
         assert result.success is True
@@ -441,8 +448,16 @@ class TestInstallerIntegration:
         mock_result.stdout = "Successfully installed"
         mock_result.stderr = ""
 
+        def which_side_effect(cmd):
+            """Mock shutil.which: tools not installed, uv not available."""
+            if cmd in tools:
+                return None  # Tool not installed
+            if cmd == "uv":
+                return None  # uv not available, use pip
+            return None
+
         with patch("subprocess.run", return_value=mock_result):
-            with patch("shutil.which", side_effect=[None, "/usr/bin/tool"] * 3):
+            with patch("shutil.which", side_effect=which_side_effect):
                 for tool in tools:
                     result = installer.install_tool(tool, confirm=False)
                     results.append(result)

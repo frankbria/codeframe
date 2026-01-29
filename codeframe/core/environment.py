@@ -108,13 +108,18 @@ class ValidationResult:
 def parse_version(version_str: str) -> Optional[tuple[int, ...]]:
     """Parse a version string into a tuple of integers.
 
-    Handles common formats:
-    - "1.2.3"
-    - "v1.2.3"
-    - "Python 3.11.4"
-    - "pytest 7.4.0"
-    - "1.2.3-rc1"
-    - "7.4.0.post1"
+    Supported formats:
+    - Simple semver: "1.2.3", "1.2"
+    - With 'v' prefix: "v1.2.3"
+    - With tool name prefix: "Python 3.11.4", "pytest 7.4.0", "node v18.12.0"
+    - With pre-release suffix: "1.2.3-rc1", "1.2.3-alpha.1"
+    - With post-release suffix: "7.4.0.post1"
+    - Git versions: "git version 2.39.0"
+
+    Limitations (not fully supported):
+    - Build metadata is ignored: "1.2.3+build.456" -> (1, 2, 3)
+    - Pre-release ordering not considered: "1.2.3-alpha" == "1.2.3-beta" == "1.2.3"
+    - Only first 3 version components used: "1.2.3.4" -> (1, 2, 3)
 
     Args:
         version_str: Version string to parse

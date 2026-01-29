@@ -120,6 +120,74 @@ Each command:
 
 ---
 
+## Environment: `codeframe env ...`
+
+### `codeframe env check [--project <path>]`
+**Purpose:** Quick environment validation with health score.
+
+**CLI module:**
+- `codeframe/cli/env_commands.py`
+
+**Core calls:**
+- `codeframe.core.environment.EnvironmentValidator.validate_environment(project_path) -> ValidationResult`
+
+**Output:**
+- Project type (Python, JavaScript, Rust, etc.)
+- Health score percentage
+- Available/missing tools summary
+- Quick recommendations (top 3)
+
+---
+
+### `codeframe env doctor [--project <path>]`
+**Purpose:** Comprehensive environment diagnostics.
+
+**CLI module:**
+- `codeframe/cli/env_commands.py`
+
+**Core calls:**
+- `codeframe.core.environment.EnvironmentValidator.validate_environment(project_path) -> ValidationResult`
+
+**Output:**
+- Full tools table with status, version, and path
+- Warnings and conflicts
+- Complete recommendations list
+
+---
+
+### `codeframe env install-missing <tool> [--yes]`
+**Purpose:** Install a specific missing tool.
+
+**CLI module:**
+- `codeframe/cli/env_commands.py`
+
+**Core calls:**
+- `codeframe.core.installer.ToolInstaller.can_install(tool) -> bool`
+- `codeframe.core.installer.ToolInstaller.install_tool(tool, confirm) -> InstallResult`
+
+**Supported installers:**
+- PipInstaller: pytest, ruff, mypy, black, flake8, pylint, isort, bandit, coverage, pre-commit, httpx, requests
+- NpmInstaller: eslint, prettier, jest, typescript, ts-node, webpack, vite, vitest, mocha, chai
+- CargoInstaller: clippy, rustfmt, rust-analyzer, ripgrep, fd-find, bat, tokei, cargo-edit, cargo-watch
+- SystemInstaller: git, docker, make, curl, wget, jq, gh (requires manual execution)
+
+---
+
+### `codeframe env auto-install [--project <path>] [--yes]`
+**Purpose:** Automatically install all missing required tools.
+
+**CLI module:**
+- `codeframe/cli/env_commands.py`
+
+**Core calls:**
+- `codeframe.core.environment.EnvironmentValidator.validate_environment(project_path) -> ValidationResult`
+- `codeframe.core.installer.ToolInstaller.install_tool(tool, confirm) -> InstallResult` (for each missing tool)
+
+**State writes:**
+- Installation history in `.codeframe/environment.json`
+
+---
+
 ## Configuration: `codeframe config ...`
 
 ### `codeframe config init [--detect] [--force]`
