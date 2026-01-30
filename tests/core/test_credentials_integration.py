@@ -382,11 +382,12 @@ class TestCredentialManagerIntegration:
                 manager = CredentialManager(storage_dir=integration_storage_dir)
 
                 # Store initial credential with metadata
+                original_metadata = {"scopes": ["read", "write"], "rotated_count": 0}
                 manager.set_credential(
                     provider=CredentialProvider.LLM_ANTHROPIC,
                     value="sk-ant-api03-old-key-1234567890",
                     name="production-key",
-                    metadata={"scopes": ["read", "write"], "rotated_count": 0},
+                    metadata=original_metadata,
                 )
 
                 # Rotate credential
@@ -395,9 +396,15 @@ class TestCredentialManagerIntegration:
                     new_value="sk-ant-api03-new-key-0987654321",
                 )
 
-                # Verify new value with preserved metadata
+                # Verify new value
                 value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
                 assert value == "sk-ant-api03-new-key-0987654321"
+
+                # Verify metadata was preserved by retrieving full credential from store
+                stored_credential = manager._store.retrieve(CredentialProvider.LLM_ANTHROPIC)
+                assert stored_credential is not None
+                assert stored_credential.metadata == original_metadata
+                assert stored_credential.name == "production-key"
 
     def test_list_credentials_from_storage(self, integration_storage_dir: Path):
         """List credentials shows all stored credentials."""

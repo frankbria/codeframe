@@ -172,7 +172,8 @@ class TestRealVersionExtraction:
         )
 
         # Output format: "Python 3.11.4" or similar
-        version_str = result.stdout.strip()
+        # Note: Some Python versions may output to stderr instead of stdout
+        version_str = (result.stdout or result.stderr).strip()
         parsed = parse_version(version_str)
 
         assert parsed is not None
