@@ -506,38 +506,62 @@ class TestVersionParsingReal:
 class TestToolDetectionEdgeCases:
     """Edge case tests for tool detection."""
 
-    def test_tool_with_slow_version_command(self):
-        """Handle tools that take time to return version."""
+    def test_tool_with_slow_version_command_timeout(self):
+        """Handle tools that timeout when getting version."""
+        from unittest.mock import patch
+
         detector = ToolDetector()
 
-        # Even if a tool is slow, it should timeout gracefully
-        # We can't really test this without a slow tool, so we verify
-        # the timeout parameter exists in get_version
-        import inspect
-        sig = inspect.signature(subprocess.run)
-        assert "timeout" in sig.parameters
+        # Mock subprocess.run to raise TimeoutExpired
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="slow-tool", timeout=10)
+
+            version = detector.get_version("/usr/bin/slow-tool", ["--version"])
+
+            # Should return None on timeout (graceful degradation)
+            assert version is None
 
     def test_version_extraction_from_stderr(self):
-        """Some tools output version to stderr instead of stdout."""
+        """Extract version from stderr when stdout is empty."""
+        from unittest.mock import patch, MagicMock
+
         detector = ToolDetector()
 
-        # Create a mock result that has version in stderr
-        class MockResult:
-            stdout = ""
-            stderr = "some-tool version 1.2.3"
+        # Mock subprocess.run to return version in stderr
+        mock_result = MagicMock()
+        mock_result.stdout = ""
+        mock_result.stderr = "some-tool version 1.2.3"
 
-        # The detector should check both stdout and stderr
-        # This is already handled in ToolDetector.get_version
+        with patch("subprocess.run", return_value=mock_result):
+            version = detector.get_version("/usr/bin/some-tool", ["--version"])
 
-    def test_detect_tool_version_incompatible(self, tmp_path: Path):
+            # Should extract version from stderr when stdout is empty
+            assert version == "1.2.3"
+
+    def test_version_extraction_subprocess_error(self):
+        """Handle subprocess errors gracefully."""
+        from unittest.mock import patch
+
+        detector = ToolDetector()
+
+        # Mock subprocess.run to raise SubprocessError
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.SubprocessError("Command failed")
+
+            version = detector.get_version("/usr/bin/failing-tool", ["--version"])
+
+            # Should return None on subprocess error
+            assert version is None
+
+    def test_detect_tool_version_incompatible(self):
         """Test version incompatibility detection."""
-        # We can't easily simulate this without mocking, but we can
-        # verify the logic exists
         detector = ToolDetector()
 
         # check_version_compatibility should work correctly
         assert detector.check_version_compatibility("7.4.0", "7.0.0") is True
+        assert detector.check_version_compatibility("7.0.0", "7.0.0") is True  # Equal
         assert detector.check_version_compatibility("6.9.0", "7.0.0") is False
+        assert detector.check_version_compatibility("1.0.0", "2.0.0") is False
 
 
 # =============================================================================

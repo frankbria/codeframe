@@ -66,6 +66,7 @@ class TestCredentialStoreIntegration:
             assert retrieved.metadata == original.metadata
             assert retrieved.provider == original.provider
 
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX permissions not supported on Windows")
     def test_encrypted_file_permissions_are_secure(self, integration_storage_dir: Path):
         """Verify encrypted file has 0600 permissions (owner-only read/write)."""
         with patch("codeframe.core.credentials.KEYRING_AVAILABLE", False):
@@ -82,6 +83,7 @@ class TestCredentialStoreIntegration:
             file_mode = stat.S_IMODE(encrypted_file.stat().st_mode)
             assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
 
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX permissions not supported on Windows")
     def test_salt_file_permissions_are_secure(self, integration_storage_dir: Path):
         """Verify salt file has 0600 permissions."""
         salt_file = integration_storage_dir / "salt"
