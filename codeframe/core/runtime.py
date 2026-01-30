@@ -608,193 +608,195 @@ def execute_agent(
     from codeframe.core.streaming import RunOutputLogger
     output_logger = RunOutputLogger(workspace, run.id)
 
-    # Create event callback to emit workspace events and log
-    def on_agent_event(event_type: str, data: dict) -> None:
-        events.emit_for_workspace(
-            workspace,
-            events.EventType.AGENT_STEP_STARTED if "started" in event_type else events.EventType.AGENT_STEP_COMPLETED,
-            {"run_id": run.id, "agent_event": event_type, **data},
-            print_event=True,
+    try:
+        # Create event callback to emit workspace events and log
+        def on_agent_event(event_type: str, data: dict) -> None:
+            events.emit_for_workspace(
+                workspace,
+                events.EventType.AGENT_STEP_STARTED if "started" in event_type else events.EventType.AGENT_STEP_COMPLETED,
+                {"run_id": run.id, "agent_event": event_type, **data},
+                print_event=True,
+            )
+
+            # Also log to run logger for diagnosis
+            category = _event_type_to_category(event_type)
+            run_logger.info(category, f"Agent event: {event_type}", data)
+
+        # Create and run agent
+        agent = Agent(
+            workspace=workspace,
+            llm_provider=provider,
+            dry_run=dry_run,
+            on_event=on_agent_event,
+            debug=debug,
+            verbose=verbose,
+            fix_coordinator=fix_coordinator,
+            output_logger=output_logger,
         )
 
-        # Also log to run logger for diagnosis
-        category = _event_type_to_category(event_type)
-        run_logger.info(category, f"Agent event: {event_type}", data)
+        state = agent.run(run.task_id)
 
-    # Create and run agent
-    agent = Agent(
-        workspace=workspace,
-        llm_provider=provider,
-        dry_run=dry_run,
-        on_event=on_agent_event,
-        debug=debug,
-        verbose=verbose,
-        fix_coordinator=fix_coordinator,
-        output_logger=output_logger,
-    )
+        # If agent is BLOCKED, try supervisor resolution
+        if state.status == AgentStatus.BLOCKED:
+            from codeframe.core.conductor import get_supervisor
 
-    state = agent.run(run.task_id)
-
-    # If agent is BLOCKED, try supervisor resolution
-    if state.status == AgentStatus.BLOCKED:
-        from codeframe.core.conductor import get_supervisor
-
-        supervisor = get_supervisor(workspace)
-        if supervisor.try_resolve_blocked_task(run.task_id):
-            # Supervisor resolved the blocker - retry the agent
-            print("[Supervisor] Retrying task after auto-resolution...")
-
-            # Create a new agent instance and retry
-            agent = Agent(
-                workspace=workspace,
-                llm_provider=provider,
-                dry_run=dry_run,
-                on_event=on_agent_event,
-                debug=debug,
-                fix_coordinator=fix_coordinator,
-                output_logger=output_logger,
-            )
-            state = agent.run(run.task_id)
-
-    # If agent FAILED, check if supervisor can help with common technical issues
-    if state.status == AgentStatus.FAILED:
-        from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
-
-        if debug:
-            logger.debug("Agent FAILED - analyzing for supervisor intervention")
-            logger.debug("state.blocker: %s", state.blocker)
-            logger.debug(
-                "state.step_results count: %d",
-                len(state.step_results) if state.step_results else 0
-            )
-            logger.debug(
-                "state.gate_results count: %d",
-                len(state.gate_results) if state.gate_results else 0
-            )
-
-        # Extract error message from available sources
-        error_msg = ""
-        error_source = "none"
-        if state.blocker:
-            error_msg = state.blocker.reason or state.blocker.question or ""
-            error_source = "blocker"
-        elif state.step_results:
-            # Check last step result for error info
-            last_result = state.step_results[-1]
-            if debug:
-                error_preview = last_result.error[:200] if last_result.error else "None"
-                logger.debug(
-                    "Last step result: status=%s, error=%s",
-                    last_result.status, error_preview
-                )
-            if hasattr(last_result, 'error') and last_result.error:
-                error_msg = last_result.error
-                error_source = "step_result.error"
-            elif hasattr(last_result, 'output') and last_result.output:
-                error_msg = last_result.output
-                error_source = "step_result.output"
-        elif state.gate_results:
-            # Check gate results for failure info
-            for gate in state.gate_results:
-                if debug:
-                    logger.debug("Gate result: passed=%s", gate.passed)
-                if not gate.passed:
-                    for check in gate.checks:
-                        if debug:
-                            output_preview = check.output[:100] if check.output else "None"
-                            logger.debug(
-                                "  Check: %s status=%s output=%s",
-                                check.name, check.status, output_preview
-                            )
-                        if check.output:
-                            error_msg = check.output
-                            error_source = f"gate.{check.name}"
-                            break
-
-        if debug:
-            logger.debug("Extracted error from: %s", error_source)
-            error_preview = error_msg[:300] if error_msg else "EMPTY"
-            logger.debug("Error message (first 300 chars): %s", error_preview)
-
-        error_msg_lower = error_msg.lower()
-        matched_patterns = [p for p in SUPERVISOR_TACTICAL_PATTERNS if p in error_msg_lower]
-        if debug:
-            logger.debug("Matched tactical patterns: %s", matched_patterns)
-
-        if error_msg and matched_patterns:
             supervisor = get_supervisor(workspace)
-            resolution = supervisor._generate_tactical_resolution(error_msg)
-            logger.info(
-                "Supervisor detected recoverable error, providing guidance: %s...",
-                resolution[:100]
-            )
+            if supervisor.try_resolve_blocked_task(run.task_id):
+                # Supervisor resolved the blocker - retry the agent
+                print("[Supervisor] Retrying task after auto-resolution...")
 
-            # Create a blocker with the resolution for the agent's next run
-            from codeframe.core import blockers
-            blocker = blockers.create(
-                workspace,
-                task_id=run.task_id,
-                question=f"Technical error: {error_msg[:500]}",
-            )
-            blockers.answer(workspace, blocker.id, resolution)
+                # Create a new agent instance and retry
+                agent = Agent(
+                    workspace=workspace,
+                    llm_provider=provider,
+                    dry_run=dry_run,
+                    on_event=on_agent_event,
+                    debug=debug,
+                    fix_coordinator=fix_coordinator,
+                    output_logger=output_logger,
+                )
+                state = agent.run(run.task_id)
+
+        # If agent FAILED, check if supervisor can help with common technical issues
+        if state.status == AgentStatus.FAILED:
+            from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
+
             if debug:
-                logger.debug("Created blocker %s and answered with resolution", blocker.id[:8])
+                logger.debug("Agent FAILED - analyzing for supervisor intervention")
+                logger.debug("state.blocker: %s", state.blocker)
+                logger.debug(
+                    "state.step_results count: %d",
+                    len(state.step_results) if state.step_results else 0
+                )
+                logger.debug(
+                    "state.gate_results count: %d",
+                    len(state.gate_results) if state.gate_results else 0
+                )
 
-            # Retry the agent with the new context
-            logger.info("Supervisor retrying task with guidance...")
-            agent = Agent(
-                workspace=workspace,
-                llm_provider=provider,
-                dry_run=dry_run,
-                on_event=on_agent_event,
-                debug=debug,
-                fix_coordinator=fix_coordinator,
-                output_logger=output_logger,
-            )
-            state = agent.run(run.task_id)
+            # Extract error message from available sources
+            error_msg = ""
+            error_source = "none"
+            if state.blocker:
+                error_msg = state.blocker.reason or state.blocker.question or ""
+                error_source = "blocker"
+            elif state.step_results:
+                # Check last step result for error info
+                last_result = state.step_results[-1]
+                if debug:
+                    error_preview = last_result.error[:200] if last_result.error else "None"
+                    logger.debug(
+                        "Last step result: status=%s, error=%s",
+                        last_result.status, error_preview
+                    )
+                if hasattr(last_result, 'error') and last_result.error:
+                    error_msg = last_result.error
+                    error_source = "step_result.error"
+                elif hasattr(last_result, 'output') and last_result.output:
+                    error_msg = last_result.output
+                    error_source = "step_result.output"
+            elif state.gate_results:
+                # Check gate results for failure info
+                for gate in state.gate_results:
+                    if debug:
+                        logger.debug("Gate result: passed=%s", gate.passed)
+                    if not gate.passed:
+                        for check in gate.checks:
+                            if debug:
+                                output_preview = check.output[:100] if check.output else "None"
+                                logger.debug(
+                                    "  Check: %s status=%s output=%s",
+                                    check.name, check.status, output_preview
+                                )
+                            if check.output:
+                                error_msg = check.output
+                                error_source = f"gate.{check.name}"
+                                break
+
             if debug:
-                logger.debug("Retry completed with status: %s", state.status)
-        elif debug:
-            logger.debug(
-                "No supervisor intervention - error_msg empty=%s, no pattern match=%s",
-                not error_msg, not matched_patterns
-            )
+                logger.debug("Extracted error from: %s", error_source)
+                error_preview = error_msg[:300] if error_msg else "EMPTY"
+                logger.debug("Error message (first 300 chars): %s", error_preview)
 
-    # Log final status
-    if state.status == AgentStatus.COMPLETED:
-        run_logger.info(LogCategory.STATE_CHANGE, "Agent completed successfully")
-    elif state.status == AgentStatus.BLOCKED:
-        blocker_reason = state.blocker.question if state.blocker else "Unknown"
-        run_logger.warning(LogCategory.BLOCKER, f"Agent blocked: {blocker_reason[:200]}", {
-            "blocker_question": blocker_reason,
-        })
-    elif state.status == AgentStatus.FAILED:
-        # Log detailed error information for diagnosis
-        error_info = {}
-        if state.step_results:
-            last_step = state.step_results[-1]
-            error_info["last_step_status"] = last_step.status.value if hasattr(last_step.status, 'value') else str(last_step.status)
-            error_info["last_step_error"] = last_step.error[:500] if last_step.error else None
-        if state.gate_results:
-            error_info["gate_failures"] = sum(1 for g in state.gate_results if not g.passed)
-        run_logger.error(LogCategory.ERROR, "Agent execution failed", error_info)
+            error_msg_lower = error_msg.lower()
+            matched_patterns = [p for p in SUPERVISOR_TACTICAL_PATTERNS if p in error_msg_lower]
+            if debug:
+                logger.debug("Matched tactical patterns: %s", matched_patterns)
 
-    # Update run status based on agent result
-    if state.status == AgentStatus.COMPLETED:
-        complete_run(workspace, run.id)
-    elif state.status == AgentStatus.BLOCKED:
-        # Get blocker ID from state if available
-        blocker_id = ""
-        if state.blocker and hasattr(state, "_blocker_id"):
-            blocker_id = state._blocker_id
-        block_run(workspace, run.id, blocker_id)
-    elif state.status == AgentStatus.FAILED:
-        fail_run(workspace, run.id)
+            if error_msg and matched_patterns:
+                supervisor = get_supervisor(workspace)
+                resolution = supervisor._generate_tactical_resolution(error_msg)
+                logger.info(
+                    "Supervisor detected recoverable error, providing guidance: %s...",
+                    resolution[:100]
+                )
 
-    # Close output logger
-    output_logger.close()
+                # Create a blocker with the resolution for the agent's next run
+                from codeframe.core import blockers
+                blocker = blockers.create(
+                    workspace,
+                    task_id=run.task_id,
+                    question=f"Technical error: {error_msg[:500]}",
+                )
+                blockers.answer(workspace, blocker.id, resolution)
+                if debug:
+                    logger.debug("Created blocker %s and answered with resolution", blocker.id[:8])
 
-    return state
+                # Retry the agent with the new context
+                logger.info("Supervisor retrying task with guidance...")
+                agent = Agent(
+                    workspace=workspace,
+                    llm_provider=provider,
+                    dry_run=dry_run,
+                    on_event=on_agent_event,
+                    debug=debug,
+                    fix_coordinator=fix_coordinator,
+                    output_logger=output_logger,
+                )
+                state = agent.run(run.task_id)
+                if debug:
+                    logger.debug("Retry completed with status: %s", state.status)
+            elif debug:
+                logger.debug(
+                    "No supervisor intervention - error_msg empty=%s, no pattern match=%s",
+                    not error_msg, not matched_patterns
+                )
+
+        # Log final status
+        if state.status == AgentStatus.COMPLETED:
+            run_logger.info(LogCategory.STATE_CHANGE, "Agent completed successfully")
+        elif state.status == AgentStatus.BLOCKED:
+            blocker_reason = state.blocker.question if state.blocker else "Unknown"
+            run_logger.warning(LogCategory.BLOCKER, f"Agent blocked: {blocker_reason[:200]}", {
+                "blocker_question": blocker_reason,
+            })
+        elif state.status == AgentStatus.FAILED:
+            # Log detailed error information for diagnosis
+            error_info = {}
+            if state.step_results:
+                last_step = state.step_results[-1]
+                error_info["last_step_status"] = last_step.status.value if hasattr(last_step.status, 'value') else str(last_step.status)
+                error_info["last_step_error"] = last_step.error[:500] if last_step.error else None
+            if state.gate_results:
+                error_info["gate_failures"] = sum(1 for g in state.gate_results if not g.passed)
+            run_logger.error(LogCategory.ERROR, "Agent execution failed", error_info)
+
+        # Update run status based on agent result
+        if state.status == AgentStatus.COMPLETED:
+            complete_run(workspace, run.id)
+        elif state.status == AgentStatus.BLOCKED:
+            # Get blocker ID from state if available
+            blocker_id = ""
+            if state.blocker and hasattr(state, "_blocker_id"):
+                blocker_id = state._blocker_id
+            block_run(workspace, run.id, blocker_id)
+        elif state.status == AgentStatus.FAILED:
+            fail_run(workspace, run.id)
+
+        return state
+
+    finally:
+        # Always close the output logger to ensure file is properly flushed
+        output_logger.close()
 
 
 def _event_type_to_category(event_type: str):

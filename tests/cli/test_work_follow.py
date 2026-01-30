@@ -15,6 +15,10 @@ from codeframe.core.workspace import create_or_load_workspace, Workspace
 from codeframe.core import tasks
 
 
+# Mark all tests in this module as v2 tests (CLI-first, headless functionality)
+pytestmark = pytest.mark.v2
+
+
 runner = CliRunner()
 
 

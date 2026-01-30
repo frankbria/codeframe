@@ -2541,6 +2541,11 @@ def work_follow(
         }
 
         try:
+            import time
+
+            last_status_check = time.time()
+            STATUS_CHECK_INTERVAL = 1.0  # Check status every 1 second
+
             # Stream output
             for line in tail_run_output(
                 workspace,
@@ -2551,20 +2556,23 @@ def work_follow(
             ):
                 console.print(line.rstrip())
 
-                # Check if run is still active (periodically)
-                current_run = runtime.get_run(workspace, active_run.id)
-                if current_run and current_run.status in TERMINAL_STATUSES:
-                    # Show completion message
-                    status_color = {
-                        runtime.RunStatus.COMPLETED: "green",
-                        runtime.RunStatus.FAILED: "red",
-                        runtime.RunStatus.BLOCKED: "yellow",
-                    }.get(current_run.status, "white")
+                # Check run status periodically (not on every line)
+                current_time = time.time()
+                if current_time - last_status_check >= STATUS_CHECK_INTERVAL:
+                    last_status_check = current_time
+                    current_run = runtime.get_run(workspace, active_run.id)
+                    if current_run and current_run.status in TERMINAL_STATUSES:
+                        # Show completion message
+                        status_color = {
+                            runtime.RunStatus.COMPLETED: "green",
+                            runtime.RunStatus.FAILED: "red",
+                            runtime.RunStatus.BLOCKED: "yellow",
+                        }.get(current_run.status, "white")
 
-                    console.print(
-                        f"\n[{status_color}]Run {current_run.status.value}[/{status_color}]"
-                    )
-                    break
+                        console.print(
+                            f"\n[{status_color}]Run {current_run.status.value}[/{status_color}]"
+                        )
+                        break
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Streaming interrupted[/yellow]")
