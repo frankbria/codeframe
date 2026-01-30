@@ -97,6 +97,7 @@ codeframe/
 │   ├── diagnostics.py      # Failed task analysis
 │   ├── diagnostic_agent.py # AI-powered task diagnosis
 │   ├── credentials.py      # API key and credential management
+│   ├── streaming.py        # Real-time output streaming for cf work follow
 │   └── ...
 ├── adapters/
 │   └── llm/                # LLM provider adapters
@@ -265,6 +266,8 @@ cf work start <task-id> --execute --verbose  # With detailed output
 cf work start <task-id> --execute --dry-run  # Preview changes
 cf work stop <task-id>                     # Cancel stale run
 cf work resume <task-id>                   # Resume blocked work
+cf work follow <task-id>                   # Stream real-time output
+cf work follow <task-id> --tail 50         # Show last 50 lines then stream
 
 # Batch execution (multiple tasks)
 cf work batch run <id1> <id2> ...          # Execute multiple tasks

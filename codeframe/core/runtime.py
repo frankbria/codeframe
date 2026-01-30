@@ -604,6 +604,10 @@ def execute_agent(
         "verbose": verbose,
     })
 
+    # Create output logger for streaming (cf work follow)
+    from codeframe.core.streaming import RunOutputLogger
+    output_logger = RunOutputLogger(workspace, run.id)
+
     # Create event callback to emit workspace events and log
     def on_agent_event(event_type: str, data: dict) -> None:
         events.emit_for_workspace(
@@ -626,6 +630,7 @@ def execute_agent(
         debug=debug,
         verbose=verbose,
         fix_coordinator=fix_coordinator,
+        output_logger=output_logger,
     )
 
     state = agent.run(run.task_id)
@@ -647,6 +652,7 @@ def execute_agent(
                 on_event=on_agent_event,
                 debug=debug,
                 fix_coordinator=fix_coordinator,
+                output_logger=output_logger,
             )
             state = agent.run(run.task_id)
 
@@ -743,6 +749,7 @@ def execute_agent(
                 on_event=on_agent_event,
                 debug=debug,
                 fix_coordinator=fix_coordinator,
+                output_logger=output_logger,
             )
             state = agent.run(run.task_id)
             if debug:
@@ -783,6 +790,9 @@ def execute_agent(
         block_run(workspace, run.id, blocker_id)
     elif state.status == AgentStatus.FAILED:
         fail_run(workspace, run.id)
+
+    # Close output logger
+    output_logger.close()
 
     return state
 
