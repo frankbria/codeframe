@@ -304,18 +304,23 @@ class TestCredentialManagerIntegration:
 
     def test_set_and_get_credential(self, integration_storage_dir: Path):
         """Set credential and retrieve it via manager."""
-        with patch("codeframe.core.credentials.KEYRING_AVAILABLE", False):
-            manager = CredentialManager(storage_dir=integration_storage_dir)
+        # Clear ANTHROPIC_API_KEY to test stored credential retrieval
+        env = os.environ.copy()
+        env.pop("ANTHROPIC_API_KEY", None)
 
-            manager.set_credential(
-                provider=CredentialProvider.LLM_ANTHROPIC,
-                value="sk-ant-api03-manager-test-key-123",
-                name="test-key",
-                metadata={"source": "integration-test"},
-            )
+        with patch.dict(os.environ, env, clear=True):
+            with patch("codeframe.core.credentials.KEYRING_AVAILABLE", False):
+                manager = CredentialManager(storage_dir=integration_storage_dir)
 
-            value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
-            assert value == "sk-ant-api03-manager-test-key-123"
+                manager.set_credential(
+                    provider=CredentialProvider.LLM_ANTHROPIC,
+                    value="sk-ant-api03-manager-test-key-123",
+                    name="test-key",
+                    metadata={"source": "integration-test"},
+                )
+
+                value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
+                assert value == "sk-ant-api03-manager-test-key-123"
 
     def test_environment_variable_override(self, integration_storage_dir: Path):
         """Environment variable takes priority over stored credential."""
@@ -368,26 +373,31 @@ class TestCredentialManagerIntegration:
 
     def test_rotate_credential_preserves_metadata(self, integration_storage_dir: Path):
         """Rotating credential preserves existing metadata."""
-        with patch("codeframe.core.credentials.KEYRING_AVAILABLE", False):
-            manager = CredentialManager(storage_dir=integration_storage_dir)
+        # Clear ANTHROPIC_API_KEY to test stored credential retrieval
+        env = os.environ.copy()
+        env.pop("ANTHROPIC_API_KEY", None)
 
-            # Store initial credential with metadata
-            manager.set_credential(
-                provider=CredentialProvider.LLM_ANTHROPIC,
-                value="sk-ant-api03-old-key-1234567890",
-                name="production-key",
-                metadata={"scopes": ["read", "write"], "rotated_count": 0},
-            )
+        with patch.dict(os.environ, env, clear=True):
+            with patch("codeframe.core.credentials.KEYRING_AVAILABLE", False):
+                manager = CredentialManager(storage_dir=integration_storage_dir)
 
-            # Rotate credential
-            manager.rotate_credential(
-                provider=CredentialProvider.LLM_ANTHROPIC,
-                new_value="sk-ant-api03-new-key-0987654321",
-            )
+                # Store initial credential with metadata
+                manager.set_credential(
+                    provider=CredentialProvider.LLM_ANTHROPIC,
+                    value="sk-ant-api03-old-key-1234567890",
+                    name="production-key",
+                    metadata={"scopes": ["read", "write"], "rotated_count": 0},
+                )
 
-            # Verify new value with preserved metadata
-            value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
-            assert value == "sk-ant-api03-new-key-0987654321"
+                # Rotate credential
+                manager.rotate_credential(
+                    provider=CredentialProvider.LLM_ANTHROPIC,
+                    new_value="sk-ant-api03-new-key-0987654321",
+                )
+
+                # Verify new value with preserved metadata
+                value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
+                assert value == "sk-ant-api03-new-key-0987654321"
 
     def test_list_credentials_from_storage(self, integration_storage_dir: Path):
         """List credentials shows all stored credentials."""
@@ -413,19 +423,24 @@ class TestCredentialManagerIntegration:
 
     def test_expired_credential_returns_none(self, integration_storage_dir: Path):
         """Expired credential returns None when retrieved."""
-        with patch("codeframe.core.credentials.KEYRING_AVAILABLE", False):
-            manager = CredentialManager(storage_dir=integration_storage_dir)
+        # Clear ANTHROPIC_API_KEY to test stored credential expiration
+        env = os.environ.copy()
+        env.pop("ANTHROPIC_API_KEY", None)
 
-            # Set credential with past expiration
-            past = datetime.now(timezone.utc) - timedelta(days=1)
-            manager.set_credential(
-                provider=CredentialProvider.LLM_ANTHROPIC,
-                value="sk-ant-api03-expired-key-123",
-                expires_at=past,
-            )
+        with patch.dict(os.environ, env, clear=True):
+            with patch("codeframe.core.credentials.KEYRING_AVAILABLE", False):
+                manager = CredentialManager(storage_dir=integration_storage_dir)
 
-            value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
-            assert value is None
+                # Set credential with past expiration
+                past = datetime.now(timezone.utc) - timedelta(days=1)
+                manager.set_credential(
+                    provider=CredentialProvider.LLM_ANTHROPIC,
+                    value="sk-ant-api03-expired-key-123",
+                    expires_at=past,
+                )
+
+                value = manager.get_credential(CredentialProvider.LLM_ANTHROPIC)
+                assert value is None
 
     def test_delete_credential(self, integration_storage_dir: Path):
         """Delete credential removes it from storage."""
