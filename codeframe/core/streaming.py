@@ -68,6 +68,7 @@ class RunOutputLogger:
         self.workspace = workspace
         self.run_id = run_id
         self.log_path = get_run_output_path(workspace, run_id)
+        self._file = None  # Initialize before potential mkdir/open failure
 
         # Ensure directory exists
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,7 +100,7 @@ class RunOutputLogger:
 
     def close(self) -> None:
         """Close the log file."""
-        if self._file and not self._file.closed:
+        if hasattr(self, "_file") and self._file and not self._file.closed:
             self._file.close()
 
     def __enter__(self) -> "RunOutputLogger":

@@ -652,6 +652,7 @@ def execute_agent(
                     dry_run=dry_run,
                     on_event=on_agent_event,
                     debug=debug,
+                    verbose=verbose,
                     fix_coordinator=fix_coordinator,
                     output_logger=output_logger,
                 )
@@ -749,6 +750,7 @@ def execute_agent(
                     dry_run=dry_run,
                     on_event=on_agent_event,
                     debug=debug,
+                    verbose=verbose,
                     fix_coordinator=fix_coordinator,
                     output_logger=output_logger,
                 )
