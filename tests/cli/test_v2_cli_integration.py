@@ -376,6 +376,80 @@ class TestWorkCommands:
         assert result.exit_code == 0
         assert "stub" in result.output.lower() or "completed" in result.output.lower()
 
+    def test_follow_no_run(self, workspace_with_ready_tasks):
+        """Follow should indicate no active run for task without run."""
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        tid = task_list[0].id[:8]
+        result = runner.invoke(
+            app, ["work", "follow", tid, "-w", str(workspace_with_ready_tasks)]
+        )
+        assert result.exit_code != 0
+        assert "no active run" in result.output.lower()
+
+    def test_follow_completed_run(self, workspace_with_ready_tasks):
+        """Follow should show output for completed runs."""
+        from codeframe.core import runtime
+        from codeframe.core.streaming import RunOutputLogger
+
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        task = task_list[0]
+        tid = task.id[:8]
+
+        # Start run
+        run = runtime.start_task_run(ws, task.id)
+
+        # Write some output
+        with RunOutputLogger(ws, run.id) as logger:
+            logger.write("Test output line\n")
+
+        # Complete the run
+        runtime.complete_run(ws, run.id)
+
+        result = runner.invoke(
+            app, ["work", "follow", tid, "-w", str(workspace_with_ready_tasks)]
+        )
+        assert result.exit_code == 0
+        assert "completed" in result.output.lower()
+
+    def test_follow_with_tail(self, workspace_with_ready_tasks):
+        """Follow --tail should show last N lines."""
+        from codeframe.core import runtime
+        from codeframe.core.streaming import RunOutputLogger
+
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        task = task_list[0]
+        tid = task.id[:8]
+
+        run = runtime.start_task_run(ws, task.id)
+
+        # Write multiple lines
+        with RunOutputLogger(ws, run.id) as logger:
+            for i in range(10):
+                logger.write(f"Line {i}\n")
+
+        runtime.complete_run(ws, run.id)
+
+        result = runner.invoke(
+            app, ["work", "follow", tid, "--tail", "3", "-w", str(workspace_with_ready_tasks)]
+        )
+        assert result.exit_code == 0
+        # Should contain the last lines
+        assert "Line 9" in result.output or "Line 8" in result.output
+
+    def test_follow_nonexistent_task(self, workspace_path):
+        """Follow should error for nonexistent task."""
+        result = runner.invoke(
+            app, ["work", "follow", "nonexistent", "-w", str(workspace_path)]
+        )
+        assert result.exit_code != 0
+        assert "no task found" in result.output.lower()
+
 
 # ---------------------------------------------------------------------------
 # 8. Batch commands

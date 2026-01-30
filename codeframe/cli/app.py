@@ -2409,6 +2409,184 @@ def work_update_description(
         raise typer.Exit(1)
 
 
+@work_app.command("follow")
+def work_follow(
+    task_id: str = typer.Argument(..., help="Task ID to follow (can be partial)"),
+    workspace_path: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (defaults to current directory)",
+    ),
+    tail: Optional[int] = typer.Option(
+        None,
+        "--tail",
+        "-n",
+        help="Show last N lines of buffered output before streaming",
+    ),
+    timeout: Optional[float] = typer.Option(
+        None,
+        "--timeout",
+        "-t",
+        help="Maximum seconds to wait for output (for testing)",
+    ),
+) -> None:
+    """Follow real-time execution output of a running task.
+
+    Attaches to an active task execution and streams output as it happens.
+    Shows buffered output when attaching to already-running executions.
+
+    If the task has a completed run (no active run), shows the final output.
+
+    Example:
+        cf work follow abc123              # Follow from current point
+        cf work follow abc123 --tail 50    # Show last 50 lines then stream
+    """
+    from codeframe.core.workspace import get_workspace
+    from codeframe.core import tasks as tasks_module, runtime
+    from codeframe.core.streaming import (
+        get_latest_lines_with_count,
+        tail_run_output,
+        run_output_exists,
+    )
+
+    path = workspace_path or Path.cwd()
+
+    try:
+        workspace = get_workspace(path)
+
+        # Find task by partial ID
+        all_tasks = tasks_module.list_tasks(workspace)
+        matching = [t for t in all_tasks if t.id.startswith(task_id)]
+
+        if not matching:
+            console.print(f"[red]Error:[/red] No task found matching '{task_id}'")
+            raise typer.Exit(1)
+
+        if len(matching) > 1:
+            console.print(f"[red]Error:[/red] Multiple tasks match '{task_id}':")
+            for t in matching[:5]:
+                console.print(f"  {t.id[:8]} - {t.title}")
+            raise typer.Exit(1)
+
+        task = matching[0]
+
+        # Get active run for task
+        active_run = runtime.get_active_run(workspace, task.id)
+
+        if not active_run:
+            # Check for recent completed/failed runs
+            recent_runs = runtime.list_runs(workspace, task_id=task.id, limit=1)
+
+            if recent_runs:
+                last_run = recent_runs[0]
+
+                # Status color
+                status_color = {
+                    runtime.RunStatus.COMPLETED: "green",
+                    runtime.RunStatus.FAILED: "red",
+                    runtime.RunStatus.BLOCKED: "yellow",
+                }.get(last_run.status, "white")
+
+                console.print(
+                    f"[{status_color}]Run {last_run.status.value}[/{status_color}] "
+                    f"for task: {task.title}"
+                )
+
+                # Show final output if available
+                if run_output_exists(workspace, last_run.id):
+                    console.print("\n[dim]--- Final output ---[/dim]")
+                    lines, total = get_latest_lines_with_count(
+                        workspace, last_run.id, count=tail or 50
+                    )
+                    if tail and total > tail:
+                        console.print(f"[dim](showing last {tail} of {total} lines)[/dim]")
+                    for line in lines:
+                        console.print(line.rstrip())
+                else:
+                    console.print("[dim]No output captured for this run.[/dim]")
+
+                raise typer.Exit(0)
+            else:
+                console.print(f"[yellow]No active run found for task:[/yellow] {task.title}")
+                console.print("[dim]Start a run with:[/dim]")
+                console.print(f"  cf work start {task.id[:8]} --execute")
+                raise typer.Exit(1)
+
+        # We have an active run - stream it
+        console.print(f"[blue]Following task:[/blue] {task.title}")
+        console.print(f"[dim]Run: {active_run.id[:8]} | Status: {active_run.status.value}[/dim]")
+
+        # Show buffered output if requested
+        start_line = 0
+        if tail:
+            lines, total = get_latest_lines_with_count(
+                workspace, active_run.id, count=tail
+            )
+            if lines:
+                console.print(f"\n[dim]--- Buffered output (last {len(lines)} of {total} lines) ---[/dim]")
+                for line in lines:
+                    console.print(f"[dim]{line.rstrip()}[/dim]")
+                console.print("[dim]--- Live output ---[/dim]\n")
+                start_line = total  # Skip already-shown lines
+
+        # Calculate max_wait for testing
+        max_wait = timeout if timeout else None
+
+        # Terminal run statuses
+        TERMINAL_STATUSES = {
+            runtime.RunStatus.COMPLETED,
+            runtime.RunStatus.FAILED,
+            runtime.RunStatus.BLOCKED,
+        }
+
+        try:
+            import time
+
+            last_status_check = time.time()
+            STATUS_CHECK_INTERVAL = 1.0  # Check status every 1 second
+
+            # Stream output
+            for line in tail_run_output(
+                workspace,
+                active_run.id,
+                since_line=start_line,
+                poll_interval=0.3,
+                max_wait=max_wait,
+            ):
+                console.print(line.rstrip())
+
+                # Check run status periodically (not on every line)
+                current_time = time.time()
+                if current_time - last_status_check >= STATUS_CHECK_INTERVAL:
+                    last_status_check = current_time
+                    current_run = runtime.get_run(workspace, active_run.id)
+                    if current_run and current_run.status in TERMINAL_STATUSES:
+                        # Show completion message
+                        status_color = {
+                            runtime.RunStatus.COMPLETED: "green",
+                            runtime.RunStatus.FAILED: "red",
+                            runtime.RunStatus.BLOCKED: "yellow",
+                        }.get(current_run.status, "white")
+
+                        console.print(
+                            f"\n[{status_color}]Run {current_run.status.value}[/{status_color}]"
+                        )
+                        break
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Streaming interrupted[/yellow]")
+            console.print(f"[dim]Run is still active. Resume with: cf work follow {task.id[:8]}[/dim]")
+            raise typer.Exit(0)
+
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] No workspace found at {path}")
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
+
 # =============================================================================
 # Batch execution commands (subcommand group: cf work batch <cmd>)
 # =============================================================================

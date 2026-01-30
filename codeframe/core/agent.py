@@ -33,6 +33,7 @@ from codeframe.core.workspace import Workspace
 
 if TYPE_CHECKING:
     from codeframe.core.conductor import GlobalFixCoordinator
+    from codeframe.core.streaming import RunOutputLogger
 
 # Safe shell commands that can be executed without full shell interpretation
 SAFE_SHELL_COMMANDS = frozenset({
@@ -397,6 +398,7 @@ class Agent:
         debug: bool = False,
         verbose: bool = False,
         fix_coordinator: Optional["GlobalFixCoordinator"] = None,
+        output_logger: Optional["RunOutputLogger"] = None,
     ):
         """Initialize the agent.
 
@@ -409,6 +411,7 @@ class Agent:
             debug: If True, write detailed debug log to workspace
             verbose: If True, print detailed progress to stdout
             fix_coordinator: Optional coordinator for global fixes (for parallel execution)
+            output_logger: Optional logger for streaming output to file (for cf work follow)
         """
         self.workspace = workspace
         self.llm = llm_provider
@@ -418,6 +421,7 @@ class Agent:
         self.debug = debug
         self.verbose = verbose
         self.fix_coordinator = fix_coordinator
+        self.output_logger = output_logger
 
         self.state = AgentState()
         self.context: Optional[TaskContext] = None
@@ -433,9 +437,21 @@ class Agent:
             self._setup_debug_log()
 
     def _verbose_print(self, message: str) -> None:
-        """Print message only if verbose mode is enabled."""
+        """Print message to stdout (if verbose) and to output log file.
+
+        The output log file is always written to (if logger provided) to enable
+        streaming via `cf work follow`, even when verbose=False.
+
+        Args:
+            message: Message to print/log
+        """
+        # Print to stdout if verbose mode is enabled
         if self.verbose:
             print(message)
+
+        # Always write to output log if logger is provided (for cf work follow)
+        if self.output_logger:
+            self.output_logger.write(message + "\n")
 
     def run(self, task_id: str) -> AgentState:
         """Run the agent on a task.
