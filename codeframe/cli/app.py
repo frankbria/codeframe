@@ -586,6 +586,142 @@ prd_app = typer.Typer(
     no_args_is_help=True,
 )
 
+# PRD templates subcommand group
+prd_templates_app = typer.Typer(
+    name="templates",
+    help="PRD template management for customizable output formats",
+    no_args_is_help=True,
+)
+
+
+@prd_templates_app.command("list")
+def prd_templates_list() -> None:
+    """List available PRD templates.
+
+    Shows all built-in and custom PRD templates that can be used
+    with 'codeframe prd generate --template'.
+
+    Example:
+        codeframe prd templates list
+    """
+    from codeframe.planning.prd_templates import PrdTemplateManager
+
+    # Pass workspace path to include project templates
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
+    templates = manager.list_templates()
+
+    console.print("\n[bold]Available PRD Templates:[/bold]\n")
+    for template in templates:
+        section_count = len(template.sections)
+        console.print(f"  [green]{template.id}[/green] - {template.name}")
+        console.print(f"    {template.description}")
+        console.print(f"    Sections: {section_count} | Version: {template.version}")
+        console.print()
+
+
+@prd_templates_app.command("show")
+def prd_templates_show(
+    template_id: str = typer.Argument(..., help="Template ID to show"),
+) -> None:
+    """Show details of a specific PRD template.
+
+    Displays the template's sections and their configuration.
+
+    Example:
+        codeframe prd templates show standard
+        codeframe prd templates show lean
+    """
+    from codeframe.planning.prd_templates import PrdTemplateManager
+
+    # Pass workspace path to include project templates
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
+    template = manager.get_template(template_id)
+
+    if not template:
+        console.print(f"[red]Error:[/red] Template '{template_id}' not found.")
+        console.print("\nAvailable templates:")
+        for t in manager.list_templates():
+            console.print(f"  {t.id}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]{template.name}[/bold] ({template.id})\n")
+    console.print(f"{template.description}\n")
+    console.print(f"Version: {template.version}")
+
+    console.print("\n[bold]Sections:[/bold]\n")
+    for i, section in enumerate(template.sections, 1):
+        required = "[green]required[/green]" if section.required else "[dim]optional[/dim]"
+        console.print(f"  {i}. {section.title} ({section.id})")
+        console.print(f"     Source: {section.source} | {required}")
+        console.print()
+
+
+@prd_templates_app.command("export")
+def prd_templates_export(
+    template_id: str = typer.Argument(..., help="Template ID to export"),
+    output_path: Path = typer.Argument(..., help="Output file path (.yaml)"),
+) -> None:
+    """Export a PRD template to a YAML file.
+
+    Exports the template configuration for backup or customization.
+
+    Example:
+        codeframe prd templates export standard ./my-template.yaml
+        codeframe prd templates export enterprise ./enterprise-prd.yaml
+    """
+    from codeframe.planning.prd_templates import PrdTemplateManager
+
+    # Pass workspace path to include project templates
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
+
+    try:
+        manager.export_template(template_id, output_path)
+        console.print(f"[green]✓[/green] Exported template '{template_id}' to {output_path}")
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        console.print("\nAvailable templates:")
+        for t in manager.list_templates():
+            console.print(f"  {t.id}")
+        raise typer.Exit(1)
+
+
+@prd_templates_app.command("import")
+def prd_templates_import(
+    source_path: Path = typer.Argument(
+        ...,
+        help="Path to template YAML file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+) -> None:
+    """Import a PRD template from a YAML file.
+
+    Imports a custom template that can be used with 'codeframe prd generate --template'.
+    The template is saved to the project's .codeframe/templates/prd/ directory.
+
+    Example:
+        codeframe prd templates import ./custom-template.yaml
+    """
+    from codeframe.planning.prd_templates import PrdTemplateManager
+
+    # Pass workspace path for project template storage
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
+
+    try:
+        # Import and persist to project directory
+        template = manager.import_template(source_path, persist=True)
+        console.print(f"[green]✓[/green] Imported template '{template.id}' ({template.name})")
+        console.print(f"[dim]Sections: {len(template.sections)}[/dim]")
+        console.print(f"[dim]Saved to: .codeframe/templates/prd/{template.id}.yaml[/dim]")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] Failed to import template: {e}")
+        raise typer.Exit(1)
+
+
+# Register prd_templates_app under prd_app
+prd_app.add_typer(prd_templates_app, name="templates")
+
 
 @prd_app.command("add")
 def prd_add(
@@ -1104,6 +1240,11 @@ def prd_generate(
         "--resume", "-r",
         help="Resume from a paused session (blocker ID)",
     ),
+    template: str = typer.Option(
+        "standard",
+        "--template", "-t",
+        help="PRD template to use (standard, lean, enterprise, user-story-map, technical-spec)",
+    ),
 ) -> None:
     """Generate a PRD through AI-driven Socratic discovery.
 
@@ -1121,10 +1262,18 @@ def prd_generate(
       /quit   - Exit without saving
       /help   - Show available commands
 
+    Use --template to select the output format:
+    - standard: Full PRD with all sections (default)
+    - lean: Minimal PRD with problem, users, MVP features
+    - enterprise: Formal PRD with compliance and traceability
+    - user-story-map: Organized around user journeys
+    - technical-spec: Focused on technical specifications
+
     Requires ANTHROPIC_API_KEY environment variable.
 
     Example:
         codeframe prd generate
+        codeframe prd generate --template lean
         codeframe prd generate --resume abc123
     """
     from codeframe.core.workspace import get_workspace
@@ -1137,10 +1286,23 @@ def prd_generate(
         get_active_session,
     )
     from codeframe.core.events import emit_for_workspace, EventType
+    from codeframe.planning.prd_templates import PrdTemplateManager
     from rich.panel import Panel
     from rich.prompt import Prompt
 
     workspace_path = repo_path or Path.cwd()
+
+    # Validate template exists (include project templates in search)
+    template_manager = PrdTemplateManager(workspace_path=workspace_path)
+    template_obj = template_manager.get_template(template)
+    if template_obj is None:
+        console.print(f"[red]Error:[/red] Template '{template}' not found.")
+        console.print("\nAvailable templates:")
+        for t in template_manager.list_templates():
+            console.print(f"  {t.id} - {t.name}")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Using template: {template_obj.name}[/dim]")
 
     try:
         workspace = get_workspace(workspace_path)
@@ -1272,10 +1434,10 @@ def prd_generate(
 
         # Generate PRD
         console.print("\n[bold green]Discovery complete![/bold green]")
-        console.print("\nGenerating PRD from our conversation...")
+        console.print(f"\nGenerating PRD using '{template}' template...")
 
         try:
-            prd_record = session.generate_prd()
+            prd_record = session.generate_prd(template_id=template)
         except IncompleteSessionError as e:
             console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(1)
