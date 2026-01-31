@@ -776,6 +776,12 @@ class PrdTemplateManager:
         for path in directory.glob("*.yaml"):
             try:
                 template = load_template_from_file(path)
+                if template.id in self.templates:
+                    existing = self.templates[template.id]
+                    logger.warning(
+                        f"Template '{template.id}' from {path} overrides "
+                        f"existing template '{existing.name}'"
+                    )
                 self.templates[template.id] = template
                 logger.debug(f"Loaded template from {path}")
             except Exception as e:

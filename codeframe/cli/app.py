@@ -1292,8 +1292,8 @@ def prd_generate(
 
     workspace_path = repo_path or Path.cwd()
 
-    # Validate template exists
-    template_manager = PrdTemplateManager()
+    # Validate template exists (include project templates in search)
+    template_manager = PrdTemplateManager(workspace_path=workspace_path)
     template_obj = template_manager.get_template(template)
     if template_obj is None:
         console.print(f"[red]Error:[/red] Template '{template}' not found.")

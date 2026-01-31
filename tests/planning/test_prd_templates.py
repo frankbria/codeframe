@@ -586,3 +586,63 @@ sections:
         # Verify template was saved to disk
         expected_path = workspace_path / ".codeframe" / "templates" / "prd" / "imported-persisted.yaml"
         assert expected_path.exists()
+
+    def test_template_override_logs_warning(self, tmp_path, caplog):
+        """Loading a template with duplicate ID logs a warning."""
+        import logging
+
+        # Create two templates with the same ID in different directories
+        global_dir = tmp_path / "global"
+        project_dir = tmp_path / "project" / ".codeframe" / "templates" / "prd"
+        global_dir.mkdir(parents=True)
+        project_dir.mkdir(parents=True)
+
+        # Create global template
+        global_template = global_dir / "my-template.yaml"
+        global_template.write_text("""
+id: duplicate-id
+name: Global Version
+version: 1
+description: Global template
+sections:
+  - id: intro
+    title: Intro
+    source: problem
+    format_template: "{{ problem }}"
+    required: true
+""")
+
+        # Create project template with same ID
+        project_template = project_dir / "my-template.yaml"
+        project_template.write_text("""
+id: duplicate-id
+name: Project Version
+version: 2
+description: Project template overrides global
+sections:
+  - id: intro
+    title: Intro
+    source: problem
+    format_template: "{{ problem }}"
+    required: true
+""")
+
+        # Patch get_global_template_dir to use our temp global dir
+        from unittest.mock import patch
+
+        with patch(
+            "codeframe.planning.prd_templates.get_global_template_dir",
+            return_value=global_dir,
+        ):
+            with caplog.at_level(logging.WARNING):
+                manager = PrdTemplateManager(workspace_path=tmp_path / "project")
+
+        # Project version should win
+        template = manager.get_template("duplicate-id")
+        assert template is not None
+        assert template.name == "Project Version"
+        assert template.version == 2
+
+        # Warning should have been logged
+        assert any("duplicate-id" in record.message and "overrides" in record.message
+                   for record in caplog.records)
