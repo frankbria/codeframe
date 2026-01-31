@@ -531,7 +531,6 @@ sections:
 
         assert saved_path.exists()
         # Use Path comparison for OS-agnostic testing
-        from pathlib import Path
         expected_path = workspace_path / ".codeframe" / "templates" / "prd" / "persisted-test.yaml"
         assert saved_path == expected_path
 
