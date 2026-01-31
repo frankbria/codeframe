@@ -612,8 +612,8 @@ Be warm and encouraging. Just output the question, nothing else."""
 
         qa_history = self._format_qa_history()
 
-        # Build prompt based on template
-        prompt = self._build_prd_prompt(qa_history, template_id)
+        # Build prompt based on template and get the resolved template ID
+        prompt, resolved_template_id = self._build_prd_prompt(qa_history, template_id)
 
         response = self._llm_provider.complete(
             messages=[{"role": "user", "content": prompt}],
@@ -627,44 +627,53 @@ Be warm and encouraging. Just output the question, nothing else."""
         # Extract title from PRD content
         title = self._extract_title_from_prd(content)
 
-        # Store PRD with template_id in metadata
+        # Store PRD with both requested and resolved template IDs in metadata
+        metadata: dict[str, Any] = {
+            "source": "ai_discovery",
+            "session_id": self.session_id,
+            "questions_asked": len(self._qa_history),
+            "coverage": self._coverage,
+            "generated_at": _utc_now().isoformat(),
+            "template_id": resolved_template_id,
+        }
+        # Track if a different template was requested but not found
+        if template_id and template_id != resolved_template_id:
+            metadata["requested_template_id"] = template_id
+
         record = prd.store(
             self.workspace,
             content=content,
             title=title,
-            metadata={
-                "source": "ai_discovery",
-                "session_id": self.session_id,
-                "questions_asked": len(self._qa_history),
-                "coverage": self._coverage,
-                "generated_at": _utc_now().isoformat(),
-                "template_id": template_id or "standard",
-            },
+            metadata=metadata,
         )
 
         # Update session state
         self.state = SessionState.COMPLETED
         self._save_session()
 
-        logger.info(f"Generated PRD {record.id} from session {self.session_id} using template '{template_id or 'standard'}'")
+        logger.info(f"Generated PRD {record.id} from session {self.session_id} using template '{resolved_template_id}'")
         return record
 
-    def _build_prd_prompt(self, qa_history: str, template_id: Optional[str] = None) -> str:
+    def _build_prd_prompt(
+        self, qa_history: str, template_id: Optional[str] = None
+    ) -> tuple[str, str]:
         """Build PRD generation prompt based on template.
 
         Args:
             qa_history: Formatted Q&A history string
-            template_id: Template ID to use (defaults to standard)
+            template_id: Template ID to use (defaults to None, which uses default prompt)
 
         Returns:
-            Formatted prompt string for LLM
+            Tuple of (prompt string, resolved template ID)
+            The resolved template ID is "default" if no template was used,
+            or the actual template ID that was successfully loaded.
         """
         from codeframe.planning.prd_templates import PrdTemplateManager
         from pathlib import Path
 
-        # Use default prompt if no template specified or template not found
+        # Use default prompt if no template specified
         if not template_id:
-            return PRD_GENERATION_PROMPT.format(qa_history=qa_history)
+            return (PRD_GENERATION_PROMPT.format(qa_history=qa_history), "default")
 
         # Pass workspace path to include project templates
         workspace_path = Path(self.workspace.repo_path) if self.workspace.repo_path else None
@@ -672,8 +681,8 @@ Be warm and encouraging. Just output the question, nothing else."""
         template = manager.get_template(template_id)
 
         if template is None:
-            logger.warning(f"Template '{template_id}' not found, using default prompt")
-            return PRD_GENERATION_PROMPT.format(qa_history=qa_history)
+            logger.warning(f"Template '{template_id}' not found, falling back to default prompt")
+            return (PRD_GENERATION_PROMPT.format(qa_history=qa_history), "default")
 
         # Build dynamic prompt from template sections
         sections_spec = []
@@ -703,7 +712,7 @@ Generate a markdown PRD with these sections in order:
 Keep it concise but complete. Focus on actionable requirements.
 Follow the template structure exactly. This PRD should be sufficient to generate development tasks."""
 
-        return prompt
+        return (prompt, template_id)
 
     def _extract_title_from_prd(self, content: str) -> str:
         """Extract project title from generated PRD content."""
