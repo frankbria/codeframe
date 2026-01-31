@@ -456,6 +456,14 @@ sections: []
         # Template should not be registered
         assert manager.get_template("invalid") is None
 
+    def test_load_rejects_empty_yaml_file(self, tmp_path):
+        """load_template_from_file rejects empty YAML files."""
+        empty_file = tmp_path / "empty.yaml"
+        empty_file.write_text("")
+
+        with pytest.raises(ValueError, match="empty or invalid"):
+            load_template_from_file(empty_file)
+
     def test_autoescape_prevents_html_injection(self):
         """Jinja2 autoescape prevents HTML injection in rendered output."""
         manager = PrdTemplateManager()
@@ -496,8 +504,9 @@ class TestTemplateStorage:
         """Global template directory uses home directory."""
         from codeframe.planning.prd_templates import get_global_template_dir
 
-        # Mock home directory
+        # Mock home directory (set both for cross-platform compatibility)
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Windows
 
         global_dir = get_global_template_dir()
         assert "templates" in str(global_dir)

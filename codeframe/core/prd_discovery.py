@@ -701,7 +701,7 @@ Be warm and encouraging. Just output the question, nothing else."""
 ## Template: {template.name}
 {template.description}
 
-## Required Sections
+## Sections
 Generate a markdown PRD with these sections in order:
 
 # [Project Title - infer from conversation]

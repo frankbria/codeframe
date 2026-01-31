@@ -715,6 +715,9 @@ def load_template_from_file(path: Path) -> PrdTemplate:
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
+    if not data:
+        raise ValueError(f"Template file is empty or invalid: {path}")
+
     sections = [
         PrdTemplateSection(
             id=s["id"],
@@ -783,19 +786,21 @@ class PrdTemplateManager:
         if not directory.exists():
             return
 
-        for path in directory.glob("*.yaml"):
-            try:
-                template = load_template_from_file(path)
-                if template.id in self.templates:
-                    existing = self.templates[template.id]
-                    logger.warning(
-                        f"Template '{template.id}' from {path} overrides "
-                        f"existing template '{existing.name}'"
-                    )
-                self.templates[template.id] = template
-                logger.debug(f"Loaded template from {path}")
-            except Exception as e:
-                logger.warning(f"Failed to load template from {path}: {e}")
+        # Support both .yaml and .yml extensions
+        for pattern in ("*.yaml", "*.yml"):
+            for path in directory.glob(pattern):
+                try:
+                    template = load_template_from_file(path)
+                    if template.id in self.templates:
+                        existing = self.templates[template.id]
+                        logger.warning(
+                            f"Template '{template.id}' from {path} overrides "
+                            f"existing template '{existing.name}'"
+                        )
+                    self.templates[template.id] = template
+                    logger.debug(f"Loaded template from {path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load template from {path}: {e}")
 
     def get_template(self, template_id: str) -> Optional[PrdTemplate]:
         """Get a template by ID.
@@ -814,7 +819,7 @@ class PrdTemplateManager:
         Returns:
             List of PrdTemplate objects sorted by name
         """
-        return sorted(self.templates.values(), key=lambda t: t.name)
+        return sorted(self.templates.values(), key=lambda t: t.name or "")
 
     def validate_template(self, template: PrdTemplate) -> list[str]:
         """Validate a template structure.
@@ -883,7 +888,7 @@ class PrdTemplateManager:
 
         Args:
             source_path: Path to YAML template file
-            persist: If True, save template to project/global template directory
+            persist: If True, save template to the project template directory
 
         Returns:
             Imported template
