@@ -667,7 +667,7 @@ Be warm and encouraging. Just output the question, nothing else."""
             return PRD_GENERATION_PROMPT.format(qa_history=qa_history)
 
         # Pass workspace path to include project templates
-        workspace_path = Path(self.workspace.path) if self.workspace.path else None
+        workspace_path = Path(self.workspace.repo_path) if self.workspace.repo_path else None
         manager = PrdTemplateManager(workspace_path=workspace_path)
         template = manager.get_template(template_id)
 
