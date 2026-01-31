@@ -606,7 +606,8 @@ def prd_templates_list() -> None:
     """
     from codeframe.planning.prd_templates import PrdTemplateManager
 
-    manager = PrdTemplateManager()
+    # Pass workspace path to include project templates
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
     templates = manager.list_templates()
 
     console.print("\n[bold]Available PRD Templates:[/bold]\n")
@@ -632,7 +633,8 @@ def prd_templates_show(
     """
     from codeframe.planning.prd_templates import PrdTemplateManager
 
-    manager = PrdTemplateManager()
+    # Pass workspace path to include project templates
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
     template = manager.get_template(template_id)
 
     if not template:
@@ -669,7 +671,8 @@ def prd_templates_export(
     """
     from codeframe.planning.prd_templates import PrdTemplateManager
 
-    manager = PrdTemplateManager()
+    # Pass workspace path to include project templates
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
 
     try:
         manager.export_template(template_id, output_path)
@@ -695,18 +698,22 @@ def prd_templates_import(
     """Import a PRD template from a YAML file.
 
     Imports a custom template that can be used with 'codeframe prd generate --template'.
+    The template is saved to the project's .codeframe/templates/prd/ directory.
 
     Example:
         codeframe prd templates import ./custom-template.yaml
     """
     from codeframe.planning.prd_templates import PrdTemplateManager
 
-    manager = PrdTemplateManager()
+    # Pass workspace path for project template storage
+    manager = PrdTemplateManager(workspace_path=Path.cwd())
 
     try:
-        template = manager.import_template(source_path)
+        # Import and persist to project directory
+        template = manager.import_template(source_path, persist=True)
         console.print(f"[green]✓[/green] Imported template '{template.id}' ({template.name})")
         console.print(f"[dim]Sections: {len(template.sections)}[/dim]")
+        console.print(f"[dim]Saved to: .codeframe/templates/prd/{template.id}.yaml[/dim]")
     except Exception as e:
         console.print(f"[red]Error:[/red] Failed to import template: {e}")
         raise typer.Exit(1)

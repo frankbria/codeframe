@@ -857,11 +857,12 @@ class PrdTemplateManager:
         # Join with double newlines for proper markdown separation
         return "\n\n".join(sections)
 
-    def import_template(self, source_path: Path) -> PrdTemplate:
+    def import_template(self, source_path: Path, persist: bool = False) -> PrdTemplate:
         """Import a template from a file.
 
         Args:
             source_path: Path to YAML template file
+            persist: If True, save template to project/global template directory
 
         Returns:
             Imported template
@@ -871,8 +872,48 @@ class PrdTemplateManager:
         """
         template = load_template_from_file(source_path)
         self.templates[template.id] = template
+
+        if persist:
+            self.persist_template(template)
+
         logger.info(f"Imported template: {template.id}")
         return template
+
+    def persist_template(self, template: PrdTemplate, to_project: bool = True) -> Path:
+        """Persist a template to disk.
+
+        Saves the template to either the project template directory (.codeframe/templates/prd/)
+        or the global template directory (~/.codeframe/templates/prd/).
+
+        Args:
+            template: Template to persist
+            to_project: If True, save to project directory; if False, save to global
+
+        Returns:
+            Path where template was saved
+
+        Raises:
+            ValueError: If to_project=True but no workspace_path configured
+        """
+        if to_project:
+            if self.workspace_path is None:
+                raise ValueError(
+                    "Cannot persist to project: no workspace_path configured. "
+                    "Either set to_project=False or initialize PrdTemplateManager with workspace_path."
+                )
+            target_dir = get_project_template_dir(self.workspace_path)
+        else:
+            target_dir = get_global_template_dir()
+
+        # Ensure directory exists
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save template
+        output_path = target_dir / f"{template.id}.yaml"
+        save_template_to_file(template, output_path)
+
+        logger.info(f"Persisted template '{template.id}' to {output_path}")
+        return output_path
 
     def export_template(self, template_id: str, output_path: Path) -> None:
         """Export a template to a file.

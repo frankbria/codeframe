@@ -8,12 +8,14 @@ This module tests the PRD template system including:
 - Integration with LeadAgent.generate_prd()
 """
 
+import pytest
 
 from codeframe.planning.prd_templates import (
     PrdTemplateSection,
     PrdTemplate,
     PrdTemplateManager,
     BUILTIN_TEMPLATES,
+    load_template_from_file,
 )
 
 
@@ -499,3 +501,86 @@ sections:
         content = output_path.read_text()
         assert "standard" in content
         assert "sections" in content
+
+    def test_persist_template_to_project(self, tmp_path):
+        """Can persist template to project directory."""
+        # Create project template directory structure
+        workspace_path = tmp_path / "project"
+        workspace_path.mkdir()
+
+        manager = PrdTemplateManager(workspace_path=workspace_path)
+
+        # Create a custom template
+        template = PrdTemplate(
+            id="persisted-test",
+            name="Persisted Test",
+            version=1,
+            description="Test template for persistence",
+            sections=[
+                PrdTemplateSection(
+                    id="intro",
+                    title="Introduction",
+                    source="problem",
+                    format_template="## Intro\n\n{{ problem }}",
+                )
+            ],
+        )
+
+        # Persist to project directory
+        saved_path = manager.persist_template(template, to_project=True)
+
+        assert saved_path.exists()
+        assert ".codeframe/templates/prd/persisted-test.yaml" in str(saved_path)
+
+        # Reload and verify
+        loaded = load_template_from_file(saved_path)
+        assert loaded.id == "persisted-test"
+        assert loaded.name == "Persisted Test"
+
+    def test_persist_template_requires_workspace_for_project(self, tmp_path):
+        """Persist to project raises error without workspace_path."""
+        manager = PrdTemplateManager()  # No workspace_path
+
+        template = PrdTemplate(
+            id="test",
+            name="Test",
+            version=1,
+            description="",
+            sections=[],
+        )
+
+        with pytest.raises(ValueError, match="workspace_path"):
+            manager.persist_template(template, to_project=True)
+
+    def test_import_with_persist(self, tmp_path):
+        """Import with persist=True saves template to disk."""
+        # Create source template file
+        source_file = tmp_path / "source.yaml"
+        source_file.write_text("""
+id: imported-persisted
+name: Imported and Persisted
+version: 1
+description: Test import with persistence
+sections:
+  - id: summary
+    title: Summary
+    source: problem
+    format_template: "## Summary\\n\\n{{ problem }}"
+    required: true
+""")
+
+        # Create workspace directory
+        workspace_path = tmp_path / "project"
+        workspace_path.mkdir()
+
+        manager = PrdTemplateManager(workspace_path=workspace_path)
+
+        # Import with persist=True
+        template = manager.import_template(source_file, persist=True)
+
+        # Verify template is in memory
+        assert manager.get_template("imported-persisted") is not None
+
+        # Verify template was saved to disk
+        expected_path = workspace_path / ".codeframe" / "templates" / "prd" / "imported-persisted.yaml"
+        assert expected_path.exists()
