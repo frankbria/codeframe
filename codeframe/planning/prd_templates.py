@@ -701,8 +701,17 @@ def load_template_from_file(path: Path) -> PrdTemplate:
 
     Raises:
         FileNotFoundError: If file doesn't exist
+        ValueError: If file is not a YAML file
         yaml.YAMLError: If file is not valid YAML
     """
+    # Resolve to absolute path and validate
+    path = path.resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Template file not found: {path}")
+
+    if path.suffix.lower() not in [".yaml", ".yml"]:
+        raise ValueError(f"Template must be a YAML file, got: {path.suffix}")
+
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
@@ -757,8 +766,9 @@ class PrdTemplateManager:
         if workspace_path:
             self._load_from_directory(get_project_template_dir(workspace_path))
 
-        # Set up Jinja2 environment
-        self._env = Environment(loader=BaseLoader())
+        # Set up Jinja2 environment with autoescape for defense-in-depth
+        # PRDs are markdown but could be rendered to HTML downstream
+        self._env = Environment(loader=BaseLoader(), autoescape=True)
         for name, func in TEMPLATE_FUNCTIONS.items():
             self._env.filters[name] = func
 
@@ -856,9 +866,14 @@ class PrdTemplateManager:
                 jinja_template = self._env.from_string(section.format_template)
                 rendered = jinja_template.render(**discovery_data)
                 sections.append(rendered.strip())
+            except TemplateSyntaxError as e:
+                logger.error(f"Template syntax error in section {section.id}: {e}")
+                sections.append(f"## {section.title}\n\n*Template syntax error: {e}*")
+            except (KeyboardInterrupt, SystemExit):
+                raise  # Don't catch these
             except Exception as e:
-                logger.warning(f"Failed to render section {section.id}: {e}")
-                sections.append(f"## {section.title}\n\n*Error rendering section: {e}*")
+                logger.error(f"Failed to render section {section.id}: {e}", exc_info=True)
+                sections.append(f"## {section.title}\n\n*Error rendering section. Check logs for details.*")
 
         # Join with double newlines for proper markdown separation
         return "\n\n".join(sections)
@@ -875,8 +890,15 @@ class PrdTemplateManager:
 
         Raises:
             FileNotFoundError: If source file doesn't exist
+            ValueError: If template validation fails
         """
         template = load_template_from_file(source_path)
+
+        # Validate before registering
+        errors = self.validate_template(template)
+        if errors:
+            raise ValueError(f"Invalid template: {', '.join(errors)}")
+
         self.templates[template.id] = template
 
         if persist:

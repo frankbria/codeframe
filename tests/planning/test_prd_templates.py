@@ -419,6 +419,76 @@ class TestTemplateFunctions:
         assert "| Feature B | P2 |" in result
 
 
+class TestSecurityValidation:
+    """Tests for security-related validations."""
+
+    def test_load_rejects_non_yaml_files(self, tmp_path):
+        """load_template_from_file rejects non-YAML files."""
+        txt_file = tmp_path / "template.txt"
+        txt_file.write_text("not a yaml file")
+
+        with pytest.raises(ValueError, match="must be a YAML file"):
+            load_template_from_file(txt_file)
+
+    def test_load_rejects_nonexistent_file(self, tmp_path):
+        """load_template_from_file raises FileNotFoundError for missing files."""
+        missing = tmp_path / "missing.yaml"
+
+        with pytest.raises(FileNotFoundError):
+            load_template_from_file(missing)
+
+    def test_import_validates_template(self, tmp_path):
+        """import_template validates template before registering."""
+        # Create invalid template (missing sections)
+        invalid_template = tmp_path / "invalid.yaml"
+        invalid_template.write_text("""
+id: invalid
+name: Invalid Template
+version: 1
+description: Missing sections
+sections: []
+""")
+
+        manager = PrdTemplateManager()
+        with pytest.raises(ValueError, match="Invalid template"):
+            manager.import_template(invalid_template)
+
+        # Template should not be registered
+        assert manager.get_template("invalid") is None
+
+    def test_autoescape_prevents_html_injection(self):
+        """Jinja2 autoescape prevents HTML injection in rendered output."""
+        manager = PrdTemplateManager()
+        template = PrdTemplate(
+            id="xss-test",
+            name="XSS Test",
+            version=1,
+            description="Test XSS prevention",
+            sections=[
+                PrdTemplateSection(
+                    id="problem",
+                    title="Problem",
+                    source="problem",
+                    format_template="## Problem\n\n{{ problem }}",
+                )
+            ],
+        )
+
+        # Discovery data with HTML injection attempt
+        discovery_data = {
+            "problem": "<script>alert('xss')</script>",
+            "users": [],
+            "features": [],
+            "constraints": {},
+        }
+
+        rendered = manager.render_template(template, discovery_data)
+
+        # HTML should be escaped
+        assert "<script>" not in rendered
+        assert "&lt;script&gt;" in rendered
+
+
 class TestTemplateStorage:
     """Tests for template file storage."""
 
