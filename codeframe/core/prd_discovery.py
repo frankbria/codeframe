@@ -596,7 +596,8 @@ Be warm and encouraging. Just output the question, nothing else."""
 
         Args:
             template_id: Optional PRD template ID to use for formatting.
-                        Defaults to "standard" if not provided.
+                        If not provided or not found, uses the default built-in
+                        prompt format (recorded as "default" in metadata).
 
         Returns:
             Created PrdRecord
