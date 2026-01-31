@@ -1427,10 +1427,10 @@ def prd_generate(
 
         # Generate PRD
         console.print("\n[bold green]Discovery complete![/bold green]")
-        console.print("\nGenerating PRD from our conversation...")
+        console.print(f"\nGenerating PRD using '{template}' template...")
 
         try:
-            prd_record = session.generate_prd()
+            prd_record = session.generate_prd(template_id=template)
         except IncompleteSessionError as e:
             console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(1)

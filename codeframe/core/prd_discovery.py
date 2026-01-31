@@ -589,10 +589,14 @@ Be warm and encouraging. Just output the question, nothing else."""
 
         logger.info(f"Resumed session {session_id} from blocker {blocker_id}")
 
-    def generate_prd(self) -> prd.PrdRecord:
+    def generate_prd(self, template_id: Optional[str] = None) -> prd.PrdRecord:
         """Generate PRD from discovery conversation.
 
         Uses AI to synthesize the conversation into a structured PRD.
+
+        Args:
+            template_id: Optional PRD template ID to use for formatting.
+                        Defaults to "standard" if not provided.
 
         Returns:
             Created PrdRecord
@@ -606,10 +610,10 @@ Be warm and encouraging. Just output the question, nothing else."""
                 f"Current coverage: {self._coverage}"
             )
 
-
         qa_history = self._format_qa_history()
 
-        prompt = PRD_GENERATION_PROMPT.format(qa_history=qa_history)
+        # Build prompt based on template
+        prompt = self._build_prd_prompt(qa_history, template_id)
 
         response = self._llm_provider.complete(
             messages=[{"role": "user", "content": prompt}],
@@ -623,7 +627,7 @@ Be warm and encouraging. Just output the question, nothing else."""
         # Extract title from PRD content
         title = self._extract_title_from_prd(content)
 
-        # Store PRD
+        # Store PRD with template_id in metadata
         record = prd.store(
             self.workspace,
             content=content,
@@ -634,6 +638,7 @@ Be warm and encouraging. Just output the question, nothing else."""
                 "questions_asked": len(self._qa_history),
                 "coverage": self._coverage,
                 "generated_at": _utc_now().isoformat(),
+                "template_id": template_id or "standard",
             },
         )
 
@@ -641,8 +646,61 @@ Be warm and encouraging. Just output the question, nothing else."""
         self.state = SessionState.COMPLETED
         self._save_session()
 
-        logger.info(f"Generated PRD {record.id} from session {self.session_id}")
+        logger.info(f"Generated PRD {record.id} from session {self.session_id} using template '{template_id or 'standard'}'")
         return record
+
+    def _build_prd_prompt(self, qa_history: str, template_id: Optional[str] = None) -> str:
+        """Build PRD generation prompt based on template.
+
+        Args:
+            qa_history: Formatted Q&A history string
+            template_id: Template ID to use (defaults to standard)
+
+        Returns:
+            Formatted prompt string for LLM
+        """
+        from codeframe.planning.prd_templates import PrdTemplateManager
+
+        # Use default prompt if no template specified or template not found
+        if not template_id:
+            return PRD_GENERATION_PROMPT.format(qa_history=qa_history)
+
+        manager = PrdTemplateManager()
+        template = manager.get_template(template_id)
+
+        if template is None:
+            logger.warning(f"Template '{template_id}' not found, using default prompt")
+            return PRD_GENERATION_PROMPT.format(qa_history=qa_history)
+
+        # Build dynamic prompt from template sections
+        sections_spec = []
+        for section in template.sections:
+            required_note = " (required)" if section.required else " (optional)"
+            sections_spec.append(f"## {section.title}{required_note}\n{section.source} - related content")
+
+        sections_text = "\n\n".join(sections_spec)
+
+        prompt = f"""Generate a Product Requirements Document based on the discovery conversation.
+
+## Discovery Conversation
+{qa_history}
+
+## Template: {template.name}
+{template.description}
+
+## Required Sections
+Generate a markdown PRD with these sections in order:
+
+# [Project Title - infer from conversation]
+
+{sections_text}
+
+---
+
+Keep it concise but complete. Focus on actionable requirements.
+Follow the template structure exactly. This PRD should be sufficient to generate development tasks."""
+
+        return prompt
 
     def _extract_title_from_prd(self, content: str) -> str:
         """Extract project title from generated PRD content."""
