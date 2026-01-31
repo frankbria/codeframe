@@ -600,9 +600,9 @@ sections:
         saved_path = manager.persist_template(template, to_project=True)
 
         assert saved_path.exists()
-        # Use Path comparison for OS-agnostic testing
+        # Use resolved Path comparison for OS-agnostic testing
         expected_path = workspace_path / ".codeframe" / "templates" / "prd" / "persisted-test.yaml"
-        assert saved_path == expected_path
+        assert saved_path.resolve() == expected_path.resolve()
 
         # Reload and verify
         loaded = load_template_from_file(saved_path)
