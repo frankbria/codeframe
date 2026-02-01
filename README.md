@@ -1,9 +1,9 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Phase%201%20In%20Progress-blue)
+![Status](https://img.shields.io/badge/status-v2%20Phase%201%20Complete-brightgreen)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-3043%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-4122%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
@@ -23,21 +23,83 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ---
 
-## What's New (Updated: 2026-01-29)
+## What's New (Updated: 2026-02-01)
 
-### V2 Strategic Roadmap Published
+### V2 Phase 1 Complete 🎉
 
-We've completed the v2 strategic planning and published a comprehensive 5-phase roadmap:
+We've completed Phase 1 of the v2 strategic roadmap! The CLI foundation is now production-ready:
 
-- **Phase 1** (Current): CLI Foundation - `cf prd generate`, live streaming, integration tests
-- **Phase 2**: Server Layer as thin adapter over core
-- **Phase 3**: Web UI rebuild on v2 foundation
-- **Phase 4**: Multi-Agent Coordination (the "FRAME" vision)
-- **Phase 5**: Advanced Features (TUI, metrics, replay)
+| Feature | Status | Issue |
+|---------|--------|-------|
+| `cf prd generate` - Interactive AI PRD creation | ✅ Complete | #307 |
+| `cf work follow` - Live execution streaming | ✅ Complete | #308 |
+| PRD template system for customizable output | ✅ Complete | #316 |
+| Integration tests for credentials/environment | ✅ Complete | #309 |
+| Bug fixes (#265, #253) | ✅ Complete | - |
 
-See [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md) for full details.
+**Next up**: Phase 2 (Server Layer) - See [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md)
 
-### Environment Validation & Tool Detection
+### Interactive PRD Generation
+
+**`cf prd generate`** — AI-guided requirements discovery using Socratic questioning.
+
+```bash
+# Start interactive PRD creation
+cf prd generate
+
+# Non-interactive with initial description
+cf prd generate --description "User authentication system with OAuth"
+
+# Use specific template
+cf prd generate --template lean
+cf prd generate --template enterprise
+```
+
+The AI conducts 5+ turn discovery sessions, progressively refining from broad vision → specific requirements → acceptance criteria.
+
+### PRD Template System
+
+**Customizable PRD output formats** for different team needs:
+
+```bash
+# List available templates
+cf prd templates list
+
+# Show template structure
+cf prd templates show standard
+
+# Export template for customization
+cf prd templates export enterprise ./my-template.yaml
+
+# Import custom template
+cf prd templates import ./my-template.yaml
+```
+
+**Built-in templates:**
+- `standard` - Balanced PRD with all essential sections
+- `lean` - Minimal viable PRD for rapid iteration
+- `enterprise` - Comprehensive PRD with compliance sections
+- `technical` - Developer-focused with architecture details
+- `user-story` - Agile/Scrum format with user stories
+
+### Live Execution Streaming
+
+**`cf work follow`** — Watch agent execution in real-time.
+
+```bash
+# Stream live output from a running task
+cf work follow <task-id>
+
+# Show last 50 lines then continue streaming
+cf work follow <task-id> --tail 50
+```
+
+---
+
+### Previous Updates
+
+<details>
+<summary>Environment Validation & Tool Detection (2026-01-29)</summary>
 
 **New `cf env` commands** — Validate your development environment and auto-install missing tools.
 
@@ -61,7 +123,10 @@ cf env auto-install --yes
 - Rust: clippy, rustfmt, rust-analyzer, cargo-edit
 - System: git, docker, make, curl, gh
 
-### GitHub PR Workflow Commands
+</details>
+
+<details>
+<summary>GitHub PR Workflow Commands (2026-01-29)</summary>
 
 **New `cf pr` commands** — Manage pull requests directly from the CLI.
 
@@ -82,7 +147,10 @@ cf pr merge 123 --method squash
 cf pr close 123
 ```
 
-### Task Self-Diagnosis
+</details>
+
+<details>
+<summary>Task Self-Diagnosis (2026-01-29)</summary>
 
 **New `cf work diagnose` command** — Automatically analyze failed tasks and get actionable recommendations.
 
@@ -96,17 +164,10 @@ cf work diagnose <task-id> --verbose
 
 The diagnostic agent analyzes run logs, identifies root causes, and provides specific fix recommendations.
 
-### Bug Fixes
-
-- **Fixed #265**: NoneType error when `codebase_index` is None during task execution
-- **Fixed #253**: Checkpoint diff API now returns 404 instead of 500 when workspace directory is missing
-
----
-
-### Previous: Enhanced Task Generation (2026-01-25)
+</details>
 
 <details>
-<summary>Task Scheduling & Templates</summary>
+<summary>Task Scheduling & Templates (2026-01-25)</summary>
 
 **Task Scheduling with Critical Path Analysis:**
 
@@ -229,11 +290,13 @@ cf work batch run --all-ready --retry 3
 - **Autonomous Execution** — `cf work start --execute` runs the full agent loop
 - **Self-Correction Loop** — Agent automatically fixes failing verification gates (up to 3 attempts)
 - **Human-in-the-Loop Blockers** — Agents pause and ask questions when they need decisions
-- **Verification Gates** — Automatic ruff/pytest checks after changes
+- **Verification Gates** — Automatic ruff/pytest/BUILD checks after changes
+- **Live Streaming** — `cf work follow` for real-time execution output
 - **Verbose Mode** — `--verbose` flag shows detailed progress and self-correction activity
 - **Dry Run Mode** — Preview changes without applying them
 - **State Persistence** — Resume work across sessions
 - **Task Diagnosis** — Automatic root cause analysis for failed tasks
+- **PRD Generation** — AI-guided requirements discovery with templates
 
 ### Multi-Agent Orchestration
 - **Multi-Agent Orchestra** — Lead agent coordinates backend, frontend, test, and review specialists
@@ -261,6 +324,7 @@ cf work batch run --all-ready --retry 3
 - **PR Workflow** — `cf pr create/list/merge` for GitHub integration
 - **Task Scheduling** — CPM-based critical path analysis
 - **Task Templates** — 7 built-in templates for common development patterns
+- **PRD Templates** — 5 built-in PRD formats for different team needs
 - **Cost Tracking** — Real-time token usage and cost analytics per agent/task
 
 ---
@@ -335,7 +399,9 @@ cd /path/to/your/project
 cf init . --detect
 # Or explicit: cf init . --tech-stack "Python with FastAPI, uv, pytest"
 
-# 2. Add a PRD (Product Requirements Document)
+# 2. Generate PRD interactively (NEW!)
+cf prd generate
+# Or add existing PRD file
 cf prd add requirements.md
 
 # 3. Generate tasks from PRD
@@ -347,17 +413,20 @@ cf tasks list
 # 5. Start work on a task (with AI agent)
 cf work start <task-id> --execute
 
-# 6. Check for blockers (questions the agent needs answered)
+# 6. Follow execution in real-time (NEW!)
+cf work follow <task-id>
+
+# 7. Check for blockers (questions the agent needs answered)
 cf blocker list
 cf blocker answer <blocker-id> "Your answer here"
 
-# 7. Resume work after answering blockers
+# 8. Resume work after answering blockers
 cf work resume <task-id>
 
-# 8. If a task fails, diagnose the issue
+# 9. If a task fails, diagnose the issue
 cf work diagnose <task-id>
 
-# 9. Review changes and create checkpoint
+# 10. Review changes and create checkpoint
 cf review
 cf checkpoint create "Feature complete"
 ```
@@ -401,11 +470,21 @@ cf env auto-install --yes       # Install all missing tools
 
 ### PRD (Product Requirements)
 ```bash
-cf prd add <file.md>        # Add/update PRD
-cf prd show                 # Display current PRD
-cf prd list                 # List all PRDs
-cf prd versions <id>        # Show version history
-cf prd diff <id> <v1> <v2>  # Compare versions
+cf prd generate                 # Interactive AI-guided PRD creation (NEW!)
+cf prd generate --template lean # Use specific template
+cf prd add <file.md>            # Add/update PRD from file
+cf prd show                     # Display current PRD
+cf prd list                     # List all PRDs
+cf prd versions <id>            # Show version history
+cf prd diff <id> <v1> <v2>      # Compare versions
+```
+
+### PRD Templates
+```bash
+cf prd templates list           # List available templates
+cf prd templates show <id>      # Show template structure
+cf prd templates export <id> <path>  # Export template to file
+cf prd templates import <path>  # Import custom template
 ```
 
 ### Task Management
@@ -438,6 +517,8 @@ cf work start <id> --execute --verbose  # Execute with detailed output
 cf work start <id> --execute --dry-run  # Preview changes only
 cf work stop <id>           # Stop current run
 cf work resume <id>         # Resume blocked work
+cf work follow <id>         # Stream real-time output (NEW!)
+cf work follow <id> --tail 50  # Show last N lines then stream
 cf work diagnose <id>       # Diagnose failed task
 ```
 
@@ -580,11 +661,11 @@ uv run pytest -m v2
 
 ### Test Statistics
 
-- **Total Tests**: 3000+
-  - Core module tests: ~815
-  - Unit tests: ~900 (Python + TypeScript)
-  - Integration tests: ~500
-  - E2E tests: 85+ (Backend + Playwright)
+- **Total Tests**: 4100+
+  - Core module tests: ~1200
+  - Unit tests: ~1500 (Python + TypeScript)
+  - Integration tests: ~800
+  - E2E tests: 100+ (Backend + Playwright)
 - **Coverage**: 88%+
 - **Pass Rate**: 100%
 
@@ -640,30 +721,32 @@ We welcome contributions! To get started:
 ## Roadmap
 
 ### Completed
-- Phase 0: CLI-first Golden Path workflow
-- Phase 1 (Batch): Batch execution (serial), status monitoring, cancellation
-- Phase 2 (Batch): Parallel execution, dependency graphs, LLM inference, auto-retry
-- Autonomous agent execution with blocker detection
-- Verification gates integration
-- Task-based model selection
-- Self-correction loop for verification failures
-- Verbose mode for observability
-- Task scheduling with CPM analysis
-- Task templates (7 built-in)
-- Environment validation and tool detection
-- GitHub PR workflow commands
-- Task self-diagnosis system
+- **Phase 0**: CLI-first Golden Path workflow
+- **Phase 1**: CLI Foundation ✅
+  - Interactive PRD generation with Socratic discovery
+  - Live execution streaming (`cf work follow`)
+  - PRD template system
+  - Integration tests for credentials/environment
+  - Batch execution (serial, parallel, auto strategies)
+  - Self-correction loop for verification failures
+  - Task scheduling with CPM analysis
+  - Task templates (7 built-in)
+  - Environment validation and tool detection
+  - GitHub PR workflow commands
+  - Task self-diagnosis system
 
-### In Progress (Phase 1: CLI Foundation)
-- **`cf prd generate`**: Interactive AI-driven PRD creation (Socratic discovery)
-- **`cf work follow`**: Live streaming of task execution
-- **Integration tests**: Credential and environment module coverage
+### In Progress (Phase 2: Server Layer)
+- **Server audit and refactor** (#322) — Routes delegating to core modules
+- **Real-time events** (#323) — SSE/WebSocket for execution streaming
+- **API key authentication** (#324) — Programmatic API access
+- **OpenAPI documentation** (#119) — Auto-generated API docs
+- **Rate limiting** (#167) — Security and abuse prevention
+- **API pagination** (#118) — Large dataset support
 
-### Planned (Phases 2-5)
-- **Phase 2**: Server layer as thin adapter, OpenAPI docs, rate limiting
+### Planned (Phases 3-5)
 - **Phase 3**: Web UI rebuild on v2 foundation
-- **Phase 4**: Multi-agent coordination, agent roles, conflict resolution
-- **Phase 5**: TUI dashboard, token/cost tracking, debug/replay mode
+- **Phase 4**: Multi-agent coordination (agent roles, conflict resolution, handoffs)
+- **Phase 5**: Advanced features (TUI dashboard, token/cost tracking, debug/replay mode)
 
 See [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md) for the complete roadmap.
 
