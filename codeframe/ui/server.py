@@ -27,6 +27,7 @@ from codeframe.ui.routers import (
     discovery,
     discovery_v2,  # v2 discovery router (delegates to core)
     git,
+    git_v2,  # v2 git router (delegates to core)
     lint,
     metrics,
     projects,
@@ -34,6 +35,7 @@ from codeframe.ui.routers import (
     prs,
     quality_gates,
     review,
+    review_v2,  # v2 review router (delegates to core)
     schedule,
     schedule_v2,  # v2 schedule router (delegates to core)
     session,
@@ -343,6 +345,7 @@ app.include_router(context.router)
 app.include_router(discovery.router)
 app.include_router(discovery_v2.router)  # v2 endpoints at /api/v2/discovery
 app.include_router(git.router)
+app.include_router(git_v2.router)  # v2 endpoints at /api/v2/git
 app.include_router(lint.router)
 app.include_router(metrics.router)
 app.include_router(projects.router)
@@ -350,6 +353,7 @@ app.include_router(projects_v2.router)  # v2 endpoints at /api/v2/projects
 app.include_router(prs.router)
 app.include_router(quality_gates.router)
 app.include_router(review.router)
+app.include_router(review_v2.router)  # v2 endpoints at /api/v2/review
 app.include_router(schedule.router)
 app.include_router(schedule_v2.router)  # v2 endpoints at /api/v2/schedule
 app.include_router(session.router)

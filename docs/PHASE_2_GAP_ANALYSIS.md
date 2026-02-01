@@ -24,6 +24,8 @@ This document maps CLI commands to core modules and identifies gaps where server
 | `schedule.py` | Schedule management | `get_schedule()`, `predict_completion()`, `get_bottlenecks()` ✅ |
 | `templates.py` | Template management | `list_templates()`, `get_template()`, `get_categories()`, `apply_template()` ✅ |
 | `project_status.py` | Project status/session | `get_workspace_status()`, `get_progress_metrics()`, `get_task_counts()`, `get_session_state()`, `save_session_state()`, `clear_session_state()` ✅ |
+| `git.py` | Git operations | `get_status()`, `list_commits()`, `create_commit()`, `get_diff()`, `get_current_branch()`, `is_clean()` ✅ |
+| `review.py` | Code review | `review_files()`, `review_task()`, `get_review_summary()` ✅ |
 | `streaming.py` | Real-time output | `get_run_output_path()`, `run_output_exists()`, `get_latest_lines()`, `tail_run_output()`, `RunOutputLogger` |
 | `agent.py` | Agent orchestrator | `Agent` class with `run()` method |
 | `planner.py` | LLM planning | `create_implementation_plan()` |
@@ -285,18 +287,113 @@ For each route extraction:
    - Created v2 projects router (`ui/routers/projects_v2.py`)
    - v2 endpoints: `/api/v2/projects/*`
 
+9. ✅ **Git operations extraction (Step 3.7)**
+   - Created `core/git.py` with v2-compatible functions (headless, no v1 Database required)
+   - Added `get_status()`, `list_commits()`, `create_commit()`, `get_diff()`, `get_current_branch()`, `is_clean()`
+   - Created v2 git router (`ui/routers/git_v2.py`)
+   - v2 endpoints: `/api/v2/git/*`
+
+10. ✅ **Review operations extraction (Step 3.8)**
+    - Created `core/review.py` with v2-compatible functions
+    - Added `review_files()`, `review_task()`, `get_review_summary()`
+    - Uses quality analyzers directly (ComplexityAnalyzer, SecurityScanner, OWASPPatterns)
+    - Created v2 review router (`ui/routers/review_v2.py`)
+    - v2 endpoints: `/api/v2/review/*`
+
+11. ✅ **MEDIUM priority feature categorization**
+    - Categorized v1 features as Essential, Nice-to-have, or Can-defer
+    - Git: Essential (status, commit), Nice-to-have (branch management)
+    - Metrics: Nice-to-have (basic), Can-defer (advanced analytics)
+    - Review: Essential (trigger, status), Nice-to-have (advanced filtering)
+    - Chat: Nice-to-have (UI feature)
+    - PR: Already headless in `git/github_integration.py`
+
 ### In Progress
 
-9. 🔄 Continue MEDIUM priority extractions (git, PR, metrics, review, chat, gate results)
+12. 🔄 Continue with remaining Phase 2 items or move to Phase 3 nice-to-have features
 
-### Remaining
+### Feature Categorization (MEDIUM Priority)
 
-10. ⏳ Git module (`core.git`)
-11. ⏳ PR module (`core.pr`)
-12. ⏳ Metrics module (`core.metrics`)
-13. ⏳ Review module (`core.review`)
-14. ⏳ Chat module (`core.chat`)
-15. ⏳ Gate results function
+The following categorization evaluates v1 features based on actual utility rather than
+presence in the CLI. The v2 CLI-first approach doesn't mean discarding multi-user/multi-project
+functionality that will eventually be needed.
+
+#### Git Operations (`ui/routers/git.py`)
+
+| Feature | Category | Rationale | Phase |
+|---------|----------|-----------|-------|
+| `GET /git/status` | **Essential** | Core workflow need - check repo state | Phase 2 |
+| `POST /git/commit` | **Essential** | Core workflow - commit changes | Phase 2 |
+| `POST /git/branches` | Nice-to-have | Branch creation useful but CLI uses worktrees | Phase 3 |
+| `GET /git/branches` | Nice-to-have | Dashboard feature for branch visualization | Phase 3 |
+| `GET /git/commits` | Nice-to-have | Dashboard feature for commit history | Phase 3 |
+
+**CLI equivalent:** `cf commit`, `cf pr` - but API provides programmatic access for UI/integrations.
+
+#### Metrics (`ui/routers/metrics.py`)
+
+| Feature | Category | Rationale | Phase |
+|---------|----------|-----------|-------|
+| Basic token count | Nice-to-have | Useful for cost awareness | Phase 3 |
+| Basic cost per project | Nice-to-have | Operational visibility | Phase 3 |
+| Time series data | Can-defer | Advanced charting, UI-specific | Phase 5 |
+| By-agent breakdowns | Can-defer | Advanced analytics | Phase 5 |
+| By-model breakdowns | Can-defer | Advanced analytics | Phase 5 |
+
+**Note:** User identified "advanced cost tracking" as lower priority. Basic visibility
+is nice-to-have; detailed analytics is Phase 5.
+
+#### Code Review (`ui/routers/review.py`)
+
+| Feature | Category | Rationale | Phase |
+|---------|----------|-----------|-------|
+| `POST /agents/{id}/review` | **Essential** | Trigger review - core workflow | Phase 2 |
+| `GET /tasks/{id}/review-status` | **Essential** | Check review outcome | Phase 2 |
+| `GET /projects/{id}/review-stats` | Nice-to-have | Dashboard aggregation | Phase 3 |
+| `POST /agents/review/analyze` | Nice-to-have | Background analysis | Phase 3 |
+| `GET /tasks/{id}/reviews` (filtered) | Nice-to-have | Detailed findings display | Phase 3 |
+| `GET /projects/{id}/code-reviews` | Nice-to-have | Project-level view | Phase 3 |
+
+**CLI equivalent:** `cf review` - API provides review trigger and status.
+
+#### Chat (`ui/routers/chat.py`)
+
+| Feature | Category | Rationale | Phase |
+|---------|----------|-----------|-------|
+| Chat conversation | Nice-to-have | Conversational interface | Phase 3 |
+| Chat history | Nice-to-have | Context persistence | Phase 3 |
+
+**Note:** Chat is a UI feature. CLI users interact via command args.
+
+#### PR Operations (`ui/routers/prs.py`)
+
+| Feature | Category | Rationale | Phase |
+|---------|----------|-----------|-------|
+| PR create | **Essential** | Core workflow - `cf pr create` | Phase 2 |
+| PR status | **Essential** | Check PR state - `cf pr status` | Phase 2 |
+| PR checks | **Essential** | CI status - `cf pr checks` | Phase 2 |
+| PR merge | **Essential** | Complete workflow - `cf pr merge` | Phase 2 |
+| PR list | Nice-to-have | Dashboard view | Phase 3 |
+
+**Note:** PR operations already have CLI commands. Core module needs to be created
+to support both CLI and API.
+
+### Remaining Tasks
+
+**Phase 2 (Essential):**
+10. ✅ Git core module - `core/git.py` (status, commit, diff, branch)
+11. ✅ Review core module - `core/review.py` (review_files, review_task, get_review_summary)
+12. ⏳ PR core module - uses `git/github_integration.py` (already headless, no core wrapper needed)
+
+**Phase 3 (Nice-to-have):**
+13. ⏳ Git branch management
+14. ⏳ Metrics basic tracking
+15. ⏳ Chat module
+16. ⏳ Review advanced features
+
+**Phase 5 (Can-defer):**
+17. ⏳ Metrics time series and advanced analytics
+18. ⏳ Gate results historical tracking
 
 ---
 
@@ -363,6 +460,25 @@ For each route extraction:
 | `/api/v2/projects/task-counts` | GET | `core.project_status` | Get task counts |
 | `/api/v2/projects/session` | GET | `core.project_status` | Get session state |
 | `/api/v2/projects/session` | DELETE | `core.project_status` | Clear session state |
+
+### Git Routes (`/api/v2/git`)
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/git/status` | GET | `core.git` | Get working tree status |
+| `/api/v2/git/commits` | GET | `core.git` | List commits |
+| `/api/v2/git/commit` | POST | `core.git` | Create commit |
+| `/api/v2/git/diff` | GET | `core.git` | Get git diff |
+| `/api/v2/git/branch` | GET | `core.git` | Get current branch |
+| `/api/v2/git/clean` | GET | `core.git` | Check if working tree clean |
+
+### Review Routes (`/api/v2/review`)
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/review/files` | POST | `core.review` | Review specified files |
+| `/api/v2/review/task` | POST | `core.review` | Review task's modified files |
+| `/api/v2/review/files/summary` | POST | `core.review` | Review files with summary only |
 
 ---
 
