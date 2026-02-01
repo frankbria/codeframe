@@ -30,6 +30,7 @@ from codeframe.ui.routers import (
     lint,
     metrics,
     projects,
+    projects_v2,  # v2 projects router (delegates to core)
     prs,
     quality_gates,
     review,
@@ -345,6 +346,7 @@ app.include_router(git.router)
 app.include_router(lint.router)
 app.include_router(metrics.router)
 app.include_router(projects.router)
+app.include_router(projects_v2.router)  # v2 endpoints at /api/v2/projects
 app.include_router(prs.router)
 app.include_router(quality_gates.router)
 app.include_router(review.router)
