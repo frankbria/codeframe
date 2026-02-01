@@ -20,7 +20,9 @@ This document maps CLI commands to core modules and identifies gaps where server
 | `tasks.py` | Task management | `create()`, `get()`, `list_tasks()`, `list_by_status()`, `update_status()`, `update()`, `update_depends_on()`, `get_dependents()`, `delete()`, `generate_from_prd()` |
 | `runtime.py` | Run lifecycle | `start_task_run()`, `get_run()`, `get_active_run()`, `list_runs()`, `complete_run()`, `fail_run()`, `block_run()`, `resume_run()`, `stop_run()`, `execute_agent()`, `approve_tasks()`, `check_assignment_status()`, `get_ready_task_ids()` ✅ |
 | `blockers.py` | Human-in-the-loop | `create()`, `get()`, `list_open()`, `list_all()`, `answer()`, `resolve()` |
-| `checkpoints.py` | State snapshots | `create()`, `get()`, `list_all()`, `restore()`, `delete()` |
+| `checkpoints.py` | State snapshots | `create()`, `get()`, `list_all()`, `restore()`, `delete()`, `diff()` ✅ |
+| `schedule.py` | Schedule management | `get_schedule()`, `predict_completion()`, `get_bottlenecks()` ✅ |
+| `templates.py` | Template management | `list_templates()`, `get_template()`, `get_categories()`, `apply_template()` ✅ |
 | `streaming.py` | Real-time output | `get_run_output_path()`, `run_output_exists()`, `get_latest_lines()`, `tail_run_output()`, `RunOutputLogger` |
 | `agent.py` | Agent orchestrator | `Agent` class with `run()` method |
 | `planner.py` | LLM planning | `create_implementation_plan()` |
@@ -126,12 +128,12 @@ Cross-referencing with `docs/PHASE_2_ROUTE_AUDIT.md`, here are server routes tha
 | `GET /api/checkpoints/{project_id}` | `checkpoints.py` | `core.checkpoints` | `list_all()` | ✅ Present |
 | `POST /api/checkpoints/{project_id}` | `checkpoints.py` | `core.checkpoints` | `create()` | ✅ Present |
 | `POST /api/checkpoints/{id}/restore` | `checkpoints.py` | `core.checkpoints` | `restore()` | ✅ Present |
-| `GET /api/checkpoints/{id1}/diff/{id2}` | `checkpoints.py` | `core.checkpoints` | Need diff function | ⚠️ Gap |
-| `GET /api/schedule/{project_id}` | `schedule.py` | `core.conductor` | Need schedule view | ⚠️ Gap |
-| `GET /api/schedule/{project_id}/predict` | `schedule.py` | `core.conductor` | Need prediction | ⚠️ Gap |
-| `GET /api/schedule/{project_id}/bottlenecks` | `schedule.py` | `core.conductor` | Need bottleneck analysis | ⚠️ Gap |
-| `GET /api/templates` | `templates.py` | Planning module | Template list | ⚠️ Gap |
-| `GET /api/templates/{id}` | `templates.py` | Planning module | Template get | ⚠️ Gap |
+| `GET /api/checkpoints/{id1}/diff/{id2}` | `checkpoints.py` | `core.checkpoints` | `diff()` | ✅ Present |
+| `GET /api/schedule/{project_id}` | `schedule.py` | `core.schedule` | `get_schedule()` | ✅ Present |
+| `GET /api/schedule/{project_id}/predict` | `schedule.py` | `core.schedule` | `predict_completion()` | ✅ Present |
+| `GET /api/schedule/{project_id}/bottlenecks` | `schedule.py` | `core.schedule` | `get_bottlenecks()` | ✅ Present |
+| `GET /api/templates` | `templates.py` | `core.templates` | `list_templates()` | ✅ Present |
+| `GET /api/templates/{id}` | `templates.py` | `core.templates` | `get_template()` | ✅ Present |
 | `POST /api/discovery/start` | `discovery.py` | `core.prd_discovery` | `start_discovery()` | ✅ Present |
 | `POST /api/discovery/answer` | `discovery.py` | `core.prd_discovery` | `submit_answer()` | ✅ Present |
 | `POST /api/discovery/generate` | `discovery.py` | `core.prd_discovery` | `generate_prd()` | ✅ Present |
@@ -261,16 +263,33 @@ For each route extraction:
    - Added `approve_tasks()`, `check_assignment_status()`, `get_ready_task_ids()` to `core/runtime.py`
    - Created v2 tasks router (`ui/routers/tasks_v2.py`)
    - v2 endpoints: `/api/v2/tasks/*`
+5. ✅ **Checkpoint diff function (Step 3.3)**
+   - Added `diff()`, `TaskDiff`, `CheckpointDiff` to `core/checkpoints.py`
+   - Created v2 checkpoints router (`ui/routers/checkpoints_v2.py`)
+   - v2 endpoints: `/api/v2/checkpoints/*`
+6. ✅ **Schedule wrapper functions (Step 3.4)**
+   - Created `core/schedule.py` with v2-compatible wrappers
+   - Added `get_schedule()`, `predict_completion()`, `get_bottlenecks()`
+   - Created v2 schedule router (`ui/routers/schedule_v2.py`)
+   - v2 endpoints: `/api/v2/schedule/*`
+7. ✅ **Template wrapper functions (Step 3.5)**
+   - Created `core/templates.py` with v2-compatible wrappers
+   - Added `list_templates()`, `get_template()`, `get_categories()`, `apply_template()`
+   - Created v2 templates router (`ui/routers/templates_v2.py`)
+   - v2 endpoints: `/api/v2/templates/*`
 
 ### In Progress
 
-5. 🔄 Continue HIGH priority extractions
+8. 🔄 Continue MEDIUM priority extractions (git, PR, metrics, review, chat, gate results)
 
 ### Remaining
 
-6. ⏳ Add checkpoint diff function
-7. ⏳ Schedule wrapper functions
-8. ⏳ Template wrapper functions
+9. ⏳ Git module (`core.git`)
+10. ⏳ PR module (`core.pr`)
+11. ⏳ Metrics module (`core.metrics`)
+12. ⏳ Review module (`core.review`)
+13. ⏳ Chat module (`core.chat`)
+14. ⏳ Gate results function
 
 ---
 
@@ -299,6 +318,34 @@ For each route extraction:
 | `/api/v2/tasks/{id}/start` | POST | `core.runtime` | Start single task run |
 | `/api/v2/tasks/{id}/stop` | POST | `core.runtime` | Stop running task |
 | `/api/v2/tasks/{id}/resume` | POST | `core.runtime` | Resume blocked task |
+
+### Checkpoint Routes (`/api/v2/checkpoints`)
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/checkpoints` | GET | `core.checkpoints` | List all checkpoints |
+| `/api/v2/checkpoints` | POST | `core.checkpoints` | Create checkpoint |
+| `/api/v2/checkpoints/{id}` | GET | `core.checkpoints` | Get checkpoint details |
+| `/api/v2/checkpoints/{id}/restore` | POST | `core.checkpoints` | Restore from checkpoint |
+| `/api/v2/checkpoints/{id}` | DELETE | `core.checkpoints` | Delete checkpoint |
+| `/api/v2/checkpoints/{a}/diff/{b}` | GET | `core.checkpoints` | Diff two checkpoints |
+
+### Schedule Routes (`/api/v2/schedule`)
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/schedule` | GET | `core.schedule` | Get project schedule |
+| `/api/v2/schedule/predict` | GET | `core.schedule` | Predict completion date |
+| `/api/v2/schedule/bottlenecks` | GET | `core.schedule` | Identify bottlenecks |
+
+### Template Routes (`/api/v2/templates`)
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/templates` | GET | `core.templates` | List all templates |
+| `/api/v2/templates/categories` | GET | `core.templates` | List template categories |
+| `/api/v2/templates/{id}` | GET | `core.templates` | Get template details |
+| `/api/v2/templates/apply` | POST | `core.templates` | Apply template to create tasks |
 
 ---
 
