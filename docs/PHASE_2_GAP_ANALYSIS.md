@@ -23,6 +23,7 @@ This document maps CLI commands to core modules and identifies gaps where server
 | `checkpoints.py` | State snapshots | `create()`, `get()`, `list_all()`, `restore()`, `delete()`, `diff()` ✅ |
 | `schedule.py` | Schedule management | `get_schedule()`, `predict_completion()`, `get_bottlenecks()` ✅ |
 | `templates.py` | Template management | `list_templates()`, `get_template()`, `get_categories()`, `apply_template()` ✅ |
+| `project_status.py` | Project status/session | `get_workspace_status()`, `get_progress_metrics()`, `get_task_counts()`, `get_session_state()`, `save_session_state()`, `clear_session_state()` ✅ |
 | `streaming.py` | Real-time output | `get_run_output_path()`, `run_output_exists()`, `get_latest_lines()`, `tail_run_output()`, `RunOutputLogger` |
 | `agent.py` | Agent orchestrator | `Agent` class with `run()` method |
 | `planner.py` | LLM planning | `create_implementation_plan()` |
@@ -277,19 +278,25 @@ For each route extraction:
    - Added `list_templates()`, `get_template()`, `get_categories()`, `apply_template()`
    - Created v2 templates router (`ui/routers/templates_v2.py`)
    - v2 endpoints: `/api/v2/templates/*`
+8. ✅ **Project status and session extraction (Step 3.6)**
+   - Created `core/project_status.py` with v2-compatible functions
+   - Added `get_workspace_status()`, `get_progress_metrics()`, `get_task_counts()`
+   - Added `get_session_state()`, `save_session_state()`, `clear_session_state()`
+   - Created v2 projects router (`ui/routers/projects_v2.py`)
+   - v2 endpoints: `/api/v2/projects/*`
 
 ### In Progress
 
-8. 🔄 Continue MEDIUM priority extractions (git, PR, metrics, review, chat, gate results)
+9. 🔄 Continue MEDIUM priority extractions (git, PR, metrics, review, chat, gate results)
 
 ### Remaining
 
-9. ⏳ Git module (`core.git`)
-10. ⏳ PR module (`core.pr`)
-11. ⏳ Metrics module (`core.metrics`)
-12. ⏳ Review module (`core.review`)
-13. ⏳ Chat module (`core.chat`)
-14. ⏳ Gate results function
+10. ⏳ Git module (`core.git`)
+11. ⏳ PR module (`core.pr`)
+12. ⏳ Metrics module (`core.metrics`)
+13. ⏳ Review module (`core.review`)
+14. ⏳ Chat module (`core.chat`)
+15. ⏳ Gate results function
 
 ---
 
@@ -346,6 +353,16 @@ For each route extraction:
 | `/api/v2/templates/categories` | GET | `core.templates` | List template categories |
 | `/api/v2/templates/{id}` | GET | `core.templates` | Get template details |
 | `/api/v2/templates/apply` | POST | `core.templates` | Apply template to create tasks |
+
+### Project Routes (`/api/v2/projects`)
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/projects/status` | GET | `core.project_status` | Get workspace status |
+| `/api/v2/projects/progress` | GET | `core.project_status` | Get progress metrics |
+| `/api/v2/projects/task-counts` | GET | `core.project_status` | Get task counts |
+| `/api/v2/projects/session` | GET | `core.project_status` | Get session state |
+| `/api/v2/projects/session` | DELETE | `core.project_status` | Clear session state |
 
 ---
 
