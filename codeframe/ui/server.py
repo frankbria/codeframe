@@ -39,6 +39,7 @@ from codeframe.ui.routers import (
     tasks,
     tasks_v2,  # v2 tasks router (delegates to core)
     templates,
+    templates_v2,  # v2 templates router (delegates to core)
     websocket,
 )
 from codeframe.auth import router as auth_router
@@ -354,6 +355,7 @@ app.include_router(tasks.router)
 app.include_router(tasks.project_router)
 app.include_router(tasks_v2.router)  # v2 endpoints at /api/v2/tasks
 app.include_router(templates.router)
+app.include_router(templates_v2.router)  # v2 endpoints at /api/v2/templates
 app.include_router(websocket.router)
 app.include_router(auth_router.router)
 
