@@ -347,3 +347,135 @@ def _row_to_checkpoint(row: tuple) -> Checkpoint:
         snapshot=json.loads(row[3]) if row[3] else {},
         created_at=datetime.fromisoformat(row[4]),
     )
+
+
+# ============================================================================
+# Checkpoint Diff (Route Delegation Helper)
+# ============================================================================
+
+
+@dataclass
+class TaskDiff:
+    """Difference in a single task between checkpoints."""
+
+    task_id: str
+    title: str
+    old_status: Optional[str]
+    new_status: Optional[str]
+    change_type: str  # "added", "removed", "status_changed", "unchanged"
+
+
+@dataclass
+class CheckpointDiff:
+    """Difference between two checkpoints.
+
+    Attributes:
+        checkpoint_a: First checkpoint (older)
+        checkpoint_b: Second checkpoint (newer)
+        task_diffs: List of task differences
+        summary: Summary counts of changes
+    """
+
+    checkpoint_a_id: str
+    checkpoint_a_name: str
+    checkpoint_b_id: str
+    checkpoint_b_name: str
+    task_diffs: list[TaskDiff]
+    summary: dict[str, int]
+
+
+def diff(
+    workspace: Workspace,
+    checkpoint_id_a: str,
+    checkpoint_id_b: str,
+) -> CheckpointDiff:
+    """Compare two checkpoints and return the differences.
+
+    Compares task statuses between two checkpoints to show what changed.
+
+    Args:
+        workspace: Target workspace
+        checkpoint_id_a: First checkpoint ID (typically older)
+        checkpoint_id_b: Second checkpoint ID (typically newer)
+
+    Returns:
+        CheckpointDiff with task differences and summary
+
+    Raises:
+        ValueError: If either checkpoint not found
+
+    Example:
+        diff_result = diff(workspace, "abc123", "def456")
+        for task_diff in diff_result.task_diffs:
+            if task_diff.change_type == "status_changed":
+                print(f"{task_diff.title}: {task_diff.old_status} -> {task_diff.new_status}")
+    """
+    # Load both checkpoints
+    checkpoint_a = get(workspace, checkpoint_id_a)
+    if not checkpoint_a:
+        raise ValueError(f"Checkpoint not found: {checkpoint_id_a}")
+
+    checkpoint_b = get(workspace, checkpoint_id_b)
+    if not checkpoint_b:
+        raise ValueError(f"Checkpoint not found: {checkpoint_id_b}")
+
+    # Extract task data from snapshots
+    tasks_a = {t["id"]: t for t in checkpoint_a.snapshot.get("tasks", [])}
+    tasks_b = {t["id"]: t for t in checkpoint_b.snapshot.get("tasks", [])}
+
+    # Find all task IDs
+    all_task_ids = set(tasks_a.keys()) | set(tasks_b.keys())
+
+    # Compare tasks
+    task_diffs = []
+    summary = {"added": 0, "removed": 0, "status_changed": 0, "unchanged": 0}
+
+    for task_id in sorted(all_task_ids):
+        task_a = tasks_a.get(task_id)
+        task_b = tasks_b.get(task_id)
+
+        if task_a is None:
+            # Task added in checkpoint B
+            task_diffs.append(TaskDiff(
+                task_id=task_id,
+                title=task_b.get("title", "Unknown"),
+                old_status=None,
+                new_status=task_b.get("status"),
+                change_type="added",
+            ))
+            summary["added"] += 1
+
+        elif task_b is None:
+            # Task removed in checkpoint B
+            task_diffs.append(TaskDiff(
+                task_id=task_id,
+                title=task_a.get("title", "Unknown"),
+                old_status=task_a.get("status"),
+                new_status=None,
+                change_type="removed",
+            ))
+            summary["removed"] += 1
+
+        elif task_a.get("status") != task_b.get("status"):
+            # Status changed
+            task_diffs.append(TaskDiff(
+                task_id=task_id,
+                title=task_b.get("title", task_a.get("title", "Unknown")),
+                old_status=task_a.get("status"),
+                new_status=task_b.get("status"),
+                change_type="status_changed",
+            ))
+            summary["status_changed"] += 1
+
+        else:
+            # Unchanged (only include if requested, skip for brevity)
+            summary["unchanged"] += 1
+
+    return CheckpointDiff(
+        checkpoint_a_id=checkpoint_a.id,
+        checkpoint_a_name=checkpoint_a.name,
+        checkpoint_b_id=checkpoint_b.id,
+        checkpoint_b_name=checkpoint_b.name,
+        task_diffs=task_diffs,
+        summary=summary,
+    )

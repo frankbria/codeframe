@@ -22,6 +22,7 @@ from codeframe.ui.routers import (
     blockers,
     chat,
     checkpoints,
+    checkpoints_v2,  # v2 checkpoints router (delegates to core)
     context,
     discovery,
     discovery_v2,  # v2 discovery router (delegates to core)
@@ -334,6 +335,7 @@ app.include_router(blockers.router)
 app.include_router(blockers.blocker_router)
 app.include_router(chat.router)
 app.include_router(checkpoints.router)
+app.include_router(checkpoints_v2.router)  # v2 endpoints at /api/v2/checkpoints
 app.include_router(context.router)
 app.include_router(discovery.router)
 app.include_router(discovery_v2.router)  # v2 endpoints at /api/v2/discovery
