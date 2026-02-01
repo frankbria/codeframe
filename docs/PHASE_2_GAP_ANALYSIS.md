@@ -18,7 +18,7 @@ This document maps CLI commands to core modules and identifies gaps where server
 | `prd.py` | PRD CRUD operations | `store()`, `get_latest()`, `get_by_id()`, `list_all()`, `delete()`, `export_to_file()`, `create_new_version()`, `get_versions()`, `diff_versions()` |
 | `prd_discovery.py` | AI-driven PRD generation | `PrdDiscoverySession` class, `get_active_session()`, `start_discovery_session()`, `process_discovery_answer()`, `generate_prd_from_discovery()`, `get_discovery_status()`, `reset_discovery()` ✅ |
 | `tasks.py` | Task management | `create()`, `get()`, `list_tasks()`, `list_by_status()`, `update_status()`, `update()`, `update_depends_on()`, `get_dependents()`, `delete()`, `generate_from_prd()` |
-| `runtime.py` | Run lifecycle | `start_task_run()`, `get_run()`, `get_active_run()`, `list_runs()`, `complete_run()`, `fail_run()`, `block_run()`, `resume_run()`, `stop_run()`, `execute_agent()` |
+| `runtime.py` | Run lifecycle | `start_task_run()`, `get_run()`, `get_active_run()`, `list_runs()`, `complete_run()`, `fail_run()`, `block_run()`, `resume_run()`, `stop_run()`, `execute_agent()`, `approve_tasks()`, `check_assignment_status()`, `get_ready_task_ids()` ✅ |
 | `blockers.py` | Human-in-the-loop | `create()`, `get()`, `list_open()`, `list_all()`, `answer()`, `resolve()` |
 | `checkpoints.py` | State snapshots | `create()`, `get()`, `list_all()`, `restore()`, `delete()` |
 | `streaming.py` | Real-time output | `get_run_output_path()`, `run_output_exists()`, `get_latest_lines()`, `tail_run_output()`, `RunOutputLogger` |
@@ -257,22 +257,26 @@ For each route extraction:
    - Created v2 discovery router (`ui/routers/discovery_v2.py`)
    - Added `get_v2_workspace()` dependency for v2 routes
    - v2 endpoints: `/api/v2/discovery/*`
+4. ✅ **Task execution extraction (Step 3.2)**
+   - Added `approve_tasks()`, `check_assignment_status()`, `get_ready_task_ids()` to `core/runtime.py`
+   - Created v2 tasks router (`ui/routers/tasks_v2.py`)
+   - v2 endpoints: `/api/v2/tasks/*`
 
 ### In Progress
 
-4. 🔄 Continue HIGH priority extractions
+5. 🔄 Continue HIGH priority extractions
 
 ### Remaining
 
-5. ⏳ Extract task approval logic to core
-6. ⏳ Extract task assignment logic to core
-7. ⏳ Add checkpoint diff function
-8. ⏳ Schedule wrapper functions
-9. ⏳ Template wrapper functions
+6. ⏳ Add checkpoint diff function
+7. ⏳ Schedule wrapper functions
+8. ⏳ Template wrapper functions
 
 ---
 
 ## 8. V2 Routes Created
+
+### Discovery Routes (`/api/v2/discovery`)
 
 | Endpoint | Method | Core Module | Description |
 |----------|--------|-------------|-------------|
@@ -282,6 +286,19 @@ For each route extraction:
 | `/api/v2/discovery/{id}/generate-prd` | POST | `core.prd_discovery` | Generate PRD |
 | `/api/v2/discovery/reset` | POST | `core.prd_discovery` | Reset session |
 | `/api/v2/discovery/generate-tasks` | POST | `core.tasks` | Generate tasks from PRD |
+
+### Task Routes (`/api/v2/tasks`)
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/tasks` | GET | `core.tasks` | List tasks with filter |
+| `/api/v2/tasks/{id}` | GET | `core.tasks` | Get single task |
+| `/api/v2/tasks/approve` | POST | `core.runtime` | Approve tasks for execution |
+| `/api/v2/tasks/assignment-status` | GET | `core.runtime` | Check execution status |
+| `/api/v2/tasks/execute` | POST | `core.conductor` | Start batch execution |
+| `/api/v2/tasks/{id}/start` | POST | `core.runtime` | Start single task run |
+| `/api/v2/tasks/{id}/stop` | POST | `core.runtime` | Stop running task |
+| `/api/v2/tasks/{id}/resume` | POST | `core.runtime` | Resume blocked task |
 
 ---
 
