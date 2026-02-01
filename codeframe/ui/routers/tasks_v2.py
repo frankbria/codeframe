@@ -24,6 +24,7 @@ from codeframe.core.workspace import Workspace
 from codeframe.core import runtime, tasks, conductor
 from codeframe.core.state_machine import TaskStatus
 from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.response_models import api_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,11 @@ async def list_tasks(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid status: {status}. Valid values: {[s.value for s in TaskStatus]}",
+                detail=api_error(
+                    f"Invalid status: {status}",
+                    ErrorCodes.VALIDATION_ERROR,
+                    f"Valid values: {[s.value for s in TaskStatus]}",
+                ),
             )
 
     # Get tasks
@@ -197,7 +202,10 @@ async def get_task(
     """
     task = tasks.get(workspace, task_id)
     if not task:
-        raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
+        )
 
     return TaskResponse(
         id=task.id,
@@ -280,7 +288,10 @@ async def approve_tasks_endpoint(
 
     except Exception as e:
         logger.error(f"Failed to approve tasks: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Approval failed", ErrorCodes.EXECUTION_FAILED, str(e)),
+        )
 
 
 @router.get("/assignment-status", response_model=AssignmentStatusResponse)
@@ -340,14 +351,21 @@ async def start_execution(
         # Check assignment status first
         status = runtime.check_assignment_status(workspace)
         if not status.can_assign:
-            raise HTTPException(status_code=400, detail=status.reason)
+            raise HTTPException(
+                status_code=400,
+                detail=api_error("Cannot execute", ErrorCodes.INVALID_STATE, status.reason),
+            )
 
         # Get task IDs
         task_ids = request.task_ids or runtime.get_ready_task_ids(workspace)
         if not task_ids:
             raise HTTPException(
                 status_code=400,
-                detail="No tasks to execute. Approve tasks first with POST /api/v2/tasks/approve",
+                detail=api_error(
+                    "No tasks to execute",
+                    ErrorCodes.INVALID_REQUEST,
+                    "Approve tasks first with POST /api/v2/tasks/approve",
+                ),
             )
 
         # Start batch execution
@@ -372,7 +390,10 @@ async def start_execution(
         raise
     except Exception as e:
         logger.error(f"Failed to start execution: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Execution failed", ErrorCodes.EXECUTION_FAILED, str(e)),
+        )
 
 
 @router.post("/{task_id}/start")
@@ -431,12 +452,22 @@ async def start_single_task(
         return result
 
     except ValueError as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=404,
+                detail=api_error("Task not found", ErrorCodes.NOT_FOUND, error_msg),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=api_error("Invalid request", ErrorCodes.INVALID_REQUEST, error_msg),
+        )
     except Exception as e:
         logger.error(f"Failed to start task {task_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Start failed", ErrorCodes.EXECUTION_FAILED, str(e)),
+        )
 
 
 @router.post("/{task_id}/stop")
@@ -472,9 +503,16 @@ async def stop_task(
             "message": f"Stopped run {run.id[:8]} for task {task_id[:8]}.",
         }
     except ValueError as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=404,
+                detail=api_error("Run not found", ErrorCodes.NOT_FOUND, error_msg),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=api_error("Cannot stop", ErrorCodes.INVALID_STATE, error_msg),
+        )
 
 
 @router.post("/{task_id}/resume")
@@ -508,6 +546,13 @@ async def resume_task(
             "message": f"Resumed run {run.id[:8]} for task {task_id[:8]}.",
         }
     except ValueError as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=404,
+                detail=api_error("Run not found", ErrorCodes.NOT_FOUND, error_msg),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=api_error("Cannot resume", ErrorCodes.INVALID_STATE, error_msg),
+        )
