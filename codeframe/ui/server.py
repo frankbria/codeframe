@@ -35,6 +35,7 @@ from codeframe.ui.routers import (
     schedule,
     session,
     tasks,
+    tasks_v2,  # v2 tasks router (delegates to core)
     templates,
     websocket,
 )
@@ -347,6 +348,7 @@ app.include_router(schedule.router)
 app.include_router(session.router)
 app.include_router(tasks.router)
 app.include_router(tasks.project_router)
+app.include_router(tasks_v2.router)  # v2 endpoints at /api/v2/tasks
 app.include_router(templates.router)
 app.include_router(websocket.router)
 app.include_router(auth_router.router)
