@@ -24,6 +24,7 @@ from codeframe.ui.routers import (
     checkpoints,
     context,
     discovery,
+    discovery_v2,  # v2 discovery router (delegates to core)
     git,
     lint,
     metrics,
@@ -334,6 +335,7 @@ app.include_router(chat.router)
 app.include_router(checkpoints.router)
 app.include_router(context.router)
 app.include_router(discovery.router)
+app.include_router(discovery_v2.router)  # v2 endpoints at /api/v2/discovery
 app.include_router(git.router)
 app.include_router(lint.router)
 app.include_router(metrics.router)

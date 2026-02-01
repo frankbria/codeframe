@@ -853,3 +853,266 @@ def get_active_session(workspace: Workspace) -> Optional[PrdDiscoverySession]:
     session = PrdDiscoverySession(workspace, api_key=api_key)
     session.load_session(row[0])
     return session
+
+
+# ============================================================================
+# Module-Level Convenience Functions (for Route Delegation)
+# ============================================================================
+
+
+def start_discovery_session(
+    workspace: Workspace,
+    api_key: Optional[str] = None,
+) -> PrdDiscoverySession:
+    """Start a new PRD discovery session.
+
+    This is a convenience function for routes to delegate to.
+    Creates a new PrdDiscoverySession, starts discovery, and returns it.
+
+    Args:
+        workspace: Target workspace
+        api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+
+    Returns:
+        PrdDiscoverySession with first question ready
+
+    Raises:
+        NoApiKeyError: If no API key available
+
+    Example:
+        session = start_discovery_session(workspace)
+        question = session.get_current_question()
+    """
+    session = PrdDiscoverySession(workspace, api_key=api_key)
+    session.start_discovery()
+    return session
+
+
+def get_session(
+    workspace: Workspace,
+    session_id: str,
+    api_key: Optional[str] = None,
+) -> PrdDiscoverySession:
+    """Load an existing discovery session by ID.
+
+    Args:
+        workspace: Target workspace
+        session_id: Session ID to load
+        api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+
+    Returns:
+        Loaded PrdDiscoverySession
+
+    Raises:
+        ValueError: If session not found
+        NoApiKeyError: If no API key available
+    """
+    session = PrdDiscoverySession(workspace, api_key=api_key)
+    session.load_session(session_id)
+    return session
+
+
+def process_discovery_answer(
+    workspace: Workspace,
+    session_id: str,
+    answer: str,
+    api_key: Optional[str] = None,
+) -> dict[str, Any]:
+    """Process an answer for a discovery session.
+
+    This is a convenience function for routes to delegate to.
+    Loads the session, submits the answer, and returns the result.
+
+    Args:
+        workspace: Target workspace
+        session_id: Session ID
+        answer: Answer text
+        api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+
+    Returns:
+        Dict with keys:
+        - accepted: bool - whether answer was accepted
+        - feedback: str - feedback message
+        - follow_up: Optional[str] - follow-up question if answer inadequate
+        - coverage: Optional[dict] - coverage scores after accepted answer
+        - is_complete: bool - whether discovery is now complete
+        - next_question: Optional[dict] - next question if not complete
+
+    Raises:
+        ValueError: If session not found
+        ValidationError: If answer is empty
+        NoApiKeyError: If no API key available
+
+    Example:
+        result = process_discovery_answer(workspace, session_id, "My answer")
+        if result["is_complete"]:
+            prd = generate_prd_from_discovery(workspace, session_id)
+    """
+    session = get_session(workspace, session_id, api_key=api_key)
+    result = session.submit_answer(answer)
+
+    # Add convenience fields
+    result["is_complete"] = session.is_complete()
+    if not session.is_complete():
+        result["next_question"] = session.get_current_question()
+    else:
+        result["next_question"] = None
+
+    return result
+
+
+def generate_prd_from_discovery(
+    workspace: Workspace,
+    session_id: str,
+    template_id: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> "prd.PrdRecord":
+    """Generate a PRD from a completed discovery session.
+
+    This is a convenience function for routes to delegate to.
+    Loads the session, validates it's complete, and generates the PRD.
+
+    Args:
+        workspace: Target workspace
+        session_id: Session ID (must be complete)
+        template_id: Optional PRD template to use
+        api_key: Optional API key (defaults to ANTHROPIC_API_KEY env var)
+
+    Returns:
+        Created PrdRecord
+
+    Raises:
+        ValueError: If session not found
+        IncompleteSessionError: If session not complete
+        NoApiKeyError: If no API key available
+
+    Example:
+        prd = generate_prd_from_discovery(workspace, session_id)
+        print(f"Created PRD: {prd.title}")
+    """
+    session = get_session(workspace, session_id, api_key=api_key)
+    return session.generate_prd(template_id=template_id)
+
+
+def get_discovery_status(
+    workspace: Workspace,
+    session_id: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> dict[str, Any]:
+    """Get discovery status for a workspace.
+
+    If session_id is provided, returns status for that specific session.
+    Otherwise, returns status for the most recent active session, or
+    an idle status if no active session exists.
+
+    Args:
+        workspace: Target workspace
+        session_id: Optional specific session ID
+        api_key: Optional API key (only needed if session exists)
+
+    Returns:
+        Dict with keys:
+        - state: str - 'idle', 'discovering', 'paused', or 'completed'
+        - session_id: Optional[str] - session ID if active
+        - progress: dict - progress statistics (if session exists)
+        - current_question: Optional[dict] - current question (if discovering)
+
+    Example:
+        status = get_discovery_status(workspace)
+        if status["state"] == "idle":
+            session = start_discovery_session(workspace)
+    """
+    if session_id:
+        try:
+            session = get_session(workspace, session_id, api_key=api_key)
+        except (ValueError, NoApiKeyError):
+            return {
+                "state": "idle",
+                "session_id": None,
+                "progress": {},
+                "current_question": None,
+            }
+    else:
+        try:
+            session = get_active_session(workspace)
+        except NoApiKeyError:
+            # Session exists but can't load without API key
+            return {
+                "state": "unknown",
+                "session_id": None,
+                "progress": {},
+                "current_question": None,
+                "error": "ANTHROPIC_API_KEY required to load session",
+            }
+
+    if session is None:
+        return {
+            "state": "idle",
+            "session_id": None,
+            "progress": {},
+            "current_question": None,
+        }
+
+    return {
+        "state": session.state.value,
+        "session_id": session.session_id,
+        "progress": session.get_progress(),
+        "current_question": session.get_current_question(),
+    }
+
+
+def reset_discovery(
+    workspace: Workspace,
+    session_id: Optional[str] = None,
+) -> bool:
+    """Reset discovery for a workspace.
+
+    If session_id is provided, resets that specific session.
+    Otherwise, resets the most recent active session.
+
+    This does NOT delete PRDs or tasks - use separate functions for that.
+
+    Args:
+        workspace: Target workspace
+        session_id: Optional specific session ID to reset
+
+    Returns:
+        True if a session was reset, False if no session found
+
+    Note:
+        This marks the session as completed/abandoned. To start fresh,
+        call start_discovery_session() after reset.
+    """
+    _ensure_discovery_schema(workspace)
+
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    if session_id:
+        cursor.execute(
+            """
+            UPDATE discovery_sessions
+            SET state = 'completed', updated_at = ?
+            WHERE id = ? AND workspace_id = ?
+            """,
+            (_utc_now().isoformat(), session_id, workspace.id),
+        )
+    else:
+        # Reset most recent non-completed session
+        cursor.execute(
+            """
+            UPDATE discovery_sessions
+            SET state = 'completed', updated_at = ?
+            WHERE workspace_id = ? AND state != 'completed'
+            """,
+            (_utc_now().isoformat(), workspace.id),
+        )
+
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+
+    if updated:
+        logger.info(f"Reset discovery session for workspace {workspace.id}")
+
+    return updated
