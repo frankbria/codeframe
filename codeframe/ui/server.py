@@ -34,6 +34,7 @@ from codeframe.ui.routers import (
     quality_gates,
     review,
     schedule,
+    schedule_v2,  # v2 schedule router (delegates to core)
     session,
     tasks,
     tasks_v2,  # v2 tasks router (delegates to core)
@@ -347,6 +348,7 @@ app.include_router(prs.router)
 app.include_router(quality_gates.router)
 app.include_router(review.router)
 app.include_router(schedule.router)
+app.include_router(schedule_v2.router)  # v2 endpoints at /api/v2/schedule
 app.include_router(session.router)
 app.include_router(tasks.router)
 app.include_router(tasks.project_router)
