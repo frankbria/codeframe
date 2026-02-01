@@ -16,7 +16,7 @@ This document maps CLI commands to core modules and identifies gaps where server
 |--------|---------|---------------|
 | `workspace.py` | Workspace management | `create_or_load_workspace()`, `get_workspace()`, `workspace_exists()`, `update_workspace_tech_stack()` |
 | `prd.py` | PRD CRUD operations | `store()`, `get_latest()`, `get_by_id()`, `list_all()`, `delete()`, `export_to_file()`, `create_new_version()`, `get_versions()`, `diff_versions()` |
-| `prd_discovery.py` | AI-driven PRD generation | `PrdDiscoverySession` class, `get_active_session()` |
+| `prd_discovery.py` | AI-driven PRD generation | `PrdDiscoverySession` class, `get_active_session()`, `start_discovery_session()`, `process_discovery_answer()`, `generate_prd_from_discovery()`, `get_discovery_status()`, `reset_discovery()` ✅ |
 | `tasks.py` | Task management | `create()`, `get()`, `list_tasks()`, `list_by_status()`, `update_status()`, `update()`, `update_depends_on()`, `get_dependents()`, `delete()`, `generate_from_prd()` |
 | `runtime.py` | Run lifecycle | `start_task_run()`, `get_run()`, `get_active_run()`, `list_runs()`, `complete_run()`, `fail_run()`, `block_run()`, `resume_run()`, `stop_run()`, `execute_agent()` |
 | `blockers.py` | Human-in-the-loop | `create()`, `get()`, `list_open()`, `list_all()`, `answer()`, `resolve()` |
@@ -246,14 +246,42 @@ For each route extraction:
 
 ---
 
-## 7. Next Steps
+## 7. Progress Tracker
 
-1. ✅ Complete gap analysis (this document)
-2. 🔄 Create Phase 2A tasks for critical gaps
-3. ⏳ Extract task approval logic to core
-4. ⏳ Extract task assignment logic to core
-5. ⏳ Add checkpoint diff function
-6. ⏳ Continue with HIGH priority extractions
+### Completed
+
+1. ✅ Route audit (PHASE_2_ROUTE_AUDIT.md)
+2. ✅ Gap analysis (this document)
+3. ✅ **Discovery extraction (Step 3.1)**
+   - Added convenience functions to `core/prd_discovery.py`
+   - Created v2 discovery router (`ui/routers/discovery_v2.py`)
+   - Added `get_v2_workspace()` dependency for v2 routes
+   - v2 endpoints: `/api/v2/discovery/*`
+
+### In Progress
+
+4. 🔄 Continue HIGH priority extractions
+
+### Remaining
+
+5. ⏳ Extract task approval logic to core
+6. ⏳ Extract task assignment logic to core
+7. ⏳ Add checkpoint diff function
+8. ⏳ Schedule wrapper functions
+9. ⏳ Template wrapper functions
+
+---
+
+## 8. V2 Routes Created
+
+| Endpoint | Method | Core Module | Description |
+|----------|--------|-------------|-------------|
+| `/api/v2/discovery/start` | POST | `core.prd_discovery` | Start new session |
+| `/api/v2/discovery/status` | GET | `core.prd_discovery` | Get session status |
+| `/api/v2/discovery/{id}/answer` | POST | `core.prd_discovery` | Submit answer |
+| `/api/v2/discovery/{id}/generate-prd` | POST | `core.prd_discovery` | Generate PRD |
+| `/api/v2/discovery/reset` | POST | `core.prd_discovery` | Reset session |
+| `/api/v2/discovery/generate-tasks` | POST | `core.tasks` | Generate tasks from PRD |
 
 ---
 
