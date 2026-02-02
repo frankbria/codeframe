@@ -3,11 +3,13 @@
 Provides endpoints for creating, listing, and revoking API keys.
 API key creation requires JWT authentication (not API key auth) to prevent
 privilege escalation attacks.
+
+Uses core/api_key_service.py for business logic (shared with CLI).
 """
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -16,11 +18,11 @@ from pydantic import BaseModel, field_validator
 from codeframe.auth.dependencies import get_current_user, require_auth
 from codeframe.auth.models import User
 from codeframe.auth.api_keys import (
-    generate_api_key,
     validate_scopes,
     SCOPE_READ,
     SCOPE_WRITE,
 )
+from codeframe.core.api_key_service import ApiKeyService
 from codeframe.persistence.database import Database
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ class CreateApiKeyResponse(BaseModel):
     created_at: str
 
 
-class ApiKeyInfo(BaseModel):
+class ApiKeyInfoResponse(BaseModel):
     """API key information (without sensitive data)."""
 
     id: str
@@ -96,6 +98,12 @@ def get_db(request: Request) -> Database:
     return db
 
 
+def get_api_key_service(request: Request) -> ApiKeyService:
+    """Get API key service instance."""
+    db = get_db(request)
+    return ApiKeyService(db)
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -121,35 +129,24 @@ async def create_api_key(
     Returns:
         Created API key details including the full key (shown once)
     """
-    db = get_db(request)
+    service = get_api_key_service(request)
 
-    # Generate the API key
-    full_key, key_hash, prefix = generate_api_key()
-
-    # Parse expiration if provided
-    expires_at = body.expires_at
-
-    # Store in database
-    key_id = db.api_keys.create(
+    result = service.create_api_key(
         user_id=current_user.id,
         name=body.name,
-        key_hash=key_hash,
-        prefix=prefix,
         scopes=body.scopes,
-        expires_at=expires_at,
+        expires_at=body.expires_at,
     )
-
-    logger.info(f"API key created for user {current_user.id}: {prefix}...")
 
     return CreateApiKeyResponse(
-        key=full_key,  # Shown only once
-        id=key_id,
-        prefix=prefix,
-        created_at=datetime.now(timezone.utc).isoformat(),
+        key=result.key,
+        id=result.id,
+        prefix=result.prefix,
+        created_at=result.created_at,
     )
 
 
-@router.get("", response_model=List[ApiKeyInfo])
+@router.get("", response_model=List[ApiKeyInfoResponse])
 async def list_api_keys(
     request: Request,
     auth: dict = Depends(require_auth),  # Either JWT or API key
@@ -161,20 +158,20 @@ async def list_api_keys(
     Returns:
         List of API key information
     """
-    db = get_db(request)
+    service = get_api_key_service(request)
 
-    keys = db.api_keys.list_user_keys(user_id=auth["user_id"])
+    keys = service.list_api_keys(user_id=auth["user_id"])
 
     return [
-        ApiKeyInfo(
-            id=k["id"],
-            name=k["name"],
-            prefix=k["prefix"],
-            scopes=k["scopes"],
-            created_at=k["created_at"],
-            last_used_at=k.get("last_used_at"),
-            expires_at=k.get("expires_at"),
-            is_active=k["is_active"],
+        ApiKeyInfoResponse(
+            id=k.id,
+            name=k.name,
+            prefix=k.prefix,
+            scopes=k.scopes,
+            created_at=k.created_at,
+            last_used_at=k.last_used_at,
+            expires_at=k.expires_at,
+            is_active=k.is_active,
         )
         for k in keys
     ]
@@ -200,16 +197,14 @@ async def revoke_api_key(
     Raises:
         404: If key not found or not owned by user
     """
-    db = get_db(request)
+    service = get_api_key_service(request)
 
-    success = db.api_keys.revoke(key_id, user_id=auth["user_id"])
+    success = service.revoke_api_key(key_id, user_id=auth["user_id"])
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="API key not found",
         )
-
-    logger.info(f"API key revoked by user {auth['user_id']}: {key_id}")
 
     return RevokeApiKeyResponse(id=key_id, revoked=True)

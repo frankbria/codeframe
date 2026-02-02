@@ -1,4 +1,4 @@
-"""CLI authentication commands (login, logout, register, whoami, credentials).
+"""CLI authentication commands (login, logout, register, whoami, credentials, API keys).
 
 This module provides commands for:
 - Logging in with email/password
@@ -6,6 +6,7 @@ This module provides commands for:
 - Registering a new account
 - Viewing current user info
 - Managing API credentials (setup, list, validate, rotate, remove)
+- Managing API keys (create, list, revoke, rotate)
 
 Usage:
     codeframe auth login --email user@example.com --password secret
@@ -17,9 +18,14 @@ Usage:
     codeframe auth validate anthropic
     codeframe auth rotate anthropic --value sk-ant-new-...
     codeframe auth remove anthropic --yes
+    codeframe auth api-key-create --name "My Key" --user-id 1
+    codeframe auth api-key-list --user-id 1
+    codeframe auth api-key-revoke <key-id> --user-id 1 --yes
+    codeframe auth api-key-rotate <key-id> --user-id 1
 """
 
 import logging
+import os
 from typing import Optional, Tuple
 
 import requests
@@ -34,8 +40,33 @@ from codeframe.core.credentials import (
     CredentialProvider,
     CredentialSource,
 )
+from codeframe.core.api_key_service import ApiKeyService
+from codeframe.persistence.database import Database
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Database Helper for CLI
+# =============================================================================
+
+
+def get_db_for_cli() -> Database:
+    """Get database instance for CLI commands.
+
+    Uses DATABASE_PATH environment variable if set, otherwise defaults
+    to .codeframe/state.db in the current directory.
+
+    Returns:
+        Initialized Database instance
+    """
+    db_path = os.getenv(
+        "DATABASE_PATH",
+        os.path.join(os.getcwd(), ".codeframe", "state.db")
+    )
+    db = Database(db_path)
+    db.initialize()
+    return db
 
 
 # Provider name aliases for CLI convenience
@@ -741,4 +772,187 @@ def remove_credential(
     except Exception as e:
         logger.debug(f"Credential deletion error: {e}")
         console.print("[red]Error:[/red] Failed to remove stored credential")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# API Key Management Commands
+# =============================================================================
+
+
+@auth_app.command("api-key-create")
+def api_key_create(
+    name: str = typer.Option(..., "--name", "-n", help="Human-readable name for the key"),
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID to create key for"),
+    scopes: Optional[str] = typer.Option(
+        None, "--scopes", "-s", help="Comma-separated scopes (default: read,write)"
+    ),
+):
+    """Create a new API key.
+
+    Creates a new API key for programmatic access to the CodeFRAME API.
+    The full key is displayed only once - store it securely.
+
+    Examples:
+
+        codeframe auth api-key-create --name "CI Key" --user-id 1
+
+        codeframe auth api-key-create -n "Read Only" -u 1 -s read
+    """
+    from codeframe.auth.api_keys import SCOPE_READ, SCOPE_WRITE, validate_scopes
+
+    # Parse scopes
+    if scopes:
+        scope_list = [s.strip() for s in scopes.split(",")]
+        if not validate_scopes(scope_list):
+            console.print("[red]Error:[/red] Invalid scopes. Valid scopes: read, write, admin")
+            raise typer.Exit(1)
+    else:
+        scope_list = [SCOPE_READ, SCOPE_WRITE]
+
+    # Get database and service
+    db = get_db_for_cli()
+    service = ApiKeyService(db)
+
+    try:
+        result = service.create_api_key(
+            user_id=user_id,
+            name=name,
+            scopes=scope_list,
+        )
+
+        console.print("\n[green]API key created successfully![/green]\n")
+        console.print(f"[bold]Key:[/bold] {result.key}")
+        console.print(f"[bold]ID:[/bold] {result.id}")
+        console.print(f"[bold]Prefix:[/bold] {result.prefix}")
+        console.print()
+        console.print("[yellow]Save this key securely - it will not be shown again.[/yellow]\n")
+
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        logger.debug(f"API key creation error: {e}")
+        console.print("[red]Error:[/red] Failed to create API key")
+        raise typer.Exit(1)
+
+
+@auth_app.command("api-key-list")
+def api_key_list(
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID to list keys for"),
+):
+    """List all API keys for a user.
+
+    Shows API key metadata without exposing the full key or hash.
+
+    Example:
+
+        codeframe auth api-key-list --user-id 1
+    """
+    # Get database and service
+    db = get_db_for_cli()
+    service = ApiKeyService(db)
+
+    keys = service.list_api_keys(user_id=user_id)
+
+    if not keys:
+        console.print("\n[yellow]No API keys found.[/yellow]\n")
+        return
+
+    # Create table
+    table = Table(title="API Keys")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name", style="green")
+    table.add_column("Prefix", style="dim")
+    table.add_column("Scopes")
+    table.add_column("Created")
+    table.add_column("Last Used")
+    table.add_column("Status")
+
+    for key in keys:
+        status = "[green]active[/green]" if key.is_active else "[red]revoked[/red]"
+        last_used = key.last_used_at or "never"
+        scopes_str = ", ".join(key.scopes)
+
+        table.add_row(
+            key.id,
+            key.name,
+            key.prefix,
+            scopes_str,
+            key.created_at[:10] if key.created_at else "",
+            last_used[:10] if last_used != "never" else last_used,
+            status,
+        )
+
+    console.print()
+    console.print(table)
+    console.print()
+
+
+@auth_app.command("api-key-revoke")
+def api_key_revoke(
+    key_id: str = typer.Argument(..., help="API key ID to revoke"),
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID (must own the key)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Revoke an API key.
+
+    Revoked keys can no longer be used for authentication.
+
+    Examples:
+
+        codeframe auth api-key-revoke abc123 --user-id 1 --yes
+
+        codeframe auth api-key-revoke abc123 -u 1
+    """
+    # Confirm revocation
+    if not yes:
+        confirm = typer.confirm(f"Revoke API key {key_id}?")
+        if not confirm:
+            console.print("Cancelled.")
+            return
+
+    # Get database and service
+    db = get_db_for_cli()
+    service = ApiKeyService(db)
+
+    success = service.revoke_api_key(key_id, user_id=user_id)
+
+    if success:
+        console.print(f"[green]API key {key_id} revoked successfully.[/green]")
+    else:
+        console.print("[red]Error:[/red] API key not found or not owned by user")
+        raise typer.Exit(1)
+
+
+@auth_app.command("api-key-rotate")
+def api_key_rotate(
+    key_id: str = typer.Argument(..., help="API key ID to rotate"),
+    user_id: int = typer.Option(..., "--user-id", "-u", help="User ID (must own the key)"),
+):
+    """Rotate an API key.
+
+    Creates a new key with the same name and scopes, then revokes the old key.
+    Use this when a key may have been compromised.
+
+    Example:
+
+        codeframe auth api-key-rotate abc123 --user-id 1
+    """
+    # Get database and service
+    db = get_db_for_cli()
+    service = ApiKeyService(db)
+
+    result = service.rotate_api_key(key_id, user_id=user_id)
+
+    if result:
+        console.print("\n[green]API key rotated successfully![/green]\n")
+        console.print(f"[bold]New Key:[/bold] {result.key}")
+        console.print(f"[bold]New ID:[/bold] {result.id}")
+        console.print(f"[bold]Prefix:[/bold] {result.prefix}")
+        console.print()
+        console.print("[yellow]Save this key securely - it will not be shown again.[/yellow]")
+        console.print("[dim]The old key has been revoked.[/dim]\n")
+    else:
+        console.print("[red]Error:[/red] API key not found or not owned by user")
         raise typer.Exit(1)
