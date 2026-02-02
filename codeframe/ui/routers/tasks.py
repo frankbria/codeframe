@@ -291,7 +291,7 @@ async def approve_tasks(
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Check if user is rejecting
-    if not request.approved:
+    if not body.approved:
         return TaskApprovalResponse(
             success=False,
             phase=project.get("phase", "planning"),

@@ -12,10 +12,22 @@ These tests verify:
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, Request
 
 from codeframe.core.models import Task, TaskStatus
 from codeframe.ui.routers.tasks import approve_tasks, TaskApprovalRequest
+
+
+@pytest.fixture
+def mock_request():
+    """Create mock starlette Request for rate limiter."""
+    request = MagicMock(spec=Request)
+    request.client = MagicMock()
+    request.client.host = "127.0.0.1"
+    request.headers = {}
+    request.state = MagicMock()
+    request.state.user = None
+    return request
 
 
 @pytest.fixture
@@ -79,16 +91,17 @@ class TestTaskApprovalEndpoint:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_returns_success_response(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that approving tasks returns success response with summary."""
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"):
             response = await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -101,16 +114,17 @@ class TestTaskApprovalEndpoint:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_with_exclusions(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that excluded tasks are not approved."""
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[2, 3])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[2, 3])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"):
             response = await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -121,16 +135,17 @@ class TestTaskApprovalEndpoint:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_updates_task_status_to_pending(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that approved tasks are updated to pending status."""
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"):
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -145,16 +160,17 @@ class TestTaskApprovalEndpoint:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_transitions_phase_to_active(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that project phase is transitioned to active."""
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager") as mock_phase_manager:
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -165,16 +181,17 @@ class TestTaskApprovalEndpoint:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_broadcasts_development_started(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that development_started event is broadcast."""
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"):
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -196,15 +213,16 @@ class TestTaskApprovalEndpoint:
 
     @pytest.mark.asyncio
     async def test_reject_tasks_returns_rejection_message(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that rejecting tasks returns rejection response."""
-        request = TaskApprovalRequest(approved=False, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=False, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager):
             response = await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -219,7 +237,7 @@ class TestTaskApprovalValidation:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_wrong_phase_returns_400(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that approving tasks in wrong phase returns 400."""
         from fastapi import HTTPException
@@ -230,13 +248,14 @@ class TestTaskApprovalValidation:
             "phase": "discovery"  # Wrong phase
         }
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -247,20 +266,21 @@ class TestTaskApprovalValidation:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_no_tasks_returns_404(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that approving with no tasks returns 404."""
         from fastapi import HTTPException
 
         mock_db.get_project_tasks.return_value = []  # No tasks
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -271,20 +291,21 @@ class TestTaskApprovalValidation:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_project_not_found_returns_404(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that approving for non-existent project returns 404."""
         from fastapi import HTTPException
 
         mock_db.get_project.return_value = None
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await approve_tasks(
+                request=mock_request,
                 project_id=999,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -294,20 +315,21 @@ class TestTaskApprovalValidation:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_access_denied_returns_403(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that approving without access returns 403."""
         from fastapi import HTTPException
 
         mock_db.user_has_project_access.return_value = False
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -494,7 +516,7 @@ class TestPlanningAutomationIntegration:
 
     @pytest.mark.asyncio
     async def test_end_to_end_planning_to_approval_flow(
-        self, mock_db_with_state, mock_user, mock_manager, mock_background_tasks
+        self, mock_db_with_state, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test complete flow: planning phase → task approval → development phase."""
         # Setup: Create tasks as if generated by planning automation
@@ -507,7 +529,7 @@ class TestPlanningAutomationIntegration:
         assert mock_db_with_state._project_phase == "planning"
 
         # Execute approval
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager") as mock_pm:
@@ -517,8 +539,9 @@ class TestPlanningAutomationIntegration:
             mock_pm.transition.side_effect = transition_side_effect
 
             response = await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db_with_state,
                 current_user=mock_user
@@ -538,7 +561,7 @@ class TestPlanningAutomationIntegration:
 
     @pytest.mark.asyncio
     async def test_approval_with_tasks_modified_during_review(
-        self, mock_db_with_state, mock_user, mock_manager, mock_background_tasks
+        self, mock_db_with_state, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test approval when tasks are modified between generation and approval.
 
@@ -561,13 +584,14 @@ class TestPlanningAutomationIntegration:
             # Task 3 was deleted
         ]
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[2, 3])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[2, 3])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"):
             response = await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db_with_state,
                 current_user=mock_user
@@ -583,7 +607,7 @@ class TestConcurrentApprovalAttempts:
     """Tests for race condition handling in task approval."""
 
     @pytest.mark.asyncio
-    async def test_double_approval_second_fails(self, mock_db, mock_user, mock_manager, mock_background_tasks):
+    async def test_double_approval_second_fails(self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request):
         """Test that approving already-approved project fails gracefully.
 
         Scenario: Two users try to approve at the same time. First succeeds,
@@ -602,13 +626,14 @@ class TestConcurrentApprovalAttempts:
 
         mock_db.get_project.side_effect = get_project_after_first_approval
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -620,7 +645,7 @@ class TestConcurrentApprovalAttempts:
 
     @pytest.mark.asyncio
     async def test_phase_transition_failure_leaves_tasks_unchanged(
-        self, mock_user, mock_manager, mock_background_tasks
+        self, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that if phase transition fails, tasks are not modified.
 
@@ -638,7 +663,7 @@ class TestConcurrentApprovalAttempts:
             Task(id=1, project_id=1, title="Task 1", status=TaskStatus.PENDING),
         ]
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager") as mock_pm:
@@ -649,8 +674,9 @@ class TestConcurrentApprovalAttempts:
 
             with pytest.raises(HTTPException):
                 await approve_tasks(
+                    request=mock_request,
                     project_id=1,
-                    request=request,
+                    body=body,
                     background_tasks=mock_background_tasks,
                     db=mock_db,
                     current_user=mock_user
@@ -661,7 +687,7 @@ class TestConcurrentApprovalAttempts:
 
     @pytest.mark.asyncio
     async def test_tasks_deleted_between_fetch_and_update(
-        self, mock_user, mock_manager, mock_background_tasks
+        self, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test handling when tasks are deleted during approval process.
 
@@ -686,7 +712,7 @@ class TestConcurrentApprovalAttempts:
 
         mock_db.update_task.side_effect = update_task_with_deletion
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"):
@@ -694,8 +720,9 @@ class TestConcurrentApprovalAttempts:
             # This test documents the current behavior
             with pytest.raises(Exception, match="Task not found"):
                 await approve_tasks(
+                    request=mock_request,
                     project_id=1,
-                    request=request,
+                    body=body,
                     background_tasks=mock_background_tasks,
                     db=mock_db,
                     current_user=mock_user
