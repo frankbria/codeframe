@@ -6,7 +6,7 @@ Following TDD: tests written first, implementation follows.
 import os
 import pytest
 from typer.testing import CliRunner
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from codeframe.cli.app import app
 from codeframe.persistence.database import Database

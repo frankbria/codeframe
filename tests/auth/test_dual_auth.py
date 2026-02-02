@@ -7,9 +7,8 @@ import os
 import pytest
 import jwt
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
 from codeframe.persistence.database import Database
 from codeframe.auth.api_keys import generate_api_key, SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN

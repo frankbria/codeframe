@@ -5,7 +5,6 @@ Following TDD: tests written first, implementation follows.
 
 import pytest
 import re
-from datetime import datetime, timedelta
 
 # Import the module under test (will fail until implemented)
 from codeframe.auth.api_keys import (
