@@ -23,6 +23,7 @@ from codeframe.persistence.repositories.correction_repository import CorrectionR
 from codeframe.persistence.repositories.activity_repository import ActivityRepository
 from codeframe.persistence.repositories.audit_repository import AuditRepository
 from codeframe.persistence.repositories.pr_repository import PRRepository
+from codeframe.persistence.repositories.api_key_repository import APIKeyRepository
 
 __all__ = [
     "BaseRepository",
@@ -44,4 +45,5 @@ __all__ = [
     "ActivityRepository",
     "AuditRepository",
     "PRRepository",
+    "APIKeyRepository",
 ]
