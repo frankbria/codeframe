@@ -36,6 +36,7 @@ from codeframe.persistence.repositories import (
     ActivityRepository,
     AuditRepository,
     PRRepository,
+    APIKeyRepository,
 )
 
 if TYPE_CHECKING:
@@ -109,6 +110,7 @@ class Database:
         self.activities: Optional[ActivityRepository] = None
         self.audit_logs: Optional[AuditRepository] = None
         self.pull_requests: Optional[PRRepository] = None
+        self.api_keys: Optional[APIKeyRepository] = None
 
     def initialize(self) -> None:
         """Initialize database schema and repositories."""
@@ -155,6 +157,7 @@ class Database:
         self.activities = ActivityRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.audit_logs = AuditRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
         self.pull_requests = PRRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
+        self.api_keys = APIKeyRepository(sync_conn=self.conn, async_conn=self._async_conn, database=self, sync_lock=self._sync_lock)
 
     # Backward compatibility properties (maintain old *_repository naming)
     @property

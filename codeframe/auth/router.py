@@ -3,6 +3,7 @@ from fastapi import APIRouter
 
 from codeframe.auth.schemas import UserCreate, UserRead, UserUpdate
 from codeframe.auth.manager import auth_backend, fastapi_users
+from codeframe.auth.api_key_router import router as api_key_router
 
 router = APIRouter()
 
@@ -38,3 +39,6 @@ router.include_router(
 #     prefix="/auth",
 #     tags=["auth"],
 # )
+
+# API key management routes at /api/auth/api-keys
+router.include_router(api_key_router)

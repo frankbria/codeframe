@@ -223,6 +223,36 @@ class SchemaManager:
         """
         )
 
+        # API Keys table for programmatic access
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                key_hash TEXT NOT NULL,
+                prefix TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP,
+                expires_at TIMESTAMP,
+                is_active INTEGER DEFAULT 1
+            )
+        """
+        )
+
+        # Indexes for api_keys table
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix)
+        """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)
+        """
+        )
+
     def _create_project_tables(self, cursor: sqlite3.Cursor) -> None:
         """Create project and project_users tables."""
         # Projects table
