@@ -19,21 +19,26 @@ from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
 from codeframe.ui.routers import (
     agents,
+    batches_v2,  # v2 batches router (delegates to core)
     blockers,
     blockers_v2,  # v2 blockers router (delegates to core)
     chat,
     checkpoints,
     checkpoints_v2,  # v2 checkpoints router (delegates to core)
     context,
+    diagnose_v2,  # v2 diagnose router (delegates to core)
     discovery,
     discovery_v2,  # v2 discovery router (delegates to core)
+    environment_v2,  # v2 environment router (delegates to core)
+    gates_v2,  # v2 gates router (delegates to core)
     git,
     git_v2,  # v2 git router (delegates to core)
     lint,
     metrics,
+    pr_v2,  # v2 PR router (delegates to core)
+    prd_v2,  # v2 PRD router (delegates to core)
     projects,
     projects_v2,  # v2 projects router (delegates to core)
-    prd_v2,  # v2 PRD router (delegates to core)
     prs,
     quality_gates,
     review,
@@ -46,6 +51,7 @@ from codeframe.ui.routers import (
     templates,
     templates_v2,  # v2 templates router (delegates to core)
     websocket,
+    workspace_v2,  # v2 workspace router (delegates to core)
 )
 from codeframe.auth import router as auth_router
 
@@ -368,6 +374,14 @@ app.include_router(templates.router)
 app.include_router(templates_v2.router)  # v2 endpoints at /api/v2/templates
 app.include_router(websocket.router)
 app.include_router(auth_router.router)
+
+# v2 routers (new for Phase 2 - all delegate to core modules)
+app.include_router(batches_v2.router)  # v2 endpoints at /api/v2/batches
+app.include_router(diagnose_v2.router)  # v2 endpoints at /api/v2/tasks/{id}/diagnose
+app.include_router(environment_v2.router)  # v2 endpoints at /api/v2/env
+app.include_router(gates_v2.router)  # v2 endpoints at /api/v2/gates
+app.include_router(pr_v2.router)  # v2 endpoints at /api/v2/pr
+app.include_router(workspace_v2.router)  # v2 endpoints at /api/v2/workspaces
 
 
 # ============================================================================

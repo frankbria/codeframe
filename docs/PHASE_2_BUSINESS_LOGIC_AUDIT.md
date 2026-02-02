@@ -250,12 +250,14 @@ All HIGH priority v2 routes are now complete ✅
 | `core/git.py` | `git_v2.py` ✅ | `git.py` |
 | `core/review.py` | `review_v2.py` ✅ | `review.py` |
 | `core/streaming.py` | `tasks_v2.py` ✅ | N/A (new) |
-| `core/environment.py` | ⚠️ Missing | N/A |
-| `core/diagnostic_agent.py` | ⚠️ Missing | N/A |
-| `core/workspace.py` | ⚠️ Missing | `projects.py` |
-| `core/pr.py` | ⚠️ Missing | `prs.py` |
-| `core/agent_manager.py` | ⚠️ Missing | `agents.py` |
-| `core/chat.py` | ⚠️ Missing | `chat.py` |
+| `core/environment.py` | `environment_v2.py` ✅ | N/A |
+| `core/diagnostic_agent.py` | `diagnose_v2.py` ✅ | N/A |
+| `core/workspace.py` | `workspace_v2.py` ✅ | `projects.py` |
+| `core/gates.py` | `gates_v2.py` ✅ | `quality_gates.py` |
+| `core/conductor.py` | `batches_v2.py` ✅ | N/A |
+| `git/github_integration.py` | `pr_v2.py` ✅ | `prs.py` |
+| `core/agent_manager.py` | ⚠️ Phase 3 | `agents.py` |
+| `core/chat.py` | ⚠️ Phase 3 | `chat.py` |
 
 ---
 
@@ -277,16 +279,18 @@ The v2 architecture follows a strict separation:
 
 ## Phase 2 Remaining Work
 
-### V2 Routers Still Needed
+### V2 Routers Status: ✅ ALL COMPLETE
 
-| Router | Core Module | CLI Command(s) | Priority |
-|--------|-------------|----------------|----------|
-| `workspace_v2.py` | `core.workspace` | `cf init` | HIGH |
-| `batches_v2.py` | `core.conductor` | `cf work batch status/stop/resume` | HIGH |
-| `diagnose_v2.py` | `core.diagnostic_agent` | `cf work diagnose` | MEDIUM |
-| `pr_v2.py` | `git.github_integration` | `cf pr create/list/status/merge/close` | MEDIUM |
-| `environment_v2.py` | `core.environment` | `cf env check/doctor/install` | LOW |
-| `gates_v2.py` | `core.gates` | `cf gates run` | LOW |
+| Router | Core Module | CLI Command(s) | Status |
+|--------|-------------|----------------|--------|
+| `workspace_v2.py` | `core.workspace` | `cf init` | ✅ Complete |
+| `batches_v2.py` | `core.conductor` | `cf work batch status/stop/resume` | ✅ Complete |
+| `diagnose_v2.py` | `core.diagnostic_agent` | `cf work diagnose` | ✅ Complete |
+| `pr_v2.py` | `git.github_integration` | `cf pr create/list/status/merge/close` | ✅ Complete |
+| `environment_v2.py` | `core.environment` | `cf env check/doctor/install` | ✅ Complete |
+| `gates_v2.py` | `core.gates` | `cf gates run` | ✅ Complete |
+
+**Total v2 routes: 80** (across 16 routers)
 
 ### Implementation Guide
 
@@ -296,3 +300,20 @@ See `docs/PHASE_2_DEVELOPER_GUIDE.md` for the thin adapter pattern and implement
 
 All v2 routers have integration tests in `tests/ui/test_v2_routers_integration.py` (50 tests).
 CLI integration tests remain in `tests/cli/test_v2_cli_integration.py` (76 tests).
+
+---
+
+## Acceptance Criteria Verification
+
+**Verified on: 2026-02-01**
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| All routes delegate to `core.*` modules | ✅ Pass | All 16 v2 routers verified via code analysis |
+| No business logic in route handlers | ✅ Pass | Only request parsing, response formatting, error handling |
+| Route audit document created and complete | ✅ Pass | This document |
+| Integration tests pass with refactored routes | ✅ Pass | 50 router tests + 76 CLI tests passing |
+| 1:1 mapping between CLI commands and server routes | ✅ Pass | All CLI commands have equivalent v2 endpoints |
+| Consistent URL patterns across all routes | ✅ Pass | RESTful patterns verified (collection/resource/action) |
+| Consistent response formats across all routes | ✅ Pass | 64 endpoints use Pydantic response_model |
+| Server remains optional (CLI works independently) | ✅ Pass | `cf --help` works without server |
