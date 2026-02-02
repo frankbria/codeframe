@@ -1,8 +1,8 @@
 # CodeFRAME v2 Strategic Roadmap
 
 **Created**: 2026-01-29
-**Updated**: 2026-02-01
-**Status**: Active - Phase 1 Complete
+**Updated**: 2026-02-02
+**Status**: Active - Phase 2 In Progress
 
 ## Executive Summary
 
@@ -79,42 +79,74 @@ CodeFRAME v2 CLI **Phase 1 is complete** with a production-ready foundation. The
 ## Phase 2: Server Layer as Thin Adapter
 
 **Goal**: FastAPI server exposing core functionality via REST + real-time events.
-**Status**: 🔜 **NEXT** (6 issues open)
+**Status**: 🔄 **IN PROGRESS** - Server refactor underway
 
 ### Deliverables
 
-1. **Server audit and refactor** (#322)
-   - Review existing routes in `codeframe/server/`
-   - Refactor to delegate all logic to `core.*` modules
-   - One route per CLI command
-   - OpenAPI documentation (#119)
+1. **Server audit and refactor** (#322) - 🔄 IN PROGRESS
+   - ✅ Business logic audit completed (see `docs/PHASE_2_BUSINESS_LOGIC_AUDIT.md`)
+   - ✅ CLI-to-API route mapping (see `docs/PHASE_2_CLI_API_MAPPING.md`)
+   - ✅ V2 routers created following thin adapter pattern:
+     - `blockers_v2.py` - Full CRUD delegating to `core.blockers`
+     - `prd_v2.py` - Full CRUD + versioning delegating to `core.prd`
+     - `tasks_v2.py` - Enhanced with PATCH/DELETE/streaming/run status
+   - ✅ Integration tests: 50 tests for v2 routers
+   - ⚠️ Remaining: Workspace, Batch, Diagnose, PR, Environment, Gates routes
 
 2. **Real-time events** (#323)
-   - SSE or WebSocket for task execution events
-   - Event types: progress, output, blocker, completion
+   - ✅ SSE streaming via `/api/v2/tasks/{id}/stream` (partial)
+   - ⚠️ WebSocket for bidirectional events still needed
 
 3. **Authentication & Security**
    - API key authentication (#324)
    - Rate limiting (#167)
    - API pagination (#118)
 
-### All Phase 2 Issues
-| Issue | Title | Priority |
-|-------|-------|----------|
-| #322 | Server audit and refactor | HIGH |
-| #323 | Real-time events (SSE/WebSocket) | HIGH |
-| #324 | API key authentication | HIGH |
-| #119 | OpenAPI documentation | MEDIUM |
-| #167 | Rate limiting | MEDIUM |
-| #118 | API pagination | MEDIUM |
+### Phase 2 Progress Summary
 
-### Architecture Principle
+| Component | Routes | Status |
+|-----------|--------|--------|
+| Blockers v2 | 5 endpoints | ✅ Complete |
+| PRD v2 | 8 endpoints | ✅ Complete |
+| Tasks v2 (enhanced) | 12 endpoints | ✅ Complete |
+| Discovery v2 | 5 endpoints | ✅ Complete (Phase 1) |
+| Checkpoints v2 | 6 endpoints | ✅ Complete (Phase 1) |
+| Schedule v2 | 3 endpoints | ✅ Complete (Phase 1) |
+| Templates v2 | 4 endpoints | ✅ Complete (Phase 1) |
+| Git v2 | 3 endpoints | ✅ Complete (Phase 1) |
+| Review v2 | 2 endpoints | ✅ Complete (Phase 1) |
+| Workspace v2 | 0 endpoints | ⚠️ Missing |
+| Batch v2 | 1 endpoint | ⚠️ Partial (execute only) |
+| Diagnose v2 | 0 endpoints | ⚠️ Missing |
+| PR v2 | 0 endpoints | ⚠️ Missing |
+| Environment v2 | 0 endpoints | ⚠️ Missing |
+| Gates v2 | 0 endpoints | ⚠️ Missing |
+
+### All Phase 2 Issues
+| Issue | Title | Priority | Status |
+|-------|-------|----------|--------|
+| #322 | Server audit and refactor | HIGH | 🔄 In Progress |
+| #323 | Real-time events (SSE/WebSocket) | HIGH | ⚠️ Partial |
+| #324 | API key authentication | HIGH | Open |
+| #119 | OpenAPI documentation | MEDIUM | Open |
+| #167 | Rate limiting | MEDIUM | Open |
+| #118 | API pagination | MEDIUM | Open |
+
+### Architecture Principle: Thin Adapter Pattern
 ```
 CLI (typer) ─┬── core.* ─── adapters.*
              │
 Server (fastapi) ─┘
 ```
 Server and CLI are **siblings**, both calling core.
+
+**Key Pattern**: V2 routers follow the thin adapter pattern:
+1. Parse HTTP request parameters
+2. Call core module function with workspace
+3. Transform result to HTTP response
+4. Handle errors with standard format
+
+See `docs/PHASE_2_DEVELOPER_GUIDE.md` for implementation guide.
 
 ---
 
@@ -229,14 +261,14 @@ Phase 1 (CLI) ──────────────────────
 | #253 | Checkpoint diff API fix | ✅ CLOSED |
 
 ### Phase 2 Issues - IN PROGRESS
-| Issue | Title | Priority |
-|-------|-------|----------|
-| #322 | Server audit and refactor | HIGH |
-| #323 | Real-time events (SSE/WebSocket) | HIGH |
-| #324 | API key authentication | HIGH |
-| #119 | OpenAPI documentation | MEDIUM |
-| #167 | Rate limiting | MEDIUM |
-| #118 | API pagination | MEDIUM |
+| Issue | Title | Priority | Status |
+|-------|-------|----------|--------|
+| #322 | Server audit and refactor | HIGH | 🔄 In Progress (v2 routers created) |
+| #323 | Real-time events (SSE/WebSocket) | HIGH | ⚠️ Partial (SSE done) |
+| #324 | API key authentication | HIGH | Open |
+| #119 | OpenAPI documentation | MEDIUM | Open |
+| #167 | Rate limiting | MEDIUM | Open |
+| #118 | API pagination | MEDIUM | Open |
 
 ---
 
@@ -270,9 +302,9 @@ After each phase:
 | Phase | Focus | Key Outcome | Status |
 |-------|-------|-------------|--------|
 | 1 | CLI Completion | Production-ready headless agent | ✅ **COMPLETE** |
-| 2 | Server Layer | REST API + real-time events | 🔜 Next |
+| 2 | Server Layer | REST API + real-time events | 🔄 **IN PROGRESS** |
 | 3 | Web UI | Modern dashboard | Planned |
 | 4 | Multi-Agent | Agent swarms | Planned |
 | 5 | Advanced | Power features | Planned |
 
-**Next immediate action**: Begin Phase 2 - Server audit and refactor.
+**Current focus**: Phase 2 - Completing remaining v2 routes (workspace, batch, PR, env, gates).

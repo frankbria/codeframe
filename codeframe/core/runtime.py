@@ -192,6 +192,38 @@ def get_active_run(workspace: Workspace, task_id: str) -> Optional[Run]:
     return _row_to_run(row)
 
 
+def get_latest_run(workspace: Workspace, task_id: str) -> Optional[Run]:
+    """Get the most recent run for a task (any status).
+
+    Args:
+        workspace: Workspace to query
+        task_id: Task identifier
+
+    Returns:
+        Run if found, None otherwise
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT id, workspace_id, task_id, status, started_at, completed_at
+        FROM runs
+        WHERE workspace_id = ? AND task_id = ?
+        ORDER BY started_at DESC
+        LIMIT 1
+        """,
+        (workspace.id, task_id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return _row_to_run(row)
+
+
 def reset_blocked_run(workspace: Workspace, task_id: str) -> bool:
     """Reset a blocked run so the task can be re-executed.
 
@@ -840,3 +872,165 @@ def _row_to_run(row: tuple) -> Run:
         started_at=datetime.fromisoformat(row[4]),
         completed_at=datetime.fromisoformat(row[5]) if row[5] else None,
     )
+
+
+# ============================================================================
+# Task Approval and Assignment (Route Delegation Helpers)
+# ============================================================================
+
+
+@dataclass
+class ApprovalResult:
+    """Result of task approval operation.
+
+    Attributes:
+        approved_count: Number of tasks approved (transitioned to READY)
+        excluded_count: Number of tasks excluded from approval
+        approved_task_ids: List of approved task IDs
+        excluded_task_ids: List of excluded task IDs
+    """
+
+    approved_count: int
+    excluded_count: int
+    approved_task_ids: list[str]
+    excluded_task_ids: list[str]
+
+
+def approve_tasks(
+    workspace: Workspace,
+    excluded_task_ids: Optional[list[str]] = None,
+) -> ApprovalResult:
+    """Approve tasks for execution by transitioning them to READY status.
+
+    This function handles the "task approval" workflow:
+    1. Gets all BACKLOG tasks in the workspace
+    2. Excludes specified tasks (if any)
+    3. Transitions remaining tasks to READY status
+
+    This is the v2 equivalent of the v1 approval endpoint. It does NOT
+    trigger execution - use start_approved_batch() for that.
+
+    Args:
+        workspace: Target workspace
+        excluded_task_ids: Optional list of task IDs to exclude from approval
+
+    Returns:
+        ApprovalResult with counts and IDs
+
+    Example:
+        result = approve_tasks(workspace, excluded_task_ids=["task-1", "task-2"])
+        print(f"Approved {result.approved_count} tasks")
+        if result.approved_count > 0:
+            batch = start_approved_batch(workspace, result.approved_task_ids)
+    """
+    excluded = set(excluded_task_ids or [])
+
+    # Get all BACKLOG tasks
+    backlog_tasks = tasks.list_tasks(workspace, status=TaskStatus.BACKLOG)
+
+    approved_ids = []
+    excluded_ids = []
+
+    for task in backlog_tasks:
+        if task.id in excluded:
+            excluded_ids.append(task.id)
+        else:
+            # Transition to READY
+            tasks.update_status(workspace, task.id, TaskStatus.READY)
+            approved_ids.append(task.id)
+
+    logger.info(
+        f"Approved {len(approved_ids)} tasks, excluded {len(excluded_ids)} "
+        f"for workspace {workspace.id}"
+    )
+
+    return ApprovalResult(
+        approved_count=len(approved_ids),
+        excluded_count=len(excluded_ids),
+        approved_task_ids=approved_ids,
+        excluded_task_ids=excluded_ids,
+    )
+
+
+@dataclass
+class AssignmentResult:
+    """Result of task assignment check.
+
+    Attributes:
+        pending_count: Number of pending (READY) tasks
+        executing_count: Number of tasks currently executing (IN_PROGRESS)
+        can_assign: Whether new tasks can be assigned
+        reason: Explanation if can_assign is False
+    """
+
+    pending_count: int
+    executing_count: int
+    can_assign: bool
+    reason: str
+
+
+def check_assignment_status(workspace: Workspace) -> AssignmentResult:
+    """Check if tasks can be assigned for execution.
+
+    This function helps determine whether to start new task execution:
+    1. Counts pending (READY) tasks
+    2. Counts currently executing (IN_PROGRESS) tasks
+    3. Determines if new assignments are possible
+
+    Used by routes to provide feedback before triggering execution.
+
+    Args:
+        workspace: Target workspace
+
+    Returns:
+        AssignmentResult with status and explanation
+
+    Example:
+        status = check_assignment_status(workspace)
+        if status.can_assign:
+            batch = start_approved_batch(workspace)
+        else:
+            print(status.reason)
+    """
+    # Count tasks by status
+    status_counts = tasks.count_by_status(workspace)
+    ready_count = status_counts.get(TaskStatus.READY.value, 0)
+    in_progress_count = status_counts.get(TaskStatus.IN_PROGRESS.value, 0)
+
+    if ready_count == 0:
+        return AssignmentResult(
+            pending_count=0,
+            executing_count=in_progress_count,
+            can_assign=False,
+            reason="No pending tasks to assign.",
+        )
+
+    if in_progress_count > 0:
+        return AssignmentResult(
+            pending_count=ready_count,
+            executing_count=in_progress_count,
+            can_assign=False,
+            reason=f"Execution already in progress ({in_progress_count} task(s) running).",
+        )
+
+    return AssignmentResult(
+        pending_count=ready_count,
+        executing_count=0,
+        can_assign=True,
+        reason=f"{ready_count} task(s) ready for assignment.",
+    )
+
+
+def get_ready_task_ids(workspace: Workspace) -> list[str]:
+    """Get IDs of all READY tasks in the workspace.
+
+    Convenience function for starting batch execution.
+
+    Args:
+        workspace: Target workspace
+
+    Returns:
+        List of task IDs in READY status
+    """
+    ready_tasks = tasks.list_tasks(workspace, status=TaskStatus.READY)
+    return [t.id for t in ready_tasks]
