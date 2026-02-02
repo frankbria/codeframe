@@ -126,7 +126,7 @@ def get_progress_metrics(workspace: Workspace) -> ProgressMetrics:
         progress_pct = 0.0
 
     # Count open blockers
-    open_blockers_list = blockers.list_open(workspace, limit=1000)
+    open_blockers_list = blockers.list_open(workspace)
     open_blocker_count = len(open_blockers_list)
 
     return ProgressMetrics(
@@ -153,7 +153,7 @@ def get_workspace_status(workspace: Workspace) -> WorkspaceStatus:
 
     return WorkspaceStatus(
         workspace_id=workspace.id,
-        workspace_name=workspace.name,
+        workspace_name=workspace.repo_path.name,
         repo_path=str(workspace.repo_path),
         tech_stack=workspace.tech_stack,
         task_counts=task_counts,

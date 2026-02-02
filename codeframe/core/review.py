@@ -130,7 +130,7 @@ def review_files(
     # Initialize analyzers
     complexity_analyzer = ComplexityAnalyzer(project_path)
     security_scanner = SecurityScanner(project_path)
-    owasp_checker = OWASPPatterns()
+    owasp_checker = OWASPPatterns(project_path)
 
     # Track scores for averaging
     scores: list[float] = []
@@ -148,65 +148,61 @@ def review_files(
 
         # Complexity analysis
         try:
-            complexity_result = complexity_analyzer.analyze_file(str(full_path))
-            if complexity_result:
-                # Check for high complexity functions
-                for func in complexity_result.get("functions", []):
-                    if func.get("complexity", 0) > 10:
-                        findings.append(
-                            ReviewFinding(
-                                category="complexity",
-                                severity=_severity_from_score(100 - func["complexity"] * 5),
-                                message=f"Function '{func['name']}' has complexity of {func['complexity']}",
-                                file_path=file_path,
-                                line_number=func.get("line_number"),
-                                suggestion="Consider breaking into smaller functions",
-                            )
-                        )
-                        scores.append(max(0, 100 - func["complexity"] * 5))
+            complexity_findings = complexity_analyzer.analyze_file(full_path)
+            for finding in complexity_findings:
+                findings.append(
+                    ReviewFinding(
+                        category=finding.category,
+                        severity=finding.severity,
+                        message=finding.message,
+                        file_path=file_path,
+                        line_number=finding.line_number,
+                        suggestion=finding.suggestion,
+                    )
+                )
+                # Map severity to score for averaging
+                severity_scores = {"critical": 20, "high": 40, "medium": 60, "low": 80, "info": 95}
+                scores.append(severity_scores.get(finding.severity, 60))
         except Exception as e:
             logger.warning(f"Complexity analysis failed for {file_path}: {e}")
 
         # Security scan
         try:
-            security_issues = security_scanner.scan_file(str(full_path))
-            for issue in security_issues:
+            security_findings = security_scanner.analyze_file(full_path)
+            for finding in security_findings:
                 findings.append(
                     ReviewFinding(
-                        category="security",
-                        severity=issue.get("severity", "medium"),
-                        message=issue.get("message", "Security issue detected"),
+                        category=finding.category,
+                        severity=finding.severity,
+                        message=finding.message,
                         file_path=file_path,
-                        line_number=issue.get("line_number"),
-                        suggestion=issue.get("recommendation"),
+                        line_number=finding.line_number,
+                        suggestion=finding.suggestion,
                     )
                 )
                 # Security issues have heavier weight on score
                 severity_scores = {"critical": 20, "high": 40, "medium": 60, "low": 80, "info": 95}
-                scores.append(severity_scores.get(issue.get("severity", "medium"), 60))
+                scores.append(severity_scores.get(finding.severity, 60))
         except Exception as e:
             logger.warning(f"Security scan failed for {file_path}: {e}")
 
         # OWASP pattern check
         try:
-            try:
-                file_content = full_path.read_text()
-            except Exception:
-                continue
-
-            owasp_findings = owasp_checker.check(file_content)
+            owasp_findings = owasp_checker.check_file(full_path)
             for finding in owasp_findings:
                 findings.append(
                     ReviewFinding(
-                        category="security",
-                        severity="high",
-                        message=f"OWASP pattern detected: {finding.get('pattern', 'unknown')}",
+                        category=finding.category,
+                        severity=finding.severity,
+                        message=finding.message,
                         file_path=file_path,
-                        line_number=finding.get("line_number"),
-                        suggestion=finding.get("remediation"),
+                        line_number=finding.line_number,
+                        suggestion=finding.suggestion,
                     )
                 )
-                scores.append(50)  # OWASP findings are significant
+                # OWASP findings are typically high severity
+                severity_scores = {"critical": 20, "high": 40, "medium": 60, "low": 80, "info": 95}
+                scores.append(severity_scores.get(finding.severity, 40))
         except Exception as e:
             logger.warning(f"OWASP check failed for {file_path}: {e}")
 

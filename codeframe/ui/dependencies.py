@@ -109,7 +109,7 @@ def get_v2_workspace(
     # Resolve workspace path
     if workspace_path:
         path = Path(workspace_path).resolve()
-    elif request and hasattr(request.app.state, "default_workspace_path"):
+    elif request and getattr(request.app.state, "default_workspace_path", None):
         path = Path(request.app.state.default_workspace_path).resolve()
     else:
         # Fall back to current working directory
@@ -122,7 +122,14 @@ def get_v2_workspace(
             detail=f"Workspace not found at {path}. Initialize with 'cf init {path}'",
         )
 
-    workspace = get_workspace(path)
+    try:
+        workspace = get_workspace(path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workspace not found at {path}. Initialize with 'cf init {path}'",
+        )
+
     if not workspace:
         raise HTTPException(
             status_code=404,

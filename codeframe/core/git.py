@@ -95,8 +95,11 @@ def get_status(workspace: Workspace) -> GitStatus:
     try:
         current_branch = repo.active_branch.name
     except TypeError:
-        # Detached HEAD state
-        current_branch = f"(detached HEAD at {repo.head.commit.hexsha[:7]})"
+        # Detached HEAD or empty repo
+        if not repo.head.is_valid():
+            current_branch = "(no commits)"
+        else:
+            current_branch = f"(detached HEAD at {repo.head.commit.hexsha[:7]})"
 
     # Check if dirty
     is_dirty = repo.is_dirty(untracked_files=True)
@@ -196,13 +199,19 @@ def create_commit(
 
     repo = _get_repo(workspace)
 
-    # Validate file paths exist
-    repo_root = Path(repo.working_tree_dir)
+    # Validate file paths exist and are within repo
+    repo_root = Path(repo.working_tree_dir).resolve()
     valid_files: list[str] = []
     for file_path in files:
-        full_path = repo_root / file_path
-        if full_path.exists():
-            valid_files.append(file_path)
+        candidate = (repo_root / file_path).resolve()
+        # Security: Ensure path stays within repo root
+        try:
+            candidate.relative_to(repo_root)
+        except ValueError:
+            logger.warning(f"File outside repo, skipping: {file_path}")
+            continue
+        if candidate.exists():
+            valid_files.append(str(candidate.relative_to(repo_root)))
         else:
             logger.warning(f"File not found, skipping: {file_path}")
 
@@ -267,6 +276,9 @@ def get_current_branch(workspace: Workspace) -> str:
     try:
         return repo.active_branch.name
     except TypeError:
+        # Detached HEAD or empty repo
+        if not repo.head.is_valid():
+            return "(no commits)"
         return f"(detached HEAD at {repo.head.commit.hexsha[:7]})"
 
 

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from codeframe.core.workspace import Workspace
 from codeframe.core import schedule
 from codeframe.ui.dependencies import get_v2_workspace
+from codeframe.ui.response_models import api_error, ErrorCodes
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +107,16 @@ async def get_schedule(
         )
 
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Schedule not found", ErrorCodes.NOT_FOUND, str(e)),
+        )
     except Exception as e:
         logger.error(f"Failed to get schedule: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Failed to get schedule", ErrorCodes.INTERNAL_ERROR, str(e)),
+        )
 
 
 @router.get("/predict", response_model=CompletionPredictionResponse)
@@ -142,10 +149,16 @@ async def predict_completion(
         )
 
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Prediction failed", ErrorCodes.NOT_FOUND, str(e)),
+        )
     except Exception as e:
         logger.error(f"Failed to predict completion: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Failed to predict completion", ErrorCodes.INTERNAL_ERROR, str(e)),
+        )
 
 
 @router.get("/bottlenecks", response_model=list[BottleneckResponse])
@@ -182,7 +195,13 @@ async def get_bottlenecks(
         ]
 
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Bottlenecks not found", ErrorCodes.NOT_FOUND, str(e)),
+        )
     except Exception as e:
         logger.error(f"Failed to get bottlenecks: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Failed to get bottlenecks", ErrorCodes.INTERNAL_ERROR, str(e)),
+        )

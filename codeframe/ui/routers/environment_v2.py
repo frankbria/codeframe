@@ -208,14 +208,14 @@ async def install_tool(
                 ),
             )
 
-        # Attempt installation
-        success, message, command = installer.install(request.tool_name)
+        # Attempt installation (confirm=False for non-interactive server usage)
+        result = installer.install_tool(request.tool_name, confirm=False)
 
         return InstallResultResponse(
-            success=success,
-            tool_name=request.tool_name,
-            message=message,
-            command_used=command,
+            success=result.success,
+            tool_name=result.tool_name,
+            message=result.message,
+            command_used=result.command_used,
         )
 
     except HTTPException:
@@ -241,10 +241,29 @@ async def list_available_tools(
         List of installable tools with their package managers
     """
     try:
-        installer = ToolInstaller()
+        # List of tools known to be installable by ToolInstaller
+        # These are aggregated from PipInstaller, NpmInstaller, CargoInstaller, SystemInstaller
+        installable_tools = [
+            # Python tools (pip/uv)
+            {"name": "pytest", "category": "python", "description": "Python testing framework"},
+            {"name": "ruff", "category": "python", "description": "Fast Python linter"},
+            {"name": "mypy", "category": "python", "description": "Static type checker"},
+            {"name": "black", "category": "python", "description": "Code formatter"},
+            {"name": "flake8", "category": "python", "description": "Linting tool"},
+            {"name": "pylint", "category": "python", "description": "Code analyzer"},
+            {"name": "bandit", "category": "python", "description": "Security linter"},
+            {"name": "pre-commit", "category": "python", "description": "Git hooks manager"},
+            # Node.js tools (npm)
+            {"name": "eslint", "category": "nodejs", "description": "JavaScript linter"},
+            {"name": "prettier", "category": "nodejs", "description": "Code formatter"},
+            {"name": "typescript", "category": "nodejs", "description": "TypeScript compiler"},
+            # Rust tools (cargo)
+            {"name": "rustfmt", "category": "rust", "description": "Rust formatter"},
+            {"name": "clippy", "category": "rust", "description": "Rust linter"},
+        ]
 
         return {
-            "tools": installer.list_installable_tools(),
+            "tools": installable_tools,
             "message": "Use POST /api/v2/env/install to install any of these tools",
         }
 
