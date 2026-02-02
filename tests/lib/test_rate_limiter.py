@@ -238,21 +238,27 @@ class TestRateLimitDecorators:
 class TestRateLimiterDisabled:
     """Tests for disabled rate limiting behavior."""
 
-    def test_disabled_rate_limiting_allows_all_requests(self):
-        """When rate limiting is disabled, all requests should be allowed."""
-        from codeframe.config.rate_limits import _reset_rate_limit_config
-        from codeframe.lib.rate_limiter import get_rate_limiter
+    def test_disabled_rate_limiting_returns_none(self):
+        """When rate limiting is disabled, get_rate_limiter should return None."""
+        from codeframe.config.rate_limits import _reset_rate_limit_config, get_rate_limit_config
+        from codeframe.lib.rate_limiter import get_rate_limiter, reset_rate_limiter
 
-        # Reset and set disabled config
+        # Reset config and limiter to ensure clean state
         _reset_rate_limit_config()
+        reset_rate_limiter()
 
-        with patch.dict("os.environ", {"RATE_LIMIT_ENABLED": "false"}):
+        with patch.dict("os.environ", {"RATE_LIMIT_ENABLED": "false"}, clear=True):
             _reset_rate_limit_config()
-            limiter = get_rate_limiter()
+            reset_rate_limiter()
 
-            # When disabled, limiter should be None or have no-op behavior
-            # Implementation can choose: return None or return limiter with high limit
-            assert limiter is None or limiter is not None  # Just checking it doesn't crash
+            # Verify config shows disabled
+            config = get_rate_limit_config()
+            assert config.enabled is False
+
+            # When disabled, limiter should be None
+            limiter = get_rate_limiter()
+            assert limiter is None
 
         # Clean up
         _reset_rate_limit_config()
+        reset_rate_limiter()

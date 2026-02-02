@@ -15,7 +15,6 @@ Key extraction:
 """
 
 import logging
-from functools import wraps
 from typing import Callable, Optional
 
 from fastapi import Request
@@ -77,7 +76,7 @@ def get_rate_limit_key(request: Request) -> str:
     # Check if user is authenticated (set by auth middleware)
     user = getattr(getattr(request, "state", None), "user", None)
 
-    if user and hasattr(user, "id"):
+    if user and hasattr(user, "id") and user.id:
         return f"user:{user.id}"
 
     # Fall back to IP address
@@ -108,8 +107,8 @@ def get_rate_limiter() -> Optional[Limiter]:
                     storage_uri=config.redis_url,
                 )
                 logger.info("Rate limiter initialized with Redis storage")
-            except ImportError:
-                logger.warning("Redis storage requested but redis not installed. Using memory.")
+            except ImportError as e:
+                logger.error(f"Redis storage requested but redis module not available: {e}. Falling back to memory.")
                 _limiter = Limiter(key_func=get_rate_limit_key)
         else:
             _limiter = Limiter(key_func=get_rate_limit_key)
@@ -176,10 +175,6 @@ def _create_rate_limit_decorator(limit_key: str) -> Callable:
         """Rate limit decorator that reads limit from config."""
 
         def wrapper(func: Callable) -> Callable:
-            @wraps(func)
-            async def wrapped(*args, **kwargs):
-                return await func(*args, **kwargs)
-
             # Get the limiter and config
             limiter = get_rate_limiter()
             config = get_rate_limit_config()
@@ -192,9 +187,7 @@ def _create_rate_limit_decorator(limit_key: str) -> Callable:
             limit_value = getattr(config, limit_key, "100/minute")
 
             # Apply the slowapi limit decorator
-            limited_func = limiter.limit(limit_value)(func)
-
-            return limited_func
+            return limiter.limit(limit_value)(func)
 
         return wrapper
 

@@ -17,6 +17,7 @@ Environment Variables:
 import logging
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -100,28 +101,24 @@ class RateLimitConfig:
         )
 
 
-# Global rate limit config instance
-_rate_limit_config: Optional[RateLimitConfig] = None
-
-
+@lru_cache(maxsize=1)
 def get_rate_limit_config() -> RateLimitConfig:
     """Get the global rate limit configuration.
 
     Loads from environment on first call, cached thereafter.
+    Thread-safe via lru_cache.
 
     Returns:
         RateLimitConfig instance
     """
-    global _rate_limit_config
-    if _rate_limit_config is None:
-        _rate_limit_config = RateLimitConfig.from_environment()
-        logger.info(
-            f"Rate limit config initialized: "
-            f"enabled={_rate_limit_config.enabled}, "
-            f"storage={_rate_limit_config.storage}, "
-            f"standard={_rate_limit_config.standard_limit}"
-        )
-    return _rate_limit_config
+    config = RateLimitConfig.from_environment()
+    logger.info(
+        f"Rate limit config initialized: "
+        f"enabled={config.enabled}, "
+        f"storage={config.storage}, "
+        f"standard={config.standard_limit}"
+    )
+    return config
 
 
 def _reset_rate_limit_config() -> None:
@@ -129,5 +126,4 @@ def _reset_rate_limit_config() -> None:
 
     Useful for testing to ensure clean state between tests.
     """
-    global _rate_limit_config
-    _rate_limit_config = None
+    get_rate_limit_config.cache_clear()
