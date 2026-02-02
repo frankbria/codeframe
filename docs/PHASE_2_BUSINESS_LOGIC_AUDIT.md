@@ -272,3 +272,27 @@ The v2 architecture follows a strict separation:
 2. v2 routers provide CLI-equivalent API endpoints
 3. Phase 3 (Web UI Rebuild) will deprecate v1 routers
 4. Business logic extraction happens incrementally as v2 routes are added
+
+---
+
+## Phase 2 Remaining Work
+
+### V2 Routers Still Needed
+
+| Router | Core Module | CLI Command(s) | Priority |
+|--------|-------------|----------------|----------|
+| `workspace_v2.py` | `core.workspace` | `cf init` | HIGH |
+| `batches_v2.py` | `core.conductor` | `cf work batch status/stop/resume` | HIGH |
+| `diagnose_v2.py` | `core.diagnostic_agent` | `cf work diagnose` | MEDIUM |
+| `pr_v2.py` | `git.github_integration` | `cf pr create/list/status/merge/close` | MEDIUM |
+| `environment_v2.py` | `core.environment` | `cf env check/doctor/install` | LOW |
+| `gates_v2.py` | `core.gates` | `cf gates run` | LOW |
+
+### Implementation Guide
+
+See `docs/PHASE_2_DEVELOPER_GUIDE.md` for the thin adapter pattern and implementation template.
+
+### Test Coverage
+
+All v2 routers have integration tests in `tests/ui/test_v2_routers_integration.py` (50 tests).
+CLI integration tests remain in `tests/cli/test_v2_cli_integration.py` (76 tests).
