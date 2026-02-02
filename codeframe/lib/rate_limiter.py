@@ -121,6 +121,7 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
     """Custom exception handler for rate limit exceeded errors.
 
     Returns a proper 429 response with standard rate limit headers.
+    Also logs the event to the audit log for security monitoring.
 
     Args:
         request: FastAPI request object
@@ -129,15 +130,40 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
     Returns:
         JSONResponse with 429 status and rate limit headers
     """
-    # Log the rate limit exceeded event
+    # Extract request info
     client_ip = get_client_ip(request)
     user = getattr(getattr(request, "state", None), "user", None)
-    user_id = user.id if user and hasattr(user, "id") else None
+    user_id = user.id if user and hasattr(user, "id") and user.id else None
+    endpoint = request.url.path
 
+    # Log to standard logger
     logger.warning(
-        f"Rate limit exceeded: path={request.url.path}, "
+        f"Rate limit exceeded: path={endpoint}, "
         f"ip={client_ip}, user_id={user_id}"
     )
+
+    # Log to audit log for security monitoring
+    try:
+        db = getattr(getattr(request, "app", None), "state", None)
+        db = getattr(db, "db", None) if db else None
+        if db:
+            from codeframe.lib.audit_logger import AuditLogger, AuditEventType
+
+            audit = AuditLogger(db)
+            audit.log_rate_limit_event(
+                event_type=AuditEventType.RATE_LIMIT_EXCEEDED,
+                user_id=user_id,
+                ip_address=client_ip,
+                endpoint=endpoint,
+                limit_category=None,  # Not easily determinable from exception
+                metadata={
+                    "limit": str(exc.limit) if hasattr(exc, "limit") else None,
+                    "retry_after": str(exc.detail) if hasattr(exc, "detail") else "60",
+                },
+            )
+    except Exception as e:
+        # Don't let audit logging failure affect the rate limit response
+        logger.debug(f"Failed to log rate limit event to audit log: {e}")
 
     # Build response headers
     headers = {
