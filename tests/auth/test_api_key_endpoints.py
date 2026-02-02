@@ -56,15 +56,23 @@ def db(tmp_path):
 
 @pytest.fixture
 def client(db):
-    """Create test client.
+    """Create test client with database injection.
 
-    Database is configured via DATABASE_PATH environment variable
-    set by the db fixture.
+    Sets app.state.db directly to ensure the test database is used
+    by all routes that access request.app.state.db.
     """
-    from codeframe.ui.server import app
+    from codeframe.ui import server
 
-    client = TestClient(app)
-    return client
+    # Store original db (if any) and inject test db
+    original_db = getattr(server.app.state, "db", None)
+    server.app.state.db = db
+
+    client = TestClient(server.app)
+    yield client
+
+    # Restore original db
+    if original_db is not None:
+        server.app.state.db = original_db
 
 
 def create_jwt_token(user_id: int, secret: str = "CHANGE-ME-IN-PRODUCTION") -> str:
