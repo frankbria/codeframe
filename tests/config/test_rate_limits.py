@@ -6,7 +6,6 @@ of the RateLimitConfig class.
 
 import os
 from unittest.mock import patch
-import pytest
 
 
 class TestRateLimitConfig:

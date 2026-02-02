@@ -5,7 +5,7 @@ of the rate limiting middleware and decorators.
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, patch
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -145,10 +145,9 @@ class TestRateLimiterIntegration:
     def app_with_low_limit(self):
         """Create a test app with very low rate limit for testing."""
         from codeframe.lib.rate_limiter import (
-            get_rate_limiter,
             rate_limit_exceeded_handler,
         )
-        from codeframe.config.rate_limits import RateLimitConfig, _reset_rate_limit_config
+        from codeframe.config.rate_limits import _reset_rate_limit_config
         from slowapi import Limiter
         from slowapi.util import get_remote_address
         from slowapi.errors import RateLimitExceeded
@@ -241,7 +240,7 @@ class TestRateLimiterDisabled:
 
     def test_disabled_rate_limiting_allows_all_requests(self):
         """When rate limiting is disabled, all requests should be allowed."""
-        from codeframe.config.rate_limits import RateLimitConfig, _reset_rate_limit_config
+        from codeframe.config.rate_limits import _reset_rate_limit_config
         from codeframe.lib.rate_limiter import get_rate_limiter
 
         # Reset and set disabled config
