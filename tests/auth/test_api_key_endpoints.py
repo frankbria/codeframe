@@ -56,14 +56,13 @@ def db(tmp_path):
 
 @pytest.fixture
 def client(db):
-    """Create test client with database injection."""
+    """Create test client.
+
+    Database is configured via DATABASE_PATH environment variable
+    set by the db fixture.
+    """
     from codeframe.ui.server import app
 
-    # Override db dependency
-    def get_test_db():
-        return db
-
-    # Create test client
     client = TestClient(app)
     return client
 

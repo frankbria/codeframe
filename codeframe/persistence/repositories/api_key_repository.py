@@ -42,6 +42,14 @@ class APIKeyRepository(BaseRepository):
         key_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
+        # Normalize expires_at to UTC for consistent string comparison
+        expires_at_utc = None
+        if expires_at:
+            if expires_at.tzinfo is None:
+                # Treat naive datetime as UTC
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            expires_at_utc = expires_at.astimezone(timezone.utc).isoformat()
+
         self._execute(
             """
             INSERT INTO api_keys (
@@ -58,7 +66,7 @@ class APIKeyRepository(BaseRepository):
                 prefix,
                 json.dumps(scopes),
                 now,
-                expires_at.isoformat() if expires_at else None,
+                expires_at_utc,
             ),
         )
         self._commit()

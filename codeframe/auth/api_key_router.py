@@ -85,9 +85,20 @@ class RevokeApiKeyResponse(BaseModel):
 
 
 def get_db(request: Request) -> Database:
-    """Get database instance from request state or create new one."""
+    """Get database instance from app state (singleton managed by lifespan handler).
+
+    Uses the app-scoped database to avoid per-request connection leaks.
+    Falls back to DATABASE_PATH env var if app.state.db not available.
+    """
+    # Prefer app-scoped singleton (set by lifespan handler in server.py)
+    db = getattr(request.app.state, "db", None)
+    if db is not None:
+        return db
+
+    # Fallback for tests or standalone usage
     db = getattr(request.state, "db", None)
     if db is None:
+        logger.warning("No db in app.state, creating fallback connection")
         db_path = os.getenv(
             "DATABASE_PATH",
             os.path.join(os.getcwd(), ".codeframe", "state.db")

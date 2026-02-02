@@ -175,10 +175,13 @@ async def get_api_key_auth(
         return None
 
     try:
-        # Get database from request state or create new instance
-        db = getattr(request.state, "db", None)
+        # Get database from app state (singleton) or request state
+        db = getattr(request.app.state, "db", None)
+        if db is None:
+            db = getattr(request.state, "db", None)
         if db is None:
             # Fallback: create database connection
+            logger.warning("No db in app.state, creating fallback connection for API key auth")
             import os
             from codeframe.persistence.database import Database
 
@@ -188,6 +191,9 @@ async def get_api_key_auth(
             )
             db = Database(db_path)
             db.initialize()
+            # Store on request state so it can be cleaned up by middleware
+            if request is not None:
+                request.state.db = db
 
         # Extract prefix and look up key
         try:

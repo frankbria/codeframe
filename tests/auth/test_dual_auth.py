@@ -124,8 +124,9 @@ class TestGetApiKeyAuth:
 
         full_key, _ = api_key_for_user_1
 
-        # Create mock request with X-API-Key header
+        # Create mock request with database in app.state (preferred) and request.state (fallback)
         mock_request = MagicMock()
+        mock_request.app.state.db = db
         mock_request.state.db = db
 
         result = await get_api_key_auth(api_key=full_key, request=mock_request)
@@ -141,6 +142,7 @@ class TestGetApiKeyAuth:
         from codeframe.auth.dependencies import get_api_key_auth
 
         mock_request = MagicMock()
+        mock_request.app.state.db = db
         mock_request.state.db = db
 
         result = await get_api_key_auth(api_key=None, request=mock_request)
@@ -152,6 +154,7 @@ class TestGetApiKeyAuth:
         from codeframe.auth.dependencies import get_api_key_auth
 
         mock_request = MagicMock()
+        mock_request.app.state.db = db
         mock_request.state.db = db
 
         result = await get_api_key_auth(api_key="cf_live_invalid_key_000000000", request=mock_request)
@@ -166,6 +169,7 @@ class TestGetApiKeyAuth:
         db.api_keys.revoke(key_id, user_id=1)
 
         mock_request = MagicMock()
+        mock_request.app.state.db = db
         mock_request.state.db = db
 
         result = await get_api_key_auth(api_key=full_key, request=mock_request)

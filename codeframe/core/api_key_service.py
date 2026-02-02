@@ -165,6 +165,9 @@ class ApiKeyService:
         if old_key is None or old_key["user_id"] != user_id:
             return None
 
+        # Revoke the old key first to prevent both being active if create fails
+        self.db.api_keys.revoke(key_id, user_id=user_id)
+
         # Create new key with same configuration
         new_key = self.create_api_key(
             user_id=user_id,
@@ -172,9 +175,6 @@ class ApiKeyService:
             scopes=old_key["scopes"],
             expires_at=None,  # New key starts fresh
         )
-
-        # Revoke the old key
-        self.db.api_keys.revoke(key_id, user_id=user_id)
 
         logger.info(f"API key rotated by user {user_id}: {key_id} -> {new_key.id}")
 
