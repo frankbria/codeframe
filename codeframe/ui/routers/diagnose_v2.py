@@ -11,10 +11,11 @@ Routes:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import tasks, runtime
 from codeframe.core.diagnostics import (
     DiagnosticReport,
@@ -103,9 +104,11 @@ def _report_to_response(report: DiagnosticReport) -> DiagnosticReportResponse:
 
 
 @router.post("/{task_id}/diagnose", response_model=DiagnosticReportResponse)
+@rate_limit_ai()
 async def diagnose_task(
+    request: Request,
     task_id: str,
-    request: DiagnoseRequest = None,
+    body: DiagnoseRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> DiagnosticReportResponse:
     """Diagnose a failed task and generate recommendations.
@@ -126,7 +129,7 @@ async def diagnose_task(
             - 404: Task not found or no failed run
             - 400: Task has no failed runs
     """
-    force = request.force if request else False
+    force = body.force if body else False
 
     try:
         # Find task
@@ -176,7 +179,9 @@ async def diagnose_task(
 
 
 @router.get("/{task_id}/diagnose", response_model=DiagnosticReportResponse)
+@rate_limit_standard()
 async def get_diagnostic_report(
+    request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> DiagnosticReportResponse:

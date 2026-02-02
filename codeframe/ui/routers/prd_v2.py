@@ -17,10 +17,11 @@ Routes:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import prd
 from codeframe.core.prd import PrdHasDependentTasksError
 from codeframe.ui.dependencies import get_v2_workspace
@@ -131,7 +132,9 @@ def _prd_to_summary(record: prd.PrdRecord) -> PrdSummaryResponse:
 
 
 @router.get("", response_model=PrdListResponse)
+@rate_limit_standard()
 async def list_prds(
+    request: Request,
     latest_only: bool = Query(False, description="If true, return only latest version per chain"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PrdListResponse:
@@ -156,7 +159,9 @@ async def list_prds(
 
 
 @router.get("/latest", response_model=PrdResponse)
+@rate_limit_standard()
 async def get_latest_prd(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PrdResponse:
     """Get the most recently added PRD.
@@ -182,7 +187,9 @@ async def get_latest_prd(
 
 
 @router.get("/{prd_id}", response_model=PrdResponse)
+@rate_limit_standard()
 async def get_prd(
+    request: Request,
     prd_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PrdResponse:
@@ -210,8 +217,10 @@ async def get_prd(
 
 
 @router.post("", response_model=PrdResponse, status_code=201)
+@rate_limit_standard()
 async def create_prd(
-    request: CreatePrdRequest,
+    request: Request,
+    body: CreatePrdRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PrdResponse:
     """Store a new PRD.
@@ -226,9 +235,9 @@ async def create_prd(
     try:
         record = prd.store(
             workspace,
-            content=request.content,
-            title=request.title,
-            metadata=request.metadata,
+            content=body.content,
+            title=body.title,
+            metadata=body.metadata,
         )
         return _prd_to_response(record)
 
@@ -241,7 +250,9 @@ async def create_prd(
 
 
 @router.delete("/{prd_id}")
+@rate_limit_standard()
 async def delete_prd(
+    request: Request,
     prd_id: str,
     force: bool = Query(False, description="Force delete even if tasks depend on this PRD"),
     workspace: Workspace = Depends(get_v2_workspace),
@@ -294,7 +305,9 @@ async def delete_prd(
 
 
 @router.get("/{prd_id}/versions", response_model=list[PrdResponse])
+@rate_limit_standard()
 async def get_prd_versions(
+    request: Request,
     prd_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> list[PrdResponse]:
@@ -322,9 +335,11 @@ async def get_prd_versions(
 
 
 @router.post("/{prd_id}/versions", response_model=PrdResponse, status_code=201)
+@rate_limit_standard()
 async def create_prd_version(
+    request: Request,
     prd_id: str,
-    request: CreateVersionRequest,
+    body: CreateVersionRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PrdResponse:
     """Create a new version of a PRD.
@@ -344,8 +359,8 @@ async def create_prd_version(
         record = prd.create_new_version(
             workspace,
             parent_prd_id=prd_id,
-            new_content=request.content,
-            change_summary=request.change_summary,
+            new_content=body.content,
+            change_summary=body.change_summary,
         )
 
         if not record:
@@ -367,7 +382,9 @@ async def create_prd_version(
 
 
 @router.get("/{prd_id}/diff", response_model=PrdDiffResponse)
+@rate_limit_standard()
 async def diff_prd_versions(
+    request: Request,
     prd_id: str,
     v1: int = Query(..., ge=1, description="First version number"),
     v2: int = Query(..., ge=1, description="Second version number"),

@@ -13,10 +13,11 @@ Routes:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import conductor
 from codeframe.core.conductor import BatchStatus
 from codeframe.ui.dependencies import get_v2_workspace
@@ -94,7 +95,9 @@ def _batch_to_response(batch: conductor.BatchRun) -> BatchResponse:
 
 
 @router.get("", response_model=BatchListResponse)
+@rate_limit_standard()
 async def list_batches(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by status (PENDING, RUNNING, COMPLETED, PARTIAL, FAILED, CANCELLED)"),
     limit: int = Query(20, ge=1, le=100),
     workspace: Workspace = Depends(get_v2_workspace),
@@ -142,7 +145,9 @@ async def list_batches(
 
 
 @router.get("/{batch_id}", response_model=BatchResponse)
+@rate_limit_standard()
 async def get_batch(
+    request: Request,
     batch_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BatchResponse:
@@ -170,9 +175,11 @@ async def get_batch(
 
 
 @router.post("/{batch_id}/stop", response_model=BatchResponse)
+@rate_limit_standard()
 async def stop_batch(
+    request: Request,
     batch_id: str,
-    request: StopBatchRequest = None,
+    body: StopBatchRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BatchResponse:
     """Stop a running batch.
@@ -198,7 +205,7 @@ async def stop_batch(
             - 404: Batch not found
             - 400: Batch not in stoppable state
     """
-    force = request.force if request else False
+    force = body.force if body else False
 
     try:
         batch = conductor.stop_batch(workspace, batch_id, force=force)
@@ -218,9 +225,11 @@ async def stop_batch(
 
 
 @router.post("/{batch_id}/resume", response_model=BatchResponse)
+@rate_limit_standard()
 async def resume_batch(
+    request: Request,
     batch_id: str,
-    request: ResumeBatchRequest = None,
+    body: ResumeBatchRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BatchResponse:
     """Resume a batch by re-running failed/blocked tasks.
@@ -238,7 +247,7 @@ async def resume_batch(
             - 404: Batch not found
             - 400: Batch not in resumable state
     """
-    force = request.force if request else False
+    force = body.force if body else False
 
     try:
         batch = conductor.resume_batch(workspace, batch_id, force=force)
@@ -265,7 +274,9 @@ async def resume_batch(
 
 
 @router.post("/{batch_id}/cancel", response_model=BatchResponse)
+@rate_limit_standard()
 async def cancel_batch(
+    request: Request,
     batch_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BatchResponse:

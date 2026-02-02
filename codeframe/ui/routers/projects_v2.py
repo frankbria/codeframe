@@ -9,10 +9,11 @@ The v1 router (projects.py) remains for backwards compatibility.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import project_status
 from codeframe.ui.dependencies import get_v2_workspace
 
@@ -76,7 +77,9 @@ class SessionStateResponse(BaseModel):
 
 
 @router.get("/status", response_model=WorkspaceStatusResponse)
+@rate_limit_standard()
 async def get_workspace_status(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> WorkspaceStatusResponse:
     """Get comprehensive status for a workspace.
@@ -123,7 +126,9 @@ async def get_workspace_status(
 
 
 @router.get("/progress", response_model=ProgressMetricsResponse)
+@rate_limit_standard()
 async def get_progress(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ProgressMetricsResponse:
     """Get progress metrics for a workspace.
@@ -152,7 +157,9 @@ async def get_progress(
 
 
 @router.get("/task-counts", response_model=TaskCountsResponse)
+@rate_limit_standard()
 async def get_task_counts(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> TaskCountsResponse:
     """Get task count statistics for a workspace.
@@ -182,7 +189,9 @@ async def get_task_counts(
 
 
 @router.get("/session", response_model=SessionStateResponse)
+@rate_limit_standard()
 async def get_session_state(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> SessionStateResponse:
     """Get current session state for a workspace.
@@ -215,7 +224,9 @@ async def get_session_state(
 
 
 @router.delete("/session")
+@rate_limit_standard()
 async def clear_session_state(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict:
     """Clear session state for a workspace.

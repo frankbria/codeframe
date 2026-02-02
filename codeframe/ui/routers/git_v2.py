@@ -9,10 +9,11 @@ The v1 router (git.py) remains for backwards compatibility.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import git
 from codeframe.ui.dependencies import get_v2_workspace
 
@@ -80,7 +81,9 @@ class DiffResponse(BaseModel):
 
 
 @router.get("/status", response_model=GitStatusResponse)
+@rate_limit_standard()
 async def get_git_status(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> GitStatusResponse:
     """Get git working tree status.
@@ -113,7 +116,9 @@ async def get_git_status(
 
 
 @router.get("/commits", response_model=CommitListResponse)
+@rate_limit_standard()
 async def list_commits(
+    request: Request,
     branch: Optional[str] = None,
     limit: int = 50,
     workspace: Workspace = Depends(get_v2_workspace),
@@ -156,8 +161,10 @@ async def list_commits(
 
 
 @router.post("/commit", response_model=CommitResultResponse, status_code=201)
+@rate_limit_standard()
 async def create_commit(
-    request: CommitRequest,
+    request: Request,
+    body: CommitRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> CommitResultResponse:
     """Create a git commit.
@@ -174,8 +181,8 @@ async def create_commit(
     try:
         result = git.create_commit(
             workspace,
-            files=request.files,
-            message=request.message,
+            files=body.files,
+            message=body.message,
         )
 
         return CommitResultResponse(
@@ -193,7 +200,9 @@ async def create_commit(
 
 
 @router.get("/diff", response_model=DiffResponse)
+@rate_limit_standard()
 async def get_diff(
+    request: Request,
     staged: bool = False,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> DiffResponse:
@@ -223,7 +232,9 @@ async def get_diff(
 
 
 @router.get("/branch")
+@rate_limit_standard()
 async def get_current_branch(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict:
     """Get current branch name.
@@ -247,7 +258,9 @@ async def get_current_branch(
 
 
 @router.get("/clean")
+@rate_limit_standard()
 async def check_clean(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict:
     """Check if working tree is clean.

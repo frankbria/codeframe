@@ -9,10 +9,11 @@ The v1 router (checkpoints.py) remains for backwards compatibility.
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import checkpoints
 from codeframe.ui.dependencies import get_v2_workspace
 
@@ -77,8 +78,10 @@ class CheckpointDiffResponse(BaseModel):
 
 
 @router.post("", response_model=CheckpointResponse)
+@rate_limit_standard()
 async def create_checkpoint(
-    request: CreateCheckpointRequest,
+    request: Request,
+    body: CreateCheckpointRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> CheckpointResponse:
     """Create a new checkpoint.
@@ -97,8 +100,8 @@ async def create_checkpoint(
     try:
         checkpoint = checkpoints.create(
             workspace,
-            name=request.name,
-            include_git_ref=request.include_git_ref,
+            name=body.name,
+            include_git_ref=body.include_git_ref,
         )
 
         return CheckpointResponse(
@@ -114,7 +117,9 @@ async def create_checkpoint(
 
 
 @router.get("", response_model=CheckpointListResponse)
+@rate_limit_standard()
 async def list_checkpoints(
+    request: Request,
     limit: int = Query(50, ge=1, le=200),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> CheckpointListResponse:
@@ -146,7 +151,9 @@ async def list_checkpoints(
 
 
 @router.get("/{checkpoint_id}", response_model=CheckpointResponse)
+@rate_limit_standard()
 async def get_checkpoint(
+    request: Request,
     checkpoint_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> CheckpointResponse:
@@ -178,7 +185,9 @@ async def get_checkpoint(
 
 
 @router.post("/{checkpoint_id}/restore")
+@rate_limit_standard()
 async def restore_checkpoint(
+    request: Request,
     checkpoint_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
@@ -214,7 +223,9 @@ async def restore_checkpoint(
 
 
 @router.delete("/{checkpoint_id}")
+@rate_limit_standard()
 async def delete_checkpoint(
+    request: Request,
     checkpoint_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
@@ -244,7 +255,9 @@ async def delete_checkpoint(
 
 
 @router.get("/{checkpoint_id_a}/diff/{checkpoint_id_b}", response_model=CheckpointDiffResponse)
+@rate_limit_standard()
 async def diff_checkpoints(
+    request: Request,
     checkpoint_id_a: str,
     checkpoint_id_b: str,
     workspace: Workspace = Depends(get_v2_workspace),

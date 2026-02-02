@@ -17,10 +17,11 @@ existing web UI until Phase 3 (Web UI Rebuild).
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import prd_discovery, prd, tasks
 from codeframe.core.prd_discovery import (
     NoApiKeyError,
@@ -104,7 +105,9 @@ class GenerateTasksResponse(BaseModel):
 
 
 @router.post("/start", response_model=StartDiscoveryResponse)
+@rate_limit_ai()
 async def start_discovery(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> StartDiscoveryResponse:
     """Start a new PRD discovery session.
@@ -161,7 +164,9 @@ async def start_discovery(
 
 
 @router.get("/status", response_model=StatusResponse)
+@rate_limit_standard()
 async def get_status(
+    request: Request,
     session_id: Optional[str] = Query(None, description="Specific session ID"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> StatusResponse:
@@ -185,9 +190,11 @@ async def get_status(
 
 
 @router.post("/{session_id}/answer", response_model=AnswerResponse)
+@rate_limit_ai()
 async def submit_answer(
+    request: Request,
     session_id: str,
-    request: AnswerRequest,
+    body: AnswerRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> AnswerResponse:
     """Submit an answer to the current discovery question.
@@ -214,7 +221,7 @@ async def submit_answer(
         result = prd_discovery.process_discovery_answer(
             workspace,
             session_id,
-            request.answer,
+            body.answer,
         )
         return AnswerResponse(**result)
 
@@ -230,9 +237,11 @@ async def submit_answer(
 
 
 @router.post("/{session_id}/generate-prd", response_model=GeneratePrdResponse)
+@rate_limit_ai()
 async def generate_prd(
+    request: Request,
     session_id: str,
-    request: GeneratePrdRequest = None,
+    body: GeneratePrdRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> GeneratePrdResponse:
     """Generate a PRD from a completed discovery session.
@@ -255,7 +264,7 @@ async def generate_prd(
             - 500: Generation error
     """
     try:
-        template_id = request.template_id if request else None
+        template_id = body.template_id if body else None
         prd_record = prd_discovery.generate_prd_from_discovery(
             workspace,
             session_id,
@@ -287,7 +296,9 @@ async def generate_prd(
 
 
 @router.post("/reset")
+@rate_limit_standard()
 async def reset_discovery(
+    request: Request,
     session_id: Optional[str] = Query(None, description="Specific session to reset"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
@@ -323,7 +334,9 @@ async def reset_discovery(
 
 
 @router.post("/generate-tasks", response_model=GenerateTasksResponse)
+@rate_limit_ai()
 async def generate_tasks_from_prd(
+    request: Request,
     prd_id: Optional[str] = Query(
         None,
         description="PRD ID to generate tasks from (defaults to latest)",
