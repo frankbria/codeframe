@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 # Global limiter instance
 _limiter: Optional[Limiter] = None
+# Track if we've logged the disabled message to avoid duplicate logs
+_logged_disabled: bool = False
 
 
 def get_client_ip(request: Request) -> str:
@@ -91,11 +93,14 @@ def get_rate_limiter() -> Optional[Limiter]:
         Limiter instance if rate limiting is enabled, None otherwise
     """
     global _limiter
+    global _logged_disabled
 
     config = get_rate_limit_config()
 
     if not config.enabled:
-        logger.info("Rate limiting is disabled")
+        if not _logged_disabled:
+            logger.info("Rate limiting is disabled")
+            _logged_disabled = True
         return None
 
     if _limiter is None:
@@ -259,4 +264,6 @@ def reset_rate_limiter() -> None:
     Useful for testing to ensure clean state between tests.
     """
     global _limiter
+    global _logged_disabled
     _limiter = None
+    _logged_disabled = False
