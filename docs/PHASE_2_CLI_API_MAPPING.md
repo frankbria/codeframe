@@ -265,7 +265,29 @@ These support the Golden Path but aren't in the critical path.
 
 ---
 
-## 5. Notes
+## 5. Integration Tests
+
+**Test File:** `tests/ui/test_v2_routers_integration.py` (50 tests)
+
+All v2 routers have comprehensive integration tests that verify:
+
+1. **Core module delegation** - Routers properly delegate to core modules
+2. **Valid input handling** - Correct responses for valid requests
+3. **Error handling** - Appropriate 4xx/5xx error responses
+4. **API patterns** - Workspace-based routing, standard response format
+
+| Router | Test Coverage |
+|--------|---------------|
+| `blockers_v2.py` | 13 tests (list, create, get, answer, resolve, errors) |
+| `prd_v2.py` | 14 tests (list, latest, create, get, delete, versions, diff, errors) |
+| `tasks_v2.py` | 20 tests (list, get, update, delete, start, stop, run, stream, errors) |
+| Cross-cutting | 3 tests (error format, core delegation verification) |
+
+CLI integration tests remain in `tests/cli/test_v2_cli_integration.py` (76 tests).
+
+---
+
+## 6. Notes
 
 ### Workspace-Based Routing
 
