@@ -192,6 +192,38 @@ def get_active_run(workspace: Workspace, task_id: str) -> Optional[Run]:
     return _row_to_run(row)
 
 
+def get_latest_run(workspace: Workspace, task_id: str) -> Optional[Run]:
+    """Get the most recent run for a task (any status).
+
+    Args:
+        workspace: Workspace to query
+        task_id: Task identifier
+
+    Returns:
+        Run if found, None otherwise
+    """
+    conn = get_db_connection(workspace)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT id, workspace_id, task_id, status, started_at, completed_at
+        FROM runs
+        WHERE workspace_id = ? AND task_id = ?
+        ORDER BY started_at DESC
+        LIMIT 1
+        """,
+        (workspace.id, task_id),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    return _row_to_run(row)
+
+
 def reset_blocked_run(workspace: Workspace, task_id: str) -> bool:
     """Reset a blocked run so the task can be re-executed.
 

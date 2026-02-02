@@ -18,10 +18,11 @@ import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
-from codeframe.core import runtime, tasks, conductor
+from codeframe.core import runtime, tasks, conductor, streaming
 from codeframe.core.state_machine import TaskStatus
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
@@ -680,3 +681,168 @@ async def resume_task(
             status_code=400,
             detail=api_error("Cannot resume", ErrorCodes.INVALID_STATE, error_msg),
         )
+
+
+# ============================================================================
+# Streaming Endpoints
+# ============================================================================
+
+
+@router.get("/{task_id}/stream")
+async def stream_task_output(
+    task_id: str,
+    tail: int = Query(0, ge=0, le=1000, description="Show last N lines before streaming"),
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> StreamingResponse:
+    """Stream real-time output from a running task.
+
+    Returns Server-Sent Events (SSE) with task output lines.
+
+    This is the v2 equivalent of `cf work follow <task-id>`.
+
+    Event types:
+        - `line`: A line of output from the task
+        - `info`: Informational message (e.g., "showing last N lines")
+        - `error`: Error message
+        - `done`: Stream completed (task finished or no more output)
+
+    Args:
+        task_id: Task to stream output from
+        tail: Number of historical lines to show before live streaming
+        workspace: v2 Workspace
+
+    Returns:
+        SSE stream of task output
+
+    Raises:
+        HTTPException:
+            - 404: Task not found or no run exists
+    """
+    # Get the task first to validate it exists
+    task = tasks.get(workspace, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
+        )
+
+    # Get the active run for this task
+    run = runtime.get_active_run(workspace, task_id)
+
+    # If no active run, try to find the most recent completed run
+    if not run:
+        run = runtime.get_latest_run(workspace, task_id)
+
+    if not run:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error(
+                "No run found",
+                ErrorCodes.NOT_FOUND,
+                f"No run exists for task {task_id}. Start the task first with POST /{task_id}/start",
+            ),
+        )
+
+    def generate_events():
+        """Generator that yields SSE events."""
+        run_id = run.id
+        current_line = 0
+
+        # Check if output exists
+        if not streaming.run_output_exists(workspace, run_id):
+            yield "event: info\ndata: Waiting for output...\n\n"
+
+        # If tail requested, show historical lines first
+        if tail > 0:
+            lines, total = streaming.get_latest_lines_with_count(workspace, run_id, tail)
+            if lines:
+                skipped = total - len(lines)
+                if skipped > 0:
+                    yield f"event: info\ndata: (skipped {skipped} lines, showing last {len(lines)})\n\n"
+
+                for line in lines:
+                    # Remove trailing newline for SSE format
+                    yield f"event: line\ndata: {line.rstrip()}\n\n"
+
+                current_line = total
+
+        # Stream new lines as they appear
+        # Use a reasonable timeout to allow the connection to close gracefully
+        for line in streaming.tail_run_output(
+            workspace,
+            run_id,
+            since_line=current_line,
+            poll_interval=0.5,
+            max_wait=300.0,  # 5 minute timeout
+        ):
+            yield f"event: line\ndata: {line.rstrip()}\n\n"
+
+        yield "event: done\ndata: Stream ended\n\n"
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+@router.get("/{task_id}/run")
+async def get_task_run(
+    task_id: str,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> dict[str, Any]:
+    """Get the current or most recent run for a task.
+
+    This is the v2 equivalent of `cf work status <task-id>`.
+
+    Args:
+        task_id: Task to get run status for
+        workspace: v2 Workspace
+
+    Returns:
+        Run details including status, timing, and output availability
+
+    Raises:
+        HTTPException:
+            - 404: Task not found or no run exists
+    """
+    # Get the task first to validate it exists
+    task = tasks.get(workspace, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
+        )
+
+    # Get the active run, or fall back to latest run
+    run = runtime.get_active_run(workspace, task_id)
+    if not run:
+        run = runtime.get_latest_run(workspace, task_id)
+
+    if not run:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error(
+                "No run found",
+                ErrorCodes.NOT_FOUND,
+                f"No run exists for task {task_id}",
+            ),
+        )
+
+    # Check if output exists
+    has_output = streaming.run_output_exists(workspace, run.id)
+
+    return {
+        "success": True,
+        "run_id": run.id,
+        "task_id": task_id,
+        "status": run.status.value,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "has_output": has_output,
+        "message": f"Run {run.id[:8]} is {run.status.value}",
+    }

@@ -60,8 +60,8 @@ Both end up with PRD records managed by `core.prd`.
 | `cf work start --execute` | `core.runtime` | `execute_agent()` | `/api/v2/tasks/{id}/start?execute=true` | POST | ✅ Present |
 | `cf work stop <id>` | `core.runtime` | `stop_run()` | `/api/v2/tasks/{id}/stop` | POST | ✅ Present |
 | `cf work resume <id>` | `core.runtime` | `resume_run()` | `/api/v2/tasks/{id}/resume` | POST | ✅ Present |
-| `cf work status <id>` | `core.runtime` | `get_run()` | `/api/v2/tasks/{id}/run` | GET | ⚠️ Missing |
-| `cf work follow <id>` | `core.streaming` | `tail_run_output()` | `/api/v2/tasks/{id}/stream` | GET (SSE) | ⚠️ Missing |
+| `cf work status <id>` | `core.runtime` | `get_run()` | `/api/v2/tasks/{id}/run` | GET | ✅ Present |
+| `cf work follow <id>` | `core.streaming` | `tail_run_output()` | `/api/v2/tasks/{id}/stream` | GET (SSE) | ✅ Present |
 | `cf work diagnose <id>` | `core.diagnostic_agent` | `diagnose_task()` | `/api/v2/tasks/{id}/diagnose` | POST | ⚠️ Missing |
 
 ### Batch Commands
@@ -166,8 +166,8 @@ These support the Golden Path but aren't in the critical path.
 | PRD CRUD | 7 | 7 | ✅ 100% |
 | Tasks (core) | 4 | 4 | ✅ 100% |
 | Tasks (CRUD) | 2 | 2 | ✅ 100% |
-| Work (execution) | 4 | 3 | ⚠️ 75% |
-| Work (streaming) | 1 | 0 | ⚠️ 0% |
+| Work (execution) | 4 | 4 | ✅ 100% |
+| Work (streaming) | 2 | 2 | ✅ 100% |
 | Checkpoints | 6 | 6 | ✅ 100% |
 | Schedule | 3 | 3 | ✅ 100% |
 | Templates | 3 | 3 | ✅ 100% |
@@ -179,17 +179,17 @@ These support the Golden Path but aren't in the critical path.
 
 ### Missing V2 Routes (Priority Order)
 
-**High Priority (Core Workflow):**
+**High Priority (Core Workflow):** ✅ ALL DONE
 1. ~~`/api/v2/blockers` - Blocker management (full CRUD)~~ ✅ DONE
 2. ~~`/api/v2/prd` - PRD CRUD (show, list, add, delete)~~ ✅ DONE
 3. ~~`/api/v2/tasks/{id}` - Task update/delete (PATCH, DELETE)~~ ✅ DONE
-4. `/api/v2/tasks/{id}/stream` - Live output streaming (SSE)
+4. ~~`/api/v2/tasks/{id}/stream` - Live output streaming (SSE)~~ ✅ DONE
 
 **Medium Priority (Workflow Support):**
 5. `/api/v2/workspaces` - Workspace init (POST)
 6. `/api/v2/batches/{id}` - Batch status/control
 7. `/api/v2/tasks/{id}/diagnose` - Task diagnosis
-8. `/api/v2/tasks/{id}/run` - Run status
+8. ~~`/api/v2/tasks/{id}/run` - Run status~~ ✅ DONE
 
 **Lower Priority (Secondary Features):**
 9. `/api/v2/pr` - PR management
