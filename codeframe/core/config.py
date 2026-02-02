@@ -395,6 +395,11 @@ class GlobalConfig(BaseSettings):
     github_token: Optional[str] = Field(None, alias="GITHUB_TOKEN")
     github_repo: Optional[str] = Field(None, alias="GITHUB_REPO")  # Format: "owner/repo"
 
+    # Rate Limiting Configuration
+    rate_limit_enabled: bool = Field(True, alias="RATE_LIMIT_ENABLED")
+    rate_limit_storage: str = Field("memory", alias="RATE_LIMIT_STORAGE")
+    redis_url: Optional[str] = Field(None, alias="REDIS_URL")
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
@@ -415,6 +420,15 @@ class GlobalConfig(BaseSettings):
         """Validate port is in valid range."""
         if not (1 <= v <= 65535):
             raise ValueError(f"API_PORT must be between 1 and 65535, got: {v}")
+        return v
+
+    @field_validator("rate_limit_storage")
+    @classmethod
+    def validate_rate_limit_storage(cls, v: str) -> str:
+        """Validate rate limit storage is valid."""
+        allowed = ["memory", "redis"]
+        if v not in allowed:
+            raise ValueError(f"RATE_LIMIT_STORAGE must be one of {allowed}, got: {v}")
         return v
 
     def get_cors_origins_list(self) -> list[str]:

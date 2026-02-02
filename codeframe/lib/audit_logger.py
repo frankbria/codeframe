@@ -44,6 +44,10 @@ class AuditEventType(Enum):
     USER_DELETED = "user.deleted"
     USER_ROLE_CHANGED = "user.role.changed"
 
+    # Rate limiting events
+    RATE_LIMIT_EXCEEDED = "rate_limit.exceeded"
+    RATE_LIMIT_WARNING = "rate_limit.warning"
+
 
 class AuditLogger:
     """Centralized audit logger for security events.
@@ -180,6 +184,38 @@ class AuditLogger:
             resource_id=target_user_id,
             ip_address=ip_address,
             metadata=metadata,
+        )
+
+    def log_rate_limit_event(
+        self,
+        event_type: AuditEventType,
+        user_id: Optional[int] = None,
+        ip_address: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        limit_category: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Log rate limiting event.
+
+        Args:
+            event_type: Type of rate limit event (exceeded or warning)
+            user_id: User ID (if authenticated)
+            ip_address: Client IP address
+            endpoint: API endpoint path
+            limit_category: Rate limit category (auth, standard, ai, websocket)
+            metadata: Additional event metadata
+        """
+        self._log_event(
+            event_type=event_type,
+            user_id=user_id,
+            resource_type="rate_limit",
+            resource_id=None,
+            ip_address=ip_address,
+            metadata={
+                **(metadata or {}),
+                "endpoint": endpoint,
+                "limit_category": limit_category,
+            },
         )
 
     def _log_event(

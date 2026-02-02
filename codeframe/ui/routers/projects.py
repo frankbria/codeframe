@@ -13,7 +13,7 @@ import shutil
 import sqlite3
 from datetime import datetime, UTC
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from codeframe.core.models import TaskStatus
 from codeframe.core.session_manager import SessionManager
@@ -26,6 +26,7 @@ from codeframe.ui.models import (
     ProjectResponse,
     SourceType,
 )
+from codeframe.lib.rate_limiter import rate_limit_standard
 
 # Valid task status values for API validation
 VALID_TASK_STATUSES = {s.value for s in TaskStatus}
@@ -49,7 +50,9 @@ def is_hosted_mode() -> bool:
 
 
 @router.get("")
+@rate_limit_standard()
 async def list_projects(
+    request: Request,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -62,8 +65,10 @@ async def list_projects(
 
 
 @router.post("", status_code=201, response_model=ProjectResponse)
+@rate_limit_standard()
 async def create_project(
-    request: ProjectCreateRequest,
+    request: Request,
+    body: ProjectCreateRequest,
     db: Database = Depends(get_db),
     workspace_manager: WorkspaceManager = Depends(get_workspace_manager),
     current_user: User = Depends(get_current_user),
@@ -71,7 +76,7 @@ async def create_project(
     """Create a new project.
 
     Args:
-        request: Project creation request with name, description, source config
+        body: Project creation request with name, description, source config
         db: Database connection
         workspace_manager: Workspace manager
         current_user: Authenticated user creating the project
@@ -80,7 +85,7 @@ async def create_project(
         Created project details
     """
     # Security: Hosted mode cannot access user's local filesystem
-    if is_hosted_mode() and request.source_type == SourceType.LOCAL_PATH:
+    if is_hosted_mode() and body.source_type == SourceType.LOCAL_PATH:
         raise HTTPException(
             status_code=403, detail="source_type='local_path' not available in hosted mode"
         )
@@ -94,19 +99,19 @@ async def create_project(
             status_code=500, detail="Database error occurred. Please try again later."
         )
 
-    if any(p["name"] == request.name for p in existing_projects):
+    if any(p["name"] == body.name for p in existing_projects):
         raise HTTPException(
-            status_code=409, detail=f"Project with name '{request.name}' already exists"
+            status_code=409, detail=f"Project with name '{body.name}' already exists"
         )
 
     # Create project record first (to get ID)
     try:
         project_id = db.create_project(
-            name=request.name,
-            description=request.description,
-            source_type=request.source_type.value,
-            source_location=request.source_location,
-            source_branch=request.source_branch,
+            name=body.name,
+            description=body.description,
+            source_type=body.source_type.value,
+            source_location=body.source_location,
+            source_branch=body.source_branch,
             workspace_path="",  # Will be updated after workspace creation
             user_id=current_user.id,  # Assign project to current user
         )
@@ -120,9 +125,9 @@ async def create_project(
     try:
         workspace_path = workspace_manager.create_workspace(
             project_id=project_id,
-            source_type=request.source_type,
-            source_location=request.source_location,
-            source_branch=request.source_branch,
+            source_type=body.source_type,
+            source_location=body.source_location,
+            source_branch=body.source_branch,
         )
 
         # Update project with workspace path and git status
@@ -207,7 +212,9 @@ async def create_project(
 
 
 @router.get("/{project_id}")
+@rate_limit_standard()
 async def get_project(
+    request: Request,
     project_id: int,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -248,7 +255,9 @@ async def get_project(
 
 
 @router.get("/{project_id}/status")
+@rate_limit_standard()
 async def get_project_status(
+    request: Request,
     project_id: int,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -278,7 +287,9 @@ async def get_project_status(
 
 
 @router.get("/{project_id}/tasks")
+@rate_limit_standard()
 async def get_tasks(
+    request: Request,
     project_id: int,
     status: str | None = None,
     limit: int = Query(default=50, ge=1, le=1000, description="Max tasks to return (1-1000)"),
@@ -360,7 +371,8 @@ async def get_tasks(
 
 
 @router.get("/{project_id}/activity")
-async def get_activity(project_id: int, limit: int = 50, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+@rate_limit_standard()
+async def get_activity(request: Request, project_id: int, limit: int = 50, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get recent activity log."""
     try:
         # Authorization check
@@ -380,7 +392,8 @@ async def get_activity(project_id: int, limit: int = 50, db: Database = Depends(
 
 
 @router.get("/{project_id}/prd")
-async def get_project_prd(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+@rate_limit_standard()
+async def get_project_prd(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get PRD for a project (cf-26).
 
     Sprint 2 Foundation Contract:
@@ -434,7 +447,8 @@ async def get_project_prd(project_id: int, db: Database = Depends(get_db), curre
 
 
 @router.get("/{project_id}/issues")
-async def get_project_issues(project_id: int, include: str = None, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+@rate_limit_standard()
+async def get_project_issues(request: Request, project_id: int, include: str = None, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get issues for a project (cf-26).
 
     Sprint 2 Foundation Contract:
@@ -490,7 +504,8 @@ async def get_project_issues(project_id: int, include: str = None, db: Database 
 
 
 @router.get("/{project_id}/session", tags=["session"])
-async def get_session_state(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+@rate_limit_standard()
+async def get_session_state(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get current session state for project (T028).
 
     Args:

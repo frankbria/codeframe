@@ -12,20 +12,23 @@ import asyncio
 from datetime import datetime, UTC
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from codeframe.persistence.database import Database
 from codeframe.ui.dependencies import get_db
 from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
 from codeframe.ui.shared import manager, running_agents
+from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 
 # Create router for chat endpoints
 router = APIRouter(prefix="/api/projects/{project_id}/chat", tags=["chat"])
 
 
 @router.post("")
+@rate_limit_ai()
 async def chat_with_lead(
+    request: Request,
     project_id: int,
     message: Dict[str, str],
     db: Database = Depends(get_db),
@@ -104,7 +107,9 @@ async def chat_with_lead(
 
 
 @router.get("/history")
+@rate_limit_standard()
 async def get_chat_history(
+    request: Request,
     project_id: int,
     limit: int = 100,
     offset: int = 0,

@@ -1,0 +1,243 @@
+"""Rate limiting middleware for CodeFRAME API.
+
+This module provides rate limiting functionality using slowapi, with support
+for different rate limits per endpoint category and proper 429 responses.
+
+Rate limit categories:
+- auth: Authentication endpoints (login, register)
+- standard: Standard API endpoints (CRUD operations)
+- ai: AI/expensive operations (chat, generation)
+- websocket: WebSocket connections
+
+Key extraction:
+- Authenticated requests: User ID from token
+- Unauthenticated requests: Client IP address
+"""
+
+import logging
+from functools import wraps
+from typing import Callable, Optional
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+
+from codeframe.config.rate_limits import get_rate_limit_config
+
+logger = logging.getLogger(__name__)
+
+# Global limiter instance
+_limiter: Optional[Limiter] = None
+
+
+def get_client_ip(request: Request) -> str:
+    """Extract client IP address from request.
+
+    Checks headers in order of preference:
+    1. X-Forwarded-For (first IP in chain)
+    2. X-Real-IP
+    3. request.client.host
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Client IP address string, or "unknown" if not determinable
+    """
+    # Check X-Forwarded-For header (may contain multiple IPs)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # Return first IP in the chain (real client)
+        return forwarded_for.split(",")[0].strip()
+
+    # Check X-Real-IP header
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+
+    # Fall back to direct client connection
+    if request.client and request.client.host:
+        return request.client.host
+
+    return "unknown"
+
+
+def get_rate_limit_key(request: Request) -> str:
+    """Generate rate limit key for a request.
+
+    Uses user ID for authenticated requests, IP address for unauthenticated.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        Rate limit key string in format "user:{id}" or "ip:{address}"
+    """
+    # Check if user is authenticated (set by auth middleware)
+    user = getattr(getattr(request, "state", None), "user", None)
+
+    if user and hasattr(user, "id"):
+        return f"user:{user.id}"
+
+    # Fall back to IP address
+    client_ip = get_client_ip(request)
+    return f"ip:{client_ip}"
+
+
+def get_rate_limiter() -> Optional[Limiter]:
+    """Get or create the rate limiter instance.
+
+    Returns:
+        Limiter instance if rate limiting is enabled, None otherwise
+    """
+    global _limiter
+
+    config = get_rate_limit_config()
+
+    if not config.enabled:
+        logger.info("Rate limiting is disabled")
+        return None
+
+    if _limiter is None:
+        # Create limiter with appropriate storage
+        if config.storage == "redis" and config.redis_url:
+            try:
+                _limiter = Limiter(
+                    key_func=get_rate_limit_key,
+                    storage_uri=config.redis_url,
+                )
+                logger.info("Rate limiter initialized with Redis storage")
+            except ImportError:
+                logger.warning("Redis storage requested but redis not installed. Using memory.")
+                _limiter = Limiter(key_func=get_rate_limit_key)
+        else:
+            _limiter = Limiter(key_func=get_rate_limit_key)
+            logger.info("Rate limiter initialized with in-memory storage")
+
+    return _limiter
+
+
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Custom exception handler for rate limit exceeded errors.
+
+    Returns a proper 429 response with standard rate limit headers.
+
+    Args:
+        request: FastAPI request object
+        exc: RateLimitExceeded exception
+
+    Returns:
+        JSONResponse with 429 status and rate limit headers
+    """
+    # Log the rate limit exceeded event
+    client_ip = get_client_ip(request)
+    user = getattr(getattr(request, "state", None), "user", None)
+    user_id = user.id if user and hasattr(user, "id") else None
+
+    logger.warning(
+        f"Rate limit exceeded: path={request.url.path}, "
+        f"ip={client_ip}, user_id={user_id}"
+    )
+
+    # Build response headers
+    headers = {
+        "Retry-After": str(exc.detail) if hasattr(exc, "detail") else "60",
+    }
+
+    # Add rate limit info headers if available
+    if hasattr(exc, "limit"):
+        headers["X-RateLimit-Limit"] = str(exc.limit)
+
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "error": "rate_limit_exceeded",
+            "detail": "Too many requests. Please try again later.",
+            "retry_after": headers.get("Retry-After", "60"),
+        },
+        headers=headers,
+    )
+
+    return response
+
+
+def _create_rate_limit_decorator(limit_key: str) -> Callable:
+    """Create a rate limit decorator for a specific limit category.
+
+    Args:
+        limit_key: Configuration key for the limit (e.g., 'standard_limit')
+
+    Returns:
+        Decorator function that applies the rate limit
+    """
+
+    def decorator():
+        """Rate limit decorator that reads limit from config."""
+
+        def wrapper(func: Callable) -> Callable:
+            @wraps(func)
+            async def wrapped(*args, **kwargs):
+                return await func(*args, **kwargs)
+
+            # Get the limiter and config
+            limiter = get_rate_limiter()
+            config = get_rate_limit_config()
+
+            if limiter is None or not config.enabled:
+                # Rate limiting disabled, return function as-is
+                return func
+
+            # Get the limit value from config
+            limit_value = getattr(config, limit_key, "100/minute")
+
+            # Apply the slowapi limit decorator
+            limited_func = limiter.limit(limit_value)(func)
+
+            return limited_func
+
+        return wrapper
+
+    return decorator
+
+
+# Rate limit decorators for each category
+def rate_limit_auth() -> Callable:
+    """Decorator for authentication endpoint rate limits.
+
+    Default: 10 requests/minute (configurable via RATE_LIMIT_AUTH)
+    """
+    return _create_rate_limit_decorator("auth_limit")()
+
+
+def rate_limit_standard() -> Callable:
+    """Decorator for standard API endpoint rate limits.
+
+    Default: 100 requests/minute (configurable via RATE_LIMIT_STANDARD)
+    """
+    return _create_rate_limit_decorator("standard_limit")()
+
+
+def rate_limit_ai() -> Callable:
+    """Decorator for AI/expensive operation rate limits.
+
+    Default: 20 requests/minute (configurable via RATE_LIMIT_AI)
+    """
+    return _create_rate_limit_decorator("ai_limit")()
+
+
+def rate_limit_websocket() -> Callable:
+    """Decorator for WebSocket connection rate limits.
+
+    Default: 30 connections/minute (configurable via RATE_LIMIT_WEBSOCKET)
+    """
+    return _create_rate_limit_decorator("websocket_limit")()
+
+
+def reset_rate_limiter() -> None:
+    """Reset the global rate limiter instance.
+
+    Useful for testing to ensure clean state between tests.
+    """
+    global _limiter
+    _limiter = None

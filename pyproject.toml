@@ -56,6 +56,7 @@ dependencies = [
     "passlib[argon2]>=1.7.4",
     "keyring>=24.0.0",
     "jinja2>=3.1.6",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

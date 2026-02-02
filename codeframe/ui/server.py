@@ -13,6 +13,8 @@ from pathlib import Path
 # Third-party imports
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 # Local imports
 from codeframe.persistence.database import Database
@@ -54,6 +56,11 @@ from codeframe.ui.routers import (
     workspace_v2,  # v2 workspace router (delegates to core)
 )
 from codeframe.auth import router as auth_router
+from codeframe.lib.rate_limiter import (
+    get_rate_limiter,
+    rate_limit_exceeded_handler,
+)
+from codeframe.config.rate_limits import get_rate_limit_config
 
 # ============================================================================
 # Configuration and Setup
@@ -202,6 +209,20 @@ async def lifespan(app: FastAPI):
     # Log that authentication is now always required
     logger.info("🔒 Authentication: ENABLED (always required)")
 
+    # Initialize rate limiting
+    rate_limit_config = get_rate_limit_config()
+    if rate_limit_config.enabled:
+        limiter = get_rate_limiter()
+        if limiter:
+            app.state.limiter = limiter
+            logger.info(
+                f"🚦 Rate limiting: ENABLED "
+                f"(storage={rate_limit_config.storage}, "
+                f"standard={rate_limit_config.standard_limit})"
+            )
+    else:
+        logger.info("🚦 Rate limiting: DISABLED")
+
     # Start background session cleanup task
     cleanup_task = asyncio.create_task(_cleanup_expired_sessions_task(app.state.db))
 
@@ -228,6 +249,23 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+# ============================================================================
+# Rate Limiting Setup
+# ============================================================================
+
+# Add rate limiting exception handler
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Add rate limiting middleware if enabled
+# Initialize limiter immediately so it's available before lifespan runs
+rate_limit_config = get_rate_limit_config()
+if rate_limit_config.enabled:
+    limiter = get_rate_limiter()
+    if limiter:
+        app.state.limiter = limiter
+        app.add_middleware(SlowAPIMiddleware)
 
 
 # ============================================================================

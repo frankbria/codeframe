@@ -11,7 +11,7 @@ import os
 import time
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
 from fastapi.responses import JSONResponse
 
 from codeframe.core.models import ProjectStatus
@@ -28,6 +28,7 @@ from codeframe.ui.models import (
     AgentAssignmentResponse,
     ProjectAssignmentResponse,
 )
+from codeframe.lib.rate_limiter import rate_limit_standard, rate_limit_ai
 
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,9 @@ router = APIRouter(prefix="/api", tags=["agents"])
 
 
 @router.post("/projects/{project_id}/start", status_code=202)
+@rate_limit_ai()
 async def start_project_agent(
+    request: Request,
     project_id: int,
     background_tasks: BackgroundTasks,
     db: Database = Depends(get_db),
@@ -158,7 +161,8 @@ async def start_project_agent(
 
 
 @router.post("/projects/{project_id}/pause")
-async def pause_project(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+@rate_limit_standard()
+async def pause_project(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Pause project execution.
 
     Args:
@@ -193,7 +197,8 @@ async def pause_project(project_id: int, db: Database = Depends(get_db), current
 
 
 @router.post("/projects/{project_id}/resume")
-async def resume_project(project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+@rate_limit_ai()
+async def resume_project(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Resume project execution.
 
     Args:
@@ -228,7 +233,9 @@ async def resume_project(project_id: int, db: Database = Depends(get_db), curren
 
 
 @router.get("/projects/{project_id}/agents", response_model=List[AgentAssignmentResponse])
+@rate_limit_standard()
 async def get_project_agents(
+    request: Request,
     project_id: int,
     active_only: bool = Query(True, alias="is_active"),
     db: Database = Depends(get_db),
@@ -288,9 +295,11 @@ async def get_project_agents(
 
 
 @router.post("/projects/{project_id}/agents", status_code=201, response_model=dict)
+@rate_limit_standard()
 async def assign_agent_to_project(
+    request: Request,
     project_id: int,
-    request: AgentAssignmentRequest,
+    body: AgentAssignmentRequest,
     db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Assign an agent to a project.
@@ -319,30 +328,30 @@ async def assign_agent_to_project(
             raise HTTPException(status_code=403, detail="Access denied")
 
         # Verify agent exists
-        agent = db.get_agent(request.agent_id)
+        agent = db.get_agent(body.agent_id)
         if not agent:
-            raise HTTPException(status_code=404, detail=f"Agent {request.agent_id} not found")
+            raise HTTPException(status_code=404, detail=f"Agent {body.agent_id} not found")
 
         # Check if agent is already assigned (active)
-        existing = db.get_agent_assignment(project_id, request.agent_id)
+        existing = db.get_agent_assignment(project_id, body.agent_id)
         if existing and existing.get("is_active"):
             raise HTTPException(
                 status_code=400,
-                detail=f"Agent {request.agent_id} is already assigned to project {project_id}",
+                detail=f"Agent {body.agent_id} is already assigned to project {project_id}",
             )
 
         # Assign agent to project
         assignment_id = db.assign_agent_to_project(
-            project_id=project_id, agent_id=request.agent_id, role=request.role
+            project_id=project_id, agent_id=body.agent_id, role=body.role
         )
 
         logger.info(
-            f"Assigned agent {request.agent_id} to project {project_id} with role {request.role}"
+            f"Assigned agent {body.agent_id} to project {project_id} with role {body.role}"
         )
 
         return {
             "assignment_id": assignment_id,
-            "message": f"Agent {request.agent_id} assigned to project {project_id} with role {request.role}",
+            "message": f"Agent {body.agent_id} assigned to project {project_id} with role {body.role}",
         }
     except HTTPException:
         raise
@@ -352,7 +361,9 @@ async def assign_agent_to_project(
 
 
 @router.delete("/projects/{project_id}/agents/{agent_id}", status_code=204)
+@rate_limit_standard()
 async def remove_agent_from_project(
+    request: Request,
     project_id: int,
     agent_id: str,
     db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
@@ -402,10 +413,12 @@ async def remove_agent_from_project(
 
 
 @router.put("/projects/{project_id}/agents/{agent_id}/role", response_model=AgentAssignmentResponse)
+@rate_limit_standard()
 async def update_agent_role(
+    request: Request,
     project_id: int,
     agent_id: str,
-    request: AgentRoleUpdateRequest,
+    body: AgentRoleUpdateRequest,
     db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Update an agent's role on a project.
@@ -436,7 +449,7 @@ async def update_agent_role(
 
         # Update agent role
         rows_affected = db.reassign_agent_role(
-            project_id=project_id, agent_id=agent_id, new_role=request.role
+            project_id=project_id, agent_id=agent_id, new_role=body.role
         )
 
         if rows_affected == 0:
@@ -445,7 +458,7 @@ async def update_agent_role(
                 detail=f"No active assignment found for agent {agent_id} on project {project_id}",
             )
 
-        logger.info(f"Updated agent {agent_id} role to {request.role} on project {project_id}")
+        logger.info(f"Updated agent {agent_id} role to {body.role} on project {project_id}")
 
         # Fetch assignment details (junction table fields only)
         assignment = db.get_agent_assignment(project_id, agent_id)
@@ -487,10 +500,12 @@ async def update_agent_role(
 
 
 @router.patch("/projects/{project_id}/agents/{agent_id}")
+@rate_limit_standard()
 async def patch_agent_role(
+    request: Request,
     project_id: int,
     agent_id: str,
-    request: AgentRoleUpdateRequest,
+    body: AgentRoleUpdateRequest,
     db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
 ):
     """Update an agent's role on a project (PATCH variant).
@@ -500,7 +515,7 @@ async def patch_agent_role(
     Args:
         project_id: Project ID
         agent_id: Agent ID
-        request: New role for the agent
+        body: New role for the agent
         db: Database connection
 
     Returns:
@@ -521,7 +536,7 @@ async def patch_agent_role(
 
         # Update agent role
         rows_affected = db.reassign_agent_role(
-            project_id=project_id, agent_id=agent_id, new_role=request.role
+            project_id=project_id, agent_id=agent_id, new_role=body.role
         )
 
         if rows_affected == 0:
@@ -530,10 +545,10 @@ async def patch_agent_role(
                 detail=f"No active assignment found for agent {agent_id} on project {project_id}",
             )
 
-        logger.info(f"Updated agent {agent_id} role to {request.role} on project {project_id}")
+        logger.info(f"Updated agent {agent_id} role to {body.role} on project {project_id}")
 
         return {
-            "message": f"Agent {agent_id} role updated to {request.role} on project {project_id}"
+            "message": f"Agent {agent_id} role updated to {body.role} on project {project_id}"
         }
     except HTTPException:
         raise
@@ -543,7 +558,9 @@ async def patch_agent_role(
 
 
 @router.get("/agents/{agent_id}/projects", response_model=List[ProjectAssignmentResponse])
+@rate_limit_standard()
 async def get_agent_projects(
+    request: Request,
     agent_id: str,
     active_only: bool = Query(True),
     db: Database = Depends(get_db),

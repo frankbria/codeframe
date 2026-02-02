@@ -14,7 +14,7 @@ import os
 from datetime import datetime, UTC
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.models import Task, TaskStatus
@@ -30,6 +30,7 @@ from codeframe.ui.websocket_broadcasts import broadcast_development_started
 from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
 from codeframe.agents.lead_agent import LeadAgent
+from codeframe.lib.rate_limiter import rate_limit_standard
 
 logger = logging.getLogger(__name__)
 
@@ -153,15 +154,17 @@ class TaskCreateRequest(BaseModel):
 
 
 @router.post("", status_code=201)
+@rate_limit_standard()
 async def create_task(
-    request: TaskCreateRequest,
+    request: Request,
+    body: TaskCreateRequest,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Create a new task.
 
     Args:
-        request: Task creation request
+        body: Task creation request
         db: Database connection
         current_user: Authenticated user
 
@@ -174,29 +177,29 @@ async def create_task(
             - 404: Project not found
     """
     # Verify project exists
-    project = db.get_project(request.project_id)
+    project = db.get_project(body.project_id)
     if not project:
         raise HTTPException(
             status_code=404,
-            detail=f"Project {request.project_id} not found"
+            detail=f"Project {body.project_id} not found"
         )
 
     # Authorization check - user must have access to the project
-    if not db.user_has_project_access(current_user.id, request.project_id):
+    if not db.user_has_project_access(current_user.id, body.project_id):
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Create task
     try:
         task = Task(
             id=None,  # Will be assigned by database
-            project_id=request.project_id,
-            title=request.title,
-            description=request.description,
-            status=TaskStatus(request.status),
-            priority=request.priority,
-            workflow_step=request.workflow_step,
-            depends_on=request.depends_on,
-            requires_mcp=request.requires_mcp,
+            project_id=body.project_id,
+            title=body.title,
+            description=body.description,
+            status=TaskStatus(body.status),
+            priority=body.priority,
+            workflow_step=body.workflow_step,
+            depends_on=body.depends_on,
+            requires_mcp=body.requires_mcp,
         )
 
         task_id = db.create_task(task)
@@ -243,9 +246,11 @@ class TaskApprovalResponse(BaseModel):
 
 
 @project_router.post("/{project_id}/tasks/approve")
+@rate_limit_standard()
 async def approve_tasks(
+    request: Request,
     project_id: int,
-    request: TaskApprovalRequest,
+    body: TaskApprovalRequest,
     background_tasks: BackgroundTasks,
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -314,7 +319,7 @@ async def approve_tasks(
     # Separate approved and excluded tasks
     # Note: Excluded tasks remain unchanged in the database for audit trail.
     # They are not deleted or modified - users can re-include them later if needed.
-    excluded_ids = set(request.excluded_task_ids)
+    excluded_ids = set(body.excluded_task_ids)
     approved_tasks = [t for t in tasks if t.id not in excluded_ids]
     excluded_tasks = [t for t in tasks if t.id in excluded_ids]
 
@@ -391,7 +396,9 @@ class TaskAssignmentResponse(BaseModel):
 
 
 @project_router.post("/{project_id}/tasks/assign")
+@rate_limit_standard()
 async def assign_pending_tasks(
+    request: Request,
     project_id: int,
     background_tasks: BackgroundTasks,
     db: Database = Depends(get_db),
