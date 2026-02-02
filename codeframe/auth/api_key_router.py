@@ -9,7 +9,7 @@ Uses core/api_key_service.py for business logic (shared with CLI).
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -47,6 +47,23 @@ class CreateApiKeyRequest(BaseModel):
     def validate_scopes_field(cls, v: List[str]) -> List[str]:
         if not validate_scopes(v):
             raise ValueError(f"Invalid scopes: {v}. Valid scopes are: read, write, admin")
+        # Deduplicate while preserving order
+        seen = set()
+        deduped = [s for s in v if not (s in seen or seen.add(s))]
+        if not deduped:
+            raise ValueError("At least one scope is required")
+        return deduped
+
+    @field_validator("expires_at")
+    @classmethod
+    def validate_expires_at(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is not None:
+            now = datetime.now(timezone.utc)
+            # Handle naive datetime by assuming UTC
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=timezone.utc)
+            if v <= now:
+                raise ValueError("expires_at must be in the future")
         return v
 
 

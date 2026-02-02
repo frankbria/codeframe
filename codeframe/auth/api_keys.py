@@ -31,7 +31,9 @@ SCOPE_ADMIN = "admin"
 VALID_SCOPES = frozenset({SCOPE_READ, SCOPE_WRITE, SCOPE_ADMIN})
 
 # Key format constants
-KEY_PREFIX_LENGTH = 12  # cf_live_xxxx
+# PREFIX_LENGTH=12 captures "cf_live_" (8) + 4 random chars for efficient DB lookup
+# Example: "cf_live_1abc" from "cf_live_1abc2b2f78d93788b9fa00e383832be3"
+KEY_PREFIX_LENGTH = 12
 KEY_RANDOM_BYTES = 16   # 16 bytes = 32 hex characters
 
 

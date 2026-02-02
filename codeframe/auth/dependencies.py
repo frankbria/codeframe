@@ -199,17 +199,17 @@ async def get_api_key_auth(
         try:
             prefix = extract_prefix(api_key)
         except ValueError:
-            logger.debug("Invalid API key format")
+            logger.warning("API key auth failed: invalid key format")
             return None
 
         key_record = db.api_keys.get_by_prefix(prefix)
         if key_record is None:
-            logger.debug(f"API key not found for prefix {prefix}")
+            logger.warning(f"API key auth failed: key not found (prefix: {prefix[:4]}...)")
             return None
 
         # Verify the full key against stored hash
         if not verify_api_key(api_key, key_record["key_hash"]):
-            logger.debug(f"API key verification failed for prefix {prefix}")
+            logger.warning(f"API key auth failed: verification failed (prefix: {prefix[:4]}...)")
             return None
 
         # Update last used timestamp (fire and forget)
@@ -273,13 +273,18 @@ async def require_auth(
 def require_scope(required_scope: str) -> Callable:
     """Create a dependency that checks for a required scope.
 
+    Scope Hierarchy:
+        - admin: grants read, write, and admin permissions
+        - write: grants read and write permissions
+        - read: grants read permission only
+
     Usage:
         @router.post("/resource")
         async def create_resource(auth: dict = Depends(require_scope("write"))):
             ...
 
     Args:
-        required_scope: The scope required for access
+        required_scope: The scope required for access (read, write, or admin)
 
     Returns:
         Dependency function that validates scope

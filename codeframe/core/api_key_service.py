@@ -151,7 +151,10 @@ class ApiKeyService:
         return success
 
     def rotate_api_key(self, key_id: str, user_id: int) -> Optional[CreatedApiKey]:
-        """Rotate an API key (revoke old, create new with same config).
+        """Rotate an API key (create new, then revoke old).
+
+        Creates the new key first to ensure the user always has a working key.
+        If creation fails, the old key remains active.
 
         Args:
             key_id: The API key ID to rotate
@@ -159,22 +162,25 @@ class ApiKeyService:
 
         Returns:
             New CreatedApiKey, or None if old key not found/owned
+
+        Raises:
+            ValueError: If new key creation fails (old key remains active)
         """
         # Get the old key's configuration
         old_key = self.db.api_keys.get_by_id(key_id)
         if old_key is None or old_key["user_id"] != user_id:
             return None
 
-        # Revoke the old key first to prevent both being active if create fails
-        self.db.api_keys.revoke(key_id, user_id=user_id)
-
-        # Create new key with same configuration
+        # Create new key first - if this fails, old key stays active
         new_key = self.create_api_key(
             user_id=user_id,
             name=old_key["name"],
             scopes=old_key["scopes"],
             expires_at=None,  # New key starts fresh
         )
+
+        # Now revoke the old key (brief window where both are active)
+        self.db.api_keys.revoke(key_id, user_id=user_id)
 
         logger.info(f"API key rotated by user {user_id}: {key_id} -> {new_key.id}")
 
