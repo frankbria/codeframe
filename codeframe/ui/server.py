@@ -20,6 +20,7 @@ from codeframe.workspace import WorkspaceManager
 from codeframe.ui.routers import (
     agents,
     blockers,
+    blockers_v2,  # v2 blockers router (delegates to core)
     chat,
     checkpoints,
     checkpoints_v2,  # v2 checkpoints router (delegates to core)
@@ -32,6 +33,7 @@ from codeframe.ui.routers import (
     metrics,
     projects,
     projects_v2,  # v2 projects router (delegates to core)
+    prd_v2,  # v2 PRD router (delegates to core)
     prs,
     quality_gates,
     review,
@@ -338,6 +340,7 @@ async def test_broadcast(message: dict, project_id: int = None):
 app.include_router(agents.router)
 app.include_router(blockers.router)
 app.include_router(blockers.blocker_router)
+app.include_router(blockers_v2.router)  # v2 endpoints at /api/v2/blockers
 app.include_router(chat.router)
 app.include_router(checkpoints.router)
 app.include_router(checkpoints_v2.router)  # v2 endpoints at /api/v2/checkpoints
@@ -350,6 +353,7 @@ app.include_router(lint.router)
 app.include_router(metrics.router)
 app.include_router(projects.router)
 app.include_router(projects_v2.router)  # v2 endpoints at /api/v2/projects
+app.include_router(prd_v2.router)  # v2 endpoints at /api/v2/prd
 app.include_router(prs.router)
 app.include_router(quality_gates.router)
 app.include_router(review.router)

@@ -124,6 +124,15 @@ class TaskListResponse(BaseModel):
     by_status: dict[str, int]
 
 
+class UpdateTaskRequest(BaseModel):
+    """Request for updating a task."""
+
+    title: Optional[str] = Field(None, min_length=1, description="New task title")
+    description: Optional[str] = Field(None, description="New task description")
+    priority: Optional[int] = Field(None, ge=0, description="New task priority (0 = highest)")
+    status: Optional[str] = Field(None, description="New task status (use for manual transitions)")
+
+
 # ============================================================================
 # Task List/Status Endpoints
 # ============================================================================
@@ -215,6 +224,121 @@ async def get_task(
         priority=task.priority,
         depends_on=task.depends_on,
     )
+
+
+@router.patch("/{task_id}", response_model=TaskResponse)
+async def update_task(
+    task_id: str,
+    request: UpdateTaskRequest,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> TaskResponse:
+    """Update a task's title, description, priority, or status.
+
+    Only provided fields are updated; others are left unchanged.
+
+    Args:
+        task_id: Task ID to update
+        request: Update request with fields to change
+        workspace: v2 Workspace
+
+    Returns:
+        Updated task
+
+    Raises:
+        HTTPException:
+            - 404: Task not found
+            - 400: Invalid status or status transition
+    """
+    try:
+        # Handle status update separately if provided
+        if request.status:
+            try:
+                new_status = TaskStatus(request.status.upper())
+                tasks.update_status(workspace, task_id, new_status)
+            except ValueError as e:
+                if "Invalid status" in str(e) or "not a valid" in str(e).lower():
+                    raise HTTPException(
+                        status_code=400,
+                        detail=api_error(
+                            f"Invalid status: {request.status}",
+                            ErrorCodes.VALIDATION_ERROR,
+                            f"Valid values: {[s.value for s in TaskStatus]}",
+                        ),
+                    )
+                # Status transition error
+                raise HTTPException(
+                    status_code=400,
+                    detail=api_error("Invalid status transition", ErrorCodes.INVALID_STATE, str(e)),
+                )
+
+        # Update other fields
+        task = tasks.update(
+            workspace,
+            task_id,
+            title=request.title,
+            description=request.description,
+            priority=request.priority,
+        )
+
+        return TaskResponse(
+            id=task.id,
+            title=task.title,
+            description=task.description,
+            status=task.status.value,
+            priority=task.priority,
+            depends_on=task.depends_on,
+        )
+
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=404,
+                detail=api_error("Task not found", ErrorCodes.NOT_FOUND, error_msg),
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=api_error("Invalid request", ErrorCodes.INVALID_REQUEST, error_msg),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update task {task_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=api_error("Update failed", ErrorCodes.EXECUTION_FAILED, str(e)),
+        )
+
+
+@router.delete("/{task_id}")
+async def delete_task(
+    task_id: str,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> dict:
+    """Delete a task.
+
+    Args:
+        task_id: Task ID to delete
+        workspace: v2 Workspace
+
+    Returns:
+        Deletion confirmation
+
+    Raises:
+        HTTPException: 404 if task not found
+    """
+    deleted = tasks.delete(workspace, task_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
+        )
+
+    return {
+        "success": True,
+        "message": f"Task {task_id[:8]} deleted successfully",
+    }
 
 
 # ============================================================================
