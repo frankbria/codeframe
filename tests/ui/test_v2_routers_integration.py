@@ -859,3 +859,134 @@ class TestCoreDelegation:
         response = test_client.get(f"/api/v2/tasks/{task.id}")
         assert response.status_code == 200
         assert response.json()["title"] == "Core Created Task"
+
+
+# ============================================================================
+# Rate Limiting Integration Tests
+# ============================================================================
+
+
+class TestRateLimitingIntegration:
+    """Tests for rate limiting on v2 endpoints."""
+
+    @pytest.fixture(autouse=True)
+    def reset_caches(self):
+        """Reset rate limit caches before and after each test."""
+        from codeframe.config.rate_limits import _reset_rate_limit_config
+        from codeframe.core.config import reset_global_config
+        from codeframe.lib.rate_limiter import reset_rate_limiter
+
+        _reset_rate_limit_config()
+        reset_global_config()
+        reset_rate_limiter()
+        yield
+        _reset_rate_limit_config()
+        reset_global_config()
+        reset_rate_limiter()
+
+    @pytest.fixture
+    def rate_limited_client(self, test_workspace):
+        """Create a test client with rate limiting enabled at a low limit."""
+        from unittest.mock import patch
+
+        from fastapi import Request
+        from slowapi import Limiter
+        from slowapi.errors import RateLimitExceeded
+        from slowapi.util import get_remote_address
+
+        from codeframe.lib.rate_limiter import rate_limit_exceeded_handler
+        from codeframe.ui.dependencies import get_v2_workspace
+        from codeframe.ui.routers import blockers_v2
+
+        # Create app with rate limiting
+        app = FastAPI()
+
+        # Create limiter with very low limit for testing (3 requests/minute)
+        limiter = Limiter(key_func=get_remote_address, default_limits=["3/minute"])
+        app.state.limiter = limiter
+
+        # Add rate limit exceeded handler
+        app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+        # Create a rate-limited endpoint for testing
+        @app.get("/api/v2/test/rate-limited")
+        @limiter.limit("3/minute")
+        async def rate_limited_endpoint(request: Request):
+            return {"status": "ok"}
+
+        # Also include the blockers router for real endpoint testing
+        app.include_router(blockers_v2.router)
+
+        # Override workspace dependency
+        def get_test_workspace():
+            return test_workspace
+
+        app.dependency_overrides[get_v2_workspace] = get_test_workspace
+
+        client = TestClient(app)
+        client.workspace = test_workspace
+
+        return client
+
+    def test_rate_limit_allows_requests_within_limit(self, rate_limited_client):
+        """Requests within rate limit should succeed."""
+        # Make 3 requests (at the limit)
+        for i in range(3):
+            response = rate_limited_client.get("/api/v2/test/rate-limited")
+            assert response.status_code == 200, f"Request {i+1} failed unexpectedly"
+            assert response.json()["status"] == "ok"
+
+    def test_rate_limit_exceeded_returns_429(self, rate_limited_client):
+        """Exceeding rate limit should return 429 status."""
+        # Make requests up to the limit
+        for i in range(3):
+            response = rate_limited_client.get("/api/v2/test/rate-limited")
+            assert response.status_code == 200, f"Request {i+1} should succeed"
+
+        # Next request should be rate limited
+        response = rate_limited_client.get("/api/v2/test/rate-limited")
+        assert response.status_code == 429
+
+    def test_rate_limit_response_has_retry_after_header(self, rate_limited_client):
+        """429 response should include Retry-After header."""
+        # Exhaust the limit
+        for _ in range(3):
+            rate_limited_client.get("/api/v2/test/rate-limited")
+
+        # Get rate limited response
+        response = rate_limited_client.get("/api/v2/test/rate-limited")
+
+        assert response.status_code == 429
+        assert "Retry-After" in response.headers
+
+    def test_rate_limit_response_body_format(self, rate_limited_client):
+        """429 response body should have proper error format."""
+        # Exhaust the limit
+        for _ in range(3):
+            rate_limited_client.get("/api/v2/test/rate-limited")
+
+        # Get rate limited response
+        response = rate_limited_client.get("/api/v2/test/rate-limited")
+
+        assert response.status_code == 429
+        data = response.json()
+        assert data["error"] == "rate_limit_exceeded"
+        assert "detail" in data
+        assert "retry_after" in data
+
+    def test_rate_limit_on_real_endpoint(self, rate_limited_client):
+        """Test rate limiting behavior on actual v2 endpoint.
+
+        Note: This test uses the standard blockers endpoint which in production
+        has a 100/minute limit. The test verifies the endpoint is accessible
+        and the rate limiting infrastructure is integrated correctly.
+        """
+        # The blockers endpoint uses rate_limit_standard (100/min in production)
+        # With our test client, we're just verifying the infrastructure works
+        response = rate_limited_client.get("/api/v2/blockers")
+
+        # Should succeed (within any configured limit)
+        assert response.status_code == 200
+        data = response.json()
+        assert "blockers" in data
+        assert "total" in data

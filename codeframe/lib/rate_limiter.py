@@ -249,18 +249,18 @@ def _create_rate_limit_decorator(limit_key: str) -> Callable:
         """Rate limit decorator that reads limit from config."""
 
         def wrapper(func: Callable) -> Callable:
-            # Get the limiter and config
+            # Get the limiter (returns None when rate limiting is disabled)
             limiter = get_rate_limiter()
-            config = get_rate_limit_config()
 
-            if limiter is None or not config.enabled:
-                # Rate limiting disabled, return function as-is
+            if limiter is None:
+                # Rate limiting globally disabled, return function as-is
                 return func
 
             # Get the limit value from config
+            config = get_rate_limit_config()
             limit_value = getattr(config, limit_key, "100/minute")
 
-            # Apply the slowapi limit decorator
+            # Always apply the slowapi decorator, let slowapi handle the logic
             return limiter.limit(limit_value)(func)
 
         return wrapper
