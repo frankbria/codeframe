@@ -1,10 +1,10 @@
 # CodeFRAME Development Guidelines (v2 Reset)
 
-Last updated: 2026-01-29
+Last updated: 2026-02-03
 
 This repo is in an **in-place v2 refactor** ("strangler rewrite"). The goal is to deliver a **headless, CLI-first Golden Path** and treat all UI/server layers as optional adapters.
 
-**Status: v2 Phase 1 In Progress** - CLI 95% complete. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
+**Status: Phase 1 Complete ✅ | Phase 2 Complete ✅** - Server layer with full REST API, authentication, rate limiting, and real-time streaming. See `docs/V2_STRATEGIC_ROADMAP.md` for the 5-phase plan.
 
 If you are an agent working in this repo: **do not improvise architecture**. Follow the documents listed below.
 
@@ -31,7 +31,7 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 
 ---
 
-## Current Reality (v2 95% Complete)
+## Current Reality (Phase 1 & 2 Complete)
 
 ### What's Working Now
 - **Full agent execution**: `cf work start <task-id> --execute`
@@ -56,6 +56,11 @@ If you are an agent working in this repo: **do not improvise architecture**. Fol
 - **GitHub PR workflow**: `cf pr create/status/checks/merge` for PR management
 - **Task self-diagnosis**: `cf work diagnose <task-id>` analyzes failed tasks
 - **70+ integration tests**: Comprehensive CLI test coverage
+- **REST API**: Full v2 API with 15 router modules (see Phase 2 below)
+- **API authentication**: API key auth with scopes (read/write/admin)
+- **Rate limiting**: Configurable per-endpoint rate limits
+- **Real-time streaming**: SSE for task execution events
+- **OpenAPI documentation**: Full Swagger/ReDoc at `/docs` and `/redoc`
 
 ### v2 Architecture (current)
 - **Core-first**: Domain logic lives in `codeframe/core/` (headless, no FastAPI imports)
@@ -106,8 +111,28 @@ codeframe/
 │       └── mock.py         # Mock provider for testing
 ├── cli/
 │   └── app.py              # Typer CLI entry + subcommands
-├── server/                 # Optional FastAPI wrapper (thin adapter)
-└── lib/                    # Legacy library code
+├── ui/                     # FastAPI server (Phase 2 - thin adapter over core)
+│   ├── server.py           # FastAPI app with OpenAPI configuration
+│   ├── models.py           # Pydantic request/response models
+│   ├── dependencies.py     # Shared dependencies (workspace, auth)
+│   └── routers/            # API route handlers
+│       ├── blockers_v2.py  # Blocker CRUD
+│       ├── tasks_v2.py     # Task management + streaming
+│       ├── prd_v2.py       # PRD management + versioning
+│       ├── workspace_v2.py # Workspace init and status
+│       ├── batches_v2.py   # Batch execution
+│       ├── streaming_v2.py # SSE event streaming
+│       ├── api_key_v2.py   # API key management
+│       └── ...             # 15 router modules total
+├── lib/                    # Shared utilities
+│   ├── rate_limiter.py     # SlowAPI rate limiting
+│   └── audit_logger.py     # Request audit logging
+├── auth/                   # Authentication
+│   ├── api_key_service.py  # API key creation/validation
+│   └── dependencies.py     # Auth dependencies
+├── config/
+│   └── rate_limits.py      # Rate limit configuration
+└── server/                 # Legacy server code (reference only)
 
 web-ui/                     # Frontend (legacy, reference only)
 tests/
@@ -191,6 +216,9 @@ At all times:
 | Diagnostics | `core/diagnostics.py` | Failed task analysis |
 | Diagnostic Agent | `core/diagnostic_agent.py` | AI-powered task diagnosis |
 | Credentials | `core/credentials.py` | API key and credential management |
+| Event Publisher | `core/streaming.py` | Real-time SSE event distribution |
+| API Key Service | `auth/api_key_service.py` | API key CRUD and validation |
+| Rate Limiter | `lib/rate_limiter.py` | Per-endpoint rate limiting |
 
 ### Model Selection Strategy
 Task-based heuristic via `Purpose` enum:
@@ -332,6 +360,13 @@ Do not expand frontend scope during Golden Path work.
 - `docs/AGENT_IMPLEMENTATION_TASKS.md` - Agent system components
 - `docs/V2_STRATEGIC_ROADMAP.md` - 5-phase plan from CLI to multi-agent
 
+### API Documentation (Phase 2)
+- `/docs` - Swagger UI (interactive API explorer)
+- `/redoc` - ReDoc (readable API documentation)
+- `/openapi.json` - OpenAPI 3.1 specification
+- `docs/PHASE_2_DEVELOPER_GUIDE.md` - Server layer implementation guide
+- `docs/PHASE_2_CLI_API_MAPPING.md` - CLI to API endpoint mapping
+
 ### Legacy (v1 reference only)
 These describe old server/UI-driven architecture:
 - `SPRINTS.md`, `sprints/`
@@ -371,23 +406,88 @@ If you are unsure which direction to take, default to:
 
 ---
 
-## Recent Updates (2026-01-29)
+## Recent Updates (2026-02-03)
 
-### V2 Strategic Roadmap Established
-Created comprehensive 5-phase roadmap in `docs/V2_STRATEGIC_ROADMAP.md`:
+### Phase 2 Complete: Server Layer
+All Phase 2 deliverables are complete:
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 1 | CLI Completion | **In Progress** |
-| 2 | Server Layer | Planned |
+| 1 | CLI Completion | ✅ **Complete** |
+| 2 | Server Layer | ✅ **Complete** |
 | 3 | Web UI Rebuild | Planned |
 | 4 | Multi-Agent Coordination | Planned |
 | 5 | Advanced Features | Planned |
 
-**Phase 1 priorities:**
-- `cf prd generate` - Socratic PRD discovery (#307)
-- `cf work follow` - Live execution streaming (#308)
-- Integration tests for credential/env modules (#309)
+**Phase 2 deliverables completed:**
+- ✅ Server audit and refactor (#322) - 15 v2 routers following thin adapter pattern
+- ✅ API key authentication (#326) - Scopes: read/write/admin
+- ✅ Rate limiting (#327) - Configurable per-endpoint with Redis support
+- ✅ Real-time SSE streaming (#328) - `/api/v2/tasks/{id}/stream`
+- ✅ OpenAPI documentation (#119) - Full Swagger/ReDoc with examples
+
+### Server Architecture (Phase 2)
+
+**Pattern**: Thin adapter over core - server routes delegate to `core.*` modules.
+
+```
+CLI (typer) ─┬── core.* ─── adapters.*
+             │
+Server (fastapi) ─┘
+```
+
+**V2 Router Modules** (15 total):
+| Router | Endpoints | Purpose |
+|--------|-----------|---------|
+| `blockers_v2` | 5 | Blocker CRUD |
+| `prd_v2` | 8 | PRD management + versioning |
+| `tasks_v2` | 12 | Task management + streaming |
+| `workspace_v2` | 5 | Init, status, tech stack |
+| `batches_v2` | 5 | Batch execution strategies |
+| `streaming_v2` | 2 | SSE event streaming |
+| `api_key_v2` | 4 | API key management |
+| `discovery_v2` | 5 | PRD discovery sessions |
+| `checkpoints_v2` | 6 | State checkpoints |
+| `schedule_v2` | 3 | Task scheduling |
+| `templates_v2` | 4 | PRD templates |
+| `git_v2` | 3 | Git operations |
+| `review_v2` | 2 | Code review |
+| `pr_v2` | 5 | GitHub PR workflow |
+| `environment_v2` | 4 | Tool detection |
+
+**API Authentication**:
+```bash
+# Create API key
+cf auth api-key-create --name "my-key" --scopes read,write
+
+# Use in requests
+curl -H "X-API-Key: cf_..." https://api.example.com/api/v2/tasks
+```
+
+**Rate Limiting**:
+- Default: 100 requests/minute (standard endpoints)
+- Auth endpoints: 10/minute
+- AI endpoints: 20/minute
+- Configurable via `RATE_LIMIT_*` environment variables
+
+**OpenAPI Documentation**:
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
+- OpenAPI JSON: `/openapi.json`
+
+---
+
+## Previous Updates (2026-01-29)
+
+### V2 Strategic Roadmap Established
+Created comprehensive 5-phase roadmap in `docs/V2_STRATEGIC_ROADMAP.md`.
+
+### Phase 1 Complete: CLI Foundation
+All Phase 1 priorities completed:
+- ✅ `cf prd generate` - Socratic PRD discovery (#307)
+- ✅ `cf work follow` - Live execution streaming (#308)
+- ✅ Integration tests for credential/env modules (#309)
+- ✅ PRD template system (#316)
 
 ### Environment Validation (`cf env`)
 New commands for validating development environment:
@@ -601,8 +701,19 @@ uv run pytest --cov=codeframe --cov-report=html
 # Required for agent execution
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Optional
+# Optional - Database
 DATABASE_PATH=./codeframe.db
+
+# Optional - Rate Limiting (Phase 2)
+RATE_LIMIT_ENABLED=true                    # Enable/disable rate limiting
+RATE_LIMIT_DEFAULT=100/minute              # Default limit
+RATE_LIMIT_AUTH=10/minute                  # Auth endpoints
+RATE_LIMIT_AI=20/minute                    # AI/LLM endpoints
+RATE_LIMIT_WEBSOCKET=50/minute             # WebSocket connections
+REDIS_URL=redis://localhost:6379           # Redis for distributed rate limiting (optional)
+
+# Optional - API Server
+CODEFRAME_API_KEY_SECRET=<random-secret>   # Secret for API key hashing
 ```
 
 ---
