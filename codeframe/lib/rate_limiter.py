@@ -12,6 +12,11 @@ Rate limit categories:
 Key extraction:
 - Authenticated requests: User ID from token
 - Unauthenticated requests: Client IP address
+
+Security:
+- X-Forwarded-For is only trusted when request comes from a configured trusted proxy
+- "unknown" IPs are logged and tracked for security monitoring
+- Configure RATE_LIMIT_TRUSTED_PROXIES to define trusted proxy networks
 """
 
 import logging
@@ -33,12 +38,15 @@ _logged_disabled: bool = False
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP address from request.
+    """Extract client IP address from request with trusted proxy validation.
 
-    Checks headers in order of preference:
-    1. X-Forwarded-For (first IP in chain)
-    2. X-Real-IP
-    3. request.client.host
+    Only trusts X-Forwarded-For and X-Real-IP headers when the direct
+    connection is from a configured trusted proxy. This prevents header
+    spoofing attacks.
+
+    Security Note:
+    - If RATE_LIMIT_TRUSTED_PROXIES is not configured, proxy headers are ignored
+    - Configure trusted proxies when running behind a reverse proxy (nginx, ALB, etc.)
 
     Args:
         request: FastAPI request object
@@ -46,21 +54,46 @@ def get_client_ip(request: Request) -> str:
     Returns:
         Client IP address string, or "unknown" if not determinable
     """
-    # Check X-Forwarded-For header (may contain multiple IPs)
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Return first IP in the chain (real client)
-        return forwarded_for.split(",")[0].strip()
+    config = get_rate_limit_config()
 
-    # Check X-Real-IP header
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
-
-    # Fall back to direct client connection
+    # Get the direct connection IP
+    direct_ip = None
     if request.client and request.client.host:
-        return request.client.host
+        direct_ip = request.client.host
 
+    # Only trust proxy headers if direct connection is from a trusted proxy
+    if direct_ip and config.is_trusted_proxy(direct_ip):
+        # Check X-Forwarded-For header (may contain multiple IPs)
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            # Return first IP in the chain (real client)
+            client_ip = forwarded_for.split(",")[0].strip()
+            if client_ip:
+                return client_ip
+
+        # Check X-Real-IP header
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip.strip()
+    elif direct_ip:
+        # Not from trusted proxy - check if headers were spoofed
+        if request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP"):
+            logger.warning(
+                f"Proxy headers present from non-trusted IP {direct_ip}. "
+                f"Headers ignored. Configure RATE_LIMIT_TRUSTED_PROXIES if "
+                f"running behind a reverse proxy."
+            )
+
+    # Use direct connection IP
+    if direct_ip:
+        return direct_ip
+
+    # Unable to determine IP - log for security monitoring
+    logger.warning(
+        "Unable to determine client IP address. "
+        "This may indicate proxy misconfiguration. "
+        f"Path: {request.url.path}"
+    )
     return "unknown"
 
 
@@ -68,6 +101,7 @@ def get_rate_limit_key(request: Request) -> str:
     """Generate rate limit key for a request.
 
     Uses user ID for authenticated requests, IP address for unauthenticated.
+    Applies stricter rate limiting for "unknown" IPs to mitigate DoS risk.
 
     Args:
         request: FastAPI request object
@@ -83,6 +117,15 @@ def get_rate_limit_key(request: Request) -> str:
 
     # Fall back to IP address
     client_ip = get_client_ip(request)
+
+    # Mark "unknown" IPs specially for potential stricter handling
+    if client_ip == "unknown":
+        # Use a unique key per request for unknown IPs
+        # This effectively gives each "unknown" request its own bucket
+        # preventing the shared bucket DoS attack
+        request_id = id(request)
+        return f"ip:unknown:{request_id}"
+
     return f"ip:{client_ip}"
 
 

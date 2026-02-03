@@ -1,38 +1,27 @@
 """Rate limiting configuration for CodeFRAME API.
 
 This module provides configuration for API rate limiting using slowapi.
-Rate limits can be configured via environment variables for flexibility
-across deployment environments.
+It delegates to GlobalConfig in core/config.py as the single source of truth
+for environment variable handling.
 
-Environment Variables:
+Environment Variables (via GlobalConfig):
     RATE_LIMIT_ENABLED: Enable/disable rate limiting (default: true)
     RATE_LIMIT_AUTH: Rate limit for authentication endpoints (default: 10/minute)
     RATE_LIMIT_STANDARD: Rate limit for standard API endpoints (default: 100/minute)
     RATE_LIMIT_AI: Rate limit for AI/expensive operations (default: 20/minute)
     RATE_LIMIT_WEBSOCKET: Rate limit for WebSocket connections (default: 30/minute)
     RATE_LIMIT_STORAGE: Storage backend - memory or redis (default: memory)
+    RATE_LIMIT_TRUSTED_PROXIES: Comma-separated trusted proxy IPs/CIDRs
     REDIS_URL: Redis connection URL for distributed rate limiting (optional)
 """
 
+import ipaddress
 import logging
-import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Optional
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_bool(value: str) -> bool:
-    """Parse boolean from string, supporting various formats.
-
-    Args:
-        value: String value to parse
-
-    Returns:
-        Boolean interpretation of the value
-    """
-    return value.lower() in ("true", "1", "yes", "on")
 
 
 @dataclass
@@ -47,6 +36,7 @@ class RateLimitConfig:
         enabled: Whether rate limiting is enabled
         storage: Storage backend ('memory' or 'redis')
         redis_url: Redis connection URL for distributed rate limiting
+        trusted_proxies: List of trusted proxy IP addresses/networks
     """
 
     auth_limit: str = "10/minute"
@@ -56,25 +46,69 @@ class RateLimitConfig:
     enabled: bool = True
     storage: str = "memory"
     redis_url: Optional[str] = None
+    trusted_proxies: list = field(default_factory=list)
 
-    @classmethod
-    def from_environment(cls) -> "RateLimitConfig":
-        """Create RateLimitConfig from environment variables.
+    def is_trusted_proxy(self, ip: str) -> bool:
+        """Check if an IP address is from a trusted proxy.
+
+        Args:
+            ip: IP address to check
 
         Returns:
-            RateLimitConfig instance with values from environment
+            True if IP is in trusted_proxies list or matches a trusted network
         """
-        enabled_str = os.getenv("RATE_LIMIT_ENABLED", "true")
-        enabled = _parse_bool(enabled_str)
+        if not self.trusted_proxies:
+            return False
 
-        auth_limit = os.getenv("RATE_LIMIT_AUTH", "10/minute")
-        standard_limit = os.getenv("RATE_LIMIT_STANDARD", "100/minute")
-        ai_limit = os.getenv("RATE_LIMIT_AI", "20/minute")
-        websocket_limit = os.getenv("RATE_LIMIT_WEBSOCKET", "30/minute")
-        storage = os.getenv("RATE_LIMIT_STORAGE", "memory")
-        redis_url = os.getenv("REDIS_URL")
+        try:
+            client_ip = ipaddress.ip_address(ip)
+            for proxy in self.trusted_proxies:
+                try:
+                    # Check if it's a network (CIDR notation)
+                    if "/" in proxy:
+                        network = ipaddress.ip_network(proxy, strict=False)
+                        if client_ip in network:
+                            return True
+                    else:
+                        # Check exact IP match
+                        if client_ip == ipaddress.ip_address(proxy):
+                            return True
+                except ValueError:
+                    # Invalid proxy entry, skip it
+                    continue
+            return False
+        except ValueError:
+            # Invalid IP address
+            return False
 
-        # Validate storage type
+    @classmethod
+    def from_global_config(cls) -> "RateLimitConfig":
+        """Create RateLimitConfig from GlobalConfig.
+
+        Uses core/config.py as the single source of truth for
+        environment variable handling.
+
+        Returns:
+            RateLimitConfig instance with values from GlobalConfig
+        """
+        # Import here to avoid circular imports
+        from codeframe.core.config import get_global_config
+
+        global_config = get_global_config()
+
+        enabled = global_config.rate_limit_enabled
+        storage = global_config.rate_limit_storage
+        redis_url = global_config.redis_url
+
+        # Parse trusted proxies from comma-separated string
+        trusted_proxies_str = global_config.rate_limit_trusted_proxies.strip()
+        trusted_proxies = []
+        if trusted_proxies_str:
+            trusted_proxies = [
+                p.strip() for p in trusted_proxies_str.split(",") if p.strip()
+            ]
+
+        # Validate storage type (already validated by Pydantic, but double-check)
         if storage not in ("memory", "redis"):
             logger.warning(
                 f"Invalid RATE_LIMIT_STORAGE: {storage}. "
@@ -91,13 +125,14 @@ class RateLimitConfig:
             storage = "memory"
 
         return cls(
-            auth_limit=auth_limit,
-            standard_limit=standard_limit,
-            ai_limit=ai_limit,
-            websocket_limit=websocket_limit,
+            auth_limit=global_config.rate_limit_auth,
+            standard_limit=global_config.rate_limit_standard,
+            ai_limit=global_config.rate_limit_ai,
+            websocket_limit=global_config.rate_limit_websocket,
             enabled=enabled,
             storage=storage,
             redis_url=redis_url,
+            trusted_proxies=trusted_proxies,
         )
 
 
@@ -105,18 +140,19 @@ class RateLimitConfig:
 def get_rate_limit_config() -> RateLimitConfig:
     """Get the global rate limit configuration.
 
-    Loads from environment on first call, cached thereafter.
+    Loads from GlobalConfig on first call, cached thereafter.
     Thread-safe via lru_cache.
 
     Returns:
         RateLimitConfig instance
     """
-    config = RateLimitConfig.from_environment()
+    config = RateLimitConfig.from_global_config()
     logger.info(
         f"Rate limit config initialized: "
         f"enabled={config.enabled}, "
         f"storage={config.storage}, "
-        f"standard={config.standard_limit}"
+        f"standard={config.standard_limit}, "
+        f"trusted_proxies={len(config.trusted_proxies)} configured"
     )
     return config
 
