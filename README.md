@@ -34,7 +34,8 @@ Phase 1 is complete! We're now building the server layer as a thin adapter over 
 | API key authentication for CLI & REST | ✅ Complete | #326 |
 | Rate limiting with slowapi | ✅ Complete | #327 |
 | Server audit & v2 routes | ✅ Complete | #322 |
-| Real-time events (SSE) | 🔄 Partial | #323 |
+| Real-time events (SSE) | ✅ Complete | #328 |
+| OpenAPI documentation | ✅ Complete | #119 |
 
 ### API Key Authentication
 
@@ -72,6 +73,20 @@ RATE_LIMIT_WEBSOCKET=30/minute # WebSocket connections
 ```
 
 Supports Redis backend for distributed deployments: `RATE_LIMIT_STORAGE=redis`
+
+### OpenAPI Documentation
+
+**Complete API documentation** available via Swagger UI and ReDoc.
+
+- **Swagger UI**: `http://localhost:8080/docs` — Interactive API explorer
+- **ReDoc**: `http://localhost:8080/redoc` — Clean API reference
+- **OpenAPI JSON**: `http://localhost:8080/openapi.json` — Schema export
+
+All endpoints include:
+- Response models with examples
+- Error response documentation (401, 403, 404, 409, 500)
+- Query parameter descriptions
+- Authentication requirements
 
 ---
 
@@ -840,11 +855,10 @@ We welcome contributions! To get started:
 
 ### In Progress (Phase 2: Server Layer)
 - **Server audit and refactor** (#322) — Routes delegating to core modules ✅
-- **Real-time events** (#323) — SSE/WebSocket for execution streaming 🔄
+- **Real-time events** (#328) — SSE streaming for task execution ✅
 - **API key authentication** (#326) — Programmatic API access ✅
 - **Rate limiting** (#327) — Security and abuse prevention ✅
-- **OpenAPI documentation** (#119) — Auto-generated API docs
-- **API pagination** (#118) — Large dataset support
+- **OpenAPI documentation** (#119) — Complete API docs with examples ✅
 
 ### Planned (Phases 3-5)
 - **Phase 3**: Web UI rebuild on v2 foundation
