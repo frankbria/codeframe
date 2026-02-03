@@ -1,7 +1,7 @@
 # CodeFRAME v2 Strategic Roadmap
 
 **Created**: 2026-01-29
-**Updated**: 2026-02-02
+**Updated**: 2026-02-03
 **Status**: Active - Phase 2 In Progress
 
 ## Executive Summary
@@ -72,35 +72,46 @@ CodeFRAME v2 CLI **Phase 1 is complete** with a production-ready foundation. The
 ### Success Criteria - ALL MET
 - ✅ New user completes full workflow without hitting credential/env failures
 - ✅ `cf prd generate` conducts 5+ turn discovery session
-- ✅ All v2 integration tests pass (4122 total tests)
+- ✅ All v2 integration tests pass (4285 total tests)
 
 ---
 
 ## Phase 2: Server Layer as Thin Adapter
 
 **Goal**: FastAPI server exposing core functionality via REST + real-time events.
-**Status**: 🔄 **IN PROGRESS** - Server refactor underway
+**Status**: 🔄 **90% COMPLETE** - Core routes done, finishing real-time events + docs
 
 ### Deliverables
 
-1. **Server audit and refactor** (#322) - 🔄 IN PROGRESS
+1. **Server audit and refactor** (#322) - ✅ COMPLETE
    - ✅ Business logic audit completed (see `docs/PHASE_2_BUSINESS_LOGIC_AUDIT.md`)
    - ✅ CLI-to-API route mapping (see `docs/PHASE_2_CLI_API_MAPPING.md`)
    - ✅ V2 routers created following thin adapter pattern:
      - `blockers_v2.py` - Full CRUD delegating to `core.blockers`
      - `prd_v2.py` - Full CRUD + versioning delegating to `core.prd`
      - `tasks_v2.py` - Enhanced with PATCH/DELETE/streaming/run status
-   - ✅ Integration tests: 50 tests for v2 routers
-   - ⚠️ Remaining: Workspace, Batch, Diagnose, PR, Environment, Gates routes
+     - `workspace_v2.py` - Init, status, tech stack detection
+     - `batches_v2.py` - Batch execution with strategies
+     - `diagnose_v2.py` - Failed task analysis
+     - `pr_v2.py` - GitHub PR workflow
+     - `environment_v2.py` - Tool detection and validation
+     - `gates_v2.py` - Verification gate execution
+   - ✅ Integration tests: 130+ tests for v2 routers
 
-2. **Real-time events** (#323)
-   - ✅ SSE streaming via `/api/v2/tasks/{id}/stream` (partial)
+2. **Real-time events** (#323) - 🔄 PARTIAL
+   - ✅ SSE streaming via `/api/v2/tasks/{id}/stream`
    - ⚠️ WebSocket for bidirectional events still needed
 
 3. **Authentication & Security**
-   - API key authentication (#324)
-   - Rate limiting (#167)
-   - API pagination (#118)
+   - ✅ API key authentication (#326) - COMPLETE
+     - Scope-based permissions (read/write/admin)
+     - CLI commands: `cf auth api-key-create/list/revoke/rotate`
+     - REST header: `X-API-Key`
+   - ✅ Rate limiting (#327) - COMPLETE
+     - Configurable limits per endpoint type (auth/standard/AI/websocket)
+     - Redis backend support for distributed deployments
+     - SlowAPI integration
+   - API pagination (#118) - Open
 
 ### Phase 2 Progress Summary
 
@@ -109,27 +120,30 @@ CodeFRAME v2 CLI **Phase 1 is complete** with a production-ready foundation. The
 | Blockers v2 | 5 endpoints | ✅ Complete |
 | PRD v2 | 8 endpoints | ✅ Complete |
 | Tasks v2 (enhanced) | 12 endpoints | ✅ Complete |
-| Discovery v2 | 5 endpoints | ✅ Complete (Phase 1) |
-| Checkpoints v2 | 6 endpoints | ✅ Complete (Phase 1) |
-| Schedule v2 | 3 endpoints | ✅ Complete (Phase 1) |
-| Templates v2 | 4 endpoints | ✅ Complete (Phase 1) |
-| Git v2 | 3 endpoints | ✅ Complete (Phase 1) |
-| Review v2 | 2 endpoints | ✅ Complete (Phase 1) |
-| Workspace v2 | 0 endpoints | ⚠️ Missing |
-| Batch v2 | 1 endpoint | ⚠️ Partial (execute only) |
-| Diagnose v2 | 0 endpoints | ⚠️ Missing |
-| PR v2 | 0 endpoints | ⚠️ Missing |
-| Environment v2 | 0 endpoints | ⚠️ Missing |
-| Gates v2 | 0 endpoints | ⚠️ Missing |
+| Discovery v2 | 5 endpoints | ✅ Complete |
+| Checkpoints v2 | 6 endpoints | ✅ Complete |
+| Schedule v2 | 3 endpoints | ✅ Complete |
+| Templates v2 | 4 endpoints | ✅ Complete |
+| Git v2 | 3 endpoints | ✅ Complete |
+| Review v2 | 2 endpoints | ✅ Complete |
+| Workspace v2 | 5 endpoints | ✅ Complete |
+| Batches v2 | 5 endpoints | ✅ Complete |
+| Diagnose v2 | 2 endpoints | ✅ Complete |
+| PR v2 | 5 endpoints | ✅ Complete |
+| Environment v2 | 4 endpoints | ✅ Complete |
+| Gates v2 | 2 endpoints | ✅ Complete |
+| API Key Auth | 4 endpoints | ✅ Complete |
+| Rate Limiting | All routes | ✅ Complete |
 
 ### All Phase 2 Issues
 | Issue | Title | Priority | Status |
 |-------|-------|----------|--------|
-| #322 | Server audit and refactor | HIGH | 🔄 In Progress |
-| #323 | Real-time events (SSE/WebSocket) | HIGH | ⚠️ Partial |
-| #324 | API key authentication | HIGH | Open |
+| #322 | Server audit and refactor | HIGH | ✅ Complete |
+| #325 | Phase 2 Server Layer PR | HIGH | ✅ Complete |
+| #326 | API key authentication | HIGH | ✅ Complete |
+| #327 | Rate limiting | HIGH | ✅ Complete |
+| #323 | Real-time events (SSE/WebSocket) | HIGH | 🔄 Partial (SSE done) |
 | #119 | OpenAPI documentation | MEDIUM | Open |
-| #167 | Rate limiting | MEDIUM | Open |
 | #118 | API pagination | MEDIUM | Open |
 
 ### Architecture Principle: Thin Adapter Pattern
@@ -260,14 +274,15 @@ Phase 1 (CLI) ──────────────────────
 | #265 | NoneType error fix | ✅ CLOSED |
 | #253 | Checkpoint diff API fix | ✅ CLOSED |
 
-### Phase 2 Issues - IN PROGRESS
+### Phase 2 Issues - MOSTLY COMPLETE
 | Issue | Title | Priority | Status |
 |-------|-------|----------|--------|
-| #322 | Server audit and refactor | HIGH | 🔄 In Progress (v2 routers created) |
-| #323 | Real-time events (SSE/WebSocket) | HIGH | ⚠️ Partial (SSE done) |
-| #324 | API key authentication | HIGH | Open |
+| #322 | Server audit and refactor | HIGH | ✅ Complete |
+| #325 | Phase 2 Server Layer PR | HIGH | ✅ Complete |
+| #326 | API key authentication | HIGH | ✅ Complete |
+| #327 | Rate limiting | HIGH | ✅ Complete |
+| #323 | Real-time events (SSE/WebSocket) | HIGH | 🔄 Partial (SSE done) |
 | #119 | OpenAPI documentation | MEDIUM | Open |
-| #167 | Rate limiting | MEDIUM | Open |
 | #118 | API pagination | MEDIUM | Open |
 
 ---
@@ -278,7 +293,7 @@ Phase 1 (CLI) ──────────────────────
 Core remains headless. Server and CLI are equal adapters.
 
 ### 2. Integration tests as guardrail
-The existing 70+ tests ensure "always working codebase" through all phases.
+The existing 130+ v2 router tests ensure "always working codebase" through all phases.
 
 ### 3. No big-bang UI rewrite
 Web UI is built incrementally on v2 server, not by fixing v1.
@@ -302,9 +317,9 @@ After each phase:
 | Phase | Focus | Key Outcome | Status |
 |-------|-------|-------------|--------|
 | 1 | CLI Completion | Production-ready headless agent | ✅ **COMPLETE** |
-| 2 | Server Layer | REST API + real-time events | 🔄 **IN PROGRESS** |
+| 2 | Server Layer | REST API + real-time events | 🔄 **90% COMPLETE** |
 | 3 | Web UI | Modern dashboard | Planned |
 | 4 | Multi-Agent | Agent swarms | Planned |
 | 5 | Advanced | Power features | Planned |
 
-**Current focus**: Phase 2 - Completing remaining v2 routes (workspace, batch, PR, env, gates).
+**Current focus**: Phase 2 - Completing remaining items (WebSocket events, OpenAPI docs, pagination).

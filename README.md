@@ -1,9 +1,9 @@
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Phase%201%20Complete-brightgreen)
+![Status](https://img.shields.io/badge/status-v2%20Phase%202%20In%20Progress-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-4122%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-4285%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
@@ -23,23 +23,62 @@ Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME ag
 
 ---
 
-## What's New (Updated: 2026-02-01)
+## What's New (Updated: 2026-02-03)
 
-### V2 Phase 1 Complete 🎉
+### Phase 2: Server Layer In Progress
 
-We've completed Phase 1 of the v2 strategic roadmap! The CLI foundation is now production-ready:
+Phase 1 is complete! We're now building the server layer as a thin adapter over the CLI-first core:
 
 | Feature | Status | Issue |
 |---------|--------|-------|
-| `cf prd generate` - Interactive AI PRD creation | ✅ Complete | #307 |
-| `cf work follow` - Live execution streaming | ✅ Complete | #308 |
-| PRD template system for customizable output | ✅ Complete | #316 |
-| Integration tests for credentials/environment | ✅ Complete | #309 |
-| Bug fixes (#265, #253) | ✅ Complete | - |
+| API key authentication for CLI & REST | ✅ Complete | #326 |
+| Rate limiting with slowapi | ✅ Complete | #327 |
+| Server audit & v2 routes | ✅ Complete | #322 |
+| Real-time events (SSE) | 🔄 Partial | #323 |
 
-**Next up**: Phase 2 (Server Layer) - See [docs/V2_STRATEGIC_ROADMAP.md](docs/V2_STRATEGIC_ROADMAP.md)
+### API Key Authentication
 
-### Interactive PRD Generation
+**Programmatic access to CodeFRAME APIs** with scope-based permissions.
+
+```bash
+# Create an API key
+cf auth api-key-create --name "CI Pipeline" --user-id 1
+
+# List your API keys
+cf auth api-key-list --user-id 1
+
+# Revoke a key
+cf auth api-key-revoke <key-id> --user-id 1 --yes
+
+# Rotate a key (generates new key, same permissions)
+cf auth api-key-rotate <key-id> --user-id 1
+```
+
+Use API keys via header: `X-API-Key: your_key_here`
+
+**Scopes**: `read` (GET operations), `write` (create/update/delete), `admin` (full access)
+
+### Rate Limiting
+
+**Configurable rate limits** to prevent abuse and ensure fair usage:
+
+```bash
+# Configure via environment variables
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_AUTH=10/minute      # Auth endpoints
+RATE_LIMIT_STANDARD=100/minute # Standard API calls
+RATE_LIMIT_AI=20/minute        # AI/chat operations
+RATE_LIMIT_WEBSOCKET=30/minute # WebSocket connections
+```
+
+Supports Redis backend for distributed deployments: `RATE_LIMIT_STORAGE=redis`
+
+---
+
+### Phase 1 Complete 🎉 (2026-02-01)
+
+<details>
+<summary>Interactive PRD Generation</summary>
 
 **`cf prd generate`** — AI-guided requirements discovery using Socratic questioning.
 
@@ -57,7 +96,10 @@ cf prd generate --template enterprise
 
 The AI conducts 5+ turn discovery sessions, progressively refining from broad vision → specific requirements → acceptance criteria.
 
-### PRD Template System
+</details>
+
+<details>
+<summary>PRD Template System</summary>
 
 **Customizable PRD output formats** for different team needs:
 
@@ -82,7 +124,10 @@ cf prd templates import ./my-template.yaml
 - `technical` - Developer-focused with architecture details
 - `user-story` - Agile/Scrum format with user stories
 
-### Live Execution Streaming
+</details>
+
+<details>
+<summary>Live Execution Streaming</summary>
 
 **`cf work follow`** — Watch agent execution in real-time.
 
@@ -93,6 +138,8 @@ cf work follow <task-id>
 # Show last 50 lines then continue streaming
 cf work follow <task-id> --tail 50
 ```
+
+</details>
 
 ---
 
@@ -318,6 +365,11 @@ cf work batch run --all-ready --retry 3
 - **Checkpoint & Recovery** — Git + DB snapshots enable project state rollback
 - **Phase-Aware Components** — UI intelligently selects data sources based on project phase
 
+### Security & API
+- **API Key Authentication** — Scope-based programmatic access (read/write/admin)
+- **Rate Limiting** — Configurable limits per endpoint type with Redis support
+- **JWT Authentication** — Session-based auth for web dashboard
+
 ### Developer Experience
 - **Real-time Dashboard** — WebSocket-powered UI with agent status, blockers, and progress tracking
 - **Environment Validation** — `cf env check` validates tools and dependencies
@@ -468,6 +520,17 @@ cf env install-missing <tool>   # Install specific missing tool
 cf env auto-install --yes       # Install all missing tools
 ```
 
+### Authentication & API Keys
+```bash
+cf auth setup --provider anthropic       # Configure API credentials
+cf auth list                             # List configured credentials
+cf auth validate anthropic               # Test credential validity
+cf auth api-key-create -n "Key Name" -u 1  # Create API key
+cf auth api-key-list -u 1                # List your API keys
+cf auth api-key-revoke <id> -u 1 --yes   # Revoke an API key
+cf auth api-key-rotate <id> -u 1         # Rotate an API key
+```
+
 ### PRD (Product Requirements)
 ```bash
 cf prd generate                 # Interactive AI-guided PRD creation (NEW!)
@@ -589,6 +652,13 @@ AUTO_COMMIT_ENABLED=true               # Enable automatic commits after test pas
 NOTIFICATION_DESKTOP_ENABLED=true      # Enable desktop notifications
 NOTIFICATION_WEBHOOK_URL=https://...   # Webhook endpoint for agent events
 
+# Optional - Rate Limiting
+RATE_LIMIT_ENABLED=true                # Enable rate limiting (default: true)
+RATE_LIMIT_AUTH=10/minute              # Auth endpoints
+RATE_LIMIT_STANDARD=100/minute         # Standard API endpoints
+RATE_LIMIT_AI=20/minute                # AI/chat operations
+RATE_LIMIT_STORAGE=memory              # memory or redis
+
 # Frontend (set at build time for Next.js)
 NEXT_PUBLIC_API_URL=http://localhost:8080
 NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
@@ -628,6 +698,39 @@ GET    /api/templates                         # List task templates
 POST   /api/templates/{name}/apply            # Apply template
 ```
 
+### V2 API Endpoints (Phase 2)
+
+```
+# Tasks
+GET    /api/v2/tasks                          # List tasks with filtering
+GET    /api/v2/tasks/{id}                     # Get task details
+POST   /api/v2/tasks                          # Create task
+PATCH  /api/v2/tasks/{id}                     # Update task
+DELETE /api/v2/tasks/{id}                     # Delete task
+GET    /api/v2/tasks/{id}/stream              # SSE streaming
+
+# PRD
+GET    /api/v2/prd                            # List PRDs
+POST   /api/v2/prd                            # Create PRD
+GET    /api/v2/prd/{id}/versions              # Version history
+
+# Blockers
+GET    /api/v2/blockers                       # List blockers
+POST   /api/v2/blockers/{id}/answer           # Answer blocker
+```
+
+### Authentication
+
+```
+# Session-based (JWT)
+POST   /api/auth/login                        # Login, get JWT
+POST   /api/auth/register                     # Register new user
+GET    /api/auth/me                           # Current user info
+
+# API Key
+Header: X-API-Key: your_key_here              # Include in all requests
+```
+
 ### WebSocket
 
 ```
@@ -661,10 +764,10 @@ uv run pytest -m v2
 
 ### Test Statistics
 
-- **Total Tests**: 4100+
+- **Total Tests**: 4285+
   - Core module tests: ~1200
   - Unit tests: ~1500 (Python + TypeScript)
-  - Integration tests: ~800
+  - Integration tests: ~1000
   - E2E tests: 100+ (Backend + Playwright)
 - **Coverage**: 88%+
 - **Pass Rate**: 100%
@@ -681,9 +784,9 @@ For detailed documentation, see:
 - **Agent Implementation**: [docs/AGENT_IMPLEMENTATION_TASKS.md](docs/AGENT_IMPLEMENTATION_TASKS.md) - Agent system details
 - **CLI Wireframe**: [docs/CLI_WIREFRAME.md](docs/CLI_WIREFRAME.md) - Command structure
 - **CLI Test Report**: [docs/CLI_V2_TEST_REPORT.md](docs/CLI_V2_TEST_REPORT.md) - End-to-end test results
+- **Phase 2 Developer Guide**: [docs/PHASE_2_DEVELOPER_GUIDE.md](docs/PHASE_2_DEVELOPER_GUIDE.md) - Server layer patterns
 - **Product Requirements**: [PRD.md](PRD.md)
 - **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
-- **Authentication**: [docs/authentication.md](docs/authentication.md) - Security guide
 - **Sprint Planning**: [SPRINTS.md](SPRINTS.md)
 - **Agent Guide**: [AGENTS.md](AGENTS.md)
 
@@ -736,11 +839,11 @@ We welcome contributions! To get started:
   - Task self-diagnosis system
 
 ### In Progress (Phase 2: Server Layer)
-- **Server audit and refactor** (#322) — Routes delegating to core modules
-- **Real-time events** (#323) — SSE/WebSocket for execution streaming
-- **API key authentication** (#324) — Programmatic API access
+- **Server audit and refactor** (#322) — Routes delegating to core modules ✅
+- **Real-time events** (#323) — SSE/WebSocket for execution streaming 🔄
+- **API key authentication** (#326) — Programmatic API access ✅
+- **Rate limiting** (#327) — Security and abuse prevention ✅
 - **OpenAPI documentation** (#119) — Auto-generated API docs
-- **Rate limiting** (#167) — Security and abuse prevention
 - **API pagination** (#118) — Large dataset support
 
 ### Planned (Phases 3-5)
@@ -775,6 +878,7 @@ See [LICENSE](LICENSE) for full details.
 - **Anthropic Claude** - AI reasoning engine powering all agents
 - **FastAPI** - High-performance async web framework
 - **FastAPI Users** - Authentication and user management
+- **SlowAPI** - Rate limiting for FastAPI
 - **React + TypeScript** - Modern frontend with real-time updates
 - **SQLite** - Embedded database for persistence
 - **Playwright** - End-to-end testing framework
