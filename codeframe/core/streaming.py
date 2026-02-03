@@ -392,7 +392,8 @@ class EventPublisher:
         """Publish an event synchronously (for use from non-async code).
 
         This method is designed for use from the synchronous agent code.
-        Uses call_soon_threadsafe to safely enqueue events from any thread.
+        Uses run_coroutine_threadsafe to delegate to the async publish() method,
+        ensuring single lock discipline (only _lock is used for subscriber access).
 
         If there are no subscribers, the event is silently dropped.
 
@@ -400,50 +401,54 @@ class EventPublisher:
             task_id: Task ID to publish to
             event: Event to publish
         """
+        # Get any active subscription's event loop to run the coroutine
         with self._thread_lock:
             subscribers = self._subscribers.get(task_id, [])
+            if not subscribers:
+                return  # No subscribers, nothing to do
+            # Use the first active subscriber's loop
+            loop = None
             for subscription in subscribers:
                 if subscription.active:
-                    try:
-                        # Use call_soon_threadsafe to safely enqueue from any thread
-                        subscription.loop.call_soon_threadsafe(
-                            self._safe_put_nowait, subscription.queue, event, task_id
-                        )
-                    except RuntimeError:
-                        # Event loop may be closed
-                        logger.warning(f"Event loop closed for task {task_id}")
+                    loop = subscription.loop
+                    break
+            if loop is None:
+                return  # No active subscribers
 
-    def _safe_put_nowait(self, queue: asyncio.Queue, item, task_id: str) -> None:
-        """Helper to safely put an item in a queue, handling QueueFull."""
+        # Delegate to async publish() using run_coroutine_threadsafe
+        # This ensures we use the same _lock for all subscriber access
         try:
-            queue.put_nowait(item)
-        except asyncio.QueueFull:
-            event_type = getattr(item, "event_type", "unknown")
-            logger.warning(f"Event queue full for task {task_id}, dropping event: {event_type}")
+            # Fire and forget - don't wait for the result to avoid blocking sync caller
+            asyncio.run_coroutine_threadsafe(self.publish(task_id, event), loop)
+        except RuntimeError:
+            # Event loop may be closed
+            logger.warning(f"Event loop closed for task {task_id}")
 
     def complete_task_sync(self, task_id: str) -> None:
         """Signal task completion synchronously (for use from non-async code).
 
-        Uses call_soon_threadsafe to safely signal completion from any thread.
+        Uses run_coroutine_threadsafe to delegate to the async complete_task() method,
+        ensuring single lock discipline (only _lock is used for subscriber access).
 
         Args:
             task_id: Task ID that completed
         """
+        # Get any active subscription's event loop to run the coroutine
         with self._thread_lock:
             subscribers = self._subscribers.get(task_id, [])
-            for subscription in subscribers:
-                subscription.active = False
-                try:
-                    # Use call_soon_threadsafe to safely enqueue from any thread
-                    subscription.loop.call_soon_threadsafe(
-                        self._safe_put_nowait,
-                        subscription.queue,
-                        _Subscription.END_OF_STREAM,
-                        task_id,
-                    )
-                except RuntimeError:
-                    # Event loop may be closed
-                    logger.warning(f"Event loop closed for task {task_id}")
+            if not subscribers:
+                return  # No subscribers, nothing to do
+            # Use the first subscriber's loop (even if inactive, loop should still work)
+            loop = subscribers[0].loop
+
+        # Delegate to async complete_task() using run_coroutine_threadsafe
+        # This ensures we use the same _lock for all subscriber access
+        try:
+            # Fire and forget - don't wait for the result
+            asyncio.run_coroutine_threadsafe(self.complete_task(task_id), loop)
+        except RuntimeError:
+            # Event loop may be closed
+            logger.warning(f"Event loop closed for task {task_id}")
 
     async def complete_task(self, task_id: str) -> None:
         """Signal that a task is complete, closing all subscriber streams.

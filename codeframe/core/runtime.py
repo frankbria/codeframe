@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from codeframe.core.agent import AgentState
     from codeframe.core.conductor import GlobalFixCoordinator
+    from codeframe.core.streaming import EventPublisher
 
 
 def _utc_now() -> datetime:
@@ -594,6 +595,7 @@ def execute_agent(
     debug: bool = False,
     verbose: bool = False,
     fix_coordinator: Optional["GlobalFixCoordinator"] = None,
+    event_publisher: Optional["EventPublisher"] = None,
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -607,6 +609,7 @@ def execute_agent(
         debug: If True, write detailed debug log to workspace
         verbose: If True, print detailed progress to stdout
         fix_coordinator: Optional coordinator for global fixes (for parallel execution)
+        event_publisher: Optional EventPublisher for SSE streaming (real-time events)
 
     Returns:
         Final AgentState after execution
@@ -664,6 +667,7 @@ def execute_agent(
             verbose=verbose,
             fix_coordinator=fix_coordinator,
             output_logger=output_logger,
+            event_publisher=event_publisher,
         )
 
         state = agent.run(run.task_id)
@@ -687,6 +691,7 @@ def execute_agent(
                     verbose=verbose,
                     fix_coordinator=fix_coordinator,
                     output_logger=output_logger,
+                    event_publisher=event_publisher,
                 )
                 state = agent.run(run.task_id)
 
@@ -785,6 +790,7 @@ def execute_agent(
                     verbose=verbose,
                     fix_coordinator=fix_coordinator,
                     output_logger=output_logger,
+                    event_publisher=event_publisher,
                 )
                 state = agent.run(run.task_id)
                 if debug:
