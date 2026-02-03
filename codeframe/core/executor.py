@@ -825,19 +825,10 @@ class Executor:
         Returns:
             StepResult with execution outcome
         """
-        from codeframe.core.models import ProgressEvent, OutputEvent, ErrorEvent
+        from codeframe.core.models import OutputEvent, ErrorEvent
 
-        # Publish progress event at start
-        await self._publish_event(
-            task_id,
-            ProgressEvent(
-                task_id=task_id,
-                phase="execution",
-                step=step.index,
-                total_steps=step.index,  # Will be updated by execute_plan_async
-                message=f"Executing: {step.description}",
-            ),
-        )
+        # Note: ProgressEvent is emitted by execute_plan_async() before calling this method,
+        # so we don't emit one here to avoid duplicates with incorrect total_steps
 
         # Execute the step (sync operation, run in thread pool)
         loop = asyncio.get_running_loop()

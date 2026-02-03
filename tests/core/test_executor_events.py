@@ -67,10 +67,14 @@ class TestExecutorWithEventPublisher:
         assert executor.event_publisher is None
 
     @pytest.mark.asyncio
-    async def test_execute_step_publishes_progress_event(
+    async def test_execute_step_publishes_output_not_progress(
         self, mock_llm, temp_repo, mock_context
     ):
-        """Executing a step should publish a progress event."""
+        """execute_step_async publishes output events, not progress events.
+
+        Progress events are emitted by execute_plan_async which has access
+        to total_steps. execute_step_async only emits output/error events.
+        """
         publisher = EventPublisher()
         executor = Executor(
             llm_provider=mock_llm,
@@ -91,7 +95,7 @@ class TestExecutorWithEventPublisher:
         async def collect_events():
             async for event in publisher.subscribe("task-123"):
                 events_received.append(event)
-                if len(events_received) >= 2:  # Progress + Output/Completion
+                if len(events_received) >= 1:  # Just output event expected
                     break
 
         # Start collecting in background
@@ -112,10 +116,12 @@ class TestExecutorWithEventPublisher:
         except asyncio.TimeoutError:
             pass
 
-        # Verify we got at least a progress event
+        # Verify we got output event but NOT progress event
+        # (progress events come from execute_plan_async which knows total_steps)
+        output_events = [e for e in events_received if e.event_type == "output"]
         progress_events = [e for e in events_received if e.event_type == "progress"]
-        assert len(progress_events) >= 1
-        assert progress_events[0].task_id == "task-123"
+        assert len(output_events) >= 1, "Should publish output event"
+        assert len(progress_events) == 0, "Should NOT publish progress event (that's execute_plan_async's job)"
 
     @pytest.mark.asyncio
     async def test_shell_command_publishes_output_event(
