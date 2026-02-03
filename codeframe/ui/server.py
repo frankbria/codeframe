@@ -48,6 +48,7 @@ from codeframe.ui.routers import (
     schedule,
     schedule_v2,  # v2 schedule router (delegates to core)
     session,
+    streaming_v2,  # v2 SSE streaming router (real-time events)
     tasks,
     tasks_v2,  # v2 tasks router (delegates to core)
     templates,
@@ -408,6 +409,7 @@ app.include_router(session.router)
 app.include_router(tasks.router)
 app.include_router(tasks.project_router)
 app.include_router(tasks_v2.router)  # v2 endpoints at /api/v2/tasks
+app.include_router(streaming_v2.router)  # v2 SSE streaming at /api/v2/tasks/{id}/stream
 app.include_router(templates.router)
 app.include_router(templates_v2.router)  # v2 endpoints at /api/v2/templates
 app.include_router(websocket.router)

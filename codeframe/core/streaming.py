@@ -1,21 +1,47 @@
 """Streaming infrastructure for real-time execution output.
 
-This module provides file-based streaming for `cf work follow`:
-- RunOutputLogger: Writes agent output to a log file
-- tail_run_output: Tails a log file for real-time streaming
-- get_latest_lines: Reads buffered output (for --tail N)
+This module provides:
+1. File-based streaming for `cf work follow`:
+   - RunOutputLogger: Writes agent output to a log file
+   - tail_run_output: Tails a log file for real-time streaming
+   - get_latest_lines: Reads buffered output (for --tail N)
+
+2. Event-based streaming for SSE/WebSocket:
+   - EventPublisher: Async event distribution with subscription support
 
 Output files are stored at: .codeframe/runs/<run_id>/output.log
 
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import asyncio
+import logging
+import os
+import threading
 import time
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import (
+    AsyncIterator,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    TYPE_CHECKING,
+)
 
 from codeframe.core.workspace import Workspace
+
+if TYPE_CHECKING:
+    from codeframe.core.models import ExecutionEvent
+
+logger = logging.getLogger(__name__)
+
+# Configuration via environment variables
+SSE_TIMEOUT_SECONDS = int(os.getenv("SSE_TIMEOUT_SECONDS", "30"))
+SSE_MAX_QUEUE_SIZE = int(os.getenv("SSE_MAX_QUEUE_SIZE", "1000"))
+SSE_OUTPUT_MAX_CHARS = int(os.getenv("SSE_OUTPUT_MAX_CHARS", "2000"))
 
 
 def get_run_output_path(workspace: Workspace, run_id: str) -> Path:
@@ -219,3 +245,253 @@ def tail_run_output(
 
         time.sleep(poll_interval)
         iterations += 1
+
+
+# =============================================================================
+# Event-based streaming for SSE/WebSocket
+# =============================================================================
+
+
+class _Subscription:
+    """Internal subscription handle for tracking async iterators."""
+
+    # Sentinel value to signal end of stream
+    END_OF_STREAM = object()
+
+    def __init__(self, task_id: str, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
+        self.task_id = task_id
+        self.queue = queue
+        self.loop = loop  # Event loop for thread-safe operations
+        self.active = True
+
+
+class EventPublisher:
+    """Async event publisher for real-time streaming.
+
+    Provides publish/subscribe functionality for ExecutionEvents,
+    used by SSE and WebSocket endpoints.
+
+    Features:
+    - Multiple subscribers per task
+    - Event isolation by task_id
+    - Graceful stream closure on task completion
+    - Thread-safe for concurrent access
+    - Sync publishing support for non-async code (e.g., agent)
+
+    Usage:
+        publisher = EventPublisher()
+
+        # Subscribe (in SSE/WebSocket handler)
+        async for event in publisher.subscribe(task_id):
+            yield f"data: {event.model_dump_json()}\\n\\n"
+
+        # Publish async (in async code)
+        await publisher.publish(task_id, ProgressEvent(...))
+
+        # Publish sync (in sync code like agent)
+        publisher.publish_sync(task_id, ProgressEvent(...))
+
+        # Signal completion (closes all subscribers)
+        await publisher.complete_task(task_id)
+
+    Configuration (via environment variables):
+        SSE_TIMEOUT_SECONDS: Timeout for waiting on events (default: 30)
+        SSE_MAX_QUEUE_SIZE: Max events per subscriber queue (default: 1000)
+    """
+
+    def __init__(self, timeout: Optional[float] = None, max_queue_size: Optional[int] = None):
+        """Initialize the event publisher.
+
+        Args:
+            timeout: Timeout for waiting on events (default: SSE_TIMEOUT_SECONDS env var)
+            max_queue_size: Max events per queue (default: SSE_MAX_QUEUE_SIZE env var)
+        """
+        # Map task_id -> list of subscriber queues
+        self._subscribers: Dict[str, List[_Subscription]] = defaultdict(list)
+        # Lock for thread-safe subscriber management
+        self._lock = asyncio.Lock()
+        # Thread lock for sync publishing
+        self._thread_lock = threading.Lock()
+        # Configuration
+        self._timeout = timeout if timeout is not None else SSE_TIMEOUT_SECONDS
+        self._max_queue_size = max_queue_size if max_queue_size is not None else SSE_MAX_QUEUE_SIZE
+
+    async def subscribe(self, task_id: str) -> AsyncIterator["ExecutionEvent"]:
+        """Subscribe to events for a task.
+
+        Creates an async iterator that yields events as they are published.
+        The iterator exits when the task completes (receives END_OF_STREAM sentinel).
+
+        Args:
+            task_id: Task ID to subscribe to
+
+        Yields:
+            ExecutionEvent objects as they are published
+        """
+        queue: asyncio.Queue = asyncio.Queue(maxsize=self._max_queue_size)
+        loop = asyncio.get_running_loop()
+        subscription = _Subscription(task_id, queue, loop)
+
+        async with self._lock:
+            self._subscribers[task_id].append(subscription)
+
+        try:
+            while True:
+                try:
+                    # Wait for events with configurable timeout
+                    item = await asyncio.wait_for(queue.get(), timeout=self._timeout)
+
+                    # Check for end-of-stream sentinel
+                    if item is _Subscription.END_OF_STREAM:
+                        break
+
+                    yield item
+                except asyncio.TimeoutError:
+                    # Check if we should exit (task completed but no sentinel received)
+                    if not subscription.active:
+                        break
+                    # Log if queue is getting full (backpressure warning)
+                    if queue.qsize() > self._max_queue_size * 0.8:
+                        logger.warning(
+                            f"Event queue for task {task_id} is {queue.qsize()}/{self._max_queue_size} full"
+                        )
+                    # Otherwise continue waiting
+                    continue
+        finally:
+            # Clean up subscription
+            async with self._lock:
+                if subscription in self._subscribers[task_id]:
+                    self._subscribers[task_id].remove(subscription)
+                # Clean up empty task entries
+                if not self._subscribers[task_id]:
+                    del self._subscribers[task_id]
+
+    async def publish(self, task_id: str, event: "ExecutionEvent") -> None:
+        """Publish an event to all subscribers of a task.
+
+        If there are no subscribers, the event is silently dropped.
+        If a subscriber's queue is full, the event is dropped for that subscriber
+        with a warning logged.
+
+        Args:
+            task_id: Task ID to publish to
+            event: Event to publish
+        """
+        async with self._lock:
+            subscribers = self._subscribers.get(task_id, [])
+            for subscription in subscribers:
+                if subscription.active:
+                    try:
+                        subscription.queue.put_nowait(event)
+                    except asyncio.QueueFull:
+                        logger.warning(
+                            f"Event queue full for task {task_id}, dropping event: {event.event_type}"
+                        )
+
+    def publish_sync(self, task_id: str, event: "ExecutionEvent") -> None:
+        """Publish an event synchronously (for use from non-async code).
+
+        This method is designed for use from the synchronous agent code.
+        Uses call_soon_threadsafe to safely enqueue events from any thread.
+
+        If there are no subscribers, the event is silently dropped.
+
+        Args:
+            task_id: Task ID to publish to
+            event: Event to publish
+        """
+        with self._thread_lock:
+            subscribers = self._subscribers.get(task_id, [])
+            for subscription in subscribers:
+                if subscription.active:
+                    try:
+                        # Use call_soon_threadsafe to safely enqueue from any thread
+                        subscription.loop.call_soon_threadsafe(
+                            self._safe_put_nowait, subscription.queue, event, task_id
+                        )
+                    except RuntimeError:
+                        # Event loop may be closed
+                        logger.warning(f"Event loop closed for task {task_id}")
+
+    def _safe_put_nowait(self, queue: asyncio.Queue, item, task_id: str) -> None:
+        """Helper to safely put an item in a queue, handling QueueFull."""
+        try:
+            queue.put_nowait(item)
+        except asyncio.QueueFull:
+            event_type = getattr(item, "event_type", "unknown")
+            logger.warning(f"Event queue full for task {task_id}, dropping event: {event_type}")
+
+    def complete_task_sync(self, task_id: str) -> None:
+        """Signal task completion synchronously (for use from non-async code).
+
+        Uses call_soon_threadsafe to safely signal completion from any thread.
+
+        Args:
+            task_id: Task ID that completed
+        """
+        with self._thread_lock:
+            subscribers = self._subscribers.get(task_id, [])
+            for subscription in subscribers:
+                subscription.active = False
+                try:
+                    # Use call_soon_threadsafe to safely enqueue from any thread
+                    subscription.loop.call_soon_threadsafe(
+                        self._safe_put_nowait,
+                        subscription.queue,
+                        _Subscription.END_OF_STREAM,
+                        task_id,
+                    )
+                except RuntimeError:
+                    # Event loop may be closed
+                    logger.warning(f"Event loop closed for task {task_id}")
+
+    async def complete_task(self, task_id: str) -> None:
+        """Signal that a task is complete, closing all subscriber streams.
+
+        This should be called when task execution finishes (success or failure)
+        to allow SSE/WebSocket connections to close gracefully.
+
+        All queued events will be delivered before the stream closes.
+
+        Args:
+            task_id: Task ID that completed
+        """
+        async with self._lock:
+            subscribers = self._subscribers.get(task_id, [])
+            for subscription in subscribers:
+                subscription.active = False
+                # Send end-of-stream sentinel so subscribers exit gracefully
+                # after processing all queued events
+                await subscription.queue.put(_Subscription.END_OF_STREAM)
+
+    async def unsubscribe(
+        self, task_id: str, iterator: AsyncIterator["ExecutionEvent"]
+    ) -> None:
+        """Manually unsubscribe an iterator.
+
+        Typically not needed as subscriptions clean up automatically,
+        but can be used for explicit cleanup.
+
+        Args:
+            task_id: Task ID of the subscription
+            iterator: The async iterator returned by subscribe()
+        """
+        # The iterator cleanup happens in the finally block of subscribe()
+        # This method is provided for explicit control if needed
+        async with self._lock:
+            for subscription in self._subscribers.get(task_id, []):
+                subscription.active = False
+
+    def subscriber_count(self, task_id: str) -> int:
+        """Get the number of active subscribers for a task.
+
+        Args:
+            task_id: Task ID to check
+
+        Returns:
+            Number of active subscribers
+        """
+        # Note: This is a sync method for convenience, but accesses
+        # shared state. For production, consider making this async.
+        subscribers = self._subscribers.get(task_id, [])
+        return sum(1 for s in subscribers if s.active)

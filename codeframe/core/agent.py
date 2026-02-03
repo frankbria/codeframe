@@ -33,7 +33,7 @@ from codeframe.core.workspace import Workspace
 
 if TYPE_CHECKING:
     from codeframe.core.conductor import GlobalFixCoordinator
-    from codeframe.core.streaming import RunOutputLogger
+    from codeframe.core.streaming import EventPublisher, RunOutputLogger
 
 # Safe shell commands that can be executed without full shell interpretation
 SAFE_SHELL_COMMANDS = frozenset({
@@ -399,6 +399,7 @@ class Agent:
         verbose: bool = False,
         fix_coordinator: Optional["GlobalFixCoordinator"] = None,
         output_logger: Optional["RunOutputLogger"] = None,
+        event_publisher: Optional["EventPublisher"] = None,
     ):
         """Initialize the agent.
 
@@ -412,6 +413,7 @@ class Agent:
             verbose: If True, print detailed progress to stdout
             fix_coordinator: Optional coordinator for global fixes (for parallel execution)
             output_logger: Optional logger for streaming output to file (for cf work follow)
+            event_publisher: Optional EventPublisher for SSE streaming (for web clients)
         """
         self.workspace = workspace
         self.llm = llm_provider
@@ -422,6 +424,7 @@ class Agent:
         self.verbose = verbose
         self.fix_coordinator = fix_coordinator
         self.output_logger = output_logger
+        self.event_publisher = event_publisher
 
         self.state = AgentState()
         self.context: Optional[TaskContext] = None
@@ -560,6 +563,7 @@ class Agent:
             llm_provider=self.llm,
             repo_path=self.workspace.repo_path,
             dry_run=self.dry_run,
+            event_publisher=self.event_publisher,
         )
 
         consecutive_failures = 0
@@ -2038,6 +2042,105 @@ Generate a single question OR a RESOLVE_AUTONOMOUSLY/TECHNICAL_FIX directive:"""
             )
         except Exception:
             pass  # Don't fail on event emission
+
+        # Publish to SSE EventPublisher for web clients
+        if self.event_publisher and self.state.task_id:
+            try:
+                self._publish_sse_event(event_type, data)
+            except Exception:
+                pass  # Don't fail on SSE emission
+
+    def _publish_sse_event(self, event_type: str, data: dict) -> None:
+        """Publish an event to SSE subscribers.
+
+        Maps internal agent events to SSE ExecutionEvent types.
+
+        Args:
+            event_type: Internal event type (step_started, step_completed, etc.)
+            data: Event data
+        """
+        from codeframe.core.models import ProgressEvent, OutputEvent, ErrorEvent, CompletionEvent
+
+        task_id = self.state.task_id
+
+        # Map internal events to SSE events
+        if event_type == "step_started":
+            total_steps = len(self.state.plan.steps) if self.state.plan else 1
+            event = ProgressEvent(
+                task_id=task_id,
+                phase="execution",
+                step=data.get("step", 0),
+                total_steps=total_steps,
+                message=f"Step {data.get('step', 0)}: {data.get('target', 'unknown')}",
+            )
+            self.event_publisher.publish_sync(task_id, event)
+
+        elif event_type == "step_completed":
+            output = data.get("output", "")
+            if output:
+                event = OutputEvent(
+                    task_id=task_id,
+                    stream="stdout",
+                    line=output[:500],
+                )
+                self.event_publisher.publish_sync(task_id, event)
+
+        elif event_type == "step_failed":
+            event = ErrorEvent(
+                task_id=task_id,
+                error_type="step_failed",
+                error=data.get("error", "Step failed"),
+            )
+            self.event_publisher.publish_sync(task_id, event)
+
+        elif event_type == "verification_failed":
+            event = ErrorEvent(
+                task_id=task_id,
+                error_type="verification_failed",
+                error=data.get("error", "Verification failed"),
+            )
+            self.event_publisher.publish_sync(task_id, event)
+
+        elif event_type in ("agent_completed", "agent_finished"):
+            # Handle both "agent_completed" and "agent_finished" (run() emits "agent_finished")
+            status = data.get("status", "completed")
+            # Map AgentStatus values to SSE completion status
+            if status in ("completed", "COMPLETED"):
+                sse_status = "completed"
+            elif status in ("failed", "FAILED"):
+                sse_status = "failed"
+            elif status in ("blocked", "BLOCKED"):
+                sse_status = "blocked"
+            else:
+                sse_status = status
+
+            event = CompletionEvent(
+                task_id=task_id,
+                status=sse_status,
+                duration_seconds=0,  # Could track this
+                files_modified=[c.path for c in (self.executor.changes if self.executor else [])],
+            )
+            self.event_publisher.publish_sync(task_id, event)
+            self.event_publisher.complete_task_sync(task_id)
+
+        elif event_type == "agent_failed":
+            event = ErrorEvent(
+                task_id=task_id,
+                error_type="agent_failed",
+                error=data.get("error", "Agent execution failed"),
+            )
+            self.event_publisher.publish_sync(task_id, event)
+            self.event_publisher.complete_task_sync(task_id)
+
+        elif event_type == "blocker_created":
+            from codeframe.core.models import BlockerEvent
+            event = BlockerEvent(
+                task_id=task_id,
+                blocker_id=data.get("blocker_id", ""),
+                question=data.get("question", ""),
+                context=data.get("context", ""),
+            )
+            self.event_publisher.publish_sync(task_id, event)
 
     def _setup_debug_log(self) -> None:
         """Set up the debug log file in workspace directory."""
