@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from typing import List, Optional, Dict, Any, Literal, Union
+from pydantic import BaseModel, Field, ConfigDict, computed_field, field_validator
 
 
 class TaskStatus(Enum):
@@ -1006,3 +1006,197 @@ class Checkpoint(BaseModel):
         db_path = Path(self.database_backup_path)
         context_path = Path(self.context_snapshot_path)
         return db_path.exists() and context_path.exists()
+
+
+# =============================================================================
+# Execution Event Models for SSE/WebSocket Streaming
+# =============================================================================
+
+ExecutionEventType = Literal[
+    "progress", "output", "blocker", "completion", "error", "heartbeat"
+]
+
+
+class BaseExecutionEvent(BaseModel):
+    """Base class for all execution events.
+
+    These events are used for real-time streaming via SSE/WebSocket.
+    Each event type has specific data fields in a nested 'data' dict.
+    """
+
+    event_type: ExecutionEventType
+    task_id: str
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProgressEvent(BaseExecutionEvent):
+    """Event indicating task execution progress.
+
+    Emitted when the agent transitions between phases or steps.
+    """
+
+    event_type: Literal["progress"] = "progress"
+    phase: str  # planning, execution, verification, self_correction
+    step: int
+    total_steps: int
+    message: Optional[str] = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def data(self) -> Dict[str, Any]:
+        """Nested data for SSE format compatibility."""
+        return {
+            "phase": self.phase,
+            "step": self.step,
+            "total_steps": self.total_steps,
+            "message": self.message,
+        }
+
+
+class OutputEvent(BaseExecutionEvent):
+    """Event containing stdout/stderr output.
+
+    Emitted when the agent produces command output.
+    """
+
+    event_type: Literal["output"] = "output"
+    stream: Literal["stdout", "stderr"]
+    line: str
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def data(self) -> Dict[str, str]:
+        """Nested data for SSE format compatibility."""
+        return {
+            "stream": self.stream,
+            "line": self.line,
+        }
+
+
+class BlockerEvent(BaseExecutionEvent):
+    """Event indicating a blocker was created.
+
+    Emitted when the agent needs human input to proceed.
+    """
+
+    event_type: Literal["blocker"] = "blocker"
+    blocker_id: int
+    question: str
+    context: Optional[str] = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def data(self) -> Dict[str, Any]:
+        """Nested data for SSE format compatibility."""
+        return {
+            "blocker_id": self.blocker_id,
+            "question": self.question,
+            "context": self.context,
+        }
+
+
+class CompletionEvent(BaseExecutionEvent):
+    """Event indicating task execution completed.
+
+    Emitted when the agent finishes (successfully or with failure).
+    """
+
+    event_type: Literal["completion"] = "completion"
+    status: Literal["completed", "failed", "blocked"]
+    duration_seconds: float
+    files_modified: Optional[List[str]] = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def data(self) -> Dict[str, Any]:
+        """Nested data for SSE format compatibility."""
+        return {
+            "status": self.status,
+            "duration_seconds": self.duration_seconds,
+            "files_modified": self.files_modified,
+        }
+
+
+class ErrorEvent(BaseExecutionEvent):
+    """Event indicating an error occurred.
+
+    Emitted when the agent encounters an error during execution.
+    """
+
+    event_type: Literal["error"] = "error"
+    error: str
+    error_type: str
+    traceback: Optional[str] = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def data(self) -> Dict[str, Any]:
+        """Nested data for SSE format compatibility."""
+        return {
+            "error": self.error,
+            "error_type": self.error_type,
+            "traceback": self.traceback,
+        }
+
+
+class HeartbeatEvent(BaseExecutionEvent):
+    """Keep-alive event for long-running streams.
+
+    Emitted periodically to prevent connection timeouts.
+    """
+
+    event_type: Literal["heartbeat"] = "heartbeat"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def data(self) -> Dict[str, Any]:
+        """Nested data for SSE format compatibility."""
+        return {}
+
+
+# Union type for all execution events
+ExecutionEvent = Union[
+    ProgressEvent,
+    OutputEvent,
+    BlockerEvent,
+    CompletionEvent,
+    ErrorEvent,
+    HeartbeatEvent,
+]
+
+
+def create_execution_event(
+    event_type: ExecutionEventType,
+    task_id: str,
+    **kwargs: Any,
+) -> ExecutionEvent:
+    """Factory function to create the appropriate event type.
+
+    Args:
+        event_type: Type of event to create
+        task_id: Task ID for the event
+        **kwargs: Event-specific fields
+
+    Returns:
+        The appropriate ExecutionEvent subclass instance
+
+    Raises:
+        ValueError: If event_type is not recognized
+    """
+    event_classes: Dict[str, type] = {
+        "progress": ProgressEvent,
+        "output": OutputEvent,
+        "blocker": BlockerEvent,
+        "completion": CompletionEvent,
+        "error": ErrorEvent,
+        "heartbeat": HeartbeatEvent,
+    }
+
+    if event_type not in event_classes:
+        raise ValueError(f"Unknown event type: {event_type}")
+
+    return event_classes[event_type](task_id=task_id, **kwargs)

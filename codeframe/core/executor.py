@@ -6,6 +6,7 @@ Handles file operations, shell commands, and tracks changes for rollback.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import asyncio
 import re
 import shlex
 import subprocess
@@ -13,11 +14,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from codeframe.core.planner import PlanStep, StepType, ImplementationPlan
 from codeframe.core.context import TaskContext
 from codeframe.adapters.llm import LLMProvider, Purpose
+
+if TYPE_CHECKING:
+    from codeframe.core.streaming import EventPublisher
 
 
 class ExecutionStatus(str, Enum):
@@ -169,6 +173,7 @@ class Executor:
         repo_path: Path,
         dry_run: bool = False,
         command_timeout: int = 60,
+        event_publisher: Optional["EventPublisher"] = None,
     ):
         """Initialize the executor.
 
@@ -177,12 +182,14 @@ class Executor:
             repo_path: Root path of the repository
             dry_run: If True, don't actually make changes
             command_timeout: Timeout for shell commands in seconds
+            event_publisher: Optional EventPublisher for streaming execution events
         """
         self.llm = llm_provider
         self.repo_path = Path(repo_path)
         self.dry_run = dry_run
         self.command_timeout = command_timeout
         self.changes: list[FileChange] = []
+        self.event_publisher = event_publisher
 
     def execute_plan(
         self,
@@ -787,3 +794,165 @@ class Executor:
 
         self.changes.clear()
         return rolled_back
+
+    # ========================================================================
+    # Async Methods with Event Publishing
+    # ========================================================================
+
+    async def _publish_event(self, task_id: str, event) -> None:
+        """Publish an event if publisher is configured.
+
+        Args:
+            task_id: Task ID for the event
+            event: Event to publish
+        """
+        if self.event_publisher is not None:
+            await self.event_publisher.publish(task_id, event)
+
+    async def execute_step_async(
+        self,
+        step: PlanStep,
+        context: TaskContext,
+        task_id: str,
+    ) -> StepResult:
+        """Execute a single plan step asynchronously with event publishing.
+
+        Args:
+            step: Step to execute
+            context: Task context for code generation
+            task_id: Task ID for event publishing
+
+        Returns:
+            StepResult with execution outcome
+        """
+        from codeframe.core.models import OutputEvent, ErrorEvent
+
+        # Note: ProgressEvent is emitted by execute_plan_async() before calling this method,
+        # so we don't emit one here to avoid duplicates with incorrect total_steps
+
+        # Execute the step (sync operation, run in thread pool)
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self.execute_step(step, context),
+        )
+
+        # Publish output event for successful commands
+        if result.status == ExecutionStatus.SUCCESS and result.output:
+            from codeframe.core.streaming import SSE_OUTPUT_MAX_CHARS
+
+            output = result.output
+            truncated = len(output) > SSE_OUTPUT_MAX_CHARS
+            if truncated:
+                output = output[:SSE_OUTPUT_MAX_CHARS] + f"\n... (truncated, {len(result.output)} total chars)"
+
+            await self._publish_event(
+                task_id,
+                OutputEvent(
+                    task_id=task_id,
+                    stream="stdout",
+                    line=output,
+                ),
+            )
+
+        # Publish error event for failures
+        if result.status == ExecutionStatus.FAILED:
+            await self._publish_event(
+                task_id,
+                ErrorEvent(
+                    task_id=task_id,
+                    error_type="step_failed",
+                    error=result.error or f"Step {step.index} execution failed",
+                ),
+            )
+
+        return result
+
+    async def execute_plan_async(
+        self,
+        plan: ImplementationPlan,
+        context: TaskContext,
+    ) -> ExecutionResult:
+        """Execute all steps in a plan asynchronously with event publishing.
+
+        Args:
+            plan: Plan to execute
+            context: Task context for code generation
+
+        Returns:
+            ExecutionResult with all step results
+        """
+        from codeframe.core.models import ProgressEvent, CompletionEvent, ErrorEvent
+
+        task_id = plan.task_id
+        results = []
+        success = True
+        start_time = datetime.now(timezone.utc)
+        total_steps = len(plan.steps)
+
+        for i, step in enumerate(plan.steps, 1):
+            # Publish progress for each step
+            await self._publish_event(
+                task_id,
+                ProgressEvent(
+                    task_id=task_id,
+                    phase="execution",
+                    step=i,
+                    total_steps=total_steps,
+                    message=f"Step {i}/{total_steps}: {step.description}",
+                ),
+            )
+
+            # Check dependencies
+            if not self._dependencies_satisfied(step, results):
+                results.append(StepResult(
+                    step=step,
+                    status=ExecutionStatus.SKIPPED,
+                    output="Dependencies not satisfied",
+                ))
+                continue
+
+            # Execute the step
+            result = await self.execute_step_async(step, context, task_id)
+            results.append(result)
+
+            if result.status == ExecutionStatus.FAILED:
+                success = False
+                break  # Stop on first failure
+
+        end_time = datetime.now(timezone.utc)
+        duration_seconds = (end_time - start_time).total_seconds()
+        duration_ms = int(duration_seconds * 1000)
+
+        # Publish completion event
+        files_modified = [c.path for c in self.changes]
+        if success:
+            await self._publish_event(
+                task_id,
+                CompletionEvent(
+                    task_id=task_id,
+                    status="completed",
+                    duration_seconds=duration_seconds,
+                    files_modified=files_modified,
+                ),
+            )
+        else:
+            failed_step = results[-1] if results else None
+            error_msg = failed_step.error if failed_step else "Plan execution failed"
+            if failed_step:
+                error_msg = f"Step {failed_step.step.index} failed: {error_msg}"
+            await self._publish_event(
+                task_id,
+                ErrorEvent(
+                    task_id=task_id,
+                    error_type="plan_failed",
+                    error=error_msg,
+                ),
+            )
+
+        return ExecutionResult(
+            plan=plan,
+            step_results=results,
+            success=success,
+            total_duration_ms=duration_ms,
+        )
