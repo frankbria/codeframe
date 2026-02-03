@@ -14,10 +14,11 @@ Routes:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.git.github_integration import GitHubIntegration, GitHubAPIError, PRDetails
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
@@ -124,7 +125,9 @@ def _get_github_client() -> GitHubIntegration:
 
 
 @router.get("", response_model=PRListResponse)
+@rate_limit_standard()
 async def list_pull_requests(
+    request: Request,
     state: str = Query("open", description="Filter by state: open, closed, all"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PRListResponse:
@@ -162,7 +165,9 @@ async def list_pull_requests(
 
 
 @router.get("/{pr_number}", response_model=PRResponse)
+@rate_limit_standard()
 async def get_pull_request(
+    request: Request,
     pr_number: int,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PRResponse:
@@ -202,14 +207,17 @@ async def get_pull_request(
 
 
 @router.post("", response_model=PRResponse, status_code=201)
+@rate_limit_standard()
 async def create_pull_request(
-    request: CreatePRRequest,
+    request: Request,
+    body: CreatePRRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> PRResponse:
     """Create a new pull request.
 
     Args:
-        request: PR creation request
+        request: HTTP request for rate limiting
+        body: PR creation request
         workspace: v2 Workspace (for context)
 
     Returns:
@@ -218,10 +226,10 @@ async def create_pull_request(
     try:
         client = _get_github_client()
         pr = await client.create_pull_request(
-            branch=request.branch,
-            title=request.title,
-            body=request.body,
-            base=request.base,
+            branch=body.branch,
+            title=body.title,
+            body=body.body,
+            base=body.base,
         )
 
         return _pr_to_response(pr)
@@ -242,22 +250,25 @@ async def create_pull_request(
 
 
 @router.post("/{pr_number}/merge", response_model=MergeResponse)
+@rate_limit_standard()
 async def merge_pull_request(
+    request: Request,
     pr_number: int,
-    request: MergePRRequest = None,
+    body: MergePRRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> MergeResponse:
     """Merge a pull request.
 
     Args:
+        request: HTTP request for rate limiting
         pr_number: PR number to merge
-        request: Merge options
+        body: Merge options
         workspace: v2 Workspace (for context)
 
     Returns:
         Merge result
     """
-    method = request.method if request else "squash"
+    method = body.method if body else "squash"
 
     try:
         client = _get_github_client()
@@ -295,7 +306,9 @@ async def merge_pull_request(
 
 
 @router.post("/{pr_number}/close")
+@rate_limit_standard()
 async def close_pull_request(
+    request: Request,
     pr_number: int,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict:

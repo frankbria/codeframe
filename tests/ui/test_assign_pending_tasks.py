@@ -9,9 +9,21 @@ import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks, HTTPException, Request
 
 from codeframe.core.models import Task, TaskStatus
+
+
+@pytest.fixture
+def mock_request():
+    """Create mock starlette Request for rate limiter."""
+    request = MagicMock(spec=Request)
+    request.client = MagicMock()
+    request.client.host = "127.0.0.1"
+    request.headers = {}
+    request.state = MagicMock()
+    request.state.user = None
+    return request
 
 
 @pytest.fixture
@@ -62,7 +74,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_with_pending_tasks(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that endpoint triggers execution when pending tasks exist."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -77,6 +89,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -90,7 +103,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_no_pending_tasks(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that endpoint returns success but doesn't trigger execution when no pending tasks."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -104,6 +117,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -117,7 +131,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_wrong_phase(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that endpoint returns 400 when project is not in active phase."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -132,6 +146,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -143,7 +158,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_project_not_found(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that endpoint returns 404 when project doesn't exist."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -153,6 +168,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await assign_pending_tasks(
+                request=mock_request,
                 project_id=999,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -163,7 +179,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_access_denied(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that endpoint returns 403 when user doesn't have access."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -173,6 +189,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              pytest.raises(HTTPException) as exc_info:
             await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -183,7 +200,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_without_api_key(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks, caplog
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request, caplog
     ):
         """Test that endpoint warns when API key is missing."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -200,6 +217,7 @@ class TestAssignPendingTasksEndpoint:
             with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
                  patch.dict(os.environ, env_without_key, clear=True):
                 response = await assign_pending_tasks(
+                    request=mock_request,
                     project_id=1,
                     background_tasks=mock_background_tasks,
                     db=mock_db,
@@ -219,7 +237,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_only_counts_unassigned(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that only pending AND unassigned tasks are counted."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -234,6 +252,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -247,7 +266,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_blocked_when_execution_in_progress(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that assignment is blocked when tasks are already in progress."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -262,6 +281,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -277,7 +297,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_allowed_when_no_execution_in_progress(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that assignment proceeds when no tasks are in progress."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -292,6 +312,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -306,7 +327,7 @@ class TestAssignPendingTasksEndpoint:
 
     @pytest.mark.asyncio
     async def test_assign_pending_tasks_blocked_when_tasks_assigned(
-        self, mock_db, mock_user, mock_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_manager, mock_background_tasks, mock_request
     ):
         """Test that assignment is blocked when tasks are in ASSIGNED status."""
         from codeframe.ui.routers.tasks import assign_pending_tasks
@@ -321,6 +342,7 @@ class TestAssignPendingTasksEndpoint:
         with patch("codeframe.ui.routers.tasks.manager", mock_manager), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await assign_pending_tasks(
+                request=mock_request,
                 project_id=1,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
@@ -363,6 +385,7 @@ class TestAssignPendingTasksFunctionSignature:
         sig = inspect.signature(assign_pending_tasks)
         params = list(sig.parameters.keys())
 
+        assert "request" in params  # Required for rate limiting
         assert "project_id" in params
         assert "background_tasks" in params
         assert "db" in params

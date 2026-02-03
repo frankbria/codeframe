@@ -14,10 +14,11 @@ Routes:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import blockers
 from codeframe.core.blockers import BlockerStatus
 from codeframe.ui.dependencies import get_v2_workspace
@@ -92,7 +93,9 @@ def _blocker_to_response(blocker: blockers.Blocker) -> BlockerResponse:
 
 
 @router.get("", response_model=BlockerListResponse)
+@rate_limit_standard()
 async def list_blockers(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by status (OPEN, ANSWERED, RESOLVED)"),
     task_id: Optional[str] = Query(None, description="Filter by task ID"),
     limit: int = Query(100, ge=1, le=1000),
@@ -143,7 +146,9 @@ async def list_blockers(
 
 
 @router.get("/{blocker_id}", response_model=BlockerResponse)
+@rate_limit_standard()
 async def get_blocker(
+    request: Request,
     blocker_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BlockerResponse:
@@ -180,14 +185,17 @@ async def get_blocker(
 
 
 @router.post("", response_model=BlockerResponse, status_code=201)
+@rate_limit_standard()
 async def create_blocker(
-    request: CreateBlockerRequest,
+    request: Request,
+    body: CreateBlockerRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BlockerResponse:
     """Create a new blocker.
 
     Args:
-        request: Blocker creation request
+        request: HTTP request for rate limiting
+        body: Blocker creation request
         workspace: v2 Workspace
 
     Returns:
@@ -196,8 +204,8 @@ async def create_blocker(
     try:
         blocker = blockers.create(
             workspace,
-            question=request.question,
-            task_id=request.task_id,
+            question=body.question,
+            task_id=body.task_id,
         )
         return _blocker_to_response(blocker)
 
@@ -210,9 +218,11 @@ async def create_blocker(
 
 
 @router.post("/{blocker_id}/answer", response_model=BlockerResponse)
+@rate_limit_standard()
 async def answer_blocker(
+    request: Request,
     blocker_id: str,
-    request: AnswerBlockerRequest,
+    body: AnswerBlockerRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BlockerResponse:
     """Answer a blocker.
@@ -221,8 +231,9 @@ async def answer_blocker(
     so it can be restarted with `cf work start <task-id> --execute`.
 
     Args:
+        request: HTTP request for rate limiting
         blocker_id: Blocker to answer (can be partial ID)
-        request: Answer request
+        body: Answer request
         workspace: v2 Workspace
 
     Returns:
@@ -234,7 +245,7 @@ async def answer_blocker(
             - 400: Blocker already resolved or ambiguous ID
     """
     try:
-        blocker = blockers.answer(workspace, blocker_id, request.answer)
+        blocker = blockers.answer(workspace, blocker_id, body.answer)
         return _blocker_to_response(blocker)
 
     except ValueError as e:
@@ -257,7 +268,9 @@ async def answer_blocker(
 
 
 @router.post("/{blocker_id}/resolve", response_model=BlockerResponse)
+@rate_limit_standard()
 async def resolve_blocker(
+    request: Request,
     blocker_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> BlockerResponse:

@@ -9,10 +9,11 @@ The v1 router (review.py) remains for backwards compatibility.
 import logging
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import review
 from codeframe.ui.dependencies import get_v2_workspace
 
@@ -76,8 +77,10 @@ class ReviewTaskRequest(BaseModel):
 
 
 @router.post("/files", response_model=ReviewResultResponse)
+@rate_limit_standard()
 async def review_files(
-    request: ReviewFilesRequest,
+    request: Request,
+    body: ReviewFilesRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ReviewResultResponse:
     """Run code review on specified files.
@@ -86,14 +89,15 @@ async def review_files(
     detection on the given files.
 
     Args:
-        request: ReviewFilesRequest with file list
+        request: HTTP request for rate limiting
+        body: ReviewFilesRequest with file list
         workspace: v2 Workspace
 
     Returns:
         ReviewResultResponse with findings and score
     """
     try:
-        result = review.review_files(workspace, request.files)
+        result = review.review_files(workspace, body.files)
 
         return ReviewResultResponse(
             status=result.status,
@@ -118,8 +122,10 @@ async def review_files(
 
 
 @router.post("/task", response_model=ReviewResultResponse)
+@rate_limit_standard()
 async def review_task(
-    request: ReviewTaskRequest,
+    request: Request,
+    body: ReviewTaskRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ReviewResultResponse:
     """Run code review for a task's modified files.
@@ -127,7 +133,8 @@ async def review_task(
     Convenience endpoint that wraps file review with task context.
 
     Args:
-        request: ReviewTaskRequest with task ID and modified files
+        request: HTTP request for rate limiting
+        body: ReviewTaskRequest with task ID and modified files
         workspace: v2 Workspace
 
     Returns:
@@ -136,8 +143,8 @@ async def review_task(
     try:
         result = review.review_task(
             workspace,
-            task_id=request.task_id,
-            files_modified=request.files_modified,
+            task_id=body.task_id,
+            files_modified=body.files_modified,
         )
 
         return ReviewResultResponse(
@@ -163,8 +170,10 @@ async def review_task(
 
 
 @router.post("/files/summary", response_model=ReviewSummaryResponse)
+@rate_limit_standard()
 async def review_files_summary(
-    request: ReviewFilesRequest,
+    request: Request,
+    body: ReviewFilesRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ReviewSummaryResponse:
     """Run code review and return summary only.
@@ -173,14 +182,15 @@ async def review_files_summary(
     individual findings. Useful for quick status checks.
 
     Args:
-        request: ReviewFilesRequest with file list
+        request: HTTP request for rate limiting
+        body: ReviewFilesRequest with file list
         workspace: v2 Workspace
 
     Returns:
         ReviewSummaryResponse with aggregated metrics
     """
     try:
-        result = review.review_files(workspace, request.files)
+        result = review.review_files(workspace, body.files)
         summary = review.get_review_summary(result)
 
         return ReviewSummaryResponse(

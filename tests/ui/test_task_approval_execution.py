@@ -17,9 +17,21 @@ import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, Request
 
 from codeframe.core.models import Task, TaskStatus
+
+
+@pytest.fixture
+def mock_request():
+    """Create mock starlette Request for rate limiter."""
+    request = MagicMock(spec=Request)
+    request.client = MagicMock()
+    request.client.host = "127.0.0.1"
+    request.headers = {}
+    request.state = MagicMock()
+    request.state.user = None
+    return request
 
 
 # ============================================================================
@@ -233,19 +245,20 @@ class TestTaskApprovalTriggersExecution:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_schedules_background_execution(
-        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks, mock_request
     ):
         """Test that approving tasks schedules multi-agent execution as background task."""
         from codeframe.ui.routers.tasks import approve_tasks, TaskApprovalRequest
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_ws_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -264,13 +277,13 @@ class TestTaskApprovalTriggersExecution:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_skips_execution_without_api_key(
-        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks, caplog
+        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks, mock_request, caplog
     ):
         """Test that execution is skipped when ANTHROPIC_API_KEY is not set."""
         from codeframe.ui.routers.tasks import approve_tasks, TaskApprovalRequest
         import logging
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         # Remove API key from environment
         env_without_key = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
@@ -280,8 +293,9 @@ class TestTaskApprovalTriggersExecution:
                  patch("codeframe.ui.routers.tasks.PhaseManager"), \
                  patch.dict(os.environ, env_without_key, clear=True):
                 response = await approve_tasks(
+                    request=mock_request,
                     project_id=1,
-                    request=request,
+                    body=body,
                     background_tasks=mock_background_tasks,
                     db=mock_db,
                     current_user=mock_user
@@ -298,18 +312,19 @@ class TestTaskApprovalTriggersExecution:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_rejection_does_not_trigger_execution(
-        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks, mock_request
     ):
         """Test that rejecting tasks does not trigger execution."""
         from codeframe.ui.routers.tasks import approve_tasks, TaskApprovalRequest
 
-        request = TaskApprovalRequest(approved=False, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=False, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_ws_manager), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -323,13 +338,13 @@ class TestTaskApprovalTriggersExecution:
 
     @pytest.mark.asyncio
     async def test_approve_tasks_returns_immediately(
-        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks, mock_request
     ):
         """Test that approve_tasks returns immediately (doesn't wait for execution)."""
         from codeframe.ui.routers.tasks import approve_tasks, TaskApprovalRequest
         import time
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         start_time = time.time()
 
@@ -337,8 +352,9 @@ class TestTaskApprovalTriggersExecution:
              patch("codeframe.ui.routers.tasks.PhaseManager"), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             response = await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user
@@ -494,19 +510,20 @@ class TestExecutionEdgeCases:
 
     @pytest.mark.asyncio
     async def test_empty_api_key_treated_as_missing(
-        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks
+        self, mock_db, mock_user, mock_ws_manager, mock_background_tasks, mock_request
     ):
         """Test that empty string API key is treated same as missing."""
         from codeframe.ui.routers.tasks import approve_tasks, TaskApprovalRequest
 
-        request = TaskApprovalRequest(approved=True, excluded_task_ids=[])
+        body = TaskApprovalRequest(approved=True, excluded_task_ids=[])
 
         with patch("codeframe.ui.routers.tasks.manager", mock_ws_manager), \
              patch("codeframe.ui.routers.tasks.PhaseManager"), \
              patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}):
             await approve_tasks(
+                request=mock_request,
                 project_id=1,
-                request=request,
+                body=body,
                 background_tasks=mock_background_tasks,
                 db=mock_db,
                 current_user=mock_user

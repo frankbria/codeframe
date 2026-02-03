@@ -395,6 +395,17 @@ class GlobalConfig(BaseSettings):
     github_token: Optional[str] = Field(None, alias="GITHUB_TOKEN")
     github_repo: Optional[str] = Field(None, alias="GITHUB_REPO")  # Format: "owner/repo"
 
+    # Rate Limiting Configuration
+    rate_limit_enabled: bool = Field(True, alias="RATE_LIMIT_ENABLED")
+    rate_limit_storage: str = Field("memory", alias="RATE_LIMIT_STORAGE")
+    redis_url: Optional[str] = Field(None, alias="REDIS_URL")
+    rate_limit_auth: str = Field("10/minute", alias="RATE_LIMIT_AUTH")
+    rate_limit_standard: str = Field("100/minute", alias="RATE_LIMIT_STANDARD")
+    rate_limit_ai: str = Field("20/minute", alias="RATE_LIMIT_AI")
+    rate_limit_websocket: str = Field("30/minute", alias="RATE_LIMIT_WEBSOCKET")
+    # Comma-separated list of trusted proxy IPs/CIDRs (e.g., "10.0.0.0/8,172.16.0.0/12")
+    rate_limit_trusted_proxies: str = Field("", alias="RATE_LIMIT_TRUSTED_PROXIES")
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
@@ -415,6 +426,15 @@ class GlobalConfig(BaseSettings):
         """Validate port is in valid range."""
         if not (1 <= v <= 65535):
             raise ValueError(f"API_PORT must be between 1 and 65535, got: {v}")
+        return v
+
+    @field_validator("rate_limit_storage")
+    @classmethod
+    def validate_rate_limit_storage(cls, v: str) -> str:
+        """Validate rate limit storage is valid."""
+        allowed = ["memory", "redis"]
+        if v not in allowed:
+            raise ValueError(f"RATE_LIMIT_STORAGE must be one of {allowed}, got: {v}")
         return v
 
     def get_cors_origins_list(self) -> list[str]:
@@ -580,3 +600,31 @@ class Config:
             current = current[k]
 
         return current
+
+
+# Module-level singleton for GlobalConfig
+_global_config: Optional[GlobalConfig] = None
+
+
+def get_global_config() -> GlobalConfig:
+    """Get the global configuration singleton.
+
+    Loads from environment variables on first call, cached thereafter.
+    This is the recommended way to access GlobalConfig for most use cases.
+
+    Returns:
+        GlobalConfig instance with values from environment
+    """
+    global _global_config
+    if _global_config is None:
+        _global_config = GlobalConfig()
+    return _global_config
+
+
+def reset_global_config() -> None:
+    """Reset the global configuration singleton.
+
+    Useful for testing to ensure clean state between tests.
+    """
+    global _global_config
+    _global_config = None

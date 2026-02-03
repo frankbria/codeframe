@@ -17,11 +17,12 @@ existing web UI until Phase 3 (Web UI Rebuild).
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import runtime, tasks, conductor, streaming
 from codeframe.core.state_machine import TaskStatus
 from codeframe.ui.dependencies import get_v2_workspace
@@ -140,7 +141,9 @@ class UpdateTaskRequest(BaseModel):
 
 
 @router.get("", response_model=TaskListResponse)
+@rate_limit_standard()
 async def list_tasks(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by status (BACKLOG, READY, IN_PROGRESS, DONE, BLOCKED, FAILED)"),
     limit: int = Query(100, ge=1, le=1000),
     workspace: Workspace = Depends(get_v2_workspace),
@@ -194,7 +197,9 @@ async def list_tasks(
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
+@rate_limit_standard()
 async def get_task(
+    request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> TaskResponse:
@@ -228,9 +233,11 @@ async def get_task(
 
 
 @router.patch("/{task_id}", response_model=TaskResponse)
+@rate_limit_standard()
 async def update_task(
+    request: Request,
     task_id: str,
-    request: UpdateTaskRequest,
+    body: UpdateTaskRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> TaskResponse:
     """Update a task's title, description, priority, or status.
@@ -238,8 +245,9 @@ async def update_task(
     Only provided fields are updated; others are left unchanged.
 
     Args:
+        request: HTTP request for rate limiting
         task_id: Task ID to update
-        request: Update request with fields to change
+        body: Update request with fields to change
         workspace: v2 Workspace
 
     Returns:
@@ -252,16 +260,16 @@ async def update_task(
     """
     try:
         # Handle status update separately if provided
-        if request.status:
+        if body.status:
             try:
-                new_status = TaskStatus(request.status.upper())
+                new_status = TaskStatus(body.status.upper())
                 tasks.update_status(workspace, task_id, new_status)
             except ValueError as e:
                 if "Invalid status" in str(e) or "not a valid" in str(e).lower():
                     raise HTTPException(
                         status_code=400,
                         detail=api_error(
-                            f"Invalid status: {request.status}",
+                            f"Invalid status: {body.status}",
                             ErrorCodes.VALIDATION_ERROR,
                             f"Valid values: {[s.value for s in TaskStatus]}",
                         ),
@@ -276,9 +284,9 @@ async def update_task(
         task = tasks.update(
             workspace,
             task_id,
-            title=request.title,
-            description=request.description,
-            priority=request.priority,
+            title=body.title,
+            description=body.description,
+            priority=body.priority,
         )
 
         return TaskResponse(
@@ -312,7 +320,9 @@ async def update_task(
 
 
 @router.delete("/{task_id}")
+@rate_limit_standard()
 async def delete_task(
+    request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict:
@@ -348,8 +358,10 @@ async def delete_task(
 
 
 @router.post("/approve", response_model=ApproveTasksResponse)
+@rate_limit_standard()
 async def approve_tasks_endpoint(
-    request: ApproveTasksRequest,
+    request: Request,
+    body: ApproveTasksRequest,
     background_tasks: BackgroundTasks,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ApproveTasksResponse:
@@ -372,7 +384,7 @@ async def approve_tasks_endpoint(
         # Approve tasks (transition BACKLOG → READY)
         result = runtime.approve_tasks(
             workspace,
-            excluded_task_ids=request.excluded_task_ids,
+            excluded_task_ids=body.excluded_task_ids,
         )
 
         batch_id = None
@@ -390,7 +402,7 @@ async def approve_tasks_endpoint(
             )
 
         # Optionally start execution
-        if request.start_execution:
+        if body.start_execution:
             batch = conductor.start_batch(
                 workspace,
                 task_ids=result.approved_task_ids,
@@ -420,7 +432,9 @@ async def approve_tasks_endpoint(
 
 
 @router.get("/assignment-status", response_model=AssignmentStatusResponse)
+@rate_limit_standard()
 async def get_assignment_status(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> AssignmentStatusResponse:
     """Check if tasks can be assigned for execution.
@@ -450,8 +464,10 @@ async def get_assignment_status(
 
 
 @router.post("/execute", response_model=StartExecutionResponse)
+@rate_limit_ai()
 async def start_execution(
-    request: StartExecutionRequest,
+    request: Request,
+    body: StartExecutionRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> StartExecutionResponse:
     """Start task execution.
@@ -461,7 +477,8 @@ async def start_execution(
     This is the v2 equivalent of POST /api/projects/{id}/tasks/assign.
 
     Args:
-        request: Execution request with task IDs and strategy
+        request: HTTP request for rate limiting
+        body: Execution request with task IDs and strategy
         workspace: v2 Workspace
 
     Returns:
@@ -482,7 +499,7 @@ async def start_execution(
             )
 
         # Get task IDs
-        task_ids = request.task_ids or runtime.get_ready_task_ids(workspace)
+        task_ids = body.task_ids or runtime.get_ready_task_ids(workspace)
         if not task_ids:
             raise HTTPException(
                 status_code=400,
@@ -497,9 +514,9 @@ async def start_execution(
         batch = conductor.start_batch(
             workspace,
             task_ids=task_ids,
-            strategy=request.strategy,
-            max_parallel=request.max_parallel,
-            retry_count=request.retry_count,
+            strategy=body.strategy,
+            max_parallel=body.max_parallel,
+            retry_count=body.retry_count,
             on_failure="continue",
         )
 
@@ -507,7 +524,7 @@ async def start_execution(
             success=True,
             batch_id=batch.id,
             task_count=len(task_ids),
-            strategy=request.strategy,
+            strategy=body.strategy,
             message=f"Started execution for {len(task_ids)} task(s) (batch {batch.id[:8]}).",
         )
 
@@ -522,7 +539,9 @@ async def start_execution(
 
 
 @router.post("/{task_id}/start")
+@rate_limit_ai()
 async def start_single_task(
+    request: Request,
     task_id: str,
     execute: bool = Query(False, description="Run agent execution (requires ANTHROPIC_API_KEY)"),
     dry_run: bool = Query(False, description="Preview changes without making them"),
@@ -596,7 +615,9 @@ async def start_single_task(
 
 
 @router.post("/{task_id}/stop")
+@rate_limit_standard()
 async def stop_task(
+    request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
@@ -641,7 +662,9 @@ async def stop_task(
 
 
 @router.post("/{task_id}/resume")
+@rate_limit_ai()
 async def resume_task(
+    request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:
@@ -689,7 +712,9 @@ async def resume_task(
 
 
 @router.get("/{task_id}/stream")
+@rate_limit_standard()
 async def stream_task_output(
+    request: Request,
     task_id: str,
     tail: int = Query(0, ge=0, le=1000, description="Show last N lines before streaming"),
     workspace: Workspace = Depends(get_v2_workspace),
@@ -791,7 +816,9 @@ async def stream_task_output(
 
 
 @router.get("/{task_id}/run")
+@rate_limit_standard()
 async def get_task_run(
+    request: Request,
     task_id: str,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict[str, Any]:

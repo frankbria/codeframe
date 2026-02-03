@@ -12,10 +12,11 @@ Routes:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core.environment import EnvironmentValidator, ValidationResult, ToolInfo
 from codeframe.core.installer import ToolInstaller
 from codeframe.ui.dependencies import get_v2_workspace
@@ -112,7 +113,9 @@ def _result_to_response(result: ValidationResult) -> ValidationResultResponse:
 
 
 @router.get("/check", response_model=ValidationResultResponse)
+@rate_limit_standard()
 async def check_environment(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ValidationResultResponse:
     """Quick environment validation.
@@ -140,7 +143,9 @@ async def check_environment(
 
 
 @router.get("/doctor", response_model=ValidationResultResponse)
+@rate_limit_standard()
 async def run_doctor(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ValidationResultResponse:
     """Comprehensive environment diagnostics.
@@ -175,8 +180,10 @@ async def run_doctor(
 
 
 @router.post("/install", response_model=InstallResultResponse)
+@rate_limit_standard()
 async def install_tool(
-    request: InstallToolRequest,
+    request: Request,
+    body: InstallToolRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> InstallResultResponse:
     """Install a missing tool.
@@ -198,18 +205,18 @@ async def install_tool(
         installer = ToolInstaller()
 
         # Check if tool is known
-        if not installer.can_install(request.tool_name):
+        if not installer.can_install(body.tool_name):
             raise HTTPException(
                 status_code=400,
                 detail=api_error(
                     "Unknown tool",
                     ErrorCodes.INVALID_REQUEST,
-                    f"Don't know how to install '{request.tool_name}'",
+                    f"Don't know how to install '{body.tool_name}'",
                 ),
             )
 
         # Attempt installation (confirm=False for non-interactive server usage)
-        result = installer.install_tool(request.tool_name, confirm=False)
+        result = installer.install_tool(body.tool_name, confirm=False)
 
         return InstallResultResponse(
             success=result.success,
@@ -221,7 +228,7 @@ async def install_tool(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to install {request.tool_name}: {e}", exc_info=True)
+        logger.error(f"Failed to install {body.tool_name}: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=api_error("Installation failed", ErrorCodes.EXECUTION_FAILED, str(e)),
@@ -229,7 +236,9 @@ async def install_tool(
 
 
 @router.get("/tools")
+@rate_limit_standard()
 async def list_available_tools(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict:
     """List tools that can be automatically installed.

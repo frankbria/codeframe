@@ -9,10 +9,11 @@ The v1 router (schedule.py) remains for backwards compatibility.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import schedule
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
@@ -70,7 +71,9 @@ class BottleneckResponse(BaseModel):
 
 
 @router.get("", response_model=ScheduleResponse)
+@rate_limit_standard()
 async def get_schedule(
+    request: Request,
     agents: int = Query(1, ge=1, le=10, description="Number of parallel agents/workers"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ScheduleResponse:
@@ -120,7 +123,9 @@ async def get_schedule(
 
 
 @router.get("/predict", response_model=CompletionPredictionResponse)
+@rate_limit_standard()
 async def predict_completion(
+    request: Request,
     hours_per_day: float = Query(8.0, gt=0, le=24, description="Working hours per day"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> CompletionPredictionResponse:
@@ -162,7 +167,9 @@ async def predict_completion(
 
 
 @router.get("/bottlenecks", response_model=list[BottleneckResponse])
+@rate_limit_standard()
 async def get_bottlenecks(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> list[BottleneckResponse]:
     """Identify scheduling bottlenecks for a workspace.

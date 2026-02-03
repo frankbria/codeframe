@@ -11,10 +11,11 @@ Routes:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import gates
 from codeframe.core.gates import GateResult, GateCheck
 from codeframe.ui.dependencies import get_v2_workspace
@@ -90,8 +91,10 @@ def _result_to_response(result: GateResult) -> GateResultResponse:
 
 
 @router.post("/run", response_model=GateResultResponse)
+@rate_limit_standard()
 async def run_gates(
-    request: RunGatesRequest = None,
+    request: Request,
+    body: RunGatesRequest = None,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> GateResultResponse:
     """Run verification gates.
@@ -99,14 +102,15 @@ async def run_gates(
     Runs automated checks (tests, lint) on the workspace code.
 
     Args:
-        request: Gate run options
+        request: HTTP request for rate limiting
+        body: Gate run options
         workspace: v2 Workspace
 
     Returns:
         Gate results with pass/fail status for each check
     """
-    gate_list = request.gates if request else None
-    verbose = request.verbose if request else False
+    gate_list = body.gates if body else None
+    verbose = body.verbose if body else False
 
     try:
         result = gates.run(workspace, gates=gate_list, verbose=verbose)
@@ -121,7 +125,9 @@ async def run_gates(
 
 
 @router.get("", response_model=dict)
+@rate_limit_standard()
 async def list_gates(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> dict:
     """List available verification gates.

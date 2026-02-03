@@ -9,10 +9,11 @@ The v1 router (templates.py) remains for backwards compatibility.
 import logging
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core.workspace import Workspace
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.core import templates
 from codeframe.ui.dependencies import get_v2_workspace
 
@@ -90,7 +91,9 @@ class CategoryListResponse(BaseModel):
 
 
 @router.get("", response_model=list[TemplateListResponse])
+@rate_limit_standard()
 async def list_templates(
+    request: Request,
     category: Optional[str] = Query(None, description="Optional category filter"),
 ) -> list[TemplateListResponse]:
     """List all available task templates.
@@ -123,7 +126,8 @@ async def list_templates(
 
 
 @router.get("/categories", response_model=CategoryListResponse)
-async def list_categories() -> CategoryListResponse:
+@rate_limit_standard()
+async def list_categories(request: Request) -> CategoryListResponse:
     """List all template categories.
 
     Returns:
@@ -139,7 +143,9 @@ async def list_categories() -> CategoryListResponse:
 
 
 @router.get("/{template_id}", response_model=TemplateResponse)
+@rate_limit_standard()
 async def get_template(
+    request: Request,
     template_id: str,
 ) -> TemplateResponse:
     """Get details for a specific template.
@@ -187,8 +193,10 @@ async def get_template(
 
 
 @router.post("/apply", response_model=ApplyTemplateResponse)
+@rate_limit_standard()
 async def apply_template(
-    request: ApplyTemplateRequest,
+    request: Request,
+    body: ApplyTemplateRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> ApplyTemplateResponse:
     """Apply a template to create tasks for a workspace.
@@ -196,7 +204,8 @@ async def apply_template(
     This is the v2 equivalent of `cf templates apply`.
 
     Args:
-        request: Template application request
+        request: HTTP request for rate limiting
+        body: Template application request
         workspace: v2 Workspace
 
     Returns:
@@ -205,9 +214,9 @@ async def apply_template(
     try:
         result = templates.apply_template(
             workspace=workspace,
-            template_id=request.template_id,
-            issue_number=request.issue_number,
-            context=request.context,
+            template_id=body.template_id,
+            issue_number=body.issue_number,
+            context=body.context,
         )
 
         return ApplyTemplateResponse(

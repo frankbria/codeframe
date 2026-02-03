@@ -13,10 +13,11 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from codeframe.core import workspace as ws
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.core.workspace import Workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
@@ -126,8 +127,10 @@ def _detect_tech_stack(repo_path: Path) -> Optional[str]:
 
 
 @router.post("", response_model=WorkspaceResponse, status_code=201)
+@rate_limit_standard()
 async def init_workspace(
-    request: InitWorkspaceRequest,
+    request: Request,
+    body: InitWorkspaceRequest,
 ) -> WorkspaceResponse:
     """Initialize a new workspace for a repository.
 
@@ -135,7 +138,8 @@ async def init_workspace(
     This is idempotent - safe to call multiple times on the same repo.
 
     Args:
-        request: Workspace initialization request
+        request: HTTP request for rate limiting
+        body: Workspace initialization request
 
     Returns:
         Created or existing workspace
@@ -146,7 +150,7 @@ async def init_workspace(
             - 404: Repository path not found
     """
     try:
-        repo_path = Path(request.repo_path).resolve()
+        repo_path = Path(body.repo_path).resolve()
 
         # Validate path exists
         if not repo_path.exists():
@@ -170,8 +174,8 @@ async def init_workspace(
             )
 
         # Determine tech stack
-        tech_stack = request.tech_stack
-        if request.detect and not tech_stack:
+        tech_stack = body.tech_stack
+        if body.detect and not tech_stack:
             tech_stack = _detect_tech_stack(repo_path)
 
         # Check if workspace already exists
@@ -198,7 +202,9 @@ async def init_workspace(
 
 
 @router.get("/current", response_model=WorkspaceResponse)
+@rate_limit_standard()
 async def get_current_workspace(
+    request: Request,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> WorkspaceResponse:
     """Get information about the current workspace.
@@ -216,8 +222,10 @@ async def get_current_workspace(
 
 
 @router.patch("/current", response_model=WorkspaceResponse)
+@rate_limit_standard()
 async def update_current_workspace(
-    request: UpdateWorkspaceRequest,
+    request: Request,
+    body: UpdateWorkspaceRequest,
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> WorkspaceResponse:
     """Update the current workspace.
@@ -226,7 +234,8 @@ async def update_current_workspace(
     - tech_stack: Natural language description of the project's technology
 
     Args:
-        request: Update request
+        request: HTTP request for rate limiting
+        body: Update request
         workspace: v2 Workspace (resolved by dependency)
 
     Returns:
@@ -238,8 +247,8 @@ async def update_current_workspace(
     try:
         updated = workspace
 
-        if request.tech_stack is not None:
-            updated = ws.update_workspace_tech_stack(workspace.repo_path, request.tech_stack)
+        if body.tech_stack is not None:
+            updated = ws.update_workspace_tech_stack(workspace.repo_path, body.tech_stack)
 
         return _workspace_to_response(updated)
 
@@ -252,12 +261,15 @@ async def update_current_workspace(
 
 
 @router.get("/exists")
+@rate_limit_standard()
 async def check_workspace_exists(
+    request: Request,
     repo_path: str = Query(..., description="Path to check for workspace"),
 ) -> dict:
     """Check if a workspace exists at a given path.
 
     Args:
+        request: HTTP request for rate limiting
         repo_path: Path to check
 
     Returns:
