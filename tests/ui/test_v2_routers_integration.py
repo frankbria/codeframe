@@ -887,7 +887,6 @@ class TestRateLimitingIntegration:
     @pytest.fixture
     def rate_limited_client(self, test_workspace):
         """Create a test client with rate limiting enabled at a low limit."""
-        from unittest.mock import patch
 
         from fastapi import Request
         from slowapi import Limiter
