@@ -204,7 +204,8 @@ async def apply_template(
     This is the v2 equivalent of `cf templates apply`.
 
     Args:
-        request: Template application request
+        request: HTTP request for rate limiting
+        body: Template application request
         workspace: v2 Workspace
 
     Returns:

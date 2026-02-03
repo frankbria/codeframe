@@ -172,7 +172,8 @@ async def create_commit(
     Stages the specified files and creates a commit.
 
     Args:
-        request: CommitRequest with files and message
+        request: HTTP request for rate limiting
+        body: CommitRequest with files and message
         workspace: v2 Workspace
 
     Returns:

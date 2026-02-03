@@ -269,6 +269,7 @@ async def check_workspace_exists(
     """Check if a workspace exists at a given path.
 
     Args:
+        request: HTTP request for rate limiting
         repo_path: Path to check
 
     Returns:

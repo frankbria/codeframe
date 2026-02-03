@@ -226,7 +226,8 @@ async def create_prd(
     """Store a new PRD.
 
     Args:
-        request: PRD creation request
+        request: HTTP request for rate limiting
+        body: PRD creation request
         workspace: v2 Workspace
 
     Returns:

@@ -216,7 +216,8 @@ async def create_pull_request(
     """Create a new pull request.
 
     Args:
-        request: PR creation request
+        request: HTTP request for rate limiting
+        body: PR creation request
         workspace: v2 Workspace (for context)
 
     Returns:
@@ -259,8 +260,9 @@ async def merge_pull_request(
     """Merge a pull request.
 
     Args:
+        request: HTTP request for rate limiting
         pr_number: PR number to merge
-        request: Merge options
+        body: Merge options
         workspace: v2 Workspace (for context)
 
     Returns:

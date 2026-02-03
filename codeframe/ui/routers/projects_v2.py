@@ -89,6 +89,7 @@ async def get_workspace_status(
     This is the v2 equivalent of `cf status`.
 
     Args:
+        request: HTTP request for rate limiting
         workspace: v2 Workspace
 
     Returns:

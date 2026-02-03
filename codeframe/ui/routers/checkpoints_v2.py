@@ -91,7 +91,8 @@ async def create_checkpoint(
     This is the v2 equivalent of `cf checkpoint create`.
 
     Args:
-        request: Checkpoint creation request
+        request: HTTP request for rate limiting
+        body: Checkpoint creation request
         workspace: v2 Workspace
 
     Returns:

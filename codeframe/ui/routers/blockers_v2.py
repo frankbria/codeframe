@@ -194,7 +194,8 @@ async def create_blocker(
     """Create a new blocker.
 
     Args:
-        request: Blocker creation request
+        request: HTTP request for rate limiting
+        body: Blocker creation request
         workspace: v2 Workspace
 
     Returns:
@@ -230,8 +231,9 @@ async def answer_blocker(
     so it can be restarted with `cf work start <task-id> --execute`.
 
     Args:
+        request: HTTP request for rate limiting
         blocker_id: Blocker to answer (can be partial ID)
-        request: Answer request
+        body: Answer request
         workspace: v2 Workspace
 
     Returns:

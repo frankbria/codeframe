@@ -245,8 +245,9 @@ async def update_task(
     Only provided fields are updated; others are left unchanged.
 
     Args:
+        request: HTTP request for rate limiting
         task_id: Task ID to update
-        request: Update request with fields to change
+        body: Update request with fields to change
         workspace: v2 Workspace
 
     Returns:
@@ -476,7 +477,8 @@ async def start_execution(
     This is the v2 equivalent of POST /api/projects/{id}/tasks/assign.
 
     Args:
-        request: Execution request with task IDs and strategy
+        request: HTTP request for rate limiting
+        body: Execution request with task IDs and strategy
         workspace: v2 Workspace
 
     Returns:

@@ -204,8 +204,9 @@ async def submit_answer(
     adequate, feedback is provided with optional follow-up question.
 
     Args:
+        request: HTTP request for rate limiting
         session_id: Discovery session ID
-        request: Answer request with answer text
+        body: Answer request with answer text
         workspace: v2 Workspace
 
     Returns:
@@ -250,8 +251,9 @@ async def generate_prd(
     using the specified template (or default).
 
     Args:
+        request: HTTP request for rate limiting
         session_id: Discovery session ID (must be complete)
-        request: Optional template selection
+        body: Optional template selection
         workspace: v2 Workspace
 
     Returns:

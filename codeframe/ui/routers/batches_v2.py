@@ -193,8 +193,9 @@ async def stop_batch(
         - Immediate termination
 
     Args:
+        request: HTTP request for rate limiting
         batch_id: Batch to stop
-        request: Stop options
+        body: Stop options
         workspace: v2 Workspace
 
     Returns:
@@ -235,8 +236,9 @@ async def resume_batch(
     """Resume a batch by re-running failed/blocked tasks.
 
     Args:
+        request: HTTP request for rate limiting
         batch_id: Batch to resume
-        request: Resume options
+        body: Resume options
         workspace: v2 Workspace
 
     Returns:

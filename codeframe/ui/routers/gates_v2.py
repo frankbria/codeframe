@@ -102,7 +102,8 @@ async def run_gates(
     Runs automated checks (tests, lint) on the workspace code.
 
     Args:
-        request: Gate run options
+        request: HTTP request for rate limiting
+        body: Gate run options
         workspace: v2 Workspace
 
     Returns:
