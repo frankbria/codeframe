@@ -27,6 +27,8 @@ from codeframe.ui.models import (
     AgentRoleUpdateRequest,
     AgentAssignmentResponse,
     ProjectAssignmentResponse,
+    AgentStartResponse,
+    ErrorResponse,
 )
 from codeframe.lib.rate_limiter import rate_limit_standard, rate_limit_ai
 
@@ -37,7 +39,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["agents"])
 
 
-@router.post("/projects/{project_id}/start", status_code=202)
+@router.post(
+    "/projects/{project_id}/start",
+    status_code=202,
+    response_model=AgentStartResponse,
+    summary="Start Lead Agent for project",
+    description="Starts the Lead Agent for a project, initiating the discovery phase. "
+                "Returns 202 Accepted immediately while the agent starts in the background. "
+                "Idempotent: if the project is already running, returns current discovery status. "
+                "If discovery is 'idle', restarts discovery; if 'discovering' or 'completed', returns that status.",
+    responses={
+        200: {"model": AgentStartResponse, "description": "Discovery already in progress or completed"},
+        202: {"model": AgentStartResponse, "description": "Agent starting in background"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "ANTHROPIC_API_KEY not configured"},
+    },
+)
 @rate_limit_ai()
 async def start_project_agent(
     request: Request,
@@ -160,9 +179,25 @@ async def start_project_agent(
     return {"message": f"Starting Lead Agent for project {project_id}", "status": "starting"}
 
 
-@router.post("/projects/{project_id}/pause")
+@router.post(
+    "/projects/{project_id}/pause",
+    summary="Pause project execution",
+    description="Pauses all agent execution for a project. Running agents will complete their current step "
+                "then pause. The project status changes to 'paused'. Safe to call even if no agent is running.",
+    responses={
+        200: {"description": "Project paused successfully"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 @rate_limit_standard()
-async def pause_project(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def pause_project(
+    request: Request,
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Pause project execution.
 
     Args:
@@ -196,9 +231,25 @@ async def pause_project(request: Request, project_id: int, db: Database = Depend
         return {"success": True, "message": "Project paused (no agent was running)"}
 
 
-@router.post("/projects/{project_id}/resume")
+@router.post(
+    "/projects/{project_id}/resume",
+    summary="Resume project execution",
+    description="Resumes a paused project, restarting agent execution. Agents will continue with their "
+                "assigned tasks from where they left off. The project status changes to 'running'.",
+    responses={
+        200: {"description": "Project resuming"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 @rate_limit_ai()
-async def resume_project(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def resume_project(
+    request: Request,
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Resume project execution.
 
     Args:
@@ -232,12 +283,30 @@ async def resume_project(request: Request, project_id: int, db: Database = Depen
         return {"success": True, "message": "Project status updated to running (no agent found)"}
 
 
-@router.get("/projects/{project_id}/agents", response_model=List[AgentAssignmentResponse])
+@router.get(
+    "/projects/{project_id}/agents",
+    response_model=List[AgentAssignmentResponse],
+    summary="Get agents assigned to project",
+    description="Returns all agents currently assigned to a project with their roles, status, and metrics. "
+                "Use active_only=False to also include previously unassigned agents for historical view.",
+    responses={
+        200: {"description": "List of agent assignments"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Database error"},
+    },
+)
 @rate_limit_standard()
 async def get_project_agents(
     request: Request,
     project_id: int,
-    active_only: bool = Query(True, alias="is_active"),
+    active_only: bool = Query(
+        True,
+        alias="is_active",
+        description="If True (default), only returns currently assigned agents. "
+                    "If False, includes historical assignments."
+    ),
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -294,13 +363,29 @@ async def get_project_agents(
         raise HTTPException(status_code=500, detail=f"Error fetching agents: {str(e)}")
 
 
-@router.post("/projects/{project_id}/agents", status_code=201, response_model=dict)
+@router.post(
+    "/projects/{project_id}/agents",
+    status_code=201,
+    summary="Assign agent to project",
+    description="Assigns an agent to a project with a specific role. Each agent can only have one active "
+                "assignment per project. Use different roles like 'primary_backend', 'frontend', 'test', etc. "
+                "to organize multi-agent workflows.",
+    responses={
+        201: {"description": "Agent assigned successfully"},
+        400: {"model": ErrorResponse, "description": "Agent already assigned to this project"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project or agent not found"},
+        500: {"model": ErrorResponse, "description": "Error assigning agent"},
+    },
+)
 @rate_limit_standard()
 async def assign_agent_to_project(
     request: Request,
     project_id: int,
     body: AgentAssignmentRequest,
-    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Assign an agent to a project.
 
@@ -360,13 +445,27 @@ async def assign_agent_to_project(
         raise HTTPException(status_code=500, detail=f"Error assigning agent: {str(e)}")
 
 
-@router.delete("/projects/{project_id}/agents/{agent_id}", status_code=204)
+@router.delete(
+    "/projects/{project_id}/agents/{agent_id}",
+    status_code=204,
+    summary="Remove agent from project",
+    description="Removes an agent from a project (soft delete). The assignment record is preserved "
+                "with an unassigned_at timestamp for audit purposes. The agent can be re-assigned later.",
+    responses={
+        204: {"description": "Agent removed (no content)"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "No active assignment found for this agent/project"},
+        500: {"model": ErrorResponse, "description": "Error removing agent"},
+    },
+)
 @rate_limit_standard()
 async def remove_agent_from_project(
     request: Request,
     project_id: int,
     agent_id: str,
-    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Remove an agent from a project (soft delete).
 
@@ -412,14 +511,28 @@ async def remove_agent_from_project(
         raise HTTPException(status_code=500, detail=f"Error removing agent: {str(e)}")
 
 
-@router.put("/projects/{project_id}/agents/{agent_id}/role", response_model=AgentAssignmentResponse)
+@router.put(
+    "/projects/{project_id}/agents/{agent_id}/role",
+    response_model=AgentAssignmentResponse,
+    summary="Update agent role on project",
+    description="Updates the role of an assigned agent on a project. Use this to reassign agents "
+                "to different responsibilities without removing and re-adding them.",
+    responses={
+        200: {"model": AgentAssignmentResponse, "description": "Role updated, returns full assignment details"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "No active assignment found"},
+        500: {"model": ErrorResponse, "description": "Error updating agent role"},
+    },
+)
 @rate_limit_standard()
 async def update_agent_role(
     request: Request,
     project_id: int,
     agent_id: str,
     body: AgentRoleUpdateRequest,
-    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Update an agent's role on a project.
 
@@ -499,14 +612,28 @@ async def update_agent_role(
         raise HTTPException(status_code=500, detail=f"Error updating agent role: {str(e)}")
 
 
-@router.patch("/projects/{project_id}/agents/{agent_id}")
+@router.patch(
+    "/projects/{project_id}/agents/{agent_id}",
+    summary="Update agent role (PATCH)",
+    description="Updates the role of an assigned agent on a project. This is a PATCH variant of "
+                "the PUT endpoint, returning a simple success message instead of full assignment details.",
+    responses={
+        200: {"description": "Role updated successfully"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "No active assignment found"},
+        422: {"model": ErrorResponse, "description": "Validation error in request body"},
+        500: {"model": ErrorResponse, "description": "Error updating agent role"},
+    },
+)
 @rate_limit_standard()
 async def patch_agent_role(
     request: Request,
     project_id: int,
     agent_id: str,
     body: AgentRoleUpdateRequest,
-    db: Database = Depends(get_db), current_user: User = Depends(get_current_user),
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Update an agent's role on a project (PATCH variant).
 
@@ -557,12 +684,28 @@ async def patch_agent_role(
         raise HTTPException(status_code=500, detail=f"Error updating agent role: {str(e)}")
 
 
-@router.get("/agents/{agent_id}/projects", response_model=List[ProjectAssignmentResponse])
+@router.get(
+    "/agents/{agent_id}/projects",
+    response_model=List[ProjectAssignmentResponse],
+    summary="Get projects for agent",
+    description="Returns all projects an agent is assigned to, with the agent's role in each project. "
+                "Results are filtered to only include projects the authenticated user has access to. "
+                "Use active_only=False to include historical assignments.",
+    responses={
+        200: {"description": "List of project assignments"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        404: {"model": ErrorResponse, "description": "Agent not found"},
+        500: {"model": ErrorResponse, "description": "Database error"},
+    },
+)
 @rate_limit_standard()
 async def get_agent_projects(
     request: Request,
     agent_id: str,
-    active_only: bool = Query(True),
+    active_only: bool = Query(
+        True,
+        description="If True (default), only returns active assignments. If False, includes historical."
+    ),
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

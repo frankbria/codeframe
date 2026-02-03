@@ -8,7 +8,7 @@ blocker metrics.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 
 from codeframe.persistence.database import Database
@@ -17,16 +17,39 @@ from codeframe.auth.dependencies import get_current_user
 from codeframe.auth.models import User
 from codeframe.ui.shared import manager
 from codeframe.core.models import BlockerResolve
+from codeframe.ui.models import (
+    BlockerResponse,
+    BlockerListResponse,
+    BlockerMetricsResponse,
+    ErrorResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/projects/{project_id}/blockers", tags=["blockers"])
 
 
-@router.get("")
+@router.get(
+    "",
+    response_model=BlockerListResponse,
+    summary="Get project blockers",
+    description="Returns all blockers for a project with optional status filtering. "
+                "Blockers are human-in-the-loop intervention points where agents need guidance. "
+                "SYNC blockers pause execution; ASYNC blockers allow work to continue with workarounds.",
+    responses={
+        200: {"model": BlockerListResponse, "description": "List of blockers with counts"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 async def get_project_blockers(
     project_id: int,
-    status: Optional[str] = None,
+    status: Optional[str] = Query(
+        default=None,
+        description="Filter by status: 'PENDING' (awaiting answer), 'RESOLVED' (answered), 'EXPIRED' (timed out)",
+        example="PENDING"
+    ),
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -64,7 +87,19 @@ async def get_project_blockers(
     return blockers_data
 
 
-@router.get("/metrics")
+@router.get(
+    "/metrics",
+    response_model=BlockerMetricsResponse,
+    summary="Get blocker metrics",
+    description="Returns analytics on blocker resolution for a project, including average resolution time, "
+                "expiration rate, and counts by status/type. Useful for understanding human-in-the-loop efficiency.",
+    responses={
+        200: {"model": BlockerMetricsResponse, "description": "Blocker metrics"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 async def get_blocker_metrics_endpoint(
     project_id: int,
     db: Database = Depends(get_db),
@@ -121,7 +156,19 @@ async def get_blocker_metrics_endpoint(
 blocker_router = APIRouter(prefix="/api/blockers", tags=["blockers"])
 
 
-@blocker_router.get("/{blocker_id}")
+@blocker_router.get(
+    "/{blocker_id}",
+    response_model=BlockerResponse,
+    summary="Get blocker details",
+    description="Returns detailed information about a specific blocker, including its type, status, "
+                "description, and resolution (if any). Requires access to the blocker's parent project.",
+    responses={
+        200: {"model": BlockerResponse, "description": "Blocker details"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied to blocker's project"},
+        404: {"model": ErrorResponse, "description": "Blocker not found"},
+    },
+)
 async def get_blocker(
     blocker_id: int,
     db: Database = Depends(get_db),
@@ -153,7 +200,21 @@ async def get_blocker(
     return blocker
 
 
-@blocker_router.post("/{blocker_id}/resolve")
+@blocker_router.post(
+    "/{blocker_id}/resolve",
+    summary="Resolve a blocker",
+    description="Provides an answer to resolve a blocker, allowing the agent to continue. "
+                "The answer is stored with the blocker and agents can use it to proceed. "
+                "Returns 409 Conflict if the blocker was already resolved.",
+    responses={
+        200: {"description": "Blocker resolved successfully"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Blocker not found"},
+        409: {"description": "Blocker already resolved"},
+        422: {"model": ErrorResponse, "description": "Invalid request body"},
+    },
+)
 async def resolve_blocker_endpoint(
     blocker_id: int,
     request: BlockerResolve,

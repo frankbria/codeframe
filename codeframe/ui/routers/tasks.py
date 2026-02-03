@@ -14,8 +14,8 @@ import os
 from datetime import datetime, UTC
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field, ConfigDict
 
 from codeframe.core.models import Task, TaskStatus
 from codeframe.core.phase_manager import (
@@ -143,17 +143,72 @@ async def start_development_execution(
 
 class TaskCreateRequest(BaseModel):
     """Request model for creating a task."""
-    project_id: int
-    title: str = Field(..., min_length=1, max_length=500)
-    description: str = ""
-    priority: int = Field(default=3, ge=0, le=4)
-    status: str = Field(default="pending")
-    workflow_step: int = Field(default=1, ge=1)
-    depends_on: Optional[str] = None
-    requires_mcp: bool = False
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "project_id": 1,
+                "title": "Implement user authentication endpoint",
+                "description": "Create POST /api/auth/login endpoint with JWT token generation",
+                "priority": 2,
+                "status": "pending",
+                "workflow_step": 3,
+                "depends_on": "41,42",
+                "requires_mcp": False
+            }
+        }
+    )
+
+    project_id: int = Field(..., description="Project ID to create the task in")
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Task title/summary (1-500 characters)"
+    )
+    description: str = Field(
+        default="",
+        description="Detailed task description with requirements and acceptance criteria"
+    )
+    priority: int = Field(
+        default=3,
+        ge=0,
+        le=4,
+        description="Task priority: 0=critical, 1=high, 2=medium, 3=low (default), 4=backlog"
+    )
+    status: str = Field(
+        default="pending",
+        description="Initial task status. Usually 'pending' for new tasks."
+    )
+    workflow_step: int = Field(
+        default=1,
+        ge=1,
+        description="Workflow step number for ordering tasks within a phase"
+    )
+    depends_on: Optional[str] = Field(
+        default=None,
+        description="Comma-separated list of task IDs that must complete before this task can start"
+    )
+    requires_mcp: bool = Field(
+        default=False,
+        description="Whether this task requires MCP (Model Context Protocol) server access"
+    )
 
 
-@router.post("", status_code=201)
+@router.post(
+    "",
+    status_code=201,
+    summary="Create a new task",
+    description="Creates a new task in the specified project. Tasks represent individual work items "
+                "that agents execute. Tasks can have dependencies on other tasks using the depends_on field.",
+    responses={
+        201: {"description": "Task created successfully"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Access denied - user doesn't have access to project"},
+        404: {"description": "Project not found"},
+        500: {"description": "Error creating task"},
+    },
+)
 @rate_limit_standard()
 async def create_task(
     request: Request,
@@ -232,20 +287,64 @@ async def create_task(
 
 class TaskApprovalRequest(BaseModel):
     """Request model for task approval."""
-    approved: bool
-    excluded_task_ids: List[int] = Field(default_factory=list)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "approved": True,
+                "excluded_task_ids": [15, 18]
+            }
+        }
+    )
+
+    approved: bool = Field(
+        ...,
+        description="True to approve tasks and start development, False to reject"
+    )
+    excluded_task_ids: List[int] = Field(
+        default_factory=list,
+        description="List of task IDs to exclude from approval (they remain unchanged for later review)"
+    )
 
 
 class TaskApprovalResponse(BaseModel):
     """Response model for task approval."""
-    success: bool
-    phase: str
-    approved_count: int
-    excluded_count: int
-    message: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "phase": "active",
+                "approved_count": 23,
+                "excluded_count": 2,
+                "message": "Successfully approved 23 tasks. Development phase started."
+            }
+        }
+    )
+
+    success: bool = Field(..., description="Whether the approval operation succeeded")
+    phase: str = Field(..., description="Current project phase after approval")
+    approved_count: int = Field(..., description="Number of tasks that were approved")
+    excluded_count: int = Field(..., description="Number of tasks that were excluded")
+    message: str = Field(..., description="Human-readable status message")
 
 
-@project_router.post("/{project_id}/tasks/approve")
+@project_router.post(
+    "/{project_id}/tasks/approve",
+    response_model=TaskApprovalResponse,
+    summary="Approve tasks and start development",
+    description="Approves generated tasks and transitions the project from planning to active (development) phase. "
+                "After approval, multi-agent execution begins in the background. "
+                "Optionally exclude specific tasks from approval using excluded_task_ids.",
+    responses={
+        200: {"model": TaskApprovalResponse, "description": "Tasks approved, development started"},
+        400: {"description": "Project not in planning phase"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Access denied"},
+        404: {"description": "Project or tasks not found"},
+        500: {"description": "Failed to transition project phase"},
+    },
+)
 @rate_limit_standard()
 async def approve_tasks(
     request: Request,
@@ -390,12 +489,38 @@ async def approve_tasks(
 
 class TaskAssignmentResponse(BaseModel):
     """Response model for task assignment."""
-    success: bool
-    pending_count: int
-    message: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "pending_count": 5,
+                "message": "Assignment started for 5 pending task(s)."
+            }
+        }
+    )
+
+    success: bool = Field(..., description="Whether the assignment operation was triggered")
+    pending_count: int = Field(..., description="Number of pending unassigned tasks found")
+    message: str = Field(..., description="Human-readable status message")
 
 
-@project_router.post("/{project_id}/tasks/assign")
+@project_router.post(
+    "/{project_id}/tasks/assign",
+    response_model=TaskAssignmentResponse,
+    summary="Manually trigger task assignment",
+    description="Restarts the multi-agent execution process for tasks stuck in 'pending' state. "
+                "Use this when tasks are unassigned after joining a session, when the original execution "
+                "failed/timed out, or when WebSocket messages were missed. "
+                "If execution is already in progress, returns status without starting a new execution.",
+    responses={
+        200: {"model": TaskAssignmentResponse, "description": "Assignment status"},
+        400: {"description": "Project not in active phase"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Access denied"},
+        404: {"description": "Project not found"},
+    },
+)
 @rate_limit_standard()
 async def assign_pending_tasks(
     request: Request,

@@ -241,14 +241,166 @@ async def lifespan(app: FastAPI):
 
 
 # ============================================================================
+# OpenAPI Tags and Metadata
+# ============================================================================
+
+OPENAPI_TAGS = [
+    {
+        "name": "health",
+        "description": "Health check endpoints - verify API availability and get deployment information.",
+    },
+    {
+        "name": "projects",
+        "description": "Project lifecycle and management - create, read, update, delete projects and access project status, tasks, activity, PRD, and session state.",
+    },
+    {
+        "name": "tasks",
+        "description": "Task creation, management, and approval workflow - create tasks, approve generated tasks to start development, and manually trigger task assignment.",
+    },
+    {
+        "name": "agents",
+        "description": "Agent lifecycle and assignment - start/pause/resume agents, assign agents to projects with roles, and manage multi-agent workflows.",
+    },
+    {
+        "name": "blockers",
+        "description": "Human-in-the-loop blocker management - list, view, and resolve blockers that require human guidance for agents to continue.",
+    },
+    {
+        "name": "checkpoints",
+        "description": "Project checkpoint and restore functionality - create snapshots of project state and restore to previous checkpoints.",
+    },
+    {
+        "name": "chat",
+        "description": "Chat and communication endpoints for real-time interaction with agents.",
+    },
+    {
+        "name": "context",
+        "description": "Context management for agent execution - manage codebase context, file references, and relevant information.",
+    },
+    {
+        "name": "discovery",
+        "description": "Discovery phase operations - codebase analysis, structure detection, and initial project understanding.",
+    },
+    {
+        "name": "git",
+        "description": "Git operations - commit, branch, diff, and repository management.",
+    },
+    {
+        "name": "lint",
+        "description": "Code linting operations - run and manage linting checks.",
+    },
+    {
+        "name": "metrics",
+        "description": "Metrics and analytics - project progress, agent performance, and quality metrics.",
+    },
+    {
+        "name": "quality_gates",
+        "description": "Quality gates and checks - run tests, type checking, coverage, and code review gates.",
+    },
+    {
+        "name": "review",
+        "description": "Code review functionality - trigger and manage AI-powered code reviews.",
+    },
+    {
+        "name": "schedule",
+        "description": "Task scheduling - view schedule predictions, bottlenecks, and critical path analysis.",
+    },
+    {
+        "name": "session",
+        "description": "Session management - track session state, progress, and continuity across work sessions.",
+    },
+    {
+        "name": "templates",
+        "description": "Project and task templates - list, view, and apply reusable templates.",
+    },
+    {
+        "name": "websocket",
+        "description": "WebSocket connections for real-time updates and event streaming.",
+    },
+    {
+        "name": "auth",
+        "description": "Authentication and authorization - login, logout, API keys, and session management.",
+    },
+]
+
+OPENAPI_DESCRIPTION = """
+# CodeFRAME API
+
+**CodeFRAME** is an AI-powered software development framework that orchestrates multiple agents
+to complete programming tasks. This API provides real-time monitoring and control for CodeFRAME projects.
+
+## Overview
+
+The CodeFRAME API enables you to:
+
+- **Create and manage projects** - Initialize projects from git repos, local paths, or start empty
+- **Generate and approve tasks** - AI generates implementation tasks from PRDs; approve to start development
+- **Monitor agent execution** - Track agents as they work through tasks with real-time WebSocket updates
+- **Handle blockers** - Provide human guidance when agents encounter decisions requiring input
+- **Review and ship** - Run quality gates, review code changes, and manage the deployment process
+
+## Authentication
+
+All endpoints require authentication. The API supports two authentication methods:
+
+1. **API Key** - Include `X-API-Key` header with your API key
+2. **Session Token** - Use JWT token from login endpoint in `Authorization: Bearer <token>` header
+
+## Rate Limiting
+
+The API implements rate limiting to ensure fair usage:
+- **Standard endpoints**: Higher request limits for read operations
+- **AI endpoints** (agent start, LLM calls): Lower limits due to computational cost
+
+Rate limit headers are included in responses: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+
+## WebSocket Events
+
+For real-time updates, connect to the WebSocket endpoint. Events include:
+- `task_assigned`, `task_completed`, `task_failed`
+- `agent_created`, `agent_status`
+- `blocker_created`, `blocker_resolved`
+- `discovery_starting`, `discovery_completed`
+
+## Error Responses
+
+All errors follow a consistent format:
+```json
+{
+    "detail": "Error message describing what went wrong"
+}
+```
+
+Common HTTP status codes:
+- `400` - Bad Request (validation error)
+- `401` - Unauthorized (authentication required)
+- `403` - Forbidden (insufficient permissions)
+- `404` - Not Found (resource doesn't exist)
+- `409` - Conflict (duplicate resource or state conflict)
+- `422` - Unprocessable Entity (Pydantic validation failure)
+- `429` - Too Many Requests (rate limit exceeded)
+- `500` - Internal Server Error
+"""
+
+
+# ============================================================================
 # FastAPI Application
 # ============================================================================
 
 app = FastAPI(
-    title="CodeFRAME Status Server",
-    description="Real-time monitoring and control for CodeFRAME projects",
-    version="0.1.0",
+    title="CodeFRAME API",
+    description=OPENAPI_DESCRIPTION,
+    version="2.0.0",
     lifespan=lifespan,
+    openapi_tags=OPENAPI_TAGS,
+    contact={
+        "name": "CodeFRAME Support",
+        "url": "https://github.com/frankbria/codeframe",
+    },
+    license_info={
+        "name": "MIT",
+        "identifier": "MIT",
+    },
 )
 
 
@@ -307,13 +459,24 @@ app.add_middleware(
 # ============================================================================
 
 
-@app.get("/")
+@app.get(
+    "/",
+    summary="Basic health check",
+    description="Simple health check endpoint that returns online status. Use /health for detailed information.",
+    tags=["health"],
+)
 async def root():
     """Health check endpoint."""
-    return {"status": "online", "service": "CodeFRAME Status Server"}
+    return {"status": "online", "service": "CodeFRAME API"}
 
 
-@app.get("/health")
+@app.get(
+    "/health",
+    summary="Detailed health check",
+    description="Returns comprehensive health information including version, git commit, deployment time, "
+                "and database connection status. Useful for monitoring and debugging.",
+    tags=["health"],
+)
 async def health_check():
     """Detailed health check with deployment info.
 

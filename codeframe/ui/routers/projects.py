@@ -24,6 +24,14 @@ from codeframe.auth import get_current_user, User
 from codeframe.ui.models import (
     ProjectCreateRequest,
     ProjectResponse,
+    ProjectListResponse,
+    ProjectStatusResponse,
+    TaskListResponse,
+    ActivityListResponse,
+    PRDResponse,
+    IssuesListResponse,
+    SessionStateResponse,
+    ErrorResponse,
     SourceType,
 )
 from codeframe.lib.rate_limiter import rate_limit_standard
@@ -49,7 +57,16 @@ def is_hosted_mode() -> bool:
     return get_deployment_mode() == DeploymentMode.HOSTED
 
 
-@router.get("")
+@router.get(
+    "",
+    response_model=ProjectListResponse,
+    summary="List all projects",
+    description="Returns all CodeFRAME projects accessible to the authenticated user. "
+                "Projects are scoped by user - each user only sees projects they own or have been granted access to.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated - valid API key or session required"},
+    },
+)
 @rate_limit_standard()
 async def list_projects(
     request: Request,
@@ -64,7 +81,22 @@ async def list_projects(
     return {"projects": projects}
 
 
-@router.post("", status_code=201, response_model=ProjectResponse)
+@router.post(
+    "",
+    status_code=201,
+    response_model=ProjectResponse,
+    summary="Create a new project",
+    description="Creates a new CodeFRAME project with the specified configuration. "
+                "Supports multiple source types: git_remote (clone from URL), local_path (link existing directory), "
+                "upload (file upload), or empty (start fresh). The project is automatically assigned to the authenticated user.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request - validation error or malformed input"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Forbidden - source_type='local_path' not available in hosted mode"},
+        409: {"model": ErrorResponse, "description": "Conflict - project with this name already exists"},
+        500: {"model": ErrorResponse, "description": "Server error - database or workspace creation failed"},
+    },
+)
 @rate_limit_standard()
 async def create_project(
     request: Request,
@@ -211,7 +243,18 @@ async def create_project(
     )
 
 
-@router.get("/{project_id}")
+@router.get(
+    "/{project_id}",
+    response_model=ProjectResponse,
+    summary="Get project by ID",
+    description="Retrieves detailed information about a specific project. "
+                "Requires the authenticated user to have access to the project (owner or collaborator).",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied - user doesn't have access to this project"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 @rate_limit_standard()
 async def get_project(
     request: Request,
@@ -254,7 +297,18 @@ async def get_project(
     }
 
 
-@router.get("/{project_id}/status")
+@router.get(
+    "/{project_id}/status",
+    response_model=ProjectStatusResponse,
+    summary="Get project status and progress",
+    description="Returns comprehensive project status including execution state, lifecycle phase, "
+                "and progress metrics. Progress is calculated from task completion rates.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 @rate_limit_standard()
 async def get_project_status(
     request: Request,
@@ -286,14 +340,43 @@ async def get_project_status(
     }
 
 
-@router.get("/{project_id}/tasks")
+@router.get(
+    "/{project_id}/tasks",
+    response_model=TaskListResponse,
+    summary="Get project tasks with filtering and pagination",
+    description="Returns tasks for a project with optional status filtering and pagination. "
+                "Tasks are returned with full details including status, priority, and assignment info.",
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid status value provided"},
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        422: {"model": ErrorResponse, "description": "Invalid parameters (negative offset, limit out of range)"},
+    },
+)
 @rate_limit_standard()
 async def get_tasks(
     request: Request,
     project_id: int,
-    status: str | None = None,
-    limit: int = Query(default=50, ge=1, le=1000, description="Max tasks to return (1-1000)"),
-    offset: int = Query(default=0, ge=0, description="Tasks to skip for pagination"),
+    status: str | None = Query(
+        default=None,
+        description="Filter by task status. Valid values: 'pending', 'assigned', 'in_progress', "
+                    "'blocked', 'completed', 'failed'",
+        example="in_progress"
+    ),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=1000,
+        description="Maximum number of tasks to return (1-1000)",
+        example=50
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Number of tasks to skip for pagination",
+        example=0
+    ),
     db: Database = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -370,9 +453,33 @@ async def get_tasks(
         raise HTTPException(status_code=500, detail="Error fetching tasks")
 
 
-@router.get("/{project_id}/activity")
+@router.get(
+    "/{project_id}/activity",
+    response_model=ActivityListResponse,
+    summary="Get recent project activity",
+    description="Returns the activity log for a project, showing recent actions like task creation, "
+                "completion, blocker events, and phase transitions. Results are ordered by most recent first.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+        500: {"model": ErrorResponse, "description": "Error fetching activity"},
+    },
+)
 @rate_limit_standard()
-async def get_activity(request: Request, project_id: int, limit: int = 50, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_activity(
+    request: Request,
+    project_id: int,
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+        description="Maximum number of activity items to return (1-500)",
+        example=50
+    ),
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get recent activity log."""
     try:
         # Authorization check
@@ -391,9 +498,26 @@ async def get_activity(request: Request, project_id: int, limit: int = 50, db: D
         raise HTTPException(status_code=500, detail=f"Error fetching activity: {str(e)}")
 
 
-@router.get("/{project_id}/prd")
+@router.get(
+    "/{project_id}/prd",
+    response_model=PRDResponse,
+    summary="Get project PRD",
+    description="Returns the Product Requirements Document (PRD) for a project. "
+                "The PRD contains the project specification used to generate tasks. "
+                "Status indicates availability: 'available' (ready), 'generating' (in progress), 'not_found' (no PRD).",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 @rate_limit_standard()
-async def get_project_prd(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_project_prd(
+    request: Request,
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get PRD for a project (cf-26).
 
     Sprint 2 Foundation Contract:
@@ -446,9 +570,30 @@ async def get_project_prd(request: Request, project_id: int, db: Database = Depe
     }
 
 
-@router.get("/{project_id}/issues")
+@router.get(
+    "/{project_id}/issues",
+    response_model=IssuesListResponse,
+    summary="Get project issues",
+    description="Returns issues (high-level work items) for a project. Issues group related tasks together. "
+                "Use include='tasks' to also return the tasks under each issue.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 @rate_limit_standard()
-async def get_project_issues(request: Request, project_id: int, include: str = None, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_project_issues(
+    request: Request,
+    project_id: int,
+    include: str = Query(
+        default=None,
+        description="Set to 'tasks' to include tasks array under each issue",
+        example="tasks"
+    ),
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get issues for a project (cf-26).
 
     Sprint 2 Foundation Contract:
@@ -503,9 +648,27 @@ async def get_project_issues(request: Request, project_id: int, include: str = N
     return issues_data
 
 
-@router.get("/{project_id}/session", tags=["session"])
+@router.get(
+    "/{project_id}/session",
+    tags=["session"],
+    response_model=SessionStateResponse,
+    summary="Get current session state",
+    description="Returns the current session state for a project including last session summary, "
+                "recommended next actions, overall progress percentage, and any active blockers requiring attention. "
+                "Returns empty state if no session file exists.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Not authenticated"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Project not found"},
+    },
+)
 @rate_limit_standard()
-async def get_session_state(request: Request, project_id: int, db: Database = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_session_state(
+    request: Request,
+    project_id: int,
+    db: Database = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get current session state for project (T028).
 
     Args:
