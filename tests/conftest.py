@@ -1,7 +1,16 @@
 """Shared pytest fixtures for CodeFRAME tests."""
 
+import jwt
+import os
+import tempfile
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Generator
+import pytest
+
 # Skip v1 legacy tests that depend on removed v1 persistence layer (app.state.db)
 # These tests use v1 routers/APIs that were removed in the v2 refactor
+# NOTE: collect_ignore must be at module level but can come after imports
 collect_ignore = [
     # v1 API tests (use app.state.db)
     "api/test_api_discovery_progress.py",
@@ -30,14 +39,6 @@ collect_ignore = [
     # Other v1 tests
     "test_review_api.py",
 ]
-
-import jwt
-import os
-import tempfile
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Generator
-import pytest
 
 
 def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
