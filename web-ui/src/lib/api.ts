@@ -14,6 +14,30 @@ import type {
   ApiError,
 } from '@/types';
 
+// FastAPI validation error format
+interface ValidationErrorItem {
+  msg: string;
+  loc?: (string | number)[];
+  type?: string;
+}
+
+type FastApiErrorDetail = string | ValidationErrorItem[];
+
+/**
+ * Normalize FastAPI error detail to a string.
+ * FastAPI returns detail as string for simple errors, or array for validation errors.
+ */
+export function normalizeErrorDetail(
+  rawDetail: FastApiErrorDetail | undefined,
+  fallbackMessage: string
+): string {
+  if (Array.isArray(rawDetail)) {
+    // Join validation error messages
+    return rawDetail.map((err) => err.msg).join('; ');
+  }
+  return rawDetail || fallbackMessage || 'An error occurred';
+}
+
 // Create axios instance with base configuration
 const createApiClient = (): AxiosInstance => {
   const client = axios.create({
@@ -27,10 +51,10 @@ const createApiClient = (): AxiosInstance => {
   // Add response interceptor for error handling
   client.interceptors.response.use(
     (response) => response,
-    (error: AxiosError<ApiError>) => {
+    (error: AxiosError<{ detail?: FastApiErrorDetail }>) => {
       // Transform error for consistent handling
       const apiError: ApiError = {
-        detail: error.response?.data?.detail || error.message || 'An error occurred',
+        detail: normalizeErrorDetail(error.response?.data?.detail, error.message),
         status_code: error.response?.status,
       };
       return Promise.reject(apiError);

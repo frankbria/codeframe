@@ -87,6 +87,8 @@ export interface EventListResponse {
 }
 
 // API Error type
+// Note: FastAPI returns detail as string OR array (for validation errors).
+// The API client normalizes arrays to strings by joining error messages.
 export interface ApiError {
   detail: string;
   status_code?: number;
