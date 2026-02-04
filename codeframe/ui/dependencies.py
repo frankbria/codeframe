@@ -1,40 +1,20 @@
 """FastAPI dependency injection providers.
 
 This module provides dependency injection functions for accessing
-shared application state (database, workspace manager, etc.) across
-all API endpoints.
+shared application state across all API endpoints.
 
-Supports both v1 (Database, WorkspaceManager) and v2 (Workspace) patterns.
+v2-only: All dependencies use codeframe.core modules.
 """
 
 from pathlib import Path
 from typing import Optional
 
-from fastapi import HTTPException, Query, Request, WebSocket
+from fastapi import HTTPException, Query, Request
 
-from codeframe.persistence.database import Database
 from codeframe.workspace import WorkspaceManager
 
 # v2 imports
 from codeframe.core.workspace import Workspace, get_workspace, workspace_exists
-
-
-def get_db(request: Request) -> Database:
-    """Get database connection from application state.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        Database instance from app.state.db
-
-    Usage:
-        @router.get("/endpoint")
-        async def endpoint(db: Database = Depends(get_db)):
-            # Use db here
-            ...
-    """
-    return request.app.state.db
 
 
 def get_workspace_manager(request: Request) -> WorkspaceManager:
@@ -55,24 +35,6 @@ def get_workspace_manager(request: Request) -> WorkspaceManager:
     return request.app.state.workspace_manager
 
 
-def get_db_websocket(websocket: WebSocket) -> Database:
-    """Get database connection from application state for WebSocket endpoints.
-
-    Args:
-        websocket: FastAPI WebSocket object
-
-    Returns:
-        Database instance from app.state.db
-
-    Usage:
-        @router.websocket("/ws/endpoint")
-        async def websocket_endpoint(websocket: WebSocket, db: Database = Depends(get_db_websocket)):
-            # Use db here
-            ...
-    """
-    return websocket.app.state.db
-
-
 def get_v2_workspace(
     workspace_path: Optional[str] = Query(
         None,
@@ -82,8 +44,7 @@ def get_v2_workspace(
 ) -> Workspace:
     """Get v2 Workspace from path or server default.
 
-    This dependency bridges v1 routes to v2 core modules. It resolves
-    a Workspace from either:
+    This dependency resolves a Workspace from either:
     1. An explicit workspace_path query parameter
     2. The server's default workspace (from app.state.default_workspace_path)
     3. The server's current working directory
@@ -140,8 +101,6 @@ def get_v2_workspace(
 
 
 __all__ = [
-    "get_db",
-    "get_db_websocket",
     "get_workspace_manager",
     "get_v2_workspace",
 ]
