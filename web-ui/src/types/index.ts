@@ -1,0 +1,76 @@
+/**
+ * TypeScript types for CodeFRAME v2 API responses
+ */
+
+// Workspace types
+export interface WorkspaceResponse {
+  id: string;
+  repo_path: string;
+  state_dir: string;
+  tech_stack: string | null;
+  created_at: string;
+}
+
+export interface WorkspaceExistsResponse {
+  exists: boolean;
+  path: string;
+  state_dir: string | null;
+}
+
+// Task types
+export type TaskStatus =
+  | 'BACKLOG'
+  | 'READY'
+  | 'IN_PROGRESS'
+  | 'DONE'
+  | 'BLOCKED'
+  | 'FAILED';
+
+export interface TaskStatusCounts {
+  BACKLOG: number;
+  READY: number;
+  IN_PROGRESS: number;
+  DONE: number;
+  BLOCKED: number;
+  FAILED: number;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: number;
+  depends_on: string[];
+  estimated_hours?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskListResponse {
+  tasks: Task[];
+  total: number;
+  by_status: TaskStatusCounts;
+}
+
+// Activity types
+export type ActivityType =
+  | 'task_completed'
+  | 'run_started'
+  | 'blocker_raised'
+  | 'workspace_initialized'
+  | 'prd_added';
+
+export interface ActivityItem {
+  id: string;
+  type: ActivityType;
+  timestamp: string;
+  description: string;
+  metadata?: Record<string, unknown>;
+}
+
+// API Error type
+export interface ApiError {
+  detail: string;
+  status_code?: number;
+}
