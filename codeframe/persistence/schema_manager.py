@@ -60,11 +60,12 @@ class SchemaManager:
         # Metrics and audit tables
         self._create_metrics_audit_tables(cursor)
 
-        # Create all indexes
-        self._create_indexes(cursor)
-
-        # Apply schema migrations for existing databases
+        # Apply schema migrations for existing databases BEFORE creating indexes
+        # (indexes may reference columns added by migrations)
         self._apply_migrations(cursor)
+
+        # Create all indexes (after migrations so all columns exist)
+        self._create_indexes(cursor)
 
         self.conn.commit()
 
@@ -80,6 +81,66 @@ class SchemaManager:
         # Migration: Add depends_on column to issues table (cf-207)
         self._add_column_if_not_exists(
             cursor, "issues", "depends_on", "TEXT"
+        )
+
+        # Migration: Add missing columns to tasks table for older databases
+        # Core columns that may be missing
+        self._add_column_if_not_exists(
+            cursor, "tasks", "issue_id", "INTEGER"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "parent_issue_number", "TEXT"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "task_number", "TEXT"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "description", "TEXT"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "status", "TEXT", "'pending'"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "priority", "INTEGER", "0"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "workflow_step", "INTEGER"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "depends_on", "TEXT"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "created_at", "TIMESTAMP", "CURRENT_TIMESTAMP"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "completed_at", "TIMESTAMP"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "assigned_to", "TEXT"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "can_parallelize", "BOOLEAN", "FALSE"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "requires_mcp", "BOOLEAN", "FALSE"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "estimated_tokens", "INTEGER"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "actual_tokens", "INTEGER"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "commit_sha", "TEXT"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "quality_gate_status", "TEXT", "'pending'"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "quality_gate_failures", "JSON"
+        )
+        self._add_column_if_not_exists(
+            cursor, "tasks", "requires_human_approval", "BOOLEAN", "FALSE"
         )
 
         # Migration: Add effort estimation columns to tasks table (Phase 1)
