@@ -1,12 +1,30 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import WorkspacePage from '@/app/page';
-import { workspaceApi, tasksApi } from '@/lib/api';
+
+// Mock localStorage
+const localStorageMock = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+  };
+})();
+
+Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 // Mock the API module
 jest.mock('@/lib/api', () => ({
   workspaceApi: {
-    getCurrent: jest.fn(),
+    getByPath: jest.fn(),
+    checkExists: jest.fn(),
     init: jest.fn(),
   },
   tasksApi: {
@@ -23,18 +41,56 @@ jest.mock('swr', () => {
 });
 
 import useSWR from 'swr';
+import { workspaceApi } from '@/lib/api';
 
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
+const mockWorkspaceApi = workspaceApi as jest.Mocked<typeof workspaceApi>;
 
 describe('WorkspacePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorageMock.clear();
   });
 
-  describe('when workspace exists', () => {
+  describe('workspace selector (no workspace selected)', () => {
     beforeEach(() => {
+      mockUseSWR.mockImplementation(() => {
+        return {
+          data: undefined,
+          error: undefined,
+          isLoading: false,
+          mutate: jest.fn(),
+        } as any;
+      });
+    });
+
+    it('shows workspace selector when no path stored', async () => {
+      render(<WorkspacePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Select a project to get started')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Open Project' })).toBeInTheDocument();
+        expect(screen.getByPlaceholderText('/home/user/projects/my-app')).toBeInTheDocument();
+      });
+    });
+
+    it('allows entering a workspace path', async () => {
+      render(<WorkspacePage />);
+
+      const input = screen.getByPlaceholderText('/home/user/projects/my-app');
+      fireEvent.change(input, { target: { value: '/home/user/test-project' } });
+
+      expect(input).toHaveValue('/home/user/test-project');
+    });
+  });
+
+  describe('when workspace is selected and exists', () => {
+    beforeEach(() => {
+      // Set workspace path in localStorage
+      localStorageMock.setItem('codeframe_workspace_path', '/home/user/my-app');
+
       mockUseSWR.mockImplementation((key: string | null) => {
-        if (key === '/api/v2/workspaces/current') {
+        if (key && key.includes('/api/v2/workspaces/current')) {
           return {
             data: {
               id: 'ws-123',
@@ -48,7 +104,7 @@ describe('WorkspacePage', () => {
             mutate: jest.fn(),
           } as any;
         }
-        if (key === '/api/v2/tasks') {
+        if (key && key.includes('/api/v2/tasks')) {
           return {
             data: {
               tasks: [],
@@ -112,34 +168,20 @@ describe('WorkspacePage', () => {
         expect(screen.getByText('Recent Activity')).toBeInTheDocument();
       });
     });
-  });
 
-  describe('when workspace does not exist', () => {
-    beforeEach(() => {
-      mockUseSWR.mockImplementation(() => {
-        return {
-          data: undefined,
-          error: { detail: 'Workspace not found', status_code: 404 },
-          isLoading: false,
-          mutate: jest.fn(),
-        } as any;
-      });
-    });
-
-    it('shows initialization prompt', async () => {
+    it('shows switch project button', async () => {
       render(<WorkspacePage />);
 
       await waitFor(() => {
-        expect(screen.getByText(/no workspace initialized/i)).toBeInTheDocument();
-        expect(
-          screen.getByRole('button', { name: /initialize workspace/i })
-        ).toBeInTheDocument();
+        expect(screen.getByText('← Switch project')).toBeInTheDocument();
       });
     });
   });
 
   describe('loading state', () => {
     beforeEach(() => {
+      localStorageMock.setItem('codeframe_workspace_path', '/home/user/my-app');
+
       mockUseSWR.mockImplementation(() => {
         return {
           data: undefined,
@@ -153,13 +195,14 @@ describe('WorkspacePage', () => {
     it('shows loading skeleton', async () => {
       render(<WorkspacePage />);
 
-      // Should show some loading indicator
       expect(screen.getByTestId('workspace-loading')).toBeInTheDocument();
     });
   });
 
   describe('error state', () => {
     beforeEach(() => {
+      localStorageMock.setItem('codeframe_workspace_path', '/home/user/my-app');
+
       mockUseSWR.mockImplementation(() => {
         return {
           data: undefined,
@@ -176,6 +219,14 @@ describe('WorkspacePage', () => {
       await waitFor(() => {
         expect(screen.getByRole('heading', { name: /error/i })).toBeInTheDocument();
         expect(screen.getByText(/server error/i)).toBeInTheDocument();
+      });
+    });
+
+    it('shows option to select different project', async () => {
+      render(<WorkspacePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('← Select a different project')).toBeInTheDocument();
       });
     });
   });

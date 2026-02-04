@@ -1,5 +1,9 @@
 /**
  * API client for CodeFRAME v2 endpoints
+ *
+ * All endpoints require a workspace_path to identify which project
+ * the operation applies to. The web UI stores this in localStorage
+ * and passes it with every request.
  */
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import type {
@@ -51,7 +55,7 @@ export const workspaceApi = {
   },
 
   /**
-   * Initialize a new workspace
+   * Initialize a new workspace at the given path
    */
   init: async (
     repoPath: string,
@@ -66,12 +70,12 @@ export const workspaceApi = {
   },
 
   /**
-   * Get current workspace info
+   * Get workspace info for a specific path
    */
-  getCurrent: async (workspacePath?: string): Promise<WorkspaceResponse> => {
+  getByPath: async (workspacePath: string): Promise<WorkspaceResponse> => {
     const response = await api.get<WorkspaceResponse>(
       '/api/v2/workspaces/current',
-      { params: workspacePath ? { workspace_path: workspacePath } : {} }
+      { params: { workspace_path: workspacePath } }
     );
     return response.data;
   },
@@ -80,11 +84,14 @@ export const workspaceApi = {
 // Tasks API methods
 export const tasksApi = {
   /**
-   * Get all tasks with optional status filter
+   * Get all tasks for a workspace
    */
-  getAll: async (status?: string): Promise<TaskListResponse> => {
+  getAll: async (workspacePath: string, status?: string): Promise<TaskListResponse> => {
     const response = await api.get<TaskListResponse>('/api/v2/tasks', {
-      params: status ? { status } : {},
+      params: {
+        workspace_path: workspacePath,
+        ...(status ? { status } : {}),
+      },
     });
     return response.data;
   },

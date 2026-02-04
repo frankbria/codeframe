@@ -27,4 +27,6 @@ module.exports = {
   Time01Icon: createIconMock('Time01Icon'),
   CheckmarkCircle01Icon: createIconMock('CheckmarkCircle01Icon'),
   Alert02Icon: createIconMock('Alert02Icon'),
+  // WorkspaceSelector
+  Cancel01Icon: createIconMock('Cancel01Icon'),
 };
