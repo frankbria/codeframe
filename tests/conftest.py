@@ -8,6 +8,43 @@ from pathlib import Path
 from typing import Generator
 import pytest
 
+# Skip v1 legacy tests that depend on removed v1 persistence layer (app.state.db)
+# These tests use v1 routers/APIs that were removed in the v2 refactor
+# NOTE: collect_ignore must be at module level but can come after imports
+collect_ignore = [
+    # v1 API tests (use app.state.db)
+    "api/test_api_discovery_progress.py",
+    "api/test_api_issues.py",
+    "api/test_api_metrics.py",
+    "api/test_api_prd.py",
+    "api/test_api_session.py",
+    "api/test_blocker_resolution_api.py",
+    "api/test_chat_api.py",
+    "api/test_discovery_endpoints.py",
+    "api/test_discovery_restart.py",
+    "api/test_endpoints_database.py",
+    "api/test_generate_tasks_endpoint.py",
+    "api/test_git_api.py",
+    "api/test_health_endpoint.py",
+    "api/test_multi_agent_api.py",
+    "api/test_project_creation_api.py",
+    "api/test_project_reviews.py",
+    "api/test_projects_api_progress.py",
+    "api/test_schedule_api.py",
+    "api/test_templates_api.py",
+    "api/test_workspace_cleanup.py",
+    # v1 agent tests (use v1 routers)
+    "agents/test_agent_lifecycle.py",
+    # v1 auth tests (use v1 routers)
+    "auth/test_api_key_endpoints.py",
+    "auth/test_authorization_integration.py",
+    "auth/test_dual_auth.py",
+    # v1 persistence tests
+    "persistence/test_server_database.py",
+    # Other v1 tests
+    "test_review_api.py",
+]
+
 
 def create_test_jwt_token(user_id: int = 1, secret: str = None) -> str:
     """Create a JWT token for testing.

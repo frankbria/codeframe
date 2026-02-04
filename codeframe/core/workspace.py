@@ -298,46 +298,76 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         conn.commit()
 
     # Add tech_stack column to workspace table if it doesn't exist
-    cursor.execute("PRAGMA table_info(workspace)")
-    columns = {row[1] for row in cursor.fetchall()}
-    if "tech_stack" not in columns:
-        cursor.execute("ALTER TABLE workspace ADD COLUMN tech_stack TEXT")
-        conn.commit()
+    # First check if workspace table exists
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='workspace'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(workspace)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "tech_stack" not in columns:
+            cursor.execute("ALTER TABLE workspace ADD COLUMN tech_stack TEXT")
+            conn.commit()
 
     # Add versioning columns to prds table if they don't exist
-    cursor.execute("PRAGMA table_info(prds)")
-    prd_columns = {row[1] for row in cursor.fetchall()}
-    if "version" not in prd_columns:
-        cursor.execute("ALTER TABLE prds ADD COLUMN version INTEGER DEFAULT 1")
-        conn.commit()
-    if "parent_id" not in prd_columns:
-        cursor.execute("ALTER TABLE prds ADD COLUMN parent_id TEXT")
-        conn.commit()
-    if "change_summary" not in prd_columns:
-        cursor.execute("ALTER TABLE prds ADD COLUMN change_summary TEXT")
-        conn.commit()
-    if "chain_id" not in prd_columns:
-        cursor.execute("ALTER TABLE prds ADD COLUMN chain_id TEXT")
-        # Backfill chain_id for existing PRDs (set to their own id if no parent)
-        cursor.execute("""
-            UPDATE prds SET chain_id = id
-            WHERE chain_id IS NULL AND parent_id IS NULL
-        """)
+    # First check if prds table exists
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='prds'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(prds)")
+        prd_columns = {row[1] for row in cursor.fetchall()}
+        if "version" not in prd_columns:
+            cursor.execute("ALTER TABLE prds ADD COLUMN version INTEGER DEFAULT 1")
+            conn.commit()
+        if "parent_id" not in prd_columns:
+            cursor.execute("ALTER TABLE prds ADD COLUMN parent_id TEXT")
+            conn.commit()
+        if "change_summary" not in prd_columns:
+            cursor.execute("ALTER TABLE prds ADD COLUMN change_summary TEXT")
+            conn.commit()
+        if "chain_id" not in prd_columns:
+            cursor.execute("ALTER TABLE prds ADD COLUMN chain_id TEXT")
+            # Backfill chain_id for existing PRDs (set to their own id if no parent)
+            cursor.execute("""
+                UPDATE prds SET chain_id = id
+                WHERE chain_id IS NULL AND parent_id IS NULL
+            """)
+            conn.commit()
+
+        # Add depends_on column to prds table if it doesn't exist
+        # Re-check prd_columns as it may have changed
+        cursor.execute("PRAGMA table_info(prds)")
+        prd_columns = {row[1] for row in cursor.fetchall()}
+        if "depends_on" not in prd_columns:
+            cursor.execute("ALTER TABLE prds ADD COLUMN depends_on TEXT")
+            conn.commit()
+
+        # Add indexes for PRD version chain queries
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
         conn.commit()
 
-    # Add depends_on column to prds table if it doesn't exist
-    # Re-check prd_columns as it may have changed
-    cursor.execute("PRAGMA table_info(prds)")
-    prd_columns = {row[1] for row in cursor.fetchall()}
-    if "depends_on" not in prd_columns:
-        cursor.execute("ALTER TABLE prds ADD COLUMN depends_on TEXT")
-        conn.commit()
-
-    # Add indexes for PRD version chain queries
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_parent ON prds(parent_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_chain ON prds(chain_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
-    conn.commit()
+    # Add new columns to tasks table if they don't exist
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(tasks)")
+        task_columns = {row[1] for row in cursor.fetchall()}
+        if "depends_on" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN depends_on TEXT DEFAULT '[]'")
+            conn.commit()
+        if "estimated_hours" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN estimated_hours REAL")
+            conn.commit()
+        if "complexity_score" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN complexity_score INTEGER")
+            conn.commit()
+        if "uncertainty_level" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN uncertainty_level TEXT")
+            conn.commit()
 
     # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)
     cursor.execute(

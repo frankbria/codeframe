@@ -1,0 +1,145 @@
+/**
+ * API client for CodeFRAME v2 endpoints
+ *
+ * All endpoints require a workspace_path to identify which project
+ * the operation applies to. The web UI stores this in localStorage
+ * and passes it with every request.
+ */
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import type {
+  WorkspaceResponse,
+  WorkspaceExistsResponse,
+  TaskListResponse,
+  EventListResponse,
+  ApiError,
+} from '@/types';
+
+// FastAPI validation error format
+interface ValidationErrorItem {
+  msg: string;
+  loc?: (string | number)[];
+  type?: string;
+}
+
+type FastApiErrorDetail = string | ValidationErrorItem[];
+
+/**
+ * Normalize FastAPI error detail to a string.
+ * FastAPI returns detail as string for simple errors, or array for validation errors.
+ */
+export function normalizeErrorDetail(
+  rawDetail: FastApiErrorDetail | undefined,
+  fallbackMessage: string
+): string {
+  if (Array.isArray(rawDetail)) {
+    // Join validation error messages
+    return rawDetail.map((err) => err.msg).join('; ');
+  }
+  return rawDetail || fallbackMessage || 'An error occurred';
+}
+
+// Create axios instance with base configuration
+const createApiClient = (): AxiosInstance => {
+  const client = axios.create({
+    baseURL: process.env.NEXT_PUBLIC_API_URL || '',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    withCredentials: true,
+  });
+
+  // Add response interceptor for error handling
+  client.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError<{ detail?: FastApiErrorDetail }>) => {
+      // Transform error for consistent handling
+      const apiError: ApiError = {
+        detail: normalizeErrorDetail(error.response?.data?.detail, error.message),
+        status_code: error.response?.status,
+      };
+      return Promise.reject(apiError);
+    }
+  );
+
+  return client;
+};
+
+const api = createApiClient();
+
+// Workspace API methods
+export const workspaceApi = {
+  /**
+   * Check if workspace exists at a path
+   */
+  checkExists: async (repoPath: string): Promise<WorkspaceExistsResponse> => {
+    const response = await api.get<WorkspaceExistsResponse>(
+      '/api/v2/workspaces/exists',
+      { params: { repo_path: repoPath } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Initialize a new workspace at the given path
+   */
+  init: async (
+    repoPath: string,
+    options?: { techStack?: string; detect?: boolean }
+  ): Promise<WorkspaceResponse> => {
+    const response = await api.post<WorkspaceResponse>('/api/v2/workspaces', {
+      repo_path: repoPath,
+      tech_stack: options?.techStack,
+      detect: options?.detect ?? true,
+    });
+    return response.data;
+  },
+
+  /**
+   * Get workspace info for a specific path
+   */
+  getByPath: async (workspacePath: string): Promise<WorkspaceResponse> => {
+    const response = await api.get<WorkspaceResponse>(
+      '/api/v2/workspaces/current',
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// Tasks API methods
+export const tasksApi = {
+  /**
+   * Get all tasks for a workspace
+   */
+  getAll: async (workspacePath: string, status?: string): Promise<TaskListResponse> => {
+    const response = await api.get<TaskListResponse>('/api/v2/tasks', {
+      params: {
+        workspace_path: workspacePath,
+        ...(status ? { status } : {}),
+      },
+    });
+    return response.data;
+  },
+};
+
+// Events API methods
+export const eventsApi = {
+  /**
+   * Get recent events for a workspace
+   */
+  getRecent: async (
+    workspacePath: string,
+    options?: { limit?: number; sinceId?: number }
+  ): Promise<EventListResponse> => {
+    const response = await api.get<EventListResponse>('/api/v2/events', {
+      params: {
+        workspace_path: workspacePath,
+        limit: options?.limit ?? 20,
+        ...(options?.sinceId ? { since_id: options.sinceId } : {}),
+      },
+    });
+    return response.data;
+  },
+};
+
+export default api;

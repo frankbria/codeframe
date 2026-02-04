@@ -1,7 +1,6 @@
 """FastAPI Status Server for CodeFRAME."""
 
 # Standard library imports
-import asyncio
 import logging
 import os
 import subprocess
@@ -16,45 +15,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-# Local imports
-from codeframe.persistence.database import Database
+# Local imports - v2 only (no v1 persistence layer)
 from codeframe.workspace import WorkspaceManager
 from codeframe.ui.routers import (
-    agents,
-    batches_v2,  # v2 batches router (delegates to core)
-    blockers,
-    blockers_v2,  # v2 blockers router (delegates to core)
-    chat,
-    checkpoints,
-    checkpoints_v2,  # v2 checkpoints router (delegates to core)
-    context,
-    diagnose_v2,  # v2 diagnose router (delegates to core)
-    discovery,
-    discovery_v2,  # v2 discovery router (delegates to core)
-    environment_v2,  # v2 environment router (delegates to core)
-    gates_v2,  # v2 gates router (delegates to core)
-    git,
-    git_v2,  # v2 git router (delegates to core)
-    lint,
-    metrics,
-    pr_v2,  # v2 PR router (delegates to core)
-    prd_v2,  # v2 PRD router (delegates to core)
-    projects,
-    projects_v2,  # v2 projects router (delegates to core)
-    prs,
-    quality_gates,
-    review,
-    review_v2,  # v2 review router (delegates to core)
-    schedule,
-    schedule_v2,  # v2 schedule router (delegates to core)
-    session,
-    streaming_v2,  # v2 SSE streaming router (real-time events)
-    tasks,
-    tasks_v2,  # v2 tasks router (delegates to core)
-    templates,
-    templates_v2,  # v2 templates router (delegates to core)
-    websocket,
-    workspace_v2,  # v2 workspace router (delegates to core)
+    # v2 routers only - delegate to codeframe.core modules
+    batches_v2,
+    blockers_v2,
+    checkpoints_v2,
+    diagnose_v2,
+    discovery_v2,
+    environment_v2,
+    events_v2,
+    gates_v2,
+    git_v2,
+    pr_v2,
+    prd_v2,
+    review_v2,
+    schedule_v2,
+    streaming_v2,
+    tasks_v2,
+    templates_v2,
+    workspace_v2,
 )
 from codeframe.auth import router as auth_router
 from codeframe.lib.rate_limiter import (
@@ -106,47 +87,8 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-async def _cleanup_expired_sessions_task(db: Database):
-    """Background task to periodically clean up expired sessions and old audit logs.
-
-    Runs periodically to:
-    - Delete expired sessions (every hour by default)
-    - Delete audit logs older than retention period (every 24 hours by default)
-
-    Args:
-        db: Database instance
-    """
-    logger = logging.getLogger(__name__)
-    session_cleanup_interval = int(os.getenv("SESSION_CLEANUP_INTERVAL", "3600"))  # Default: 1 hour
-    audit_cleanup_interval = int(os.getenv("AUDIT_CLEANUP_INTERVAL", "86400"))  # Default: 24 hours
-    audit_retention_days = int(os.getenv("AUDIT_RETENTION_DAYS", "90"))  # Default: 90 days
-
-    # Track last audit cleanup time
-    last_audit_cleanup = 0
-
-    while True:
-        try:
-            await asyncio.sleep(session_cleanup_interval)
-
-            # Always clean up expired sessions
-            deleted_sessions = await db.cleanup_expired_sessions()
-            if deleted_sessions > 0:
-                logger.info(f"🧹 Cleaned up {deleted_sessions} expired session(s)")
-
-            # Clean up old audit logs periodically (less frequently)
-            import time
-
-            current_time = time.time()
-            if current_time - last_audit_cleanup >= audit_cleanup_interval:
-                deleted_logs = await db.cleanup_old_audit_logs(retention_days=audit_retention_days)
-                if deleted_logs > 0:
-                    logger.info(
-                        f"🗑️  Cleaned up {deleted_logs} audit log(s) older than {audit_retention_days} days"
-                    )
-                last_audit_cleanup = current_time
-
-        except Exception as e:
-            logger.error(f"Error during cleanup task: {e}", exc_info=True)
+# Note: Session cleanup removed - v1 persistence layer not used in v2
+# If session management is needed, implement in v2 core modules
 
 
 def _validate_security_config():
@@ -186,21 +128,7 @@ async def lifespan(app: FastAPI):
     # Validate security configuration before starting
     _validate_security_config()
 
-    # Startup: Initialize database
-    # If DATABASE_PATH is not set, use default relative to WORKSPACE_ROOT
-    db_path_str = os.environ.get("DATABASE_PATH")
-    if db_path_str:
-        db_path = Path(db_path_str)
-    else:
-        # Use WORKSPACE_ROOT if set, otherwise use current directory
-        workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "."))
-        db_path = workspace_root / ".codeframe" / "state.db"
-
-    app.state.db = Database(db_path)
-    app.state.db.initialize()
-
-    # Initialize workspace manager
-    # Allow WORKSPACE_ROOT override for testing
+    # Initialize workspace manager for v2 core
     workspace_root_str = os.environ.get(
         "WORKSPACE_ROOT", str(Path.cwd() / ".codeframe" / "workspaces")
     )
@@ -224,20 +152,9 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("🚦 Rate limiting: DISABLED")
 
-    # Start background session cleanup task
-    cleanup_task = asyncio.create_task(_cleanup_expired_sessions_task(app.state.db))
-
     yield
 
-    # Shutdown: Cancel cleanup task and close database connection
-    cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
-
-    if hasattr(app.state, "db") and app.state.db:
-        app.state.db.close()
+    # Shutdown: nothing to clean up (v2 uses per-workspace databases managed by core)
 
 
 # ============================================================================
@@ -501,16 +418,12 @@ async def health_check():
     except Exception:
         git_commit = "unknown"
 
-    # Check database connection
-    db_status = "connected" if hasattr(app.state, "db") and app.state.db else "disconnected"
-
     return {
         "status": "healthy",
         "service": "CodeFRAME Status Server",
         "version": app.version,
         "commit": git_commit,
         "deployed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        "database": db_status,
     }
 
 
@@ -541,50 +454,30 @@ async def test_broadcast(message: dict, project_id: int = None):
 
 
 # ============================================================================
-# Router Mounting
+# Router Mounting (v2 only)
 # ============================================================================
 
-# Mount all API routers
-app.include_router(agents.router)
-app.include_router(blockers.router)
-app.include_router(blockers.blocker_router)
-app.include_router(blockers_v2.router)  # v2 endpoints at /api/v2/blockers
-app.include_router(chat.router)
-app.include_router(checkpoints.router)
-app.include_router(checkpoints_v2.router)  # v2 endpoints at /api/v2/checkpoints
-app.include_router(context.router)
-app.include_router(discovery.router)
-app.include_router(discovery_v2.router)  # v2 endpoints at /api/v2/discovery
-app.include_router(git.router)
-app.include_router(git_v2.router)  # v2 endpoints at /api/v2/git
-app.include_router(lint.router)
-app.include_router(metrics.router)
-app.include_router(projects.router)
-app.include_router(projects_v2.router)  # v2 endpoints at /api/v2/projects
-app.include_router(prd_v2.router)  # v2 endpoints at /api/v2/prd
-app.include_router(prs.router)
-app.include_router(quality_gates.router)
-app.include_router(review.router)
-app.include_router(review_v2.router)  # v2 endpoints at /api/v2/review
-app.include_router(schedule.router)
-app.include_router(schedule_v2.router)  # v2 endpoints at /api/v2/schedule
-app.include_router(session.router)
-app.include_router(tasks.router)
-app.include_router(tasks.project_router)
-app.include_router(tasks_v2.router)  # v2 endpoints at /api/v2/tasks
-app.include_router(streaming_v2.router)  # v2 SSE streaming at /api/v2/tasks/{id}/stream
-app.include_router(templates.router)
-app.include_router(templates_v2.router)  # v2 endpoints at /api/v2/templates
-app.include_router(websocket.router)
+# Authentication router
 app.include_router(auth_router.router)
 
-# v2 routers (new for Phase 2 - all delegate to core modules)
-app.include_router(batches_v2.router)  # v2 endpoints at /api/v2/batches
-app.include_router(diagnose_v2.router)  # v2 endpoints at /api/v2/tasks/{id}/diagnose
-app.include_router(environment_v2.router)  # v2 endpoints at /api/v2/env
-app.include_router(gates_v2.router)  # v2 endpoints at /api/v2/gates
-app.include_router(pr_v2.router)  # v2 endpoints at /api/v2/pr
-app.include_router(workspace_v2.router)  # v2 endpoints at /api/v2/workspaces
+# v2 API routers - all delegate to codeframe.core modules
+app.include_router(batches_v2.router)       # /api/v2/batches
+app.include_router(blockers_v2.router)      # /api/v2/blockers
+app.include_router(checkpoints_v2.router)   # /api/v2/checkpoints
+app.include_router(diagnose_v2.router)      # /api/v2/tasks/{id}/diagnose
+app.include_router(discovery_v2.router)     # /api/v2/discovery
+app.include_router(environment_v2.router)   # /api/v2/env
+app.include_router(events_v2.router)        # /api/v2/events
+app.include_router(gates_v2.router)         # /api/v2/gates
+app.include_router(git_v2.router)           # /api/v2/git
+app.include_router(pr_v2.router)            # /api/v2/pr
+app.include_router(prd_v2.router)           # /api/v2/prd
+app.include_router(review_v2.router)        # /api/v2/review
+app.include_router(schedule_v2.router)      # /api/v2/schedule
+app.include_router(streaming_v2.router)     # /api/v2/tasks/{id}/stream (SSE)
+app.include_router(tasks_v2.router)         # /api/v2/tasks
+app.include_router(templates_v2.router)     # /api/v2/templates
+app.include_router(workspace_v2.router)     # /api/v2/workspaces
 
 
 # ============================================================================

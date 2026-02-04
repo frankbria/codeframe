@@ -866,6 +866,172 @@ class TestCoreDelegation:
 # ============================================================================
 
 
+# ============================================================================
+# Events v2 Router Tests
+# ============================================================================
+
+
+class TestEventsV2List:
+    """Tests for GET /api/v2/events endpoint."""
+
+    @pytest.fixture
+    def events_client(self, test_workspace):
+        """Create a TestClient with events router and workspace dependency."""
+        from codeframe.ui.routers import events_v2
+        from codeframe.ui.dependencies import get_v2_workspace
+
+        app = FastAPI()
+        app.include_router(events_v2.router)
+
+        def get_test_workspace():
+            return test_workspace
+
+        app.dependency_overrides[get_v2_workspace] = get_test_workspace
+
+        client = TestClient(app)
+        client.workspace = test_workspace
+        return client
+
+    def test_list_events_empty(self, events_client):
+        """List events returns empty list when no events exist."""
+        workspace_path = str(events_client.workspace.repo_path)
+
+        response = events_client.get(
+            "/api/v2/events",
+            params={"workspace_path": workspace_path}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["events"] == []
+        assert data["total"] == 0
+
+    def test_list_events_with_data(self, events_client):
+        """List events returns emitted events."""
+        from codeframe.core import events
+
+        workspace = events_client.workspace
+
+        # Emit some events using emit_for_workspace
+        events.emit_for_workspace(workspace, "TASK_CREATED", {"task_id": "task-1"}, print_event=False)
+        events.emit_for_workspace(workspace, "TASK_STATUS_CHANGED", {"task_id": "task-1", "status": "DONE"}, print_event=False)
+
+        workspace_path = str(workspace.repo_path)
+        response = events_client.get(
+            "/api/v2/events",
+            params={"workspace_path": workspace_path}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["events"]) == 2
+        assert data["total"] == 2
+
+    def test_list_events_with_limit(self, events_client):
+        """List events respects limit parameter."""
+        from codeframe.core import events
+
+        workspace = events_client.workspace
+
+        # Emit multiple events
+        for i in range(5):
+            events.emit_for_workspace(workspace, "TEST_EVENT", {"index": i}, print_event=False)
+
+        workspace_path = str(workspace.repo_path)
+        response = events_client.get(
+            "/api/v2/events",
+            params={"workspace_path": workspace_path, "limit": 2}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["events"]) == 2
+        assert data["total"] == 2
+
+    def test_list_events_with_since_id(self, events_client):
+        """List events respects since_id parameter for pagination."""
+        from codeframe.core import events
+
+        workspace = events_client.workspace
+
+        # Emit events
+        events.emit_for_workspace(workspace, "EVENT_1", {"index": 1}, print_event=False)
+        events.emit_for_workspace(workspace, "EVENT_2", {"index": 2}, print_event=False)
+        events.emit_for_workspace(workspace, "EVENT_3", {"index": 3}, print_event=False)
+
+        workspace_path = str(workspace.repo_path)
+
+        # Get all events first
+        response = events_client.get(
+            "/api/v2/events",
+            params={"workspace_path": workspace_path}
+        )
+        all_events = response.json()["events"]
+        assert len(all_events) >= 3
+
+        # Get events after the first one (use ID 1 as since_id)
+        response = events_client.get(
+            "/api/v2/events",
+            params={"workspace_path": workspace_path, "since_id": 1}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # Should return events with ID > 1
+        for event in data["events"]:
+            assert event["id"] > 1
+
+    def test_list_events_workspace_not_found(self, test_workspace):
+        """List events returns 404 for non-existent workspace."""
+        # Create a client WITHOUT the dependency override to test real path validation
+        from codeframe.ui.routers import events_v2
+
+        app = FastAPI()
+        app.include_router(events_v2.router)
+        # No dependency override - uses real get_v2_workspace
+        client = TestClient(app)
+
+        response = client.get(
+            "/api/v2/events",
+            params={"workspace_path": "/nonexistent/path/that/does/not/exist"}
+        )
+
+        assert response.status_code == 404
+        # Error message is sanitized (doesn't expose full path)
+        assert "not found" in response.json()["detail"].lower()
+
+    def test_list_events_uses_default_workspace(self, events_client):
+        """List events uses server default when workspace_path is omitted."""
+        # When no workspace_path is provided, the endpoint falls back to
+        # the server's default workspace (from app state or cwd)
+        # This is the expected behavior - matches CLI which uses cwd
+        response = events_client.get("/api/v2/events")
+
+        # Should succeed since our test client has a valid workspace configured
+        assert response.status_code == 200
+        data = response.json()
+        assert "events" in data
+        assert "total" in data
+
+    def test_list_events_limit_validation(self, events_client):
+        """List events validates limit parameter bounds."""
+        workspace_path = str(events_client.workspace.repo_path)
+
+        # Test limit too low
+        response = events_client.get(
+            "/api/v2/events",
+            params={"workspace_path": workspace_path, "limit": 0}
+        )
+        assert response.status_code == 422
+
+        # Test limit too high
+        response = events_client.get(
+            "/api/v2/events",
+            params={"workspace_path": workspace_path, "limit": 101}
+        )
+        assert response.status_code == 422
+
+
 class TestRateLimitingIntegration:
     """Tests for rate limiting on v2 endpoints."""
 
