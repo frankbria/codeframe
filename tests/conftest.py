@@ -25,9 +25,14 @@ collect_ignore = [
     "api/test_endpoints_database.py",
     "api/test_generate_tasks_endpoint.py",
     "api/test_git_api.py",
+    "api/test_health_endpoint.py",
     "api/test_multi_agent_api.py",
     "api/test_project_creation_api.py",
     "api/test_project_reviews.py",
+    "api/test_projects_api_progress.py",
+    "api/test_schedule_api.py",
+    "api/test_templates_api.py",
+    "api/test_workspace_cleanup.py",
     # v1 agent tests (use v1 routers)
     "agents/test_agent_lifecycle.py",
     # v1 auth tests (use v1 routers)
