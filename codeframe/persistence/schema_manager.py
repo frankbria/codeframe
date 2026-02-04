@@ -86,6 +86,9 @@ class SchemaManager:
         # Migration: Add missing columns to tasks table for older databases
         # Core columns that may be missing
         self._add_column_if_not_exists(
+            cursor, "tasks", "project_id", "INTEGER"
+        )
+        self._add_column_if_not_exists(
             cursor, "tasks", "issue_id", "INTEGER"
         )
         self._add_column_if_not_exists(

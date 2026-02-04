@@ -186,15 +186,18 @@ async def lifespan(app: FastAPI):
     # Validate security configuration before starting
     _validate_security_config()
 
-    # Startup: Initialize database
-    # If DATABASE_PATH is not set, use default relative to WORKSPACE_ROOT
+    # Startup: Initialize server database (separate from v2 workspace databases)
+    # The persistence layer uses its own schema (projects, agents, sessions, etc.)
+    # while v2 core modules use per-workspace state.db files with a different schema.
     db_path_str = os.environ.get("DATABASE_PATH")
     if db_path_str:
         db_path = Path(db_path_str)
     else:
-        # Use WORKSPACE_ROOT if set, otherwise use current directory
+        # Use a separate server.db to avoid conflicts with v2 core's state.db
         workspace_root = Path(os.environ.get("WORKSPACE_ROOT", "."))
-        db_path = workspace_root / ".codeframe" / "state.db"
+        codeframe_dir = workspace_root / ".codeframe"
+        codeframe_dir.mkdir(parents=True, exist_ok=True)
+        db_path = codeframe_dir / "server.db"
 
     app.state.db = Database(db_path)
     app.state.db.initialize()
