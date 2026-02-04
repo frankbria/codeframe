@@ -349,6 +349,26 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prds_depends_on ON prds(depends_on)")
         conn.commit()
 
+    # Add new columns to tasks table if they don't exist
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(tasks)")
+        task_columns = {row[1] for row in cursor.fetchall()}
+        if "depends_on" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN depends_on TEXT DEFAULT '[]'")
+            conn.commit()
+        if "estimated_hours" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN estimated_hours REAL")
+            conn.commit()
+        if "complexity_score" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN complexity_score INTEGER")
+            conn.commit()
+        if "uncertainty_level" not in task_columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN uncertainty_level TEXT")
+            conn.commit()
+
     # Ensure runs table exists before creating dependent tables (run_logs, diagnostic_reports)
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='runs'"
