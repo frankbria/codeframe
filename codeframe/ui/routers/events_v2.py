@@ -2,6 +2,9 @@
 
 Provides endpoints for fetching workspace activity/event history.
 Delegates to codeframe.core.events module.
+
+TODO(#336): Add authentication to this router. All v2 routers are
+missing auth enforcement despite documentation stating it's required.
 """
 
 from typing import Optional
