@@ -193,6 +193,24 @@ class SchemaManager:
             if not identifier_pattern.match(value):
                 raise ValueError(f"Invalid SQL identifier for {name}: {value}")
 
+        # SECURITY: Validate default_value to only allow safe SQL literals.
+        # Allowed: NULL, TRUE, FALSE, CURRENT_TIMESTAMP, integers, floats,
+        # or single-quoted strings (with no embedded quotes).
+        if default_value is not None:
+            safe_literal_pattern = re.compile(
+                r"^(NULL|TRUE|FALSE|CURRENT_TIMESTAMP|"  # SQL keywords
+                r"-?\d+|"  # Integers (including negative)
+                r"-?\d+\.\d+|"  # Floats
+                r"'[^']*')$",  # Single-quoted strings (no embedded quotes)
+                re.IGNORECASE
+            )
+            if not safe_literal_pattern.match(default_value):
+                raise ValueError(
+                    f"Invalid SQL literal for default_value: {default_value}. "
+                    "Only NULL, TRUE, FALSE, CURRENT_TIMESTAMP, numbers, or "
+                    "single-quoted strings (without embedded quotes) are allowed."
+                )
+
         # Check if column exists
         cursor.execute(f"PRAGMA table_info({table_name})")
         columns = {row[1] for row in cursor.fetchall()}

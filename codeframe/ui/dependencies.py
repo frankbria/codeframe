@@ -92,12 +92,8 @@ def get_v2_workspace(
             detail="Workspace not found at specified path. Initialize with 'cf init <path>'",
         )
 
-    if not workspace:
-        raise HTTPException(
-            status_code=404,
-            detail="Workspace not found at specified path. Initialize with 'cf init <path>'",
-        )
-
+    # Note: get_workspace() raises FileNotFoundError rather than returning None,
+    # so no additional null check is needed here.
     return workspace
 
 

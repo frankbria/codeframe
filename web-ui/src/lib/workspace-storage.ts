@@ -62,7 +62,8 @@ export function addToRecentWorkspaces(path: string): void {
   if (typeof window === 'undefined') return;
 
   const recent = getRecentWorkspaces();
-  const name = path.split('/').pop() || path;
+  // Split on both forward and backward slashes to handle Windows paths
+  const name = path.split(/[\\/]/).pop() || path;
 
   // Remove existing entry for this path
   const filtered = recent.filter(w => w.path !== path);
