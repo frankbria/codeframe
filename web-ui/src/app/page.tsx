@@ -26,7 +26,7 @@ import type {
   ApiError,
 } from '@/types';
 
-// Default empty task counts
+// Default empty task counts (must match TaskStatusCounts interface)
 const emptyTaskCounts: TaskStatusCounts = {
   BACKLOG: 0,
   READY: 0,
@@ -34,6 +34,7 @@ const emptyTaskCounts: TaskStatusCounts = {
   DONE: 0,
   BLOCKED: 0,
   FAILED: 0,
+  MERGED: 0,
 };
 
 // Map backend event types to UI activity types

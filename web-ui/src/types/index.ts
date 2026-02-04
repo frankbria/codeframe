@@ -18,13 +18,15 @@ export interface WorkspaceExistsResponse {
 }
 
 // Task types
+// Must match backend: codeframe/core/state_machine.py:TaskStatus
 export type TaskStatus =
   | 'BACKLOG'
   | 'READY'
   | 'IN_PROGRESS'
   | 'DONE'
   | 'BLOCKED'
-  | 'FAILED';
+  | 'FAILED'
+  | 'MERGED';
 
 export interface TaskStatusCounts {
   BACKLOG: number;
@@ -33,6 +35,7 @@ export interface TaskStatusCounts {
   DONE: number;
   BLOCKED: number;
   FAILED: number;
+  MERGED: number;
 }
 
 export interface Task {

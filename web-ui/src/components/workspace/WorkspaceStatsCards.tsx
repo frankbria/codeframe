@@ -89,6 +89,14 @@ export function WorkspaceStatsCards({
                 {taskCounts.FAILED} failed
               </Badge>
             )}
+            {taskCounts.MERGED > 0 && (
+              <Badge
+                data-testid="badge-merged"
+                className="bg-purple-100 text-purple-900"
+              >
+                {taskCounts.MERGED} merged
+              </Badge>
+            )}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">{totalTasks} total</p>
         </CardContent>
