@@ -11,16 +11,15 @@ export const metadata: Metadata = {
   title: 'CodeFRAME',
   description: 'AI-powered development workflow orchestration',
   manifest: '/site.webmanifest',
-  icons: {
-    icon: '/favicon.ico',
-    apple: '/images/codeframe_favicon_512.png',
-  },
   openGraph: {
     title: 'CodeFRAME',
     description: 'AI-powered development workflow orchestration',
     type: 'website',
   },
 };
+
+// Note: favicon.ico, icon.png, and apple-icon.png in this directory
+// are auto-detected by Next.js App Router (file-based metadata)
 
 export default function RootLayout({
   children,
