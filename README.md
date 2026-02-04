@@ -1,3 +1,5 @@
+![CodeFRAME Header](./codeframe_github_header_1600x500.png)
+
 # CodeFRAME
 
 ![Status](https://img.shields.io/badge/status-v2%20Phase%202%20In%20Progress-blue)
