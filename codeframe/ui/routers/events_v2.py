@@ -6,11 +6,12 @@ Delegates to codeframe.core.events module.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from codeframe.core.workspace import Workspace
 from codeframe.core import events
+from codeframe.lib.rate_limiter import rate_limit_standard
 from codeframe.ui.dependencies import get_v2_workspace
 
 router = APIRouter(prefix="/api/v2/events", tags=["events"])
@@ -34,7 +35,9 @@ class EventListResponse(BaseModel):
 
 
 @router.get("", response_model=EventListResponse)
+@rate_limit_standard()
 async def list_events(
+    request: Request,  # Required for rate limiting
     workspace: Workspace = Depends(get_v2_workspace),
     limit: int = Query(20, ge=1, le=100, description="Maximum events to return"),
     since_id: Optional[int] = Query(None, description="Only return events after this ID"),
@@ -44,6 +47,7 @@ async def list_events(
     Returns events in reverse chronological order (newest first).
 
     Args:
+        request: HTTP request for rate limiting
         workspace: Resolved workspace from workspace_path query param
         limit: Maximum number of events (1-100, default 20)
         since_id: Optional event ID for pagination
