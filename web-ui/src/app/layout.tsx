@@ -9,7 +9,17 @@ const nunitoSans = Nunito_Sans({
 
 export const metadata: Metadata = {
   title: 'CodeFRAME',
-  description: 'AI-powered code development framework',
+  description: 'AI-powered development workflow orchestration',
+  manifest: '/site.webmanifest',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/images/codeframe_favicon_512.png',
+  },
+  openGraph: {
+    title: 'CodeFRAME',
+    description: 'AI-powered development workflow orchestration',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({

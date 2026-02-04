@@ -1,0 +1,22 @@
+{
+  "name": "CodeFRAME",
+  "short_name": "CodeFRAME",
+  "description": "AI-powered development workflow orchestration",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#18181b",
+  "icons": [
+    {
+      "src": "/images/codeframe_favicon_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/codeframe_app_logo_1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}
