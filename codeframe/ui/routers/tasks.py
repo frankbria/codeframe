@@ -14,7 +14,7 @@ import os
 from datetime import datetime, UTC
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict
 
 from codeframe.core.models import Task, TaskStatus
