@@ -10,6 +10,7 @@ import type {
   WorkspaceResponse,
   WorkspaceExistsResponse,
   TaskListResponse,
+  EventListResponse,
   ApiError,
 } from '@/types';
 
@@ -91,6 +92,26 @@ export const tasksApi = {
       params: {
         workspace_path: workspacePath,
         ...(status ? { status } : {}),
+      },
+    });
+    return response.data;
+  },
+};
+
+// Events API methods
+export const eventsApi = {
+  /**
+   * Get recent events for a workspace
+   */
+  getRecent: async (
+    workspacePath: string,
+    options?: { limit?: number; sinceId?: number }
+  ): Promise<EventListResponse> => {
+    const response = await api.get<EventListResponse>('/api/v2/events', {
+      params: {
+        workspace_path: workspacePath,
+        limit: options?.limit ?? 20,
+        ...(options?.sinceId ? { since_id: options.sinceId } : {}),
       },
     });
     return response.data;

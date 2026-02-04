@@ -9,7 +9,7 @@ import {
   RecentActivityFeed,
 } from '@/components/workspace';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
-import { workspaceApi, tasksApi } from '@/lib/api';
+import { workspaceApi, tasksApi, eventsApi } from '@/lib/api';
 import {
   getSelectedWorkspacePath,
   setSelectedWorkspacePath,
@@ -20,6 +20,9 @@ import type {
   TaskListResponse,
   TaskStatusCounts,
   ActivityItem,
+  ActivityType,
+  EventListResponse,
+  EventResponse,
   ApiError,
 } from '@/types';
 
@@ -32,6 +35,51 @@ const emptyTaskCounts: TaskStatusCounts = {
   BLOCKED: 0,
   FAILED: 0,
 };
+
+// Map backend event types to UI activity types
+// Backend uses uppercase constants from codeframe.core.events.EventType
+const EVENT_TYPE_MAP: Record<string, ActivityType> = {
+  // Task events
+  'TASK_STATUS_CHANGED': 'task_completed',
+  'RUN_COMPLETED': 'task_completed',
+  'BATCH_TASK_COMPLETED': 'task_completed',
+  // Run events
+  'RUN_STARTED': 'run_started',
+  'BATCH_STARTED': 'run_started',
+  'BATCH_TASK_STARTED': 'run_started',
+  // Blocker events
+  'BLOCKER_CREATED': 'blocker_raised',
+  'BATCH_TASK_BLOCKED': 'blocker_raised',
+  // Workspace events
+  'WORKSPACE_INIT': 'workspace_initialized',
+  // PRD events
+  'PRD_ADDED': 'prd_added',
+  'PRD_UPDATED': 'prd_added',
+};
+
+// Convert EventResponse to ActivityItem
+function mapEventToActivity(event: EventResponse): ActivityItem {
+  const activityType = EVENT_TYPE_MAP[event.event_type] || 'task_completed';
+  const payload = event.payload || {};
+
+  // Build description from payload or event type
+  let description = (payload.description as string) ||
+                    (payload.message as string) ||
+                    event.event_type.replace(/[._]/g, ' ');
+
+  // Add task/blocker context if available
+  if (payload.task_title) {
+    description = `${payload.task_title}: ${description}`;
+  }
+
+  return {
+    id: String(event.id),
+    type: activityType,
+    timestamp: event.created_at,
+    description,
+    metadata: payload,
+  };
+}
 
 export default function WorkspacePage() {
   // Track the selected workspace path
@@ -62,8 +110,17 @@ export default function WorkspacePage() {
     () => tasksApi.getAll(workspacePath!)
   );
 
+  // Fetch recent events for activity feed (only if workspace exists)
+  const { data: eventsData } = useSWR<EventListResponse>(
+    workspace && workspacePath ? `/api/v2/events?path=${workspacePath}` : null,
+    () => eventsApi.getRecent(workspacePath!, { limit: 5 })
+  );
+
   // Calculate active runs (tasks in IN_PROGRESS status)
   const activeRunCount = tasksData?.by_status?.IN_PROGRESS || 0;
+
+  // Map events to activity items
+  const activities: ActivityItem[] = (eventsData?.events || []).map(mapEventToActivity);
 
   // Handle workspace selection/initialization
   const handleSelectWorkspace = async (path: string) => {
@@ -163,8 +220,6 @@ export default function WorkspacePage() {
     }
   };
 
-  // TODO: In future, fetch recent activity from an activity/events endpoint
-  const activities: ActivityItem[] = [];
 
   return (
     <main className="min-h-screen bg-background">

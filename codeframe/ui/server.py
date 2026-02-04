@@ -1,7 +1,6 @@
 """FastAPI Status Server for CodeFRAME."""
 
 # Standard library imports
-import asyncio
 import logging
 import os
 import subprocess
@@ -26,6 +25,7 @@ from codeframe.ui.routers import (
     diagnose_v2,
     discovery_v2,
     environment_v2,
+    events_v2,
     gates_v2,
     git_v2,
     pr_v2,
@@ -467,6 +467,7 @@ app.include_router(checkpoints_v2.router)   # /api/v2/checkpoints
 app.include_router(diagnose_v2.router)      # /api/v2/tasks/{id}/diagnose
 app.include_router(discovery_v2.router)     # /api/v2/discovery
 app.include_router(environment_v2.router)   # /api/v2/env
+app.include_router(events_v2.router)        # /api/v2/events
 app.include_router(gates_v2.router)         # /api/v2/gates
 app.include_router(git_v2.router)           # /api/v2/git
 app.include_router(pr_v2.router)            # /api/v2/pr

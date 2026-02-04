@@ -53,7 +53,7 @@ export interface TaskListResponse {
   by_status: TaskStatusCounts;
 }
 
-// Activity types
+// Activity types (for UI display)
 export type ActivityType =
   | 'task_completed'
   | 'run_started'
@@ -67,6 +67,20 @@ export interface ActivityItem {
   timestamp: string;
   description: string;
   metadata?: Record<string, unknown>;
+}
+
+// Event types (from API)
+export interface EventResponse {
+  id: number;
+  workspace_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface EventListResponse {
+  events: EventResponse[];
+  total: number;
 }
 
 // API Error type
