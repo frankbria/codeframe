@@ -57,7 +57,7 @@ export default function WorkspacePage() {
   );
 
   // Fetch tasks data (only if workspace exists)
-  const { data: tasksData, isLoading: tasksLoading } = useSWR<TaskListResponse>(
+  const { data: tasksData } = useSWR<TaskListResponse>(
     workspace && workspacePath ? `/api/v2/tasks?path=${workspacePath}` : null,
     () => tasksApi.getAll(workspacePath!)
   );

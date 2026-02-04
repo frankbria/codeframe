@@ -41,10 +41,8 @@ jest.mock('swr', () => {
 });
 
 import useSWR from 'swr';
-import { workspaceApi } from '@/lib/api';
 
 const mockUseSWR = useSWR as jest.MockedFunction<typeof useSWR>;
-const mockWorkspaceApi = workspaceApi as jest.Mocked<typeof workspaceApi>;
 
 describe('WorkspacePage', () => {
   beforeEach(() => {
