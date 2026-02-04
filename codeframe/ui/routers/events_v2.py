@@ -5,12 +5,13 @@ Delegates to codeframe.core.events module.
 """
 
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from codeframe.core.workspace import Workspace, get_workspace, workspace_exists
+from codeframe.core.workspace import Workspace
 from codeframe.core import events
-from pathlib import Path
+from codeframe.ui.dependencies import get_v2_workspace
 
 router = APIRouter(prefix="/api/v2/events", tags=["events"])
 
@@ -32,29 +33,9 @@ class EventListResponse(BaseModel):
     total: int
 
 
-def _get_workspace_from_path(workspace_path: str) -> Workspace:
-    """Get workspace from path, raising appropriate HTTP errors."""
-    path = Path(workspace_path).resolve()
-
-    if not workspace_exists(path):
-        raise HTTPException(
-            status_code=404,
-            detail=f"Workspace not found at {path}. Initialize with 'cf init {path}'",
-        )
-
-    workspace = get_workspace(path)
-    if not workspace:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Workspace not found at {path}",
-        )
-
-    return workspace
-
-
 @router.get("", response_model=EventListResponse)
 async def list_events(
-    workspace_path: str = Query(..., description="Path to workspace directory"),
+    workspace: Workspace = Depends(get_v2_workspace),
     limit: int = Query(20, ge=1, le=100, description="Maximum events to return"),
     since_id: Optional[int] = Query(None, description="Only return events after this ID"),
 ):
@@ -63,15 +44,13 @@ async def list_events(
     Returns events in reverse chronological order (newest first).
 
     Args:
-        workspace_path: Path to the workspace
+        workspace: Resolved workspace from workspace_path query param
         limit: Maximum number of events (1-100, default 20)
         since_id: Optional event ID for pagination
 
     Returns:
         List of events with total count
     """
-    workspace = _get_workspace_from_path(workspace_path)
-
     event_list = events.list_recent(workspace, limit=limit, since_id=since_id)
 
     return EventListResponse(

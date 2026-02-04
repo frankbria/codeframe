@@ -52,6 +52,8 @@ test-results/
 .codeframe/logs/
 *.db-journal
 state.db
+codeframe.db
+*.db.backup*
 
 # Environment
 .env

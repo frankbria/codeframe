@@ -981,21 +981,37 @@ class TestEventsV2List:
         for event in data["events"]:
             assert event["id"] > 1
 
-    def test_list_events_workspace_not_found(self, events_client):
+    def test_list_events_workspace_not_found(self, test_workspace):
         """List events returns 404 for non-existent workspace."""
-        response = events_client.get(
+        # Create a client WITHOUT the dependency override to test real path validation
+        from codeframe.ui.routers import events_v2
+
+        app = FastAPI()
+        app.include_router(events_v2.router)
+        # No dependency override - uses real get_v2_workspace
+        client = TestClient(app)
+
+        response = client.get(
             "/api/v2/events",
-            params={"workspace_path": "/nonexistent/path"}
+            params={"workspace_path": "/nonexistent/path/that/does/not/exist"}
         )
 
         assert response.status_code == 404
-        assert "Workspace not found" in response.json()["detail"]
+        # Error message is sanitized (doesn't expose full path)
+        assert "not found" in response.json()["detail"].lower()
 
-    def test_list_events_missing_workspace_path(self, events_client):
-        """List events returns 422 when workspace_path is missing."""
+    def test_list_events_uses_default_workspace(self, events_client):
+        """List events uses server default when workspace_path is omitted."""
+        # When no workspace_path is provided, the endpoint falls back to
+        # the server's default workspace (from app state or cwd)
+        # This is the expected behavior - matches CLI which uses cwd
         response = events_client.get("/api/v2/events")
 
-        assert response.status_code == 422
+        # Should succeed since our test client has a valid workspace configured
+        assert response.status_code == 200
+        data = response.json()
+        assert "events" in data
+        assert "total" in data
 
     def test_list_events_limit_validation(self, events_client):
         """List events validates limit parameter bounds."""

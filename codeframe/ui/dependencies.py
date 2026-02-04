@@ -77,10 +77,11 @@ def get_v2_workspace(
         path = Path.cwd()
 
     # Validate workspace exists
+    # Note: Avoid exposing full filesystem paths in error messages for hosted deployments
     if not workspace_exists(path):
         raise HTTPException(
             status_code=404,
-            detail=f"Workspace not found at {path}. Initialize with 'cf init {path}'",
+            detail="Workspace not found at specified path. Initialize with 'cf init <path>'",
         )
 
     try:
@@ -88,13 +89,13 @@ def get_v2_workspace(
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
-            detail=f"Workspace not found at {path}. Initialize with 'cf init {path}'",
+            detail="Workspace not found at specified path. Initialize with 'cf init <path>'",
         )
 
     if not workspace:
         raise HTTPException(
             status_code=404,
-            detail=f"Workspace not found at {path}. Initialize with 'cf init {path}'",
+            detail="Workspace not found at specified path. Initialize with 'cf init <path>'",
         )
 
     return workspace

@@ -57,19 +57,27 @@ const EVENT_TYPE_MAP: Record<string, ActivityType> = {
   'PRD_UPDATED': 'prd_added',
 };
 
+// Safely extract string from unknown payload field
+function safeString(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return null;
+}
+
 // Convert EventResponse to ActivityItem
 function mapEventToActivity(event: EventResponse): ActivityItem {
   const activityType = EVENT_TYPE_MAP[event.event_type] || 'task_completed';
   const payload = event.payload || {};
 
-  // Build description from payload or event type
-  let description = (payload.description as string) ||
-                    (payload.message as string) ||
+  // Build description from payload or event type with runtime type checks
+  let description = safeString(payload.description) ||
+                    safeString(payload.message) ||
                     event.event_type.replace(/[._]/g, ' ');
 
-  // Add task/blocker context if available
-  if (payload.task_title) {
-    description = `${payload.task_title}: ${description}`;
+  // Add task/blocker context if available (with type check)
+  const taskTitle = safeString(payload.task_title);
+  if (taskTitle) {
+    description = `${taskTitle}: ${description}`;
   }
 
   return {
