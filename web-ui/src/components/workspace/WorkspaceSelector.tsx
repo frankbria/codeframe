@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Folder01Icon, Time01Icon, Cancel01Icon, Loading03Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,9 +29,13 @@ export function WorkspaceSelector({
   error,
 }: WorkspaceSelectorProps) {
   const [inputPath, setInputPath] = useState('');
-  const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>(
-    getRecentWorkspaces
-  );
+  // Initialize empty to avoid hydration mismatch (localStorage isn't available on server)
+  const [recentWorkspaces, setRecentWorkspaces] = useState<RecentWorkspace[]>([]);
+
+  // Load recent workspaces on client only
+  useEffect(() => {
+    setRecentWorkspaces(getRecentWorkspaces());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,10 +128,18 @@ export function WorkspaceSelector({
               <ul className="space-y-2">
                 {recentWorkspaces.map((workspace) => (
                   <li key={workspace.path}>
-                    <button
-                      onClick={() => handleSelectRecent(workspace.path)}
-                      disabled={isLoading}
-                      className="w-full flex items-center justify-between p-3 rounded-md border hover:bg-accent transition-colors text-left disabled:opacity-50"
+                    <div
+                      role="button"
+                      tabIndex={isLoading ? -1 : 0}
+                      onClick={() => !isLoading && handleSelectRecent(workspace.path)}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
+                          e.preventDefault();
+                          handleSelectRecent(workspace.path);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-md border hover:bg-accent transition-colors text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                      aria-disabled={isLoading}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <Folder01Icon className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
@@ -145,14 +157,16 @@ export function WorkspaceSelector({
                           })}
                         </span>
                         <button
+                          type="button"
                           onClick={(e) => handleRemoveRecent(workspace.path, e)}
-                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring"
                           title="Remove from recent"
+                          aria-label={`Remove ${workspace.name} from recent projects`}
                         >
                           <Cancel01Icon className="h-4 w-4" />
                         </button>
                       </div>
-                    </button>
+                    </div>
                   </li>
                 ))}
               </ul>
