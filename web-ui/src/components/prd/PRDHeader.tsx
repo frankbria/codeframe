@@ -5,12 +5,14 @@ import {
   Upload04Icon,
   MessageSearch01Icon,
   TaskEdit01Icon,
+  Loading03Icon,
 } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import type { PrdResponse } from '@/types';
 
 interface PRDHeaderProps {
   prd: PrdResponse | null;
+  isGeneratingTasks?: boolean;
   onUploadPrd: () => void;
   onStartDiscovery: () => void;
   onGenerateTasks: () => void;
@@ -18,6 +20,7 @@ interface PRDHeaderProps {
 
 export function PRDHeader({
   prd,
+  isGeneratingTasks = false,
   onUploadPrd,
   onStartDiscovery,
   onGenerateTasks,
@@ -48,9 +51,22 @@ export function PRDHeader({
           <MessageSearch01Icon className="mr-1.5 h-4 w-4" />
           Discovery
         </Button>
-        <Button size="sm" onClick={onGenerateTasks} disabled={!prd}>
-          <TaskEdit01Icon className="mr-1.5 h-4 w-4" />
-          Generate Tasks
+        <Button
+          size="sm"
+          onClick={onGenerateTasks}
+          disabled={!prd || isGeneratingTasks}
+        >
+          {isGeneratingTasks ? (
+            <>
+              <Loading03Icon className="mr-1.5 h-4 w-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <TaskEdit01Icon className="mr-1.5 h-4 w-4" />
+              Generate Tasks
+            </>
+          )}
         </Button>
       </div>
     </header>

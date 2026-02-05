@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { PRDView } from '@/components/prd';
 import { UploadPRDModal } from '@/components/prd/UploadPRDModal';
-import { prdApi, tasksApi } from '@/lib/api';
+import { prdApi, tasksApi, discoveryApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type {
   PrdResponse,
@@ -17,6 +17,7 @@ export default function PrdPage() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
@@ -34,7 +35,7 @@ export default function PrdPage() {
   );
 
   // Fetch task counts (to show summary)
-  const { data: tasksData } = useSWR<TaskListResponse>(
+  const { data: tasksData, mutate: mutateTasks } = useSWR<TaskListResponse>(
     workspacePath ? `/api/v2/tasks?path=${workspacePath}` : null,
     () => tasksApi.getAll(workspacePath!)
   );
@@ -114,9 +115,15 @@ export default function PrdPage() {
     setDiscoveryOpen(false);
   };
 
-  const handleGenerateTasks = () => {
-    // Step 6: Task generation
-    console.log('[PRD] Generate Tasks clicked');
+  const handleGenerateTasks = async () => {
+    if (!workspacePath || !prd) return;
+    setIsGeneratingTasks(true);
+    try {
+      await discoveryApi.generateTasks(workspacePath);
+      await mutateTasks();
+    } finally {
+      setIsGeneratingTasks(false);
+    }
   };
 
   return (
@@ -136,6 +143,7 @@ export default function PrdPage() {
           taskCounts={tasksData?.by_status ?? null}
           isLoading={prdLoading}
           isSaving={isSaving}
+          isGeneratingTasks={isGeneratingTasks}
           discoveryOpen={discoveryOpen}
           workspacePath={workspacePath}
           onUploadPrd={handleUploadPrd}

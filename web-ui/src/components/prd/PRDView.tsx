@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PRDHeader } from './PRDHeader';
 import { MarkdownEditor } from './MarkdownEditor';
 import { DiscoveryPanel } from './DiscoveryPanel';
+import { AssociatedTasksSummary } from './AssociatedTasksSummary';
 import type { PrdResponse, TaskStatusCounts } from '@/types';
 
 interface PRDViewProps {
@@ -13,6 +14,7 @@ interface PRDViewProps {
   taskCounts: TaskStatusCounts | null;
   isLoading: boolean;
   isSaving?: boolean;
+  isGeneratingTasks?: boolean;
   discoveryOpen: boolean;
   workspacePath: string | null;
   onUploadPrd: () => void;
@@ -28,6 +30,7 @@ export function PRDView({
   taskCounts,
   isLoading,
   isSaving = false,
+  isGeneratingTasks = false,
   discoveryOpen,
   workspacePath,
   onUploadPrd,
@@ -54,6 +57,7 @@ export function PRDView({
       <div className="space-y-6">
         <PRDHeader
           prd={null}
+          isGeneratingTasks={isGeneratingTasks}
           onUploadPrd={onUploadPrd}
           onStartDiscovery={onStartDiscovery}
           onGenerateTasks={onGenerateTasks}
@@ -86,6 +90,7 @@ export function PRDView({
     <div className="space-y-6">
       <PRDHeader
         prd={prd}
+        isGeneratingTasks={isGeneratingTasks}
         onUploadPrd={onUploadPrd}
         onStartDiscovery={onStartDiscovery}
         onGenerateTasks={onGenerateTasks}
@@ -125,15 +130,8 @@ export function PRDView({
         )}
       </div>
 
-      {/* Task summary will be built in Step 6 */}
       {taskCounts && (
-        <div className="flex gap-2 text-xs text-muted-foreground">
-          <span>READY: {taskCounts.READY}</span>
-          <span>&middot;</span>
-          <span>IN_PROGRESS: {taskCounts.IN_PROGRESS}</span>
-          <span>&middot;</span>
-          <span>DONE: {taskCounts.DONE}</span>
-        </div>
+        <AssociatedTasksSummary taskCounts={taskCounts} />
       )}
     </div>
   );
