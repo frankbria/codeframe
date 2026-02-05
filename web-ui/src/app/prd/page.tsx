@@ -47,11 +47,11 @@ export default function PrdPage() {
         <div className="mx-auto max-w-7xl px-4 py-8">
           <div className="rounded-lg border bg-muted/50 p-6 text-center">
             <p className="text-muted-foreground">
-              No workspace selected.{' '}
+              No workspace selected. Use the sidebar to return to{' '}
               <a href="/" className="text-primary hover:underline">
-                Select a project
+                Workspace
               </a>{' '}
-              first.
+              and select a project.
             </p>
           </div>
         </div>
@@ -129,15 +129,6 @@ export default function PrdPage() {
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-4">
-          <a
-            href="/"
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            &larr; Workspace
-          </a>
-        </div>
-
         <PRDView
           prd={hasPrd ? prd : null}
           taskCounts={tasksData?.by_status ?? null}
