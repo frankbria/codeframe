@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { PRDView } from '@/components/prd';
+import { UploadPRDModal } from '@/components/prd/UploadPRDModal';
 import { prdApi, tasksApi } from '@/lib/api';
 import { getSelectedWorkspacePath } from '@/lib/workspace-storage';
 import type {
@@ -13,6 +14,7 @@ import type {
 
 export default function PrdPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
@@ -23,6 +25,7 @@ export default function PrdPage() {
     data: prd,
     error: prdError,
     isLoading: prdLoading,
+    mutate: mutatePrd,
   } = useSWR<PrdResponse, ApiError>(
     workspacePath ? `/api/v2/prd/latest?path=${workspacePath}` : null,
     () => prdApi.getLatest(workspacePath!)
@@ -72,10 +75,13 @@ export default function PrdPage() {
     );
   }
 
-  // Action stubs — these will be wired up in later steps
   const handleUploadPrd = () => {
-    // Step 3: UploadPRDModal
-    console.log('[PRD] Upload PRD clicked');
+    setUploadModalOpen(true);
+  };
+
+  const handleUploadSuccess = (newPrd: PrdResponse) => {
+    // Update SWR cache with the new PRD so UI reflects it immediately
+    mutatePrd(newPrd, false);
   };
 
   const handleStartDiscovery = () => {
@@ -107,6 +113,13 @@ export default function PrdPage() {
           onUploadPrd={handleUploadPrd}
           onStartDiscovery={handleStartDiscovery}
           onGenerateTasks={handleGenerateTasks}
+        />
+
+        <UploadPRDModal
+          open={uploadModalOpen}
+          onOpenChange={setUploadModalOpen}
+          workspacePath={workspacePath}
+          onSuccess={handleUploadSuccess}
         />
       </div>
     </main>

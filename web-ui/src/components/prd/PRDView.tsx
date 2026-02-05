@@ -3,6 +3,7 @@
 import { FileEditIcon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PRDHeader } from './PRDHeader';
 import type { PrdResponse, TaskStatusCounts } from '@/types';
 
 interface PRDViewProps {
@@ -37,12 +38,12 @@ export function PRDView({
   if (!prd) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <FileEditIcon className="h-6 w-6 text-muted-foreground" />
-          <h2 className="text-2xl font-bold tracking-tight">
-            Product Requirements
-          </h2>
-        </div>
+        <PRDHeader
+          prd={null}
+          onUploadPrd={onUploadPrd}
+          onStartDiscovery={onStartDiscovery}
+          onGenerateTasks={onGenerateTasks}
+        />
 
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
@@ -69,28 +70,12 @@ export function PRDView({
   // PRD exists — show header with actions + content preview
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <FileEditIcon className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">{prd.title}</h2>
-            <p className="text-sm text-muted-foreground">
-              Version {prd.version} &middot; {new Date(prd.created_at).toLocaleDateString()}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={onUploadPrd}>
-            Upload New
-          </Button>
-          <Button variant="outline" onClick={onStartDiscovery}>
-            Discovery
-          </Button>
-          <Button onClick={onGenerateTasks}>
-            Generate Tasks
-          </Button>
-        </div>
-      </div>
+      <PRDHeader
+        prd={prd}
+        onUploadPrd={onUploadPrd}
+        onStartDiscovery={onStartDiscovery}
+        onGenerateTasks={onGenerateTasks}
+      />
 
       <Card>
         <CardHeader>
