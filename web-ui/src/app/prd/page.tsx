@@ -15,6 +15,7 @@ import type {
 export default function PrdPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
@@ -84,6 +85,22 @@ export default function PrdPage() {
     mutatePrd(newPrd, false);
   };
 
+  const handleSavePrd = async (content: string, changeSummary: string) => {
+    if (!prd || !workspacePath) return;
+    setIsSaving(true);
+    try {
+      const updated = await prdApi.createVersion(
+        prd.id,
+        workspacePath,
+        content,
+        changeSummary
+      );
+      mutatePrd(updated, false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleStartDiscovery = () => {
     // Step 5: DiscoveryPanel
     console.log('[PRD] Start Discovery clicked');
@@ -110,9 +127,11 @@ export default function PrdPage() {
           prd={hasPrd ? prd : null}
           taskCounts={tasksData?.by_status ?? null}
           isLoading={prdLoading}
+          isSaving={isSaving}
           onUploadPrd={handleUploadPrd}
           onStartDiscovery={handleStartDiscovery}
           onGenerateTasks={handleGenerateTasks}
+          onSavePrd={handleSavePrd}
         />
 
         <UploadPRDModal

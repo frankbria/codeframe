@@ -2,26 +2,31 @@
 
 import { FileEditIcon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { PRDHeader } from './PRDHeader';
+import { MarkdownEditor } from './MarkdownEditor';
 import type { PrdResponse, TaskStatusCounts } from '@/types';
 
 interface PRDViewProps {
   prd: PrdResponse | null;
   taskCounts: TaskStatusCounts | null;
   isLoading: boolean;
+  isSaving?: boolean;
   onUploadPrd: () => void;
   onStartDiscovery: () => void;
   onGenerateTasks: () => void;
+  onSavePrd?: (content: string, changeSummary: string) => Promise<void>;
 }
 
 export function PRDView({
   prd,
   taskCounts,
   isLoading,
+  isSaving = false,
   onUploadPrd,
   onStartDiscovery,
   onGenerateTasks,
+  onSavePrd,
 }: PRDViewProps) {
   if (isLoading) {
     return (
@@ -78,16 +83,12 @@ export function PRDView({
       />
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            PRD Content
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Markdown editor will replace this in Step 4 */}
-          <div className="prose prose-sm max-w-none whitespace-pre-wrap text-sm">
-            {prd.content}
-          </div>
+        <CardContent className="pt-6">
+          <MarkdownEditor
+            content={prd.content}
+            onSave={onSavePrd ?? (async () => {})}
+            isSaving={isSaving}
+          />
         </CardContent>
       </Card>
 
