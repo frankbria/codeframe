@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PRDHeader } from './PRDHeader';
 import { MarkdownEditor } from './MarkdownEditor';
+import { DiscoveryPanel } from './DiscoveryPanel';
 import type { PrdResponse, TaskStatusCounts } from '@/types';
 
 interface PRDViewProps {
@@ -12,10 +13,14 @@ interface PRDViewProps {
   taskCounts: TaskStatusCounts | null;
   isLoading: boolean;
   isSaving?: boolean;
+  discoveryOpen: boolean;
+  workspacePath: string | null;
   onUploadPrd: () => void;
   onStartDiscovery: () => void;
+  onCloseDiscovery: () => void;
   onGenerateTasks: () => void;
   onSavePrd?: (content: string, changeSummary: string) => Promise<void>;
+  onPrdGenerated: (prd: PrdResponse) => void;
 }
 
 export function PRDView({
@@ -23,10 +28,14 @@ export function PRDView({
   taskCounts,
   isLoading,
   isSaving = false,
+  discoveryOpen,
+  workspacePath,
   onUploadPrd,
   onStartDiscovery,
+  onCloseDiscovery,
   onGenerateTasks,
   onSavePrd,
+  onPrdGenerated,
 }: PRDViewProps) {
   if (isLoading) {
     return (
@@ -40,7 +49,7 @@ export function PRDView({
   }
 
   // Empty state — no PRD yet
-  if (!prd) {
+  if (!prd && !discoveryOpen) {
     return (
       <div className="space-y-6">
         <PRDHeader
@@ -72,7 +81,7 @@ export function PRDView({
     );
   }
 
-  // PRD exists — show header with actions + content preview
+  // Two-column layout when discovery is open, single column otherwise
   return (
     <div className="space-y-6">
       <PRDHeader
@@ -82,15 +91,39 @@ export function PRDView({
         onGenerateTasks={onGenerateTasks}
       />
 
-      <Card>
-        <CardContent className="pt-6">
-          <MarkdownEditor
-            content={prd.content}
-            onSave={onSavePrd ?? (async () => {})}
-            isSaving={isSaving}
-          />
-        </CardContent>
-      </Card>
+      <div
+        className={`grid gap-4 ${
+          discoveryOpen ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'
+        }`}
+      >
+        {/* Left: editor (or empty placeholder when no PRD during discovery) */}
+        <Card>
+          <CardContent className="pt-6">
+            {prd ? (
+              <MarkdownEditor
+                content={prd.content}
+                onSave={onSavePrd ?? (async () => {})}
+                isSaving={isSaving}
+              />
+            ) : (
+              <div className="flex min-h-[400px] items-center justify-center text-sm text-muted-foreground">
+                PRD will appear here after discovery completes.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Right: discovery panel */}
+        {discoveryOpen && workspacePath && (
+          <div className="min-h-[500px]">
+            <DiscoveryPanel
+              workspacePath={workspacePath}
+              onClose={onCloseDiscovery}
+              onPrdGenerated={onPrdGenerated}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Task summary will be built in Step 6 */}
       {taskCounts && (

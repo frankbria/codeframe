@@ -15,6 +15,7 @@ import type {
 export default function PrdPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -81,7 +82,6 @@ export default function PrdPage() {
   };
 
   const handleUploadSuccess = (newPrd: PrdResponse) => {
-    // Update SWR cache with the new PRD so UI reflects it immediately
     mutatePrd(newPrd, false);
   };
 
@@ -102,8 +102,16 @@ export default function PrdPage() {
   };
 
   const handleStartDiscovery = () => {
-    // Step 5: DiscoveryPanel
-    console.log('[PRD] Start Discovery clicked');
+    setDiscoveryOpen(true);
+  };
+
+  const handleCloseDiscovery = () => {
+    setDiscoveryOpen(false);
+  };
+
+  const handlePrdGenerated = (newPrd: PrdResponse) => {
+    mutatePrd(newPrd, false);
+    setDiscoveryOpen(false);
   };
 
   const handleGenerateTasks = () => {
@@ -128,10 +136,14 @@ export default function PrdPage() {
           taskCounts={tasksData?.by_status ?? null}
           isLoading={prdLoading}
           isSaving={isSaving}
+          discoveryOpen={discoveryOpen}
+          workspacePath={workspacePath}
           onUploadPrd={handleUploadPrd}
           onStartDiscovery={handleStartDiscovery}
+          onCloseDiscovery={handleCloseDiscovery}
           onGenerateTasks={handleGenerateTasks}
           onSavePrd={handleSavePrd}
+          onPrdGenerated={handlePrdGenerated}
         />
 
         <UploadPRDModal
