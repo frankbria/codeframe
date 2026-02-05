@@ -97,6 +97,9 @@ export default function PrdPage() {
         changeSummary
       );
       mutatePrd(updated, false);
+    } catch (err) {
+      const apiError = err as ApiError;
+      console.error('[PRD] Save failed:', apiError.detail);
     } finally {
       setIsSaving(false);
     }
@@ -121,6 +124,9 @@ export default function PrdPage() {
     try {
       await discoveryApi.generateTasks(workspacePath);
       await mutateTasks();
+    } catch (err) {
+      const apiError = err as ApiError;
+      console.error('[PRD] Task generation failed:', apiError.detail);
     } finally {
       setIsGeneratingTasks(false);
     }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Cancel01Icon, Loading03Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
 import { DiscoveryTranscript } from './DiscoveryTranscript';
@@ -65,9 +65,10 @@ export function DiscoveryPanel({
   }, [workspacePath]);
 
   // Auto-start when panel mounts if no session yet
-  useState(() => {
+  useEffect(() => {
     if (!sessionId) startSession();
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Submit answer ───────────────────────────────────────────────
   const handleSubmitAnswer = useCallback(
@@ -121,7 +122,7 @@ export function DiscoveryPanel({
     setError(null);
 
     try {
-      const genResp = await discoveryApi.generatePrd(sessionId, workspacePath);
+      await discoveryApi.generatePrd(sessionId, workspacePath);
       // Fetch the full PRD to hand back to the page
       const fullPrd = await prdApi.getLatest(workspacePath);
       onPrdGenerated(fullPrd);
