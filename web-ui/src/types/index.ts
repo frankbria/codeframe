@@ -62,8 +62,8 @@ export interface Task {
   priority: number;
   depends_on: string[];
   estimated_hours?: number;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface TaskListResponse {
