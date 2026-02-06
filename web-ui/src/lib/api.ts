@@ -12,6 +12,14 @@ import type {
   TaskListResponse,
   EventListResponse,
   ApiError,
+  PrdResponse,
+  PrdListResponse,
+  PrdDiffResponse,
+  StartDiscoveryResponse,
+  AnswerResponse,
+  DiscoveryStatusResponse,
+  GeneratePrdResponse,
+  GenerateTasksResponse,
 } from '@/types';
 
 // FastAPI validation error format
@@ -138,6 +146,147 @@ export const eventsApi = {
         ...(options?.sinceId ? { since_id: options.sinceId } : {}),
       },
     });
+    return response.data;
+  },
+};
+
+// PRD API methods
+export const prdApi = {
+  getAll: async (workspacePath: string): Promise<PrdListResponse> => {
+    const response = await api.get<PrdListResponse>('/api/v2/prd', {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  getLatest: async (workspacePath: string): Promise<PrdResponse> => {
+    const response = await api.get<PrdResponse>('/api/v2/prd/latest', {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  getById: async (prdId: string, workspacePath: string): Promise<PrdResponse> => {
+    const response = await api.get<PrdResponse>(`/api/v2/prd/${prdId}`, {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  create: async (
+    workspacePath: string,
+    content: string,
+    title?: string,
+    metadata?: Record<string, unknown>
+  ): Promise<PrdResponse> => {
+    const response = await api.post<PrdResponse>(
+      '/api/v2/prd',
+      { content, ...(title ? { title } : {}), ...(metadata ? { metadata } : {}) },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  delete: async (prdId: string, workspacePath: string): Promise<void> => {
+    await api.delete(`/api/v2/prd/${prdId}`, {
+      params: { workspace_path: workspacePath },
+    });
+  },
+
+  getVersions: async (prdId: string, workspacePath: string): Promise<PrdResponse[]> => {
+    const response = await api.get<PrdResponse[]>(`/api/v2/prd/${prdId}/versions`, {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  createVersion: async (
+    prdId: string,
+    workspacePath: string,
+    content: string,
+    changeSummary: string
+  ): Promise<PrdResponse> => {
+    const response = await api.post<PrdResponse>(
+      `/api/v2/prd/${prdId}/versions`,
+      { content, change_summary: changeSummary },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  diff: async (
+    prdId: string,
+    workspacePath: string,
+    version1?: number,
+    version2?: number
+  ): Promise<PrdDiffResponse> => {
+    const response = await api.get<PrdDiffResponse>(`/api/v2/prd/${prdId}/diff`, {
+      params: {
+        workspace_path: workspacePath,
+        ...(version1 !== undefined ? { version1 } : {}),
+        ...(version2 !== undefined ? { version2 } : {}),
+      },
+    });
+    return response.data;
+  },
+};
+
+// Discovery API methods
+export const discoveryApi = {
+  start: async (workspacePath: string): Promise<StartDiscoveryResponse> => {
+    const response = await api.post<StartDiscoveryResponse>(
+      '/api/v2/discovery/start',
+      {},
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  getStatus: async (workspacePath: string): Promise<DiscoveryStatusResponse> => {
+    const response = await api.get<DiscoveryStatusResponse>('/api/v2/discovery/status', {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  submitAnswer: async (
+    sessionId: string,
+    answer: string,
+    workspacePath: string
+  ): Promise<AnswerResponse> => {
+    const response = await api.post<AnswerResponse>(
+      `/api/v2/discovery/${sessionId}/answer`,
+      { answer },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  generatePrd: async (
+    sessionId: string,
+    workspacePath: string,
+    templateId?: string
+  ): Promise<GeneratePrdResponse> => {
+    const response = await api.post<GeneratePrdResponse>(
+      `/api/v2/discovery/${sessionId}/generate-prd`,
+      { ...(templateId ? { template_id: templateId } : {}) },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  reset: async (workspacePath: string): Promise<void> => {
+    await api.post('/api/v2/discovery/reset', {}, {
+      params: { workspace_path: workspacePath },
+    });
+  },
+
+  generateTasks: async (workspacePath: string): Promise<GenerateTasksResponse> => {
+    const response = await api.post<GenerateTasksResponse>(
+      '/api/v2/discovery/generate-tasks',
+      {},
+      { params: { workspace_path: workspacePath } }
+    );
     return response.data;
   },
 };

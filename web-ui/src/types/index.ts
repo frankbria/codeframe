@@ -2,6 +2,22 @@
  * TypeScript types for CodeFRAME v2 API responses
  */
 
+// PRD & Discovery types (mirrors prd_v2.py + discovery_v2.py)
+export type {
+  PrdResponse,
+  PrdSummaryResponse,
+  PrdListResponse,
+  PrdDiffResponse,
+  StartDiscoveryResponse,
+  AnswerResponse,
+  DiscoveryStatusResponse,
+  GeneratePrdResponse,
+  GenerateTasksResponse,
+  DiscoveryMessage,
+  DiscoveryRole,
+  DiscoveryState,
+} from './prd';
+
 // Workspace types
 export interface WorkspaceResponse {
   id: string;

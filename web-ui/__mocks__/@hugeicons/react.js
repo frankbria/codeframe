@@ -29,4 +29,12 @@ module.exports = {
   Alert02Icon: createIconMock('Alert02Icon'),
   // WorkspaceSelector
   Cancel01Icon: createIconMock('Cancel01Icon'),
+  // PRD components
+  Upload04Icon: createIconMock('Upload04Icon'),
+  MessageSearch01Icon: createIconMock('MessageSearch01Icon'),
+  TaskEdit01Icon: createIconMock('TaskEdit01Icon'),
+  ArtificialIntelligence01Icon: createIconMock('ArtificialIntelligence01Icon'),
+  SentIcon: createIconMock('SentIcon'),
+  // AppSidebar
+  Home01Icon: createIconMock('Home01Icon'),
 };
