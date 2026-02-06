@@ -109,6 +109,14 @@ export function TaskDetailModal({
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
       <DialogContent className="max-w-xl">
+        {/* Accessibility: DialogTitle must always be present for screen readers */}
+        {(!task || isLoading) && (
+          <>
+            <DialogTitle className="sr-only">Task Details</DialogTitle>
+            <DialogDescription className="sr-only">Loading task details</DialogDescription>
+          </>
+        )}
+
         {isLoading && (
           <div className="flex items-center justify-center py-12">
             <Loading03Icon className="h-6 w-6 animate-spin text-muted-foreground" />
