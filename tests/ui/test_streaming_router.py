@@ -6,67 +6,12 @@ the /api/v2/tasks/{task_id}/stream SSE endpoint.
 
 import json
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from codeframe.core.models import (
     ProgressEvent,
     OutputEvent,
     CompletionEvent,
     HeartbeatEvent,
 )
-
-
-@pytest.fixture
-def mock_user():
-    """Create a mock authenticated user."""
-    from codeframe.auth import User
-    return User(id=1, email="test@example.com", hashed_password="!DISABLED!")
-
-
-@pytest.fixture
-def mock_workspace(tmp_path):
-    """Create a mock workspace."""
-    from codeframe.core.workspace import Workspace
-    from datetime import datetime, timezone
-
-    workspace = Workspace(
-        id="test-workspace-id",
-        repo_path=tmp_path,
-        state_dir=tmp_path / ".codeframe",
-        created_at=datetime.now(timezone.utc),
-    )
-    # Create state directory
-    workspace.state_dir.mkdir(parents=True, exist_ok=True)
-    return workspace
-
-
-@pytest.fixture
-def app_with_streaming(mock_user, mock_workspace, monkeypatch):
-    """Create a FastAPI app with the streaming router and mocked dependencies."""
-    from codeframe.ui.routers.streaming_v2 import router
-    from codeframe.auth.dependencies import get_current_user
-    from codeframe.ui.dependencies import get_v2_workspace
-    from codeframe.core import tasks
-
-    # Create a mock task
-    from unittest.mock import MagicMock
-    mock_task = MagicMock()
-    mock_task.id = "test-task"
-    mock_task.title = "Test Task"
-
-    # Patch tasks.get to return our mock task
-    monkeypatch.setattr(tasks, "get", lambda workspace, task_id: mock_task)
-
-    app = FastAPI()
-    app.include_router(router)
-
-    # Override dependencies
-    app.dependency_overrides[get_current_user] = lambda: mock_user
-    app.dependency_overrides[get_v2_workspace] = lambda: mock_workspace
-
-    return app
 
 
 class TestSSEEventFormat:
