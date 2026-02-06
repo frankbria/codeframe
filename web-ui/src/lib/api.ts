@@ -206,7 +206,7 @@ export const tasksApi = {
    * Stop a running task execution
    */
   stopExecution: async (workspacePath: string, taskId: string): Promise<void> => {
-    await api.post(`/api/v2/tasks/${taskId}/stop`, {}, {
+    await api.post(`/api/v2/tasks/${encodeURIComponent(taskId)}/stop`, {}, {
       params: { workspace_path: workspacePath },
     });
   },
@@ -215,7 +215,7 @@ export const tasksApi = {
    * Resume a blocked task execution
    */
   resumeExecution: async (workspacePath: string, taskId: string): Promise<void> => {
-    await api.post(`/api/v2/tasks/${taskId}/resume`, {}, {
+    await api.post(`/api/v2/tasks/${encodeURIComponent(taskId)}/resume`, {}, {
       params: { workspace_path: workspacePath },
     });
   },
@@ -265,7 +265,7 @@ export const blockersApi = {
     answer: string
   ): Promise<Blocker> => {
     const response = await api.post<Blocker>(
-      `/api/v2/blockers/${blockerId}/answer`,
+      `/api/v2/blockers/${encodeURIComponent(blockerId)}/answer`,
       { answer },
       { params: { workspace_path: workspacePath } }
     );
@@ -277,7 +277,7 @@ export const blockersApi = {
    */
   resolve: async (workspacePath: string, blockerId: string): Promise<Blocker> => {
     const response = await api.post<Blocker>(
-      `/api/v2/blockers/${blockerId}/resolve`,
+      `/api/v2/blockers/${encodeURIComponent(blockerId)}/resolve`,
       {},
       { params: { workspace_path: workspacePath } }
     );
@@ -291,7 +291,7 @@ export const batchesApi = {
    * Get batch details including per-task results
    */
   get: async (workspacePath: string, batchId: string): Promise<BatchResponse> => {
-    const response = await api.get<BatchResponse>(`/api/v2/batches/${batchId}`, {
+    const response = await api.get<BatchResponse>(`/api/v2/batches/${encodeURIComponent(batchId)}`, {
       params: { workspace_path: workspacePath },
     });
     return response.data;
@@ -302,7 +302,7 @@ export const batchesApi = {
    */
   stop: async (workspacePath: string, batchId: string): Promise<BatchResponse> => {
     const response = await api.post<BatchResponse>(
-      `/api/v2/batches/${batchId}/stop`,
+      `/api/v2/batches/${encodeURIComponent(batchId)}/stop`,
       {},
       { params: { workspace_path: workspacePath } }
     );
@@ -314,7 +314,7 @@ export const batchesApi = {
    */
   cancel: async (workspacePath: string, batchId: string): Promise<BatchResponse> => {
     const response = await api.post<BatchResponse>(
-      `/api/v2/batches/${batchId}/cancel`,
+      `/api/v2/batches/${encodeURIComponent(batchId)}/cancel`,
       {},
       { params: { workspace_path: workspacePath } }
     );

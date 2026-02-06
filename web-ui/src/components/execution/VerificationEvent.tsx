@@ -16,7 +16,7 @@ interface VerificationEventProps {
  *   "ruff check: failed (2 errors)"
  */
 export function VerificationEvent({ event }: VerificationEventProps) {
-  const passed = /pass/i.test(event.message ?? '');
+  const passed = /\bpassed?\b/i.test(event.message ?? '');
   const Icon = passed ? CheckmarkCircle01Icon : Cancel01Icon;
 
   return (

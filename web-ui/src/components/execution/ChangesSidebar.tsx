@@ -25,7 +25,7 @@ export function ChangesSidebar({ changedFiles }: ChangesSidebarProps) {
   return (
     <div
       className={`shrink-0 rounded-lg border bg-card transition-all ${
-        collapsed ? 'w-10' : 'w-64'
+        collapsed ? 'w-10' : 'w-full md:w-64'
       }`}
     >
       {/* Header with toggle */}

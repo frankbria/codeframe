@@ -71,6 +71,8 @@ export type ExecutionEvent =
 export interface UseTaskStreamOptions {
   /** Task ID to stream events for. Pass `null` to disable. */
   taskId: string | null;
+  /** Workspace path required by the backend. Pass `null` to disable. */
+  workspacePath: string | null;
   /** Called for every execution event (including heartbeats). */
   onEvent?: (event: ExecutionEvent) => void;
   /** Called specifically on progress events. */
@@ -96,6 +98,7 @@ export interface UseTaskStreamOptions {
  */
 export function useTaskStream({
   taskId,
+  workspacePath,
   onEvent,
   onProgress,
   onOutput,
@@ -106,7 +109,10 @@ export function useTaskStream({
   const [lastEvent, setLastEvent] = useState<ExecutionEvent | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
-  const url = taskId ? `${apiBase}/api/v2/tasks/${taskId}/stream` : null;
+  const url =
+    taskId && workspacePath
+      ? `${apiBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`
+      : null;
 
   const handleMessage = useCallback(
     (data: string) => {

@@ -30,6 +30,7 @@ export function ShellCommandEvent({ event }: ShellCommandEventProps) {
           size="sm"
           className="ml-auto h-5 px-1.5 text-[10px] text-muted-foreground"
           onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
         >
           {expanded ? 'Hide' : 'Show'}
         </Button>

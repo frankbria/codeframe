@@ -32,6 +32,7 @@ export function FileChangeEvent({ event }: FileChangeEventProps) {
           size="sm"
           className="ml-auto h-5 px-1.5 text-[10px] text-muted-foreground"
           onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
         >
           {expanded ? 'Hide' : 'View Diff'}
         </Button>

@@ -160,66 +160,19 @@ class TestSSEEventFormat:
 
 
 class TestStreamingRouterEndpoint:
-    """Tests for streaming router endpoint configuration."""
+    """Tests for streaming router configuration.
 
-    def test_endpoint_exists(self, app_with_streaming):
-        """The streaming endpoint should be registered."""
-        client = TestClient(app_with_streaming)
+    NOTE: The SSE stream endpoint (GET /api/v2/tasks/{task_id}/stream) was
+    moved to tasks_v2.py to avoid a route collision with the JWT-auth version.
+    The tasks_v2 version only requires workspace_path, making it compatible
+    with browser EventSource which cannot send custom auth headers.
+    """
 
-        # Get the OpenAPI schema to verify endpoint exists
-        response = client.get("/openapi.json")
-        assert response.status_code == 200
+    def test_streaming_router_has_no_endpoints(self):
+        """streaming_v2 router should have no endpoints (utilities only)."""
+        from codeframe.ui.routers.streaming_v2 import router
 
-        schema = response.json()
-        paths = schema.get("paths", {})
-
-        # Verify the stream endpoint is registered
-        assert "/api/v2/tasks/{task_id}/stream" in paths
-        assert "get" in paths["/api/v2/tasks/{task_id}/stream"]
-
-    def test_endpoint_returns_streaming_response(self, app_with_streaming):
-        """The endpoint should return a streaming response with SSE content type."""
-        from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.routers import streaming_v2
-
-        # Inject a publisher that immediately completes the task
-        publisher = EventPublisher()
-        streaming_v2.set_event_publisher(publisher)
-
-        try:
-            client = TestClient(app_with_streaming)
-
-            # Use stream=True but set a short timeout via the client
-            # and complete the task immediately
-            import threading
-            import time
-
-            def complete_task():
-                time.sleep(0.1)
-                import asyncio
-                loop = asyncio.new_event_loop()
-                loop.run_until_complete(publisher.complete_task("test-task"))
-                loop.close()
-
-            thread = threading.Thread(target=complete_task)
-            thread.start()
-
-            # The TestClient doesn't easily support streaming,
-            # so we just verify the endpoint starts without error
-            # Real streaming tests require async client
-            with client.stream("GET", "/api/v2/tasks/test-task/stream") as response:
-                assert response.status_code == 200
-                assert "text/event-stream" in response.headers.get("content-type", "")
-                # Read at most a small amount before breaking
-                break_after = 0
-                for _ in response.iter_lines():
-                    break_after += 1
-                    if break_after > 0:
-                        break
-
-            thread.join(timeout=2.0)
-        finally:
-            streaming_v2.set_event_publisher(None)
+        assert len(router.routes) == 0
 
 
 class TestEventPublisherGlobal:

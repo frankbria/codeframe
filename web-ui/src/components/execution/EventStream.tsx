@@ -75,6 +75,9 @@ export function EventStream({ events, workspacePath, onBlockerAnswered }: EventS
         ref={containerRef}
         className="h-full overflow-y-auto p-4"
         onScroll={handleScroll}
+        role="log"
+        aria-live="polite"
+        aria-label="Execution event stream"
       >
         {displayEvents.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">

@@ -46,11 +46,13 @@ export interface ExecutionMonitorState {
  * re-renders when events arrive rapidly.
  */
 export function useExecutionMonitor(
-  taskId: string | null
+  taskId: string | null,
+  workspacePath: string | null = null
 ): ExecutionMonitorState & { close: () => void } {
   // ── Refs for accumulation (no re-render per event) ────────────────
   const eventsRef = useRef<ExecutionEvent[]>([]);
   const rafRef = useRef<number | null>(null);
+  const sseStatusRef = useRef<SSEStatus>('idle');
 
   // ── State exposed to consumers ────────────────────────────────────
   const [state, setState] = useState<ExecutionMonitorState>({
@@ -94,9 +96,14 @@ export function useExecutionMonitor(
       const events = [...eventsRef.current];
       const lastNonHeartbeat = findLastNonHeartbeat(events);
 
-      const agentState: UIAgentState = lastNonHeartbeat
+      let agentState: UIAgentState = lastNonHeartbeat
         ? deriveAgentState(lastNonHeartbeat)
         : 'CONNECTING';
+
+      // Don't let rAF flush overwrite DISCONNECTED state
+      if (sseStatusRef.current === 'error' || sseStatusRef.current === 'closed') {
+        agentState = 'DISCONNECTED';
+      }
 
       const latestProgress = findLatestProgress(events);
       const completion = findCompletion(events);
@@ -138,8 +145,14 @@ export function useExecutionMonitor(
   // ── Compose useTaskStream ─────────────────────────────────────────
   const { status: sseStatus, close } = useTaskStream({
     taskId,
+    workspacePath,
     onEvent,
   });
+
+  // Keep sseStatusRef in sync
+  useEffect(() => {
+    sseStatusRef.current = sseStatus;
+  }, [sseStatus]);
 
   // Sync SSE status into our state
   useEffect(() => {

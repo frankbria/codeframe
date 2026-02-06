@@ -62,6 +62,7 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
   // ── Fetch batch details + task names ────────────────────────────────
   const fetchBatch = useCallback(async () => {
     try {
+      setError(null);
       const data = await batchesApi.get(workspacePath, batchId);
       setBatch(data);
 
@@ -88,7 +89,7 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
 
   // Poll every 5 seconds while batch is active
   useEffect(() => {
-    const isActive = batch && !['completed', 'failed', 'cancelled'].includes(batch.status);
+    const isActive = batch && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(batch.status);
     if (isActive) {
       pollRef.current = setInterval(fetchBatch, 5000);
     }
@@ -143,7 +144,7 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
     );
   }
 
-  const isActive = !['completed', 'failed', 'cancelled'].includes(batch.status);
+  const isActive = !['COMPLETED', 'FAILED', 'CANCELLED'].includes(batch.status);
   const completedCount = batch.task_ids.filter(
     (id) => batch.results[id] === 'COMPLETED' || batch.results[id] === 'DONE'
   ).length;
@@ -264,9 +265,9 @@ function BatchTaskRow({
   const config = getStatusConfig(status);
   const StatusIcon = config.icon;
 
-  // Only connect SSE when expanded and task is in progress
-  const shouldStream = isExpanded && status === 'IN_PROGRESS';
-  const monitor = useExecutionMonitor(shouldStream ? taskId : null);
+  // Only connect SSE when expanded and task is in progress or blocked
+  const shouldStream = isExpanded && (status === 'IN_PROGRESS' || status === 'BLOCKED');
+  const monitor = useExecutionMonitor(shouldStream ? taskId : null, workspacePath);
 
   return (
     <div className="rounded-lg border bg-card">
