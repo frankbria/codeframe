@@ -5,7 +5,7 @@
 ![Status](https://img.shields.io/badge/status-v2%20Phase%203%20In%20Progress-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Tests](https://img.shields.io/badge/tests-4285%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-4331%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-88%25-brightgreen)
 [![Follow on X](https://img.shields.io/twitter/follow/FrankBria18044?style=social)](https://x.com/FrankBria18044)
 
@@ -37,7 +37,7 @@ Phases 1 and 2 are complete! We're now rebuilding the web dashboard on the v2 fo
 | Phase 3 UI architecture & information design | ✅ Complete | — |
 | Workspace View with activity feed | ✅ Complete | #335 |
 | PRD View with document creation & discovery | ✅ Complete | #330 |
-| Task Board View | Planned | — |
+| Task Board View with Kanban & batch execution | ✅ Complete | #331 |
 | Execution Monitor View | Planned | — |
 | Blocker Resolution View | Planned | — |
 | Review & Commit View | Planned | — |
@@ -61,9 +61,19 @@ Phases 1 and 2 are complete! We're now rebuilding the web dashboard on the v2 fo
 - **Task Summary** — Associated tasks broken down by status
 - **Version History** — Track changes across PRD revisions
 
+### Task Board View
+
+**Kanban board with batch execution** — Visualize, filter, and execute tasks across the development lifecycle.
+
+- **6-Column Kanban** — Backlog → Ready → In Progress → Blocked → Failed → Done
+- **Search & Filter** — Debounced search with status pill toggles
+- **Batch Execution** — Select multiple tasks, choose serial/parallel strategy, execute in one click
+- **Task Detail Modal** — View full task metadata, dependencies, estimated hours, and trigger actions
+- **Keyboard Accessible** — Full WCAG 2.1 keyboard navigation support
+
 ### Web UI Tech Stack
 
-- **Next.js 15** with App Router
+- **Next.js 16** with App Router
 - **Shadcn/UI** (Nova preset) with gray color scheme
 - **Hugeicons** for consistent iconography
 - **Tailwind CSS** for styling
@@ -390,6 +400,7 @@ cf work batch run --all-ready --retry 3
 ### Web Dashboard (v2 — Phase 3)
 - **Workspace View** — Project selection, stats cards, activity feed, and quick actions
 - **PRD View** — Markdown editor with AI-powered Socratic discovery panel
+- **Task Board** — 6-column Kanban with search, filtering, batch execution, and task detail modal
 - **Real-time Streaming** — SSE-based live updates for task execution and discovery sessions
 - **Golden Path Navigation** — UI follows the same workflow as the CLI
 
@@ -528,7 +539,8 @@ cd web-ui && npm install && npm run dev
 The web dashboard provides:
 - **Workspace View** (`/`) — Project selection, stats, activity feed
 - **PRD View** (`/prd`) — Document editing with AI discovery panel
-- More views coming: Tasks, Execution Monitor, Blockers, Review
+- **Task Board** (`/tasks`) — Kanban board with filtering, batch execution, and task detail modal
+- More views coming: Execution Monitor, Blockers, Review
 
 ---
 
@@ -884,7 +896,7 @@ We welcome contributions! To get started:
 - **UI architecture and information design** — ✅ Complete
 - **Workspace View** (#335) — Project dashboard with activity feed ✅
 - **PRD View** (#330) — Document creation & AI discovery ✅
-- **Task Board View** — Planned
+- **Task Board View** (#331) — Kanban board with batch execution ✅
 - **Execution Monitor View** — Planned
 - **Blocker Resolution View** — Planned
 - **Review & Commit View** — Planned
@@ -921,7 +933,7 @@ See [LICENSE](LICENSE) for full details.
 - **FastAPI** - High-performance async web framework
 - **FastAPI Users** - Authentication and user management
 - **SlowAPI** - Rate limiting for FastAPI
-- **Next.js 15** - React framework with App Router for web dashboard
+- **Next.js 16** - React framework with App Router for web dashboard
 - **Shadcn/UI** - Component library (Nova preset with Hugeicons)
 - **Tailwind CSS** - Utility-first CSS framework
 - **TypeScript** - Type-safe frontend and tooling
