@@ -57,7 +57,10 @@ export function normalizeErrorDetail(
     return rawDetail.map((err) => err.msg).join('; ');
   }
   if (typeof rawDetail === 'object' && rawDetail !== null) {
-    // Structured error: prefer .error, fall back to .detail
+    // Structured error: combine error + detail for full context
+    if (rawDetail.error && rawDetail.detail) {
+      return `${rawDetail.error}: ${rawDetail.detail}`;
+    }
     return rawDetail.error || rawDetail.detail || fallbackMessage || 'An error occurred';
   }
   return rawDetail || fallbackMessage || 'An error occurred';
