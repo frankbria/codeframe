@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from codeframe.core.workspace import Workspace
 from codeframe.lib.rate_limiter import rate_limit_ai, rate_limit_standard
 from codeframe.core import runtime, tasks, conductor, streaming
+from codeframe.core.runtime import RunStatus
 from codeframe.core.state_machine import TaskStatus
 from codeframe.ui.dependencies import get_v2_workspace
 from codeframe.ui.response_models import api_error, ErrorCodes
@@ -881,12 +882,63 @@ async def stream_task_events(
             detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
         )
 
-    from codeframe.ui.routers.streaming_v2 import event_stream_generator, get_event_publisher
+    from codeframe.ui.routers.streaming_v2 import (
+        event_stream_generator,
+        format_sse_event,
+        get_event_publisher,
+    )
+    from codeframe.core.models import CompletionEvent, ProgressEvent
 
     publisher = get_event_publisher()
 
+    # Check if the task already has a terminal run — if so, send a synthetic
+    # completion event immediately instead of waiting for events that will
+    # never arrive (the agent is done, the EventPublisher has no buffering).
+    run = runtime.get_active_run(workspace, task_id)
+    latest_run = runtime.get_latest_run(workspace, task_id) if not run else None
+    already_terminal = (
+        latest_run is not None
+        and latest_run.status in (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.BLOCKED)
+    ) if not run else False
+
+    async def _generate():
+        # Always send an initial progress event so the browser's EventSource
+        # fires onmessage and the client transitions from CONNECTING state.
+        yield format_sse_event(
+            ProgressEvent(
+                task_id=task_id,
+                phase="connected",
+                step=0,
+                total_steps=0,
+                message="Stream connected",
+            )
+        )
+
+        if already_terminal:
+            # Task already finished — emit a synthetic completion event.
+            status_map = {
+                RunStatus.COMPLETED: "completed",
+                RunStatus.FAILED: "failed",
+                RunStatus.BLOCKED: "blocked",
+            }
+            duration = 0.0
+            if latest_run.started_at and latest_run.completed_at:
+                duration = (latest_run.completed_at - latest_run.started_at).total_seconds()
+            yield format_sse_event(
+                CompletionEvent(
+                    task_id=task_id,
+                    status=status_map[latest_run.status],
+                    duration_seconds=duration,
+                )
+            )
+            return
+
+        # Live stream — subscribe to the EventPublisher for real-time events.
+        async for chunk in event_stream_generator(task_id, publisher, request):
+            yield chunk
+
     return StreamingResponse(
-        event_stream_generator(task_id, publisher, request),
+        _generate(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
