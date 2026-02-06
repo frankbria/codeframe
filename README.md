@@ -2,7 +2,7 @@
 
 # CodeFRAME
 
-![Status](https://img.shields.io/badge/status-v2%20Phase%202%20In%20Progress-blue)
+![Status](https://img.shields.io/badge/status-v2%20Phase%203%20In%20Progress-blue)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![Tests](https://img.shields.io/badge/tests-4285%20passing-brightgreen)
@@ -19,17 +19,62 @@ CodeFRAME is an autonomous AI development system where specialized agents collab
 
 Unlike traditional AI coding assistants that wait for your prompts, CodeFRAME agents work independently on tasks, ask questions when blocked, and coordinate with each other to ship complete features—day and night.
 
-**Two modes of operation:**
+**Three modes of operation:**
 - **CLI-first (v2)** — Complete Golden Path workflow from the command line, no server required
-- **Dashboard (v1)** — Real-time web UI with WebSocket updates for monitoring and interaction
+- **Web Dashboard (v2)** — Next.js UI with workspace management, PRD discovery, and real-time SSE streaming
+- **Dashboard (v1)** — Legacy web UI with WebSocket updates (reference only)
 
 ---
 
-## What's New (Updated: 2026-02-03)
+## What's New (Updated: 2026-02-05)
 
-### Phase 2: Server Layer In Progress
+### Phase 3: Web UI Rebuild In Progress
 
-Phase 1 is complete! We're now building the server layer as a thin adapter over the CLI-first core:
+Phases 1 and 2 are complete! We're now rebuilding the web dashboard on the v2 foundation with Next.js, Shadcn/UI, and real-time SSE streaming.
+
+| Feature | Status | Issue |
+|---------|--------|-------|
+| Phase 3 UI architecture & information design | ✅ Complete | — |
+| Workspace View with activity feed | ✅ Complete | #335 |
+| PRD View with document creation & discovery | ✅ Complete | #330 |
+| Task Board View | Planned | — |
+| Execution Monitor View | Planned | — |
+| Blocker Resolution View | Planned | — |
+| Review & Commit View | Planned | — |
+
+### Workspace View
+
+**Project dashboard** — Select a workspace, view stats, and see recent activity at a glance.
+
+- **Workspace Selector** — Initialize or connect to existing projects with tech stack auto-detection
+- **Stats Cards** — Tech stack, task counts by status, active runs
+- **Activity Feed** — Timeline of recent events (tasks completed, runs started, blockers raised)
+- **Quick Actions** — One-click access to generate PRD, create tasks, and start execution
+
+### PRD View
+
+**Document creation and AI discovery** — Write, upload, or generate PRDs with Socratic AI assistance.
+
+- **Markdown Editor** — Edit PRD content directly with live preview
+- **Upload Modal** — Import PRD from file or paste markdown
+- **Discovery Panel** — AI-guided conversation panel for requirements elicitation
+- **Task Summary** — Associated tasks broken down by status
+- **Version History** — Track changes across PRD revisions
+
+### Web UI Tech Stack
+
+- **Next.js 15** with App Router
+- **Shadcn/UI** (Nova preset) with gray color scheme
+- **Hugeicons** for consistent iconography
+- **Tailwind CSS** for styling
+- **SSE hooks** (`useEventSource`, `useTaskStream`) for real-time streaming
+
+---
+
+<details>
+<summary>Phase 2 Complete: Server Layer (2026-02-03)</summary>
+
+Server layer built as a thin adapter over the CLI-first core:
 
 | Feature | Status | Issue |
 |---------|--------|-------|
@@ -39,58 +84,13 @@ Phase 1 is complete! We're now building the server layer as a thin adapter over 
 | Real-time events (SSE) | ✅ Complete | #328 |
 | OpenAPI documentation | ✅ Complete | #119 |
 
-### API Key Authentication
+**API Key Authentication** — Programmatic access with scope-based permissions (`read`, `write`, `admin`). Use via header: `X-API-Key: your_key_here`
 
-**Programmatic access to CodeFRAME APIs** with scope-based permissions.
+**Rate Limiting** — Configurable per-endpoint limits. Supports Redis backend for distributed deployments.
 
-```bash
-# Create an API key
-cf auth api-key-create --name "CI Pipeline" --user-id 1
+**OpenAPI Documentation** — Swagger UI at `/docs`, ReDoc at `/redoc`, OpenAPI JSON at `/openapi.json`.
 
-# List your API keys
-cf auth api-key-list --user-id 1
-
-# Revoke a key
-cf auth api-key-revoke <key-id> --user-id 1 --yes
-
-# Rotate a key (generates new key, same permissions)
-cf auth api-key-rotate <key-id> --user-id 1
-```
-
-Use API keys via header: `X-API-Key: your_key_here`
-
-**Scopes**: `read` (GET operations), `write` (create/update/delete), `admin` (full access)
-
-### Rate Limiting
-
-**Configurable rate limits** to prevent abuse and ensure fair usage:
-
-```bash
-# Configure via environment variables
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_AUTH=10/minute      # Auth endpoints
-RATE_LIMIT_STANDARD=100/minute # Standard API calls
-RATE_LIMIT_AI=20/minute        # AI/chat operations
-RATE_LIMIT_WEBSOCKET=30/minute # WebSocket connections
-```
-
-Supports Redis backend for distributed deployments: `RATE_LIMIT_STORAGE=redis`
-
-### OpenAPI Documentation
-
-**Complete API documentation** available via Swagger UI and ReDoc.
-
-- **Swagger UI**: `http://localhost:8080/docs` — Interactive API explorer
-- **ReDoc**: `http://localhost:8080/redoc` — Clean API reference
-- **OpenAPI JSON**: `http://localhost:8080/openapi.json` — Schema export
-
-All endpoints include:
-- Response models with examples
-- Error response documentation (401, 403, 404, 409, 500)
-- Query parameter descriptions
-- Authentication requirements
-
----
+</details>
 
 ### Phase 1 Complete 🎉 (2026-02-01)
 
@@ -387,8 +387,13 @@ cf work batch run --all-ready --retry 3
 - **Rate Limiting** — Configurable limits per endpoint type with Redis support
 - **JWT Authentication** — Session-based auth for web dashboard
 
+### Web Dashboard (v2 — Phase 3)
+- **Workspace View** — Project selection, stats cards, activity feed, and quick actions
+- **PRD View** — Markdown editor with AI-powered Socratic discovery panel
+- **Real-time Streaming** — SSE-based live updates for task execution and discovery sessions
+- **Golden Path Navigation** — UI follows the same workflow as the CLI
+
 ### Developer Experience
-- **Real-time Dashboard** — WebSocket-powered UI with agent status, blockers, and progress tracking
 - **Environment Validation** — `cf env check` validates tools and dependencies
 - **PR Workflow** — `cf pr create/list/merge` for GitHub integration
 - **Task Scheduling** — CPM-based critical path analysis
@@ -401,31 +406,39 @@ cf work batch run --all-ready --retry 3
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    CLI / Agent Orchestrator                  │
-│  • cf work start --execute                                   │
-│  • Context loading → Planning → Execution → Verification    │
-│  • Blocker detection and human-in-loop                      │
-└─────────────┬──────────────┬──────────────┬────────────┬────┘
-              │              │              │            │
-      ┌───────▼───┐   ┌──────▼──────┐  ┌───▼────────┐  ┌▼────────┐
-      │ Backend   │   │  Frontend   │  │    Test    │  │ Review  │
-      │ Worker    │   │  Worker     │  │   Worker   │  │ Worker  │
-      │ (async)   │   │  (async)    │  │  (async)   │  │ (async) │
-      └─────┬─────┘   └──────┬──────┘  └─────┬──────┘  └────┬────┘
-            │                │               │              │
-            │  ┌─────────────▼───────────────▼──────────────▼─────┐
-            │  │         Blocker Management (Sync/Async)           │
-            │  │  • Database-backed queue (SQLite)                 │
-            │  │  • Human-in-the-loop questions                    │
-            │  └───────────────────────────────────────────────────┘
-            │
-    ┌───────▼──────────────────────────────────────────────────┐
-    │              Context Management Layer                     │
-    │  • Tiered memory (HOT/WARM/COLD)                         │
-    │  • Importance scoring & tier assignment                   │
-    │  • Flash save mechanism                                   │
-    └──────────────────────────────────────────────────────────┘
+┌──────────────────┐    ┌──────────────────────────────────────┐
+│  Web UI (Next.js) │    │        CLI (Typer)                    │
+│  • Workspace View │    │  • cf work start --execute            │
+│  • PRD Discovery  │    │  • cf prd generate                    │
+│  • Task Board     │    │  • cf work follow                     │
+└────────┬─────────┘    └────────────────┬─────────────────────┘
+         │                               │
+         │    ┌──────────────────────┐    │
+         └───►│  FastAPI Server      │◄───┘
+              │  (thin adapter)      │
+              │  • REST API (v2)     │
+              │  • SSE streaming     │
+              │  • API key auth      │
+              └──────────┬───────────┘
+                         │
+         ┌───────────────▼───────────────────────────────────┐
+         │              Core Domain (headless)                 │
+         │  • Agent orchestrator with self-correction          │
+         │  • Planning → Execution → Verification loop         │
+         │  • Blocker detection and human-in-loop              │
+         └──────┬──────────┬──────────┬────────────┬─────────┘
+                │          │          │            │
+        ┌───────▼──┐ ┌─────▼─────┐ ┌──▼───────┐ ┌─▼───────┐
+        │ Backend  │ │ Frontend  │ │  Test    │ │ Review  │
+        │ Worker   │ │ Worker    │ │  Worker  │ │ Worker  │
+        └──────────┘ └───────────┘ └──────────┘ └─────────┘
+                         │
+         ┌───────────────▼───────────────────────────────────┐
+         │              Context Management Layer               │
+         │  • Tiered memory (HOT/WARM/COLD)                   │
+         │  • State persistence (SQLite)                       │
+         │  • Checkpoint & recovery                            │
+         └────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -500,21 +513,22 @@ cf review
 cf checkpoint create "Feature complete"
 ```
 
-### Dashboard Mode (v1)
+### Web Dashboard (v2)
 
 ```bash
-# Start the dashboard (from project root)
-codeframe serve
-
-# Or manually start backend and frontend separately:
-# Terminal 1: Backend
+# Terminal 1: Start the API server
 uv run uvicorn codeframe.ui.server:app --reload --port 8080
 
-# Terminal 2: Frontend
+# Terminal 2: Start the web UI
 cd web-ui && npm install && npm run dev
 
 # Access dashboard at http://localhost:3000
 ```
+
+The web dashboard provides:
+- **Workspace View** (`/`) — Project selection, stats, activity feed
+- **PRD View** (`/prd`) — Document editing with AI discovery panel
+- More views coming: Tasks, Execution Monitor, Blockers, Review
 
 ---
 
@@ -763,7 +777,7 @@ For detailed API documentation, see `/docs` (Swagger UI) or `/redoc` (ReDoc) whe
 ### Run Tests
 
 ```bash
-# Run all unit tests
+# Run all Python tests
 uv run pytest
 
 # Run specific test suite
@@ -771,12 +785,16 @@ uv run pytest tests/core/           # Core module tests
 uv run pytest tests/agents/         # Agent tests
 uv run pytest tests/api/            # API endpoint tests
 uv run pytest tests/cli/            # CLI command tests
+uv run pytest tests/ui/             # Server router tests
 
 # Run with coverage
 uv run pytest --cov=codeframe --cov-report=html
 
 # Run v2 tests only
 uv run pytest -m v2
+
+# Run frontend tests
+cd web-ui && npm test                # Jest unit tests
 ```
 
 ### Test Statistics
@@ -802,6 +820,7 @@ For detailed documentation, see:
 - **CLI Wireframe**: [docs/CLI_WIREFRAME.md](docs/CLI_WIREFRAME.md) - Command structure
 - **CLI Test Report**: [docs/CLI_V2_TEST_REPORT.md](docs/CLI_V2_TEST_REPORT.md) - End-to-end test results
 - **Phase 2 Developer Guide**: [docs/PHASE_2_DEVELOPER_GUIDE.md](docs/PHASE_2_DEVELOPER_GUIDE.md) - Server layer patterns
+- **Phase 3 UI Architecture**: [docs/PHASE_3_UI_ARCHITECTURE.md](docs/PHASE_3_UI_ARCHITECTURE.md) - Web UI information design
 - **Product Requirements**: [PRD.md](PRD.md)
 - **System Architecture**: [CODEFRAME_SPEC.md](CODEFRAME_SPEC.md)
 - **Sprint Planning**: [SPRINTS.md](SPRINTS.md)
@@ -854,16 +873,23 @@ We welcome contributions! To get started:
   - Environment validation and tool detection
   - GitHub PR workflow commands
   - Task self-diagnosis system
+- **Phase 2**: Server Layer ✅
+  - Server audit and refactor — 15 v2 routers as thin adapters over core
+  - API key authentication with scopes (read/write/admin)
+  - Rate limiting with Redis support
+  - Real-time SSE streaming for task execution
+  - OpenAPI documentation (Swagger UI + ReDoc)
 
-### In Progress (Phase 2: Server Layer)
-- **Server audit and refactor** (#322) — Routes delegating to core modules ✅
-- **Real-time events** (#328) — SSE streaming for task execution ✅
-- **API key authentication** (#326) — Programmatic API access ✅
-- **Rate limiting** (#327) — Security and abuse prevention ✅
-- **OpenAPI documentation** (#119) — Complete API docs with examples ✅
+### In Progress (Phase 3: Web UI Rebuild)
+- **UI architecture and information design** — ✅ Complete
+- **Workspace View** (#335) — Project dashboard with activity feed ✅
+- **PRD View** (#330) — Document creation & AI discovery ✅
+- **Task Board View** — Planned
+- **Execution Monitor View** — Planned
+- **Blocker Resolution View** — Planned
+- **Review & Commit View** — Planned
 
-### Planned (Phases 3-5)
-- **Phase 3**: Web UI rebuild on v2 foundation
+### Planned (Phases 4-5)
 - **Phase 4**: Multi-agent coordination (agent roles, conflict resolution, handoffs)
 - **Phase 5**: Advanced features (TUI dashboard, token/cost tracking, debug/replay mode)
 
@@ -895,7 +921,10 @@ See [LICENSE](LICENSE) for full details.
 - **FastAPI** - High-performance async web framework
 - **FastAPI Users** - Authentication and user management
 - **SlowAPI** - Rate limiting for FastAPI
-- **React + TypeScript** - Modern frontend with real-time updates
+- **Next.js 15** - React framework with App Router for web dashboard
+- **Shadcn/UI** - Component library (Nova preset with Hugeicons)
+- **Tailwind CSS** - Utility-first CSS framework
+- **TypeScript** - Type-safe frontend and tooling
 - **SQLite** - Embedded database for persistence
 - **Playwright** - End-to-end testing framework
 - **pytest + jest** - Comprehensive testing frameworks
