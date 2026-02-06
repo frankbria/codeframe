@@ -81,9 +81,10 @@ describe('AppSidebar', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
     render(<AppSidebar />);
 
-    // Tasks is now enabled; Execution, Blockers, Review are still disabled
+    // Tasks and Execution are now enabled; Blockers, Review are still disabled
     expect(screen.getByRole('link', { name: /^tasks$/i })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /^execution$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^execution$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^blockers$/i })).not.toBeInTheDocument();
   });
 
   it('highlights the active route', () => {

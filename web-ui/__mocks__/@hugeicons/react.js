@@ -42,4 +42,13 @@ module.exports = {
   LinkCircleIcon: createIconMock('LinkCircleIcon'),
   Search01Icon: createIconMock('Search01Icon'),
   CheckListIcon: createIconMock('CheckListIcon'),
+  // Execution Monitor components
+  Idea01Icon: createIconMock('Idea01Icon'),
+  ArrowTurnBackwardIcon: createIconMock('ArrowTurnBackwardIcon'),
+  CommandLineIcon: createIconMock('CommandLineIcon'),
+  AlertDiamondIcon: createIconMock('AlertDiamondIcon'),
+  WifiDisconnected01Icon: createIconMock('WifiDisconnected01Icon'),
+  SidebarLeftIcon: createIconMock('SidebarLeftIcon'),
+  ArrowDown01Icon: createIconMock('ArrowDown01Icon'),
+  StopIcon: createIconMock('StopIcon'),
 };
