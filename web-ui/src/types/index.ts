@@ -72,6 +72,33 @@ export interface TaskListResponse {
   by_status: TaskStatusCounts;
 }
 
+// Batch execution types
+// Must match backend: codeframe/ui/routers/tasks_v2.py
+export type BatchStrategy = 'serial' | 'parallel' | 'auto';
+
+export interface BatchExecutionRequest {
+  task_ids?: string[];
+  strategy: BatchStrategy;
+  max_parallel?: number;
+  retry_count?: number;
+}
+
+export interface StartExecutionResponse {
+  success: boolean;
+  batch_id: string;
+  task_count: number;
+  strategy: string;
+  message: string;
+}
+
+export interface TaskStartResponse {
+  success: boolean;
+  run_id: string;
+  task_id: string;
+  status: string;
+  message: string;
+}
+
 // Activity types (for UI display)
 export type ActivityType =
   | 'task_completed'

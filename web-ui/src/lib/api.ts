@@ -9,7 +9,12 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import type {
   WorkspaceResponse,
   WorkspaceExistsResponse,
+  Task,
+  TaskStatus,
   TaskListResponse,
+  BatchExecutionRequest,
+  StartExecutionResponse,
+  TaskStartResponse,
   EventListResponse,
   ApiError,
   PrdResponse,
@@ -126,6 +131,62 @@ export const tasksApi = {
         ...(status ? { status } : {}),
       },
     });
+    return response.data;
+  },
+
+  /**
+   * Get a single task by ID
+   */
+  getOne: async (workspacePath: string, taskId: string): Promise<Task> => {
+    const response = await api.get<Task>(`/api/v2/tasks/${taskId}`, {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  /**
+   * Update a task's status (e.g. BACKLOG → READY)
+   */
+  updateStatus: async (
+    workspacePath: string,
+    taskId: string,
+    status: TaskStatus
+  ): Promise<Task> => {
+    const response = await api.patch<Task>(
+      `/api/v2/tasks/${taskId}`,
+      { status },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Start execution of a single task
+   */
+  startExecution: async (
+    workspacePath: string,
+    taskId: string
+  ): Promise<TaskStartResponse> => {
+    const response = await api.post<TaskStartResponse>(
+      `/api/v2/tasks/${taskId}/start`,
+      {},
+      { params: { workspace_path: workspacePath, execute: true } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Start batch execution of multiple tasks
+   */
+  executeBatch: async (
+    workspacePath: string,
+    request: BatchExecutionRequest
+  ): Promise<StartExecutionResponse> => {
+    const response = await api.post<StartExecutionResponse>(
+      '/api/v2/tasks/execute',
+      request,
+      { params: { workspace_path: workspacePath } }
+    );
     return response.data;
   },
 };
