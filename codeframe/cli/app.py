@@ -565,14 +565,30 @@ def review(
 def serve(
     port: int = typer.Option(8080, "--port", "-p", help="Port to run server on"),
     host: str = typer.Option("0.0.0.0", "--host", help="Host to bind to"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (development)"),
 ) -> None:
     """Start the optional FastAPI server (wraps core).
 
     The server is NOT required for Golden Path commands.
-    It provides an HTTP API that wraps the same core functions.
+    It provides the v2 REST API that wraps the same core functions.
+
+    Examples:
+        cf serve
+        cf serve --port 3000
+        cf serve --reload
     """
-    console.print("[yellow]Server adapter not yet implemented.[/yellow]")
-    console.print("Golden Path commands work without a server.")
+    import uvicorn
+
+    console.print(f"Starting CodeFRAME API server on {host}:{port}")
+    console.print(f"  Swagger UI: http://localhost:{port}/docs")
+    console.print(f"  ReDoc:      http://localhost:{port}/redoc")
+    console.print("  Press Ctrl+C to stop\n")
+    uvicorn.run(
+        "codeframe.ui.server:app",
+        host=host,
+        port=port,
+        reload=reload,
+    )
 
 
 # =============================================================================
