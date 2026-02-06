@@ -9,7 +9,12 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 import type {
   WorkspaceResponse,
   WorkspaceExistsResponse,
+  Task,
+  TaskStatus,
   TaskListResponse,
+  BatchExecutionRequest,
+  StartExecutionResponse,
+  TaskStartResponse,
   EventListResponse,
   ApiError,
   PrdResponse,
@@ -29,11 +34,16 @@ interface ValidationErrorItem {
   type?: string;
 }
 
-type FastApiErrorDetail = string | ValidationErrorItem[];
+// Backend error formats:
+// 1. Simple string: "Task not found"
+// 2. Validation errors: [{msg: "...", loc: [...]}]
+// 3. Structured error (from api_error()): {error: "...", code: "...", detail: "..."}
+type FastApiErrorDetail = string | ValidationErrorItem[] | { error?: string; detail?: string; code?: string };
 
 /**
  * Normalize FastAPI error detail to a string.
- * FastAPI returns detail as string for simple errors, or array for validation errors.
+ * FastAPI returns detail as string for simple errors, array for validation errors,
+ * or a structured {error, code, detail} object from api_error().
  */
 export function normalizeErrorDetail(
   rawDetail: FastApiErrorDetail | undefined,
@@ -42,6 +52,10 @@ export function normalizeErrorDetail(
   if (Array.isArray(rawDetail)) {
     // Join validation error messages
     return rawDetail.map((err) => err.msg).join('; ');
+  }
+  if (typeof rawDetail === 'object' && rawDetail !== null) {
+    // Structured error: prefer .error, fall back to .detail
+    return rawDetail.error || rawDetail.detail || fallbackMessage || 'An error occurred';
   }
   return rawDetail || fallbackMessage || 'An error occurred';
 }
@@ -126,6 +140,62 @@ export const tasksApi = {
         ...(status ? { status } : {}),
       },
     });
+    return response.data;
+  },
+
+  /**
+   * Get a single task by ID
+   */
+  getOne: async (workspacePath: string, taskId: string): Promise<Task> => {
+    const response = await api.get<Task>(`/api/v2/tasks/${taskId}`, {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  /**
+   * Update a task's status (e.g. BACKLOG → READY)
+   */
+  updateStatus: async (
+    workspacePath: string,
+    taskId: string,
+    status: TaskStatus
+  ): Promise<Task> => {
+    const response = await api.patch<Task>(
+      `/api/v2/tasks/${taskId}`,
+      { status },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Start execution of a single task
+   */
+  startExecution: async (
+    workspacePath: string,
+    taskId: string
+  ): Promise<TaskStartResponse> => {
+    const response = await api.post<TaskStartResponse>(
+      `/api/v2/tasks/${taskId}/start`,
+      {},
+      { params: { workspace_path: workspacePath, execute: true } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Start batch execution of multiple tasks
+   */
+  executeBatch: async (
+    workspacePath: string,
+    request: BatchExecutionRequest
+  ): Promise<StartExecutionResponse> => {
+    const response = await api.post<StartExecutionResponse>(
+      '/api/v2/tasks/execute',
+      request,
+      { params: { workspace_path: workspacePath } }
+    );
     return response.data;
   },
 };

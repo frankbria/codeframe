@@ -23,7 +23,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Workspace', icon: Home01Icon, enabled: true },
   { href: '/prd', label: 'PRD', icon: FileEditIcon, enabled: true },
-  { href: '/tasks', label: 'Tasks', icon: Task01Icon, enabled: false },
+  { href: '/tasks', label: 'Tasks', icon: Task01Icon, enabled: true },
   { href: '/execution', label: 'Execution', icon: PlayIcon, enabled: false },
   { href: '/blockers', label: 'Blockers', icon: Alert02Icon, enabled: false },
   { href: '/review', label: 'Review', icon: GitBranchIcon, enabled: false },

@@ -116,6 +116,9 @@ class TaskResponse(BaseModel):
     status: str
     priority: int
     depends_on: list[str] = []
+    estimated_hours: Optional[float] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class TaskListResponse(BaseModel):
@@ -188,6 +191,9 @@ async def list_tasks(
                 status=t.status.value,
                 priority=t.priority,
                 depends_on=t.depends_on,
+                estimated_hours=t.estimated_hours,
+                created_at=t.created_at.isoformat() if t.created_at else None,
+                updated_at=t.updated_at.isoformat() if t.updated_at else None,
             )
             for t in task_list
         ],
@@ -229,6 +235,9 @@ async def get_task(
         status=task.status.value,
         priority=task.priority,
         depends_on=task.depends_on,
+        estimated_hours=task.estimated_hours,
+        created_at=task.created_at.isoformat() if task.created_at else None,
+        updated_at=task.updated_at.isoformat() if task.updated_at else None,
     )
 
 
@@ -296,6 +305,9 @@ async def update_task(
             status=task.status.value,
             priority=task.priority,
             depends_on=task.depends_on,
+            estimated_hours=task.estimated_hours,
+            created_at=task.created_at.isoformat() if task.created_at else None,
+            updated_at=task.updated_at.isoformat() if task.updated_at else None,
         )
 
     except ValueError as e:

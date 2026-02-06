@@ -81,8 +81,8 @@ describe('AppSidebar', () => {
     mockGetWorkspacePath.mockReturnValue('/home/user/projects/test');
     render(<AppSidebar />);
 
-    // Tasks, Execution, Blockers, Review are disabled (not yet built)
-    expect(screen.queryByRole('link', { name: /^tasks$/i })).not.toBeInTheDocument();
+    // Tasks is now enabled; Execution, Blockers, Review are still disabled
+    expect(screen.getByRole('link', { name: /^tasks$/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /^execution$/i })).not.toBeInTheDocument();
   });
 
