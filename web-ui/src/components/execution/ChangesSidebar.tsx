@@ -19,8 +19,9 @@ interface ChangesSidebarProps {
  */
 export function ChangesSidebar({ changedFiles }: ChangesSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const uniqueFiles = [...new Set(changedFiles)];
 
-  if (changedFiles.length === 0) return null;
+  if (uniqueFiles.length === 0) return null;
 
   return (
     <div
@@ -32,7 +33,7 @@ export function ChangesSidebar({ changedFiles }: ChangesSidebarProps) {
       <div className="flex items-center justify-between border-b px-3 py-2">
         {!collapsed && (
           <span className="text-xs font-semibold text-muted-foreground">
-            Changes ({changedFiles.length})
+            Changes ({uniqueFiles.length})
           </span>
         )}
         <Button
@@ -51,7 +52,7 @@ export function ChangesSidebar({ changedFiles }: ChangesSidebarProps) {
       {!collapsed && (
         <ScrollArea className="h-[calc(100%-37px)]">
           <div className="p-2">
-            {changedFiles.map((filePath) => (
+            {uniqueFiles.map((filePath) => (
               <div
                 key={filePath}
                 className="flex items-center gap-1.5 rounded px-2 py-1 text-xs hover:bg-muted/50"
