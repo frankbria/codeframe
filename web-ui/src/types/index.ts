@@ -99,6 +99,54 @@ export interface TaskStartResponse {
   message: string;
 }
 
+// Blocker types
+// Must match backend: codeframe/ui/routers/blockers_v2.py
+export type BlockerStatus = 'OPEN' | 'ANSWERED' | 'RESOLVED';
+
+export interface Blocker {
+  id: string;
+  workspace_id: string;
+  task_id: string | null;
+  question: string;
+  answer: string | null;
+  status: BlockerStatus;
+  created_at: string;
+  answered_at: string | null;
+}
+
+export interface BlockerListResponse {
+  blockers: Blocker[];
+  total: number;
+  by_status: Record<string, number>;
+}
+
+// Batch detail types
+// Must match backend: codeframe/ui/routers/batches_v2.py
+export interface BatchResponse {
+  id: string;
+  workspace_id: string;
+  task_ids: string[];
+  status: string;
+  strategy: string;
+  max_parallel: number;
+  on_failure: string;
+  started_at: string | null;
+  completed_at: string | null;
+  results: Record<string, string>; // task_id → RunStatus
+}
+
+// UI-derived agent state for execution monitor display
+export type UIAgentState =
+  | 'CONNECTING'
+  | 'PLANNING'
+  | 'EXECUTING'
+  | 'VERIFICATION'
+  | 'SELF_CORRECTING'
+  | 'BLOCKED'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'DISCONNECTED';
+
 // Activity types (for UI display)
 export type ActivityType =
   | 'task_completed'

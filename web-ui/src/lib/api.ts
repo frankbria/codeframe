@@ -25,6 +25,9 @@ import type {
   DiscoveryStatusResponse,
   GeneratePrdResponse,
   GenerateTasksResponse,
+  Blocker,
+  BlockerListResponse,
+  BatchResponse,
 } from '@/types';
 
 // FastAPI validation error format
@@ -198,6 +201,24 @@ export const tasksApi = {
     );
     return response.data;
   },
+
+  /**
+   * Stop a running task execution
+   */
+  stopExecution: async (workspacePath: string, taskId: string): Promise<void> => {
+    await api.post(`/api/v2/tasks/${taskId}/stop`, {}, {
+      params: { workspace_path: workspacePath },
+    });
+  },
+
+  /**
+   * Resume a blocked task execution
+   */
+  resumeExecution: async (workspacePath: string, taskId: string): Promise<void> => {
+    await api.post(`/api/v2/tasks/${taskId}/resume`, {}, {
+      params: { workspace_path: workspacePath },
+    });
+  },
 };
 
 // Events API methods
@@ -216,6 +237,87 @@ export const eventsApi = {
         ...(options?.sinceId ? { since_id: options.sinceId } : {}),
       },
     });
+    return response.data;
+  },
+};
+
+// Blockers API methods
+export const blockersApi = {
+  /**
+   * Get blockers, optionally filtered by task
+   */
+  getForTask: async (
+    workspacePath: string,
+    taskId: string
+  ): Promise<BlockerListResponse> => {
+    const response = await api.get<BlockerListResponse>('/api/v2/blockers', {
+      params: { workspace_path: workspacePath, task_id: taskId },
+    });
+    return response.data;
+  },
+
+  /**
+   * Answer a blocker (also resets the associated task to READY)
+   */
+  answer: async (
+    workspacePath: string,
+    blockerId: string,
+    answer: string
+  ): Promise<Blocker> => {
+    const response = await api.post<Blocker>(
+      `/api/v2/blockers/${blockerId}/answer`,
+      { answer },
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Mark a blocker as resolved (must be answered first)
+   */
+  resolve: async (workspacePath: string, blockerId: string): Promise<Blocker> => {
+    const response = await api.post<Blocker>(
+      `/api/v2/blockers/${blockerId}/resolve`,
+      {},
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+};
+
+// Batches API methods
+export const batchesApi = {
+  /**
+   * Get batch details including per-task results
+   */
+  get: async (workspacePath: string, batchId: string): Promise<BatchResponse> => {
+    const response = await api.get<BatchResponse>(`/api/v2/batches/${batchId}`, {
+      params: { workspace_path: workspacePath },
+    });
+    return response.data;
+  },
+
+  /**
+   * Stop a running batch
+   */
+  stop: async (workspacePath: string, batchId: string): Promise<BatchResponse> => {
+    const response = await api.post<BatchResponse>(
+      `/api/v2/batches/${batchId}/stop`,
+      {},
+      { params: { workspace_path: workspacePath } }
+    );
+    return response.data;
+  },
+
+  /**
+   * Cancel a running batch
+   */
+  cancel: async (workspacePath: string, batchId: string): Promise<BatchResponse> => {
+    const response = await api.post<BatchResponse>(
+      `/api/v2/batches/${batchId}/cancel`,
+      {},
+      { params: { workspace_path: workspacePath } }
+    );
     return response.data;
   },
 };
