@@ -152,8 +152,8 @@ jobs:
             if ! command -v uv &> /dev/null; then
               curl -LsSf https://astral.sh/uv/install.sh | sh
               export PATH="\$HOME/.local/bin:\$PATH"
-            fi 
-            uv venv
+            fi
+            uv venv --clear
             source .venv/bin/activate
             uv sync
 
@@ -461,7 +461,7 @@ jobs:
               curl -LsSf https://astral.sh/uv/install.sh | sh
               export PATH="$HOME/.cargo/bin:$PATH"
             fi
-            uv venv
+            uv venv --clear
             source .venv/bin/activate
             uv sync --no-dev
 
