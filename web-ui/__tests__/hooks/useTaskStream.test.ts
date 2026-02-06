@@ -21,7 +21,7 @@ describe('useTaskStream', () => {
 
   it('returns idle status when taskId is null', () => {
     const { result } = renderHook(() =>
-      useTaskStream({ taskId: null })
+      useTaskStream({ taskId: null, workspacePath: null })
     );
     expect(result.current.lastEvent).toBeNull();
   });
@@ -29,7 +29,7 @@ describe('useTaskStream', () => {
   it('dispatches progress events to onProgress callback', () => {
     const onProgress = jest.fn();
     renderHook(() =>
-      useTaskStream({ taskId: 'task-1', onProgress })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws', onProgress })
     );
 
     const event: ProgressEvent = {
@@ -54,7 +54,7 @@ describe('useTaskStream', () => {
   it('dispatches completion events to onComplete callback', () => {
     const onComplete = jest.fn();
     renderHook(() =>
-      useTaskStream({ taskId: 'task-1', onComplete })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws', onComplete })
     );
 
     const event: CompletionEvent = {
@@ -78,7 +78,7 @@ describe('useTaskStream', () => {
   it('dispatches output events to onOutput callback', () => {
     const onOutput = jest.fn();
     renderHook(() =>
-      useTaskStream({ taskId: 'task-1', onOutput })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws', onOutput })
     );
 
     const event: OutputEvent = {
@@ -101,7 +101,7 @@ describe('useTaskStream', () => {
   it('dispatches error events to onError callback', () => {
     const onError = jest.fn();
     renderHook(() =>
-      useTaskStream({ taskId: 'task-1', onError })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws', onError })
     );
 
     const event: ErrorEvent = {
@@ -124,7 +124,7 @@ describe('useTaskStream', () => {
   it('calls onEvent for every event type', () => {
     const onEvent = jest.fn();
     renderHook(() =>
-      useTaskStream({ taskId: 'task-1', onEvent })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws', onEvent })
     );
 
     act(() => {
@@ -144,7 +144,7 @@ describe('useTaskStream', () => {
 
   it('updates lastEvent on each message', () => {
     const { result } = renderHook(() =>
-      useTaskStream({ taskId: 'task-1' })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws' })
     );
 
     expect(result.current.lastEvent).toBeNull();
@@ -169,7 +169,7 @@ describe('useTaskStream', () => {
   it('ignores malformed JSON messages', () => {
     const onEvent = jest.fn();
     renderHook(() =>
-      useTaskStream({ taskId: 'task-1', onEvent })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws', onEvent })
     );
 
     act(() => {
@@ -181,7 +181,7 @@ describe('useTaskStream', () => {
 
   it('exposes close function', () => {
     const { result } = renderHook(() =>
-      useTaskStream({ taskId: 'task-1' })
+      useTaskStream({ taskId: 'task-1', workspacePath: '/tmp/ws' })
     );
 
     result.current.close();

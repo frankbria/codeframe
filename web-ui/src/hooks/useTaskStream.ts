@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useEventSource, type SSEStatus } from './useEventSource';
 
 // ── Event types matching backend ExecutionEvent models ──────────────────
@@ -71,6 +71,8 @@ export type ExecutionEvent =
 export interface UseTaskStreamOptions {
   /** Task ID to stream events for. Pass `null` to disable. */
   taskId: string | null;
+  /** Workspace path required by the backend. Pass `null` to disable. */
+  workspacePath: string | null;
   /** Called for every execution event (including heartbeats). */
   onEvent?: (event: ExecutionEvent) => void;
   /** Called specifically on progress events. */
@@ -96,6 +98,7 @@ export interface UseTaskStreamOptions {
  */
 export function useTaskStream({
   taskId,
+  workspacePath,
   onEvent,
   onProgress,
   onOutput,
@@ -104,9 +107,17 @@ export function useTaskStream({
   onError,
 }: UseTaskStreamOptions) {
   const [lastEvent, setLastEvent] = useState<ExecutionEvent | null>(null);
+  // Ref to close() — lets handleMessage close the connection on completion
+  // without a stale closure (close is created after handleMessage).
+  const closeRef = useRef<() => void>(() => {});
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
-  const url = taskId ? `${apiBase}/api/v2/tasks/${taskId}/stream` : null;
+  // SSE must connect directly to the backend — the Next.js rewrite proxy
+  // buffers chunked responses, which prevents SSE events from streaming.
+  const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
+  const url =
+    taskId && workspacePath
+      ? `${sseBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`
+      : null;
 
   const handleMessage = useCallback(
     (data: string) => {
@@ -127,6 +138,10 @@ export function useTaskStream({
             break;
           case 'completion':
             onComplete?.(event);
+            // Stream is done — close immediately to prevent reconnect loop.
+            // (onmessage resets the retry counter, so the onerror handler
+            // would otherwise retry forever after the server closes.)
+            closeRef.current();
             break;
           case 'error':
             onError?.(event);
@@ -144,6 +159,8 @@ export function useTaskStream({
     url,
     onMessage: handleMessage,
   });
+
+  closeRef.current = close;
 
   return { status, lastEvent, close };
 }

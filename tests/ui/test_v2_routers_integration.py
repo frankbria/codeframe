@@ -746,10 +746,10 @@ class TestTasksV2Execution:
 
 
 class TestTasksV2Streaming:
-    """Tests for task streaming endpoint."""
+    """Tests for task streaming endpoints (output lines and structured events)."""
 
-    def test_stream_task_no_run(self, test_client_with_task):
-        """Stream endpoint returns 404 when no run exists."""
+    def test_output_stream_no_run(self, test_client_with_task):
+        """Output stream endpoint returns 404 when no run exists."""
         from codeframe.core import tasks
         from codeframe.core.state_machine import TaskStatus
 
@@ -762,12 +762,18 @@ class TestTasksV2Streaming:
             priority=1,
         )
 
-        response = test_client_with_task.get(f"/api/v2/tasks/{new_task.id}/stream")
+        response = test_client_with_task.get(f"/api/v2/tasks/{new_task.id}/output")
 
         assert response.status_code == 404
 
-    def test_stream_task_not_found(self, test_client):
-        """Stream endpoint returns 404 for non-existent task."""
+    def test_output_stream_not_found(self, test_client):
+        """Output stream endpoint returns 404 for non-existent task."""
+        response = test_client.get("/api/v2/tasks/nonexistent-id/output")
+
+        assert response.status_code == 404
+
+    def test_event_stream_not_found(self, test_client):
+        """Structured event stream returns 404 for non-existent task."""
         response = test_client.get("/api/v2/tasks/nonexistent-id/stream")
 
         assert response.status_code == 404

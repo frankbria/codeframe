@@ -1,14 +1,10 @@
 """Tests for SSE streaming router.
 
-TDD: Tests written first to define expected behavior of
-the /api/v2/tasks/{task_id}/stream SSE endpoint.
+Tests for SSE event formatting, publisher management, and
+the event_stream_generator used by /api/v2/tasks/{task_id}/stream.
 """
 
 import json
-
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from codeframe.core.models import (
     ProgressEvent,
@@ -16,57 +12,6 @@ from codeframe.core.models import (
     CompletionEvent,
     HeartbeatEvent,
 )
-
-
-@pytest.fixture
-def mock_user():
-    """Create a mock authenticated user."""
-    from codeframe.auth import User
-    return User(id=1, email="test@example.com", hashed_password="!DISABLED!")
-
-
-@pytest.fixture
-def mock_workspace(tmp_path):
-    """Create a mock workspace."""
-    from codeframe.core.workspace import Workspace
-    from datetime import datetime, timezone
-
-    workspace = Workspace(
-        id="test-workspace-id",
-        repo_path=tmp_path,
-        state_dir=tmp_path / ".codeframe",
-        created_at=datetime.now(timezone.utc),
-    )
-    # Create state directory
-    workspace.state_dir.mkdir(parents=True, exist_ok=True)
-    return workspace
-
-
-@pytest.fixture
-def app_with_streaming(mock_user, mock_workspace, monkeypatch):
-    """Create a FastAPI app with the streaming router and mocked dependencies."""
-    from codeframe.ui.routers.streaming_v2 import router
-    from codeframe.auth.dependencies import get_current_user
-    from codeframe.ui.dependencies import get_v2_workspace
-    from codeframe.core import tasks
-
-    # Create a mock task
-    from unittest.mock import MagicMock
-    mock_task = MagicMock()
-    mock_task.id = "test-task"
-    mock_task.title = "Test Task"
-
-    # Patch tasks.get to return our mock task
-    monkeypatch.setattr(tasks, "get", lambda workspace, task_id: mock_task)
-
-    app = FastAPI()
-    app.include_router(router)
-
-    # Override dependencies
-    app.dependency_overrides[get_current_user] = lambda: mock_user
-    app.dependency_overrides[get_v2_workspace] = lambda: mock_workspace
-
-    return app
 
 
 class TestSSEEventFormat:
@@ -160,66 +105,19 @@ class TestSSEEventFormat:
 
 
 class TestStreamingRouterEndpoint:
-    """Tests for streaming router endpoint configuration."""
+    """Tests for streaming router configuration.
 
-    def test_endpoint_exists(self, app_with_streaming):
-        """The streaming endpoint should be registered."""
-        client = TestClient(app_with_streaming)
+    NOTE: The SSE stream endpoint (GET /api/v2/tasks/{task_id}/stream) lives
+    in tasks_v2.py. It only requires workspace_path, making it compatible
+    with browser EventSource which cannot send custom auth headers.
+    streaming_v2.py provides shared utilities only (no endpoints).
+    """
 
-        # Get the OpenAPI schema to verify endpoint exists
-        response = client.get("/openapi.json")
-        assert response.status_code == 200
+    def test_streaming_router_has_no_endpoints(self):
+        """streaming_v2 router should have no endpoints (utilities only)."""
+        from codeframe.ui.routers.streaming_v2 import router
 
-        schema = response.json()
-        paths = schema.get("paths", {})
-
-        # Verify the stream endpoint is registered
-        assert "/api/v2/tasks/{task_id}/stream" in paths
-        assert "get" in paths["/api/v2/tasks/{task_id}/stream"]
-
-    def test_endpoint_returns_streaming_response(self, app_with_streaming):
-        """The endpoint should return a streaming response with SSE content type."""
-        from codeframe.core.streaming import EventPublisher
-        from codeframe.ui.routers import streaming_v2
-
-        # Inject a publisher that immediately completes the task
-        publisher = EventPublisher()
-        streaming_v2.set_event_publisher(publisher)
-
-        try:
-            client = TestClient(app_with_streaming)
-
-            # Use stream=True but set a short timeout via the client
-            # and complete the task immediately
-            import threading
-            import time
-
-            def complete_task():
-                time.sleep(0.1)
-                import asyncio
-                loop = asyncio.new_event_loop()
-                loop.run_until_complete(publisher.complete_task("test-task"))
-                loop.close()
-
-            thread = threading.Thread(target=complete_task)
-            thread.start()
-
-            # The TestClient doesn't easily support streaming,
-            # so we just verify the endpoint starts without error
-            # Real streaming tests require async client
-            with client.stream("GET", "/api/v2/tasks/test-task/stream") as response:
-                assert response.status_code == 200
-                assert "text/event-stream" in response.headers.get("content-type", "")
-                # Read at most a small amount before breaking
-                break_after = 0
-                for _ in response.iter_lines():
-                    break_after += 1
-                    if break_after > 0:
-                        break
-
-            thread.join(timeout=2.0)
-        finally:
-            streaming_v2.set_event_publisher(None)
+        assert len(router.routes) == 0
 
 
 class TestEventPublisherGlobal:

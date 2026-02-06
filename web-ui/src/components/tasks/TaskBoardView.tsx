@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { TaskBoardContent } from './TaskBoardContent';
 import { TaskDetailModal } from './TaskDetailModal';
@@ -19,6 +20,7 @@ interface TaskBoardViewProps {
 }
 
 export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
+  const router = useRouter();
 
   // ─── Data fetching ─────────────────────────────────────────────
   const { data, isLoading, error, mutate } = useSWR<TaskListResponse, ApiError>(
@@ -101,13 +103,13 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
       try {
         await tasksApi.startExecution(workspacePath, taskId);
         setDetailTaskId(null);
-        await mutate();
+        router.push(`/execution/${taskId}`);
       } catch (err) {
         const apiErr = err as ApiError;
         setActionError(apiErr.detail || 'Failed to start execution');
       }
     },
-    [workspacePath, mutate]
+    [workspacePath, router]
   );
 
   const handleMarkReady = useCallback(
@@ -129,20 +131,20 @@ export function TaskBoardView({ workspacePath }: TaskBoardViewProps) {
     setIsExecuting(true);
     setActionError(null);
     try {
-      await tasksApi.executeBatch(workspacePath, {
+      const result = await tasksApi.executeBatch(workspacePath, {
         task_ids: Array.from(selectedTaskIds),
         strategy: batchStrategy,
       });
       setSelectionMode(false);
       setSelectedTaskIds(new Set());
-      await mutate();
+      router.push(`/execution?batch=${result.batch_id}`);
     } catch (err) {
       const apiErr = err as ApiError;
       setActionError(apiErr.detail || 'Failed to start batch execution');
     } finally {
       setIsExecuting(false);
     }
-  }, [workspacePath, selectedTaskIds, batchStrategy, mutate]);
+  }, [workspacePath, selectedTaskIds, batchStrategy, router]);
 
   const handleStatusChange = useCallback(() => {
     mutate();

@@ -48,10 +48,10 @@ describe('api client', () => {
       expect(result).toBe('error 1; error 2');
     });
 
-    it('extracts error from structured api_error object', () => {
+    it('combines error and detail from structured api_error object', () => {
       const structuredError = { error: 'Cannot execute', code: 'INVALID_STATE', detail: 'No tasks ready' };
       const result = normalizeErrorDetail(structuredError, 'fallback');
-      expect(result).toBe('Cannot execute');
+      expect(result).toBe('Cannot execute: No tasks ready');
     });
 
     it('falls back to detail when structured error has no error field', () => {
