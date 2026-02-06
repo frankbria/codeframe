@@ -42,14 +42,22 @@ export function UploadPRDModal({
     setError(null);
   };
 
+  const activeReaderRef = useRef<FileReader | null>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Abort any in-progress read to avoid race conditions
+    if (activeReaderRef.current) {
+      activeReaderRef.current.abort();
+    }
 
     setFileName(file.name);
     setError(null);
 
     const reader = new FileReader();
+    activeReaderRef.current = reader;
     reader.onload = (event) => {
       const text = event.target?.result;
       if (typeof text === 'string') {
@@ -59,9 +67,11 @@ export function UploadPRDModal({
           setTitle(file.name.replace(/\.md$/i, ''));
         }
       }
+      activeReaderRef.current = null;
     };
     reader.onerror = () => {
       setError('Failed to read file');
+      activeReaderRef.current = null;
     };
     reader.readAsText(file);
   };

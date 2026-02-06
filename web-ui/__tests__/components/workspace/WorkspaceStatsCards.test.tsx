@@ -10,6 +10,7 @@ describe('WorkspaceStatsCards', () => {
     DONE: 10,
     BLOCKED: 1,
     FAILED: 0,
+    MERGED: 0,
   };
 
   describe('TechStackCard', () => {

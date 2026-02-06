@@ -22,6 +22,7 @@ const badgeVariants = cva(
         blocked: 'border-transparent bg-red-100 text-red-900',
         failed: 'border-transparent bg-red-200 text-red-900',
         backlog: 'border-transparent bg-gray-100 text-gray-700',
+        merged: 'border-transparent bg-purple-100 text-purple-900',
       },
     },
     defaultVariants: {

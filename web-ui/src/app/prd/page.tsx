@@ -14,6 +14,7 @@ import type {
 
 export default function PrdPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -21,6 +22,7 @@ export default function PrdPage() {
 
   useEffect(() => {
     setWorkspacePath(getSelectedWorkspacePath());
+    setWorkspaceReady(true);
   }, []);
 
   // Fetch latest PRD
@@ -39,6 +41,11 @@ export default function PrdPage() {
     workspacePath ? `/api/v2/tasks?path=${workspacePath}` : null,
     () => tasksApi.getAll(workspacePath!)
   );
+
+  // Still hydrating — avoid flashing "No workspace selected"
+  if (!workspaceReady) {
+    return null;
+  }
 
   // No workspace selected
   if (!workspacePath) {

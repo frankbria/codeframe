@@ -31,6 +31,7 @@ export function setSelectedWorkspacePath(path: string): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEY, path);
   addToRecentWorkspaces(path);
+  window.dispatchEvent(new CustomEvent('workspaceChanged'));
 }
 
 /**
@@ -39,6 +40,7 @@ export function setSelectedWorkspacePath(path: string): void {
 export function clearSelectedWorkspacePath(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new CustomEvent('workspaceChanged'));
 }
 
 /**

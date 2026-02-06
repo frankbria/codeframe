@@ -20,6 +20,7 @@ const STATUS_CONFIG: {
   { key: 'BLOCKED', label: 'Blocked', variant: 'blocked' },
   { key: 'FAILED', label: 'Failed', variant: 'failed' },
   { key: 'DONE', label: 'Done', variant: 'done' },
+  { key: 'MERGED', label: 'Merged', variant: 'merged' },
 ];
 
 export function AssociatedTasksSummary({

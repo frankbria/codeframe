@@ -1,9 +1,10 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { AppSidebar } from './AppSidebar';
 
 interface AppLayoutProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 /**

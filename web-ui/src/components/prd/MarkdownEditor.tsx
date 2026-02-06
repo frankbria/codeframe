@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Loading03Icon } from '@hugeicons/react';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,11 @@ export function MarkdownEditor({
   const [draft, setDraft] = useState(initialContent);
   const [changeSummary, setChangeSummary] = useState('');
   const [activeTab, setActiveTab] = useState('edit');
+
+  useEffect(() => {
+    setDraft(initialContent);
+    setChangeSummary('');
+  }, [initialContent]);
 
   const hasChanges = draft !== initialContent;
 

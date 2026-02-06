@@ -84,12 +84,15 @@ export function useEventSource({
       sourceRef.current = es;
 
       es.onopen = () => {
-        retriesRef.current = 0;
         setStatus('open');
         onOpenRef.current?.();
       };
 
       es.onmessage = (event) => {
+        // Reset retries after a successful message (not just on open)
+        // to prevent infinite reconnect loops when the server accepts
+        // then immediately closes the connection.
+        retriesRef.current = 0;
         onMessageRef.current?.(event.data);
       };
 

@@ -117,19 +117,19 @@ export function useTaskStream({
 
         switch (event.event_type) {
           case 'progress':
-            onProgress?.(event as ProgressEvent);
+            onProgress?.(event);
             break;
           case 'output':
-            onOutput?.(event as OutputEvent);
+            onOutput?.(event);
             break;
           case 'blocker':
-            onBlocker?.(event as BlockerEvent);
+            onBlocker?.(event);
             break;
           case 'completion':
-            onComplete?.(event as CompletionEvent);
+            onComplete?.(event);
             break;
           case 'error':
-            onError?.(event as ErrorEvent);
+            onError?.(event);
             break;
           // heartbeat events are passed to onEvent but have no dedicated callback
         }

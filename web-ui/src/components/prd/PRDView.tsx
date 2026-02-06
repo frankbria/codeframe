@@ -21,7 +21,7 @@ interface PRDViewProps {
   onStartDiscovery: () => void;
   onCloseDiscovery: () => void;
   onGenerateTasks: () => void;
-  onSavePrd?: (content: string, changeSummary: string) => Promise<void>;
+  onSavePrd: (content: string, changeSummary: string) => Promise<void>;
   onPrdGenerated: (prd: PrdResponse) => void;
 }
 
@@ -107,7 +107,7 @@ export function PRDView({
             {prd ? (
               <MarkdownEditor
                 content={prd.content}
-                onSave={onSavePrd ?? (async () => {})}
+                onSave={onSavePrd}
                 isSaving={isSaving}
               />
             ) : (

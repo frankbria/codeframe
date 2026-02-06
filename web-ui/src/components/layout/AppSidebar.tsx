@@ -37,13 +37,17 @@ export function AppSidebar() {
     setHasWorkspace(!!getSelectedWorkspacePath());
   }, []);
 
-  // Listen for storage changes (workspace selection/deselection)
+  // Listen for workspace changes (cross-tab via 'storage', same-tab via custom event)
   useEffect(() => {
-    const handleStorage = () => {
+    const handleWorkspaceChange = () => {
       setHasWorkspace(!!getSelectedWorkspacePath());
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener('storage', handleWorkspaceChange);
+    window.addEventListener('workspaceChanged', handleWorkspaceChange);
+    return () => {
+      window.removeEventListener('storage', handleWorkspaceChange);
+      window.removeEventListener('workspaceChanged', handleWorkspaceChange);
+    };
   }, []);
 
   // Don't render sidebar when no workspace is selected

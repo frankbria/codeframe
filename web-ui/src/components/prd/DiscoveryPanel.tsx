@@ -19,6 +19,8 @@ interface DiscoveryPanelProps {
   onPrdGenerated: (prd: PrdResponse) => void;
 }
 
+const now = () => new Date().toISOString();
+
 /** Extract display text from the API's question object. */
 function questionText(q: Record<string, unknown>): string {
   if (typeof q.text === 'string') return q.text;
@@ -38,8 +40,6 @@ export function DiscoveryPanel({
   const [isThinking, setIsThinking] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const now = () => new Date().toISOString();
 
   // ─── Start session ───────────────────────────────────────────────
   const startSession = useCallback(async () => {
