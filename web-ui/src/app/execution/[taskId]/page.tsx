@@ -31,7 +31,8 @@ export default function ExecutionPage() {
   // Fetch task details
   useEffect(() => {
     if (!workspacePath || !taskId) return;
-    tasksApi.getOne(workspacePath, taskId).then(setTask).catch(() => {
+    tasksApi.getOne(workspacePath, taskId).then(setTask).catch((err) => {
+      console.error('Failed to load task:', err);
       setTaskError(true);
     });
   }, [workspacePath, taskId]);

@@ -72,8 +72,8 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
           fetchedTaskIdsRef.current.add(taskId);
           tasksApi.getOne(workspacePath, taskId).then((task) => {
             setTasks((prev) => ({ ...prev, [taskId]: task }));
-          }).catch(() => {
-            // Task may have been deleted
+          }).catch((err) => {
+            console.error(`Failed to fetch task ${taskId}:`, err);
           });
         }
       }
