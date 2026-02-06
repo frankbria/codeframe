@@ -47,5 +47,23 @@ describe('api client', () => {
       const result = normalizeErrorDetail(validationErrors, 'fallback');
       expect(result).toBe('error 1; error 2');
     });
+
+    it('extracts error from structured api_error object', () => {
+      const structuredError = { error: 'Cannot execute', code: 'INVALID_STATE', detail: 'No tasks ready' };
+      const result = normalizeErrorDetail(structuredError, 'fallback');
+      expect(result).toBe('Cannot execute');
+    });
+
+    it('falls back to detail when structured error has no error field', () => {
+      const structuredError = { code: 'NOT_FOUND', detail: 'Task not found' };
+      const result = normalizeErrorDetail(structuredError, 'fallback');
+      expect(result).toBe('Task not found');
+    });
+
+    it('uses fallback when structured error has no error or detail', () => {
+      const structuredError = { code: 'UNKNOWN' };
+      const result = normalizeErrorDetail(structuredError, 'Something went wrong');
+      expect(result).toBe('Something went wrong');
+    });
   });
 });
