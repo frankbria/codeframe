@@ -15,6 +15,7 @@ existing web UI until Phase 3 (Web UI Rebuild).
 """
 
 import logging
+import threading
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -595,15 +596,37 @@ async def start_single_task(
         }
 
         if execute:
-            # Execute agent synchronously (for API, might want to make this async/background)
-            state = runtime.execute_agent(
-                workspace,
-                run,
-                dry_run=dry_run,
-                verbose=verbose,
-            )
-            result["agent_status"] = state.status.value if hasattr(state.status, 'value') else str(state.status)
-            result["message"] = f"Execution completed with status: {result['agent_status']}"
+            from codeframe.ui.routers.streaming_v2 import get_event_publisher
+            from codeframe.core.models import ErrorEvent
+
+            publisher = get_event_publisher()
+
+            def _run_agent():
+                try:
+                    runtime.execute_agent(
+                        workspace,
+                        run,
+                        dry_run=dry_run,
+                        verbose=verbose,
+                        event_publisher=publisher,
+                    )
+                except Exception as exc:
+                    logger.error(f"Background agent failed for task {task_id}: {exc}", exc_info=True)
+                    publisher.publish_sync(
+                        task_id,
+                        ErrorEvent(
+                            task_id=task_id,
+                            error=str(exc),
+                            error_type=type(exc).__name__,
+                        ),
+                    )
+                    publisher.complete_task_sync(task_id)
+
+            thread = threading.Thread(target=_run_agent, daemon=True)
+            thread.start()
+
+            result["status"] = "executing"
+            result["message"] = f"Execution started in background for task {task_id[:8]}. Connect to GET /{task_id}/stream for events."
 
         return result
 
@@ -723,19 +746,21 @@ async def resume_task(
 # ============================================================================
 
 
-@router.get("/{task_id}/stream")
+@router.get("/{task_id}/output")
 @rate_limit_standard()
-async def stream_task_output(
+async def stream_task_output_lines(
     request: Request,
     task_id: str,
     tail: int = Query(0, ge=0, le=1000, description="Show last N lines before streaming"),
     workspace: Workspace = Depends(get_v2_workspace),
 ) -> StreamingResponse:
-    """Stream real-time output from a running task.
+    """Stream raw output lines from a running task.
 
-    Returns Server-Sent Events (SSE) with task output lines.
+    Returns Server-Sent Events (SSE) with raw text output lines.
+    This is the API equivalent of `cf work follow <task-id>`.
 
-    This is the v2 equivalent of `cf work follow <task-id>`.
+    For structured JSON execution events (progress, output, blocker,
+    completion, error), use GET /{task_id}/stream instead.
 
     Event types:
         - `line`: A line of output from the task
@@ -823,6 +848,50 @@ async def stream_task_output(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+@router.get("/{task_id}/stream")
+async def stream_task_events(
+    request: Request,
+    task_id: str,
+    workspace: Workspace = Depends(get_v2_workspace),
+) -> StreamingResponse:
+    """Stream structured execution events for a task via SSE.
+
+    Returns Server-Sent Events with JSON-formatted ExecutionEvent payloads.
+    Compatible with browser EventSource (no custom auth headers required).
+
+    Event types (in data.event_type):
+        - ``progress``: Phase/step transitions
+        - ``output``: stdout/stderr lines
+        - ``blocker``: Human input needed
+        - ``completion``: Task finished (success/failure/blocked)
+        - ``error``: Execution error
+        - ``heartbeat``: Keep-alive
+
+    For raw text output lines (cf work follow equivalent),
+    use GET /{task_id}/output instead.
+    """
+    task = tasks.get(workspace, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Task not found", ErrorCodes.NOT_FOUND, f"No task with id {task_id}"),
+        )
+
+    from codeframe.ui.routers.streaming_v2 import event_stream_generator, get_event_publisher
+
+    publisher = get_event_publisher()
+
+    return StreamingResponse(
+        event_stream_generator(task_id, publisher, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
         },
     )
 

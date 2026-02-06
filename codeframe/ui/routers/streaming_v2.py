@@ -85,37 +85,53 @@ async def event_stream_generator(
     task_id: str,
     publisher: EventPublisher,
     request: Request,
-    heartbeat_interval: float = 30.0,
+    heartbeat_interval: float = 15.0,
 ) -> AsyncGenerator[str, None]:
-    """Generate SSE events for a task.
+    """Generate SSE events for a task with heartbeat keep-alive.
 
-    This async generator yields SSE-formatted strings as events
-    are published for the given task.
+    Subscribes to the EventPublisher and yields SSE-formatted strings.
+    Emits SSE comments as heartbeats during idle periods to prevent
+    proxy/browser timeouts.
 
     Args:
         task_id: Task ID to stream events for
         publisher: EventPublisher to subscribe to
         request: FastAPI request (for disconnect detection)
-        heartbeat_interval: Seconds between heartbeat events
+        heartbeat_interval: Seconds between heartbeat comments
 
     Yields:
-        SSE-formatted event strings
+        SSE-formatted event strings or comment heartbeats
     """
     logger.info(f"Starting SSE stream for task {task_id}")
 
+    queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+    loop = asyncio.get_running_loop()
+
+    from codeframe.core.streaming import _Subscription
+    subscription = _Subscription(task_id, queue, loop)
+
+    async with publisher._lock:
+        publisher._subscribers[task_id].append(subscription)
+
     try:
-        async for event in publisher.subscribe(task_id):
-            # Check if client disconnected
+        while True:
             if await request.is_disconnected():
                 logger.info(f"Client disconnected from task {task_id} stream")
                 break
 
-            yield format_sse_event(event)
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=heartbeat_interval)
 
-            # If this is a completion event, we're done
-            if event.event_type == "completion":
-                logger.info(f"Task {task_id} completed, closing stream")
-                break
+                if item is _Subscription.END_OF_STREAM:
+                    break
+
+                yield format_sse_event(item)
+
+                if item.event_type == "completion":
+                    logger.info(f"Task {task_id} completed, closing stream")
+                    break
+            except asyncio.TimeoutError:
+                yield format_sse_comment("heartbeat")
 
     except asyncio.CancelledError:
         logger.info(f"SSE stream cancelled for task {task_id}")
@@ -124,6 +140,11 @@ async def event_stream_generator(
         logger.error(f"Error in SSE stream for task {task_id}: {e}")
         raise
     finally:
+        async with publisher._lock:
+            if subscription in publisher._subscribers[task_id]:
+                publisher._subscribers[task_id].remove(subscription)
+            if not publisher._subscribers[task_id]:
+                del publisher._subscribers[task_id]
         logger.info(f"Closing SSE stream for task {task_id}")
 
 

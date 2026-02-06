@@ -1,7 +1,7 @@
 """Tests for SSE streaming router.
 
-TDD: Tests written first to define expected behavior of
-the /api/v2/tasks/{task_id}/stream SSE endpoint.
+Tests for SSE event formatting, publisher management, and
+the event_stream_generator used by /api/v2/tasks/{task_id}/stream.
 """
 
 import json
@@ -107,10 +107,10 @@ class TestSSEEventFormat:
 class TestStreamingRouterEndpoint:
     """Tests for streaming router configuration.
 
-    NOTE: The SSE stream endpoint (GET /api/v2/tasks/{task_id}/stream) was
-    moved to tasks_v2.py to avoid a route collision with the JWT-auth version.
-    The tasks_v2 version only requires workspace_path, making it compatible
+    NOTE: The SSE stream endpoint (GET /api/v2/tasks/{task_id}/stream) lives
+    in tasks_v2.py. It only requires workspace_path, making it compatible
     with browser EventSource which cannot send custom auth headers.
+    streaming_v2.py provides shared utilities only (no endpoints).
     """
 
     def test_streaming_router_has_no_endpoints(self):
