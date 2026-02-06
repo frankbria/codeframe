@@ -56,15 +56,19 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Track which task IDs have already been fetched to avoid refetching
+  const fetchedTaskIdsRef = useRef<Set<string>>(new Set());
+
   // ── Fetch batch details + task names ────────────────────────────────
   const fetchBatch = useCallback(async () => {
     try {
       const data = await batchesApi.get(workspacePath, batchId);
       setBatch(data);
 
-      // Fetch task details for any new task IDs
+      // Fetch task details for any new task IDs (check ref, not state)
       for (const taskId of data.task_ids) {
-        if (!tasks[taskId]) {
+        if (!fetchedTaskIdsRef.current.has(taskId)) {
+          fetchedTaskIdsRef.current.add(taskId);
           tasksApi.getOne(workspacePath, taskId).then((task) => {
             setTasks((prev) => ({ ...prev, [taskId]: task }));
           }).catch(() => {
@@ -75,7 +79,7 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
     } catch {
       setError('Failed to load batch details');
     }
-  }, [workspacePath, batchId, tasks]);
+  }, [workspacePath, batchId]);
 
   // Initial fetch
   useEffect(() => {
@@ -104,13 +108,21 @@ export function BatchExecutionMonitor({ batchId, workspacePath }: BatchExecution
 
   // ── Batch controls ──────────────────────────────────────────────────
   const handleStop = useCallback(async () => {
-    await batchesApi.stop(workspacePath, batchId);
-    fetchBatch();
+    try {
+      await batchesApi.stop(workspacePath, batchId);
+      fetchBatch();
+    } catch {
+      setError('Failed to stop batch');
+    }
   }, [workspacePath, batchId, fetchBatch]);
 
   const handleCancel = useCallback(async () => {
-    await batchesApi.cancel(workspacePath, batchId);
-    fetchBatch();
+    try {
+      await batchesApi.cancel(workspacePath, batchId);
+      fetchBatch();
+    } catch {
+      setError('Failed to cancel batch');
+    }
   }, [workspacePath, batchId, fetchBatch]);
 
   // ── Render ──────────────────────────────────────────────────────────
@@ -262,6 +274,7 @@ function BatchTaskRow({
       <button
         onClick={onToggle}
         className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
+        aria-expanded={isExpanded}
       >
         <StatusIcon className={`h-4 w-4 shrink-0 ${config.className}`} />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">

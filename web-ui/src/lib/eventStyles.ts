@@ -54,7 +54,9 @@ export function deriveAgentState(event: ExecutionEvent): UIAgentState {
       return 'BLOCKED';
     case 'completion': {
       const { status } = event as CompletionEvent;
-      return status === 'completed' ? 'COMPLETED' : 'FAILED';
+      if (status === 'completed') return 'COMPLETED';
+      if (status === 'blocked') return 'BLOCKED';
+      return 'FAILED';
     }
     case 'error':
       return 'FAILED';

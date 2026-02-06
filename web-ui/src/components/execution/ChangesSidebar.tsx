@@ -41,6 +41,7 @@ export function ChangesSidebar({ changedFiles }: ChangesSidebarProps) {
           className="h-6 w-6 p-0"
           onClick={() => setCollapsed(!collapsed)}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
         >
           <SidebarLeftIcon className="h-3.5 w-3.5" />
         </Button>

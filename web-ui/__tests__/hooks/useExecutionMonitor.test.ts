@@ -249,6 +249,6 @@ describe('useExecutionMonitor', () => {
 
     expect(result.current.isCompleted).toBe(true);
     expect(result.current.completionStatus).toBe('blocked');
-    expect(result.current.agentState).toBe('FAILED');
+    expect(result.current.agentState).toBe('BLOCKED');
   });
 });

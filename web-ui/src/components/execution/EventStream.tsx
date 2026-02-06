@@ -2,7 +2,6 @@
 
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowDown01Icon } from '@hugeicons/react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { EventItem } from './EventItem';
 import type { ExecutionEvent } from '@/hooks/useTaskStream';
@@ -19,6 +18,9 @@ interface EventStreamProps {
  * - Default: auto-scrolls to bottom on new events
  * - When user scrolls up: pauses auto-scroll, shows "New events" button
  * - Click button or scroll to bottom: re-enables auto-scroll
+ *
+ * Uses a single scrollable div (no Radix ScrollArea) so that
+ * onScroll and scrollIntoView work on the same container.
  */
 export function EventStream({ events, workspacePath, onBlockerAnswered }: EventStreamProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -69,32 +71,30 @@ export function EventStream({ events, workspacePath, onBlockerAnswered }: EventS
 
   return (
     <div className="relative flex-1 overflow-hidden rounded-lg border">
-      <ScrollArea className="h-full">
-        <div
-          ref={containerRef}
-          className="h-full overflow-y-auto p-4"
-          onScroll={handleScroll}
-        >
-          {displayEvents.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              Waiting for events...
-            </p>
-          ) : (
-            <div className="space-y-0.5">
-              {displayEvents.map((event, i) => (
-                <EventItem
-                  key={`${event.timestamp}-${i}`}
-                  event={event}
-                  workspacePath={workspacePath}
-                  onBlockerAnswered={onBlockerAnswered}
-                />
-              ))}
-            </div>
-          )}
-          {/* Scroll sentinel */}
-          <div ref={bottomRef} />
-        </div>
-      </ScrollArea>
+      <div
+        ref={containerRef}
+        className="h-full overflow-y-auto p-4"
+        onScroll={handleScroll}
+      >
+        {displayEvents.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            Waiting for events...
+          </p>
+        ) : (
+          <div className="space-y-0.5">
+            {displayEvents.map((event, i) => (
+              <EventItem
+                key={`${event.timestamp}-${i}`}
+                event={event}
+                workspacePath={workspacePath}
+                onBlockerAnswered={onBlockerAnswered}
+              />
+            ))}
+          </div>
+        )}
+        {/* Scroll sentinel */}
+        <div ref={bottomRef} />
+      </div>
 
       {/* "New events" floating button */}
       {hasNewEvents && (

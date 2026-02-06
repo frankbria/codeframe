@@ -28,7 +28,7 @@ interface ExecutionHeaderProps {
   task: Task | null;
   agentState: UIAgentState;
   sseStatus: SSEStatus;
-  onStop: () => void;
+  onStop: () => void | Promise<void>;
   isCompleted: boolean;
 }
 
@@ -45,7 +45,7 @@ export function ExecutionHeader({
   const handleStop = async () => {
     setIsStopping(true);
     try {
-      onStop();
+      await onStop();
     } finally {
       setIsStopping(false);
     }

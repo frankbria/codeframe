@@ -109,6 +109,17 @@ describe('deriveAgentState', () => {
     expect(deriveAgentState(event)).toBe('FAILED');
   });
 
+  it('returns BLOCKED for blocked completion events', () => {
+    const event: CompletionEvent = {
+      event_type: 'completion',
+      task_id: 't1',
+      timestamp: '',
+      status: 'blocked',
+      duration_seconds: 5,
+    };
+    expect(deriveAgentState(event)).toBe('BLOCKED');
+  });
+
   it('returns FAILED for error events', () => {
     const event: ErrorEvent = {
       event_type: 'error',
