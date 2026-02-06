@@ -43,13 +43,17 @@ export default function ExecutionPage() {
     workspacePath
   );
 
-  // Stop handler
+  // Stop handler — may fail if run already completed or no active run
   const handleStop = useCallback(async () => {
     if (!workspacePath || !taskId) return;
     try {
       await tasksApi.stopExecution(workspacePath, taskId);
-    } catch {
-      console.error('Failed to stop execution');
+    } catch (err) {
+      const detail = (err as { detail?: string })?.detail ?? '';
+      // 400/404 from stop is expected if run already completed
+      if (!detail.includes('not found') && !detail.includes('Cannot stop')) {
+        console.error('Failed to stop execution:', detail);
+      }
     }
   }, [workspacePath, taskId]);
 

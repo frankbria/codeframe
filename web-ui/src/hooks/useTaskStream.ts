@@ -108,10 +108,12 @@ export function useTaskStream({
 }: UseTaskStreamOptions) {
   const [lastEvent, setLastEvent] = useState<ExecutionEvent | null>(null);
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  // SSE must connect directly to the backend — the Next.js rewrite proxy
+  // buffers chunked responses, which prevents SSE events from streaming.
+  const sseBase = process.env.NEXT_PUBLIC_SSE_URL || 'http://localhost:8000';
   const url =
     taskId && workspacePath
-      ? `${apiBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`
+      ? `${sseBase}/api/v2/tasks/${taskId}/stream?workspace_path=${encodeURIComponent(workspacePath)}`
       : null;
 
   const handleMessage = useCallback(
