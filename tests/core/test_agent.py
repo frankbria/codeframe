@@ -421,6 +421,16 @@ class TestVerificationRecovery:
         )
         assert reset_after_pass > passed_idx
 
+    def test_reverification_failure_preserves_error_context(self):
+        """When correction succeeds but re-verification fails, error context is preserved."""
+        # After self-correction writes a fixed file (SUCCESS) but re-verification
+        # still fails, the current_result must capture the new verification errors
+        # so the next correction attempt has context to work from.
+        source = inspect.getsource(Agent._execute_plan)
+        # Must create a new StepResult with re-verification error info
+        assert "Re-verification after correction" in source
+        assert "reverify_errors" in source or "reverify_msg" in source
+
     def test_abort_forces_blocker_creation(self):
         """Abort path creates blocker directly, bypassing LLM classification."""
         # The abort path must call blockers.create directly rather than

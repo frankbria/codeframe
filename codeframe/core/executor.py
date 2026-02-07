@@ -299,8 +299,8 @@ class Executor:
         if file_path.exists():
             existing_content = file_path.read_text(encoding="utf-8")
 
-            # Generate the content we would write
-            new_content = self._generate_file_content(step, context)
+            # Generate content using edit prompt so LLM sees existing content
+            new_content = self._generate_edit_content(step, context, existing_content)
 
             # If content is identical, no-op success
             if existing_content.strip() == new_content.strip():

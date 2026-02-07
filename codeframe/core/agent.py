@@ -691,6 +691,24 @@ class Agent:
                                         self_correction_succeeded = True
                                         break
 
+                                    # Re-verification failed — preserve error context
+                                    # so next correction attempt knows what to fix
+                                    reverify_failed = [
+                                        c for c in recheck.checks
+                                        if c.status != GateStatus.PASSED
+                                    ]
+                                    reverify_errors = []
+                                    for check in reverify_failed:
+                                        if check.output:
+                                            reverify_errors.append(f"[{check.name}] {check.output[:500]}")
+                                    reverify_msg = "\n".join(reverify_errors) if reverify_errors else "Re-verification failed"
+                                    current_result = StepResult(
+                                        step=step,
+                                        status=ExecutionStatus.FAILED,
+                                        error=f"Re-verification after correction:\n{reverify_msg}",
+                                    )
+                                    continue
+
                                 current_result = corrected_result
 
                             if self_correction_succeeded:
