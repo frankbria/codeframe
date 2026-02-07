@@ -24,7 +24,7 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-_RUFF_ERROR_PATTERN = re.compile(r'^(.+?):(\d+):(\d+): ([A-Z]\d+) (.+)$')
+_RUFF_ERROR_PATTERN = re.compile(r'^(.+?):(\d+):(\d+): ([A-Z]+\d+) (.+)$')
 
 
 def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:

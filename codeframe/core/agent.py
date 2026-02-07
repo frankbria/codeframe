@@ -622,7 +622,9 @@ class Agent:
                 # Run incremental verification for file changes
                 if step.type in {StepType.FILE_CREATE, StepType.FILE_EDIT}:
                     gate_result = self._run_incremental_verification()
-                    if gate_result and not gate_result.passed:
+                    if gate_result and gate_result.passed:
+                        consecutive_verification_failures = 0
+                    elif gate_result and not gate_result.passed:
                         # Try to fix lint issues automatically (works for style, not syntax)
                         if not self._try_auto_fix(gate_result):
                             # Auto-fix failed - need to self-correct the code
@@ -707,7 +709,20 @@ class Agent:
                                         "reason": f"Too many consecutive verification failures ({consecutive_verification_failures})",
                                         "step": step.index,
                                     })
-                                    self._create_blocker_from_failure(step, current_result)
+                                    # Force blocker creation — bypass LLM classification
+                                    # since this is a definitive abort, not a tactical decision
+                                    error_msg = current_result.error if current_result else "Repeated verification failures"
+                                    blocker = blockers.create(
+                                        workspace=self.workspace,
+                                        question=f"Agent aborted: {consecutive_verification_failures} consecutive verification failures at step {step.index} ({step.description}). Last error: {error_msg[:500]}",
+                                        task_id=self.state.task_id,
+                                    )
+                                    self.state.status = AgentStatus.BLOCKED
+                                    self.state.blocker = BlockerInfo(
+                                        reason="Too many consecutive verification failures",
+                                        question=blocker.question,
+                                        context=f"Step {step.index}: {step.description}",
+                                    )
                                     return
                                 if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                                     self._create_blocker_from_failure(step, current_result)

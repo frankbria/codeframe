@@ -46,6 +46,21 @@ class TestParseRuffErrors:
         errors = _parse_ruff_errors(output)
         assert len(errors) == 2
 
+    def test_parse_multi_letter_rule_codes(self):
+        """Parses ruff codes with multi-letter prefixes like ANN, PLR, SIM."""
+        output = (
+            "src/api.py:5:1: ANN401 Dynamically typed expressions not allowed\n"
+            "src/utils.py:12:5: PLR2004 Magic value used in comparison\n"
+            "src/main.py:8:1: SIM118 Use `key in dict` instead of `key in dict.keys()`\n"
+            "src/config.py:3:1: UP035 `typing.Dict` is deprecated, use `dict` instead\n"
+        )
+        errors = _parse_ruff_errors(output)
+        assert len(errors) == 4
+        assert errors[0]["code"] == "ANN401"
+        assert errors[1]["code"] == "PLR2004"
+        assert errors[2]["code"] == "SIM118"
+        assert errors[3]["code"] == "UP035"
+
 
 class TestGateCheckDetailedErrors:
     """Tests for detailed_errors field on GateCheck."""

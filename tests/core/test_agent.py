@@ -405,3 +405,29 @@ class TestVerificationRecovery:
         """_run_incremental_verification captures full error details via verbose=True."""
         source = inspect.getsource(Agent._run_incremental_verification)
         assert "verbose=True" in source
+
+    def test_verification_counter_resets_on_clean_pass(self):
+        """consecutive_verification_failures resets when incremental verification passes."""
+        # The code must reset the counter on a clean pass, not just on self-correction success.
+        # This prevents premature abort after: fail → pass → fail → fail (counter would be 3
+        # without the reset, but should be 2).
+        source = inspect.getsource(Agent._execute_plan)
+        # Find the clean-pass reset: gate_result.passed → reset counter
+        assert "gate_result.passed" in source
+        # The reset must appear in the passed branch, before the failure branch
+        passed_idx = source.index("gate_result.passed")
+        reset_after_pass = source.index(
+            "consecutive_verification_failures = 0", passed_idx
+        )
+        assert reset_after_pass > passed_idx
+
+    def test_abort_forces_blocker_creation(self):
+        """Abort path creates blocker directly, bypassing LLM classification."""
+        # The abort path must call blockers.create directly rather than
+        # _create_blocker_from_failure which can silently return for
+        # RESOLVE_AUTONOMOUSLY or TECHNICAL_FIX classifications.
+        source = inspect.getsource(Agent._execute_plan)
+        abort_idx = source.index("execution_aborted")
+        # After the abort event, blockers.create must be called directly
+        blocker_create_idx = source.index("blockers.create", abort_idx)
+        assert blocker_create_idx > abort_idx
