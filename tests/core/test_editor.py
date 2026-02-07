@@ -511,6 +511,10 @@ class TestSearchReplaceEditorDuplicateMatch:
         assert lines[0] == "x = 2"
         assert lines[1] == "x = 1"
         assert lines[2] == "x = 1"
+        # match_results surfaces the ambiguity
+        assert result.match_results is not None
+        assert len(result.match_results) == 1
+        assert result.match_results[0].match_count == 3
 
     def test_duplicate_match_uses_first_occurrence(self, editor, tmp_path):
         f = tmp_path / "first.py"
@@ -520,6 +524,9 @@ class TestSearchReplaceEditorDuplicateMatch:
         assert result.success is True
         content = f.read_text()
         assert content == "a = 99\nb = 2\na = 1\n"
+        # match_results populated with per-edit match info
+        assert result.match_results is not None
+        assert result.match_results[0].match_count == 2
 
 
 # ===========================================================================

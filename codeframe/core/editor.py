@@ -49,6 +49,7 @@ class EditResult:
     failed_edit: EditOperation | None = None
     context: str | None = None
     applied_edits: int = 0
+    match_results: list[MatchResult] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -148,16 +149,20 @@ class SearchReplaceEditor:
         if not edits:
             return EditResult(success=True, file_path=file_path, applied_edits=0)
 
+        encoding = "utf-8"
         try:
-            original_content = fp.read_text(encoding="utf-8")
+            original_content = fp.read_text(encoding=encoding)
         except UnicodeDecodeError:
-            original_content = fp.read_text(encoding="latin-1")
+            encoding = "latin-1"
+            original_content = fp.read_text(encoding=encoding)
 
         content = original_content
         applied = 0
+        matches: list[MatchResult] = []
 
         for op in edits:
             match = self._find_match(content, op.search)
+            matches.append(match)
             if not match.success:
                 ctx = self._generate_error_context(
                     content, op.search, os.path.basename(file_path)
@@ -169,6 +174,7 @@ class SearchReplaceEditor:
                     failed_edit=op,
                     context=ctx,
                     applied_edits=applied,
+                    match_results=matches,
                 )
 
             replacement = op.replace
@@ -194,13 +200,14 @@ class SearchReplaceEditor:
             )
         )
 
-        fp.write_text(content, encoding="utf-8")
+        fp.write_text(content, encoding=encoding)
 
         return EditResult(
             success=True,
             file_path=file_path,
             diff=diff if diff else None,
             applied_edits=applied,
+            match_results=matches,
         )
 
     # -- matching ----------------------------------------------------------
@@ -451,7 +458,11 @@ class SearchReplaceEditor:
             else:
                 result_lines.append(original_base + relative)
 
-        return "\n".join(result_lines)
+        result = "\n".join(result_lines)
+        # Preserve trailing newline if the original replacement had one
+        if replacement.endswith("\n") and not result.endswith("\n"):
+            result += "\n"
+        return result
 
     # -- error context -----------------------------------------------------
 
