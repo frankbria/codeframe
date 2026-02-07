@@ -12,7 +12,7 @@ from codeframe.core.planner import (
     Complexity,
     PLANNING_SYSTEM_PROMPT,
 )
-from codeframe.core.context import TaskContext
+from codeframe.core.context import TaskContext, FileInfo
 from codeframe.core.tasks import Task, TaskStatus
 from codeframe.core.prd import PrdRecord
 from codeframe.adapters.llm import MockProvider, LLMResponse, Purpose
@@ -374,3 +374,45 @@ class TestPlannerPromptBuilding:
         planner.create_plan(context)
 
         assert mock_provider.last_call["system"] == PLANNING_SYSTEM_PROMPT
+
+
+class TestPlannerExistingFilesContext:
+    """Tests for workspace-aware planning with existing files."""
+
+    def test_build_prompt_includes_existing_files_section(self):
+        """Planner prompt includes existing files from file_tree."""
+        provider = MockProvider()
+        provider.set_response_handler(
+            lambda msgs: LLMResponse(
+                content=json.dumps({
+                    "summary": "test",
+                    "steps": [],
+                    "files_to_create": [],
+                    "files_to_modify": [],
+                    "estimated_complexity": "low",
+                    "considerations": [],
+                })
+            )
+        )
+        planner = Planner(provider)
+
+        task = Task(
+            id="t1", workspace_id="w1", prd_id=None,
+            title="Add feature", description="Add a new feature",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            created_at=_utc_now(),
+            updated_at=_utc_now(),
+        )
+        context = TaskContext(
+            task=task,
+            file_tree=[
+                FileInfo(path="src/main.py", size_bytes=100, extension=".py"),
+                FileInfo(path="src/utils.py", size_bytes=200, extension=".py"),
+                FileInfo(path="tests/test_main.py", size_bytes=150, extension=".py"),
+            ],
+        )
+
+        prompt = planner._build_prompt(context)
+        assert "Existing Files" in prompt or "existing" in prompt.lower()
+        assert "file_edit" in prompt

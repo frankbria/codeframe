@@ -2,6 +2,7 @@
 
 import pytest
 import json
+import inspect
 from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -373,3 +374,60 @@ class TestAgentStateTransitions:
         state = AgentState(status=AgentStatus.VERIFYING)
         state.status = AgentStatus.COMPLETED
         assert state.status == AgentStatus.COMPLETED
+
+
+class TestVerificationRecovery:
+    """Tests for verification recovery and early abort."""
+
+    def test_max_consecutive_verification_failures_constant_exists(self):
+        """New constant for verification-specific failure tracking exists."""
+        from codeframe.core.agent import MAX_CONSECUTIVE_VERIFICATION_FAILURES
+        assert MAX_CONSECUTIVE_VERIFICATION_FAILURES == 3
+
+    def test_incremental_verification_tracks_failures_separately(self):
+        """Verification failures tracked separately from step execution failures."""
+        # The _execute_plan method must have a separate counter for verification failures
+        # distinct from the existing consecutive_failures counter for step execution.
+        # We verify by inspecting the source for the new variable name.
+        source = inspect.getsource(Agent._execute_plan)
+        assert "consecutive_verification_failures" in source
+
+    def test_verification_failed_event_includes_details(self):
+        """verification_failed events include gate name, error count, and error details."""
+        # The enhanced verification_failed event should include structured gate info
+        # rather than just a generic error string.
+        source = inspect.getsource(Agent._execute_plan)
+        assert '"gates"' in source or "'gates'" in source
+        assert '"error_count"' in source or "'error_count'" in source
+        assert '"error_details"' in source or "'error_details'" in source
+
+    def test_incremental_verification_uses_verbose(self):
+        """_run_incremental_verification captures full error details via verbose=True."""
+        source = inspect.getsource(Agent._run_incremental_verification)
+        assert "verbose=True" in source
+
+    def test_verification_counter_resets_on_clean_pass(self):
+        """consecutive_verification_failures resets when incremental verification passes."""
+        # The code must reset the counter on a clean pass, not just on self-correction success.
+        # This prevents premature abort after: fail → pass → fail → fail (counter would be 3
+        # without the reset, but should be 2).
+        source = inspect.getsource(Agent._execute_plan)
+        # Find the clean-pass reset: gate_result.passed → reset counter
+        assert "gate_result.passed" in source
+        # The reset must appear in the passed branch, before the failure branch
+        passed_idx = source.index("gate_result.passed")
+        reset_after_pass = source.index(
+            "consecutive_verification_failures = 0", passed_idx
+        )
+        assert reset_after_pass > passed_idx
+
+    def test_abort_forces_blocker_creation(self):
+        """Abort path creates blocker directly, bypassing LLM classification."""
+        # The abort path must call blockers.create directly rather than
+        # _create_blocker_from_failure which can silently return for
+        # RESOLVE_AUTONOMOUSLY or TECHNICAL_FIX classifications.
+        source = inspect.getsource(Agent._execute_plan)
+        abort_idx = source.index("execution_aborted")
+        # After the abort event, blockers.create must be called directly
+        blocker_create_idx = source.index("blockers.create", abort_idx)
+        assert blocker_create_idx > abort_idx

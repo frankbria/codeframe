@@ -254,6 +254,7 @@ class AgentState:
 MAX_CONSECUTIVE_FAILURES = 3
 MAX_STEP_RETRIES = 2
 MAX_SELF_CORRECTION_ATTEMPTS = 2
+MAX_CONSECUTIVE_VERIFICATION_FAILURES = 3
 
 # TRUE requirements ambiguity - create blocker immediately
 # These are situations where the agent genuinely cannot proceed without human input
@@ -567,6 +568,7 @@ class Agent:
         )
 
         consecutive_failures = 0
+        consecutive_verification_failures = 0
 
         self._debug_log(
             f"Starting plan execution with {len(self.state.plan.steps)} steps",
@@ -620,24 +622,47 @@ class Agent:
                 # Run incremental verification for file changes
                 if step.type in {StepType.FILE_CREATE, StepType.FILE_EDIT}:
                     gate_result = self._run_incremental_verification()
-                    if gate_result and not gate_result.passed:
+                    if gate_result and gate_result.passed:
+                        consecutive_verification_failures = 0
+                    elif gate_result and not gate_result.passed:
                         # Try to fix lint issues automatically (works for style, not syntax)
                         if not self._try_auto_fix(gate_result):
                             # Auto-fix failed - need to self-correct the code
-                            self._emit_event("verification_failed", {
-                                "step": step.index,
-                                "error": "Code verification failed after file change",
-                            })
-
-                            # Trigger self-correction for the verification failure
+                            # Extract detailed error info from gate result
                             failed_checks = [
-                                c.name for c in gate_result.checks
+                                c for c in gate_result.checks
                                 if c.status != GateStatus.PASSED
                             ]
+                            failed_check_names = [c.name for c in failed_checks]
+
+                            # Build detailed error string with actual output
+                            error_details = []
+                            for check in failed_checks:
+                                if check.output:
+                                    error_details.append(
+                                        f"[{check.name}] {check.output[:500]}"
+                                    )
+                            error_detail_str = (
+                                "\n".join(error_details)
+                                if error_details
+                                else "No details available"
+                            )
+
+                            self._emit_event("verification_failed", {
+                                "step": step.index,
+                                "error": f"Verification failed: {failed_check_names}",
+                                "gates": failed_check_names,
+                                "error_count": len(failed_checks),
+                                "error_details": error_detail_str[:1000],
+                            })
+
                             failed_result = StepResult(
                                 step=step,
                                 status=ExecutionStatus.FAILED,
-                                error=f"Verification failed: {failed_checks}",
+                                error=(
+                                    f"Verification failed: {failed_check_names}"
+                                    f"\n{error_detail_str}"
+                                ),
                             )
 
                             # Try self-correction to fix the code
@@ -668,15 +693,41 @@ class Agent:
 
                                 current_result = corrected_result
 
-                            if not self_correction_succeeded:
+                            if self_correction_succeeded:
+                                consecutive_verification_failures = 0
+                            else:
                                 # Couldn't fix the verification error
+                                consecutive_verification_failures += 1
                                 consecutive_failures += 1
+                                if consecutive_verification_failures >= MAX_CONSECUTIVE_VERIFICATION_FAILURES:
+                                    self._debug_log(
+                                        f"ABORTING: Too many consecutive verification failures ({consecutive_verification_failures})",
+                                        level="ERROR",
+                                        always=True,
+                                    )
+                                    self._emit_event("execution_aborted", {
+                                        "reason": f"Too many consecutive verification failures ({consecutive_verification_failures})",
+                                        "step": step.index,
+                                    })
+                                    # Force blocker creation — bypass LLM classification
+                                    # since this is a definitive abort, not a tactical decision
+                                    error_msg = current_result.error if current_result else "Repeated verification failures"
+                                    blocker = blockers.create(
+                                        workspace=self.workspace,
+                                        question=f"Agent aborted: {consecutive_verification_failures} consecutive verification failures at step {step.index} ({step.description}). Last error: {error_msg[:500]}",
+                                        task_id=self.state.task_id,
+                                    )
+                                    self.state.status = AgentStatus.BLOCKED
+                                    self.state.blocker = BlockerInfo(
+                                        reason="Too many consecutive verification failures",
+                                        question=blocker.question,
+                                        context=f"Step {step.index}: {step.description}",
+                                    )
+                                    return
                                 if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                                    # Create blocker asking for help with the code
                                     self._create_blocker_from_failure(step, current_result)
                                     return
-                                # Otherwise, we continue to next step with broken file
-                                # (not ideal, but prevents infinite loop)
+                                # Otherwise, continue to next step with broken file
 
                 self.state.current_step += 1
 
@@ -821,7 +872,7 @@ class Agent:
             result = run_gates(
                 self.workspace,
                 gates=["ruff"],
-                verbose=False,
+                verbose=True,
             )
             self.state.gate_results.append(result)
             return result
