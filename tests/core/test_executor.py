@@ -278,6 +278,28 @@ class TestFileCreateConflictHandling:
         assert result.file_changes[0].original_content == "# old content"
         assert result.file_changes[0].operation == "edit"
 
+    def test_file_create_fallback_passes_existing_content_to_llm(
+        self, tmp_path, mock_provider, sample_context
+    ):
+        """file_create fallback sends existing content to LLM via edit prompt."""
+        (tmp_path / "config.toml").write_text("[project]\nname = 'my-app'")
+        captured_prompts = []
+        mock_provider.set_response_handler(
+            lambda msgs: (
+                captured_prompts.append(msgs[-1]["content"]),
+                LLMResponse(content="[project]\nname = 'my-app'\nversion = '1.0'"),
+            )[-1]
+        )
+        executor = Executor(mock_provider, tmp_path)
+        step = PlanStep(1, StepType.FILE_CREATE, "Create config", "config.toml")
+
+        executor.execute_step(step, sample_context)
+
+        assert len(captured_prompts) == 1
+        # Edit prompt should include existing content
+        assert "my-app" in captured_prompts[0]
+        assert "Current File Content" in captured_prompts[0]
+
     def test_file_create_succeeds_when_identical_content(
         self, tmp_path, mock_provider, sample_context
     ):
