@@ -2,6 +2,7 @@
 
 import pytest
 import json
+import inspect
 from pathlib import Path
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -373,3 +374,34 @@ class TestAgentStateTransitions:
         state = AgentState(status=AgentStatus.VERIFYING)
         state.status = AgentStatus.COMPLETED
         assert state.status == AgentStatus.COMPLETED
+
+
+class TestVerificationRecovery:
+    """Tests for verification recovery and early abort."""
+
+    def test_max_consecutive_verification_failures_constant_exists(self):
+        """New constant for verification-specific failure tracking exists."""
+        from codeframe.core.agent import MAX_CONSECUTIVE_VERIFICATION_FAILURES
+        assert MAX_CONSECUTIVE_VERIFICATION_FAILURES == 3
+
+    def test_incremental_verification_tracks_failures_separately(self):
+        """Verification failures tracked separately from step execution failures."""
+        # The _execute_plan method must have a separate counter for verification failures
+        # distinct from the existing consecutive_failures counter for step execution.
+        # We verify by inspecting the source for the new variable name.
+        source = inspect.getsource(Agent._execute_plan)
+        assert "consecutive_verification_failures" in source
+
+    def test_verification_failed_event_includes_details(self):
+        """verification_failed events include gate name, error count, and error details."""
+        # The enhanced verification_failed event should include structured gate info
+        # rather than just a generic error string.
+        source = inspect.getsource(Agent._execute_plan)
+        assert '"gates"' in source or "'gates'" in source
+        assert '"error_count"' in source or "'error_count'" in source
+        assert '"error_details"' in source or "'error_details'" in source
+
+    def test_incremental_verification_uses_verbose(self):
+        """_run_incremental_verification captures full error details via verbose=True."""
+        source = inspect.getsource(Agent._run_incremental_verification)
+        assert "verbose=True" in source

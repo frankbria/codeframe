@@ -287,15 +287,53 @@ class Executor:
         step: PlanStep,
         context: TaskContext,
     ) -> StepResult:
-        """Create a new file with generated content."""
+        """Create a new file with generated content.
+
+        If the file already exists, falls back gracefully:
+        - Identical content: returns SUCCESS (no-op)
+        - Different content: falls back to edit behavior
+        """
         file_path = self.repo_path / step.target
 
-        # Check if file already exists
+        # Check if file already exists -- fall back gracefully
         if file_path.exists():
+            existing_content = file_path.read_text(encoding="utf-8")
+
+            # Generate the content we would write
+            new_content = self._generate_file_content(step, context)
+
+            # If content is identical, no-op success
+            if existing_content.strip() == new_content.strip():
+                return StepResult(
+                    step=step,
+                    status=ExecutionStatus.SUCCESS,
+                    output=f"File already exists with correct content: {step.target}",
+                )
+
+            # Content differs -- fall back to edit behavior
+            if self.dry_run:
+                return StepResult(
+                    step=step,
+                    status=ExecutionStatus.SUCCESS,
+                    output=f"[DRY RUN] Would edit existing file: {step.target}",
+                )
+
+            file_path.write_text(new_content, encoding="utf-8")
+
+            change = FileChange(
+                path=step.target,
+                operation="edit",
+                original_content=existing_content,
+                new_content=new_content,
+                timestamp=datetime.now(timezone.utc),
+            )
+            self.changes.append(change)
+
             return StepResult(
                 step=step,
-                status=ExecutionStatus.FAILED,
-                error=f"File already exists: {step.target}",
+                status=ExecutionStatus.SUCCESS,
+                output=f"Updated existing file: {step.target}",
+                file_changes=[change],
             )
 
         # Generate file content using LLM

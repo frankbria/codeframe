@@ -6,13 +6,14 @@ MVP gates: pytest, ruff/lint.
 This module is headless - no FastAPI or HTTP dependencies.
 """
 
+import re
 import subprocess
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from codeframe.core.workspace import Workspace
 from codeframe.core import events
@@ -21,6 +22,34 @@ from codeframe.core import events
 def _utc_now() -> datetime:
     """Get current UTC time as timezone-aware datetime."""
     return datetime.now(timezone.utc)
+
+
+_RUFF_ERROR_PATTERN = re.compile(r'^(.+?):(\d+):(\d+): ([A-Z]\d+) (.+)$')
+
+
+def _parse_ruff_errors(output: str) -> list[dict[str, Any]]:
+    """Parse ruff output into structured error dicts.
+
+    Parses lines matching the pattern: path/file.py:10:5: E501 Line too long
+
+    Args:
+        output: Raw ruff stdout/stderr output.
+
+    Returns:
+        List of dicts with keys: file, line, col, code, message.
+    """
+    errors = []
+    for line in output.splitlines():
+        match = _RUFF_ERROR_PATTERN.match(line.strip())
+        if match:
+            errors.append({
+                "file": match.group(1),
+                "line": int(match.group(2)),
+                "col": int(match.group(3)),
+                "code": match.group(4),
+                "message": match.group(5),
+            })
+    return errors
 
 
 class GateStatus(str, Enum):
@@ -42,6 +71,7 @@ class GateCheck:
         exit_code: Process exit code (if run)
         output: Captured stdout/stderr
         duration_ms: How long the check took
+        detailed_errors: Structured error list parsed from tool output
     """
 
     name: str
@@ -49,6 +79,7 @@ class GateCheck:
     exit_code: Optional[int] = None
     output: str = ""
     duration_ms: int = 0
+    detailed_errors: Optional[list[dict[str, Any]]] = None
 
 
 @dataclass
@@ -86,6 +117,38 @@ class GateResult:
             parts.append(f"{skipped_count} skipped")
 
         return ", ".join(parts) if parts else "no checks run"
+
+    def get_error_summary(self) -> str:
+        """Format all errors into a readable multi-line string.
+
+        Returns:
+            Newline-separated string of all structured errors from failed checks,
+            or empty string if no errors.
+        """
+        lines = []
+        for check in self.checks:
+            if check.detailed_errors:
+                for err in check.detailed_errors:
+                    lines.append(
+                        f"{err['file']}:{err['line']}:{err['col']}: "
+                        f"{err['code']} {err['message']}"
+                    )
+        return "\n".join(lines)
+
+    def get_errors_by_file(self) -> dict[str, list[str]]:
+        """Group error messages by file path.
+
+        Returns:
+            Dict mapping file paths to lists of formatted error strings.
+        """
+        by_file: dict[str, list[str]] = {}
+        for check in self.checks:
+            if check.detailed_errors:
+                for err in check.detailed_errors:
+                    file_path = err["file"]
+                    msg = f"{err['code']} {err['message']} (line {err['line']})"
+                    by_file.setdefault(file_path, []).append(msg)
+        return by_file
 
 
 def run(
@@ -317,13 +380,19 @@ def _run_ruff(repo_path: Path, verbose: bool = False) -> GateCheck:
         if result.stderr:
             output += "\n" + result.stderr
 
-        return GateCheck(
+        check = GateCheck(
             name="ruff",
             status=GateStatus.PASSED if result.returncode == 0 else GateStatus.FAILED,
             exit_code=result.returncode,
             output=output if verbose else _summarize_ruff_output(output),
             duration_ms=duration_ms,
         )
+
+        # Parse detailed errors for failed checks
+        if check.status == GateStatus.FAILED:
+            check.detailed_errors = _parse_ruff_errors(output)
+
+        return check
 
     except subprocess.TimeoutExpired:
         return GateCheck(

@@ -228,7 +228,7 @@ TARGET RULES (critical - follow exactly):
 4. Be specific about what files to modify and what changes to make
 5. Consider edge cases and potential issues
 6. Keep the plan achievable - don't over-engineer
-7. If a file exists that you need to modify, use file_edit not file_create
+7. IMPORTANT: Before choosing file_create, verify the file does not already exist in the repository structure. If it exists, use file_edit instead. Never use file_create for files listed in the Repository Structure section.
 8. Run tests after implementation to verify correctness
 
 Return ONLY the JSON object, no additional text."""
@@ -332,6 +332,17 @@ class Planner:
             # Show top relevant files
             for f in context.relevant_files[:20]:
                 sections.append(f"  - {f.path}")
+            sections.append("")
+
+        # Existing files warning for planner
+        if context.file_tree:
+            sections.append("## Existing Files Warning")
+            sections.append(
+                "The following files already exist in the workspace. "
+                "Use file_edit (NOT file_create) for these:"
+            )
+            for f_info in context.file_tree[:50]:
+                sections.append(f"  - {f_info.path}")
             sections.append("")
 
         # Loaded file contents

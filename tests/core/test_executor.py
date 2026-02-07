@@ -156,16 +156,24 @@ class TestExecutorFileOperations:
         assert (tmp_path / "main.py").exists()
         assert len(result.file_changes) == 1
 
-    def test_file_create_fails_if_exists(self, tmp_path, mock_provider, sample_context):
-        """File create fails if file already exists."""
+    def test_file_create_falls_back_when_exists(self, tmp_path, mock_provider, sample_context):
+        """File create falls back to edit when file exists with different content."""
         (tmp_path / "existing.py").write_text("# existing")
+        mock_provider.set_response_handler(
+            lambda msgs: LLMResponse(content="# Updated content\nprint('updated')")
+        )
         executor = Executor(mock_provider, tmp_path)
         step = PlanStep(1, StepType.FILE_CREATE, "Create", "existing.py")
 
         result = executor.execute_step(step, sample_context)
 
-        assert result.status == ExecutionStatus.FAILED
-        assert "already exists" in result.error
+        assert result.status == ExecutionStatus.SUCCESS
+        assert "existing.py" in result.output
+        content = (tmp_path / "existing.py").read_text()
+        assert "Updated content" in content
+        assert len(result.file_changes) == 1
+        assert result.file_changes[0].original_content == "# existing"
+        assert result.file_changes[0].operation == "edit"
 
     def test_file_create_nested(self, tmp_path, mock_provider, sample_context):
         """Can create file in nested directory."""
@@ -222,6 +230,87 @@ class TestExecutorFileOperations:
         result = executor.execute_step(step, sample_context)
 
         assert result.status == ExecutionStatus.SUCCESS
+
+
+class TestFileCreateConflictHandling:
+    """Tests for file_create fallback when file already exists."""
+
+    @pytest.fixture
+    def mock_provider(self):
+        provider = MockProvider()
+        provider.set_response_handler(
+            lambda msgs: LLMResponse(content="# Generated code\nprint('hello')")
+        )
+        return provider
+
+    @pytest.fixture
+    def sample_context(self):
+        task = Task(
+            id="t1", workspace_id="w1", prd_id=None,
+            title="Test task", description="Test",
+            status=TaskStatus.IN_PROGRESS,
+            priority=0,
+            created_at=_utc_now(),
+            updated_at=_utc_now(),
+        )
+        return TaskContext(task=task)
+
+    def test_file_create_falls_back_to_edit_when_content_differs(
+        self, tmp_path, mock_provider, sample_context
+    ):
+        """file_create falls back to file_edit when file exists with different content."""
+        (tmp_path / "existing.py").write_text("# old content")
+        mock_provider.set_response_handler(
+            lambda msgs: LLMResponse(content="# Updated content\nprint('updated')")
+        )
+        executor = Executor(mock_provider, tmp_path)
+        step = PlanStep(1, StepType.FILE_CREATE, "Create", "existing.py")
+
+        result = executor.execute_step(step, sample_context)
+
+        assert result.status == ExecutionStatus.SUCCESS
+        assert "existing.py" in result.output
+        # File should have new content via edit fallback
+        content = (tmp_path / "existing.py").read_text()
+        assert "Updated content" in content
+        # Should have a file change recorded with original content
+        assert len(result.file_changes) == 1
+        assert result.file_changes[0].original_content == "# old content"
+        assert result.file_changes[0].operation == "edit"
+
+    def test_file_create_succeeds_when_identical_content(
+        self, tmp_path, mock_provider, sample_context
+    ):
+        """file_create returns SUCCESS when file exists with identical content."""
+        existing_content = "# Generated code\nprint('hello')"
+        (tmp_path / "same.py").write_text(existing_content)
+        mock_provider.set_response_handler(
+            lambda msgs: LLMResponse(content=existing_content)
+        )
+        executor = Executor(mock_provider, tmp_path)
+        step = PlanStep(1, StepType.FILE_CREATE, "Create", "same.py")
+
+        result = executor.execute_step(step, sample_context)
+
+        assert result.status == ExecutionStatus.SUCCESS
+        assert "already exists" in result.output.lower()
+        # Content should remain unchanged
+        assert (tmp_path / "same.py").read_text() == existing_content
+
+    def test_file_create_dry_run_with_existing_file(
+        self, tmp_path, mock_provider, sample_context
+    ):
+        """file_create dry run still works when file exists."""
+        (tmp_path / "existing.py").write_text("# old")
+        executor = Executor(mock_provider, tmp_path, dry_run=True)
+        step = PlanStep(1, StepType.FILE_CREATE, "Create", "existing.py")
+
+        result = executor.execute_step(step, sample_context)
+
+        assert result.status == ExecutionStatus.SUCCESS
+        assert "DRY RUN" in result.output
+        # Original content untouched
+        assert (tmp_path / "existing.py").read_text() == "# old"
 
 
 class TestExecutorDryRun:
