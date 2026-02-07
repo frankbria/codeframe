@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -605,6 +605,7 @@ dev = [
 [package.dev-dependencies]
 dev = [
     { name = "bandit" },
+    { name = "pytest-cov" },
 ]
 
 [package.metadata]
@@ -657,7 +658,10 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "bandit", specifier = ">=1.8.6" }]
+dev = [
+    { name = "bandit", specifier = ">=1.8.6" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+]
 
 [[package]]
 name = "colorama"

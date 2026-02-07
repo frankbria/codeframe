@@ -143,4 +143,5 @@ exclude_lines = [
 [dependency-groups]
 dev = [
     "bandit>=1.8.6",
+    "pytest-cov>=7.0.0",
 ]
