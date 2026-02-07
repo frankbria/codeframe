@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:headed": "npx playwright test --headed"
   },
   "dependencies": {
     "@hugeicons/react": "^0.3.0",
@@ -36,6 +39,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@next/eslint-plugin-next": "^16.1.6",
+    "@playwright/test": "^1.58.2",
     "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
