@@ -251,8 +251,8 @@ class TestSearchReplaceEditorExactMatch:
         content = f.read_text()
         assert r'regex = r"\\w+"' in content
 
-    def test_multiple_exact_matches(self, editor, sample_python_file):
-        """When multiple exact matches exist, apply to first and report count."""
+    def test_multiple_exact_matches_rejected(self, editor, sample_python_file):
+        """Ambiguous search (matches in both process_data and process_data_copy) is rejected."""
         ops = [
             EditOperation(
                 search="            result.append(item.transform())",
@@ -260,12 +260,26 @@ class TestSearchReplaceEditorExactMatch:
             )
         ]
         result = editor.apply_edits(str(sample_python_file), ops)
+        assert result.success is False
+        assert "Multiple matches found" in result.error
+        assert "2 occurrences" in result.error
+        # File unchanged
+        assert "item.process()" not in sample_python_file.read_text()
+
+    def test_multiple_exact_matches_with_context_succeeds(self, editor, sample_python_file):
+        """Including surrounding context disambiguates — targets only process_data."""
+        ops = [
+            EditOperation(
+                search="def process_data(items):\n    result = []\n    for item in items:\n        if item.is_valid():\n            result.append(item.transform())",
+                replace="def process_data(items):\n    result = []\n    for item in items:\n        if item.is_valid():\n            result.append(item.process())",
+            )
+        ]
+        result = editor.apply_edits(str(sample_python_file), ops)
         assert result.success is True
         content = sample_python_file.read_text()
-        # First occurrence replaced
-        assert "item.process()" in content
-        # Second occurrence still has original
-        assert "item.transform()" in content
+        # First function updated, second still has original
+        assert "result.append(item.process())" in content
+        assert "result.append(item.transform())" in content
 
 
 # ===========================================================================
@@ -498,35 +512,41 @@ class TestSearchReplaceEditorMultipleEdits:
 
 
 class TestSearchReplaceEditorDuplicateMatch:
-    def test_ambiguous_match_warns_on_duplicates(self, editor, tmp_path):
-        """When search text matches 3+ times, match_count should reflect that."""
+    def test_ambiguous_match_rejects_duplicates(self, editor, tmp_path):
+        """When search text matches 3+ times, edit must be rejected."""
         f = tmp_path / "dupes.py"
         f.write_text("x = 1\nx = 1\nx = 1\n")
         ops = [EditOperation(search="x = 1", replace="x = 2")]
         result = editor.apply_edits(str(f), ops)
-        assert result.success is True
-        content = f.read_text()
-        # First occurrence replaced, others untouched
-        lines = content.strip().splitlines()
-        assert lines[0] == "x = 2"
-        assert lines[1] == "x = 1"
-        assert lines[2] == "x = 1"
+        assert result.success is False
+        assert "Multiple matches found" in result.error
+        assert "3 occurrences" in result.error
+        assert "more surrounding context" in result.error
+        # File unchanged
+        assert f.read_text() == "x = 1\nx = 1\nx = 1\n"
         # match_results surfaces the ambiguity
         assert result.match_results is not None
-        assert len(result.match_results) == 1
         assert result.match_results[0].match_count == 3
 
-    def test_duplicate_match_uses_first_occurrence(self, editor, tmp_path):
+    def test_duplicate_match_rejects_with_two_occurrences(self, editor, tmp_path):
         f = tmp_path / "first.py"
         f.write_text("a = 1\nb = 2\na = 1\n")
         ops = [EditOperation(search="a = 1", replace="a = 99")]
         result = editor.apply_edits(str(f), ops)
+        assert result.success is False
+        assert "2 occurrences" in result.error
+        # File unchanged
+        assert f.read_text() == "a = 1\nb = 2\na = 1\n"
+
+    def test_unique_match_with_surrounding_context(self, editor, tmp_path):
+        """Providing enough context disambiguates — edit succeeds."""
+        f = tmp_path / "ctx.py"
+        f.write_text("a = 1\nb = 2\na = 1\nc = 3\n")
+        # Include surrounding context to make the search unique
+        ops = [EditOperation(search="a = 1\nb = 2", replace="a = 99\nb = 2")]
+        result = editor.apply_edits(str(f), ops)
         assert result.success is True
-        content = f.read_text()
-        assert content == "a = 99\nb = 2\na = 1\n"
-        # match_results populated with per-edit match info
-        assert result.match_results is not None
-        assert result.match_results[0].match_count == 2
+        assert f.read_text() == "a = 99\nb = 2\na = 1\nc = 3\n"
 
 
 # ===========================================================================

@@ -177,6 +177,21 @@ class SearchReplaceEditor:
                     match_results=matches,
                 )
 
+            # Reject ambiguous matches — search must be unique
+            if match.match_count > 1:
+                return EditResult(
+                    success=False,
+                    file_path=file_path,
+                    error=(
+                        f"Multiple matches found ({match.match_count} occurrences). "
+                        "Include more surrounding context in the search block "
+                        "to uniquely identify the target."
+                    ),
+                    failed_edit=op,
+                    applied_edits=applied,
+                    match_results=matches,
+                )
+
             replacement = op.replace
             if self.preserve_indentation and match.match_level >= 2:
                 replacement = self._apply_indentation(
