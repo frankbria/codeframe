@@ -130,6 +130,24 @@ def _execute_read_file(
     has_range = start is not None or end is not None
 
     if has_range:
+        if start is not None and start < 1:
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                content="Invalid start_line: must be >= 1.",
+                is_error=True,
+            )
+        if end is not None and end < 1:
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                content="Invalid end_line: must be >= 1.",
+                is_error=True,
+            )
+        if start is not None and end is not None and start > end:
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                content="Invalid line range: start_line > end_line.",
+                is_error=True,
+            )
         s = (start or 1) - 1  # 1-indexed → 0-indexed
         e = end if end is not None else total
         selected = lines[s:e]
@@ -221,7 +239,6 @@ def _execute_list_files(
         depth = len(Path(dirpath).relative_to(target).parts)
         if depth >= max_depth:
             dirnames.clear()
-            continue
 
         # Filter ignored directories in-place
         dirnames[:] = [
@@ -239,7 +256,7 @@ def _execute_list_files(
 
             rel_to_workspace = str(full.relative_to(workspace_path))
 
-            if _should_ignore(rel_to_workspace) or _should_ignore(fname):
+            if _should_ignore(rel_to_workspace):
                 continue
 
             if pattern and not fnmatch.fnmatch(fname, pattern):
@@ -337,7 +354,7 @@ def _execute_search_codebase(
 
             rel = str(full.relative_to(workspace_path))
 
-            if _should_ignore(rel) or _should_ignore(fname):
+            if _should_ignore(rel):
                 continue
 
             if file_glob and not fnmatch.fnmatch(fname, file_glob):

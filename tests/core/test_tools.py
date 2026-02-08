@@ -66,6 +66,14 @@ def _call(name: str, input_data: dict, workspace: Path) -> ToolResult:
     return execute_tool(tc, workspace)
 
 
+def _safe_symlink(src: Path, dest: Path) -> None:
+    """Create a symlink, skipping the test on platforms that don't support it."""
+    try:
+        os.symlink(src, dest)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink not supported on this platform")
+
+
 # ---------------------------------------------------------------------------
 # read_file tests
 # ---------------------------------------------------------------------------
@@ -167,6 +175,36 @@ class TestReadFile:
         assert "def hello():" in result.content
         assert "def add(a, b):" not in result.content
 
+    def test_start_line_greater_than_end_line(self, workspace: Path):
+        """Error when start_line > end_line."""
+        result = _call(
+            "read_file",
+            {"path": "src/main.py", "start_line": 5, "end_line": 2},
+            workspace,
+        )
+        assert result.is_error
+        assert "start_line" in result.content.lower() or "range" in result.content.lower()
+
+    def test_invalid_start_line_zero(self, workspace: Path):
+        """Error when start_line is 0 (must be >= 1)."""
+        result = _call(
+            "read_file",
+            {"path": "src/main.py", "start_line": 0},
+            workspace,
+        )
+        assert result.is_error
+        assert "start_line" in result.content.lower()
+
+    def test_invalid_end_line_zero(self, workspace: Path):
+        """Error when end_line is 0 (must be >= 1)."""
+        result = _call(
+            "read_file",
+            {"path": "src/main.py", "end_line": 0},
+            workspace,
+        )
+        assert result.is_error
+        assert "end_line" in result.content.lower()
+
     def test_absolute_path_rejected(self, workspace: Path):
         """Absolute paths must not bypass workspace containment."""
         result = _call("read_file", {"path": "/etc/passwd"}, workspace)
@@ -176,7 +214,7 @@ class TestReadFile:
         """Symlinks pointing outside workspace must not leak content."""
         external = workspace.parent / "external_secret.txt"
         external.write_text("TOP_SECRET=abc123")
-        os.symlink(external, workspace / "evil_link.txt")
+        _safe_symlink(external, workspace / "evil_link.txt")
 
         result = _call("read_file", {"path": "evil_link.txt"}, workspace)
         assert result.is_error
@@ -223,6 +261,16 @@ class TestListFiles:
         # depth 2 should reach a/b/ but not a/b/c/d/
         assert "deep.py" not in result.content
 
+    def test_max_depth_includes_boundary_files(self, workspace: Path):
+        """Files at exactly max_depth boundary are listed."""
+        nested = workspace / "a" / "b"
+        nested.mkdir(parents=True)
+        (nested / "boundary.py").write_text("# at depth 2")
+
+        result = _call("list_files", {"path": ".", "max_depth": 3}, workspace)
+        assert not result.is_error
+        assert "boundary.py" in result.content
+
     def test_respects_ignore_patterns(self, workspace: Path):
         """Verify .git, node_modules are ignored."""
         result = _call("list_files", {}, workspace)
@@ -250,7 +298,7 @@ class TestListFiles:
         """Symlinks pointing outside workspace must not appear in listing."""
         external = workspace.parent / "external_file.txt"
         external.write_text("external content")
-        os.symlink(external, workspace / "sneaky_link.txt")
+        _safe_symlink(external, workspace / "sneaky_link.txt")
 
         result = _call("list_files", {}, workspace)
         assert not result.is_error
@@ -329,7 +377,7 @@ class TestSearchCodebase:
         """Symlinks pointing outside workspace must not leak content."""
         external = workspace.parent / "external_secret.txt"
         external.write_text("TOP_SECRET=abc123")
-        os.symlink(external, workspace / "evil_link.txt")
+        _safe_symlink(external, workspace / "evil_link.txt")
 
         result = _call("search_codebase", {"pattern": "TOP_SECRET"}, workspace)
         assert not result.is_error
