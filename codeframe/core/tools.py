@@ -1,9 +1,11 @@
-"""Read-only agent tools for codebase exploration.
+"""Agent tools for codebase exploration and modification.
 
-Provides three tools for the ReAct agent loop:
+Provides five tools for the ReAct agent loop:
 - read_file: Read file contents with optional line range
 - list_files: List directory contents with filtering
 - search_codebase: Regex search across workspace files
+- edit_file: Search-and-replace editing via SearchReplaceEditor
+- create_file: Create new files (fails if file already exists)
 
 All tools enforce workspace path safety and respect ignore patterns.
 """
@@ -17,6 +19,7 @@ from pathlib import Path
 
 from codeframe.adapters.llm.base import Tool, ToolCall, ToolResult
 from codeframe.core.context import DEFAULT_IGNORE_PATTERNS
+from codeframe.core.editor import EditOperation, SearchReplaceEditor
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -398,6 +401,182 @@ def _execute_search_codebase(
 
 
 # ---------------------------------------------------------------------------
+# edit_file
+# ---------------------------------------------------------------------------
+
+_EDIT_FILE_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "path": {
+            "type": "string",
+            "description": "Relative path from workspace root to the file to edit",
+        },
+        "edits": {
+            "type": "array",
+            "description": "List of search-and-replace operations to apply sequentially",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "search": {
+                        "type": "string",
+                        "description": "Text to search for (must match uniquely)",
+                    },
+                    "replace": {
+                        "type": "string",
+                        "description": "Text to replace the matched search block with",
+                    },
+                },
+                "required": ["search", "replace"],
+            },
+        },
+    },
+    "required": ["path", "edits"],
+}
+
+
+def _execute_edit_file(
+    input_data: dict, workspace_path: Path, tool_call_id: str
+) -> ToolResult:
+    rel = input_data.get("path")
+    edits_raw = input_data.get("edits")
+
+    if not rel:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Missing required parameter: path",
+            is_error=True,
+        )
+    if edits_raw is None:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Missing required parameter: edits",
+            is_error=True,
+        )
+    if not isinstance(edits_raw, list):
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Invalid parameter: edits must be a list of objects.",
+            is_error=True,
+        )
+    for idx, entry in enumerate(edits_raw):
+        if not isinstance(entry, dict):
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                content=f"Invalid edit at index {idx}: expected an object.",
+                is_error=True,
+            )
+
+    file_path = workspace_path / rel
+
+    safe, reason = _is_path_safe(file_path, workspace_path)
+    if not safe:
+        return ToolResult(tool_call_id=tool_call_id, content=reason, is_error=True)
+
+    # Convert raw dicts to EditOperation objects
+    edit_ops = [
+        EditOperation(
+            search=e.get("search", ""),
+            replace=e.get("replace", ""),
+            description=e.get("description"),
+        )
+        for e in edits_raw
+    ]
+
+    editor = SearchReplaceEditor()
+    result = editor.apply_edits(str(file_path), edit_ops)
+
+    if result.success:
+        content = result.diff or "Edit applied (no textual changes)."
+        return ToolResult(
+            tool_call_id=tool_call_id, content=content, is_error=False
+        )
+    else:
+        # Combine error and context for LLM-friendly feedback
+        parts = []
+        if result.error:
+            parts.append(result.error)
+        if result.context:
+            parts.append(result.context)
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="\n".join(parts) if parts else "Edit failed.",
+            is_error=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# create_file
+# ---------------------------------------------------------------------------
+
+_CREATE_FILE_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "path": {
+            "type": "string",
+            "description": "Relative path from workspace root for the new file",
+        },
+        "content": {
+            "type": "string",
+            "description": "Complete file content to write",
+        },
+    },
+    "required": ["path", "content"],
+}
+
+
+def _execute_create_file(
+    input_data: dict, workspace_path: Path, tool_call_id: str
+) -> ToolResult:
+    rel = input_data.get("path")
+    content = input_data.get("content")
+
+    if not rel:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Missing required parameter: path",
+            is_error=True,
+        )
+    if content is None:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Missing required parameter: content",
+            is_error=True,
+        )
+
+    file_path = workspace_path / rel
+
+    safe, reason = _is_path_safe(file_path, workspace_path)
+    if not safe:
+        return ToolResult(tool_call_id=tool_call_id, content=reason, is_error=True)
+
+    if file_path.exists():
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content=(
+                f"File already exists: {rel}. "
+                "Use edit_file to modify existing files."
+            ),
+            is_error=True,
+        )
+
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content=f"Error creating file: {exc}",
+            is_error=True,
+        )
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        content=f"Created file: {rel}",
+        is_error=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Tool registry & dispatcher
 # ---------------------------------------------------------------------------
 
@@ -429,12 +608,33 @@ AGENT_TOOLS: list[Tool] = [
         ),
         input_schema=_SEARCH_CODEBASE_SCHEMA,
     ),
+    Tool(
+        name="edit_file",
+        description=(
+            "Edit an existing file using search-and-replace operations. "
+            "Each edit must match uniquely in the file. "
+            "Returns a unified diff on success, or file context on failure "
+            "to help retry with corrected search blocks."
+        ),
+        input_schema=_EDIT_FILE_SCHEMA,
+    ),
+    Tool(
+        name="create_file",
+        description=(
+            "Create a new file in the workspace. "
+            "Fails if the file already exists — use edit_file to modify "
+            "existing files. Parent directories are created automatically."
+        ),
+        input_schema=_CREATE_FILE_SCHEMA,
+    ),
 ]
 
 _TOOL_HANDLERS = {
     "read_file": _execute_read_file,
     "list_files": _execute_list_files,
     "search_codebase": _execute_search_codebase,
+    "edit_file": _execute_edit_file,
+    "create_file": _execute_create_file,
 }
 
 
