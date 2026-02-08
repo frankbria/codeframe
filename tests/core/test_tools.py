@@ -4,6 +4,8 @@ Tests cover three tools: read_file, list_files, search_codebase,
 plus the execute_tool dispatcher and AGENT_TOOLS registry.
 """
 
+import os
+
 import pytest
 from pathlib import Path
 
@@ -165,6 +167,21 @@ class TestReadFile:
         assert "def hello():" in result.content
         assert "def add(a, b):" not in result.content
 
+    def test_absolute_path_rejected(self, workspace: Path):
+        """Absolute paths must not bypass workspace containment."""
+        result = _call("read_file", {"path": "/etc/passwd"}, workspace)
+        assert result.is_error
+
+    def test_symlink_outside_workspace(self, workspace: Path):
+        """Symlinks pointing outside workspace must not leak content."""
+        external = workspace.parent / "external_secret.txt"
+        external.write_text("TOP_SECRET=abc123")
+        os.symlink(external, workspace / "evil_link.txt")
+
+        result = _call("read_file", {"path": "evil_link.txt"}, workspace)
+        assert result.is_error
+        assert "TOP_SECRET" not in result.content
+
 
 # ---------------------------------------------------------------------------
 # list_files tests
@@ -228,6 +245,16 @@ class TestListFiles:
         result = _call("list_files", {}, workspace)
         assert not result.is_error
         assert "total" in result.content.lower() or "file" in result.content.lower()
+
+    def test_symlink_outside_workspace(self, workspace: Path):
+        """Symlinks pointing outside workspace must not appear in listing."""
+        external = workspace.parent / "external_file.txt"
+        external.write_text("external content")
+        os.symlink(external, workspace / "sneaky_link.txt")
+
+        result = _call("list_files", {}, workspace)
+        assert not result.is_error
+        assert "sneaky_link" not in result.content
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +324,27 @@ class TestSearchCodebase:
         assert not result.is_error
         # node_modules should be ignored, so this shouldn't match
         assert "node_modules" not in result.content
+
+    def test_symlink_outside_workspace(self, workspace: Path):
+        """Symlinks pointing outside workspace must not leak content."""
+        external = workspace.parent / "external_secret.txt"
+        external.write_text("TOP_SECRET=abc123")
+        os.symlink(external, workspace / "evil_link.txt")
+
+        result = _call("search_codebase", {"pattern": "TOP_SECRET"}, workspace)
+        assert not result.is_error
+        # The pattern appears in the header, but the actual secret content must not
+        assert "abc123" not in result.content
+        assert "evil_link" not in result.content
+
+    def test_large_file_skipped(self, workspace: Path):
+        """Files over 1MB are skipped in search."""
+        large = workspace / "huge.txt"
+        large.write_text("FINDME\n" + "x" * 1_100_000)
+
+        result = _call("search_codebase", {"pattern": "FINDME"}, workspace)
+        assert not result.is_error
+        assert "huge.txt" not in result.content
 
 
 # ---------------------------------------------------------------------------

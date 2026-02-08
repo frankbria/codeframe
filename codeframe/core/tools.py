@@ -23,6 +23,7 @@ from codeframe.core.context import DEFAULT_IGNORE_PATTERNS
 # ---------------------------------------------------------------------------
 
 MAX_FILE_LINES = 500
+MAX_SEARCH_FILE_SIZE = 1_000_000  # 1 MB — skip files larger than this in search
 DEFAULT_MAX_DEPTH = 3
 DEFAULT_MAX_RESULTS = 20
 
@@ -230,6 +231,12 @@ def _execute_list_files(
 
         for fname in filenames:
             full = Path(dirpath) / fname
+
+            # Guard against symlinks pointing outside workspace
+            safe, _ = _is_path_safe(full, workspace_path)
+            if not safe:
+                continue
+
             rel_to_workspace = str(full.relative_to(workspace_path))
 
             if _should_ignore(rel_to_workspace) or _should_ignore(fname):
@@ -322,12 +329,25 @@ def _execute_search_codebase(
                 break
 
             full = Path(dirpath) / fname
+
+            # Guard against symlinks pointing outside workspace
+            safe, _ = _is_path_safe(full, workspace_path)
+            if not safe:
+                continue
+
             rel = str(full.relative_to(workspace_path))
 
             if _should_ignore(rel) or _should_ignore(fname):
                 continue
 
             if file_glob and not fnmatch.fnmatch(fname, file_glob):
+                continue
+
+            # Skip oversized files to prevent OOM
+            try:
+                if full.stat().st_size > MAX_SEARCH_FILE_SIZE:
+                    continue
+            except OSError:
                 continue
 
             # Skip binary files by attempting UTF-8 decode
