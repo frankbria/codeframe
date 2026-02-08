@@ -1,7 +1,8 @@
-"""Tests for read-only agent tools.
+"""Tests for agent tools (read-only + write).
 
-Tests cover three tools: read_file, list_files, search_codebase,
-plus the execute_tool dispatcher and AGENT_TOOLS registry.
+Tests cover five tools: read_file, list_files, search_codebase,
+edit_file, create_file, plus the execute_tool dispatcher and AGENT_TOOLS
+registry.
 """
 
 import os
@@ -408,12 +409,14 @@ class TestDispatcher:
         assert "unknown" in result.content.lower()
 
     def test_tool_registry_completeness(self):
-        """Verify all 3 tools are in AGENT_TOOLS."""
+        """Verify all 5 tools are in AGENT_TOOLS."""
         names = {t.name for t in AGENT_TOOLS}
         assert "read_file" in names
         assert "list_files" in names
         assert "search_codebase" in names
-        assert len(AGENT_TOOLS) == 3
+        assert "edit_file" in names
+        assert "create_file" in names
+        assert len(AGENT_TOOLS) == 5
 
     def test_tool_schemas_valid(self):
         """Verify JSON schema structure for each tool."""
@@ -456,3 +459,230 @@ class TestIntegration:
         read_result = _call("read_file", {"path": "src/utils.py"}, workspace)
         assert not read_result.is_error
         assert "def get_home():" in read_result.content
+
+
+# ---------------------------------------------------------------------------
+# edit_file tests
+# ---------------------------------------------------------------------------
+
+
+class TestEditFile:
+    def test_successful_edit_with_diff(self, workspace: Path):
+        """Successful search-replace returns unified diff."""
+        result = _call(
+            "edit_file",
+            {
+                "path": "src/main.py",
+                "edits": [{"search": "return 'Hello, world!'", "replace": "return 'Hi!'"}],
+            },
+            workspace,
+        )
+        assert not result.is_error
+        assert "---" in result.content  # unified diff header
+        assert "+++" in result.content
+        assert "@@" in result.content
+        # Verify file actually changed
+        assert (workspace / "src/main.py").read_text().count("return 'Hi!'") == 1
+
+    def test_multiple_edits(self, workspace: Path):
+        """Multiple sequential edits in one call."""
+        result = _call(
+            "edit_file",
+            {
+                "path": "src/main.py",
+                "edits": [
+                    {"search": "def hello():", "replace": "def greet():"},
+                    {"search": "return a + b", "replace": "return a + b  # sum"},
+                ],
+            },
+            workspace,
+        )
+        assert not result.is_error
+        content = (workspace / "src/main.py").read_text()
+        assert "def greet():" in content
+        assert "return a + b  # sum" in content
+
+    def test_edit_failure_returns_context(self, workspace: Path):
+        """When search string not found, return file context for LLM retry."""
+        result = _call(
+            "edit_file",
+            {
+                "path": "src/main.py",
+                "edits": [{"search": "this_does_not_exist_anywhere", "replace": "x"}],
+            },
+            workspace,
+        )
+        assert result.is_error
+        # Should contain helpful context from the file
+        assert "EDIT FAILED" in result.content or "no match" in result.content.lower()
+        # File should be unchanged
+        assert "def hello():" in (workspace / "src/main.py").read_text()
+
+    def test_edit_nonexistent_file(self, workspace: Path):
+        """Error when target file doesn't exist."""
+        result = _call(
+            "edit_file",
+            {
+                "path": "no_such_file.py",
+                "edits": [{"search": "x", "replace": "y"}],
+            },
+            workspace,
+        )
+        assert result.is_error
+        assert "not found" in result.content.lower()
+
+    def test_edit_path_traversal(self, workspace: Path):
+        """Path traversal attempts are blocked."""
+        result = _call(
+            "edit_file",
+            {
+                "path": "../../../etc/passwd",
+                "edits": [{"search": "root", "replace": "hacked"}],
+            },
+            workspace,
+        )
+        assert result.is_error
+        assert "escape" in result.content.lower() or "path" in result.content.lower()
+
+    def test_edit_missing_params(self, workspace: Path):
+        """Error when required parameters are missing."""
+        result = _call("edit_file", {}, workspace)
+        assert result.is_error
+
+        result2 = _call("edit_file", {"path": "src/main.py"}, workspace)
+        assert result2.is_error
+
+    def test_edit_empty_search_string(self, workspace: Path):
+        """Error when search string is empty."""
+        result = _call(
+            "edit_file",
+            {
+                "path": "src/main.py",
+                "edits": [{"search": "", "replace": "x"}],
+            },
+            workspace,
+        )
+        assert result.is_error
+
+    def test_edit_absolute_path_rejected(self, workspace: Path):
+        """Absolute paths must not bypass workspace containment."""
+        result = _call(
+            "edit_file",
+            {
+                "path": "/etc/passwd",
+                "edits": [{"search": "x", "replace": "y"}],
+            },
+            workspace,
+        )
+        assert result.is_error
+
+    def test_edit_symlink_outside_workspace(self, workspace: Path):
+        """Symlinks pointing outside workspace must not allow edits."""
+        external = workspace.parent / "external_file.txt"
+        external.write_text("original content")
+        _safe_symlink(external, workspace / "evil_link.txt")
+
+        result = _call(
+            "edit_file",
+            {
+                "path": "evil_link.txt",
+                "edits": [{"search": "original", "replace": "hacked"}],
+            },
+            workspace,
+        )
+        assert result.is_error
+        assert external.read_text() == "original content"
+
+
+# ---------------------------------------------------------------------------
+# create_file tests
+# ---------------------------------------------------------------------------
+
+
+class TestCreateFile:
+    def test_create_new_file(self, workspace: Path):
+        """Create a brand-new file successfully."""
+        result = _call(
+            "create_file",
+            {"path": "src/new_module.py", "content": "# New module\n"},
+            workspace,
+        )
+        assert not result.is_error
+        assert (workspace / "src/new_module.py").exists()
+        assert (workspace / "src/new_module.py").read_text() == "# New module\n"
+
+    def test_create_with_nested_dirs(self, workspace: Path):
+        """Auto-create parent directories."""
+        result = _call(
+            "create_file",
+            {"path": "a/b/c/deep.py", "content": "deep = True\n"},
+            workspace,
+        )
+        assert not result.is_error
+        assert (workspace / "a/b/c/deep.py").exists()
+        assert (workspace / "a/b/c/deep.py").read_text() == "deep = True\n"
+
+    def test_create_existing_file_fails(self, workspace: Path):
+        """CRITICAL: create_file must fail if file already exists."""
+        result = _call(
+            "create_file",
+            {"path": "src/main.py", "content": "overwrite attempt"},
+            workspace,
+        )
+        assert result.is_error
+        assert "already exists" in result.content.lower()
+        assert "edit_file" in result.content.lower()
+        # File must NOT be overwritten
+        assert "def hello():" in (workspace / "src/main.py").read_text()
+
+    def test_create_path_traversal(self, workspace: Path):
+        """Path traversal attempts are blocked."""
+        result = _call(
+            "create_file",
+            {"path": "../../../tmp/evil.py", "content": "evil"},
+            workspace,
+        )
+        assert result.is_error
+        assert "escape" in result.content.lower() or "path" in result.content.lower()
+
+    def test_create_missing_params(self, workspace: Path):
+        """Error when required parameters are missing."""
+        result = _call("create_file", {}, workspace)
+        assert result.is_error
+
+        result2 = _call("create_file", {"path": "new.py"}, workspace)
+        assert result2.is_error
+
+    def test_create_absolute_path_rejected(self, workspace: Path):
+        """Absolute paths must not bypass workspace containment."""
+        result = _call(
+            "create_file",
+            {"path": "/tmp/outside.py", "content": "outside"},
+            workspace,
+        )
+        assert result.is_error
+
+    def test_create_empty_content(self, workspace: Path):
+        """Creating a file with empty content should succeed."""
+        result = _call(
+            "create_file",
+            {"path": "empty_file.txt", "content": ""},
+            workspace,
+        )
+        assert not result.is_error
+        assert (workspace / "empty_file.txt").exists()
+        assert (workspace / "empty_file.txt").read_text() == ""
+
+    def test_create_symlink_dir_outside_workspace(self, workspace: Path):
+        """Symlinked parent directory outside workspace must not allow creation."""
+        external_dir = workspace.parent / "external_dir"
+        external_dir.mkdir()
+        _safe_symlink(external_dir, workspace / "linked_dir")
+
+        result = _call(
+            "create_file",
+            {"path": "linked_dir/evil.py", "content": "evil"},
+            workspace,
+        )
+        assert result.is_error
+        assert not (external_dir / "evil.py").exists()
