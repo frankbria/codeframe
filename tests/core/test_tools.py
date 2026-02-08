@@ -552,6 +552,26 @@ class TestEditFile:
         result2 = _call("edit_file", {"path": "src/main.py"}, workspace)
         assert result2.is_error
 
+    def test_edit_invalid_edits_type(self, workspace: Path):
+        """Error when edits is not a list."""
+        result = _call(
+            "edit_file",
+            {"path": "src/main.py", "edits": "not a list"},
+            workspace,
+        )
+        assert result.is_error
+        assert "list" in result.content.lower()
+
+    def test_edit_invalid_edit_entry(self, workspace: Path):
+        """Error when an edit entry is not a dict."""
+        result = _call(
+            "edit_file",
+            {"path": "src/main.py", "edits": [42]},
+            workspace,
+        )
+        assert result.is_error
+        assert "index 0" in result.content
+
     def test_edit_empty_search_string(self, workspace: Path):
         """Error when search string is empty."""
         result = _call(

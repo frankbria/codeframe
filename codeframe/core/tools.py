@@ -452,6 +452,19 @@ def _execute_edit_file(
             content="Missing required parameter: edits",
             is_error=True,
         )
+    if not isinstance(edits_raw, list):
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Invalid parameter: edits must be a list of objects.",
+            is_error=True,
+        )
+    for idx, entry in enumerate(edits_raw):
+        if not isinstance(entry, dict):
+            return ToolResult(
+                tool_call_id=tool_call_id,
+                content=f"Invalid edit at index {idx}: expected an object.",
+                is_error=True,
+            )
 
     file_path = workspace_path / rel
 
@@ -546,8 +559,15 @@ def _execute_create_file(
             is_error=True,
         )
 
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(content, encoding="utf-8")
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content=f"Error creating file: {exc}",
+            is_error=True,
+        )
 
     return ToolResult(
         tool_call_id=tool_call_id,
