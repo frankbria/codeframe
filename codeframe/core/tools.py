@@ -1,11 +1,13 @@
 """Agent tools for codebase exploration and modification.
 
-Provides five tools for the ReAct agent loop:
+Provides seven tools for the ReAct agent loop:
 - read_file: Read file contents with optional line range
 - list_files: List directory contents with filtering
 - search_codebase: Regex search across workspace files
 - edit_file: Search-and-replace editing via SearchReplaceEditor
 - create_file: Create new files (fails if file already exists)
+- run_command: Execute shell commands with safety checks
+- run_tests: Run project test suite and return focused results
 
 All tools enforce workspace path safety and respect ignore patterns.
 """
@@ -15,11 +17,15 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from codeframe.adapters.llm.base import Tool, ToolCall, ToolResult
 from codeframe.core.context import DEFAULT_IGNORE_PATTERNS
 from codeframe.core.editor import EditOperation, SearchReplaceEditor
+from codeframe.core.executor import is_dangerous_command
+from codeframe.core.gates import _detect_available_gates
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -577,6 +583,254 @@ def _execute_create_file(
 
 
 # ---------------------------------------------------------------------------
+# run_tests
+# ---------------------------------------------------------------------------
+
+_RUN_TESTS_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "test_path": {
+            "type": "string",
+            "description": (
+                "Optional path to specific test file or directory "
+                "(relative to workspace)"
+            ),
+        },
+        "verbose": {
+            "type": "boolean",
+            "description": (
+                "If true, include full test output instead of summary only"
+            ),
+            "default": False,
+        },
+    },
+}
+
+
+def _execute_run_tests(
+    input_data: dict, workspace_path: Path, tool_call_id: str
+) -> ToolResult:
+    test_path = input_data.get("test_path")
+    verbose = input_data.get("verbose", False)
+
+    # Validate test_path stays inside workspace
+    if test_path:
+        candidate = workspace_path / test_path
+        safe, reason = _is_path_safe(candidate, workspace_path)
+        if not safe:
+            return ToolResult(
+                tool_call_id=tool_call_id, content=reason, is_error=True
+            )
+
+    gates = _detect_available_gates(workspace_path)
+
+    if "pytest" in gates:
+        # Build pytest command, preferring uv if available
+        if shutil.which("uv"):
+            cmd = ["uv", "run", "pytest"]
+        else:
+            cmd = ["pytest"]
+        if test_path:
+            cmd.append(test_path)
+        cmd.extend(["-v", "--tb=short"])
+    elif "npm-test" in gates:
+        cmd = ["npm", "test"]
+        if test_path:
+            cmd.extend(["--", test_path])
+    else:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content=(
+                "No test runner detected. "
+                "Ensure pytest, pyproject.toml, or package.json "
+                "with a test script exists."
+            ),
+            is_error=True,
+        )
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(workspace_path),
+        )
+    except subprocess.TimeoutExpired:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Test execution timed out after 300 seconds.",
+            is_error=True,
+        )
+    except OSError as exc:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content=f"Failed to run tests: {exc}",
+            is_error=True,
+        )
+
+    output = proc.stdout + proc.stderr
+
+    if proc.returncode == 0:
+        # Extract last summary line from pytest output (e.g., "5 passed in 0.12s")
+        summary_matches = re.findall(
+            r"=+ (.+?) =+\s*$", output, re.MULTILINE
+        )
+        summary = summary_matches[-1] if summary_matches else "Tests passed."
+        content = f"PASSED: {summary}"
+    else:
+        # Extract first failing test and its traceback
+        lines = output.splitlines()
+        failed_lines = [
+            line for line in lines if line.startswith("FAILED ")
+        ]
+        first_failure = failed_lines[0] if failed_lines else None
+
+        # Find the FAILURES section and extract first traceback
+        traceback_lines: list[str] = []
+        in_failures = False
+        in_first_tb = False
+        tb_header_count = 0
+        for line in lines:
+            if "= FAILURES =" in line:
+                in_failures = True
+                continue
+            if in_failures:
+                # Traceback sections start with "_ test_name _" headers
+                if re.match(r"^_+ .+ _+$", line):
+                    tb_header_count += 1
+                    if tb_header_count == 1:
+                        in_first_tb = True
+                        traceback_lines.append(line)
+                        continue
+                    else:
+                        break
+                if re.match(r"^=+ short test summary info =+$", line):
+                    break
+                if in_first_tb:
+                    traceback_lines.append(line)
+
+        traceback_text = (
+            "\n".join(traceback_lines[:50]) if traceback_lines else ""
+        )
+
+        parts = ["FAILED"]
+        if first_failure:
+            parts.append(first_failure)
+        if traceback_text:
+            parts.append(f"\nTraceback:\n{traceback_text}")
+
+        content = "\n".join(parts)
+
+    if verbose:
+        truncated = output[:5000]
+        if len(output) > 5000:
+            truncated += "\n... [output truncated at 5000 chars]"
+        content += f"\n\nFull output:\n{truncated}"
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        content=content,
+        is_error=proc.returncode != 0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# run_command
+# ---------------------------------------------------------------------------
+
+_RUN_COMMAND_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "command": {
+            "type": "string",
+            "description": "Shell command to execute in the workspace",
+        },
+        "timeout": {
+            "type": "integer",
+            "description": "Timeout in seconds (default: 60, max: 300)",
+            "default": 60,
+            "minimum": 1,
+            "maximum": 300,
+        },
+    },
+    "required": ["command"],
+}
+
+_RUN_COMMAND_MAX_OUTPUT = 4000
+_RUN_COMMAND_MAX_TIMEOUT = 300
+
+
+def _execute_run_command(
+    input_data: dict, workspace_path: Path, tool_call_id: str
+) -> ToolResult:
+    command = input_data.get("command", "")
+    if not command.strip():
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content="Missing required parameter: command",
+            is_error=True,
+        )
+
+    timeout = input_data.get("timeout", 60)
+    timeout = min(max(int(timeout), 1), _RUN_COMMAND_MAX_TIMEOUT)
+
+    # Safety: reject dangerous commands
+    is_dangerous, description = is_dangerous_command(command)
+    if is_dangerous:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content=f"Blocked dangerous command: {description}",
+            is_error=True,
+        )
+
+    # Build env with venv activation if present
+    env = os.environ.copy()
+    for venv_dir in (".venv", "venv"):
+        venv_bin = workspace_path / venv_dir / "bin"
+        if venv_bin.is_dir():
+            env["PATH"] = str(venv_bin) + os.pathsep + env.get("PATH", "")
+            env["VIRTUAL_ENV"] = str(workspace_path / venv_dir)
+            break
+
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return ToolResult(
+            tool_call_id=tool_call_id,
+            content=f"Command timed out after {timeout} seconds: {command}",
+            is_error=True,
+        )
+
+    # Build output
+    parts = [f"Exit code: {proc.returncode}"]
+    if proc.stdout:
+        parts.append(f"stdout:\n{proc.stdout}")
+    if proc.stderr:
+        parts.append(f"stderr:\n{proc.stderr}")
+    output = "\n".join(parts)
+
+    # Truncate if too long
+    if len(output) > _RUN_COMMAND_MAX_OUTPUT:
+        half = _RUN_COMMAND_MAX_OUTPUT // 2
+        output = output[:half] + "\n...[truncated]...\n" + output[-half:]
+
+    return ToolResult(
+        tool_call_id=tool_call_id,
+        content=output,
+        is_error=proc.returncode != 0,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Tool registry & dispatcher
 # ---------------------------------------------------------------------------
 
@@ -627,6 +881,26 @@ AGENT_TOOLS: list[Tool] = [
         ),
         input_schema=_CREATE_FILE_SCHEMA,
     ),
+    Tool(
+        name="run_tests",
+        description=(
+            "Run the project's test suite and return focused results. "
+            "Detects pytest or npm test automatically. "
+            "On failure, shows only the first failing test with traceback "
+            "to keep context clean."
+        ),
+        input_schema=_RUN_TESTS_SCHEMA,
+    ),
+    Tool(
+        name="run_command",
+        description=(
+            "Execute a shell command in the workspace directory. "
+            "Dangerous commands (rm -rf /, dd, mkfs, etc.) are blocked. "
+            "Virtual environments are auto-detected and activated. "
+            "Output is truncated if it exceeds 4000 characters."
+        ),
+        input_schema=_RUN_COMMAND_SCHEMA,
+    ),
 ]
 
 _TOOL_HANDLERS = {
@@ -635,6 +909,8 @@ _TOOL_HANDLERS = {
     "search_codebase": _execute_search_codebase,
     "edit_file": _execute_edit_file,
     "create_file": _execute_create_file,
+    "run_tests": _execute_run_tests,
+    "run_command": _execute_run_command,
 }
 
 

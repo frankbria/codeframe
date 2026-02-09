@@ -24,6 +24,62 @@ if TYPE_CHECKING:
     from codeframe.core.streaming import EventPublisher
 
 
+# Module-level dangerous command patterns (importable by other modules like tools.py)
+DANGEROUS_PATTERNS: list[tuple[str, str]] = [
+    # Recursive delete of root or home
+    (r"\brm\s+(-[rf]+\s+)*[/~]", "recursive deletion of root or home"),
+    (r"\brm\s+--no-preserve-root", "rm with --no-preserve-root"),
+    # Writing to /dev/ devices
+    (r">\s*/dev/", "redirect to /dev device"),
+    (r"\bdd\s+.*of=/dev/", "dd writing to device"),
+    # Filesystem destruction
+    (r"\bmkfs\b", "filesystem format command"),
+    (r"\bfdisk\b", "disk partition command"),
+    # Fork bombs
+    (r":\s*\(\s*\)\s*\{", "potential fork bomb"),
+    (r"\bfork\s*while\s*true", "potential fork bomb"),
+    # Dangerous dd operations
+    (r"\bdd\s+if=/dev/", "dd reading from device"),
+    # Dangerous chmod
+    (r"\bchmod\s+(-[Rr]\s+)?777\s+/", "chmod 777 on root"),
+    # Wget/curl piped to shell (potential malware download)
+    (r"\b(wget|curl)\s+.*\|\s*(ba)?sh", "download piped to shell"),
+    # Overwriting important system files
+    (r">\s*/(etc|bin|usr|lib|sbin)/", "overwriting system directory"),
+]
+
+
+def is_dangerous_command(command: str) -> tuple[bool, str]:
+    """Check if a command matches dangerous patterns.
+
+    Uses regex-based patterns that are harder to bypass than substring matching.
+    Normalizes whitespace and handles common shell escapes.
+
+    Args:
+        command: The shell command to check
+
+    Returns:
+        Tuple of (is_dangerous, description) where description explains the match
+    """
+    # Normalize the command for comparison
+    try:
+        # Use shlex to handle escapes, then rejoin
+        tokens = shlex.split(command)
+        normalized = " ".join(tokens)
+    except ValueError:
+        # If shlex fails, use the original with normalized whitespace
+        normalized = " ".join(command.split())
+
+    for pattern, description in DANGEROUS_PATTERNS:
+        if re.search(pattern, normalized, re.IGNORECASE):
+            return (True, description)
+        # Also check original command in case normalization removed something
+        if re.search(pattern, command, re.IGNORECASE):
+            return (True, description)
+
+    return (False, "")
+
+
 class ExecutionStatus(str, Enum):
     """Status of a step execution."""
 
@@ -461,56 +517,9 @@ class Executor:
     def _is_dangerous_command(self, command: str) -> tuple[bool, str]:
         """Check if a command matches dangerous patterns.
 
-        Uses regex-based patterns that are harder to bypass than substring matching.
-        Normalizes whitespace and handles common shell escapes.
-
-        Args:
-            command: The shell command to check
-
-        Returns:
-            Tuple of (is_dangerous, description) where description explains the match
+        Delegates to the module-level is_dangerous_command() function.
         """
-        # Normalize the command for comparison
-        try:
-            # Use shlex to handle escapes, then rejoin
-            tokens = shlex.split(command)
-            normalized = " ".join(tokens)
-        except ValueError:
-            # If shlex fails, use the original with normalized whitespace
-            normalized = " ".join(command.split())
-
-        # Regex patterns for dangerous commands (case-insensitive)
-        dangerous_patterns = [
-            # Recursive delete of root or home
-            (r"\brm\s+(-[rf]+\s+)*[/~]", "recursive deletion of root or home"),
-            (r"\brm\s+--no-preserve-root", "rm with --no-preserve-root"),
-            # Writing to /dev/ devices
-            (r">\s*/dev/", "redirect to /dev device"),
-            (r"\bdd\s+.*of=/dev/", "dd writing to device"),
-            # Filesystem destruction
-            (r"\bmkfs\b", "filesystem format command"),
-            (r"\bfdisk\b", "disk partition command"),
-            # Fork bombs
-            (r":\s*\(\s*\)\s*\{", "potential fork bomb"),
-            (r"\bfork\s*while\s*true", "potential fork bomb"),
-            # Dangerous dd operations
-            (r"\bdd\s+if=/dev/", "dd reading from device"),
-            # Dangerous chmod
-            (r"\bchmod\s+(-[Rr]\s+)?777\s+/", "chmod 777 on root"),
-            # Wget/curl piped to shell (potential malware download)
-            (r"\b(wget|curl)\s+.*\|\s*(ba)?sh", "download piped to shell"),
-            # Overwriting important system files
-            (r">\s*/(etc|bin|usr|lib|sbin)/", "overwriting system directory"),
-        ]
-
-        for pattern, description in dangerous_patterns:
-            if re.search(pattern, normalized, re.IGNORECASE):
-                return (True, description)
-            # Also check original command in case normalization removed something
-            if re.search(pattern, command, re.IGNORECASE):
-                return (True, description)
-
-        return (False, "")
+        return is_dangerous_command(command)
 
     def _execute_shell_command(self, step: PlanStep) -> StepResult:
         """Execute a shell command."""
