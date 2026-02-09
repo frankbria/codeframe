@@ -614,3 +614,88 @@ class TestEventEmissions:
         ]
         assert len(failed_calls) == 1
         assert failed_calls[0].args[2]["reason"] == "exception"
+
+
+class TestAgentPhaseAndProgressEvent:
+    """Tests for AgentPhase constants and enhanced ProgressEvent model."""
+
+    def test_agent_phase_constants_exist(self):
+        """AgentPhase class should define all required phase constants."""
+        from codeframe.core.models import AgentPhase
+
+        assert AgentPhase.EXPLORING == "exploring"
+        assert AgentPhase.PLANNING == "planning"
+        assert AgentPhase.CREATING == "creating"
+        assert AgentPhase.EDITING == "editing"
+        assert AgentPhase.TESTING == "testing"
+        assert AgentPhase.FIXING == "fixing"
+        assert AgentPhase.VERIFYING == "verifying"
+
+    def test_progress_event_new_fields_optional(self):
+        """ProgressEvent should accept new optional fields (tool_name, file_path, iteration)."""
+        from codeframe.core.models import ProgressEvent
+
+        # Should work without new fields (backward compat)
+        event = ProgressEvent(
+            task_id="task-1",
+            phase="exploring",
+            step=1,
+            total_steps=5,
+            message="Reading files",
+        )
+        assert event.tool_name is None
+        assert event.file_path is None
+        assert event.iteration is None
+
+    def test_progress_event_with_new_fields(self):
+        """ProgressEvent should store new fields when provided."""
+        from codeframe.core.models import ProgressEvent
+
+        event = ProgressEvent(
+            task_id="task-1",
+            phase="exploring",
+            step=1,
+            total_steps=5,
+            message="Reading main.py",
+            tool_name="read_file",
+            file_path="main.py",
+            iteration=3,
+        )
+        assert event.tool_name == "read_file"
+        assert event.file_path == "main.py"
+        assert event.iteration == 3
+
+    def test_progress_event_data_includes_new_fields(self):
+        """The computed data property should include tool_name, file_path, iteration."""
+        from codeframe.core.models import ProgressEvent
+
+        event = ProgressEvent(
+            task_id="task-1",
+            phase="editing",
+            step=2,
+            total_steps=4,
+            message="Editing file",
+            tool_name="edit_file",
+            file_path="src/app.py",
+            iteration=1,
+        )
+        data = event.data
+        assert data["tool_name"] == "edit_file"
+        assert data["file_path"] == "src/app.py"
+        assert data["iteration"] == 1
+
+    def test_progress_event_data_omits_none_new_fields(self):
+        """The computed data property should include None values for unset new fields."""
+        from codeframe.core.models import ProgressEvent
+
+        event = ProgressEvent(
+            task_id="task-1",
+            phase="planning",
+            step=0,
+            total_steps=0,
+        )
+        data = event.data
+        # New fields should be present in data dict even when None
+        assert "tool_name" in data
+        assert "file_path" in data
+        assert "iteration" in data
