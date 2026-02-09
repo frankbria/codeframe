@@ -9,7 +9,9 @@ This module is headless - no FastAPI or HTTP dependencies.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Callable, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
 from codeframe.core import blockers, events, gates
@@ -24,7 +26,8 @@ from codeframe.core.tools import AGENT_TOOLS, execute_tool
 from codeframe.core.workspace import Workspace
 
 if TYPE_CHECKING:
-    from codeframe.core.streaming import EventPublisher
+    from codeframe.core.conductor import GlobalFixCoordinator
+    from codeframe.core.streaming import EventPublisher, RunOutputLogger
 
 logger = logging.getLogger(__name__)
 
@@ -96,14 +99,32 @@ class ReactAgent:
         max_iterations: int = 30,
         max_verification_retries: int = 5,
         event_publisher: Optional[EventPublisher] = None,
+        dry_run: bool = False,
+        verbose: bool = False,
+        on_event: Optional[Callable[[str, dict], None]] = None,
+        debug: bool = False,
+        output_logger: Optional[RunOutputLogger] = None,
+        fix_coordinator: Optional[GlobalFixCoordinator] = None,
     ) -> None:
         self.workspace = workspace
         self.llm_provider = llm_provider
         self.max_iterations = max_iterations
         self.max_verification_retries = max_verification_retries
         self.event_publisher = event_publisher
+        self.dry_run = dry_run
+        self.verbose = verbose
+        self.on_event = on_event
+        self.debug = debug
+        self.output_logger = output_logger
+        self.fix_coordinator = fix_coordinator
         self.fix_tracker = FixAttemptTracker()
         self.blocker_id: Optional[str] = None
+
+        # Debug logging setup
+        self._debug_log_path: Optional[Path] = None
+        self._failure_count = 0
+        if debug:
+            self._setup_debug_log()
 
     # ------------------------------------------------------------------
     # Public API
@@ -123,6 +144,7 @@ class ReactAgent:
             AgentStatus.FAILED — max iterations or verification exhausted.
         """
         self._current_task_id = task_id
+        self._verbose_print(f"[ReactAgent] Starting task {task_id}")
         self._emit(EventType.AGENT_STARTED, {"task_id": task_id})
 
         try:
@@ -155,6 +177,7 @@ class ReactAgent:
             # Final verification with retry
             passed, reason = self._run_final_verification(system_prompt)
             if passed:
+                self._verbose_print(f"[ReactAgent] Task {task_id} completed: {AgentStatus.COMPLETED.name}")
                 self._emit(EventType.AGENT_COMPLETED, {"task_id": task_id})
                 self._emit_stream_completion(task_id)
                 return AgentStatus.COMPLETED
@@ -198,6 +221,7 @@ class ReactAgent:
         prompt_summary = system_prompt[:200]
 
         while iterations < self.max_iterations:
+            self._verbose_print(f"[ReactAgent] Iteration {iterations + 1}/{self.max_iterations}")
             self._emit(EventType.AGENT_ITERATION_STARTED, {
                 "task_id": self._current_task_id,
                 "iteration": iterations,
@@ -263,6 +287,7 @@ class ReactAgent:
                     message=f"{tc.name}: {tc_file_path}" if tc_file_path else tc.name,
                 )
 
+                self._verbose_print(f"[ReactAgent] Tool: {tc.name}")
                 self._emit(EventType.AGENT_TOOL_DISPATCHED, {
                     "task_id": self._current_task_id,
                     "tool_name": tc.name,
@@ -288,6 +313,7 @@ class ReactAgent:
 
                 # Check error tool results for immediate blocker patterns
                 if result.is_error:
+                    self._failure_count += 1
                     category = classify_error_for_blocker(result.content)
                     if category in ("requirements", "access"):
                         self._create_text_blocker(
@@ -336,6 +362,7 @@ class ReactAgent:
         max_fix_turns = 5  # LLM turns per retry attempt
 
         for attempt in range(1 + self.max_verification_retries):
+            self._verbose_print("[ReactAgent] Running final verification...")
             self._emit_progress(
                 AgentPhase.VERIFYING,
                 message="Running verification gates",
@@ -361,6 +388,7 @@ class ReactAgent:
                 continue
 
             # 2. Record the gate failure and check for escalation
+            self._failure_count += 1
             self.fix_tracker.record_attempt(error_summary, "verification_gate")
             self.fix_tracker.record_outcome(error_summary, "verification_gate", FixOutcome.FAILED)
 
@@ -494,13 +522,29 @@ class ReactAgent:
     # Tool execution with lint
     # ------------------------------------------------------------------
 
+    # Must stay in sync with AGENT_TOOLS in tools.py.
+    # Unknown tools default to write (safe: they get blocked in dry-run).
+    # run_tests is classified as read because it doesn't modify workspace
+    # files, even though it has side effects (process execution).
+    _WRITE_TOOLS = {"edit_file", "create_file", "run_command"}
+    _READ_TOOLS = {"read_file", "list_files", "search_codebase", "run_tests"}
+
     def _execute_tool_with_lint(self, tc) -> ToolResult:
         """Execute a tool call and append lint errors for edit/create.
 
         After a successful ``edit_file`` or ``create_file``, runs the
         appropriate linter (language-aware) and appends any errors to the
         tool result so the LLM can fix them immediately.
+
+        In dry_run mode, write tools are skipped (returning a stub result)
+        while read tools are executed normally.
         """
+        if self.dry_run and tc.name not in self._READ_TOOLS:
+            return ToolResult(
+                tool_call_id=tc.id,
+                content=f"[DRY RUN] Would execute {tc.name}",
+            )
+
         result = execute_tool(tc, self.workspace.repo_path)
 
         if tc.name in ("edit_file", "create_file") and not result.is_error:
@@ -573,6 +617,61 @@ class ReactAgent:
         return ""
 
     # ------------------------------------------------------------------
+    # Verbose and debug logging
+    # ------------------------------------------------------------------
+
+    def _verbose_print(self, message: str) -> None:
+        """Print message to stdout (if verbose) and to output log file.
+
+        The output log file is always written to (if logger provided) to enable
+        streaming via ``cf work follow``, even when verbose=False.
+        """
+        if self.verbose:
+            print(message)
+        if self.output_logger:
+            self.output_logger.write(message + "\n")
+
+    def _setup_debug_log(self) -> None:
+        """Set up the debug log file in workspace directory."""
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self._debug_log_path = self.workspace.repo_path / f".codeframe_debug_react_{timestamp}.log"
+
+        with open(self._debug_log_path, "w") as f:
+            f.write("=" * 80 + "\n")
+            f.write("CodeFRAME ReactAgent Debug Log\n")
+            f.write(f"Started: {datetime.now(timezone.utc).isoformat()}\n")
+            f.write(f"Workspace: {self.workspace.id}\n")
+            f.write(f"Repo Path: {self.workspace.repo_path}\n")
+            f.write("=" * 80 + "\n\n")
+
+    def _debug_log(
+        self,
+        message: str,
+        level: str = "INFO",
+        data: Optional[dict] = None,
+        always: bool = False,
+    ) -> None:
+        """Write to the debug log file."""
+        if not self._debug_log_path:
+            return
+
+        if not always and self._failure_count == 0 and level == "DEBUG":
+            return
+
+        timestamp = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        line = f"[{timestamp}] [{level}] {message}\n"
+
+        with open(self._debug_log_path, "a") as f:
+            f.write(line)
+            if data:
+                for key, value in data.items():
+                    val_str = str(value)
+                    if len(val_str) > 500:
+                        val_str = val_str[:500] + "... [TRUNCATED]"
+                    f.write(f"  {key}: {val_str}\n")
+                f.write("\n")
+
+    # ------------------------------------------------------------------
     # Event emission
     # ------------------------------------------------------------------
 
@@ -584,6 +683,11 @@ class ReactAgent:
             )
         except Exception:
             logger.debug("Failed to emit %s event", event_type, exc_info=True)
+        if self.on_event is not None:
+            try:
+                self.on_event(event_type, payload)
+            except Exception:
+                logger.debug("on_event callback failed for %s", event_type, exc_info=True)
 
     def _emit_progress(
         self,
