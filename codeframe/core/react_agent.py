@@ -457,22 +457,23 @@ class ReactAgent:
 
     @staticmethod
     def _trim_messages(messages: list[dict]) -> list[dict]:
-        """Drop oldest message pairs when history exceeds the token budget.
+        """Drop oldest assistant+user pairs when history exceeds the token budget.
 
-        Preserves messages[0] (initial context from the first LLM turn) and
-        trims older pairs from the middle, always removing assistant+user
-        pairs together to maintain valid turn structure.
+        Preserves the first complete pair (messages[0:2]) and the most recent
+        pair, removing whole assistant+user pairs from index 2 onward so no
+        assistant message is ever left without its corresponding user/result.
         """
         total = sum(len(str(m)) for m in messages)
         if total <= _MAX_HISTORY_CHARS:
             return messages
 
-        # Drop oldest pairs starting from index 1 (preserve first message)
-        while len(messages) > 3 and total > _MAX_HISTORY_CHARS:
-            removed = messages.pop(1)
+        # Keep first pair (0,1) + at least one trailing pair → need > 4
+        while len(messages) > 4 and total > _MAX_HISTORY_CHARS:
+            removed = messages.pop(2)
             total -= len(str(removed))
-            if len(messages) > 1 and messages[1].get("role") == "user":
-                removed = messages.pop(1)
+            # Remove the following user message to keep the pair intact
+            if len(messages) > 2 and messages[2].get("role") == "user":
+                removed = messages.pop(2)
                 total -= len(str(removed))
 
         return messages
