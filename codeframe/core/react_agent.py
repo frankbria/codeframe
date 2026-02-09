@@ -295,6 +295,11 @@ class ReactAgent:
                             result.content,
                             f"{category} issue detected in tool result",
                         )
+                        self._emit(EventType.AGENT_ITERATION_COMPLETED, {
+                            "task_id": self._current_task_id,
+                            "iteration": iterations,
+                            "has_tool_calls": True,
+                        })
                         return AgentStatus.BLOCKED
 
             # Add tool results as user message
@@ -344,7 +349,10 @@ class ReactAgent:
             if attempt >= self.max_verification_retries:
                 return (False, gate_result.summary)
 
-            error_summary = gate_result.summary
+            # Use structured error text for pattern matching (quick fixes,
+            # fix_tracker dedup).  Fall back to the human-readable summary
+            # when detailed_errors are not available.
+            error_summary = gate_result.get_error_summary() or gate_result.summary
 
             # 1. Try quick fix first (no LLM needed)
             if self._try_quick_fix(error_summary):

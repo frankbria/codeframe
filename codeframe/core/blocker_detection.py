@@ -187,6 +187,12 @@ def classify_error_for_blocker(text: str) -> Optional[str]:
 def should_create_blocker(text: str, attempt_count: int = 0) -> tuple[bool, str]:
     """Decide whether to create a blocker for the given error text.
 
+    This is the retry-aware public API for blocker decisions.  Use it in
+    contexts where the caller tracks attempt counts (e.g., verification
+    retry loops).  For one-shot detection — such as scanning an LLM
+    text-only response — use :func:`classify_error_for_blocker` directly
+    and treat any non-None category as an immediate blocker.
+
     Args:
         text: Error or status text to evaluate.
         attempt_count: Number of prior attempts. External service blockers
