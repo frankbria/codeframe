@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from codeframe.core.workspace import Workspace
 from codeframe.core import events
@@ -556,6 +556,146 @@ def _run_npm_lint(repo_path: Path, verbose: bool = False) -> GateCheck:
             status=GateStatus.ERROR,
             output=str(e),
         )
+
+
+# ---------------------------------------------------------------------------
+# Per-file lint gate (language-aware)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LinterConfig:
+    """Configuration for a file-level linter.
+
+    Attributes:
+        name: Human-readable linter name (used in GateCheck.name).
+        extensions: File extensions this linter handles (e.g., {".py", ".pyi"}).
+        cmd: Command list to invoke.  The placeholder ``{file}`` is replaced
+             with the absolute file path at runtime.
+        check_available: Binary name checked via ``shutil.which`` to see if the
+             linter is installed.  ``None`` means always available.
+        use_uv: If True *and* ``uv`` is on PATH, prepend ``["uv", "run"]``.
+        parse_errors: Optional callable to parse raw output into structured
+             error dicts.  Receives the raw stdout string.
+    """
+
+    name: str
+    extensions: set[str]
+    cmd: list[str]
+    check_available: str | None = None
+    use_uv: bool = False
+    parse_errors: Optional[Callable[[str], list[dict[str, Any]]]] = None
+
+
+# ---- Registry ---------------------------------------------------------------
+# Add new linters here.  Order does not matter – the first config whose
+# ``extensions`` set contains the file suffix wins.
+
+LINTER_REGISTRY: list[LinterConfig] = [
+    LinterConfig(
+        name="ruff",
+        extensions={".py", ".pyi"},
+        cmd=["ruff", "check", "--output-format=concise", "{file}"],
+        check_available="ruff",
+        use_uv=True,
+        parse_errors=_parse_ruff_errors,
+    ),
+    LinterConfig(
+        name="eslint",
+        extensions={".ts", ".tsx", ".js", ".jsx"},
+        cmd=["npx", "eslint", "{file}"],
+        check_available="npx",
+    ),
+    # Clippy lints the whole crate, not a single file.  Omitted from the
+    # per-file registry to avoid slow full-project checks on every edit.
+    # TODO: re-add when a per-file Rust lint solution is available
+    # (e.g., rustfmt --check {file} for formatting).
+    # LinterConfig(
+    #     name="clippy",
+    #     extensions={".rs"},
+    #     cmd=["cargo", "clippy", "--", "-D", "warnings"],
+    #     check_available="cargo",
+    # ),
+]
+
+
+def _find_linter_for_file(file_path: Path) -> Optional[LinterConfig]:
+    """Return the first matching ``LinterConfig`` for *file_path*, or ``None``."""
+    suffix = file_path.suffix.lower()
+    for cfg in LINTER_REGISTRY:
+        if suffix in cfg.extensions:
+            return cfg
+    return None
+
+
+def run_lint_on_file(
+    file_path: Path,
+    repo_path: Path,
+    *,
+    timeout: int = 30,
+) -> GateCheck:
+    """Run the appropriate linter on a single file.
+
+    Returns a ``GateCheck`` with status PASSED / FAILED / SKIPPED / ERROR.
+    SKIPPED is returned when no linter is registered for the file extension
+    or the required binary is not installed.
+    """
+    import time
+
+    cfg = _find_linter_for_file(file_path)
+    if cfg is None:
+        return GateCheck(name="lint", status=GateStatus.SKIPPED,
+                         output=f"No linter configured for {file_path.suffix}")
+
+    # Check binary availability
+    if cfg.check_available and not shutil.which(cfg.check_available):
+        return GateCheck(name=cfg.name, status=GateStatus.SKIPPED,
+                         output=f"{cfg.check_available} not found")
+
+    # Build command – replace {file} placeholder
+    cmd = [part.replace("{file}", str(file_path)) for part in cfg.cmd]
+    if cfg.use_uv and shutil.which("uv"):
+        cmd = ["uv", "run"] + cmd
+
+    start = time.time()
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+
+        duration_ms = int((time.time() - start) * 1000)
+        output = result.stdout
+        if result.stderr:
+            output += "\n" + result.stderr
+        output = output.strip()
+
+        passed = result.returncode == 0
+        check = GateCheck(
+            name=cfg.name,
+            status=GateStatus.PASSED if passed else GateStatus.FAILED,
+            exit_code=result.returncode,
+            output=output,
+            duration_ms=duration_ms,
+        )
+
+        if not passed and cfg.parse_errors:
+            check.detailed_errors = cfg.parse_errors(output)
+
+        return check
+
+    except subprocess.TimeoutExpired:
+        return GateCheck(name=cfg.name, status=GateStatus.ERROR,
+                         output=f"Timeout after {timeout}s")
+    except FileNotFoundError:
+        return GateCheck(name=cfg.name, status=GateStatus.SKIPPED,
+                         output=f"{cfg.check_available or cfg.cmd[0]} not found")
+    except Exception as e:
+        return GateCheck(name=cfg.name, status=GateStatus.ERROR,
+                         output=str(e))
 
 
 def _summarize_pytest_output(output: str) -> str:

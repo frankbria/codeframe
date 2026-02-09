@@ -9,7 +9,6 @@ This module is headless - no FastAPI or HTTP dependencies.
 from __future__ import annotations
 
 import logging
-import subprocess
 from typing import TYPE_CHECKING, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
@@ -496,11 +495,16 @@ class ReactAgent:
     # ------------------------------------------------------------------
 
     def _execute_tool_with_lint(self, tc) -> ToolResult:
-        """Execute a tool call and append ruff lint errors for edit/create."""
+        """Execute a tool call and append lint errors for edit/create.
+
+        After a successful ``edit_file`` or ``create_file``, runs the
+        appropriate linter (language-aware) and appends any errors to the
+        tool result so the LLM can fix them immediately.
+        """
         result = execute_tool(tc, self.workspace.repo_path)
 
         if tc.name in ("edit_file", "create_file") and not result.is_error:
-            lint_output = self._run_ruff_on_file(tc.input.get("path", ""))
+            lint_output = self._run_lint_on_file(tc.input.get("path", ""))
             if lint_output:
                 result = ToolResult(
                     tool_call_id=result.tool_call_id,
@@ -510,10 +514,11 @@ class ReactAgent:
 
         return result
 
-    def _run_ruff_on_file(self, rel_path: str) -> str:
-        """Run ruff check on a single file within the workspace.
+    def _run_lint_on_file(self, rel_path: str) -> str:
+        """Run the appropriate linter on a single file within the workspace.
 
-        Returns lint error output, or empty string if clean.
+        Delegates to ``gates.run_lint_on_file()`` for language-aware linting.
+        Returns lint error output, or empty string if clean / skipped.
         """
         if not rel_path:
             return ""
@@ -530,58 +535,31 @@ class ReactAgent:
             return ""
 
         self._emit(EventType.GATES_STARTED, {
-            "gate": "ruff",
+            "gate": "lint",
             "path": rel_path,
         })
 
-        try:
-            result = subprocess.run(
-                ["ruff", "check", str(file_path)],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=str(self.workspace.repo_path),
-            )
-            passed = result.returncode == 0
-            output = result.stdout.strip() if not passed else ""
+        check = gates.run_lint_on_file(file_path, self.workspace.repo_path)
 
-            payload: dict = {
-                "gate": "ruff",
-                "path": rel_path,
-                "passed": passed,
-                "diagnostics": output[:500] if output else None,
-            }
-            if not passed:
-                payload["suggestions"] = [
-                    f"run `ruff check {rel_path}` locally to see violations",
-                    "run `ruff check --fix` to auto-fix simple issues",
-                ]
-            self._emit(EventType.GATES_COMPLETED, payload)
+        actionable_failure = check.status == gates.GateStatus.FAILED
 
-            return output
-        except subprocess.TimeoutExpired:
-            self._emit(EventType.GATES_COMPLETED, {
-                "gate": "ruff",
-                "path": rel_path,
-                "passed": False,
-                "diagnostics": "ruff timed out",
-                "suggestions": [
-                    f"run `ruff check {rel_path}` locally to diagnose",
-                    "increase timeout and re-run",
-                ],
-            })
-            return ""
-        except FileNotFoundError:
-            self._emit(EventType.GATES_COMPLETED, {
-                "gate": "ruff",
-                "path": rel_path,
-                "passed": False,
-                "diagnostics": "ruff not found",
-                "suggestions": [
-                    "install ruff: `pip install ruff`",
-                ],
-            })
-            return ""
+        payload: dict = {
+            "gate": check.name,
+            "path": rel_path,
+            "passed": not actionable_failure,
+            "diagnostics": check.output[:500] if check.output else None,
+        }
+        if actionable_failure:
+            payload["suggestions"] = [
+                f"run the linter on `{rel_path}` locally to see violations",
+                f"linter: {check.name}",
+            ]
+        self._emit(EventType.GATES_COMPLETED, payload)
+
+        if actionable_failure:
+            return check.output[:2000]
+
+        return ""
 
     # ------------------------------------------------------------------
     # Event emission

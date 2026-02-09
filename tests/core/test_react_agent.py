@@ -397,11 +397,10 @@ class TestPerEditLint:
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
     @patch("codeframe.core.react_agent.ContextLoader")
-    def test_lint_errors_appended_to_tool_result(
+    def test_lint_errors_appended_to_edit_file_result(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
     ):
-        """When edit_file produces a file with lint errors, _execute_tool_with_lint
-        should append the lint output to the tool result content."""
+        """When edit_file produces lint errors, they are appended to the tool result."""
         from codeframe.core.react_agent import ReactAgent
 
         # Create a Python file with a lint error in the workspace
@@ -421,37 +420,192 @@ class TestPerEditLint:
             tool_call_id="tc1", content="Edit applied."
         )
 
+        # Mock run_lint_on_file to return a FAILED check with output
+        mock_gates.run_lint_on_file.return_value = GateCheck(
+            name="ruff",
+            status=GateStatus.FAILED,
+            output="bad.py:1:8: F401 `os` imported but unused",
+        )
+        mock_gates.GateStatus = GateStatus
         mock_gates.run.return_value = _gate_passed()
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
         agent.run("task-1")
 
-        # Check that the LLM received tool results. The second call (text response)
-        # should have been preceded by a user message with tool_results.
+        # The second LLM call should see lint errors in the tool result
         second_call = provider.get_call(1)
         messages = second_call["messages"]
 
-        # Find the user message with tool_results
         user_msgs_with_results = [
             m for m in messages if m.get("tool_results")
         ]
         assert len(user_msgs_with_results) >= 1
 
-        # The tool result content should include lint output if ruff found errors.
-        # Since ruff may or may not be installed in CI, we just verify the
-        # _execute_tool_with_lint method was used (execute_tool was called).
-        mock_exec_tool.assert_called_once()
+        # Verify lint output was appended
+        tool_content = user_msgs_with_results[0]["tool_results"][0]["content"]
+        assert "LINT ERRORS" in tool_content
+        assert "F401" in tool_content
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_lint_errors_appended_to_create_file_result(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
+    ):
+        """When create_file produces lint errors, they are appended to the tool result."""
+        from codeframe.core.react_agent import ReactAgent
+
+        new_file = tmp_path / "new.py"
+        new_file.write_text("import os\n")
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="create_file", input={"path": "new.py", "content": "import os\n"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="File created.")
+
+        mock_gates.run_lint_on_file.return_value = GateCheck(
+            name="ruff",
+            status=GateStatus.FAILED,
+            output="new.py:1:8: F401 `os` imported but unused",
+        )
+        mock_gates.GateStatus = GateStatus
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        second_call = provider.get_call(1)
+        messages = second_call["messages"]
+        user_msgs_with_results = [m for m in messages if m.get("tool_results")]
+        assert len(user_msgs_with_results) >= 1
+
+        tool_content = user_msgs_with_results[0]["tool_results"][0]["content"]
+        assert "LINT ERRORS" in tool_content
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_clean_file_no_lint_appended(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
+    ):
+        """A clean file produces no additional lint output."""
+        from codeframe.core.react_agent import ReactAgent
+
+        clean_file = tmp_path / "clean.py"
+        clean_file.write_text("x = 1\n")
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="edit_file", input={"path": "clean.py", "edits": []})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="Edit applied.")
+
+        mock_gates.run_lint_on_file.return_value = GateCheck(
+            name="ruff", status=GateStatus.PASSED, output=""
+        )
+        mock_gates.GateStatus = GateStatus
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        second_call = provider.get_call(1)
+        messages = second_call["messages"]
+        user_msgs_with_results = [m for m in messages if m.get("tool_results")]
+        assert len(user_msgs_with_results) >= 1
+
+        tool_content = user_msgs_with_results[0]["tool_results"][0]["content"]
+        assert "LINT ERRORS" not in tool_content
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_non_python_file_skips_lint(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
+    ):
+        """Non-Python files are skipped (no lint output appended)."""
+        from codeframe.core.react_agent import ReactAgent
+
+        md_file = tmp_path / "README.md"
+        md_file.write_text("# Hello\n")
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="create_file", input={"path": "README.md", "content": "# Hello\n"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="File created.")
+
+        mock_gates.run_lint_on_file.return_value = GateCheck(
+            name="lint", status=GateStatus.SKIPPED, output="No linter configured for .md"
+        )
+        mock_gates.GateStatus = GateStatus
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        second_call = provider.get_call(1)
+        messages = second_call["messages"]
+        user_msgs_with_results = [m for m in messages if m.get("tool_results")]
+        assert len(user_msgs_with_results) >= 1
+
+        tool_content = user_msgs_with_results[0]["tool_results"][0]["content"]
+        assert "LINT ERRORS" not in tool_content
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_lint_error_status_does_not_surface_as_lint_error(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
+    ):
+        """ERROR status (e.g., timeout) is not surfaced as actionable lint."""
+        from codeframe.core.react_agent import ReactAgent
+
+        py_file = tmp_path / "slow.py"
+        py_file.write_text("x = 1\n")
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="edit_file", input={"path": "slow.py", "edits": []})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="Edit applied.")
+
+        mock_gates.run_lint_on_file.return_value = GateCheck(
+            name="ruff", status=GateStatus.ERROR, output="Timeout after 30s"
+        )
+        mock_gates.GateStatus = GateStatus
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        second_call = provider.get_call(1)
+        messages = second_call["messages"]
+        user_msgs_with_results = [m for m in messages if m.get("tool_results")]
+        assert len(user_msgs_with_results) >= 1
+
+        tool_content = user_msgs_with_results[0]["tool_results"][0]["content"]
+        assert "LINT ERRORS" not in tool_content
 
 
 class TestPathSafety:
     """Tests for path traversal prevention."""
 
     def test_ruff_on_file_rejects_path_traversal(self, workspace):
-        """_run_ruff_on_file should reject paths that escape the workspace."""
+        """_run_lint_on_file should reject paths that escape the workspace."""
         from codeframe.core.react_agent import ReactAgent
 
         agent = ReactAgent(workspace=workspace, llm_provider=MockProvider())
-        result = agent._run_ruff_on_file("../../etc/passwd")
+        result = agent._run_lint_on_file("../../etc/passwd")
         assert result == ""
 
 
