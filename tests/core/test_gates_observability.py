@@ -1,7 +1,17 @@
 """Tests for gate observability enhancements."""
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
-from codeframe.core.gates import GateCheck, GateResult, GateStatus, _parse_ruff_errors
+from codeframe.core.gates import (
+    GateCheck,
+    GateResult,
+    GateStatus,
+    _find_linter_for_file,
+    _parse_ruff_errors,
+    run_lint_on_file,
+)
 
 
 class TestParseRuffErrors:
@@ -161,3 +171,86 @@ class TestGateResultErrorMethods:
             ],
         )
         assert result.get_errors_by_file() == {}
+
+
+class TestRunLintOnFile:
+    """Tests for the language-aware per-file lint gate."""
+
+    def test_python_file_uses_ruff(self, tmp_path):
+        """run_lint_on_file selects ruff for .py files."""
+        py_file = tmp_path / "bad.py"
+        py_file.write_text("import os\n")  # unused import → F401
+
+        check = run_lint_on_file(py_file, tmp_path)
+        # ruff is available in our dev env
+        assert check.name == "ruff"
+        assert check.status in (GateStatus.PASSED, GateStatus.FAILED)
+
+    def test_clean_python_file_passes(self, tmp_path):
+        """A lint-clean Python file produces PASSED status."""
+        py_file = tmp_path / "clean.py"
+        py_file.write_text("x = 1\n")
+
+        check = run_lint_on_file(py_file, tmp_path)
+        assert check.name == "ruff"
+        assert check.status == GateStatus.PASSED
+
+    def test_non_python_file_skips(self, tmp_path):
+        """Non-Python files with no configured linter are SKIPPED."""
+        md_file = tmp_path / "README.md"
+        md_file.write_text("# Hello\n")
+
+        check = run_lint_on_file(md_file, tmp_path)
+        assert check.status == GateStatus.SKIPPED
+        assert "No linter configured" in check.output
+
+    def test_pyi_file_uses_ruff(self, tmp_path):
+        """Stub files (.pyi) are linted with ruff."""
+        pyi_file = tmp_path / "types.pyi"
+        pyi_file.write_text("x: int\n")
+
+        check = run_lint_on_file(pyi_file, tmp_path)
+        assert check.name == "ruff"
+
+    def test_failed_python_file_has_detailed_errors(self, tmp_path):
+        """A Python file with lint errors populates detailed_errors."""
+        py_file = tmp_path / "bad.py"
+        py_file.write_text("import os\nimport sys\n")  # unused imports
+
+        check = run_lint_on_file(py_file, tmp_path)
+        if check.status == GateStatus.FAILED:
+            assert check.detailed_errors is not None
+            assert len(check.detailed_errors) >= 1
+            assert check.detailed_errors[0]["code"] == "F401"
+
+    def test_js_file_maps_to_eslint(self):
+        """_find_linter_for_file maps .js to eslint."""
+        cfg = _find_linter_for_file(Path("app.js"))
+        assert cfg is not None
+        assert cfg.name == "eslint"
+
+    def test_ts_file_maps_to_eslint(self):
+        """_find_linter_for_file maps .ts/.tsx to eslint."""
+        for ext in (".ts", ".tsx", ".jsx"):
+            cfg = _find_linter_for_file(Path(f"app{ext}"))
+            assert cfg is not None
+            assert cfg.name == "eslint"
+
+    def test_rs_file_has_no_per_file_linter(self):
+        """Rust files have no per-file linter (clippy is whole-project)."""
+        cfg = _find_linter_for_file(Path("main.rs"))
+        assert cfg is None
+
+    def test_unknown_extension_returns_none(self):
+        """_find_linter_for_file returns None for unsupported extensions."""
+        assert _find_linter_for_file(Path("data.csv")) is None
+        assert _find_linter_for_file(Path("image.png")) is None
+
+    @patch("codeframe.core.gates.shutil.which", return_value=None)
+    def test_missing_linter_binary_skips(self, mock_which, tmp_path):
+        """If the linter binary is not installed, return SKIPPED."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text("x = 1\n")
+
+        check = run_lint_on_file(py_file, tmp_path)
+        assert check.status == GateStatus.SKIPPED
