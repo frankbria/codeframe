@@ -13,11 +13,14 @@ import subprocess
 from typing import TYPE_CHECKING, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
-from codeframe.core import events, gates
+from codeframe.core import blockers, events, gates
 from codeframe.core.agent import AgentStatus
+from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
+from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
 from codeframe.core.models import AgentPhase, CompletionEvent, ErrorEvent, ProgressEvent
+from codeframe.core.quick_fixes import apply_quick_fix, find_quick_fix
 from codeframe.core.tools import AGENT_TOOLS, execute_tool
 from codeframe.core.workspace import Workspace
 
@@ -100,6 +103,8 @@ class ReactAgent:
         self.max_iterations = max_iterations
         self.max_verification_retries = max_verification_retries
         self.event_publisher = event_publisher
+        self.fix_tracker = FixAttemptTracker()
+        self.blocker_id: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -114,7 +119,9 @@ class ReactAgent:
         4. Run final verification (with retry)
 
         Returns:
-            AgentStatus.COMPLETED or AgentStatus.FAILED
+            AgentStatus.COMPLETED — task finished successfully.
+            AgentStatus.BLOCKED — a blocker was created (check self.blocker_id).
+            AgentStatus.FAILED — max iterations or verification exhausted.
         """
         self._current_task_id = task_id
         self._emit(EventType.AGENT_STARTED, {"task_id": task_id})
@@ -138,12 +145,28 @@ class ReactAgent:
                 self._emit_stream_error(task_id, "max_iterations_reached")
                 return status
 
+            if status == AgentStatus.BLOCKED:
+                self._emit(EventType.AGENT_FAILED, {
+                    "task_id": task_id,
+                    "reason": "blocked",
+                })
+                self._emit_stream_error(task_id, "blocked")
+                return AgentStatus.BLOCKED
+
             # Final verification with retry
-            passed, _ = self._run_final_verification(system_prompt)
+            passed, reason = self._run_final_verification(system_prompt)
             if passed:
                 self._emit(EventType.AGENT_COMPLETED, {"task_id": task_id})
                 self._emit_stream_completion(task_id)
                 return AgentStatus.COMPLETED
+
+            if reason == "escalated_to_blocker":
+                self._emit(EventType.AGENT_FAILED, {
+                    "task_id": task_id,
+                    "reason": "blocked",
+                })
+                self._emit_stream_error(task_id, "blocked")
+                return AgentStatus.BLOCKED
 
             self._emit(EventType.AGENT_FAILED, {
                 "task_id": task_id,
@@ -168,6 +191,7 @@ class ReactAgent:
         """Core ReAct loop: iterate LLM calls until text-only or max iterations.
 
         Returns AgentStatus.COMPLETED when the LLM responds with text only.
+        Returns AgentStatus.BLOCKED when a blocker pattern is detected.
         Returns AgentStatus.FAILED when max_iterations is reached.
         """
         messages: list[dict] = []
@@ -191,7 +215,24 @@ class ReactAgent:
             iterations += 1
 
             if not response.has_tool_calls:
-                # Text-only response — agent thinks it's done
+                # Text-only response — agent thinks it's done.
+                # Check for blocker patterns before accepting completion.
+                # Use classify_error_for_blocker directly (not should_create_blocker)
+                # because a text-only response means the LLM stopped calling tools.
+                # All blocker categories — including external_service — are immediate
+                # blockers here since the agent has no retry mechanism for text.
+                text = response.content or ""
+                category = classify_error_for_blocker(text)
+                if category is not None:
+                    reason = f"{category} issue detected in agent response"
+                    self._create_text_blocker(text, reason)
+                    self._emit(EventType.AGENT_ITERATION_COMPLETED, {
+                        "task_id": self._current_task_id,
+                        "iteration": iterations,
+                        "has_tool_calls": False,
+                    })
+                    return AgentStatus.BLOCKED
+
                 self._emit(EventType.AGENT_ITERATION_COMPLETED, {
                     "task_id": self._current_task_id,
                     "iteration": iterations,
@@ -246,6 +287,21 @@ class ReactAgent:
                     }
                 )
 
+                # Check error tool results for immediate blocker patterns
+                if result.is_error:
+                    category = classify_error_for_blocker(result.content)
+                    if category in ("requirements", "access"):
+                        self._create_text_blocker(
+                            result.content,
+                            f"{category} issue detected in tool result",
+                        )
+                        self._emit(EventType.AGENT_ITERATION_COMPLETED, {
+                            "task_id": self._current_task_id,
+                            "iteration": iterations,
+                            "has_tool_calls": True,
+                        })
+                        return AgentStatus.BLOCKED
+
             # Add tool results as user message
             messages.append({"role": "user", "content": "", "tool_results": tool_results})
 
@@ -293,8 +349,28 @@ class ReactAgent:
             if attempt >= self.max_verification_retries:
                 return (False, gate_result.summary)
 
-            # Mini ReAct loop to fix the issues
-            error_summary = gate_result.summary
+            # Use structured error text for pattern matching (quick fixes,
+            # fix_tracker dedup).  Fall back to the human-readable summary
+            # when detailed_errors are not available.
+            error_summary = gate_result.get_error_summary() or gate_result.summary
+
+            # 1. Try quick fix first (no LLM needed)
+            if self._try_quick_fix(error_summary):
+                # Quick fix applied — re-run gates immediately (skip LLM)
+                self.fix_tracker.record_attempt(error_summary, "quick_fix")
+                self.fix_tracker.record_outcome(error_summary, "quick_fix", FixOutcome.SUCCESS)
+                continue
+
+            # 2. Record the gate failure and check for escalation
+            self.fix_tracker.record_attempt(error_summary, "verification_gate")
+            self.fix_tracker.record_outcome(error_summary, "verification_gate", FixOutcome.FAILED)
+
+            escalation = self.fix_tracker.should_escalate(error_summary)
+            if escalation.should_escalate:
+                self._create_escalation_blocker(error_summary, escalation)
+                return (False, "escalated_to_blocker")
+
+            # 3. Mini ReAct loop to fix the issues
             fix_messages: list[dict] = [
                 {
                     "role": "user",
@@ -592,6 +668,68 @@ class ReactAgent:
                 self.event_publisher.complete_task_sync(task_id)
             except Exception:
                 logger.debug("Failed to close task stream", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Blocker creation helpers
+    # ------------------------------------------------------------------
+
+    def _create_text_blocker(self, text: str, reason: str) -> None:
+        """Create a blocker from LLM text or tool error content.
+
+        Stores the blocker ID on ``self.blocker_id`` so runtime can link
+        the run record to the blocker.  If creation fails the exception
+        propagates — callers in ``run()`` catch it and return FAILED.
+        """
+        question = (
+            f"Agent detected a blocker: {reason}\n\n"
+            f"Context:\n{text[:500]}"
+        )
+        blocker = blockers.create(
+            workspace=self.workspace,
+            question=question,
+            task_id=self._current_task_id,
+        )
+        self.blocker_id = blocker.id
+
+    def _create_escalation_blocker(
+        self, error: str, escalation: EscalationDecision
+    ) -> None:
+        """Create a blocker when fix_tracker recommends escalation.
+
+        Stores the blocker ID on ``self.blocker_id`` so runtime can link
+        the run record to the blocker.  If creation fails the exception
+        propagates — callers in ``run()`` catch it and return FAILED.
+        """
+        context = self.fix_tracker.get_blocker_context(error)
+        attempted = context.get("attempted_fixes", [])
+        attempted_str = "\n".join(f"  - {f}" for f in attempted) if attempted else "  (none)"
+
+        question = (
+            f"Verification keeps failing and automated fixes are not working.\n\n"
+            f"Error: {error[:300]}\n\n"
+            f"Reason for escalation: {escalation.reason}\n\n"
+            f"Fixes already attempted:\n{attempted_str}\n\n"
+            f"Total failures in this run: {context.get('total_run_failures', 0)}\n\n"
+            f"Please investigate and provide guidance."
+        )
+        blocker = blockers.create(
+            workspace=self.workspace,
+            question=question,
+            task_id=self._current_task_id,
+        )
+        self.blocker_id = blocker.id
+
+    def _try_quick_fix(self, error_summary: str) -> bool:
+        """Attempt a pattern-based quick fix for the gate error.
+
+        Returns True if a fix was successfully applied.
+        """
+        fix = find_quick_fix(error_summary, repo_path=self.workspace.repo_path)
+        if fix is None:
+            return False
+
+        success, _ = apply_quick_fix(fix, self.workspace.repo_path)
+        return success
 
     # ------------------------------------------------------------------
     # Message history management

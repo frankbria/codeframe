@@ -256,126 +256,13 @@ MAX_STEP_RETRIES = 2
 MAX_SELF_CORRECTION_ATTEMPTS = 2
 MAX_CONSECUTIVE_VERIFICATION_FAILURES = 3
 
-# TRUE requirements ambiguity - create blocker immediately
-# These are situations where the agent genuinely cannot proceed without human input
-REQUIREMENTS_AMBIGUITY_PATTERNS = [
-    # True requirements conflicts
-    "conflicting requirements",
-    "spec unclear",
-    "specification unclear",
-    "requirements conflict",
-    "contradictory requirements",
-    # Business logic requiring domain knowledge
-    "business decision",
-    "business logic unclear",
-    "domain knowledge required",
-    "stakeholder decision",
-    # Security policy ambiguity
-    "security policy unclear",
-    "compliance requirement unclear",
-    "regulatory requirement",
-]
-
-# Access/credentials issues - always create blocker
-# These truly require human intervention
-ACCESS_PATTERNS = [
-    "permission denied",
-    "access denied",
-    "authentication required",
-    "api key",  # Covers "api key missing", "api key not configured", etc.
-    "credentials",  # Covers "credentials missing", "credentials required", etc.
-    "secret required",
-    "token required",
-    "unauthorized",
-    "forbidden",
-]
-
-# External service issues - create blocker after retry
-EXTERNAL_SERVICE_PATTERNS = [
-    "service unavailable",
-    "rate limited",
-    "quota exceeded",
-    "connection refused",
-    "timeout exceeded",
-]
-
-# TACTICAL decisions - agent should resolve autonomously, NEVER block
-# These patterns indicate the agent is asking about implementation details
-# it should decide on its own using project preferences or best practices
-TACTICAL_DECISION_PATTERNS = [
-    # Implementation choices
-    "which approach",
-    "should i use",
-    "multiple options",
-    "design decision",
-    "please clarify",
-    "need clarification",
-    # File handling
-    "file already exists",
-    "overwrite",
-    "should i create",
-    "should i delete",
-    # Tooling choices
-    "which version",
-    "which package",
-    "which framework",
-    "install method",
-    "package manager",
-    # Configuration choices
-    "which configuration",
-    "which setting",
-    "default value",
-    "fixture scope",
-    "loop scope",
-    # Generic decision patterns
-    "what do you",
-    "do you want",
-    "would you like",
-    "prefer",
-]
-
-# Combined pattern for human input (requirements + access + external)
-# NOTE: Tactical patterns are explicitly EXCLUDED - agent handles these autonomously
-HUMAN_INPUT_PATTERNS = (
-    REQUIREMENTS_AMBIGUITY_PATTERNS + ACCESS_PATTERNS + EXTERNAL_SERVICE_PATTERNS
+# Pattern constants live in blocker_detection.py (authoritative location).
+# Only import what Agent code actually uses.
+from codeframe.core.blocker_detection import (  # noqa: E402
+    HUMAN_INPUT_PATTERNS,
+    TACTICAL_DECISION_PATTERNS,
+    TECHNICAL_ERROR_PATTERNS,
 )
-
-# Error patterns that are technical and the agent should self-correct
-# These are coding/execution errors the agent can fix by trying a different approach
-TECHNICAL_ERROR_PATTERNS = [
-    # File/path issues - agent can find correct path or create file
-    "file not found",
-    "no such file",
-    "directory not found",
-    "path does not exist",
-    "filenotfounderror",
-    # Import/module issues - agent can fix imports
-    "module not found",
-    "import error",
-    "no module named",
-    "cannot find module",
-    "modulenotfounderror",
-    # Syntax/code issues - agent can fix code
-    "syntax error",
-    "syntaxerror",
-    "indentation error",
-    "name error",
-    "nameerror",
-    "type error",
-    "typeerror",
-    "attribute error",
-    "attributeerror",
-    "undefined",
-    "not defined",
-    # Command execution issues - agent can try different command
-    "command not found",
-    "exit code",
-    "non-zero exit",
-    # General coding issues
-    "missing",  # usually missing import, argument, etc.
-    "expected",
-    "invalid",
-]
 
 
 class Agent:
