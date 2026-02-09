@@ -1832,6 +1832,62 @@ class TestFixCoordinatorParameter:
         assert agent.fix_coordinator is coordinator
 
 
+class TestDryRunUnknownTool:
+    """Unknown tools should be blocked (treated as write) in dry-run mode."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_dry_run_blocks_unknown_tool(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """A hypothetical tool not in _READ_TOOLS is blocked in dry-run."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="unknown_tool", input={"arg": "val"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, dry_run=True)
+        agent.run("task-1")
+
+        # execute_tool should NOT have been called — unknown_tool is not in _READ_TOOLS
+        mock_exec_tool.assert_not_called()
+
+
+class TestFailureCountIncrement:
+    """_failure_count should increment on tool errors for debug log verbosity."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_failure_count_increments_on_tool_error(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """_failure_count increments when a tool returns is_error=True."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "missing.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="File not found", is_error=True,
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        assert agent._failure_count == 0
+        agent.run("task-1")
+        assert agent._failure_count >= 1
+
+
 class TestAllParamsTogether:
     """Test that all new parameters work together."""
 

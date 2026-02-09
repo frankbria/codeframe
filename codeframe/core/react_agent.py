@@ -313,6 +313,7 @@ class ReactAgent:
 
                 # Check error tool results for immediate blocker patterns
                 if result.is_error:
+                    self._failure_count += 1
                     category = classify_error_for_blocker(result.content)
                     if category in ("requirements", "access"):
                         self._create_text_blocker(
@@ -387,6 +388,7 @@ class ReactAgent:
                 continue
 
             # 2. Record the gate failure and check for escalation
+            self._failure_count += 1
             self.fix_tracker.record_attempt(error_summary, "verification_gate")
             self.fix_tracker.record_outcome(error_summary, "verification_gate", FixOutcome.FAILED)
 
@@ -520,6 +522,10 @@ class ReactAgent:
     # Tool execution with lint
     # ------------------------------------------------------------------
 
+    # Must stay in sync with AGENT_TOOLS in tools.py.
+    # Unknown tools default to write (safe: they get blocked in dry-run).
+    # run_tests is classified as read because it doesn't modify workspace
+    # files, even though it has side effects (process execution).
     _WRITE_TOOLS = {"edit_file", "create_file", "run_command"}
     _READ_TOOLS = {"read_file", "list_files", "search_codebase", "run_tests"}
 
@@ -533,7 +539,7 @@ class ReactAgent:
         In dry_run mode, write tools are skipped (returning a stub result)
         while read tools are executed normally.
         """
-        if self.dry_run and tc.name in self._WRITE_TOOLS:
+        if self.dry_run and tc.name not in self._READ_TOOLS:
             return ToolResult(
                 tool_call_id=tc.id,
                 content=f"[DRY RUN] Would execute {tc.name}",
