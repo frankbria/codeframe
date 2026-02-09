@@ -544,7 +544,8 @@ class ReactAgent:
         actionable_failure = check.status == gates.GateStatus.FAILED
 
         payload: dict = {
-            "gate": check.name,
+            "gate": "lint",
+            "linter": check.name,
             "path": rel_path,
             "passed": not actionable_failure,
             "diagnostics": check.output[:500] if check.output else None,

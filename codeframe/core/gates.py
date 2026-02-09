@@ -647,10 +647,11 @@ def run_lint_on_file(
         return GateCheck(name="lint", status=GateStatus.SKIPPED,
                          output=f"No linter configured for {file_path.suffix}")
 
-    # Check binary availability
+    # Check binary availability — when use_uv is set, uv can provide the tool
     if cfg.check_available and not shutil.which(cfg.check_available):
-        return GateCheck(name=cfg.name, status=GateStatus.SKIPPED,
-                         output=f"{cfg.check_available} not found")
+        if not (cfg.use_uv and shutil.which("uv")):
+            return GateCheck(name=cfg.name, status=GateStatus.SKIPPED,
+                             output=f"{cfg.check_available} not found")
 
     # Build command – replace {file} placeholder
     cmd = [part.replace("{file}", str(file_path)) for part in cfg.cmd]
