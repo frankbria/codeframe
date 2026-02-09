@@ -4,6 +4,8 @@ Tests the core ReAct loop, system prompt construction, tool dispatch,
 final verification, and self-correction retry behavior.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 from unittest.mock import patch
 
@@ -35,7 +37,7 @@ def workspace(tmp_path):
         id="ws-test",
         repo_path=tmp_path,
         state_dir=state_dir,
-        created_at="2026-01-01T00:00:00+00:00",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         tech_stack="Python with uv",
     )
 
@@ -43,6 +45,7 @@ def workspace(tmp_path):
 @pytest.fixture
 def mock_task():
     """Create a minimal task."""
+    _ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
     return Task(
         id="task-1",
         workspace_id="ws-test",
@@ -51,8 +54,8 @@ def mock_task():
         description="Create a hello() function that returns 'Hello, World!'",
         status=TaskStatus.IN_PROGRESS,
         priority=1,
-        created_at="2026-01-01T00:00:00+00:00",
-        updated_at="2026-01-01T00:00:00+00:00",
+        created_at=_ts,
+        updated_at=_ts,
     )
 
 

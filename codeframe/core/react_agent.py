@@ -212,7 +212,7 @@ class ReactAgent:
                 )
 
             # Add tool results as user message
-            messages.append({"role": "user", "tool_results": tool_results})
+            messages.append({"role": "user", "content": "", "tool_results": tool_results})
 
             self._emit(EventType.AGENT_ITERATION_COMPLETED, {
                 "task_id": self._current_task_id,
@@ -302,7 +302,7 @@ class ReactAgent:
                     )
 
                 fix_messages.append(
-                    {"role": "user", "tool_results": tool_results}
+                    {"role": "user", "content": "", "tool_results": tool_results}
                 )
 
         return (False, "Verification retries exhausted")
