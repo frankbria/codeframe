@@ -699,3 +699,344 @@ class TestAgentPhaseAndProgressEvent:
         assert "tool_name" in data
         assert "file_path" in data
         assert "iteration" in data
+
+
+class MockEventPublisher:
+    """Captures published events for test verification."""
+
+    def __init__(self):
+        self.events = []
+
+    def publish_sync(self, task_id, event):
+        self.events.append((task_id, event))
+
+
+class TestPhaseEmission:
+    """Tests for phase-based progress event emission in ReactAgent."""
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_exploring_and_planning_emitted_at_start(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """run() should emit EXPLORING before context loading and PLANNING
+        before system prompt construction."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import AgentPhase
+
+        publisher = MockEventPublisher()
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        # Extract phases from published events
+        phases = [ev.phase for _, ev in publisher.events]
+        assert AgentPhase.EXPLORING in phases
+        assert AgentPhase.PLANNING in phases
+        # EXPLORING should come before PLANNING
+        exploring_idx = phases.index(AgentPhase.EXPLORING)
+        planning_idx = phases.index(AgentPhase.PLANNING)
+        assert exploring_idx < planning_idx
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_tool_phase_mapping_read_file(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """read_file tool call should emit EXPLORING phase."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import AgentPhase
+
+        publisher = MockEventPublisher()
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "main.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="file contents"
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        # Find events during the react loop (not the startup ones)
+        tool_events = [
+            ev for _, ev in publisher.events
+            if ev.tool_name == "read_file"
+        ]
+        assert len(tool_events) >= 1
+        assert tool_events[0].phase == AgentPhase.EXPLORING
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_tool_phase_mapping_edit_file(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """edit_file tool call should emit EDITING phase with file_path."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import AgentPhase
+
+        publisher = MockEventPublisher()
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="edit_file", input={"path": "src/app.py", "edits": []})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="Edit applied."
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        tool_events = [
+            ev for _, ev in publisher.events
+            if ev.tool_name == "edit_file"
+        ]
+        assert len(tool_events) >= 1
+        assert tool_events[0].phase == AgentPhase.EDITING
+        assert tool_events[0].file_path == "src/app.py"
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_tool_phase_mapping_create_file(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """create_file tool call should emit CREATING phase."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import AgentPhase
+
+        publisher = MockEventPublisher()
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="create_file", input={"path": "new.py", "content": ""})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="File created."
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        tool_events = [
+            ev for _, ev in publisher.events
+            if ev.tool_name == "create_file"
+        ]
+        assert len(tool_events) >= 1
+        assert tool_events[0].phase == AgentPhase.CREATING
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_tool_phase_mapping_run_tests(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """run_tests tool call should emit TESTING phase."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import AgentPhase
+
+        publisher = MockEventPublisher()
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="run_tests", input={"test_path": "tests/"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="All tests passed."
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        tool_events = [
+            ev for _, ev in publisher.events
+            if ev.tool_name == "run_tests"
+        ]
+        assert len(tool_events) >= 1
+        assert tool_events[0].phase == AgentPhase.TESTING
+        assert tool_events[0].file_path == "tests/"
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_verifying_phase_emitted(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """VERIFYING phase should be emitted before final gates.run()."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import AgentPhase
+
+        publisher = MockEventPublisher()
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        phases = [ev.phase for _, ev in publisher.events]
+        assert AgentPhase.VERIFYING in phases
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_fixing_phase_during_verification_retry(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """During verification retry, tool calls should emit FIXING phase."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import AgentPhase
+
+        publisher = MockEventPublisher()
+
+        # Initial loop: text response
+        provider.add_text_response("Implementation complete.")
+
+        # After verification fails, fix with a tool call then text
+        provider.add_tool_response(
+            [ToolCall(id="tc-fix", name="edit_file", input={"path": "test.py", "edits": []})]
+        )
+        provider.add_text_response("Fixed the lint error.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc-fix", content="Edit applied."
+        )
+
+        # First verification fails, second passes
+        mock_gates.run.side_effect = [_gate_failed(), _gate_passed()]
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            max_verification_retries=5,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        # Find FIXING phase events
+        fixing_events = [
+            ev for _, ev in publisher.events
+            if ev.phase == AgentPhase.FIXING
+        ]
+        assert len(fixing_events) >= 1
+        assert fixing_events[0].tool_name == "edit_file"
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_no_publisher_no_crash(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """When no event_publisher is provided, agent runs without crashing."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        # No event_publisher passed
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_iteration_included_in_tool_events(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """Tool phase events should include the current iteration number."""
+        from codeframe.core.react_agent import ReactAgent
+
+        publisher = MockEventPublisher()
+
+        # Two iterations of tool calls
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "a.py"})]
+        )
+        provider.add_tool_response(
+            [ToolCall(id="tc2", name="read_file", input={"path": "b.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="contents"
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            event_publisher=publisher,
+        )
+        agent.run("task-1")
+
+        # Get tool events with iteration info
+        tool_events = [
+            ev for _, ev in publisher.events
+            if ev.tool_name is not None
+        ]
+        assert len(tool_events) >= 2
+        # Iterations should be sequential
+        iterations = [ev.iteration for ev in tool_events]
+        assert iterations[0] < iterations[1]

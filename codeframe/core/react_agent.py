@@ -10,20 +10,35 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
 from codeframe.core import events, gates
 from codeframe.core.agent import AgentStatus
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
+from codeframe.core.models import AgentPhase, ProgressEvent
 from codeframe.core.tools import AGENT_TOOLS, execute_tool
 from codeframe.core.workspace import Workspace
+
+if TYPE_CHECKING:
+    from codeframe.core.streaming import EventPublisher
 
 logger = logging.getLogger(__name__)
 
 # Rough token budget for conversation history to avoid overflowing LLM context.
 _MAX_HISTORY_CHARS = 400_000  # ~100K tokens at ~4 chars/token
+
+# Map tool names to agent phases for progress reporting.
+_TOOL_PHASE_MAP = {
+    "read_file": AgentPhase.EXPLORING,
+    "list_files": AgentPhase.EXPLORING,
+    "search_codebase": AgentPhase.EXPLORING,
+    "create_file": AgentPhase.CREATING,
+    "edit_file": AgentPhase.EDITING,
+    "run_tests": AgentPhase.TESTING,
+    "run_command": AgentPhase.TESTING,
+}
 
 # ---------------------------------------------------------------------------
 # Layer 1: Base rules (verbatim from AGENT_V3_UNIFIED_PLAN.md)
@@ -78,11 +93,13 @@ class ReactAgent:
         llm_provider: LLMProvider,
         max_iterations: int = 30,
         max_verification_retries: int = 5,
+        event_publisher: Optional[EventPublisher] = None,
     ) -> None:
         self.workspace = workspace
         self.llm_provider = llm_provider
         self.max_iterations = max_iterations
         self.max_verification_retries = max_verification_retries
+        self.event_publisher = event_publisher
 
     # ------------------------------------------------------------------
     # Public API
@@ -103,8 +120,12 @@ class ReactAgent:
         self._emit(EventType.AGENT_STARTED, {"task_id": task_id})
 
         try:
+            self._emit_progress(AgentPhase.EXPLORING, message="Loading task context")
+
             loader = ContextLoader(self.workspace)
             context = loader.load(task_id)
+
+            self._emit_progress(AgentPhase.PLANNING, message="Building system prompt")
 
             system_prompt = self._build_system_prompt(context)
 
@@ -188,6 +209,16 @@ class ReactAgent:
             # Execute each tool call and collect results
             tool_results = []
             for tc in response.tool_calls:
+                phase = _TOOL_PHASE_MAP.get(tc.name, AgentPhase.EXPLORING)
+                tc_file_path = tc.input.get("path", "") or tc.input.get("test_path", "")
+                self._emit_progress(
+                    phase,
+                    tool_name=tc.name,
+                    file_path=tc_file_path or None,
+                    iteration=iterations,
+                    message=f"{tc.name}: {tc_file_path}" if tc_file_path else tc.name,
+                )
+
                 self._emit(EventType.AGENT_TOOL_DISPATCHED, {
                     "task_id": self._current_task_id,
                     "tool_name": tc.name,
@@ -246,6 +277,11 @@ class ReactAgent:
         max_fix_turns = 5  # LLM turns per retry attempt
 
         for attempt in range(1 + self.max_verification_retries):
+            self._emit_progress(
+                AgentPhase.VERIFYING,
+                message="Running verification gates",
+                iteration=attempt,
+            )
             gate_result = gates.run(self.workspace)
             if gate_result.passed:
                 return (True, None)
@@ -292,6 +328,14 @@ class ReactAgent:
                 # Execute tools (with lint) and collect results
                 tool_results = []
                 for tc in response.tool_calls:
+                    tc_file_path = tc.input.get("path", "") or tc.input.get("test_path", "")
+                    self._emit_progress(
+                        AgentPhase.FIXING,
+                        tool_name=tc.name,
+                        file_path=tc_file_path or None,
+                        iteration=attempt,
+                        message=f"Fixing: {tc.name}",
+                    )
                     result = self._execute_tool_with_lint(tc)
                     tool_results.append(
                         {
@@ -471,6 +515,37 @@ class ReactAgent:
             )
         except Exception:
             logger.debug("Failed to emit %s event", event_type, exc_info=True)
+
+    def _emit_progress(
+        self,
+        phase: str,
+        *,
+        step: int = 0,
+        total_steps: int = 0,
+        message: str | None = None,
+        tool_name: str | None = None,
+        file_path: str | None = None,
+        iteration: int | None = None,
+    ) -> None:
+        """Emit a ProgressEvent via the event_publisher, if present."""
+        if self.event_publisher is None:
+            return
+        try:
+            self.event_publisher.publish_sync(
+                self._current_task_id,
+                ProgressEvent(
+                    task_id=self._current_task_id,
+                    phase=phase,
+                    step=step,
+                    total_steps=total_steps,
+                    message=message,
+                    tool_name=tool_name,
+                    file_path=file_path,
+                    iteration=iteration,
+                ),
+            )
+        except Exception:
+            logger.debug("Failed to emit progress event", exc_info=True)
 
     # ------------------------------------------------------------------
     # Message history management
