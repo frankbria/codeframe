@@ -1373,3 +1373,38 @@ class TestStreamCompletion:
 
         # Should complete fine without publisher
         assert status == AgentStatus.COMPLETED
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_stream_closed_even_if_publish_fails(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """complete_task_sync must be called even if publish_sync raises."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        publisher = MockEventPublisher()
+        original_publish = publisher.publish_sync
+
+        def failing_publish(task_id, event):
+            from codeframe.core.models import CompletionEvent
+            if isinstance(event, CompletionEvent):
+                raise RuntimeError("publish failed")
+            original_publish(task_id, event)
+
+        publisher.publish_sync = failing_publish
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider, event_publisher=publisher,
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+        # Stream must still be closed despite publish failure
+        assert "task-1" in publisher.completed_tasks

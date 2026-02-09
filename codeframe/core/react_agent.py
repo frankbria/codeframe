@@ -564,9 +564,13 @@ class ReactAgent:
                     duration_seconds=0,
                 ),
             )
-            self.event_publisher.complete_task_sync(task_id)
         except Exception:
             logger.debug("Failed to emit stream completion", exc_info=True)
+        finally:
+            try:
+                self.event_publisher.complete_task_sync(task_id)
+            except Exception:
+                logger.debug("Failed to close task stream", exc_info=True)
 
     def _emit_stream_error(self, task_id: str, reason: str) -> None:
         """Publish ErrorEvent and close the SSE stream for subscribers."""
@@ -581,9 +585,13 @@ class ReactAgent:
                     error=reason,
                 ),
             )
-            self.event_publisher.complete_task_sync(task_id)
         except Exception:
             logger.debug("Failed to emit stream error", exc_info=True)
+        finally:
+            try:
+                self.event_publisher.complete_task_sync(task_id)
+            except Exception:
+                logger.debug("Failed to close task stream", exc_info=True)
 
     # ------------------------------------------------------------------
     # Message history management
