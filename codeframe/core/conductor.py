@@ -456,6 +456,7 @@ class BatchRun:
     started_at: datetime
     completed_at: Optional[datetime]
     results: dict[str, str] = field(default_factory=dict)
+    engine: str = "plan"
 
 
 def start_batch(
@@ -467,6 +468,7 @@ def start_batch(
     dry_run: bool = False,
     max_retries: int = 0,
     on_event: Optional[Callable[[str, dict], None]] = None,
+    engine: str = "plan",
 ) -> BatchRun:
     """Start a batch execution of multiple tasks.
 
@@ -479,6 +481,7 @@ def start_batch(
         dry_run: If True, don't actually execute tasks
         max_retries: Max retry attempts for failed tasks (0 = no retries)
         on_event: Optional callback for batch events
+        engine: Agent engine to use ("plan" or "react")
 
     Returns:
         BatchRun with results populated
@@ -511,6 +514,7 @@ def start_batch(
         started_at=now,
         completed_at=None,
         results={},
+        engine=engine,
     )
 
     # Save to database
@@ -612,7 +616,7 @@ def get_batch(workspace: Workspace, batch_id: str) -> Optional[BatchRun]:
     cursor.execute(
         """
         SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-               on_failure, started_at, completed_at, results
+               on_failure, started_at, completed_at, results, engine
         FROM batch_runs
         WHERE workspace_id = ? AND id = ?
         """,
@@ -649,7 +653,7 @@ def list_batches(
         cursor.execute(
             """
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-                   on_failure, started_at, completed_at, results
+                   on_failure, started_at, completed_at, results, engine
             FROM batch_runs
             WHERE workspace_id = ? AND status = ?
             ORDER BY started_at DESC
@@ -661,7 +665,7 @@ def list_batches(
         cursor.execute(
             """
             SELECT id, workspace_id, task_ids, status, strategy, max_parallel,
-                   on_failure, started_at, completed_at, results
+                   on_failure, started_at, completed_at, results, engine
             FROM batch_runs
             WHERE workspace_id = ?
             ORDER BY started_at DESC
@@ -917,7 +921,7 @@ def _execute_serial_resume(
             on_event("batch_task_started", {"task_id": task_id, "position": i + 1, "is_retry": True})
 
         # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine)
 
         # Record result (overwrites previous result)
         batch.results[task_id] = result_status
@@ -1074,7 +1078,7 @@ def _execute_retries(
             print(f"      Previous: {previous_status}")
 
             # Execute task
-            result_status = _execute_task_subprocess(workspace, task_id, batch.id)
+            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine)
 
             # Update result
             batch.results[task_id] = result_status
@@ -1185,7 +1189,7 @@ def _execute_serial(
             on_event("batch_task_started", {"task_id": task_id, "position": i + 1})
 
         # Execute task via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine)
 
         # If task is BLOCKED, try supervisor resolution
         if result_status == RunStatus.BLOCKED.value:
@@ -1193,7 +1197,7 @@ def _execute_serial(
             if supervisor.try_resolve_blocked_task(task_id):
                 # Supervisor resolved the blocker - retry the task
                 print("      [Supervisor] Retrying task after auto-resolution...")
-                result_status = _execute_task_subprocess(workspace, task_id, batch.id)
+                result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine)
 
         # Record result
         batch.results[task_id] = result_status
@@ -1451,7 +1455,7 @@ def _execute_single_task(
         on_event("batch_task_started", {"task_id": task_id, "position": position})
 
     # Execute task via subprocess
-    result_status = _execute_task_subprocess(workspace, task_id, batch.id)
+    result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine)
 
     # If task is BLOCKED, try supervisor resolution
     if result_status == RunStatus.BLOCKED.value:
@@ -1459,7 +1463,7 @@ def _execute_single_task(
         if supervisor.try_resolve_blocked_task(task_id):
             # Supervisor resolved the blocker - retry the task
             print("      [Supervisor] Retrying task after auto-resolution...")
-            result_status = _execute_task_subprocess(workspace, task_id, batch.id)
+            result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine)
 
     # Record result
     batch.results[task_id] = result_status
@@ -1550,7 +1554,7 @@ def _execute_group_parallel(
             on_event("batch_task_started", {"task_id": task_id, "parallel": True})
 
         # Execute via subprocess
-        result_status = _execute_task_subprocess(workspace, task_id, batch.id)
+        result_status = _execute_task_subprocess(workspace, task_id, batch.id, engine=batch.engine)
 
         # Record result (thread-safe due to GIL for simple dict operations)
         batch.results[task_id] = result_status
@@ -1606,15 +1610,17 @@ def _execute_task_subprocess(
     workspace: Workspace,
     task_id: str,
     batch_id: Optional[str] = None,
+    engine: str = "plan",
 ) -> str:
     """Execute a single task via subprocess.
 
-    Runs `cf work start <task_id> --execute` as a subprocess.
+    Runs `cf work start <task_id> --execute --engine <engine>` as a subprocess.
 
     Args:
         workspace: Target workspace
         task_id: Task to execute
         batch_id: Optional batch ID for process tracking (enables force stop)
+        engine: Agent engine to use ("plan" or "react")
 
     Returns:
         RunStatus value string (COMPLETED, FAILED, BLOCKED)
@@ -1622,7 +1628,8 @@ def _execute_task_subprocess(
     # Build command
     cmd = [
         sys.executable, "-m", "codeframe.cli.app",
-        "work", "start", task_id, "--execute"
+        "work", "start", task_id, "--execute",
+        "--engine", engine,
     ]
 
     process = None
@@ -1703,8 +1710,8 @@ def _save_batch(workspace: Workspace, batch: BatchRun) -> None:
                 """
                 INSERT OR REPLACE INTO batch_runs
                 (id, workspace_id, task_ids, status, strategy, max_parallel, on_failure,
-                 started_at, completed_at, results)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 started_at, completed_at, results, engine)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     batch.id,
@@ -1717,6 +1724,7 @@ def _save_batch(workspace: Workspace, batch: BatchRun) -> None:
                     batch.started_at.isoformat(),
                     completed_at,
                     results_json,
+                    batch.engine,
                 ),
             )
             conn.commit()
@@ -1737,4 +1745,5 @@ def _row_to_batch(row: tuple) -> BatchRun:
         started_at=datetime.fromisoformat(row[7]),
         completed_at=datetime.fromisoformat(row[8]) if row[8] else None,
         results=json.loads(row[9]) if row[9] else {},
+        engine=row[10] if len(row) > 10 and row[10] else "plan",
     )

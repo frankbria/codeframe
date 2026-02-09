@@ -1989,6 +1989,11 @@ def work_start(
         "--stub",
         help="Run stub agent (for testing, does nothing real)",
     ),
+    engine: str = typer.Option(
+        "plan",
+        "--engine",
+        help="Agent engine: 'plan' (default, step-based) or 'react' (ReAct tool-use loop)",
+    ),
 ) -> None:
     """Start working on a task.
 
@@ -1998,6 +2003,7 @@ def work_start(
     Example:
         codeframe work start abc123
         codeframe work start abc123 --execute
+        codeframe work start abc123 --execute --engine react
         codeframe work start abc123 --execute --dry-run
         codeframe work start abc123 --execute --verbose
     """
@@ -2041,10 +2047,14 @@ def work_start(
             mode = "[dim](dry run)[/dim]" if dry_run else ""
             debug_mode = " [dim](debug logging enabled)[/dim]" if debug else ""
             verbose_mode = " [dim](verbose)[/dim]" if verbose else ""
-            console.print(f"\n[bold]Executing agent...{mode}{debug_mode}{verbose_mode}[/bold]")
+            engine_mode = f" [dim](engine={engine})[/dim]" if engine != "plan" else ""
+            console.print(f"\n[bold]Executing agent...{mode}{debug_mode}{verbose_mode}{engine_mode}[/bold]")
 
             try:
-                state = runtime.execute_agent(workspace, run, dry_run=dry_run, debug=debug, verbose=verbose)
+                state = runtime.execute_agent(
+                    workspace, run, dry_run=dry_run, debug=debug, verbose=verbose,
+                    engine=engine,
+                )
 
                 if state.status == AgentStatus.COMPLETED:
                     console.print("[bold green]Task completed successfully![/bold green]")
@@ -2830,6 +2840,11 @@ def batch_run(
         "--review",
         help="Run verification gates (pytest, ruff) after successful batch completion",
     ),
+    engine: str = typer.Option(
+        "plan",
+        "--engine",
+        help="Agent engine: 'plan' (default, step-based) or 'react' (ReAct tool-use loop)",
+    ),
 ) -> None:
     """Execute multiple tasks in batch.
 
@@ -2842,6 +2857,7 @@ def batch_run(
         codeframe work batch run task1 task2 task3
         codeframe work batch run --all-ready
         codeframe work batch run --all-ready --strategy serial
+        codeframe work batch run --all-ready --engine react
         codeframe work batch run task1 task2 --dry-run
         codeframe work batch run task1 task2 --retry 2
     """
@@ -2921,6 +2937,7 @@ def batch_run(
             on_failure=on_failure,
             dry_run=False,
             max_retries=max_retries,
+            engine=engine,
         )
 
         # Show summary

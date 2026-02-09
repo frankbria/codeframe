@@ -596,6 +596,7 @@ def execute_agent(
     verbose: bool = False,
     fix_coordinator: Optional["GlobalFixCoordinator"] = None,
     event_publisher: Optional["EventPublisher"] = None,
+    engine: str = "plan",
 ) -> "AgentState":
     """Execute a task using the agent orchestrator.
 
@@ -610,17 +611,25 @@ def execute_agent(
         verbose: If True, print detailed progress to stdout
         fix_coordinator: Optional coordinator for global fixes (for parallel execution)
         event_publisher: Optional EventPublisher for SSE streaming (real-time events)
+        engine: Agent engine to use ("plan" for existing Agent, "react" for ReactAgent)
 
     Returns:
         Final AgentState after execution
 
     Raises:
-        ValueError: If ANTHROPIC_API_KEY is not set
+        ValueError: If ANTHROPIC_API_KEY is not set or engine is invalid
     """
     import os
-    from codeframe.core.agent import Agent, AgentStatus
+    from codeframe.core.agent import Agent, AgentState, AgentStatus
     from codeframe.adapters.llm import get_provider
     from codeframe.core.diagnostics import RunLogger, LogCategory
+
+    # Validate engine parameter
+    valid_engines = ("plan", "react")
+    if engine not in valid_engines:
+        raise ValueError(
+            f"Invalid engine '{engine}'. Must be one of: {', '.join(valid_engines)}"
+        )
 
     # Get LLM provider
     if not os.getenv("ANTHROPIC_API_KEY"):
@@ -637,6 +646,7 @@ def execute_agent(
         "task_id": run.task_id,
         "dry_run": dry_run,
         "verbose": verbose,
+        "engine": engine,
     })
 
     # Create output logger for streaming (cf work follow)
@@ -657,46 +667,65 @@ def execute_agent(
             category = _event_type_to_category(event_type)
             run_logger.info(category, f"Agent event: {event_type}", data)
 
-        # Create and run agent
-        agent = Agent(
-            workspace=workspace,
-            llm_provider=provider,
-            dry_run=dry_run,
-            on_event=on_agent_event,
-            debug=debug,
-            verbose=verbose,
-            fix_coordinator=fix_coordinator,
-            output_logger=output_logger,
-            event_publisher=event_publisher,
-        )
+        # Create and run agent based on engine selection
+        if engine == "react":
+            # ReactAgent has a simpler interface — it handles its own
+            # retries and verification internally.
+            # NOTE: ReactAgent doesn't yet support dry_run, on_event, debug,
+            # verbose, fix_coordinator, output_logger, or event_publisher.
+            # See GitHub issue for tracking this gap.
+            from codeframe.core.react_agent import ReactAgent
 
-        state = agent.run(run.task_id)
+            react_agent = ReactAgent(
+                workspace=workspace,
+                llm_provider=provider,
+            )
+            react_status = react_agent.run(run.task_id)
+            # Wrap AgentStatus enum into AgentState dataclass for compatibility
+            state = AgentState(status=react_status)
+        else:
+            agent = Agent(
+                workspace=workspace,
+                llm_provider=provider,
+                dry_run=dry_run,
+                on_event=on_agent_event,
+                debug=debug,
+                verbose=verbose,
+                fix_coordinator=fix_coordinator,
+                output_logger=output_logger,
+                event_publisher=event_publisher,
+            )
 
-        # If agent is BLOCKED, try supervisor resolution
-        if state.status == AgentStatus.BLOCKED:
-            from codeframe.core.conductor import get_supervisor
+            state = agent.run(run.task_id)
 
-            supervisor = get_supervisor(workspace)
-            if supervisor.try_resolve_blocked_task(run.task_id):
-                # Supervisor resolved the blocker - retry the agent
-                print("[Supervisor] Retrying task after auto-resolution...")
+            # If agent is BLOCKED, try supervisor resolution
+            # (only for plan engine — ReactAgent handles retries internally)
+            if state.status == AgentStatus.BLOCKED:
+                from codeframe.core.conductor import get_supervisor
 
-                # Create a new agent instance and retry
-                agent = Agent(
-                    workspace=workspace,
-                    llm_provider=provider,
-                    dry_run=dry_run,
-                    on_event=on_agent_event,
-                    debug=debug,
-                    verbose=verbose,
-                    fix_coordinator=fix_coordinator,
-                    output_logger=output_logger,
-                    event_publisher=event_publisher,
-                )
-                state = agent.run(run.task_id)
+                supervisor = get_supervisor(workspace)
+                if supervisor.try_resolve_blocked_task(run.task_id):
+                    # Supervisor resolved the blocker - retry the agent
+                    print("[Supervisor] Retrying task after auto-resolution...")
+
+                    # Create a new agent instance and retry
+                    agent = Agent(
+                        workspace=workspace,
+                        llm_provider=provider,
+                        dry_run=dry_run,
+                        on_event=on_agent_event,
+                        debug=debug,
+                        verbose=verbose,
+                        fix_coordinator=fix_coordinator,
+                        output_logger=output_logger,
+                        event_publisher=event_publisher,
+                    )
+                    state = agent.run(run.task_id)
 
         # If agent FAILED, check if supervisor can help with common technical issues
-        if state.status == AgentStatus.FAILED:
+        # (only for plan engine — ReactAgent handles retries internally and
+        # doesn't populate the AgentState fields that supervisor inspection needs)
+        if state.status == AgentStatus.FAILED and engine == "plan":
             from codeframe.core.conductor import get_supervisor, SUPERVISOR_TACTICAL_PATTERNS
 
             if debug:
