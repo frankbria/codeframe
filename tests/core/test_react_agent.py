@@ -1040,3 +1040,41 @@ class TestPhaseEmission:
         # Iterations should be sequential
         iterations = [ev.iteration for ev in tool_events]
         assert iterations[0] < iterations[1]
+
+
+class TestRuntimeWiring:
+    """Tests that runtime.py passes event_publisher to ReactAgent."""
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_react_agent_receives_event_publisher(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """ReactAgent should accept and store event_publisher parameter."""
+        from codeframe.core.react_agent import ReactAgent
+
+        publisher = MockEventPublisher()
+
+        agent = ReactAgent(
+            workspace=workspace,
+            llm_provider=provider,
+            event_publisher=publisher,
+        )
+        assert agent.event_publisher is publisher
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_react_agent_event_publisher_defaults_to_none(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider,
+    ):
+        """ReactAgent should default event_publisher to None."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        assert agent.event_publisher is None
