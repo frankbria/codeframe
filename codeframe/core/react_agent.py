@@ -158,17 +158,7 @@ class ReactAgent:
             # Execute each tool call and collect results
             tool_results = []
             for tc in response.tool_calls:
-                result = execute_tool(tc, self.workspace.repo_path)
-
-                # Per-edit lint: run ruff on modified files
-                if tc.name in ("edit_file", "create_file") and not result.is_error:
-                    lint_output = self._run_ruff_on_file(tc.input.get("path", ""))
-                    if lint_output:
-                        result = ToolResult(
-                            tool_call_id=result.tool_call_id,
-                            content=result.content + f"\n\nLINT ERRORS (must fix before continuing):\n{lint_output}",
-                            is_error=result.is_error,
-                        )
+                result = self._execute_tool_with_lint(tc)
 
                 tool_results.append(
                     {
@@ -249,10 +239,10 @@ class ReactAgent:
                     }
                 )
 
-                # Execute tools and collect results
+                # Execute tools (with lint) and collect results
                 tool_results = []
                 for tc in response.tool_calls:
-                    result = execute_tool(tc, self.workspace.repo_path)
+                    result = self._execute_tool_with_lint(tc)
                     tool_results.append(
                         {
                             "tool_call_id": result.tool_call_id,
@@ -328,8 +318,23 @@ class ReactAgent:
         return "\n\n".join(sections)
 
     # ------------------------------------------------------------------
-    # Per-edit lint
+    # Tool execution with lint
     # ------------------------------------------------------------------
+
+    def _execute_tool_with_lint(self, tc) -> ToolResult:
+        """Execute a tool call and append ruff lint errors for edit/create."""
+        result = execute_tool(tc, self.workspace.repo_path)
+
+        if tc.name in ("edit_file", "create_file") and not result.is_error:
+            lint_output = self._run_ruff_on_file(tc.input.get("path", ""))
+            if lint_output:
+                result = ToolResult(
+                    tool_call_id=result.tool_call_id,
+                    content=result.content + f"\n\nLINT ERRORS (must fix before continuing):\n{lint_output}",
+                    is_error=result.is_error,
+                )
+
+        return result
 
     def _run_ruff_on_file(self, rel_path: str) -> str:
         """Run ruff check on a single file within the workspace.
@@ -373,20 +378,20 @@ class ReactAgent:
     def _trim_messages(messages: list[dict]) -> list[dict]:
         """Drop oldest message pairs when history exceeds the token budget.
 
-        Keeps the first message (initial context) and trims from the front
-        of the conversation, always removing assistant+user pairs together
-        to maintain valid turn structure.
+        Preserves messages[0] (initial context from the first LLM turn) and
+        trims older pairs from the middle, always removing assistant+user
+        pairs together to maintain valid turn structure.
         """
         total = sum(len(str(m)) for m in messages)
         if total <= _MAX_HISTORY_CHARS:
             return messages
 
-        # Drop oldest pairs (assistant + user) from position 0
-        while len(messages) > 2 and total > _MAX_HISTORY_CHARS:
-            removed = messages.pop(0)
+        # Drop oldest pairs starting from index 1 (preserve first message)
+        while len(messages) > 3 and total > _MAX_HISTORY_CHARS:
+            removed = messages.pop(1)
             total -= len(str(removed))
-            if messages and messages[0].get("role") == "user":
-                removed = messages.pop(0)
+            if len(messages) > 1 and messages[1].get("role") == "user":
+                removed = messages.pop(1)
                 total -= len(str(removed))
 
         return messages
