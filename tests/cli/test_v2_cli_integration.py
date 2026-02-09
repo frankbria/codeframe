@@ -976,7 +976,7 @@ class TestReactAgentIntegration:
 
     def test_react_verbose_mode(self, workspace_with_ready_tasks, mock_llm):
         """work start --execute --verbose --engine react shows ReactAgent output."""
-        mock_llm([MOCK_REACT_COMPLETION])
+        provider = mock_llm([MOCK_REACT_COMPLETION])
 
         ws = create_or_load_workspace(workspace_with_ready_tasks)
         task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
@@ -994,10 +994,11 @@ class TestReactAgentIntegration:
         assert result.exit_code == 0, f"react verbose failed: {result.output}"
         assert "engine=react" in result.output
         assert "[ReactAgent]" in result.output
+        assert provider.call_count >= 1
 
     def test_react_dry_run(self, workspace_with_ready_tasks, mock_llm):
         """work start --execute --dry-run --engine react completes without error."""
-        mock_llm([MOCK_REACT_COMPLETION])
+        provider = mock_llm([MOCK_REACT_COMPLETION])
 
         ws = create_or_load_workspace(workspace_with_ready_tasks)
         task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
@@ -1014,10 +1015,11 @@ class TestReactAgentIntegration:
         )
         assert result.exit_code == 0, f"react dry-run failed: {result.output}"
         assert "dry run" in result.output.lower()
+        assert provider.call_count >= 1
 
     def test_react_streaming_output_log(self, workspace_with_ready_tasks, mock_llm):
         """ReactAgent execution creates output.log readable by cf work follow."""
-        mock_llm([MOCK_REACT_COMPLETION])
+        provider = mock_llm([MOCK_REACT_COMPLETION])
 
         ws = create_or_load_workspace(workspace_with_ready_tasks)
         task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
@@ -1034,6 +1036,7 @@ class TestReactAgentIntegration:
             ],
         )
         assert result.exit_code == 0, f"react execute failed: {result.output}"
+        assert provider.call_count >= 1
 
         # Verify output.log was created by the ReactAgent execution
         from codeframe.core import runtime
