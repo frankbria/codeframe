@@ -162,15 +162,30 @@ class TestRuntimeEngineSelection:
         with pytest.raises(ValueError, match="Invalid engine"):
             execute_agent(temp_workspace, run, engine="invalid")
 
-    def test_dry_run_with_react_engine_raises_error(self, temp_workspace):
-        """dry_run=True with engine='react' should raise ValueError."""
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"})
+    @patch("codeframe.core.streaming.RunOutputLogger")
+    @patch("codeframe.adapters.llm.get_provider")
+    @patch("codeframe.core.react_agent.ReactAgent")
+    def test_dry_run_with_react_engine_supported(
+        self, mock_react_cls, mock_get_provider, mock_output_logger, temp_workspace
+    ):
+        """dry_run=True with engine='react' should be supported (no error)."""
         from codeframe.core.runtime import execute_agent, start_task_run
+
+        mock_get_provider.return_value = MockProvider()
 
         task = tasks.create(temp_workspace, title="Test", status=TaskStatus.READY)
         run = start_task_run(temp_workspace, task.id)
 
-        with pytest.raises(ValueError, match="dry_run.*not supported.*react"):
-            execute_agent(temp_workspace, run, engine="react", dry_run=True)
+        mock_react = MagicMock()
+        mock_react.run.return_value = AgentStatus.COMPLETED
+        mock_react_cls.return_value = mock_react
+
+        # Should not raise — ReactAgent now supports dry_run
+        execute_agent(temp_workspace, run, engine="react", dry_run=True)
+
+        kwargs = mock_react_cls.call_args
+        assert kwargs.kwargs["dry_run"] is True
 
 
 class TestReactEngineConstructorArgs:

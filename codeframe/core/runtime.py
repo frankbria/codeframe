@@ -631,13 +631,6 @@ def execute_agent(
             f"Invalid engine '{engine}'. Must be one of: {', '.join(valid_engines)}"
         )
 
-    # ReactAgent doesn't support dry_run — fail fast rather than silently executing
-    if dry_run and engine == "react":
-        raise ValueError(
-            "dry_run=True is not supported with engine='react'. "
-            "ReactAgent does not support dry-run mode. Use engine='plan' for dry runs."
-        )
-
     # Get LLM provider
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise ValueError(
@@ -678,15 +671,18 @@ def execute_agent(
         if engine == "react":
             # ReactAgent has a simpler interface — it handles its own
             # retries and verification internally.
-            # NOTE: ReactAgent doesn't yet support dry_run, on_event, debug,
-            # verbose, fix_coordinator, or output_logger.
-            # See GitHub issue for tracking this gap.
             from codeframe.core.react_agent import ReactAgent
 
             react_agent = ReactAgent(
                 workspace=workspace,
                 llm_provider=provider,
                 event_publisher=event_publisher,
+                dry_run=dry_run,
+                verbose=verbose,
+                on_event=on_agent_event,
+                debug=debug,
+                output_logger=output_logger,
+                fix_coordinator=fix_coordinator,
             )
             react_status = react_agent.run(run.task_id)
             # Wrap AgentStatus enum into AgentState dataclass for compatibility
