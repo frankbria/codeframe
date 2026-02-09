@@ -418,23 +418,44 @@ class ReactAgent:
                 timeout=30,
                 cwd=str(self.workspace.repo_path),
             )
-            passed = result.returncode == 0 or not result.stdout.strip()
+            passed = result.returncode == 0
             output = result.stdout.strip() if not passed else ""
 
-            self._emit(EventType.GATES_COMPLETED, {
+            payload: dict = {
                 "gate": "ruff",
                 "path": rel_path,
                 "passed": passed,
                 "diagnostics": output[:500] if output else None,
-            })
+            }
+            if not passed:
+                payload["suggestions"] = [
+                    f"run `ruff check {rel_path}` locally to see violations",
+                    "run `ruff check --fix` to auto-fix simple issues",
+                ]
+            self._emit(EventType.GATES_COMPLETED, payload)
 
             return output
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        except subprocess.TimeoutExpired:
             self._emit(EventType.GATES_COMPLETED, {
                 "gate": "ruff",
                 "path": rel_path,
-                "passed": True,
-                "diagnostics": "ruff unavailable",
+                "passed": False,
+                "diagnostics": "ruff timed out",
+                "suggestions": [
+                    f"run `ruff check {rel_path}` locally to diagnose",
+                    "increase timeout and re-run",
+                ],
+            })
+            return ""
+        except FileNotFoundError:
+            self._emit(EventType.GATES_COMPLETED, {
+                "gate": "ruff",
+                "path": rel_path,
+                "passed": False,
+                "diagnostics": "ruff not found",
+                "suggestions": [
+                    "install ruff: `pip install ruff`",
+                ],
             })
             return ""
 
