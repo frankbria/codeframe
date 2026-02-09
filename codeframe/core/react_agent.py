@@ -541,23 +541,33 @@ class ReactAgent:
 
         check = gates.run_lint_on_file(file_path, self.workspace.repo_path)
 
-        actionable_failure = check.status == gates.GateStatus.FAILED
+        passed = check.status == gates.GateStatus.PASSED
+        failed = check.status == gates.GateStatus.FAILED
+        errored = check.status == gates.GateStatus.ERROR
 
         payload: dict = {
             "gate": "lint",
             "linter": check.name,
             "path": rel_path,
-            "passed": not actionable_failure,
+            "status": check.status.value,
+            "passed": passed,
             "diagnostics": check.output[:500] if check.output else None,
         }
-        if actionable_failure:
+        if failed:
             payload["suggestions"] = [
                 f"run the linter on `{rel_path}` locally to see violations",
                 f"linter: {check.name}",
             ]
+        elif errored:
+            payload["suggestions"] = [
+                f"lint check failed to run: {check.output[:100] if check.output else 'unknown error'}",
+                f"verify `{check.name}` is installed and working",
+            ]
         self._emit(EventType.GATES_COMPLETED, payload)
 
-        if actionable_failure:
+        # Only surface actionable lint failures to the LLM — not
+        # infrastructure errors (ERROR) or skipped checks (SKIPPED).
+        if failed:
             return check.output[:2000]
 
         return ""
