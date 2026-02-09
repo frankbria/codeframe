@@ -8,7 +8,9 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable, Optional
@@ -33,6 +35,11 @@ logger = logging.getLogger(__name__)
 
 # Rough token budget for conversation history to avoid overflowing LLM context.
 _MAX_HISTORY_CHARS = 400_000  # ~100K tokens at ~4 chars/token
+
+# Token budget compaction constants
+DEFAULT_COMPACTION_THRESHOLD = 0.85
+PRESERVE_RECENT_PAIRS = 5
+DEFAULT_CONTEXT_WINDOW = 200_000  # All Claude 4.x models
 
 # Map tool names to agent phases for progress reporting.
 _TOOL_PHASE_MAP = {
@@ -119,6 +126,12 @@ class ReactAgent:
         self.fix_coordinator = fix_coordinator
         self.fix_tracker = FixAttemptTracker()
         self.blocker_id: Optional[str] = None
+
+        # Token budget tracking for conversation compaction
+        self._context_window_size: int = DEFAULT_CONTEXT_WINDOW
+        self._compaction_threshold: float = self._read_compaction_threshold()
+        self._total_tokens_used: int = 0
+        self._compaction_count: int = 0
 
         # Debug logging setup
         self._debug_log_path: Optional[Path] = None
@@ -823,6 +836,52 @@ class ReactAgent:
 
         success, _ = apply_quick_fix(fix, self.workspace.repo_path)
         return success
+
+    # ------------------------------------------------------------------
+    # Token budget and compaction helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _read_compaction_threshold() -> float:
+        """Read compaction threshold from env var, with validation and clamping."""
+        raw = os.environ.get("CODEFRAME_REACT_COMPACT_THRESHOLD")
+        if raw is None:
+            return DEFAULT_COMPACTION_THRESHOLD
+        try:
+            value = float(raw)
+        except (ValueError, TypeError):
+            return DEFAULT_COMPACTION_THRESHOLD
+        # Clamp to valid range
+        return max(0.5, min(0.95, value))
+
+    def _estimate_message_tokens(self, message: dict) -> int:
+        """Estimate token count for a single message using len(str)/4 heuristic."""
+        tokens = 0
+        content = message.get("content", "")
+        if content:
+            tokens += len(content) // 4
+
+        tool_calls = message.get("tool_calls")
+        if tool_calls:
+            tokens += len(json.dumps(tool_calls)) // 4
+
+        tool_results = message.get("tool_results")
+        if tool_results:
+            tokens += len(json.dumps(tool_results)) // 4
+
+        return tokens
+
+    def _estimate_conversation_tokens(self, messages: list[dict]) -> int:
+        """Estimate total tokens across all messages. Updates _total_tokens_used."""
+        total = sum(self._estimate_message_tokens(m) for m in messages)
+        self._total_tokens_used = total
+        return total
+
+    def _should_compact(self, messages: list[dict]) -> bool:
+        """Return True if estimated token usage >= threshold ratio of context window."""
+        tokens = self._estimate_conversation_tokens(messages)
+        ratio = tokens / self._context_window_size if self._context_window_size > 0 else 0
+        return ratio >= self._compaction_threshold
 
     # ------------------------------------------------------------------
     # Message history management
