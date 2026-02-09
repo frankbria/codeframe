@@ -17,7 +17,7 @@ from codeframe.core import events, gates
 from codeframe.core.agent import AgentStatus
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
-from codeframe.core.models import AgentPhase, ProgressEvent
+from codeframe.core.models import AgentPhase, CompletionEvent, ErrorEvent, ProgressEvent
 from codeframe.core.tools import AGENT_TOOLS, execute_tool
 from codeframe.core.workspace import Workspace
 
@@ -135,18 +135,21 @@ class ReactAgent:
                     "task_id": task_id,
                     "reason": "max_iterations_reached",
                 })
+                self._emit_stream_error(task_id, "max_iterations_reached")
                 return status
 
             # Final verification with retry
             passed, _ = self._run_final_verification(system_prompt)
             if passed:
                 self._emit(EventType.AGENT_COMPLETED, {"task_id": task_id})
+                self._emit_stream_completion(task_id)
                 return AgentStatus.COMPLETED
 
             self._emit(EventType.AGENT_FAILED, {
                 "task_id": task_id,
                 "reason": "verification_failed",
             })
+            self._emit_stream_error(task_id, "verification_failed")
             return AgentStatus.FAILED
         except Exception:
             logger.exception("ReactAgent.run() failed for task %s", task_id)
@@ -154,6 +157,7 @@ class ReactAgent:
                 "task_id": task_id,
                 "reason": "exception",
             })
+            self._emit_stream_error(task_id, "exception")
             return AgentStatus.FAILED
 
     # ------------------------------------------------------------------
@@ -546,6 +550,40 @@ class ReactAgent:
             )
         except Exception:
             logger.debug("Failed to emit progress event", exc_info=True)
+
+    def _emit_stream_completion(self, task_id: str) -> None:
+        """Publish CompletionEvent and close the SSE stream for subscribers."""
+        if self.event_publisher is None:
+            return
+        try:
+            self.event_publisher.publish_sync(
+                task_id,
+                CompletionEvent(
+                    task_id=task_id,
+                    status="completed",
+                    duration_seconds=0,
+                ),
+            )
+            self.event_publisher.complete_task_sync(task_id)
+        except Exception:
+            logger.debug("Failed to emit stream completion", exc_info=True)
+
+    def _emit_stream_error(self, task_id: str, reason: str) -> None:
+        """Publish ErrorEvent and close the SSE stream for subscribers."""
+        if self.event_publisher is None:
+            return
+        try:
+            self.event_publisher.publish_sync(
+                task_id,
+                ErrorEvent(
+                    task_id=task_id,
+                    error_type="agent_failed",
+                    error=reason,
+                ),
+            )
+            self.event_publisher.complete_task_sync(task_id)
+        except Exception:
+            logger.debug("Failed to emit stream error", exc_info=True)
 
     # ------------------------------------------------------------------
     # Message history management

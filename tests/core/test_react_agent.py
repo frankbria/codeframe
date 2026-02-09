@@ -18,6 +18,7 @@ from codeframe.core.agent import AgentStatus
 from codeframe.core.context import TaskContext
 from codeframe.core.gates import GateResult, GateCheck, GateStatus
 from codeframe.core.tasks import Task, TaskStatus
+from codeframe.core.models import ProgressEvent
 from codeframe.core.workspace import Workspace
 
 pytestmark = pytest.mark.v2
@@ -706,9 +707,13 @@ class MockEventPublisher:
 
     def __init__(self):
         self.events = []
+        self.completed_tasks = []
 
     def publish_sync(self, task_id, event):
         self.events.append((task_id, event))
+
+    def complete_task_sync(self, task_id):
+        self.completed_tasks.append(task_id)
 
 
 class TestPhaseEmission:
@@ -740,7 +745,7 @@ class TestPhaseEmission:
         agent.run("task-1")
 
         # Extract phases from published events
-        phases = [ev.phase for _, ev in publisher.events]
+        phases = [ev.phase for _, ev in publisher.events if isinstance(ev, ProgressEvent)]
         assert AgentPhase.EXPLORING in phases
         assert AgentPhase.PLANNING in phases
         # EXPLORING should come before PLANNING
@@ -782,7 +787,7 @@ class TestPhaseEmission:
         # Find events during the react loop (not the startup ones)
         tool_events = [
             ev for _, ev in publisher.events
-            if ev.tool_name == "read_file"
+            if isinstance(ev, ProgressEvent) and ev.tool_name == "read_file"
         ]
         assert len(tool_events) >= 1
         assert tool_events[0].phase == AgentPhase.EXPLORING
@@ -820,7 +825,7 @@ class TestPhaseEmission:
 
         tool_events = [
             ev for _, ev in publisher.events
-            if ev.tool_name == "edit_file"
+            if isinstance(ev, ProgressEvent) and ev.tool_name == "edit_file"
         ]
         assert len(tool_events) >= 1
         assert tool_events[0].phase == AgentPhase.EDITING
@@ -859,7 +864,7 @@ class TestPhaseEmission:
 
         tool_events = [
             ev for _, ev in publisher.events
-            if ev.tool_name == "create_file"
+            if isinstance(ev, ProgressEvent) and ev.tool_name == "create_file"
         ]
         assert len(tool_events) >= 1
         assert tool_events[0].phase == AgentPhase.CREATING
@@ -897,7 +902,7 @@ class TestPhaseEmission:
 
         tool_events = [
             ev for _, ev in publisher.events
-            if ev.tool_name == "run_tests"
+            if isinstance(ev, ProgressEvent) and ev.tool_name == "run_tests"
         ]
         assert len(tool_events) >= 1
         assert tool_events[0].phase == AgentPhase.TESTING
@@ -927,7 +932,7 @@ class TestPhaseEmission:
         )
         agent.run("task-1")
 
-        phases = [ev.phase for _, ev in publisher.events]
+        phases = [ev.phase for _, ev in publisher.events if isinstance(ev, ProgressEvent)]
         assert AgentPhase.VERIFYING in phases
 
     @patch("codeframe.core.react_agent.events")
@@ -971,7 +976,7 @@ class TestPhaseEmission:
         # Find FIXING phase events
         fixing_events = [
             ev for _, ev in publisher.events
-            if ev.phase == AgentPhase.FIXING
+            if isinstance(ev, ProgressEvent) and ev.phase == AgentPhase.FIXING
         ]
         assert len(fixing_events) >= 1
         assert fixing_events[0].tool_name == "edit_file"
@@ -1034,7 +1039,7 @@ class TestPhaseEmission:
         # Get tool events with iteration info
         tool_events = [
             ev for _, ev in publisher.events
-            if ev.tool_name is not None
+            if isinstance(ev, ProgressEvent) and ev.tool_name is not None
         ]
         assert len(tool_events) >= 2
         # Iterations should be sequential
@@ -1132,7 +1137,7 @@ class TestPhaseEmissionEdgeCases:
         # Should have both EXPLORING (read_file) and EDITING (edit_file) events
         tool_events = [
             ev for _, ev in publisher.events
-            if ev.tool_name is not None
+            if isinstance(ev, ProgressEvent) and ev.tool_name is not None
         ]
         tool_names = [ev.tool_name for ev in tool_events]
         assert "read_file" in tool_names
@@ -1175,7 +1180,7 @@ class TestPhaseEmissionEdgeCases:
 
         tool_events = [
             ev for _, ev in publisher.events
-            if ev.tool_name == "run_command"
+            if isinstance(ev, ProgressEvent) and ev.tool_name == "run_command"
         ]
         assert len(tool_events) >= 1
         assert tool_events[0].phase == AgentPhase.TESTING
@@ -1244,3 +1249,127 @@ class TestRuntimeWiring:
 
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
         assert agent.event_publisher is None
+
+
+class TestStreamCompletion:
+    """Tests for SSE stream completion (CompletionEvent, ErrorEvent, complete_task_sync)."""
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_completion_event_and_stream_close_on_success(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """On success, ReactAgent publishes CompletionEvent and calls complete_task_sync."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import CompletionEvent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        publisher = MockEventPublisher()
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider, event_publisher=publisher,
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+
+        # Last published event should be CompletionEvent
+        completion_events = [
+            e for _, e in publisher.events if isinstance(e, CompletionEvent)
+        ]
+        assert len(completion_events) == 1
+        assert completion_events[0].status == "completed"
+
+        # complete_task_sync must have been called
+        assert "task-1" in publisher.completed_tasks
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_error_event_and_stream_close_on_max_iterations(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """On max_iterations failure, ReactAgent publishes ErrorEvent and closes stream."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import ErrorEvent
+
+        for _ in range(3):
+            provider.add_tool_response(
+                [ToolCall(id="tc1", name="read_file", input={"path": "x.py"})]
+            )
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="contents"
+        )
+
+        publisher = MockEventPublisher()
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            max_iterations=2, event_publisher=publisher,
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.FAILED
+
+        error_events = [
+            e for _, e in publisher.events if isinstance(e, ErrorEvent)
+        ]
+        assert len(error_events) == 1
+        assert error_events[0].error == "max_iterations_reached"
+
+        assert "task-1" in publisher.completed_tasks
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_error_event_and_stream_close_on_exception(
+        self, mock_ctx_loader, mock_events, workspace, provider,
+    ):
+        """On exception, ReactAgent publishes ErrorEvent and closes stream."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.models import ErrorEvent
+
+        mock_ctx_loader.return_value.load.side_effect = RuntimeError("boom")
+
+        publisher = MockEventPublisher()
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider, event_publisher=publisher,
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.FAILED
+
+        error_events = [
+            e for _, e in publisher.events if isinstance(e, ErrorEvent)
+        ]
+        assert len(error_events) == 1
+        assert error_events[0].error == "exception"
+
+        assert "task-1" in publisher.completed_tasks
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_no_stream_events_without_publisher(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """Without event_publisher, no CompletionEvent/ErrorEvent/complete_task_sync."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+
+        # Should complete fine without publisher
+        assert status == AgentStatus.COMPLETED
