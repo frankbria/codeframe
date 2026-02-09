@@ -18,8 +18,9 @@ import pytest
 from typer.testing import CliRunner
 
 from codeframe.cli.app import app
-from codeframe.core import prd, tasks
+from codeframe.core import prd, runtime, tasks
 from codeframe.core.state_machine import TaskStatus
+from codeframe.core.streaming import run_output_exists
 from codeframe.core.workspace import create_or_load_workspace
 
 pytestmark = pytest.mark.v2
@@ -771,6 +772,9 @@ def greet(name: str) -> str:
     return f"Hello, {name}!"
 '''
 
+# ReactAgent completes when LLM returns text-only (no tool calls).
+MOCK_REACT_COMPLETION = "Task analysis complete. No changes needed."
+
 
 def _make_mock_provider(responses: list[str]):
     """Create a MockProvider with queued text responses.
@@ -958,7 +962,110 @@ class TestAIGoldenPathE2E:
 
 
 # ---------------------------------------------------------------------------
-# 16. PR commands (GitHub integration)
+# 16. ReactAgent CLI integration (issue #368)
+# ---------------------------------------------------------------------------
+
+
+class TestReactAgentIntegration:
+    """Integration tests for ReactAgent runtime parameters via CLI.
+
+    Exercises the full CLI → runtime → ReactAgent path with MockProvider.
+    Covers verbose mode, dry-run mode, and streaming output (cf work follow).
+
+    Ref: https://github.com/frankbria/codeframe/issues/368
+    """
+
+    def test_react_verbose_mode(self, workspace_with_ready_tasks, mock_llm):
+        """work start --execute --verbose --engine react shows ReactAgent output."""
+        provider = mock_llm([MOCK_REACT_COMPLETION])
+
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        tid = task_list[0].id[:8]
+
+        result = runner.invoke(
+            app,
+            [
+                "work", "start", tid,
+                "--execute", "--verbose", "--engine", "react",
+                "-w", str(workspace_with_ready_tasks),
+            ],
+        )
+        assert result.exit_code == 0, f"react verbose failed: {result.output}"
+        assert "engine=react" in result.output
+        assert "[ReactAgent]" in result.output
+        assert provider.call_count >= 1
+
+    def test_react_dry_run(self, workspace_with_ready_tasks, mock_llm):
+        """work start --execute --dry-run --engine react completes without error."""
+        provider = mock_llm([MOCK_REACT_COMPLETION])
+
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        tid = task_list[0].id[:8]
+
+        result = runner.invoke(
+            app,
+            [
+                "work", "start", tid,
+                "--execute", "--dry-run", "--engine", "react",
+                "-w", str(workspace_with_ready_tasks),
+            ],
+        )
+        assert result.exit_code == 0, f"react dry-run failed: {result.output}"
+        assert "dry run" in result.output.lower()
+        assert provider.call_count >= 1
+
+    def test_react_streaming_output_log(self, workspace_with_ready_tasks, mock_llm):
+        """ReactAgent execution creates output.log readable by cf work follow."""
+        provider = mock_llm([MOCK_REACT_COMPLETION])
+
+        ws = create_or_load_workspace(workspace_with_ready_tasks)
+        task_list = tasks.list_tasks(ws, status=TaskStatus.READY)
+        assert len(task_list) > 0
+        tid = task_list[0].id[:8]
+
+        # Execute with react engine — creates output.log via RunOutputLogger
+        result = runner.invoke(
+            app,
+            [
+                "work", "start", tid,
+                "--execute", "--engine", "react",
+                "-w", str(workspace_with_ready_tasks),
+            ],
+        )
+        assert result.exit_code == 0, f"react execute failed: {result.output}"
+        assert provider.call_count >= 1
+
+        # Verify output.log was created by the ReactAgent execution
+        runs = runtime.list_runs(ws, task_id=task_list[0].id)
+        assert len(runs) > 0, "Expected at least one run for the task"
+        latest_run = runs[0]  # list_runs returns newest first
+
+        assert run_output_exists(ws, latest_run.id), (
+            f"output.log should exist for run {latest_run.id}"
+        )
+
+        # Verify cf work follow can read the completed run output
+        follow_result = runner.invoke(
+            app,
+            [
+                "work", "follow", tid,
+                "-w", str(workspace_with_ready_tasks),
+            ],
+        )
+        assert follow_result.exit_code == 0, (
+            f"follow failed: {follow_result.output}"
+        )
+        assert len(follow_result.output.strip()) > 0, (
+            "follow should display output from the completed run"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 17. PR commands (GitHub integration)
 # ---------------------------------------------------------------------------
 
 
