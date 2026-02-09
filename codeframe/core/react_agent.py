@@ -350,8 +350,14 @@ class ReactAgent:
                 "tool_count": len(response.tool_calls),
             })
 
-            # Trim old messages if history grows too large
-            messages = self._trim_messages(messages)
+            # Compact conversation when approaching context window limit
+            messages, compact_stats = self.compact_conversation(messages)
+            if compact_stats.get("compacted"):
+                self._verbose_print(
+                    f"[ReactAgent] Compacted: saved {compact_stats['tokens_saved']} tokens "
+                    f"(tiers: {compact_stats['tiers_used']})"
+                )
+                self._emit(EventType.AGENT_COMPACTION, compact_stats)
 
         # Exhausted iterations
         return AgentStatus.FAILED
@@ -1090,8 +1096,85 @@ class ReactAgent:
 
         return [summary_msg] + recent_messages, saved
 
+    def compact_conversation(
+        self, messages: list[dict]
+    ) -> tuple[list[dict], dict]:
+        """Orchestrate 3-tier compaction when conversation exceeds token budget.
+
+        Runs tiers in order (1 -> 2 -> 3), stopping when under threshold.
+        Returns (messages, stats_dict).
+        """
+        if not self._should_compact(messages):
+            return messages, {"compacted": False}
+
+        tokens_before = self._estimate_conversation_tokens(messages)
+        tiers_used: list[str] = []
+
+        # Tier 1: Compact tool results
+        messages, saved = self._compact_tool_results(messages)
+        if saved > 0:
+            tiers_used.append("tier1_tool_results")
+        if not self._should_compact(messages):
+            return self._finalize_compaction(
+                messages, tokens_before, tiers_used
+            )
+
+        # Tier 2: Remove intermediate steps
+        messages, saved = self._remove_intermediate_steps(messages)
+        if saved > 0:
+            tiers_used.append("tier2_intermediate")
+        if not self._should_compact(messages):
+            return self._finalize_compaction(
+                messages, tokens_before, tiers_used
+            )
+
+        # Tier 3: Summarize old messages
+        target = int(self._context_window_size * self._compaction_threshold)
+        messages, saved = self._summarize_old_messages(messages, target)
+        if saved > 0:
+            tiers_used.append("tier3_summary")
+
+        return self._finalize_compaction(messages, tokens_before, tiers_used)
+
+    def _finalize_compaction(
+        self,
+        messages: list[dict],
+        tokens_before: int,
+        tiers_used: list[str],
+    ) -> tuple[list[dict], dict]:
+        """Build stats dict and increment counter after compaction."""
+        self._compaction_count += 1
+        tokens_after = self._estimate_conversation_tokens(messages)
+        stats = {
+            "compacted": True,
+            "tokens_before": tokens_before,
+            "tokens_after": tokens_after,
+            "tokens_saved": tokens_before - tokens_after,
+            "tiers_used": tiers_used,
+            "compaction_number": self._compaction_count,
+        }
+        logger.info(
+            "Compaction #%d: %d -> %d tokens (saved %d, tiers: %s)",
+            stats["compaction_number"],
+            stats["tokens_before"],
+            stats["tokens_after"],
+            stats["tokens_saved"],
+            stats["tiers_used"],
+        )
+        return messages, stats
+
+    def get_token_stats(self, messages: list[dict]) -> dict:
+        """Return current token usage statistics."""
+        total = self._estimate_conversation_tokens(messages)
+        return {
+            "total_tokens": total,
+            "percentage_used": total / self._context_window_size if self._context_window_size > 0 else 0,
+            "compaction_count": self._compaction_count,
+            "context_window_size": self._context_window_size,
+        }
+
     # ------------------------------------------------------------------
-    # Message history management
+    # Message history management (deprecated — use compact_conversation)
     # ------------------------------------------------------------------
 
     @staticmethod

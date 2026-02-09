@@ -668,3 +668,199 @@ class TestTier3SummarizeOldMessages:
         result, saved = agent._summarize_old_messages(list(messages), target_tokens=10)
         assert saved == 0
         assert result == messages
+
+
+# ---------------------------------------------------------------------------
+# Tests: compact_conversation orchestrator
+# ---------------------------------------------------------------------------
+
+
+class TestCompactConversation:
+    """Tests for compact_conversation orchestrator."""
+
+    def test_no_compaction_when_below_threshold(self, workspace, provider):
+        """When below threshold, returns messages unchanged with compacted=False."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = [{"role": "assistant", "content": "hello"}]
+        result, stats = agent.compact_conversation(list(messages))
+        assert result == messages
+        assert stats["compacted"] is False
+
+    def test_compaction_runs_tiers_when_needed(self, workspace, provider):
+        """When above threshold, runs tiers and returns stats."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent._context_window_size = 100
+        agent._compaction_threshold = 0.1  # Very low threshold to force trigger
+
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS + 3):
+            a, u = _make_pair(
+                tool_result_content=f"verbose content " * 50,
+                tc_id=f"tc{i}",
+            )
+            messages.extend([a, u])
+
+        result, stats = agent.compact_conversation(list(messages))
+        assert stats["compacted"] is True
+        assert stats["tokens_before"] > 0
+        assert stats["tokens_saved"] >= 0
+        assert "tiers_used" in stats
+        assert stats["compaction_number"] == 1
+
+    def test_increments_compaction_count(self, workspace, provider):
+        """Each compaction should increment _compaction_count."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent._context_window_size = 100
+        agent._compaction_threshold = 0.1
+
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS + 3):
+            a, u = _make_pair(tool_result_content="x" * 200, tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        assert agent._compaction_count == 0
+        agent.compact_conversation(list(messages))
+        assert agent._compaction_count == 1
+        agent.compact_conversation(list(messages))
+        assert agent._compaction_count == 2
+
+    def test_stats_contain_required_keys(self, workspace, provider):
+        """Stats dict should contain all required keys when compacted."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent._context_window_size = 100
+        agent._compaction_threshold = 0.1
+
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS + 2):
+            a, u = _make_pair(tool_result_content="x" * 200, tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        _, stats = agent.compact_conversation(list(messages))
+        assert "compacted" in stats
+        assert "tokens_before" in stats
+        assert "tokens_after" in stats
+        assert "tokens_saved" in stats
+        assert "tiers_used" in stats
+        assert "compaction_number" in stats
+
+
+# ---------------------------------------------------------------------------
+# Tests: get_token_stats
+# ---------------------------------------------------------------------------
+
+
+class TestGetTokenStats:
+    """Tests for get_token_stats method."""
+
+    def test_returns_required_keys(self, workspace, provider):
+        """Should return dict with total_tokens, percentage_used, compaction_count, context_window_size."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = [{"role": "assistant", "content": "a" * 400}]
+        stats = agent.get_token_stats(messages)
+        assert "total_tokens" in stats
+        assert "percentage_used" in stats
+        assert "compaction_count" in stats
+        assert "context_window_size" in stats
+
+    def test_calculates_percentage(self, workspace, provider):
+        """Percentage should be total_tokens / context_window_size."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent._context_window_size = 1000
+        messages = [{"role": "assistant", "content": "a" * 400}]  # 100 tokens
+        stats = agent.get_token_stats(messages)
+        assert stats["total_tokens"] == 100
+        assert stats["percentage_used"] == pytest.approx(0.1)
+        assert stats["context_window_size"] == 1000
+
+    def test_includes_compaction_count(self, workspace, provider):
+        """Should reflect current _compaction_count."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent._compaction_count = 3
+        stats = agent.get_token_stats([])
+        assert stats["compaction_count"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests: React loop integration
+# ---------------------------------------------------------------------------
+
+
+class TestReactLoopCompactionIntegration:
+    """Tests for compact_conversation being called in the react loop."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_compact_conversation_called_in_loop(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """compact_conversation should be called during the react loop."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "test.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="contents")
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        original_compact = agent.compact_conversation
+        compact_called = []
+
+        def tracking_compact(messages):
+            compact_called.append(True)
+            return original_compact(messages)
+
+        agent.compact_conversation = tracking_compact
+        agent.run("task-1")
+
+        assert len(compact_called) >= 1
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_verbose_output_on_compaction(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
+    ):
+        """When compaction occurs, verbose output should mention tokens saved."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        # Build enough tool calls to fill history beyond threshold
+        for i in range(PRESERVE_RECENT_PAIRS + 3):
+            provider.add_tool_response(
+                [ToolCall(id=f"tc{i}", name="read_file", input={"path": f"file_{i}.py"})]
+            )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="x" * 2000)
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            verbose=True,
+        )
+        # Force small context window to trigger compaction
+        agent._context_window_size = 100
+        agent._compaction_threshold = 0.1
+        agent.run("task-1")
+
+        captured = capsys.readouterr()
+        assert "[ReactAgent] Compacted" in captured.out
