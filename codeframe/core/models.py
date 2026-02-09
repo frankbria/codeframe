@@ -1033,6 +1033,21 @@ class BaseExecutionEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AgentPhase:
+    """Phase constants for ReactAgent progress reporting.
+
+    Each phase maps to specific tool calls during agent execution.
+    """
+
+    EXPLORING = "exploring"    # read_file, list_files, search_codebase
+    PLANNING = "planning"      # context loading, system prompt construction
+    CREATING = "creating"      # create_file
+    EDITING = "editing"        # edit_file
+    TESTING = "testing"        # run_tests, run_command
+    FIXING = "fixing"          # edit_file after verification failure
+    VERIFYING = "verifying"    # gates.run() / final verification
+
+
 class ProgressEvent(BaseExecutionEvent):
     """Event indicating task execution progress.
 
@@ -1044,6 +1059,9 @@ class ProgressEvent(BaseExecutionEvent):
     step: int
     total_steps: int
     message: Optional[str] = None
+    tool_name: Optional[str] = None
+    file_path: Optional[str] = None
+    iteration: Optional[int] = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -1054,6 +1072,9 @@ class ProgressEvent(BaseExecutionEvent):
             "step": self.step,
             "total_steps": self.total_steps,
             "message": self.message,
+            "tool_name": self.tool_name,
+            "file_path": self.file_path,
+            "iteration": self.iteration,
         }
 
 
