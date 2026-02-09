@@ -613,6 +613,15 @@ def _execute_run_tests(
     test_path = input_data.get("test_path")
     verbose = input_data.get("verbose", False)
 
+    # Validate test_path stays inside workspace
+    if test_path:
+        candidate = workspace_path / test_path
+        safe, reason = _is_path_safe(candidate, workspace_path)
+        if not safe:
+            return ToolResult(
+                tool_call_id=tool_call_id, content=reason, is_error=True
+            )
+
     gates = _detect_available_gates(workspace_path)
 
     if "pytest" in gates:
@@ -626,6 +635,8 @@ def _execute_run_tests(
         cmd.extend(["-v", "--tb=short"])
     elif "npm-test" in gates:
         cmd = ["npm", "test"]
+        if test_path:
+            cmd.extend(["--", test_path])
     else:
         return ToolResult(
             tool_call_id=tool_call_id,
@@ -661,9 +672,11 @@ def _execute_run_tests(
     output = proc.stdout + proc.stderr
 
     if proc.returncode == 0:
-        # Extract summary line from pytest output
-        summary_match = re.search(r"=+ (.+?) =+\s*$", output, re.MULTILINE)
-        summary = summary_match.group(1) if summary_match else "Tests passed."
+        # Extract last summary line from pytest output (e.g., "5 passed in 0.12s")
+        summary_matches = re.findall(
+            r"=+ (.+?) =+\s*$", output, re.MULTILINE
+        )
+        summary = summary_matches[-1] if summary_matches else "Tests passed."
         content = f"PASSED: {summary}"
     else:
         # Extract first failing test and its traceback

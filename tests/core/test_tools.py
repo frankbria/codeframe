@@ -871,6 +871,27 @@ class TestRunTests:
         assert result.is_error
         assert "no test runner" in result.content.lower()
 
+    def test_test_path_traversal_rejected(self, tmp_path: Path):
+        """test_path escaping workspace is blocked."""
+        (tmp_path / "pyproject.toml").write_text("[build-system]\n")
+        result = _call(
+            "run_tests",
+            {"test_path": "../../../etc/passwd"},
+            tmp_path,
+        )
+        assert result.is_error
+        assert "escape" in result.content.lower() or "outside" in result.content.lower()
+
+    def test_absolute_test_path_rejected(self, tmp_path: Path):
+        """Absolute test_path is blocked."""
+        (tmp_path / "pyproject.toml").write_text("[build-system]\n")
+        result = _call(
+            "run_tests",
+            {"test_path": "/etc/passwd"},
+            tmp_path,
+        )
+        assert result.is_error
+
     def test_pytest_detection_with_pyproject(self, tmp_path: Path):
         """Workspace with pyproject.toml triggers pytest detection."""
         (tmp_path / "pyproject.toml").write_text("[build-system]\n")
