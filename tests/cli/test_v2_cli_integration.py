@@ -18,8 +18,9 @@ import pytest
 from typer.testing import CliRunner
 
 from codeframe.cli.app import app
-from codeframe.core import prd, tasks
+from codeframe.core import prd, runtime, tasks
 from codeframe.core.state_machine import TaskStatus
+from codeframe.core.streaming import run_output_exists
 from codeframe.core.workspace import create_or_load_workspace
 
 pytestmark = pytest.mark.v2
@@ -1039,14 +1040,12 @@ class TestReactAgentIntegration:
         assert provider.call_count >= 1
 
         # Verify output.log was created by the ReactAgent execution
-        from codeframe.core import runtime
         runs = runtime.list_runs(ws, task_id=task_list[0].id)
         assert len(runs) > 0, "Expected at least one run for the task"
-        last_run = runs[-1]
+        latest_run = runs[0]  # list_runs returns newest first
 
-        from codeframe.core.streaming import run_output_exists
-        assert run_output_exists(ws, last_run.id), (
-            f"output.log should exist for run {last_run.id}"
+        assert run_output_exists(ws, latest_run.id), (
+            f"output.log should exist for run {latest_run.id}"
         )
 
         # Verify cf work follow can read the completed run output
@@ -1059,6 +1058,9 @@ class TestReactAgentIntegration:
         )
         assert follow_result.exit_code == 0, (
             f"follow failed: {follow_result.output}"
+        )
+        assert len(follow_result.output.strip()) > 0, (
+            "follow should display output from the completed run"
         )
 
 
