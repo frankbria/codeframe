@@ -631,6 +631,13 @@ def execute_agent(
             f"Invalid engine '{engine}'. Must be one of: {', '.join(valid_engines)}"
         )
 
+    # ReactAgent doesn't support dry_run — fail fast rather than silently executing
+    if dry_run and engine == "react":
+        raise ValueError(
+            "dry_run=True is not supported with engine='react'. "
+            "ReactAgent does not support dry-run mode. Use engine='plan' for dry runs."
+        )
+
     # Get LLM provider
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise ValueError(

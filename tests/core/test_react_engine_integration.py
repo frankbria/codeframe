@@ -8,6 +8,7 @@ import pytest
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 
+from codeframe.adapters.llm.mock import MockProvider
 from codeframe.core.agent import AgentState, AgentStatus
 from codeframe.core.conductor import (
     BatchRun,
@@ -161,6 +162,16 @@ class TestRuntimeEngineSelection:
         with pytest.raises(ValueError, match="Invalid engine"):
             execute_agent(temp_workspace, run, engine="invalid")
 
+    def test_dry_run_with_react_engine_raises_error(self, temp_workspace):
+        """dry_run=True with engine='react' should raise ValueError."""
+        from codeframe.core.runtime import execute_agent, start_task_run
+
+        task = tasks.create(temp_workspace, title="Test", status=TaskStatus.READY)
+        run = start_task_run(temp_workspace, task.id)
+
+        with pytest.raises(ValueError, match="dry_run.*not supported.*react"):
+            execute_agent(temp_workspace, run, engine="react", dry_run=True)
+
 
 class TestReactEngineConstructorArgs:
     """Test that ReactAgent receives correct constructor arguments."""
@@ -175,7 +186,7 @@ class TestReactEngineConstructorArgs:
         """ReactAgent should receive workspace and llm_provider."""
         from codeframe.core.runtime import execute_agent, start_task_run
 
-        mock_provider = MagicMock()
+        mock_provider = MockProvider()
         mock_get_provider.return_value = mock_provider
 
         task = tasks.create(temp_workspace, title="Test", status=TaskStatus.READY)
@@ -346,9 +357,10 @@ class TestStartBatchEngineParam:
         )
 
         # All subprocess calls should include engine="react"
+        assert mock_subprocess.call_count > 0, "Expected at least one subprocess call"
         for c in mock_subprocess.call_args_list:
-            assert c.kwargs.get("engine") == "react" or (
-                len(c.args) > 2 and c.args[2] is not None  # batch_id
+            assert c.kwargs.get("engine") == "react", (
+                f"Expected engine='react' in kwargs, got: {c.kwargs}"
             )
 
     @patch("codeframe.core.conductor._execute_task_subprocess")
