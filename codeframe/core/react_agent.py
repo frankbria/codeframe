@@ -1011,12 +1011,18 @@ class ReactAgent:
                     indices_to_remove.add(i)
                     indices_to_remove.add(i + 1)
 
-            # Check for passed test results
+            # Check for passed test results (only remove if fully passing)
             if tool_name in ("run_tests", "run_command"):
                 tool_results = user.get("tool_results", [])
                 for tr in tool_results:
                     content = tr.get("content", "")
-                    if not tr.get("is_error") and ("passed" in content.lower()):
+                    content_lower = content.lower()
+                    if (
+                        not tr.get("is_error")
+                        and "passed" in content_lower
+                        and "failed" not in content_lower
+                        and "error" not in content_lower
+                    ):
                         indices_to_remove.add(i)
                         indices_to_remove.add(i + 1)
                         break

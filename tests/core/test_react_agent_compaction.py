@@ -564,6 +564,29 @@ class TestTier2RemoveIntermediateSteps:
         assert saved == 0
         assert len(result) == len(messages)
 
+    def test_keeps_test_results_with_failures(self, workspace, provider):
+        """Test output containing both 'passed' and 'failed' should NOT be removed."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Mixed test result (has failures — should be kept)
+        a, u = _make_pair(
+            tool_name="run_tests",
+            tool_input={"test_path": "tests/"},
+            tool_result_content="5 passed, 3 failed in 2.1s",
+            tc_id="tc-mixed",
+        )
+        messages.extend([a, u])
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._remove_intermediate_steps(list(messages))
+        # Should NOT be removed because it contains failure info
+        assert saved == 0
+        assert len(result) == len(messages)
+
 
 # ---------------------------------------------------------------------------
 # Tests: Tier 3 - Conversation summary
