@@ -203,6 +203,7 @@ def _init_database(db_path: Path) -> None:
             started_at TEXT NOT NULL,
             completed_at TEXT,
             results TEXT,
+            engine TEXT NOT NULL DEFAULT 'plan',
             FOREIGN KEY (workspace_id) REFERENCES workspace(id),
             CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
         )
@@ -289,6 +290,7 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
                 started_at TEXT NOT NULL,
                 completed_at TEXT,
                 results TEXT,
+                engine TEXT NOT NULL DEFAULT 'plan',
                 FOREIGN KEY (workspace_id) REFERENCES workspace(id),
                 CHECK (status IN ('PENDING', 'RUNNING', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED'))
             )
@@ -296,6 +298,13 @@ def _ensure_schema_upgrades(db_path: Path) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_workspace ON batch_runs(workspace_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_runs_status ON batch_runs(status)")
         conn.commit()
+    else:
+        # Add engine column if it doesn't exist (migration for existing databases)
+        cursor.execute("PRAGMA table_info(batch_runs)")
+        batch_columns = {row[1] for row in cursor.fetchall()}
+        if "engine" not in batch_columns:
+            cursor.execute("ALTER TABLE batch_runs ADD COLUMN engine TEXT NOT NULL DEFAULT 'plan'")
+            conn.commit()
 
     # Add tech_stack column to workspace table if it doesn't exist
     # First check if workspace table exists

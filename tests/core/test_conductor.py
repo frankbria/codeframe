@@ -479,6 +479,7 @@ class TestRowToBatch:
             "2025-01-15T10:00:00",  # started_at
             "2025-01-15T10:30:00",  # completed_at
             '{"task-1": "COMPLETED", "task-2": "COMPLETED"}',  # results (JSON)
+            "plan",  # engine
         )
 
         batch = _row_to_batch(row)
@@ -491,6 +492,7 @@ class TestRowToBatch:
         assert batch.max_parallel == 4
         assert batch.on_failure == OnFailure.CONTINUE
         assert batch.results == {"task-1": "COMPLETED", "task-2": "COMPLETED"}
+        assert batch.engine == "plan"
 
     def test_handles_null_completed_at(self):
         """Should handle NULL completed_at."""
@@ -505,12 +507,32 @@ class TestRowToBatch:
             "2025-01-15T10:00:00",
             None,  # completed_at is NULL
             None,  # results is NULL
+            "plan",  # engine
         )
 
         batch = _row_to_batch(row)
 
         assert batch.completed_at is None
         assert batch.results == {}
+        assert batch.engine == "plan"
+
+    def test_handles_missing_engine_column(self):
+        """Should default engine to 'plan' when column is absent (migration)."""
+        row = (
+            "batch-id",
+            "workspace-id",
+            '["task-1"]',
+            "RUNNING",
+            "serial",
+            4,
+            "continue",
+            "2025-01-15T10:00:00",
+            None,
+            None,
+        )
+
+        batch = _row_to_batch(row)
+        assert batch.engine == "plan"
 
 
 class TestBatchExecution:
@@ -535,7 +557,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # First task succeeds, second fails, third succeeds
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -554,7 +576,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # First task succeeds, second fails
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -591,7 +613,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # Second task becomes blocked
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[1]:
                 return "BLOCKED"
             return "COMPLETED"
@@ -610,7 +632,7 @@ class TestBatchExecution:
         task_ids = [t.id for t in task_list]
 
         # Task 1: COMPLETED, Task 2: BLOCKED, Task 3: FAILED
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[0]:
                 return "COMPLETED"
             elif tid == task_ids[1]:
@@ -761,7 +783,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create a batch with some failures
-        def mock_execute_first_run(ws, tid, batch_id=None):
+        def mock_execute_first_run(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -810,7 +832,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create a partial batch (2 completed, 1 failed)
-        def mock_execute_first_run(ws, tid, batch_id=None):
+        def mock_execute_first_run(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[2]:
                 return "FAILED"
             return "COMPLETED"
@@ -834,7 +856,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create a batch with blocked tasks
-        def mock_execute_first_run(ws, tid, batch_id=None):
+        def mock_execute_first_run(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[1]:
                 return "BLOCKED"
             return "COMPLETED"
@@ -907,7 +929,7 @@ class TestResumeBatch:
         task_ids = [t.id for t in task_list]
 
         # Create batch: task 0 completes, task 1 fails, task 2 completes
-        def mock_first_run(ws, tid, batch_id=None):
+        def mock_first_run(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -935,7 +957,7 @@ class TestBatchRetry:
         task_ids = [t.id for t in task_list]
 
         call_count = [0]
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_count[0] += 1
             if tid == task_ids[1]:
                 return "FAILED"
@@ -957,7 +979,7 @@ class TestBatchRetry:
         # Track calls per task
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_counts[tid] += 1
             # Task 1 fails first time, succeeds on retry
             if tid == task_ids[1]:
@@ -979,7 +1001,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_counts[tid] += 1
             if tid == task_ids[1]:
                 return "FAILED"  # Always fails
@@ -1000,7 +1022,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_counts[tid] += 1
             # Tasks 0 and 2 fail initially, succeed on retry
             if tid in (task_ids[0], task_ids[2]):
@@ -1023,7 +1045,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_counts[tid] += 1
             # Task 1 succeeds on first retry
             if tid == task_ids[1]:
@@ -1044,7 +1066,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_counts[tid] += 1
             if tid == task_ids[1]:
                 return "BLOCKED"  # Blocked, not failed
@@ -1065,7 +1087,7 @@ class TestBatchRetry:
 
         call_counts = {tid: 0 for tid in task_ids}
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_counts[tid] += 1
             # All tasks fail initially, task 0 and 2 succeed on retry
             if call_counts[tid] == 1:
@@ -1092,7 +1114,7 @@ class TestBatchRetry:
             events_received.append((event_type, payload))
 
         call_count = [0]
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             call_count[0] += 1
             return "COMPLETED" if call_count[0] > 1 else "FAILED"
 
@@ -1115,7 +1137,7 @@ class TestParallelExecution:
         execution_order = []
         import threading
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             # Record when each task starts
             execution_order.append(("start", tid, threading.current_thread().name))
             import time
@@ -1146,7 +1168,7 @@ class TestParallelExecution:
         import threading
         lock = threading.Lock()
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             with lock:
                 concurrent_count[0] += 1
                 max_concurrent[0] = max(max_concurrent[0], concurrent_count[0])
@@ -1182,7 +1204,7 @@ class TestParallelExecution:
 
         execution_order = []
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             execution_order.append(tid)
             return "COMPLETED"
 
@@ -1215,7 +1237,7 @@ class TestParallelExecution:
 
         execution_count = [0]
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             execution_count[0] += 1
             return "COMPLETED"
 
@@ -1236,7 +1258,7 @@ class TestParallelExecution:
         workspace, task_list = workspace_with_tasks
         task_ids = [t.id for t in task_list]
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             if tid == task_ids[1]:
                 return "FAILED"
             return "COMPLETED"
@@ -1267,7 +1289,7 @@ class TestParallelExecution:
             depends_on=[task1.id, task2.id],
         )
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             if tid == task1.id:
                 return "FAILED"
             return "COMPLETED"
@@ -1296,7 +1318,7 @@ class TestParallelExecution:
         def on_event(event_type, payload):
             events_received.append((event_type, payload))
 
-        def mock_execute(ws, tid, batch_id=None):
+        def mock_execute(ws, tid, batch_id=None, **kwargs):
             return "COMPLETED"
 
         with patch('codeframe.core.conductor._execute_task_subprocess', side_effect=mock_execute):
