@@ -884,6 +884,213 @@ class ReactAgent:
         return ratio >= self._compaction_threshold
 
     # ------------------------------------------------------------------
+    # 3-tier compaction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_tool_name_from_pair(assistant_msg: dict) -> str:
+        """Extract tool name from an assistant message's tool_calls."""
+        tool_calls = assistant_msg.get("tool_calls", [])
+        if tool_calls:
+            return tool_calls[0].get("name", "")
+        return ""
+
+    def _compact_tool_results(
+        self, messages: list[dict]
+    ) -> tuple[list[dict], int]:
+        """Tier 1: Replace verbose tool result content with short summaries.
+
+        Iterates through older messages (outside PRESERVE_RECENT_PAIRS zone)
+        and replaces verbose tool result content with a short summary.
+        Error results (is_error=True) are preserved intact.
+
+        Returns (modified messages, tokens_saved).
+        """
+        preserve_count = PRESERVE_RECENT_PAIRS * 2
+        if len(messages) <= preserve_count:
+            return messages, 0
+
+        saved = 0
+        cutoff = len(messages) - preserve_count
+
+        for i in range(cutoff):
+            msg = messages[i]
+            tool_results = msg.get("tool_results")
+            if not tool_results:
+                continue
+
+            # Find tool name from preceding assistant message
+            tool_name = ""
+            if i > 0:
+                tool_name = self._extract_tool_name_from_pair(messages[i - 1])
+
+            new_results = []
+            for tr in tool_results:
+                if tr.get("is_error"):
+                    new_results.append(tr)
+                    continue
+
+                old_content = tr.get("content", "")
+                if not old_content:
+                    new_results.append(tr)
+                    continue
+
+                first_line = old_content.split("\n")[0][:80]
+                summary = f"[Compacted] {tool_name}: {first_line}..."
+                old_tokens = len(old_content) // 4
+                new_tokens = len(summary) // 4
+                saved += max(0, old_tokens - new_tokens)
+                new_results.append({
+                    "tool_call_id": tr["tool_call_id"],
+                    "content": summary,
+                    "is_error": False,
+                })
+
+            messages[i] = {**msg, "tool_results": new_results}
+
+        return messages, saved
+
+    def _remove_intermediate_steps(
+        self, messages: list[dict]
+    ) -> tuple[list[dict], int]:
+        """Tier 2: Remove redundant assistant+user pairs.
+
+        Removes pairs where:
+        - The same file was read again later without an intervening edit
+        - Test output shows all tests passed
+
+        Preserves the last PRESERVE_RECENT_PAIRS*2 messages.
+        Returns (modified messages, tokens_saved).
+        """
+        preserve_count = PRESERVE_RECENT_PAIRS * 2
+        if len(messages) <= preserve_count:
+            return messages, 0
+
+        cutoff = len(messages) - preserve_count
+        indices_to_remove: set[int] = set()
+
+        # Build a map of file reads and edits in the compactable zone
+        # Process pairs: assistant at even index, user at odd index
+        for i in range(0, cutoff - 1, 2):
+            assistant = messages[i]
+            user = messages[i + 1]
+            tool_calls = assistant.get("tool_calls", [])
+            if not tool_calls:
+                continue
+
+            tc = tool_calls[0]
+            tool_name = tc.get("name", "")
+            file_path = tc.get("input", {}).get("path", "")
+
+            # Check for redundant file reads
+            if tool_name == "read_file" and file_path:
+                # Look for a later read of the same file without an edit in between
+                has_edit_between = False
+                has_later_read = False
+                for j in range(i + 2, len(messages) - 1, 2):
+                    later_assistant = messages[j]
+                    later_tcs = later_assistant.get("tool_calls", [])
+                    if not later_tcs:
+                        continue
+                    later_name = later_tcs[0].get("name", "")
+                    later_path = later_tcs[0].get("input", {}).get("path", "")
+                    if later_name in ("edit_file", "create_file") and later_path == file_path:
+                        has_edit_between = True
+                        break
+                    if later_name == "read_file" and later_path == file_path:
+                        has_later_read = True
+                        break
+
+                if has_later_read and not has_edit_between:
+                    indices_to_remove.add(i)
+                    indices_to_remove.add(i + 1)
+
+            # Check for passed test results
+            if tool_name in ("run_tests", "run_command"):
+                tool_results = user.get("tool_results", [])
+                for tr in tool_results:
+                    content = tr.get("content", "")
+                    if not tr.get("is_error") and ("passed" in content.lower()):
+                        indices_to_remove.add(i)
+                        indices_to_remove.add(i + 1)
+                        break
+
+        if not indices_to_remove:
+            return messages, 0
+
+        saved = sum(
+            self._estimate_message_tokens(messages[i]) for i in indices_to_remove
+        )
+        result = [m for idx, m in enumerate(messages) if idx not in indices_to_remove]
+        return result, saved
+
+    def _summarize_old_messages(
+        self, messages: list[dict], target_tokens: int
+    ) -> tuple[list[dict], int]:
+        """Tier 3: Replace oldest messages with a single summary message.
+
+        Extracts file paths, error messages, and architectural keywords
+        from old messages and creates a compact summary.
+
+        Preserves the last PRESERVE_RECENT_PAIRS*2 messages.
+        Returns (modified messages, tokens_saved).
+        """
+        preserve_count = PRESERVE_RECENT_PAIRS * 2
+        if len(messages) <= preserve_count:
+            return messages, 0
+
+        cutoff = len(messages) - preserve_count
+        old_messages = messages[:cutoff]
+        recent_messages = messages[cutoff:]
+
+        # Extract preserved information from old messages
+        file_paths: list[str] = []
+        errors: list[str] = []
+        decisions: list[str] = []
+
+        for msg in old_messages:
+            # Extract file paths from tool calls
+            for tc in msg.get("tool_calls", []):
+                path = tc.get("input", {}).get("path", "")
+                if path and path not in file_paths:
+                    file_paths.append(path)
+
+            # Extract errors from tool results
+            for tr in msg.get("tool_results", []):
+                if tr.get("is_error"):
+                    errors.append(tr.get("content", "")[:100])
+
+            # Extract architectural keywords from assistant content
+            content = msg.get("content", "")
+            if msg.get("role") == "assistant" and content:
+                for keyword in ("architecture", "design", "pattern", "decision"):
+                    if keyword in content.lower():
+                        # Extract a snippet around the keyword
+                        idx = content.lower().index(keyword)
+                        snippet = content[max(0, idx - 20):idx + 50].strip()
+                        if snippet not in decisions:
+                            decisions.append(snippet)
+                        break
+
+        # Build summary
+        parts = ["[Summary] Previous context:"]
+        if file_paths:
+            parts.append(f"analyzed {len(file_paths)} files ({', '.join(file_paths[:10])})")
+        if errors:
+            parts.append(f"{len(errors)} errors encountered ({'; '.join(errors[:3])})")
+        if decisions:
+            parts.append(f"architectural decisions: {'; '.join(decisions[:3])}")
+
+        summary_content = ", ".join(parts) if len(parts) > 1 else parts[0] + " (no details extracted)"
+        summary_msg = {"role": "user", "content": summary_content}
+
+        saved = sum(self._estimate_message_tokens(m) for m in old_messages)
+        saved -= self._estimate_message_tokens(summary_msg)
+        saved = max(0, saved)
+
+        return [summary_msg] + recent_messages, saved
+
+    # ------------------------------------------------------------------
     # Message history management
     # ------------------------------------------------------------------
 

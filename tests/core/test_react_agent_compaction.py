@@ -305,3 +305,366 @@ class TestShouldCompact:
         # 200 chars = 50 tokens = exactly 50% of 100
         messages = [{"role": "assistant", "content": "a" * 200}]
         assert agent._should_compact(messages) is True
+
+
+# ---------------------------------------------------------------------------
+# Helper to build assistant+user pairs for compaction tests
+# ---------------------------------------------------------------------------
+
+
+def _make_pair(tool_name="read_file", tool_input=None, tool_result_content="ok", is_error=False, tc_id="tc1"):
+    """Build an assistant+user message pair for testing."""
+    if tool_input is None:
+        tool_input = {"path": "test.py"}
+    assistant = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{"id": tc_id, "name": tool_name, "input": tool_input}],
+    }
+    user = {
+        "role": "user",
+        "content": "",
+        "tool_results": [
+            {"tool_call_id": tc_id, "content": tool_result_content, "is_error": is_error}
+        ],
+    }
+    return assistant, user
+
+
+# ---------------------------------------------------------------------------
+# Tests: Tier 1 - Tool result compaction
+# ---------------------------------------------------------------------------
+
+
+class TestTier1CompactToolResults:
+    """Tests for _compact_tool_results (Tier 1)."""
+
+    def test_preserves_recent_pairs(self, workspace, provider):
+        """Last PRESERVE_RECENT_PAIRS*2 messages should not be compacted."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        # Build exactly PRESERVE_RECENT_PAIRS pairs (10 messages) — all should be preserved
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"content_{i}" * 50, tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._compact_tool_results(list(messages))
+        # Nothing should be compacted since all are "recent"
+        assert saved == 0
+        assert result == messages
+
+    def test_compacts_old_tool_results(self, workspace, provider):
+        """Older tool results (outside PRESERVE_RECENT_PAIRS) should be compacted."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Add PRESERVE_RECENT_PAIRS + 2 pairs so the first 2 are old
+        for i in range(PRESERVE_RECENT_PAIRS + 2):
+            a, u = _make_pair(
+                tool_result_content=f"very long content that should be compacted " * 20,
+                tc_id=f"tc{i}",
+            )
+            messages.extend([a, u])
+
+        result, saved = agent._compact_tool_results(list(messages))
+        # First 2 pairs (4 messages) should have been compacted
+        assert saved > 0
+        # Recent pairs should be untouched
+        assert result[-PRESERVE_RECENT_PAIRS * 2:] == messages[-PRESERVE_RECENT_PAIRS * 2:]
+        # Old tool results should contain "[Compacted]"
+        old_user = result[1]  # second message = first user msg
+        assert "[Compacted]" in old_user["tool_results"][0]["content"]
+
+    def test_preserves_error_results(self, workspace, provider):
+        """Tool results with is_error=True should not be compacted."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # First pair: error result (should be preserved)
+        a, u = _make_pair(
+            tool_result_content="ImportError: No module named 'foo'",
+            is_error=True,
+            tc_id="tc-err",
+        )
+        messages.extend([a, u])
+        # Add enough recent pairs to push the first pair into "old" territory
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"content_{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._compact_tool_results(list(messages))
+        # The error result content should be fully preserved
+        old_user = result[1]
+        assert old_user["tool_results"][0]["content"] == "ImportError: No module named 'foo'"
+        assert old_user["tool_results"][0]["is_error"] is True
+
+    def test_returns_zero_savings_when_nothing_to_compact(self, workspace, provider):
+        """When there are no old messages, tokens_saved should be 0."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = [
+            {"role": "assistant", "content": "hello"},
+        ]
+        result, saved = agent._compact_tool_results(list(messages))
+        assert saved == 0
+        assert result == messages
+
+    def test_summary_includes_tool_name(self, workspace, provider):
+        """Compacted summary should include the tool name."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Old pair with read_file
+        a, u = _make_pair(
+            tool_name="read_file",
+            tool_result_content="def hello():\n    return 'world'\n" * 10,
+            tc_id="tc-old",
+        )
+        messages.extend([a, u])
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, _ = agent._compact_tool_results(list(messages))
+        compacted = result[1]["tool_results"][0]["content"]
+        assert "read_file" in compacted
+
+
+# ---------------------------------------------------------------------------
+# Tests: Tier 2 - Intermediate step removal
+# ---------------------------------------------------------------------------
+
+
+class TestTier2RemoveIntermediateSteps:
+    """Tests for _remove_intermediate_steps (Tier 2)."""
+
+    def test_removes_redundant_file_reads(self, workspace, provider):
+        """If same file is read twice, earlier read should be removed."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # First read of main.py (old, should be removed)
+        a, u = _make_pair(
+            tool_name="read_file",
+            tool_input={"path": "main.py"},
+            tool_result_content="old contents",
+            tc_id="tc-old-read",
+        )
+        messages.extend([a, u])
+        # Second read of main.py (newer, should be kept)
+        a, u = _make_pair(
+            tool_name="read_file",
+            tool_input={"path": "main.py"},
+            tool_result_content="new contents",
+            tc_id="tc-new-read",
+        )
+        messages.extend([a, u])
+        # Add recent pairs to push old reads outside preserve zone
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._remove_intermediate_steps(list(messages))
+        # First read pair should be removed
+        assert saved > 0
+        assert len(result) < len(messages)
+        # The remaining read_file for main.py should have "new contents"
+        remaining_reads = [
+            m for m in result
+            if m.get("tool_results") and any(
+                "new contents" in tr["content"] for tr in m["tool_results"]
+            )
+        ]
+        assert len(remaining_reads) >= 1
+
+    def test_keeps_reads_with_intervening_edit(self, workspace, provider):
+        """If a file was edited between reads, both reads should be kept."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Read main.py
+        a, u = _make_pair(
+            tool_name="read_file",
+            tool_input={"path": "main.py"},
+            tool_result_content="before edit",
+            tc_id="tc-read1",
+        )
+        messages.extend([a, u])
+        # Edit main.py (intervening write)
+        a, u = _make_pair(
+            tool_name="edit_file",
+            tool_input={"path": "main.py", "edits": []},
+            tool_result_content="edit applied",
+            tc_id="tc-edit",
+        )
+        messages.extend([a, u])
+        # Read main.py again
+        a, u = _make_pair(
+            tool_name="read_file",
+            tool_input={"path": "main.py"},
+            tool_result_content="after edit",
+            tc_id="tc-read2",
+        )
+        messages.extend([a, u])
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._remove_intermediate_steps(list(messages))
+        # First read should NOT be removed because there was an edit in between
+        assert saved == 0
+
+    def test_removes_passed_test_results(self, workspace, provider):
+        """Test outputs showing 'passed' should be removed when outside preserve zone."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Passed test result
+        a, u = _make_pair(
+            tool_name="run_tests",
+            tool_input={"test_path": "tests/"},
+            tool_result_content="5 passed in 0.3s",
+            tc_id="tc-test",
+        )
+        messages.extend([a, u])
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._remove_intermediate_steps(list(messages))
+        assert saved > 0
+        assert len(result) < len(messages)
+
+    def test_preserves_recent_pairs(self, workspace, provider):
+        """Last PRESERVE_RECENT_PAIRS*2 messages should not be removed."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(
+                tool_name="read_file",
+                tool_input={"path": "same.py"},
+                tool_result_content=f"content_{i}",
+                tc_id=f"tc{i}",
+            )
+            messages.extend([a, u])
+
+        result, saved = agent._remove_intermediate_steps(list(messages))
+        # All within preserve zone — nothing removed
+        assert saved == 0
+        assert len(result) == len(messages)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Tier 3 - Conversation summary
+# ---------------------------------------------------------------------------
+
+
+class TestTier3SummarizeOldMessages:
+    """Tests for _summarize_old_messages (Tier 3)."""
+
+    def test_creates_summary_message(self, workspace, provider):
+        """Should replace old messages with a single [Summary] message."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Add enough old pairs
+        for i in range(PRESERVE_RECENT_PAIRS + 3):
+            a, u = _make_pair(
+                tool_name="read_file",
+                tool_input={"path": f"file_{i}.py"},
+                tool_result_content=f"content of file_{i}" * 20,
+                tc_id=f"tc{i}",
+            )
+            messages.extend([a, u])
+
+        result, saved = agent._summarize_old_messages(list(messages), target_tokens=10)
+        assert saved > 0
+        # First message should be the summary
+        assert result[0]["role"] == "user"
+        assert "[Summary]" in result[0]["content"]
+        # Recent pairs should be preserved
+        assert len(result) < len(messages)
+
+    def test_preserves_file_paths_in_summary(self, workspace, provider):
+        """Summary should mention file paths from summarized tool calls."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Old pair referencing specific files
+        a, u = _make_pair(
+            tool_name="read_file",
+            tool_input={"path": "important_module.py"},
+            tool_result_content="important code" * 20,
+            tc_id="tc-imp",
+        )
+        messages.extend([a, u])
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}" * 20, tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, _ = agent._summarize_old_messages(list(messages), target_tokens=10)
+        summary = result[0]["content"]
+        assert "important_module.py" in summary
+
+    def test_preserves_error_info_in_summary(self, workspace, provider):
+        """Summary should mention errors from error tool results."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        a, u = _make_pair(
+            tool_name="run_command",
+            tool_result_content="ModuleNotFoundError: No module named 'missing'",
+            is_error=True,
+            tc_id="tc-err",
+        )
+        messages.extend([a, u])
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}" * 20, tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, _ = agent._summarize_old_messages(list(messages), target_tokens=10)
+        summary = result[0]["content"]
+        assert "error" in summary.lower() or "Error" in summary
+
+    def test_preserves_recent_messages(self, workspace, provider):
+        """Recent PRESERVE_RECENT_PAIRS*2 messages should remain intact."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS + 2):
+            a, u = _make_pair(tool_result_content=f"c{i}" * 20, tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        recent = messages[-PRESERVE_RECENT_PAIRS * 2:]
+        result, _ = agent._summarize_old_messages(list(messages), target_tokens=10)
+        # Recent messages should be at the end unchanged
+        assert result[-PRESERVE_RECENT_PAIRS * 2:] == recent
+
+    def test_no_op_when_all_within_preserve_zone(self, workspace, provider):
+        """When all messages are in the preserve zone, nothing is summarized."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS):
+            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._summarize_old_messages(list(messages), target_tokens=10)
+        assert saved == 0
+        assert result == messages
