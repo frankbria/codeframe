@@ -104,6 +104,7 @@ class ReactAgent:
         self.max_verification_retries = max_verification_retries
         self.event_publisher = event_publisher
         self.fix_tracker = FixAttemptTracker()
+        self.blocker_id: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -118,7 +119,9 @@ class ReactAgent:
         4. Run final verification (with retry)
 
         Returns:
-            AgentStatus.COMPLETED or AgentStatus.FAILED
+            AgentStatus.COMPLETED — task finished successfully.
+            AgentStatus.BLOCKED — a blocker was created (check self.blocker_id).
+            AgentStatus.FAILED — max iterations or verification exhausted.
         """
         self._current_task_id = task_id
         self._emit(EventType.AGENT_STARTED, {"task_id": task_id})
@@ -188,6 +191,7 @@ class ReactAgent:
         """Core ReAct loop: iterate LLM calls until text-only or max iterations.
 
         Returns AgentStatus.COMPLETED when the LLM responds with text only.
+        Returns AgentStatus.BLOCKED when a blocker pattern is detected.
         Returns AgentStatus.FAILED when max_iterations is reached.
         """
         messages: list[dict] = []
@@ -657,24 +661,32 @@ class ReactAgent:
     # ------------------------------------------------------------------
 
     def _create_text_blocker(self, text: str, reason: str) -> None:
-        """Create a blocker from LLM text or tool error content."""
+        """Create a blocker from LLM text or tool error content.
+
+        Stores the blocker ID on ``self.blocker_id`` so runtime can link
+        the run record to the blocker.  If creation fails the exception
+        propagates — callers in ``run()`` catch it and return FAILED.
+        """
         question = (
             f"Agent detected a blocker: {reason}\n\n"
             f"Context:\n{text[:500]}"
         )
-        try:
-            blockers.create(
-                workspace=self.workspace,
-                question=question,
-                task_id=self._current_task_id,
-            )
-        except Exception:
-            logger.debug("Failed to create text blocker", exc_info=True)
+        blocker = blockers.create(
+            workspace=self.workspace,
+            question=question,
+            task_id=self._current_task_id,
+        )
+        self.blocker_id = blocker.id
 
     def _create_escalation_blocker(
         self, error: str, escalation: EscalationDecision
     ) -> None:
-        """Create a blocker when fix_tracker recommends escalation."""
+        """Create a blocker when fix_tracker recommends escalation.
+
+        Stores the blocker ID on ``self.blocker_id`` so runtime can link
+        the run record to the blocker.  If creation fails the exception
+        propagates — callers in ``run()`` catch it and return FAILED.
+        """
         context = self.fix_tracker.get_blocker_context(error)
         attempted = context.get("attempted_fixes", [])
         attempted_str = "\n".join(f"  - {f}" for f in attempted) if attempted else "  (none)"
@@ -687,14 +699,12 @@ class ReactAgent:
             f"Total failures in this run: {context.get('total_run_failures', 0)}\n\n"
             f"Please investigate and provide guidance."
         )
-        try:
-            blockers.create(
-                workspace=self.workspace,
-                question=question,
-                task_id=self._current_task_id,
-            )
-        except Exception:
-            logger.debug("Failed to create escalation blocker", exc_info=True)
+        blocker = blockers.create(
+            workspace=self.workspace,
+            question=question,
+            task_id=self._current_task_id,
+        )
+        self.blocker_id = blocker.id
 
     def _try_quick_fix(self, error_summary: str) -> bool:
         """Attempt a pattern-based quick fix for the gate error.

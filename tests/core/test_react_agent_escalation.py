@@ -526,3 +526,36 @@ class TestFixTrackerState:
         agent = ReactAgent(workspace=workspace, llm_provider=provider)
         assert hasattr(agent, "fix_tracker")
         assert isinstance(agent.fix_tracker, FixAttemptTracker)
+
+    def test_react_agent_blocker_id_initially_none(self, workspace, provider):
+        """ReactAgent should initialize with blocker_id = None."""
+        from codeframe.core.react_agent import ReactAgent
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        assert agent.blocker_id is None
+
+    @patch("codeframe.core.react_agent.blockers")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_blocker_id_set_after_blocked(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
+        workspace, provider, mock_context,
+    ):
+        """After returning BLOCKED, agent.blocker_id should be set."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response(
+            "I cannot proceed because permission denied on the config."
+        )
+        mock_ctx_loader.return_value.load.return_value = mock_context
+
+        mock_blocker = MagicMock()
+        mock_blocker.id = "blocker-link-test"
+        mock_blockers.create.return_value = mock_blocker
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.BLOCKED
+        assert agent.blocker_id == "blocker-link-test"
