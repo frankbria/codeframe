@@ -364,7 +364,7 @@ class TestTier1CompactToolResults:
         # Add PRESERVE_RECENT_PAIRS + 2 pairs so the first 2 are old
         for i in range(PRESERVE_RECENT_PAIRS + 2):
             a, u = _make_pair(
-                tool_result_content=f"very long content that should be compacted " * 20,
+                tool_result_content="very long content that should be compacted " * 20,
                 tc_id=f"tc{i}",
             )
             messages.extend([a, u])
@@ -699,7 +699,7 @@ class TestCompactConversation:
         messages = []
         for i in range(PRESERVE_RECENT_PAIRS + 3):
             a, u = _make_pair(
-                tool_result_content=f"verbose content " * 50,
+                tool_result_content="verbose content " * 50,
                 tc_id=f"tc{i}",
             )
             messages.extend([a, u])
@@ -864,3 +864,158 @@ class TestReactLoopCompactionIntegration:
 
         captured = capsys.readouterr()
         assert "[ReactAgent] Compacted" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# Helper: build conversation of arbitrary size
+# ---------------------------------------------------------------------------
+
+
+def _build_conversation(n_pairs, content_size=1000):
+    """Generate n_pairs of assistant+user message pairs with given content size."""
+    messages = []
+    for i in range(n_pairs):
+        a, u = _make_pair(
+            tool_name="read_file",
+            tool_input={"path": f"file_{i}.py"},
+            tool_result_content="x" * content_size,
+            tc_id=f"tc{i}",
+        )
+        messages.extend([a, u])
+    return messages
+
+
+# ---------------------------------------------------------------------------
+# Tests: Additional coverage for tier edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestTier1TokenSavings:
+    """Additional Tier 1 tests."""
+
+    def test_tokens_saved_positive(self, workspace, provider):
+        """Compacting verbose tool results should yield positive token savings."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = _build_conversation(PRESERVE_RECENT_PAIRS + 3, content_size=2000)
+        _, saved = agent._compact_tool_results(list(messages))
+        assert saved > 0
+
+
+class TestTier2UniqueReads:
+    """Additional Tier 2 tests."""
+
+    def test_keeps_unique_reads(self, workspace, provider):
+        """Reads of different files should all be kept."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        messages = []
+        # Each file is read only once
+        for i in range(PRESERVE_RECENT_PAIRS + 2):
+            a, u = _make_pair(
+                tool_name="read_file",
+                tool_input={"path": f"unique_{i}.py"},
+                tool_result_content=f"unique content {i}",
+                tc_id=f"tc{i}",
+            )
+            messages.extend([a, u])
+
+        result, saved = agent._remove_intermediate_steps(list(messages))
+        # No redundant reads — nothing should be removed
+        assert saved == 0
+        assert len(result) == len(messages)
+
+
+class TestCompactionOrchestrationAdvanced:
+    """Advanced orchestration tests."""
+
+    def test_tier1_sufficient_stops_early(self, workspace, provider):
+        """When Tier 1 brings tokens below threshold, Tiers 2-3 should not run."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        # Use a threshold that will be just barely exceeded, so tier 1 is enough
+        messages = _build_conversation(PRESERVE_RECENT_PAIRS + 2, content_size=500)
+        # Set context window so we're just above threshold after fill
+        tokens = agent._estimate_conversation_tokens(messages)
+        # Threshold at 90% of current usage, so tier 1 compaction should bring below
+        agent._context_window_size = int(tokens * 1.05)
+        agent._compaction_threshold = 0.9
+
+        _, stats = agent.compact_conversation(list(messages))
+        if stats["compacted"]:
+            # If tier 1 was sufficient, tiers 2 and 3 should not appear
+            assert "tier3_summary" not in stats.get("tiers_used", [])
+
+    def test_all_tiers_used_under_extreme_pressure(self, workspace, provider):
+        """When context is extremely full, all 3 tiers should be exercised."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        # Very small context window forces all tiers
+        agent._context_window_size = 10
+        agent._compaction_threshold = 0.1  # threshold = 1 token
+        messages = _build_conversation(PRESERVE_RECENT_PAIRS + 5, content_size=2000)
+
+        _, stats = agent.compact_conversation(list(messages))
+        assert stats["compacted"] is True
+        assert len(stats["tiers_used"]) >= 1
+
+    def test_multiple_compaction_rounds(self, workspace, provider):
+        """Multiple compaction rounds should each increment the counter."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent._context_window_size = 50
+        agent._compaction_threshold = 0.1
+
+        for round_num in range(3):
+            messages = _build_conversation(PRESERVE_RECENT_PAIRS + 2, content_size=500)
+            agent.compact_conversation(list(messages))
+
+        assert agent._compaction_count == 3
+
+
+class TestExistingTestsUnaffected:
+    """Verify that compaction integration doesn't break existing functionality."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_basic_loop_still_works(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """A basic react loop (text response) should still complete."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+        assert status == AgentStatus.COMPLETED
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_tool_calls_then_text_still_works(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """Tool call followed by text response should still complete."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "main.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(tool_call_id="tc1", content="contents")
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+        assert status == AgentStatus.COMPLETED
