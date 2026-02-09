@@ -63,6 +63,19 @@ class TestClassifyErrorForBlocker:
         # contains a requirements-like phrase
         assert classify_error_for_blocker("please clarify the design decision") is None
 
+    def test_access_takes_priority_over_technical_missing(self):
+        """'credentials missing' should match access ('credentials') before technical ('missing')."""
+        assert classify_error_for_blocker("credentials missing for deployment") == "access"
+        assert classify_error_for_blocker("api key missing from config") == "access"
+
+    def test_access_takes_priority_over_technical_forbidden(self):
+        """'forbidden' is access, not technical — even if text has technical context."""
+        assert classify_error_for_blocker("HTTP 403 forbidden when accessing resource") == "access"
+
+    def test_external_service_takes_priority_over_technical(self):
+        """'connection refused' is external_service, not technical."""
+        assert classify_error_for_blocker("connection refused on port 5432, database down") == "external_service"
+
 
 class TestShouldCreateBlocker:
     """Tests for should_create_blocker function."""

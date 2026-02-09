@@ -10,12 +10,12 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from codeframe.core.agent import (
-    REQUIREMENTS_AMBIGUITY_PATTERNS,
+from codeframe.core.agent import Agent
+from codeframe.core.blocker_detection import (
     ACCESS_PATTERNS,
-    TACTICAL_DECISION_PATTERNS,
     HUMAN_INPUT_PATTERNS,
-    Agent,
+    REQUIREMENTS_AMBIGUITY_PATTERNS,
+    TACTICAL_DECISION_PATTERNS,
 )
 from codeframe.core.executor import StepResult, ExecutionStatus
 from codeframe.core.planner import PlanStep, StepType

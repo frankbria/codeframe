@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Optional
 from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
 from codeframe.core import blockers, events, gates
 from codeframe.core.agent import AgentStatus
-from codeframe.core.blocker_detection import classify_error_for_blocker, should_create_blocker
+from codeframe.core.blocker_detection import classify_error_for_blocker
 from codeframe.core.context import ContextLoader, TaskContext
 from codeframe.core.events import EventType
 from codeframe.core.fix_tracker import EscalationDecision, FixAttemptTracker, FixOutcome
@@ -217,9 +217,14 @@ class ReactAgent:
             if not response.has_tool_calls:
                 # Text-only response — agent thinks it's done.
                 # Check for blocker patterns before accepting completion.
+                # Use classify_error_for_blocker directly (not should_create_blocker)
+                # because a text-only response means the LLM stopped calling tools.
+                # All blocker categories — including external_service — are immediate
+                # blockers here since the agent has no retry mechanism for text.
                 text = response.content or ""
-                block, reason = should_create_blocker(text)
-                if block:
+                category = classify_error_for_blocker(text)
+                if category is not None:
+                    reason = f"{category} issue detected in agent response"
                     self._create_text_blocker(text, reason)
                     self._emit(EventType.AGENT_ITERATION_COMPLETED, {
                         "task_id": self._current_task_id,

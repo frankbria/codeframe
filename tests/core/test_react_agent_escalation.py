@@ -395,6 +395,37 @@ class TestBlockerDetectionFromText:
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
     @patch("codeframe.core.react_agent.ContextLoader")
+    def test_text_with_external_service_creates_blocker(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
+        workspace, provider, mock_context,
+    ):
+        """When the LLM says 'service unavailable' in text-only response, a blocker is created.
+
+        Regression test for Macroscope feedback: external service patterns must
+        trigger blockers from text-only responses since the LLM has given up.
+        """
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response(
+            "I cannot proceed because the API returned service unavailable."
+        )
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+
+        mock_blocker = MagicMock()
+        mock_blocker.id = "blocker-ext-svc"
+        mock_blockers.create.return_value = mock_blocker
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.BLOCKED
+        mock_blockers.create.assert_called_once()
+
+    @patch("codeframe.core.react_agent.blockers")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
     def test_tool_error_with_access_pattern_creates_blocker(
         self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_blockers,
         workspace, provider, mock_context,
