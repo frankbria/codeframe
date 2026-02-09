@@ -449,3 +449,165 @@ class TestPathSafety:
         agent = ReactAgent(workspace=workspace, llm_provider=MockProvider())
         result = agent._run_ruff_on_file("../../etc/passwd")
         assert result == ""
+
+
+class TestEventEmissions:
+    """Tests for event emissions throughout the ReactAgent lifecycle."""
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_lifecycle_events_on_success(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """A successful run emits AGENT_STARTED and AGENT_COMPLETED."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.events import EventType
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+
+        # Extract all event types emitted
+        emitted = [
+            c.args[1] for c in mock_events.emit_for_workspace.call_args_list
+        ]
+        assert emitted[0] == EventType.AGENT_STARTED
+        assert emitted[-1] == EventType.AGENT_COMPLETED
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_lifecycle_events_on_failure(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """A failed run (max iterations) emits AGENT_STARTED and AGENT_FAILED."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.events import EventType
+
+        for _ in range(3):
+            provider.add_tool_response(
+                [ToolCall(id="tc1", name="read_file", input={"path": "x.py"})]
+            )
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="contents"
+        )
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider, max_iterations=2
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.FAILED
+
+        emitted = [
+            c.args[1] for c in mock_events.emit_for_workspace.call_args_list
+        ]
+        assert emitted[0] == EventType.AGENT_STARTED
+        assert emitted[-1] == EventType.AGENT_FAILED
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_iteration_and_tool_events(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """Tool calls emit ITERATION_STARTED/COMPLETED and TOOL_DISPATCHED/RESULT."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.events import EventType
+
+        # One tool call iteration, then text response
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "a.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="code"
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        emitted = [
+            c.args[1] for c in mock_events.emit_for_workspace.call_args_list
+        ]
+        assert EventType.AGENT_ITERATION_STARTED in emitted
+        assert EventType.AGENT_ITERATION_COMPLETED in emitted
+        assert EventType.AGENT_TOOL_DISPATCHED in emitted
+        assert EventType.AGENT_TOOL_RESULT in emitted
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_tool_result_payload_includes_lint_flag(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, mock_events,
+        workspace, provider, mock_context,
+    ):
+        """AGENT_TOOL_RESULT payload includes has_lint_errors flag."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.events import EventType
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "a.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="code"
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent.run("task-1")
+
+        # Find the AGENT_TOOL_RESULT call
+        tool_result_calls = [
+            c for c in mock_events.emit_for_workspace.call_args_list
+            if c.args[1] == EventType.AGENT_TOOL_RESULT
+        ]
+        assert len(tool_result_calls) == 1
+        payload = tool_result_calls[0].args[2]
+        assert payload["tool_call_id"] == "tc1"
+        assert payload["is_error"] is False
+        assert payload["has_lint_errors"] is False
+
+    @patch("codeframe.core.react_agent.events")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_exception_emits_agent_failed(
+        self, mock_ctx_loader, mock_events, workspace, provider,
+    ):
+        """An exception during run() emits AGENT_FAILED with reason 'exception'."""
+        from codeframe.core.react_agent import ReactAgent
+        from codeframe.core.events import EventType
+
+        mock_ctx_loader.return_value.load.side_effect = RuntimeError("boom")
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.FAILED
+
+        # Find AGENT_FAILED call
+        failed_calls = [
+            c for c in mock_events.emit_for_workspace.call_args_list
+            if c.args[1] == EventType.AGENT_FAILED
+        ]
+        assert len(failed_calls) == 1
+        assert failed_calls[0].args[2]["reason"] == "exception"

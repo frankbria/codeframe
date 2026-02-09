@@ -13,9 +13,10 @@ import subprocess
 from typing import Optional
 
 from codeframe.adapters.llm.base import LLMProvider, Purpose, ToolResult
-from codeframe.core import gates
+from codeframe.core import events, gates
 from codeframe.core.agent import AgentStatus
 from codeframe.core.context import ContextLoader, TaskContext
+from codeframe.core.events import EventType
 from codeframe.core.tools import AGENT_TOOLS, execute_tool
 from codeframe.core.workspace import Workspace
 
@@ -98,6 +99,9 @@ class ReactAgent:
         Returns:
             AgentStatus.COMPLETED or AgentStatus.FAILED
         """
+        self._current_task_id = task_id
+        self._emit(EventType.AGENT_STARTED, {"task_id": task_id})
+
         try:
             loader = ContextLoader(self.workspace)
             context = loader.load(task_id)
@@ -106,15 +110,29 @@ class ReactAgent:
 
             status = self._react_loop(system_prompt)
             if status == AgentStatus.FAILED:
+                self._emit(EventType.AGENT_FAILED, {
+                    "task_id": task_id,
+                    "reason": "max_iterations_reached",
+                })
                 return status
 
             # Final verification with retry
             passed, _ = self._run_final_verification(system_prompt)
             if passed:
+                self._emit(EventType.AGENT_COMPLETED, {"task_id": task_id})
                 return AgentStatus.COMPLETED
+
+            self._emit(EventType.AGENT_FAILED, {
+                "task_id": task_id,
+                "reason": "verification_failed",
+            })
             return AgentStatus.FAILED
         except Exception:
             logger.exception("ReactAgent.run() failed for task %s", task_id)
+            self._emit(EventType.AGENT_FAILED, {
+                "task_id": task_id,
+                "reason": "exception",
+            })
             return AgentStatus.FAILED
 
     # ------------------------------------------------------------------
@@ -129,8 +147,15 @@ class ReactAgent:
         """
         messages: list[dict] = []
         iterations = 0
+        prompt_summary = system_prompt[:200]
 
         while iterations < self.max_iterations:
+            self._emit(EventType.AGENT_ITERATION_STARTED, {
+                "task_id": self._current_task_id,
+                "iteration": iterations,
+                "system_prompt_summary": prompt_summary,
+            })
+
             response = self.llm_provider.complete(
                 messages=messages,
                 purpose=Purpose.EXECUTION,
@@ -142,6 +167,11 @@ class ReactAgent:
 
             if not response.has_tool_calls:
                 # Text-only response — agent thinks it's done
+                self._emit(EventType.AGENT_ITERATION_COMPLETED, {
+                    "task_id": self._current_task_id,
+                    "iteration": iterations,
+                    "has_tool_calls": False,
+                })
                 return AgentStatus.COMPLETED
 
             # Build assistant message with tool calls
@@ -158,7 +188,20 @@ class ReactAgent:
             # Execute each tool call and collect results
             tool_results = []
             for tc in response.tool_calls:
+                self._emit(EventType.AGENT_TOOL_DISPATCHED, {
+                    "task_id": self._current_task_id,
+                    "tool_name": tc.name,
+                    "tool_call_id": tc.id,
+                })
+
                 result = self._execute_tool_with_lint(tc)
+
+                self._emit(EventType.AGENT_TOOL_RESULT, {
+                    "task_id": self._current_task_id,
+                    "tool_call_id": result.tool_call_id,
+                    "is_error": result.is_error,
+                    "has_lint_errors": "LINT ERRORS" in result.content,
+                })
 
                 tool_results.append(
                     {
@@ -170,6 +213,13 @@ class ReactAgent:
 
             # Add tool results as user message
             messages.append({"role": "user", "tool_results": tool_results})
+
+            self._emit(EventType.AGENT_ITERATION_COMPLETED, {
+                "task_id": self._current_task_id,
+                "iteration": iterations,
+                "has_tool_calls": True,
+                "tool_count": len(response.tool_calls),
+            })
 
             # Trim old messages if history grows too large
             messages = self._trim_messages(messages)
@@ -355,6 +405,11 @@ class ReactAgent:
         if not file_path.exists():
             return ""
 
+        self._emit(EventType.GATES_STARTED, {
+            "gate": "ruff",
+            "path": rel_path,
+        })
+
         try:
             result = subprocess.run(
                 ["ruff", "check", str(file_path)],
@@ -363,12 +418,38 @@ class ReactAgent:
                 timeout=30,
                 cwd=str(self.workspace.repo_path),
             )
-            if result.returncode != 0 and result.stdout.strip():
-                return result.stdout.strip()
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+            passed = result.returncode == 0 or not result.stdout.strip()
+            output = result.stdout.strip() if not passed else ""
 
-        return ""
+            self._emit(EventType.GATES_COMPLETED, {
+                "gate": "ruff",
+                "path": rel_path,
+                "passed": passed,
+                "diagnostics": output[:500] if output else None,
+            })
+
+            return output
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            self._emit(EventType.GATES_COMPLETED, {
+                "gate": "ruff",
+                "path": rel_path,
+                "passed": True,
+                "diagnostics": "ruff unavailable",
+            })
+            return ""
+
+    # ------------------------------------------------------------------
+    # Event emission
+    # ------------------------------------------------------------------
+
+    def _emit(self, event_type: str, payload: dict) -> None:
+        """Emit an event, suppressing failures to keep the agent running."""
+        try:
+            events.emit_for_workspace(
+                self.workspace, event_type, payload, print_event=False,
+            )
+        except Exception:
+            logger.debug("Failed to emit %s event", event_type, exc_info=True)
 
     # ------------------------------------------------------------------
     # Message history management
