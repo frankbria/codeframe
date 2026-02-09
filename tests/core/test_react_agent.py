@@ -1562,3 +1562,321 @@ class TestStreamCompletion:
         assert status == AgentStatus.COMPLETED
         # Stream must still be closed despite publish failure
         assert "task-1" in publisher.completed_tasks
+
+
+# ---------------------------------------------------------------------------
+# Mock helpers for runtime parameter tests
+# ---------------------------------------------------------------------------
+
+
+class MockOutputLogger:
+    """Captures write() calls for test verification."""
+
+    def __init__(self):
+        self.lines: list[str] = []
+
+    def write(self, message: str) -> None:
+        self.lines.append(message)
+
+
+# ---------------------------------------------------------------------------
+# Tests for runtime parameters (issue #362)
+# ---------------------------------------------------------------------------
+
+
+class TestVerboseParameter:
+    """Tests for the verbose parameter on ReactAgent."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_verbose_prints_to_stdout(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
+    ):
+        """When verbose=True, agent prints progress to stdout."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, verbose=True)
+        agent.run("task-1")
+
+        captured = capsys.readouterr()
+        assert "[ReactAgent]" in captured.out
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_verbose_false_no_stdout(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
+    ):
+        """When verbose=False (default), no verbose output to stdout."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, verbose=False)
+        agent.run("task-1")
+
+        captured = capsys.readouterr()
+        assert "[ReactAgent]" not in captured.out
+
+
+class TestOutputLoggerParameter:
+    """Tests for the output_logger parameter on ReactAgent."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_output_logger_always_written(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """output_logger.write() is called even when verbose=False."""
+        from codeframe.core.react_agent import ReactAgent
+
+        logger = MockOutputLogger()
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            verbose=False, output_logger=logger,
+        )
+        agent.run("task-1")
+
+        assert len(logger.lines) > 0
+        assert any("[ReactAgent]" in line for line in logger.lines)
+
+
+class TestDebugParameter:
+    """Tests for the debug parameter on ReactAgent."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_debug_creates_log_file(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
+    ):
+        """When debug=True, a .codeframe_debug_react_*.log file is created."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, debug=True)
+        agent.run("task-1")
+
+        debug_logs = list(tmp_path.glob(".codeframe_debug_react_*.log"))
+        assert len(debug_logs) >= 1
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_debug_false_no_log_file(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, tmp_path
+    ):
+        """When debug=False (default), no debug log file is created."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, debug=False)
+        agent.run("task-1")
+
+        debug_logs = list(tmp_path.glob(".codeframe_debug_react_*.log"))
+        assert len(debug_logs) == 0
+
+
+class TestOnEventCallback:
+    """Tests for the on_event callback parameter on ReactAgent."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_on_event_callback_invoked(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """on_event callback is called during agent run."""
+        from codeframe.core.react_agent import ReactAgent
+
+        received_events = []
+
+        def on_event(event_type, payload):
+            received_events.append((event_type, payload))
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider, on_event=on_event,
+        )
+        agent.run("task-1")
+
+        assert len(received_events) > 0
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_on_event_exception_does_not_crash(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """A failing on_event callback does not crash the agent."""
+        from codeframe.core.react_agent import ReactAgent
+
+        def bad_callback(event_type, payload):
+            raise RuntimeError("callback boom")
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider, on_event=bad_callback,
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+
+
+class TestDryRunParameter:
+    """Tests for the dry_run parameter on ReactAgent."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_dry_run_skips_write_tools(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """dry_run=True skips execute_tool for write tools (edit_file, create_file, run_command)."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="edit_file", input={"path": "test.py", "edits": []})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, dry_run=True)
+        agent.run("task-1")
+
+        # execute_tool should NOT have been called for the write tool
+        mock_exec_tool.assert_not_called()
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_dry_run_allows_read_tools(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """dry_run=True still allows execute_tool for read tools (read_file, list_files, etc.)."""
+        from codeframe.core.react_agent import ReactAgent
+
+        provider.add_tool_response(
+            [ToolCall(id="tc1", name="read_file", input={"path": "main.py"})]
+        )
+        provider.add_text_response("Done.")
+
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_exec_tool.return_value = ToolResult(
+            tool_call_id="tc1", content="file contents"
+        )
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider, dry_run=True)
+        agent.run("task-1")
+
+        # execute_tool SHOULD have been called for the read tool
+        mock_exec_tool.assert_called_once()
+
+
+class TestFixCoordinatorParameter:
+    """Tests for the fix_coordinator parameter on ReactAgent."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_fix_coordinator_accepted_as_noop(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context
+    ):
+        """fix_coordinator parameter is accepted and stored without crashing."""
+        from codeframe.core.react_agent import ReactAgent
+
+        class MockFixCoordinator:
+            pass
+
+        coordinator = MockFixCoordinator()
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace, llm_provider=provider,
+            fix_coordinator=coordinator,
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+        assert agent.fix_coordinator is coordinator
+
+
+class TestAllParamsTogether:
+    """Test that all new parameters work together."""
+
+    @patch("codeframe.core.react_agent.gates")
+    @patch("codeframe.core.react_agent.execute_tool")
+    @patch("codeframe.core.react_agent.ContextLoader")
+    def test_all_params_together(
+        self, mock_ctx_loader, mock_exec_tool, mock_gates, workspace, provider, mock_context, capsys
+    ):
+        """All 6 new params provided together should work without errors."""
+        from codeframe.core.react_agent import ReactAgent
+
+        logger = MockOutputLogger()
+        received_events = []
+
+        def on_event(event_type, payload):
+            received_events.append((event_type, payload))
+
+        class MockFixCoordinator:
+            pass
+
+        publisher = MockEventPublisher()
+
+        provider.add_text_response("Done.")
+        mock_ctx_loader.return_value.load.return_value = mock_context
+        mock_gates.run.return_value = _gate_passed()
+
+        agent = ReactAgent(
+            workspace=workspace,
+            llm_provider=provider,
+            dry_run=True,
+            verbose=True,
+            on_event=on_event,
+            debug=True,
+            output_logger=logger,
+            fix_coordinator=MockFixCoordinator(),
+            event_publisher=publisher,
+        )
+        status = agent.run("task-1")
+
+        assert status == AgentStatus.COMPLETED
+        # Verbose output present
+        captured = capsys.readouterr()
+        assert "[ReactAgent]" in captured.out
+        # Output logger written to
+        assert len(logger.lines) > 0
+        # on_event called
+        assert len(received_events) > 0
