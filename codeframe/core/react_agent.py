@@ -8,7 +8,9 @@ This module is headless - no FastAPI or HTTP dependencies.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable, Optional
@@ -33,6 +35,11 @@ logger = logging.getLogger(__name__)
 
 # Rough token budget for conversation history to avoid overflowing LLM context.
 _MAX_HISTORY_CHARS = 400_000  # ~100K tokens at ~4 chars/token
+
+# Token budget compaction constants
+DEFAULT_COMPACTION_THRESHOLD = 0.85
+PRESERVE_RECENT_PAIRS = 5
+DEFAULT_CONTEXT_WINDOW = 200_000  # All Claude 4.x models
 
 # Map tool names to agent phases for progress reporting.
 _TOOL_PHASE_MAP = {
@@ -119,6 +126,12 @@ class ReactAgent:
         self.fix_coordinator = fix_coordinator
         self.fix_tracker = FixAttemptTracker()
         self.blocker_id: Optional[str] = None
+
+        # Token budget tracking for conversation compaction
+        self._context_window_size: int = DEFAULT_CONTEXT_WINDOW
+        self._compaction_threshold: float = self._read_compaction_threshold()
+        self._total_tokens_used: int = 0
+        self._compaction_count: int = 0
 
         # Debug logging setup
         self._debug_log_path: Optional[Path] = None
@@ -337,8 +350,17 @@ class ReactAgent:
                 "tool_count": len(response.tool_calls),
             })
 
-            # Trim old messages if history grows too large
-            messages = self._trim_messages(messages)
+            # Compact conversation when approaching context window limit
+            messages, compact_stats = self.compact_conversation(messages)
+            if compact_stats.get("compacted"):
+                self._verbose_print(
+                    f"[ReactAgent] Compacted: saved {compact_stats['tokens_saved']} tokens "
+                    f"(tiers: {compact_stats['tiers_used']})"
+                )
+                self._emit(EventType.AGENT_COMPACTION, {
+                    **compact_stats,
+                    "task_id": self._current_task_id,
+                })
 
         # Exhausted iterations
         return AgentStatus.FAILED
@@ -825,7 +847,371 @@ class ReactAgent:
         return success
 
     # ------------------------------------------------------------------
-    # Message history management
+    # Token budget and compaction helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _read_compaction_threshold() -> float:
+        """Read compaction threshold from env var, with validation and clamping."""
+        raw = os.environ.get("CODEFRAME_REACT_COMPACT_THRESHOLD")
+        if raw is None:
+            return DEFAULT_COMPACTION_THRESHOLD
+        try:
+            value = float(raw)
+        except (ValueError, TypeError):
+            return DEFAULT_COMPACTION_THRESHOLD
+        # Clamp to valid range
+        return max(0.5, min(0.95, value))
+
+    def _estimate_message_tokens(self, message: dict) -> int:
+        """Estimate token count for a single message using len(str)/4 heuristic."""
+        tokens = 0
+        content = message.get("content", "")
+        if content:
+            tokens += len(content) // 4
+
+        tool_calls = message.get("tool_calls")
+        if tool_calls:
+            tokens += len(json.dumps(tool_calls)) // 4
+
+        tool_results = message.get("tool_results")
+        if tool_results:
+            tokens += len(json.dumps(tool_results)) // 4
+
+        return tokens
+
+    def _estimate_conversation_tokens(self, messages: list[dict]) -> int:
+        """Estimate total tokens across all messages. Updates _total_tokens_used."""
+        total = sum(self._estimate_message_tokens(m) for m in messages)
+        self._total_tokens_used = total
+        return total
+
+    def _should_compact(self, messages: list[dict]) -> bool:
+        """Return True if estimated token usage >= threshold ratio of context window."""
+        tokens = self._estimate_conversation_tokens(messages)
+        ratio = tokens / self._context_window_size if self._context_window_size > 0 else 0
+        return ratio >= self._compaction_threshold
+
+    # ------------------------------------------------------------------
+    # 3-tier compaction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_tool_name_from_pair(assistant_msg: dict) -> str:
+        """Extract tool name from an assistant message's tool_calls."""
+        tool_calls = assistant_msg.get("tool_calls", [])
+        if tool_calls:
+            return tool_calls[0].get("name", "")
+        return ""
+
+    def _compact_tool_results(
+        self, messages: list[dict]
+    ) -> tuple[list[dict], int]:
+        """Tier 1: Replace verbose tool result content with short summaries.
+
+        Iterates through older messages (outside PRESERVE_RECENT_PAIRS zone)
+        and replaces verbose tool result content with a short summary.
+        Error results (is_error=True) are preserved intact.
+
+        Returns (modified messages, tokens_saved).
+        """
+        preserve_count = PRESERVE_RECENT_PAIRS * 2
+        if len(messages) <= preserve_count:
+            return messages, 0
+
+        saved = 0
+        cutoff = len(messages) - preserve_count
+
+        for i in range(cutoff):
+            msg = messages[i]
+            tool_results = msg.get("tool_results")
+            if not tool_results:
+                continue
+
+            # Build tool_call_id → name mapping from preceding assistant message
+            tool_name_by_id: dict[str, str] = {}
+            if i > 0:
+                for tc in messages[i - 1].get("tool_calls", []):
+                    tc_id = tc.get("id", "")
+                    if tc_id:
+                        tool_name_by_id[tc_id] = tc.get("name", "")
+
+            new_results = []
+            for tr in tool_results:
+                if tr.get("is_error"):
+                    new_results.append(tr)
+                    continue
+
+                old_content = tr.get("content", "")
+                if not old_content:
+                    new_results.append(tr)
+                    continue
+
+                tool_name = tool_name_by_id.get(tr.get("tool_call_id", ""), "")
+                first_line = old_content.split("\n")[0][:80]
+                summary = f"[Compacted] {tool_name}: {first_line}..."
+                old_tokens = len(old_content) // 4
+                new_tokens = len(summary) // 4
+                saved += max(0, old_tokens - new_tokens)
+                new_results.append({
+                    "tool_call_id": tr["tool_call_id"],
+                    "content": summary,
+                    "is_error": False,
+                })
+
+            messages[i] = {**msg, "tool_results": new_results}
+
+        return messages, saved
+
+    def _remove_intermediate_steps(
+        self, messages: list[dict]
+    ) -> tuple[list[dict], int]:
+        """Tier 2: Remove redundant assistant+user pairs.
+
+        Removes pairs where:
+        - The same file was read again later without an intervening edit
+        - Test output shows all tests passed
+
+        Preserves the last PRESERVE_RECENT_PAIRS*2 messages.
+        Returns (modified messages, tokens_saved).
+        """
+        preserve_count = PRESERVE_RECENT_PAIRS * 2
+        if len(messages) <= preserve_count:
+            return messages, 0
+
+        cutoff = len(messages) - preserve_count
+        indices_to_remove: set[int] = set()
+
+        # Build a map of file reads and edits in the compactable zone
+        # Process pairs: assistant at even index, user at odd index
+        for i in range(0, cutoff - 1, 2):
+            assistant = messages[i]
+            user = messages[i + 1]
+
+            # Validate expected role pairing before processing
+            if assistant.get("role") != "assistant" or user.get("role") != "user":
+                continue
+
+            tool_calls = assistant.get("tool_calls", [])
+            if not tool_calls:
+                continue
+
+            tc = tool_calls[0]
+            tool_name = tc.get("name", "")
+            file_path = tc.get("input", {}).get("path", "")
+
+            # Check for redundant file reads
+            if tool_name == "read_file" and file_path:
+                # Look for a later read of the same file without an edit in between
+                has_edit_between = False
+                has_later_read = False
+                for j in range(i + 2, len(messages) - 1, 2):
+                    later_assistant = messages[j]
+                    later_tcs = later_assistant.get("tool_calls", [])
+                    if not later_tcs:
+                        continue
+                    later_name = later_tcs[0].get("name", "")
+                    later_path = later_tcs[0].get("input", {}).get("path", "")
+                    if later_name in ("edit_file", "create_file") and later_path == file_path:
+                        has_edit_between = True
+                        break
+                    if later_name == "read_file" and later_path == file_path:
+                        has_later_read = True
+                        break
+
+                if has_later_read and not has_edit_between:
+                    indices_to_remove.add(i)
+                    indices_to_remove.add(i + 1)
+
+            # Check for passed test results (only remove if fully passing)
+            if tool_name in ("run_tests", "run_command"):
+                tool_results = user.get("tool_results", [])
+                for tr in tool_results:
+                    content = tr.get("content", "")
+                    content_lower = content.lower()
+                    if (
+                        not tr.get("is_error")
+                        and "passed" in content_lower
+                        and "failed" not in content_lower
+                        and "error" not in content_lower
+                    ):
+                        indices_to_remove.add(i)
+                        indices_to_remove.add(i + 1)
+                        break
+
+        if not indices_to_remove:
+            return messages, 0
+
+        saved = sum(
+            self._estimate_message_tokens(messages[i]) for i in indices_to_remove
+        )
+        result = [m for idx, m in enumerate(messages) if idx not in indices_to_remove]
+        return result, saved
+
+    def _summarize_old_messages(
+        self, messages: list[dict], target_tokens: int
+    ) -> tuple[list[dict], int]:
+        """Tier 3: Replace oldest messages with a single summary message.
+
+        Extracts file paths, error messages, and architectural keywords
+        from old messages and creates a compact summary.
+
+        Preserves the last PRESERVE_RECENT_PAIRS*2 messages.
+        Returns (modified messages, tokens_saved).
+        """
+        preserve_count = PRESERVE_RECENT_PAIRS * 2
+        if len(messages) <= preserve_count:
+            return messages, 0
+
+        cutoff = len(messages) - preserve_count
+        old_messages = messages[:cutoff]
+        recent_messages = messages[cutoff:]
+
+        # Preserve existing [Summary] messages from prior compaction rounds
+        prior_summaries: list[str] = []
+        non_summary_old: list[dict] = []
+        for msg in old_messages:
+            content = msg.get("content", "")
+            if content.startswith("[Summary]"):
+                prior_summaries.append(content)
+            else:
+                non_summary_old.append(msg)
+        old_messages = non_summary_old
+
+        # Extract preserved information from old messages
+        file_paths: list[str] = []
+        errors: list[str] = []
+        decisions: list[str] = []
+
+        for msg in old_messages:
+            # Extract file paths from tool calls
+            for tc in msg.get("tool_calls", []):
+                path = tc.get("input", {}).get("path", "")
+                if path and path not in file_paths:
+                    file_paths.append(path)
+
+            # Extract errors from tool results
+            for tr in msg.get("tool_results", []):
+                if tr.get("is_error"):
+                    errors.append(tr.get("content", "")[:100])
+
+            # Extract architectural keywords from assistant content
+            content = msg.get("content", "")
+            if msg.get("role") == "assistant" and content:
+                for keyword in ("architecture", "design", "pattern", "decision"):
+                    if keyword in content.lower():
+                        # Extract a snippet around the keyword
+                        idx = content.lower().index(keyword)
+                        snippet = content[max(0, idx - 20):idx + 50].strip()
+                        if snippet not in decisions:
+                            decisions.append(snippet)
+                        break
+
+        # Build summary
+        parts = ["[Summary] Previous context:"]
+        if prior_summaries:
+            parts.append(f"prior summaries: {' | '.join(prior_summaries[:3])}")
+        if file_paths:
+            parts.append(f"analyzed {len(file_paths)} files ({', '.join(file_paths[:10])})")
+        if errors:
+            parts.append(f"{len(errors)} errors encountered ({'; '.join(errors[:3])})")
+        if decisions:
+            parts.append(f"architectural decisions: {'; '.join(decisions[:3])}")
+
+        summary_content = ", ".join(parts) if len(parts) > 1 else parts[0] + " (no details extracted)"
+        summary_msg = {"role": "user", "content": summary_content}
+
+        # Count tokens from both old messages and absorbed prior summaries
+        saved = sum(self._estimate_message_tokens(m) for m in old_messages)
+        for ps in prior_summaries:
+            saved += len(ps) // 4
+        saved -= self._estimate_message_tokens(summary_msg)
+        saved = max(0, saved)
+
+        return [summary_msg] + recent_messages, saved
+
+    def compact_conversation(
+        self, messages: list[dict]
+    ) -> tuple[list[dict], dict]:
+        """Orchestrate 3-tier compaction when conversation exceeds token budget.
+
+        Runs tiers in order (1 -> 2 -> 3), stopping when under threshold.
+        Returns (messages, stats_dict).
+        """
+        if not self._should_compact(messages):
+            return messages, {"compacted": False}
+
+        # Defensive copy — avoid mutating the caller's list
+        messages = list(messages)
+
+        tokens_before = self._estimate_conversation_tokens(messages)
+        tiers_used: list[str] = []
+
+        # Tier 1: Compact tool results
+        messages, saved = self._compact_tool_results(messages)
+        if saved > 0:
+            tiers_used.append("tier1_tool_results")
+        if not self._should_compact(messages):
+            return self._finalize_compaction(
+                messages, tokens_before, tiers_used
+            )
+
+        # Tier 2: Remove intermediate steps
+        messages, saved = self._remove_intermediate_steps(messages)
+        if saved > 0:
+            tiers_used.append("tier2_intermediate")
+        if not self._should_compact(messages):
+            return self._finalize_compaction(
+                messages, tokens_before, tiers_used
+            )
+
+        # Tier 3: Summarize old messages
+        target = int(self._context_window_size * self._compaction_threshold)
+        messages, saved = self._summarize_old_messages(messages, target)
+        if saved > 0:
+            tiers_used.append("tier3_summary")
+
+        return self._finalize_compaction(messages, tokens_before, tiers_used)
+
+    def _finalize_compaction(
+        self,
+        messages: list[dict],
+        tokens_before: int,
+        tiers_used: list[str],
+    ) -> tuple[list[dict], dict]:
+        """Build stats dict and increment counter after compaction."""
+        self._compaction_count += 1
+        tokens_after = self._estimate_conversation_tokens(messages)
+        stats = {
+            "compacted": True,
+            "tokens_before": tokens_before,
+            "tokens_after": tokens_after,
+            "tokens_saved": tokens_before - tokens_after,
+            "tiers_used": tiers_used,
+            "compaction_number": self._compaction_count,
+        }
+        logger.info(
+            "Compaction #%d: %d -> %d tokens (saved %d, tiers: %s)",
+            stats["compaction_number"],
+            stats["tokens_before"],
+            stats["tokens_after"],
+            stats["tokens_saved"],
+            stats["tiers_used"],
+        )
+        return messages, stats
+
+    def get_token_stats(self, messages: list[dict]) -> dict:
+        """Return current token usage statistics."""
+        total = self._estimate_conversation_tokens(messages)
+        return {
+            "total_tokens": total,
+            "percentage_used": total / self._context_window_size if self._context_window_size > 0 else 0,
+            "compaction_count": self._compaction_count,
+            "context_window_size": self._context_window_size,
+        }
+
+    # ------------------------------------------------------------------
+    # Message history management (deprecated — use compact_conversation)
     # ------------------------------------------------------------------
 
     @staticmethod
