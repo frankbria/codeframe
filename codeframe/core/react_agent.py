@@ -357,7 +357,10 @@ class ReactAgent:
                     f"[ReactAgent] Compacted: saved {compact_stats['tokens_saved']} tokens "
                     f"(tiers: {compact_stats['tiers_used']})"
                 )
-                self._emit(EventType.AGENT_COMPACTION, compact_stats)
+                self._emit(EventType.AGENT_COMPACTION, {
+                    **compact_stats,
+                    "task_id": self._current_task_id,
+                })
 
         # Exhausted iterations
         return AgentStatus.FAILED
@@ -925,10 +928,13 @@ class ReactAgent:
             if not tool_results:
                 continue
 
-            # Find tool name from preceding assistant message
-            tool_name = ""
+            # Build tool_call_id → name mapping from preceding assistant message
+            tool_name_by_id: dict[str, str] = {}
             if i > 0:
-                tool_name = self._extract_tool_name_from_pair(messages[i - 1])
+                for tc in messages[i - 1].get("tool_calls", []):
+                    tc_id = tc.get("id", "")
+                    if tc_id:
+                        tool_name_by_id[tc_id] = tc.get("name", "")
 
             new_results = []
             for tr in tool_results:
@@ -941,6 +947,7 @@ class ReactAgent:
                     new_results.append(tr)
                     continue
 
+                tool_name = tool_name_by_id.get(tr.get("tool_call_id", ""), "")
                 first_line = old_content.split("\n")[0][:80]
                 summary = f"[Compacted] {tool_name}: {first_line}..."
                 old_tokens = len(old_content) // 4
@@ -980,6 +987,11 @@ class ReactAgent:
         for i in range(0, cutoff - 1, 2):
             assistant = messages[i]
             user = messages[i + 1]
+
+            # Validate expected role pairing before processing
+            if assistant.get("role") != "assistant" or user.get("role") != "user":
+                continue
+
             tool_calls = assistant.get("tool_calls", [])
             if not tool_calls:
                 continue
@@ -1055,6 +1067,17 @@ class ReactAgent:
         old_messages = messages[:cutoff]
         recent_messages = messages[cutoff:]
 
+        # Preserve existing [Summary] messages from prior compaction rounds
+        prior_summaries: list[str] = []
+        non_summary_old: list[dict] = []
+        for msg in old_messages:
+            content = msg.get("content", "")
+            if content.startswith("[Summary]"):
+                prior_summaries.append(content)
+            else:
+                non_summary_old.append(msg)
+        old_messages = non_summary_old
+
         # Extract preserved information from old messages
         file_paths: list[str] = []
         errors: list[str] = []
@@ -1086,6 +1109,8 @@ class ReactAgent:
 
         # Build summary
         parts = ["[Summary] Previous context:"]
+        if prior_summaries:
+            parts.append(f"prior summaries: {' | '.join(prior_summaries[:3])}")
         if file_paths:
             parts.append(f"analyzed {len(file_paths)} files ({', '.join(file_paths[:10])})")
         if errors:
@@ -1096,7 +1121,10 @@ class ReactAgent:
         summary_content = ", ".join(parts) if len(parts) > 1 else parts[0] + " (no details extracted)"
         summary_msg = {"role": "user", "content": summary_content}
 
+        # Count tokens from both old messages and absorbed prior summaries
         saved = sum(self._estimate_message_tokens(m) for m in old_messages)
+        for ps in prior_summaries:
+            saved += len(ps) // 4
         saved -= self._estimate_message_tokens(summary_msg)
         saved = max(0, saved)
 
@@ -1112,6 +1140,9 @@ class ReactAgent:
         """
         if not self._should_compact(messages):
             return messages, {"compacted": False}
+
+        # Defensive copy — avoid mutating the caller's list
+        messages = list(messages)
 
         tokens_before = self._estimate_conversation_tokens(messages)
         tiers_used: list[str] = []

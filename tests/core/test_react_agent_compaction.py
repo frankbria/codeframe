@@ -692,6 +692,25 @@ class TestTier3SummarizeOldMessages:
         assert saved == 0
         assert result == messages
 
+    def test_preserves_prior_summary_messages(self, workspace, provider):
+        """Prior [Summary] messages from earlier compaction rounds are folded into the new summary."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        # Create a prior summary + enough messages to exceed preserve zone
+        prior_summary = {"role": "user", "content": "[Summary] Previous context: analyzed 3 files (a.py, b.py, c.py)"}
+        messages = [prior_summary]
+        for i in range(PRESERVE_RECENT_PAIRS + 3):
+            a, u = _make_pair(tool_result_content=f"content-{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        result, saved = agent._summarize_old_messages(list(messages), target_tokens=10)
+        # The new summary should reference the prior summary content
+        new_summary = result[0]["content"]
+        assert new_summary.startswith("[Summary]")
+        assert "prior summaries" in new_summary
+        assert "analyzed 3 files" in new_summary
+
 
 # ---------------------------------------------------------------------------
 # Tests: compact_conversation orchestrator
@@ -774,6 +793,54 @@ class TestCompactConversation:
         assert "tiers_used" in stats
         assert "compaction_number" in stats
 
+    def test_defensive_copy_does_not_mutate_caller_list(self, workspace, provider):
+        """compact_conversation should not mutate the original list."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        agent._context_window_size = 100
+        agent._compaction_threshold = 0.1
+
+        messages = []
+        for i in range(PRESERVE_RECENT_PAIRS + 3):
+            a, u = _make_pair(tool_result_content="x" * 200, tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        original_len = len(messages)
+        original_ids = [id(m) for m in messages]
+        agent.compact_conversation(messages)
+        # Caller's list should be untouched
+        assert len(messages) == original_len
+        assert [id(m) for m in messages] == original_ids
+
+
+# ---------------------------------------------------------------------------
+# Tests: Tier 2 role validation
+# ---------------------------------------------------------------------------
+
+
+class TestTier2RoleValidation:
+    """Tests for tier 2 role-checking in message pairing."""
+
+    def test_skips_non_standard_role_pairs(self, workspace, provider):
+        """Tier 2 should skip message pairs that don't follow assistant/user pattern."""
+        from codeframe.core.react_agent import ReactAgent, PRESERVE_RECENT_PAIRS
+
+        agent = ReactAgent(workspace=workspace, llm_provider=provider)
+        # Create messages with a system message breaking the pair pattern
+        messages = [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "hello"},
+        ]
+        # Add enough normal pairs for the preserve zone
+        for i in range(PRESERVE_RECENT_PAIRS + 1):
+            a, u = _make_pair(tool_result_content=f"c{i}", tc_id=f"tc{i}")
+            messages.extend([a, u])
+
+        # Should not crash on non-standard pair
+        result, saved = agent._remove_intermediate_steps(list(messages))
+        assert isinstance(result, list)
+
 
 # ---------------------------------------------------------------------------
 # Tests: get_token_stats
@@ -855,6 +922,7 @@ class TestReactLoopCompactionIntegration:
         agent.run("task-1")
 
         assert len(compact_called) >= 1
+        assert provider.call_count >= 1, "LLM provider should have been called during the react loop"
 
     @patch("codeframe.core.react_agent.gates")
     @patch("codeframe.core.react_agent.execute_tool")
