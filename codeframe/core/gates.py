@@ -678,11 +678,17 @@ def run_lint_on_file(
         # Detect tool-not-found: uv/shell report "Failed to spawn",
         # "command not found", or "No such file or directory" when the
         # linter binary isn't installed in the target project.
+        # Note: "no such file or directory" is only matched when the tool
+        # name also appears in stderr, to avoid false positives from
+        # missing *target* files.
         if result.returncode != 0 and result.stderr:
-            _NOT_FOUND = ("failed to spawn", "command not found",
-                          "no such file or directory")
             stderr_lower = result.stderr.lower()
-            if any(p in stderr_lower for p in _NOT_FOUND):
+            tool_name = cfg.cmd[0].lower()
+            if (
+                "failed to spawn" in stderr_lower
+                or "command not found" in stderr_lower
+                or ("no such file or directory" in stderr_lower and tool_name in stderr_lower)
+            ):
                 return GateCheck(
                     name=cfg.name,
                     status=GateStatus.SKIPPED,

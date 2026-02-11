@@ -276,4 +276,4 @@ class TestRunLintOnFile:
 
         check = run_lint_on_file(py_file, tmp_path)
         assert check.status == GateStatus.SKIPPED
-        assert "not found" in check.output.lower() or "not found" in (check.output or "").lower()
+        assert "not found" in check.output.lower()
